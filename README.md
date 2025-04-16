@@ -28,7 +28,7 @@ Recommended to install this on a separate installation of Anki, e.g. in a VM or 
 
 ## How to contribute for current contributors
 - For each fix or feature you want, you need to have an INDIVIDUAL branch which is based on the main branch. So if you have two different bugfixes for example, make two branches.
-- Name them as fix/<name> or feature/<name>.
+- Name them in the format fix/name-of-fix or feature/name-of-feature.
 - Place all your edits in that branch. Please do not change files on the `main` branch
 - After your changes are ready, please put a pull request from your branch onto the main branch, so that we can test it out!
 
