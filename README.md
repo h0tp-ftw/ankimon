@@ -2,7 +2,7 @@
 
 This branch contains the latest bugfixes and feature additions from community contributors! EXPERIMENTAL, **it can be very unstable**. So you get the coolest features but you have to deal with the issues as well!
 
-### NOTE - for any contributions, make sure to **create your own branch** instead of merging into `main`, and add pull requests with your changes. We will review these changes and merge onto `main` after testing them.
+### NOTE - for any contributions, see _How to contribute_ below
 
 ## Current contributors and maintainers in this repo
 - **h0tp** @h0tp-ftw
@@ -25,6 +25,12 @@ Recommended to install this on a separate installation of Anki, e.g. in a VM or 
 ## Reporting bugs
 - BEST way is to report on Ankimon Discord: https://discord.gg/eY8jPHZw4z
 - You can add issues through GitHub: https://github.com/h0tp-ftw/ankimon/issues
+
+## How to contribute for current contributors
+- For each fix or feature you want, you need to have an INDIVIDUAL branch which is based on the main branch. So if you have two different bugfixes for example, make two branches.
+- Name them as fix/<name> or feature/<name>.
+- Place all your edits in that branch. Please do not change files on the `main` branch
+- After your changes are ready, please put a pull request from your branch onto the main branch, so that we can test it out!
 
 ## Star History
 [![Star History Chart](https://api.star-history.com/svg?repos=unlucky-life/ankimon&type=Date)](https://www.star-history.com/#unlucky-life/ankimon&Date)
