@@ -5,7 +5,7 @@ This branch contains the latest bugfixes and feature additions from community co
 ### NOTE - for any contributions, see _How to contribute_ below
 
 ## Current contributors and maintainers in this repo
-[![Contributors](https://contrib.rocks/image?repo=h0tp-ftw/Ankimon)](https://github.com/h0tp-ftw/Ankimon/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=h0tp-ftw/Ankimon&branch=main)](https://github.com/h0tp-ftw/Ankimon/graphs/contributors)
 - **h0tp** @h0tp-ftw
 - **Peace** @thepeacemonk
 - **Gill** @gykoh
