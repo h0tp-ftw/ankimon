@@ -2,7 +2,7 @@
 
 This branch contains the latest bugfixes and feature additions from community contributors! EXPERIMENTAL, **it can be very unstable**. So you get the coolest features but you have to deal with the issues as well!
 
-### NOTE - for any contributions, see [How to contribute](https://github.com/h0tp-ftw/ankimon/edit/main/README.md#how-to-contribute-for-current-contributors) below
+### NOTE - for any contributions, see [How to contribute](https://github.com/h0tp-ftw/ankimon?tab=readme-ov-file#how-to-contribute-for-current-contributors) below
 
 ## Current contributors and maintainers in this repo
 
