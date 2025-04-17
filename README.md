@@ -82,7 +82,7 @@ catchable = set()
 ```
 Can you figure out what this code is actually trying to do? 
 - Any doubts on any step, ask ChatGPT or Perplexity AI your questions.
-### After your first contribution ([section above](https://github.com/h0tp-ftw/ankimon/edit/main/README.md#how-to-contribute-for-new-contributors)), you can get access to our contributors channel and work as a team!  
+### After your first contribution ([section above](https://github.com/h0tp-ftw/ankimon?tab=readme-ov-file#how-to-contribute-for-new-contributors)), you can get access to our contributors channel and work as a team!  
 
 
 ## Star History
