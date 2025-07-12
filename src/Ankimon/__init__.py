@@ -25,7 +25,6 @@ from .poke_engine.objects import Pokemon, State, StateMutator, Side
 from .poke_engine.helpers import normalize_name
 from .poke_engine.find_state_instructions import get_all_state_instructions
 
-
 from collections import defaultdict
 
 from pathlib import Path
@@ -689,29 +688,42 @@ if database_complete:
 
 caught_pokemon = {} #pokemon not caught
 
-def check_min_generate_level(name):
-    evoType = search_pokedex(name.lower(), "evoType")
-    evoLevel = search_pokedex(name.lower(), "evoLevel")
+def is_level_valid(name, level, pokedex_data):
+    """
+    Checks if a given level is valid for a Pokémon based on its evolution line,
+    using only the pokedex.json data.
+    """
+    name = name.lower().replace(" ", "")
+    pkmn_data = pokedex_data.get(name)
+
+    if not pkmn_data:
+        return True # Cannot validate if data is missing, so allow it
+
+    # Check Lower Bound: Is this an evolved form at a level that's too low?
+    # This also handles Pokémon that don't evolve by level-up (e.g., item use), as they won't have an "evoLevel".
+    if "evoLevel" in pkmn_data and pkmn_data.get("prevo"):
+        if level < pkmn_data["evoLevel"]:
+            return False # E.g., A level 10 Greedent is invalid (evolves at 24)
+
+    # Check Upper Bound: Is this a pre-evolution at a level that's too high?
+    if "evos" in pkmn_data:
+        for evo_name in pkmn_data["evos"]:
+            evo_data = pokedex_data.get(evo_name.lower())
+            # Ensure the evolution is by level and from the current Pokémon
+            if evo_data and "evoLevel" in evo_data and evo_data.get("prevo", "").lower() == name:
+                # Check if the evolution is triggered by leveling, not by an item or trade.
+                # Types like "levelFriendship" or "levelMove" are still level-based.
+                if evo_data.get("evoType") not in ["useItem", "trade"]:
+                    if level >= evo_data["evoLevel"]:
+                        return False # E.g., A level 24 Skwovet is invalid (evolves at 24)
     
-    # Check if a level-based evolution exists
-    if evoLevel is not None:
-        # A Pokémon like Charmeleon evolves from Charmander at level 16.
-        # So the minimum generation level is 16.
-        return int(evoLevel)
-    
-    # If a Pokémon has an evoType but no evoLevel, it evolves by another method (e.g., stone, trade).
-    # Its minimum generation level should be 1, not 100.
-    # This also handles all other cases where evoType is None.
-    else:
-        min_level = 1
-        return min_level
+    return True
 
 def get_valid_pokemon_by_tier_and_level(tier, level):
     """
     Returns a list of Pokemon IDs from a given tier
-    that are below or at a specific minimum generation level.
+    that are valid for a specific level, using a unified validation function.
     """
-    
     id_species_path = None
     if tier == "Normal":
         id_species_path = pokemon_species_normal_path
@@ -724,28 +736,29 @@ def get_valid_pokemon_by_tier_and_level(tier, level):
     elif tier == "Mythical":
         id_species_path = pokemon_species_mythical_path
 
+    if not id_species_path:
+        return []
+
     with open(id_species_path, "r", encoding="utf-8") as file:
         id_data = json.load(file)
 
     valid_pokemon_ids = []
     for pkmn_id in id_data:
         try:
-            # Add this new check to filter by generation
+            # Filter by generation
             if not check_id_ok(pkmn_id): 
                 continue
             
-            # Check the minimum level for this Pokemon ID
-            name = POKEDEX_DATA.get(search_pokedex_by_id(pkmn_id), {}).get("name", "").lower()
+            # Get name from ID
+            name = search_pokedex_by_id(int(pkmn_id))
             if not name:
                 continue
-                
-            min_level = check_min_generate_level(name)
-            
-            # If the minimum level is valid and below the player's level, add it to the list
-            if isinstance(min_level, int) and min_level <= level:
+
+            # Unified level check using the helper function
+            if is_level_valid(name, level, POKEDEX_DATA):
                 valid_pokemon_ids.append(pkmn_id)
 
-        except Exception as e:
+        except Exception:
             # Skip this Pokemon if any error occurs
             continue
 
