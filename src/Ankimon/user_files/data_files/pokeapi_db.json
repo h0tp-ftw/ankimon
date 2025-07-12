@@ -12570,5 +12570,894 @@
     },
     "base_experience": 250,
     "growth_rate": "slow"
+  },
+  {
+    "name": "wyrdeer",
+    "id": 899,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 175,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "kleavor",
+    "id": 900,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 175,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "ursaluna",
+    "id": 901,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 275,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "basculegion",
+    "id": 902,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 186,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "sneasler",
+    "id": 903,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 275,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "overqwil",
+    "id": 904,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 179,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "enamorus",
+    "id": 905,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 290,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "sprigatito",
+    "id": 906,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 62,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "floragato",
+    "id": 907,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 144,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "meowscarada",
+    "id": 908,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 3 },
+    "base_experience": 265,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "fuecoco",
+    "id": 909,
+    "effort_values": { "hp": 1, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 62,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "crocalor",
+    "id": 910,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 144,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "skeledirge",
+    "id": 911,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 265,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "quaxly",
+    "id": 912,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 62,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "quaxwell",
+    "id": 913,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 144,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "quaquaval",
+    "id": 914,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 265,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "lechonk",
+    "id": 915,
+    "effort_values": { "hp": 1, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 51,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "oinkologne",
+    "id": 916,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 171,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "tarountula",
+    "id": 917,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 1, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 42,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "spidops",
+    "id": 918,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 2, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 142,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "nymble",
+    "id": 919,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 42,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "lokix",
+    "id": 920,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 158,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "pawmi",
+    "id": 921,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 48,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "pawmo",
+    "id": 922,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 123,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "pawmot",
+    "id": 923,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 245,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "tandemaus",
+    "id": 924,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 52,
+    "growth_rate": "fast"
+  },
+  {
+    "name": "maushold",
+    "id": 925,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 165,
+    "growth_rate": "fast"
+  },
+  {
+    "name": "fidough",
+    "id": 926,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 1, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 62,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "dachsbun",
+    "id": 927,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 172,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "smoliv",
+    "id": 928,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 0, "speed": 0 },
+    "base_experience": 52,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "dolliv",
+    "id": 929,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 124,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "arboliva",
+    "id": 930,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 255,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "squawkabilly",
+    "id": 931,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 179,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "nacli",
+    "id": 932,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 1, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 56,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "naclstack",
+    "id": 933,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 2, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 124,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "garganacl",
+    "id": 934,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 3, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 250,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "charcadet",
+    "id": 935,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 0, "speed": 0 },
+    "base_experience": 51,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "armarouge",
+    "id": 936,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 263,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ceruledge",
+    "id": 937,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 263,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "tadbulb",
+    "id": 938,
+    "effort_values": { "hp": 1, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 142,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "bellibolt",
+    "id": 939,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 173,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "wattrel",
+    "id": 940,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 56,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "kilowattrel",
+    "id": 941,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 172,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "maschiff",
+    "id": 942,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 68,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "mabosstiff",
+    "id": 943,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 177,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "shroodle",
+    "id": 944,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 58,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "grafaiai",
+    "id": 945,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 170,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "bramblin",
+    "id": 946,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 55,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "brambleghast",
+    "id": 947,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 168,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "toedscool",
+    "id": 948,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 1, "speed": 0 },
+    "base_experience": 67,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "toedscruel",
+    "id": 949,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 2, "speed": 0 },
+    "base_experience": 180,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "klawf",
+    "id": 950,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 2, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 158,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "capsakid",
+    "id": 951,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 144,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "scovillain",
+    "id": 952,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 170,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "rellor",
+    "id": 953,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 1, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 54,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "rabsca",
+    "id": 954,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 167,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "flittle",
+    "id": 955,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 51,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "espathra",
+    "id": 956,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 168,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "tinkatink",
+    "id": 957,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 1, "speed": 0 },
+    "base_experience": 59,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "tinkatuff",
+    "id": 958,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 133,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "tinkaton",
+    "id": 959,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 3, "speed": 0 },
+    "base_experience": 253,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "wiglett",
+    "id": 960,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 49,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "wugtrio",
+    "id": 961,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 149,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "bombirdier",
+    "id": 962,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 243,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "finizen",
+    "id": 963,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 1 },
+    "base_experience": 63,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "palafin",
+    "id": 964,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 228,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "varoom",
+    "id": 965,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 60,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "revavroom",
+    "id": 966,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 175,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "cyclizar",
+    "id": 967,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 2 },
+    "base_experience": 219,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "orthworm",
+    "id": 968,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 2, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 240,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "glimmet",
+    "id": 969,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 0, "speed": 0 },
+    "base_experience": 70,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "glimmora",
+    "id": 970,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 184,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "greavard",
+    "id": 971,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 58,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "houndstone",
+    "id": 972,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 171,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "flamigo",
+    "id": 973,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 175,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "cetoddle",
+    "id": 974,
+    "effort_values": { "hp": 1, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 67,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "cetitan",
+    "id": 975,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 182,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "veluza",
+    "id": 976,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 167,
+    "growth_rate": "fast"
+  },
+  {
+    "name": "dondozo",
+    "id": 977,
+    "effort_values": { "hp": 3, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 265,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "tatsugiri",
+    "id": 978,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 166,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "annihilape",
+    "id": 979,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 268,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "clodsire",
+    "id": 980,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 151,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "farigiraf",
+    "id": 981,
+    "effort_values": { "hp": 3, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 260,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "dudunsparce",
+    "id": 982,
+    "effort_values": { "hp": 2, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 182,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "kingambit",
+    "id": 983,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 275,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "greattusk",
+    "id": 984,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "screamtail",
+    "id": 985,
+    "effort_values": { "hp": 3, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "brutebonnet",
+    "id": 986,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "fluttermane",
+    "id": 987,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 1, "speed": 1 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "slitherwing",
+    "id": 988,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "sandyshocks",
+    "id": 989,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "irontreads",
+    "id": 990,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 3, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironbundle",
+    "id": 991,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 3 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironhands",
+    "id": 992,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironjugulis",
+    "id": 993,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironmoth",
+    "id": 994,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironthorns",
+    "id": 995,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "frigibax",
+    "id": 996,
+    "effort_values": { "hp": 0, "attack": 1, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 64,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "arctibax",
+    "id": 997,
+    "effort_values": { "hp": 0, "attack": 2, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 148,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "baxcalibur",
+    "id": 998,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 300,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "gimmighoul",
+    "id": 999,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 1, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 60,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "gholdengo",
+    "id": 1000,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 275,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "wo-chien",
+    "id": 1001,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 3, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "chien-pao",
+    "id": 1002,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ting-lu",
+    "id": 1003,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 3, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "chi-yu",
+    "id": 1004,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 285,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "roaringmoon",
+    "id": 1005,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironvaliant",
+    "id": 1006,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "koraidon",
+    "id": 1007,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 335,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "miraidon",
+    "id": 1008,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 335,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "walkingwake",
+    "id": 1009,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironleaves",
+    "id": 1010,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "dipplin",
+    "id": 1011,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 2, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 170,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "poltchageist",
+    "id": 1012,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 0, "speed": 0 },
+    "base_experience": 62,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "sinistcha",
+    "id": 1013,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 2, "special-defense": 0, "speed": 0 },
+    "base_experience": 178,
+    "growth_rate": "medium-slow"
+  },
+  {
+    "name": "okidogi",
+    "id": 1014,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 278,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "munkidori",
+    "id": 1015,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 278,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "fezandipiti",
+    "id": 1016,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 3, "speed": 0 },
+    "base_experience": 278,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ogerpon",
+    "id": 1017,
+    "effort_values": { "hp": 0, "attack": 3, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 275,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "archaludon",
+    "id": 1018,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 3, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 300,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "hydrapple",
+    "id": 1019,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 270,
+    "growth_rate": "medium"
+  },
+  {
+    "name": "gougingfire",
+    "id": 1020,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 3, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ragingbolt",
+    "id": 1021,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironboulder",
+    "id": 1022,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 0, "special-defense": 0, "speed": 3 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "ironcrown",
+    "id": 1023,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 0, "special-attack": 3, "special-defense": 0, "speed": 0 },
+    "base_experience": 295,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "terapagos",
+    "id": 1024,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 1, "special-attack": 0, "special-defense": 1, "speed": 0 },
+    "base_experience": 270,
+    "growth_rate": "slow"
+  },
+  {
+    "name": "pecharunt",
+    "id": 1025,
+    "effort_values": { "hp": 0, "attack": 0, "defense": 3, "special-attack": 0, "special-defense": 0, "speed": 0 },
+    "base_experience": 300,
+    "growth_rate": "slow"
   }
 ]
