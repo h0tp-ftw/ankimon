@@ -139,6 +139,54 @@ data_handler_window = DataHandlerWindow(
 # Create the Settings object
 settings_obj = Settings()
 
+def build_tier_lists_from_pokedex(pokedex_data):
+    """
+    Dynamically builds tier lists by reading the 'tier' and other keys 
+    from the main pokedex.json data. This removes the need for separate files.
+    """
+    logger.log("info", "Building Pokémon encounter tier lists from pokedex.json...")
+    
+    # This map defines how competitive tiers translate to your addon's encounter tiers.
+    tier_map = {
+        "LC": "Normal", "NFE": "Normal", "PU": "Normal", "ZU": "Normal",
+        "NU": "Normal", "RU": "Normal",
+        "UU": "Ultra", "UUBL": "Ultra", "OU": "Ultra",
+        "Uber": "Legendary", "AG": "Legendary"
+    }
+
+    tier_lists = {
+        "Normal": [], "Baby": [], "Ultra": [], "Legendary": [], "Mythical": []
+    }
+
+    for pkmn_name, pkmn_data in pokedex_data.items():
+        pkmn_id = pkmn_data.get("num")
+        if not pkmn_id or pkmn_id <= 0:
+            continue
+        
+        # Skip illegal or non-standard Pokémon
+        if pkmn_data.get("tier") == "Illegal" or "isNonstandard" in pkmn_data:
+             continue
+             
+        # Handle special categories like Mythicals and Babies first
+        if "Mythical" in pkmn_data.get("tags", []):
+            tier_lists["Mythical"].append(pkmn_id)
+        elif "Sub-Legendary" in pkmn_data.get("tags", []) or "Restricted Legendary" in pkmn_data.get("tags",[]):
+            tier_lists["Legendary"].append(pkmn_id)
+        elif "Baby" in pkmn_data.get("tags", []):
+            tier_lists["Baby"].append(pkmn_id)
+        else:
+            # Use the tier map for all other Pokémon
+            smogon_tier = pkmn_data.get("tier")
+            addon_tier = tier_map.get(smogon_tier)
+            if addon_tier:
+                tier_lists[addon_tier].append(pkmn_id)
+
+    logger.log("info", f"Tier lists built successfully. Normal: {len(tier_lists['Normal'])}, Ultra: {len(tier_lists['Ultra'])}")
+    return tier_lists
+
+# NEW: Dynamically build encounter lists from the POKEDEX_DATA at startup
+TIER_LISTS = build_tier_lists_from_pokedex(POKEDEX_DATA)
+
 # Pass the correct attributes to SettingsWindow
 settings_window = SettingsWindow(
     config=settings_obj.config,                   # Use settings_obj.config instead of settings_obj.settings.config
@@ -505,27 +553,33 @@ for i in range(1,10):
     gen_config.append(config[f"misc.gen{i}"])
 
 def check_id_ok(id_num):
-    if isinstance(id_num, int):
-        pass
-    elif isinstance(id_num, list):
-        if len(id_num) > 0:
-            id_num = id_num[0]
-        else:
-            return False
-    # Determine the generation of the given ID
-    if id_num < 898:
-        generation = 0
-        for gen, max_id in gen_ids.items():
-            if id_num <= max_id:
-                generation = int(gen.split('_')[1])
-                break
-
-        if generation == 0:
-            return False  # ID does not belong to any generation
-
-        return gen_config[generation - 1]
-    else:
+    """
+    Checks if a given Pokémon ID is from a generation that is currently
+    enabled in the user's settings. Now includes logging.
+    """
+    if isinstance(id_num, list):
+        id_num = id_num[0] if id_num else -1
+    try:
+        id_num = int(id_num)
+    except (ValueError, TypeError):
         return False
+
+    generation = 0
+    sorted_gen_ids = sorted(gen_ids.items(), key=lambda item: item[1])
+
+    for gen, max_id in sorted_gen_ids:
+        if id_num <= max_id:
+            generation = int(gen.split('_')[1])
+            break
+
+    if 0 < generation <= len(gen_config):
+        is_enabled = gen_config[generation - 1]
+        if not is_enabled:
+            # NEW: Log when a Pokémon is skipped due to its generation being disabled
+            logger.log("debug", f"Skipping Pokémon ID {id_num}: Generation {generation} is disabled in settings.")
+        return is_enabled
+
+    return False
 
 def special_pokemon_names_for_pokedex_to_poke_api_db(name):
     global pokedex_to_poke_api_db
@@ -721,46 +775,36 @@ def is_level_valid(name, level, pokedex_data):
 
 def get_valid_pokemon_by_tier_and_level(tier, level):
     """
-    Returns a list of Pokemon IDs from a given tier
-    that are valid for a specific level, using a unified validation function.
+    Returns a list of valid Pokemon IDs from the dynamically generated TIER_LISTS.
     """
-    id_species_path = None
-    if tier == "Normal":
-        id_species_path = pokemon_species_normal_path
-    elif tier == "Baby":
-        id_species_path = pokemon_species_baby_path
-    elif tier == "Ultra":
-        id_species_path = pokemon_species_ultra_path
-    elif tier == "Legendary":
-        id_species_path = pokemon_species_legendary_path
-    elif tier == "Mythical":
-        id_species_path = pokemon_species_mythical_path
-
-    if not id_species_path:
+    # Get the initial list of IDs for the requested tier. No file opening needed.
+    id_data = TIER_LISTS.get(tier, [])
+    if not id_data:
+        logger.log("warning", f"No Pokémon IDs found in the pre-built list for tier: {tier}")
         return []
-
-    with open(id_species_path, "r", encoding="utf-8") as file:
-        id_data = json.load(file)
 
     valid_pokemon_ids = []
     for pkmn_id in id_data:
         try:
-            # Filter by generation
             if not check_id_ok(pkmn_id): 
                 continue
             
-            # Get name from ID
             name = search_pokedex_by_id(int(pkmn_id))
             if not name:
+                logger.log("warning", f"Skipping Pokémon ID {pkmn_id}: Could not find a name in pokedex.json.")
                 continue
 
-            # Unified level check using the helper function
-            if is_level_valid(name, level, POKEDEX_DATA):
-                valid_pokemon_ids.append(pkmn_id)
+            if not is_level_valid(name, level, POKEDEX_DATA):
+                continue
 
-        except Exception:
-            # Skip this Pokemon if any error occurs
+            valid_pokemon_ids.append(pkmn_id)
+
+        except Exception as e:
+            logger.log("error", f"An error occurred processing ID {pkmn_id} in get_valid_pokemon_by_tier_and_level: {e}")
             continue
+    
+    if not valid_pokemon_ids:
+        logger.log("warning", f"Found 0 valid Pokémon for tier '{tier}' at level {level} after filtering.")
 
     return valid_pokemon_ids
 
@@ -824,7 +868,6 @@ def tooltipWithColour(msg, color, x=0, y=20, xref=1, parent=None, width=0, heigh
 # Your random Pokémon generation function using the PokeAPI
 if database_complete:
     def generate_random_pokemon():
-        # Add a retry counter to prevent infinite loops on bad data
         retry_count = 0
         max_retries = 100
         
@@ -834,77 +877,49 @@ if database_complete:
             tier = "Normal"
 
             try:
-                # Determine a random tier first
                 tier = get_tier(ankimon_tracker_obj.total_reviews, trainer_card.level)
                 
-                # Determine the level based on the main pokemon's level
                 var_level = 3
                 if main_pokemon.level:
                     level = random.randint(max(1, main_pokemon.level - random.randint(0, var_level)), main_pokemon.level + random.randint(0, var_level))
                 else:
                     level = 5
 
-                # FIX: Filter the list of Pokémon IDs by tier and the generated level
-                # This ensures we only choose a Pokemon that can actually appear at this level
                 valid_pokemon_ids_for_level = get_valid_pokemon_by_tier_and_level(tier, level)
                 
                 if not valid_pokemon_ids_for_level:
-                    # If the filtered list is empty, fall back to a safer tier and restart the process.
-                    showWarning(f"No valid Pokémon found in tier '{tier}' at level {level}. Retrying with Normal tier...")
-                    tier = "Normal"
-                    valid_pokemon_ids_for_level = get_valid_pokemon_by_tier_and_level(tier, level)
+                    # NEW: Log when no valid Pokémon are found for a specific tier/level combination
+                    logger.log("info", f"No valid Pokémon found for tier '{tier}' at level {level}. Retrying with a different tier/level...")
+                    retry_count += 1
+                    continue
                 
-                if not valid_pokemon_ids_for_level:
-                    # FIX: FINAL FALLBACK - If Normal tier also fails, choose a hardcoded starter
-                    showWarning("Error: Failed to find any valid Pokémon to generate. Falling back to a starter.")
-                    starter_ids = [1, 4, 7] # Bulbasaur, Charmander, Squirtle
-                    pkmn_id = random.choice(starter_ids)
-                    return pkmn_id # Returning only the ID here will be handled by the code outside the loop
-                
-                # Choose a random Pokémon ID from the valid list
                 id = random.choice(valid_pokemon_ids_for_level)
                 
-                # Retrieve Pokémon data using the valid ID
                 name = search_pokedex_by_id(id)
-                gender = "N"
                 shiny = shiny_chance()
-                if name is list:
-                    name = name[0]
-                
-                # The rest of the function remains the same as it now works with a valid name/ID
+
                 abilities = search_pokedex(name, "abilities")
-                numeric_abilities = None
-                try:
-                    numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()}
-                except:
-                    ability = translator.translate("no_ability")
+                numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()} if isinstance(abilities, dict) else {}
+                
                 if numeric_abilities:
-                    abilities_list = list(numeric_abilities.values())
-                    ability = random.choice(abilities_list)
+                    ability = random.choice(list(numeric_abilities.values()))
                 else:
                     ability = translator.translate("no_ability")
+                    
                 type = search_pokedex(name, "types")
                 stats = search_pokedex(name, "baseStats")
                 enemy_attacks_list = get_all_pokemon_moves(name, level)
-                enemy_attacks = []
-                if len(enemy_attacks_list) <= 4:
-                    enemy_attacks = enemy_attacks_list
-                else:
-                    enemy_attacks = random.sample(enemy_attacks_list, 4)
+                
+                enemy_attacks = random.sample(enemy_attacks_list, min(len(enemy_attacks_list), 4))
+                    
                 base_experience = search_pokeapi_db_by_id(id, "base_experience")
                 growth_rate = search_pokeapi_db_by_id(id, "growth_rate")
                 gender = pick_random_gender(name)
                 iv = {
-                    "hp": random.randint(1, 32),
-                    "atk": random.randint(1, 32),
-                    "def": random.randint(1, 32),
-                    "spa": random.randint(1, 32),
-                    "spd": random.randint(1, 32),
-                    "spe": random.randint(1, 32)
+                    "hp": random.randint(1, 32), "atk": random.randint(1, 32), "def": random.randint(1, 32),
+                    "spa": random.randint(1, 32), "spd": random.randint(1, 32), "spe": random.randint(1, 32)
                 }
-                ev = {
-                    "hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0
-                }
+                ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
                 battle_stats = stats
                 battle_status = "fighting"
                 ev_yield = search_pokeapi_db_by_id(id, "effort_values")
@@ -912,14 +927,14 @@ if database_complete:
                 return name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny
 
             except FileNotFoundError:
-                logger.log_and_showinfo("info", "Error - Can't open a JSON File. Check if your files are properly installed.")
+                logger.log("error", "Error - A required JSON file is missing. Check your installation.")
                 return None
             except Exception as e:
-                showWarning(f"An unexpected error occurred while generating a random Pokemon: {e}. Retrying...")
+                show_warning_with_traceback(parent=mw, exception=e, message="An unexpected error occurred while generating a random Pokemon. Retrying...")
                 retry_count += 1
-                continue # Restart the loop to try again
+                continue
                 
-        # If max retries are reached, return None to trigger the default fallback in new_pokemon()
+        showWarning("Failed to generate a valid Pokémon after multiple retries. Check logs for details.")
         return None
 
   # --- FIX END ---
