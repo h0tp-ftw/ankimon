@@ -2,6 +2,49 @@ import base64
 import csv
 
 from .resources import csv_file_items, csv_file_descriptions
+
+# Data for all 25 natures and their stat modifications
+POKEMON_NATURES = {
+    # Neutral Natures (no effect)
+    "Hardy": {}, "Docile": {}, "Serious": {}, "Bashful": {}, "Quirky": {},
+    # +Attack
+    "Lonely": {"increased": "atk", "decreased": "def"},
+    "Brave": {"increased": "atk", "decreased": "spe"},
+    "Adamant": {"increased": "atk", "decreased": "spa"},
+    "Naughty": {"increased": "atk", "decreased": "spd"},
+    # +Defense
+    "Bold": {"increased": "def", "decreased": "atk"},
+    "Relaxed": {"increased": "def", "decreased": "spe"},
+    "Impish": {"increased": "def", "decreased": "spa"},
+    "Lax": {"increased": "def", "decreased": "spd"},
+    # +Speed
+    "Timid": {"increased": "spe", "decreased": "atk"},
+    "Hasty": {"increased": "spe", "decreased": "def"},
+    "Jolly": {"increased": "spe", "decreased": "spa"},
+    "Naive": {"increased": "spe", "decreased": "spd"},
+    # +Special Attack
+    "Modest": {"increased": "spa", "decreased": "atk"},
+    "Mild": {"increased": "spa", "decreased": "def"},
+    "Quiet": {"increased": "spa", "decreased": "spe"},
+    "Rash": {"increased": "spa", "decreased": "spd"},
+    # +Special Defense
+    "Calm": {"increased": "spd", "decreased": "atk"},
+    "Gentle": {"increased": "spd", "decreased": "def"},
+    "Sassy": {"increased": "spd", "decreased": "spe"},
+    "Careful": {"increased": "spd", "decreased": "spa"},
+}
+
+def get_nature_multiplier(nature_name: str, stat_key: str) -> float:
+    """
+    Returns the stat multiplier (1.1, 1.0, or 0.9) for a given nature and stat.
+    """
+    nature_effects = POKEMON_NATURES.get(nature_name, {})
+    if stat_key == nature_effects.get("increased"):
+        return 1.1
+    elif stat_key == nature_effects.get("decreased"):
+        return 0.9
+    else:
+        return 1.0
     
 def get_image_as_base64(path):
     with open(path, 'rb') as image_file:
@@ -164,3 +207,17 @@ def get_id_and_description_by_item_name(item_name: str) -> str:
     key = (item_id, 11, 9)  # Assuming version_group_id 11 and language_id 9
     description = descriptions.get(key, None)
     return description
+
+import math
+
+def calculate_stat(base: int, level: int, iv: int, ev: int, nature_multiplier: float = 1.0) -> int:
+    """
+    Calculates a Pokémon's stat (other than HP).
+    """
+    # The formula for stats other than HP
+    ev_bonus = math.floor(ev / 4)
+    base_and_iv = (2 * base + iv + ev_bonus)
+    level_modifier = math.floor(base_and_iv * level / 100)
+
+    stat_total = (level_modifier + 5) * nature_multiplier
+    return math.floor(stat_total)

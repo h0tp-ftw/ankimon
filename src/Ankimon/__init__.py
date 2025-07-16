@@ -29,6 +29,8 @@ from collections import defaultdict
 
 from pathlib import Path
 
+from . import data
+
 import traceback
 
 #from .install_dependencies import install_package
@@ -160,7 +162,7 @@ def build_tier_lists_from_pokedex(pokedex_data):
 
     for pkmn_name, pkmn_data in pokedex_data.items():
         pkmn_id = pkmn_data.get("num")
-        if not pkmn_id or pkmn_id <= 0:
+        if not pkmn_id or pkmn_id <= 0 or pkmn_id > 1010:
             continue
         
         # Skip illegal or non-standard Pokémon
@@ -185,7 +187,7 @@ def build_tier_lists_from_pokedex(pokedex_data):
     return tier_lists
 
 # NEW: Dynamically build encounter lists from the POKEDEX_DATA at startup
-TIER_LISTS = build_tier_lists_from_pokedex(POKEDEX_DATA)
+data.TIER_LISTS = build_tier_lists_from_pokedex(POKEDEX_DATA)
 
 # Pass the correct attributes to SettingsWindow
 settings_window = SettingsWindow(
@@ -778,7 +780,7 @@ def get_valid_pokemon_by_tier_and_level(tier, level):
     Returns a list of valid Pokemon IDs from the dynamically generated TIER_LISTS.
     """
     # Get the initial list of IDs for the requested tier. No file opening needed.
-    id_data = TIER_LISTS.get(tier, [])
+    id_data = data.TIER_LISTS.get(tier, [])
     if not id_data:
         logger.log("warning", f"No Pokémon IDs found in the pre-built list for tier: {tier}")
         return []

@@ -1,14 +1,7 @@
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>GNU General Public License, Version 3, 29 June 2007</title>
-</head>
-<body>
 Pokemon is the intellectual property of Nintendo/Creatures Inc./GAME FREAK inc.
 The below license only applies to the code portions
-    
-    <pre>                    GNU GENERAL PUBLIC LICENSE
+
+GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
  Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
@@ -644,6 +637,25 @@ copy of the Program in return for a fee.
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+                     END OF TERMS AND CONDITIONS
+
+    Addon for Anki to Gamify the Experience of Learning with Ankimon
+    Copyright (C) 2024  Unlucky-Life
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+
     along with this program.  If not, see https://www.gnu.org/licenses/.
 
     I can be contacted over GitHub as a Pull Request:
@@ -654,6 +666,3 @@ copy of the Program in return for a fee.
     for details check out "About and License".
     This is free software, and you are welcome to redistribute it
     under certain conditions;
-</pre>
-</body>
-</html>

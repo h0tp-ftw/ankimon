@@ -10,6 +10,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QScrollArea
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QLineEdit, QWidget, QMessageBox
 
+from ..business import calculate_stat, get_nature_multiplier
 from ..pyobj.attack_dialog import AttackDialog
 from ..pyobj.pokemon_trade import PokemonTrade
 from ..pyobj.error_handler import show_warning_with_traceback
@@ -22,12 +23,30 @@ from ..functions.sprite_functions import get_sprite_path
 from ..gui_entities import MovieSplashLabel
 from ..business import split_string_by_length
 from ..utils import format_move_name, load_custom_font
-from ..resources import icon_path, addon_dir, mainpokemon_path, mypokemon_path, pokemon_tm_learnset_path, itembag_path
+from ..resources import icon_path, addon_dir, mainpokemon_path, mypokemon_path, itembag_path
 from ..texts import attack_details_window_template, attack_details_window_template_end, remember_attack_details_window_template, remember_attack_details_window_template_end
 
-def PokemonCollectionDetails(name, level, id, shiny, ability, type, detail_stats, attacks, base_experience, growth_rate, ev, iv, gender, nickname, individual_id, pokemon_defeated, everstone, captured_date, language, gif_in_collection, remove_levelcap, logger, refresh_callback):
+def PokemonCollectionDetails(pokemon_data, logger, refresh_callback, language, gif_in_collection, remove_levelcap, parent=None):
     # Create a layout for the details panel
     try:
+        name = pokemon_data.get('name')
+        level = pokemon_data.get('level')
+        id = pokemon_data.get('id')
+        shiny = pokemon_data.get('shiny', False)
+        ability = pokemon_data.get('ability')
+        type = pokemon_data.get('type')
+        detail_stats = pokemon_data.get('stats')
+        attacks = pokemon_data.get('attacks')
+        base_experience = pokemon_data.get('base_experience')
+        growth_rate = pokemon_data.get('growth_rate')
+        ev = pokemon_data.get('ev')
+        iv = pokemon_data.get('iv')
+        gender = pokemon_data.get('gender')
+        nickname = pokemon_data.get('nickname')
+        individual_id = pokemon_data.get('individual_id')
+        pokemon_defeated = pokemon_data.get('pokemon_defeated', 0)
+        captured_date = pokemon_data.get('captured_date', 'Unknown')
+        
         lang_name = get_pokemon_diff_lang_name(int(id), language).capitalize()
         lang_desc = get_pokemon_descriptions(int(id), language)
         description = lang_desc
@@ -91,7 +110,9 @@ def PokemonCollectionDetails(name, level, id, shiny, ability, type, detail_stats
         for key, val in detail_stats.items():
             if key not in ("hp", "atk", "def", "spa", "spd", "spe"):
                 continue
-            stat = PokemonObject.calc_stat(key, val, level, iv[key], ev[key], "serious")
+            nature = pokemon_data.get("nature", "Serious") # Get the Pokémon's nature, default to neutral
+            multiplier = get_nature_multiplier(nature, key)
+            stat = calculate_stat(val, level, iv.get(key, 0), ev.get(key, 0), multiplier)
             stats_list.append(stat)
         stats_list.append(detail_stats.get("xp", 0))
         stats_txt = f"Stats:\n Hp: {stats_list[0]}\n Attack: {stats_list[1]}\n Defense: {stats_list[2]}\n Special-attack: {stats_list[3]}\n Special-defense: {stats_list[4]}\n Speed: {stats_list[5]}\n XP: {stats_list[6]}"
@@ -227,7 +248,7 @@ def PokemonCollectionDetails(name, level, id, shiny, ability, type, detail_stats
         return layout  # Return layout instead of showing dialog
 
     except Exception as e:
-        show_warning_with_traceback(exception=e, message="Error occured in Pokemon Details Button:")
+        show_warning_with_traceback(parent=mw, exception=e, message="Error occured in Pokemon Details Button:")
 
         return QVBoxLayout()  # Return empty layout on error
 
