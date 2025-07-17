@@ -34,6 +34,12 @@ POKEMON_NATURES = {
     "Careful": {"increased": "spd", "decreased": "spa"},
 }
 
+def calculate_hp(base: int, level: int, iv: int, ev: int) -> int:
+    ev_bonus = math.floor(ev / 4)
+    base_and_iv = (2 * base + iv + ev_bonus)
+    level_modifier = math.floor(base_and_iv * level / 100)
+    return level_modifier + level + 10
+
 def get_nature_multiplier(nature_name: str, stat_key: str) -> float:
     """
     Returns the stat multiplier (1.1, 1.0, or 0.9) for a given nature and stat.

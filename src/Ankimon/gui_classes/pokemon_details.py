@@ -10,7 +10,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QScrollArea
 from PyQt6.QtWidgets import QDialog, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QLineEdit, QWidget, QMessageBox
 
-from ..business import calculate_stat, get_nature_multiplier
+from ..business import calculate_stat, get_nature_multiplier, calculate_hp
 from ..pyobj.attack_dialog import AttackDialog
 from ..pyobj.pokemon_trade import PokemonTrade
 from ..pyobj.error_handler import show_warning_with_traceback
@@ -107,14 +107,22 @@ def PokemonCollectionDetails(pokemon_data, logger, refresh_callback, language, g
         ability_txt = f" Ability: {ability.capitalize()}"
         type_txt = f" Type:"
         stats_list = []
-        for key, val in detail_stats.items():
-            if key not in ("hp", "atk", "def", "spa", "spd", "spe"):
-                continue
-            nature = pokemon_data.get("nature", "Serious") # Get the Pokémon's nature, default to neutral
-            multiplier = get_nature_multiplier(nature, key)
-            stat = calculate_stat(val, level, iv.get(key, 0), ev.get(key, 0), multiplier)
+        nature = pokemon_data.get("nature", "Serious")  # Default neutral nature
+
+        for key in ("hp", "atk", "def", "spa", "spd", "spe"):
+            base_stat = detail_stats.get(key, 0)
+            iv_value = iv.get(key, 0)
+            ev_value = ev.get(key, 0)
+
+            if key == "hp":
+                stat = calculate_hp(base_stat, level, iv_value, ev_value)
+            else:
+                multiplier = get_nature_multiplier(nature, key)
+                stat = calculate_stat(base_stat, level, iv_value, ev_value, multiplier)
+
             stats_list.append(stat)
         stats_list.append(detail_stats.get("xp", 0))
+        
         stats_txt = f"Stats:\n Hp: {stats_list[0]}\n Attack: {stats_list[1]}\n Defense: {stats_list[2]}\n Special-attack: {stats_list[3]}\n Special-defense: {stats_list[4]}\n Speed: {stats_list[5]}\n XP: {stats_list[6]}"
         attacks_txt = "MOVES:"
         for attack in attacks:

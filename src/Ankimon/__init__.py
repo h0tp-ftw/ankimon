@@ -2093,43 +2093,62 @@ def new_pokemon():
             
 def mainpokemon_data():
     try:
-        with (open(str(mainpokemon_path), "r", encoding="utf-8") as json_file):
-                main_pokemon_datalist = json.load(json_file)
-                main_pokemon_data = []
-                for main_pokemon_data in main_pokemon_datalist:
-                    mainpokemon_name = main_pokemon_data["name"]
-                    if not main_pokemon_data.get('nickname') or main_pokemon_data.get('nickname') is None:
-                            mainpokemon_nickname = None
-                    else:
-                        mainpokemon_nickname = main_pokemon_data['nickname']
-                    mainpokemon_id = main_pokemon_data["id"]
-                    mainpokemon_ability = main_pokemon_data["ability"]
-                    mainpokemon_type = main_pokemon_data["type"]
-                    mainpokemon_stats = main_pokemon_data["stats"]
-                    mainpokemon_attacks = main_pokemon_data["attacks"]
-                    mainpokemon_level = main_pokemon_data["level"]
-                    mainpokemon_hp_base_stat = mainpokemon_stats["hp"]
-                    mainpokemon_evolutions = search_pokedex(mainpokemon_name, "evos")
-                    mainpokemon_xp = mainpokemon_stats["xp"]
-                    mainpokemon_ev = main_pokemon_data["ev"]
-                    mainpokemon_iv = main_pokemon_data["iv"]
-                    #mainpokemon_battle_stats = mainpokemon_stats
-                    mainpokemon_battle_stats = {}
-                    for d in [mainpokemon_stats, mainpokemon_iv, mainpokemon_ev]:
-                        for key, value in d.items():
-                            mainpokemon_battle_stats[key] = value
-                    #mainpokemon_battle_stats += mainpokemon_iv
-                    #mainpokemon_battle_stats += mainpokemon_ev
-                    mainpokemon_hp = calculate_hp(mainpokemon_hp_base_stat,mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
-                    mainpokemon_current_hp = calculate_hp(mainpokemon_hp_base_stat,mainpokemon_level, mainpokemon_ev, mainpokemon_iv)
-                    mainpokemon_base_experience = main_pokemon_data["base_experience"]
-                    mainpokemon_growth_rate = main_pokemon_data["growth_rate"]
-                    mainpokemon_gender = main_pokemon_data["gender"]
-                    
-                    return mainpokemon_name, mainpokemon_id, mainpokemon_ability, mainpokemon_type, mainpokemon_stats, mainpokemon_attacks, mainpokemon_level, mainpokemon_base_experience, mainpokemon_xp, mainpokemon_hp, mainpokemon_current_hp, mainpokemon_growth_rate, mainpokemon_ev, mainpokemon_iv, mainpokemon_evolutions, mainpokemon_battle_stats, mainpokemon_gender, mainpokemon_nickname
+        with open(str(mainpokemon_path), "r", encoding="utf-8") as json_file:
+            main_pokemon_datalist = json.load(json_file)
+
+        for main_pokemon_data in main_pokemon_datalist:
+            name = main_pokemon_data["name"]
+            nickname = main_pokemon_data.get("nickname") or None
+            pokemon_id = main_pokemon_data["id"]
+            ability = main_pokemon_data["ability"]
+            types = main_pokemon_data["type"]
+            stats = main_pokemon_data["stats"]
+            attacks = main_pokemon_data["attacks"]
+            level = main_pokemon_data["level"]
+            base_experience = main_pokemon_data["base_experience"]
+            growth_rate = main_pokemon_data["growth_rate"]
+            gender = main_pokemon_data["gender"]
+            xp = stats.get("xp", 0)
+
+            base_hp = stats.get("hp", 0)
+            ev = main_pokemon_data.get("ev", {})
+            iv = main_pokemon_data.get("iv", {})
+            evolutions = search_pokedex(name, "evos")
+
+            # Combined battle stats (base + IV + EV)
+            battle_stats = {}
+            for d in (stats, iv, ev):
+                for key, value in d.items():
+                    battle_stats[key] = value
+
+            # Calculate full HP and current HP
+            hp = calculate_hp(base_hp, level, iv.get("hp", 0), ev.get("hp", 0))
+            current_hp = calculate_hp(base_hp, level, iv.get("hp", 0), ev.get("hp", 0))
+
+            return (
+                name,
+                pokemon_id,
+                ability,
+                types,
+                stats,
+                attacks,
+                level,
+                base_experience,
+                xp,
+                hp,
+                current_hp,
+                growth_rate,
+                ev,
+                iv,
+                evolutions,
+                battle_stats,
+                gender,
+                nickname
+            )
+
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message="Error in mainpokemon function:")
-#get main pokemon details:
+
 # ... (code continues from earlier sections of the file)
 if database_complete:
     try:
