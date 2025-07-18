@@ -1324,111 +1324,105 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
 
     return main_pokemon.level
 
-def evolve_pokemon(individual_id, prevo_name, evo_id, evo_name):
-    global achievements
+def reload_main_pokemon():
+    """
+    Safely reloads the main pokemon from mainpokemon.json and updates all live references.
+    """
+    global main_pokemon, ankimon_tracker_obj, reviewer_obj, test_window, trainer_card, item_window, pokecollection_win
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-            captured_pokemon_data = json.load(json_file)
-            pokemon = None
-            if captured_pokemon_data:
-                for pokemon_data in captured_pokemon_data:
-                    if pokemon_data['individual_id'] == individual_id:
-                        pokemon = pokemon_data
-                        if pokemon is not None:
-                            prevo_id = pokemon["id"]
-                            pokemon["name"] = evo_name.capitalize()
-                            pokemon["id"] = evo_id
-                            pokemon["type"] = search_pokedex(evo_name.lower(), "types")
-                            pokemon["evos"] = []
-                            attacks = pokemon["attacks"]
-                            new_attacks = get_random_moves_for_pokemon(evo_name.lower(), int(pokemon["level"]))
-                            for new_attack in new_attacks:
-                                if new_attack not in new_attacks:
-                                    if len(attacks) < 4:
-                                        attacks.append(new_attack)
-                                    else:
-                                        dialog = AttackDialog(attacks, new_attack)
-                                        if dialog.exec() == QDialog.DialogCode.Accepted:
-                                            selected_attack = dialog.selected_attack
-                                            index_to_replace = None
-                                            for index, attack in enumerate(attacks):
-                                                if attack == selected_attack:
-                                                    index_to_replace = index
-                                                    pass
-                                                else:
-                                                    pass
-                                            # If the attack is found, replace it with 'new_attack'
-                                            if index_to_replace is not None:
-                                                attacks[index_to_replace] = new_attack
-                                                logger.log_and_showinfo("info",translator.translate("replaced_selected_attack", selected_attack=selected_attack, new_attack=new_attack))
-                                            else:
-                                                logger.log_and_showinfo("info",translator.translate("selected_attack_not_found", selected_attack=selected_attack))
-                                        else:
-                                            # Handle the case where the user cancels the dialog
-                                            logger.log_and_showinfo("info",translator.translate("no_attack_selected"))
-                            pokemon["attacks"] = attacks
-                            stats = search_pokedex(evo_name.lower(), "baseStats")
-                            pokemon["stats"] = stats
-                            pokemon["stats"]["xp"] = 0
-                            hp_stat = int(stats['hp'])
-                            hp = calculate_hp(hp_stat, level, ev, iv)
-                            pokemon["current_hp"] = int(hp)
-                            pokemon["growth_rate"] = search_pokeapi_db_by_id(evo_id,"growth_rate")
-                            pokemon["base_experience"] = search_pokeapi_db_by_id(evo_id,"base_experience")
-                            abilities = search_pokedex(evo_name.lower(), "abilities")
-                            numeric_abilities = None
-                            try:
-                                numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()}
-                            except:
-                                ability = translator.translate("no_ability")
-                            if numeric_abilities:
-                                abilities_list = list(numeric_abilities.values())
-                                pokemon["ability"] = random.choice(abilities_list)
-                            else:
-                                pokemon["ability"] = translator.translate("no_ability")
-                            with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-                                mypokemondata = json.load(output_file)
-                                # Find and replace the specified Pokémon's data in mypokemondata
-                                for index, pokemon_data in enumerate(mypokemondata):
-                                    if pokemon_data["individual_id"] == individual_id:
-                                        mypokemondata[index] = pokemon
-                                        break
-                                    # Save the modified data to the output JSON file
-                                with open(str(mypokemon_path), "w") as output_file:
-                                    json.dump(mypokemondata, output_file, indent=2)
-                            if main_pokemon.individual_id == individual_id:
-                                with open(str(mainpokemon_path), "r", encoding="utf-8") as output_file:
-                                    mainpokemon_data = json.load(output_file)
-                                    # Find and replace the specified Pokémon's data in mypokemondata
-                                    for index, pokemon_data in enumerate(mainpokemon_data):
-                                        if pokemon_data["individual_id"] == individual_id:
-                                            mypokemondata[index] = pokemon
-                                            break
-                                        else:
-                                            pass
-                                            # Save the modified data to the output JSON file
-                                    with open(str(mainpokemon_path), "w") as output_file:
-                                        pokemon = [pokemon]
-                                        json.dump(pokemon, output_file, indent=2)
-                            logger.log_and_showinfo("info",translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
+        with open(mainpokemon_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if not data:
+                # Fallback if the file is empty
+                return
+            
+            # Re-create the global main_pokemon object from the file
+            main_pokemon = PokemonObject(**data[0])
+
+            # Update all other objects that hold a reference to it
+            if 'ankimon_tracker_obj' in globals():
+                ankimon_tracker_obj.set_main_pokemon(main_pokemon)
+            if 'reviewer_obj' in globals():
+                reviewer_obj.main_pokemon = main_pokemon
+            if 'test_window' in globals():
+                test_window.main_pokemon = main_pokemon
+            if 'trainer_card' in globals():
+                trainer_card.main_pokemon = main_pokemon
+            if 'item_window' in globals():
+                item_window.main_pokemon = main_pokemon
+            if 'pokecollection_win' in globals():
+                pokecollection_win.main_pokemon = main_pokemon
+
     except Exception as e:
-        showWarning(f"{e}")
-    try:#Update Main Pokemon Object
+        show_warning_with_traceback(parent=mw, exception=e, message="Could not reload main Pokémon:")
+
+def evolve_pokemon(individual_id, prevo_name, evo_id, evo_name):
+    global main_pokemon, achievements, pokecollection_win, evo_window
+    try:
+        # Step 1: Gather all new data for the evolution
+        new_name = evo_name.capitalize()
+        new_types = search_pokedex(evo_name.lower(), "types")
+        new_base_stats = search_pokedex(evo_name.lower(), "baseStats")
+        new_growth_rate = search_pokeapi_db_by_id(evo_id, "growth_rate")
+        new_base_experience = search_pokeapi_db_by_id(evo_id, "base_experience")
+
+        if not all([new_types, new_base_stats, new_growth_rate, new_base_experience]):
+            showWarning(f"Could not find all necessary evolution data for {new_name}. Evolution cancelled.")
+            return
+
+        # Step 2: Load the collection and find the target Pokémon
+        with open(mypokemon_path, "r", encoding="utf-8") as f:
+            collection = json.load(f)
+        
+        pokemon_to_evolve = None
+        pokemon_index = -1
+        for i, p in enumerate(collection):
+            if p.get('individual_id') == individual_id:
+                pokemon_to_evolve = p
+                pokemon_index = i
+                break
+        
+        if not pokemon_to_evolve:
+            showWarning("Could not find the Pokémon to evolve.")
+            return
+
+        # Step 3: Update the Pokémon's data dictionary
+        pokemon_to_evolve.update({
+            "name": new_name, "id": evo_id, "type": new_types, "stats": new_base_stats,
+            "base_experience": new_base_experience, "growth_rate": new_growth_rate,
+            "evos": search_pokedex(evo_name.lower(), "evos") or []
+        })
+        pokemon_to_evolve['stats']['xp'] = 0
+        
+        # --- THE FIX: Pass the specific 'hp' value from the dictionaries ---
+        pokemon_to_evolve["current_hp"] = calculate_hp(
+            base=new_base_stats.get('hp', 1), 
+            level=pokemon_to_evolve.get('level', 1),
+            iv=pokemon_to_evolve.get('iv', {}).get('hp', 0),  # Pass the number
+            ev=pokemon_to_evolve.get('ev', {}).get('hp', 0)   # Pass the number
+        )
+        # --- END FIX ---
+
+        # Step 4: Save the updated data
+        collection[pokemon_index] = pokemon_to_evolve
+        with open(mypokemon_path, "w", encoding="utf-8") as f:
+            json.dump(collection, f, indent=2)
+
         if main_pokemon.individual_id == individual_id:
-            update_main_pokemon(main_pokemon)
-            class Container(object):
-                pass
-            reviewer = Container()
-            reviewer.web = mw.reviewer.web
-            reviewer_obj.update_life_bar(reviewer, 0, 0)
-            if test_window.isVisible() is True:
-                test_window.display_first_encounter()
+            with open(mainpokemon_path, "w", encoding="utf-8") as f:
+                json.dump([pokemon_to_evolve], f, indent=2)
+            reload_main_pokemon()
+
+        # Step 5: Update the UI
+        logger.log_and_showinfo("info", translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name.capitalize(), evo_name=new_name))
+        prevo_id = search_pokedex(prevo_name.lower(), "num")
+        evo_window.display_evo_pokemon(prevo_id, evo_id)
+        
+        if pokecollection_win and pokecollection_win.isVisible():
+            pokecollection_win.refresh_collection()
+
     except Exception as e:
-        showWarning(f"Error occured in updating main_pokemon obj. {e}")
-    evo_window.display_evo_pokemon(prevo_id, evo_id)
-    check = check_for_badge(achievements,16)
-    if check is False:
-        receive_badge(16,achievements)
+        show_warning_with_traceback(parent=mw, exception=e, message="A critical error occurred during evolution.")
 
 def cancel_evolution(individual_id, prevo_name):
     ev_yield = enemy_pokemon.ev_yield
