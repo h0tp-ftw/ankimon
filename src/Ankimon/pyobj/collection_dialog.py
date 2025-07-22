@@ -157,11 +157,10 @@ class PokemonCollectionDialog(QDialog):
 
             row, column = 0, 0
             for pokemon in paginated_pokemon:
-                # Extract Pokemon data (same as your existing logic)
+                # Extract Pokemon data
                 pokemon_id = pokemon['id']
                 pokemon_name = pokemon['name']
                 pokemon_shiny = pokemon.get("shiny", False)
-                # Ensure nickname is always a string, even if None
                 pokemon_nickname = pokemon.get('nickname') or ''
                 if pokemon_shiny:
                     pokemon_nickname += " ⭐ "
@@ -169,17 +168,20 @@ class PokemonCollectionDialog(QDialog):
                 pokemon_level = pokemon['level']
                 pokemon_ability = pokemon['ability']
                 pokemon_type = pokemon['type']
-                pokemon_stats = pokemon['stats']
-                pokemon_hp = pokemon_stats["hp"]
-                if pokemon_shiny:
-                    pokemon_name += " ⭐ "
+                
+                # --- THE FIX ---
+                # Get the form_name from the saved pokemon data
+                pokemon_form_name = pokemon.get('form_name', None)
+
                 pkmn_image_path = get_sprite_path(
                     "front",
                     "gif" if self.gif_in_collection else "png",
                     pokemon_id,
                     pokemon_shiny,
-                    pokemon_gender
+                    pokemon_gender,
+                    form_name=pokemon_form_name # Pass the form name here
                 )
+                # --- END OF FIX --
 
                 if self.gif_in_collection:
                     splash_label = MovieSplashLabel(pkmn_image_path)
@@ -226,16 +228,13 @@ class PokemonCollectionDialog(QDialog):
 
             self.container.setLayout(self.scroll_layout)
             self.scroll_area.setWidget(self.container)
-            # Add pagination controls (at the bottom)
             self.add_pagination_controls(pokemon_list)
-            # Add Pokémon grid to the main layout
             self.layout.addWidget(self.scroll_area)
             self.layout.addWidget(self.paginator)
-
             self.setLayout(self.layout)
         except FileNotFoundError:
             self.layout.addWidget(QLabel(f"Can't open the Saving File. {mypokemon_path}"))
-
+            
     def adjust_pixmap_size(self, pixmap, max_width, max_height):
         original_width = pixmap.width()
         original_height = pixmap.height()

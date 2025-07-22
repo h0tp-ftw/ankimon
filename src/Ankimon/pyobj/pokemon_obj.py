@@ -36,6 +36,7 @@ class PokemonObject:
         # Unique identifier
         self.individual_id = str(individual_id) if individual_id else str(uuid.uuid4())
         self.name = str(name)
+        self.form_name = kwargs.get('form_name', None)
         self.nickname = str(nickname) if nickname is not None else ""
         self.shiny = bool(shiny)
         self.id = int(id) if id is not None else 132

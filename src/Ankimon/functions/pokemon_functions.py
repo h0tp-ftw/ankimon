@@ -149,5 +149,6 @@ def create_caught_pokemon(enemy_pokemon, nickname):
         "individual_id": str(uuid.uuid4()),
         "mega": False,
         "special-form": None,
+        "form_name": getattr(enemy_pokemon, "form_name", None)
     }
     return caught_pokemon

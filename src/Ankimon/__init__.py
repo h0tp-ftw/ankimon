@@ -869,77 +869,152 @@ def tooltipWithColour(msg, color, x=0, y=20, xref=1, parent=None, width=0, heigh
 
 # Your random Pokémon generation function using the PokeAPI
 if database_complete:
+    ALLOWED_FORMES = ["alola", "hisui", "galar", "paldea"]
+
+    def select_pokemon_form(pokemon_id):
+        """
+        Given a Pokémon ID, checks for alternate forms and randomly selects one that has a valid sprite.
+
+        It filters for allowed forms (e.g., regional variants), checks if a sprite exists for each,
+        and prioritizes selecting an alternate form over the base form if any are valid.
+
+        Args:
+            pokemon_id (int): The Pokedex ID of the Pokémon.
+
+        Returns:
+            tuple: A tuple containing:
+                - str: The final name of the selected Pokémon form (e.g., "Rattata-Alola").
+                - str or None: The specific form name (e.g., "Alola") for sprite lookup,
+                            or None if it's the base form.
+        """
+        try:
+            base_name = search_pokedex_by_id(pokemon_id)
+            if not base_name:
+                return None, None
+
+            # Start with the base form as a fallback.
+            valid_forms = [(base_name, None)] 
+
+            forme_order_list = search_pokedex(base_name, "formeOrder")
+            
+            if forme_order_list:
+                for full_forme_name in forme_order_list:
+                    if full_forme_name.lower() == base_name.lower():
+                        continue
+
+                    # Pokedex keys are lowercase and have no hyphens (e.g., "vulpixalola")
+                    pokedex_key = full_forme_name.replace('-', '').lower()
+                    form_key = search_pokedex(pokedex_key, "forme")
+                    
+                    if form_key and any(allowed in form_key.lower() for allowed in ALLOWED_FORMES):
+                        # Check for both GIF and PNG sprites.
+                        sprite_path_gif = get_sprite_path(side='front', sprite_type='gif', id=pokemon_id, shiny=False, form_name=form_key)
+                        sprite_path_png = get_sprite_path(side='front', sprite_type='png', id=pokemon_id, shiny=False, form_name=form_key)
+
+                        gif_found = "placeholder.png" not in sprite_path_gif and "substitute.png" not in sprite_path_gif
+                        png_found = "placeholder.png" not in sprite_path_png and "substitute.png" not in sprite_path_png
+
+                        if gif_found or png_found:
+                            valid_forms.append((full_forme_name, form_key))
+
+            # Create a list of all valid forms that are NOT the base form.
+            alternate_forms = [form for form in valid_forms if form[1] is not None]
+            
+            if alternate_forms:
+                # If any valid alternate forms exist, choose randomly from that list.
+                return random.choice(alternate_forms)
+            else:
+                # Otherwise, return the base form.
+                return valid_forms[0]
+
+        except Exception as e:
+            logger.log("error", f"An error occurred during form selection for ID {pokemon_id}: {e}. Defaulting to base form.")
+            base_name = search_pokedex_by_id(pokemon_id)
+            if base_name:
+                return base_name, None
+            return None, None
+
     def generate_random_pokemon():
-        retry_count = 0
-        max_retries = 100
-        
-        while retry_count < max_retries:
-            ankimon_tracker_obj.pokemon_encounter = 0
-            ankimon_tracker_obj.cards_battle_round = 0
-            tier = "Normal"
+            retry_count = 0
+            max_retries = 100
+            
+            while retry_count < max_retries:
+                ankimon_tracker_obj.pokemon_encounter = 0
+                ankimon_tracker_obj.cards_battle_round = 0
+                tier = "Normal"
 
-            try:
-                tier = get_tier(ankimon_tracker_obj.total_reviews, trainer_card.level)
-                
-                var_level = 3
-                if main_pokemon.level:
-                    level = random.randint(max(1, main_pokemon.level - random.randint(0, var_level)), main_pokemon.level + random.randint(0, var_level))
-                else:
-                    level = 5
+                try:
+                    tier = get_tier(ankimon_tracker_obj.total_reviews, trainer_card.level)
+                    
+                    var_level = 3
+                    if main_pokemon.level:
+                        level = random.randint(max(1, main_pokemon.level - random.randint(0, var_level)), main_pokemon.level + random.randint(0, var_level))
+                    else:
+                        level = 5
 
-                valid_pokemon_ids_for_level = get_valid_pokemon_by_tier_and_level(tier, level)
+                    valid_pokemon_ids_for_level = get_valid_pokemon_by_tier_and_level(tier, level)
+                    
+                    if not valid_pokemon_ids_for_level:
+                        logger.log("info", f"No valid Pokémon found for tier '{tier}' at level {level}. Retrying...")
+                        retry_count += 1
+                        continue
+                    
+                    #id = random.choice(valid_pokemon_ids_for_level)
+                    id = 28
+
+                    name, form_name = select_pokemon_form(id)
+                    if not name:
+                        logger.log("warning", f"Failed to select a form for Pokémon ID {id}. Retrying.")
+                        retry_count += 1
+                        continue
+                    
+                    pokedex_lookup_key = name.replace('-', '').lower()
+                    
+                    ankimon_tracker_obj.last_generated_form = form_name
+                    
+                    shiny = shiny_chance()
+
+                    abilities = search_pokedex(pokedex_lookup_key, "abilities")
+                    numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()} if isinstance(abilities, dict) else {}
+                    
+                    if numeric_abilities:
+                        ability = random.choice(list(numeric_abilities.values()))
+                    else:
+                        ability = translator.translate("no_ability")
+                        
+                    type = search_pokedex(pokedex_lookup_key, "types")
+                    stats = search_pokedex(pokedex_lookup_key, "baseStats")
+                    enemy_attacks_list = get_all_pokemon_moves(pokedex_lookup_key, level)
+                    
+                    enemy_attacks = random.sample(enemy_attacks_list, min(len(enemy_attacks_list), 4))
+                        
+                    base_experience = search_pokeapi_db_by_id(id, "base_experience")
+                    growth_rate = search_pokeapi_db_by_id(id, "growth_rate")
+                    
+                    gender = pick_random_gender(name) 
+                    
+                    iv = {
+                        "hp": random.randint(1, 32), "atk": random.randint(1, 32), "def": random.randint(1, 32),
+                        "spa": random.randint(1, 32), "spd": random.randint(1, 32), "spe": random.randint(1, 32)
+                    }
+                    ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+                    battle_stats = stats
+                    battle_status = "fighting"
+                    ev_yield = search_pokeapi_db_by_id(id, "effort_values")
+                    
+                    return name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny, form_name
                 
-                if not valid_pokemon_ids_for_level:
-                    # NEW: Log when no valid Pokémon are found for a specific tier/level combination
-                    logger.log("info", f"No valid Pokémon found for tier '{tier}' at level {level}. Retrying with a different tier/level...")
+                except FileNotFoundError:
+                    logger.log("error", "Error - A required JSON file is missing. Check your installation.")
+                    return None
+                except Exception as e:
+                    show_warning_with_traceback(parent=mw, exception=e, message="An unexpected error occurred while generating a random Pokemon. Retrying...")
                     retry_count += 1
                     continue
-                
-                id = random.choice(valid_pokemon_ids_for_level)
-                
-                name = search_pokedex_by_id(id)
-                shiny = shiny_chance()
-
-                abilities = search_pokedex(name, "abilities")
-                numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()} if isinstance(abilities, dict) else {}
-                
-                if numeric_abilities:
-                    ability = random.choice(list(numeric_abilities.values()))
-                else:
-                    ability = translator.translate("no_ability")
                     
-                type = search_pokedex(name, "types")
-                stats = search_pokedex(name, "baseStats")
-                enemy_attacks_list = get_all_pokemon_moves(name, level)
-                
-                enemy_attacks = random.sample(enemy_attacks_list, min(len(enemy_attacks_list), 4))
-                    
-                base_experience = search_pokeapi_db_by_id(id, "base_experience")
-                growth_rate = search_pokeapi_db_by_id(id, "growth_rate")
-                gender = pick_random_gender(name)
-                iv = {
-                    "hp": random.randint(1, 32), "atk": random.randint(1, 32), "def": random.randint(1, 32),
-                    "spa": random.randint(1, 32), "spd": random.randint(1, 32), "spe": random.randint(1, 32)
-                }
-                ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-                battle_stats = stats
-                battle_status = "fighting"
-                ev_yield = search_pokeapi_db_by_id(id, "effort_values")
-                
-                return name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny
+            showWarning("Failed to generate a valid Pokémon after multiple retries. Check logs for details.")
+            return None
 
-            except FileNotFoundError:
-                logger.log("error", "Error - A required JSON file is missing. Check your installation.")
-                return None
-            except Exception as e:
-                show_warning_with_traceback(parent=mw, exception=e, message="An unexpected error occurred while generating a random Pokemon. Retrying...")
-                retry_count += 1
-                continue
-                
-        showWarning("Failed to generate a valid Pokémon after multiple retries. Check logs for details.")
-        return None
-
-  # --- FIX END ---
 
 def kill_pokemon():
     try:
@@ -1161,6 +1236,7 @@ def get_pokemon_id_by_tier(tier):
 
     # Select a random Pokemon ID from those in the tier
     random_pokemon_id = random.choice(id_data)
+
     return random_pokemon_id
 
 def save_caught_pokemon(nickname):
@@ -1245,6 +1321,8 @@ def save_main_pokemon_progress(mainpokemon_path, mainpokemon_level, mainpokemon_
                 pass
                     #evo_window.display_pokemon_evo(main_pokemon.name.lower())
         for mainpkmndata in main_pokemon_data:
+            if "form_name" not in mainpkmndata:
+                mainpkmndata["form_name"] = getattr(main_pokemon, "form_name", None)
             if mainpkmndata["name"] == main_pokemon.name.capitalize():
                 attacks = mainpkmndata["attacks"]
                 new_attacks = get_levelup_move_for_pokemon(main_pokemon.name.lower(),int(main_pokemon.level))
@@ -1490,21 +1568,32 @@ def cancel_evolution(individual_id, prevo_name):
         with open(str(mypokemon_path), "w") as output_file:
             json.dump(mypokemondata, output_file, indent=2)
 
-
 def catch_pokemon(nickname):
     try:
         ankimon_tracker_obj.caught += 1
         if ankimon_tracker_obj.caught == 1:
             collected_pokemon_ids.add(enemy_pokemon.id)  # Update cache
-            if nickname is None or not nickname:  # Wenn None oder leer
+            
+            # Detect form_name from enemy_pokemon object
+            form_name = getattr(enemy_pokemon, 'form_name', None)
+            if not form_name:
+                # fallback: check if name contains '-alola'
+                if '-alola' in enemy_pokemon.name.lower():
+                    form_name = 'alola'
+            
+            # Prepare the data you want to save
+            # You may need to pass form_name to save_caught_pokemon or save it here
+            
+            if nickname is None or not nickname:
                 save_caught_pokemon(nickname)
             else:
                 save_caught_pokemon(enemy_pokemon.name)
+            
             ankimon_tracker_obj.general_card_count_for_battle = 0
             msg = translator.translate("caught_wild_pokemon", enemy_pokemon_name=enemy_pokemon.name.capitalize())
             if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-                logger.log_and_showinfo("info",f"{msg}") # Display a message when the Pokémon is caught
-            color = "#6A4DAC" #pokemon leveling info color for tooltip
+                logger.log_and_showinfo("info", f"{msg}")  # Display a message when the Pokémon is caught
+            color = "#6A4DAC"  # pokemon leveling info color for tooltip
             try:
                 tooltipWithColour(msg, color)
             except:
@@ -1512,7 +1601,7 @@ def catch_pokemon(nickname):
             new_pokemon()  # Show a new random Pokémon
         else:
             if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-                logger.log_and_showinfo("info",translator.translate("already_caught_pokemon")) # Display a message when the Pokémon is caught
+                logger.log_and_showinfo("info", translator.translate("already_caught_pokemon"))  # Display a message when the Pokémon is caught
     except Exception as e:
         showWarning(f"Error occured while catching enemy Pokemon: {e}")
 
@@ -2002,7 +2091,8 @@ def new_pokemon():
     try:
         # new pokemon
         gender = None
-        
+        form_name = None
+
         # FIX: Assign the result to a variable first to check for None
         pokemon_result = generate_random_pokemon()
         if pokemon_result:
@@ -2010,6 +2100,7 @@ def new_pokemon():
             if isinstance(pokemon_result, int):
                 # If it's just an ID, get all the data for that Pokémon
                 id = pokemon_result
+                form_name = None
                 name = search_pokedex_by_id(id)
                 level = 5 # Set a default level for starters
                 ability = "Overgrow" # Fallback ability
@@ -2028,10 +2119,13 @@ def new_pokemon():
                 shiny = shiny_chance()
             else:
                 # FIX: Unpack the result if it is the full tuple
-                name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny = pokemon_result
+                print(f"[DEBUG] pokemon_result length: {len(pokemon_result)}; contents: {pokemon_result}")
+                name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny, form_name = pokemon_result
+
         else:
             # FIX: Use a default Pokémon when generation fails
             name = "Bulbasaur"
+            form_name = None
             id = 1
             level = 5
             ability = "Overgrow"
@@ -2051,6 +2145,7 @@ def new_pokemon():
 
         pokemon_data = {
             'name': name,
+            'form_name': form_name,
             'id': id,
             'level': level,
             'ability': ability,
@@ -2152,70 +2247,35 @@ if database_complete:
         starter = False
         mainpokemon_level = 5
 
-    # FIX: Check if generate_random_pokemon returns a valid result before unpacking
+    # This block now correctly handles the 18 return values from generate_random_pokemon
     pokemon_result = generate_random_pokemon()
     
-    if isinstance(pokemon_result, int):
-        # FIX: If it's an integer ID, get all the data for that Pokémon
-        id = pokemon_result
-        name = search_pokedex_by_id(id)
-        level = 5 # Set a default level for starters
-        ability = "Overgrow" # Fallback ability
-        type = search_pokedex(name, "types")
-        stats = search_pokedex(name, "baseStats")
-        enemy_attacks = get_all_pokemon_moves(name, level)
-        base_experience = search_pokeapi_db_by_id(id, "base_experience")
-        growth_rate = search_pokeapi_db_by_id(id, "growth_rate")
-        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        iv = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        gender = "M"
-        battle_status = "fighting"
-        battle_stats = stats
-        tier = "Normal"
-        ev_yield = search_pokeapi_db_by_id(id, "effort_values")
-        shiny = False
-    elif pokemon_result:
-        # FIX: Unpack the result if it is the full tuple
-        name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny = pokemon_result
+    if pokemon_result:
+        # Unpack all 18 values, even if form_name isn't used immediately at startup
+        name, id, level, ability, type, stats, enemy_attacks, base_experience, growth_rate, ev, iv, gender, battle_status, battle_stats, tier, ev_yield, shiny, form_name = pokemon_result
     else:
-        # FIX: Use a default Pokémon when generation fails
-        name = "Bulbasaur"
-        id = 1
-        level = 5
-        ability = "Overgrow"
-        type = ["Grass", "Poison"]
-        stats = {"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45, "xp": 0}
-        enemy_attacks = ["tackle", "growl"]
-        base_experience = 64
-        growth_rate = "medium-slow"
-        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        iv = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
-        gender = "M"
-        battle_status = "fighting"
-        battle_stats = stats
-        tier = "Normal"
-        ev_yield = {"hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 0, "speed": 0}
-        shiny = False
+        # Fallback with a default Pokémon
+        (name, id, level, ability, type, stats, enemy_attacks, base_experience, 
+         growth_rate, ev, iv, gender, battle_status, battle_stats, tier, 
+         ev_yield, shiny, form_name) = (
+            "Bulbasaur", 1, 5, "Overgrow", ["Grass", "Poison"], 
+            {"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45, "xp": 0}, 
+            ["tackle", "growl"], 64, "medium-slow", 
+            {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, 
+            {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}, 
+            "M", "fighting", {"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45}, 
+            "Normal", {"hp": 0, "attack": 0, "defense": 0, "special-attack": 1, "special-defense": 0, "speed": 0}, 
+            False, None
+        )
 
     pokemon_data = {
-        'name': name,
-        'id': id,
-        'level': level,
-        'ability': ability,
-        'type': type,
-        'stats': stats,
-        'attacks': enemy_attacks,
-        'base_experience': base_experience,
-        'growth_rate': growth_rate,
-        'ev': ev,
-        'iv': iv,
-        'gender': gender,
-        'battle_status': battle_status,
-        'battle_stats': battle_stats,
-        'tier': tier,
-        'ev_yield': ev_yield,
-        'shiny': shiny
+        'name': name, 'id': id, 'level': level, 'ability': ability, 'type': type, 
+        'stats': stats, 'attacks': enemy_attacks, 'base_experience': base_experience, 
+        'growth_rate': growth_rate, 'ev': ev, 'iv': iv, 'gender': gender, 
+        'battle_status': battle_status, 'battle_stats': battle_stats, 'tier': tier, 
+        'ev_yield': ev_yield, 'shiny': shiny, 'form_name': form_name
     }
+    
     enemy_pokemon.update_stats(**pokemon_data)
     max_hp = enemy_pokemon.calculate_max_hp()
     enemy_pokemon.current_hp = max_hp
@@ -2727,7 +2787,8 @@ def save_fossil_pokemon(pokemon_id):
         "base_experience": base_experience,
         "current_hp": calculate_hp(int(stats["hp"]), level, ev, iv),
         "growth_rate": growth_rate,
-        "evos": evos
+        "evos": evos,
+        "form_name": None  # or the appropriate form string if applicable
     }
     # Load existing Pokémon data if it exists
     if mypokemon_path.is_file():
@@ -3102,7 +3163,7 @@ class TestWindow(QWidget):
         image_label = QLabel()
         pixmap = QPixmap()
         try:
-            pixmap.load(str(self.enemy_pokemon.get_sprite_path('front', 'png')))
+            pixmap.load(str(get_sprite_path('front', 'png', id=self.enemy_pokemon.id, shiny=self.enemy_pokemon.shiny, form_name=ankimon_tracker_obj.last_generated_form)))
         except:
             pixmap.load(str(self.default_path))
 
@@ -3238,7 +3299,7 @@ class TestWindow(QWidget):
         # Display the Pokémon image
         pixmap = QPixmap()
         try:
-            pixmap.load(str(self.enemy_pokemon.get_sprite_path('front', 'png')))
+            pixmap.load(str(get_sprite_path('front', 'png', id=self.enemy_pokemon.id, shiny=self.enemy_pokemon.shiny, form_name=ankimon_tracker_obj.last_generated_form)))
         except:
             pixmap.load(str(self.default_path))
 
