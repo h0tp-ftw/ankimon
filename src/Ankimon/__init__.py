@@ -917,15 +917,7 @@ if database_complete:
                         if gif_found or png_found:
                             valid_forms.append((full_forme_name, form_key))
 
-            # Create a list of all valid forms that are NOT the base form.
-            alternate_forms = [form for form in valid_forms if form[1] is not None]
-            
-            if alternate_forms:
-                # If any valid alternate forms exist, choose randomly from that list.
-                return random.choice(alternate_forms)
-            else:
-                # Otherwise, return the base form.
-                return valid_forms[0]
+            return random.choice(valid_forms)
 
         except Exception as e:
             logger.log("error", f"An error occurred during form selection for ID {pokemon_id}: {e}. Defaulting to base form.")
@@ -959,8 +951,7 @@ if database_complete:
                         retry_count += 1
                         continue
                     
-                    #id = random.choice(valid_pokemon_ids_for_level)
-                    id = 28
+                    id = random.choice(valid_pokemon_ids_for_level)
 
                     name, form_name = select_pokemon_form(id)
                     if not name:
