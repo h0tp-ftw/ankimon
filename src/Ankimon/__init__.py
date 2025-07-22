@@ -869,7 +869,68 @@ def tooltipWithColour(msg, color, x=0, y=20, xref=1, parent=None, width=0, heigh
 
 # Your random Pokémon generation function using the PokeAPI
 if database_complete:
-    ALLOWED_FORMES = ["alola", "hisui", "galar", "paldea"]
+    ALLOWED_FORMES = [
+        "alola",
+        "hisui",
+        "galar",
+        "paldea",
+        "paldea-aqua",
+        "paldea-blaze",
+        "paldea-combat",
+        "origin",
+        "altered",
+        "incarnate",
+        "therian",
+        "average",
+        "large",
+        "small",
+        "super",
+        "red-striped",
+        "blue-striped",
+        "white-striped",
+        "autumn",
+        "spring",
+        "summer",
+        "winter",
+        "blue",
+        "orange",
+        "red",
+        "white",
+        "yellow",
+        "eternal",
+        "natural",
+        "dandy",
+        "debutante",
+        "diamond",
+        "heart",
+        "kabuki",
+        "la-reine",
+        "matron",
+        "pharaoh",
+        "star",
+        "male",
+        "female",
+        "plant",
+        "sandy",
+        "trash",
+        "east",
+        "west",
+        "midday",
+        "midnight",
+        "dusk",
+        "disguised",
+        "bloodmoon",
+        "cornerstone",
+        "hearthflame",
+        "wellspring",
+        "droopy",
+        "stretchy",
+        "curly",
+        "four",
+        "threesegment",
+        "roaming"
+    ]
+
 
     def select_pokemon_form(pokemon_id):
         """
@@ -3165,6 +3226,8 @@ class TestWindow(QWidget):
         except:
             pixmap2.load(str(self.default_path))
 
+        print(f"DEBUG: Loading image from path: {bckgimage_path}")
+        
         # Calculate the new dimensions to maintain the aspect ratio
         max_width = 150
         original_width = pixmap.width()
