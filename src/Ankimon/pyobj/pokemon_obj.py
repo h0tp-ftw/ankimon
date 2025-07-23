@@ -228,29 +228,39 @@ class PokemonObject:
         return hp
     
     def get_sprite_path(self, side, sprite_type):
-        """Return the path to the sprite of the Pokémon."""
+        """Return the path to the sprite of the Pokémon, accounting for forms."""
         base_path = f"{side}_default_gif" if sprite_type == "gif" else f"{side}_default"
-        
+
         shiny_path = "shiny/" if self.shiny else ""
         gender_path = "female/" if self.gender == "F" else ""
-        
-        path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
+
+        # Include form name if it exists
+        if self.form_name:
+            filename = f"{self.id}-{self.form_name.lower()}.{sprite_type}"
+        else:
+            filename = f"{self.id}.{sprite_type}"
+
+        # Primary path
+        path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{filename}"
         default_path = f"{pkmnimgfolder}/front_default/substitute.png"
-        
-        # Check if the file exists at the given path
+
         if os.path.exists(path):
             return path
-        else:
-            if self.gender == "F":
-                gender_path = ""
-                path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
+
+        # Try dropping gender
+        if self.gender == "F":
+            path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{filename}"
+            if os.path.exists(path):
                 return path
-            elif self.shiny == "True":
-                shiny_path = ""
-                path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
+
+        # Try dropping shiny
+        if self.shiny:
+            path = f"{pkmnimgfolder}/{base_path}/{gender_path}{filename}"
+            if os.path.exists(path):
                 return path
-            else:
-                return default_path
+
+        # Final fallback
+        return default_path
     
     def to_engine_format(self):
         from ..poke_engine.helpers import normalize_name

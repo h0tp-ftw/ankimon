@@ -6,7 +6,7 @@ from aqt import mw
 import os
 from ..resources import addon_dir, icon_path
 from ..functions.pokedex_functions import search_pokedex
-from ..functions.sprite_functions import get_sprite_path
+from ..pyobj.pokemon_obj import get_sprite_path
 from ..singletons import main_pokemon
 from ..encounter_functions import new_pokemon
 from ..singletons import ankimon_tracker_obj, reviewer_obj

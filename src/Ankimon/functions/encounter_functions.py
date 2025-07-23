@@ -58,40 +58,39 @@ ALLOWED_FORMES = [
     "sandy", "trash", "east", "west", "midday", "midnight", "dusk", "disguised", "bloodmoon", "cornerstone", "hearthflame", "wellspring",
     "droopy", "stretchy", "curly", "four", "threesegment", "roaming"
 ]
+
 def select_pokemon_form(pokemon_id):
     """
     Given a Pokémon ID, checks for alternate forms and randomly selects one
     that has a valid sprite, giving equal chance to all valid forms including base.
     """
     try:
-        base_name = search_pokedex_by_id(pokemon_id)
-        if not base_name:
+        full_base_name = search_pokedex_by_id(pokemon_id)
+        if not full_base_name:
             return None, None
 
-        # Start with the base form as a candidate.
-        valid_forms = [(base_name, None)] 
+        # Remove any form suffix (e.g., "-Alola") from base name
+        base_name = full_base_name.split("-")[0]
 
-        forme_order_list = search_pokedex(base_name, "formeOrder")
-        
+        valid_forms = [(base_name, None)]
+
+        forme_order_list = search_pokedex(base_name.lower(), "formeOrder")
+
         if forme_order_list:
             for full_forme_name in forme_order_list:
                 if full_forme_name.lower() == base_name.lower():
                     continue
 
-                pokedex_key = full_forme_name.replace('-', '').lower()
+                pokedex_key = full_forme_name.replace("-", "").lower()
                 form_key = search_pokedex(pokedex_key, "forme")
-                
+
                 if form_key and any(allowed in form_key.lower() for allowed in ALLOWED_FORMES):
-                    # You'll need a function to check if sprites exist. 
-                    # This is a placeholder for your actual sprite checking logic.
-                    # For now, we'll assume sprites exist if the form is allowed.
                     valid_forms.append((full_forme_name, form_key))
 
-        # Choose randomly from all valid forms (base + alternates)
+        print(f"Valid forms for ID {pokemon_id}: {valid_forms}")
         return random.choice(valid_forms)
 
     except Exception as e:
-        # Fallback to base form in case of an error
         base_name = search_pokedex_by_id(pokemon_id)
         if base_name:
             return base_name, None
