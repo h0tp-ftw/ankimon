@@ -202,7 +202,6 @@ def choose_random_pkmn_from_tier():
     try:
         tier = get_tier(total_reviews, trainer_level)
         id = get_pokemon_id_by_tier(tier)
-        id = 28
         return id, tier
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message="Error occurred")
