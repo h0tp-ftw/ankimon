@@ -1,25 +1,51 @@
-from ..resources import mypokemon_path, frontdefault, user_path_sprites, frontdefault
-from ..gui_entities import MovieSplashLabel
-from ..functions.pokedex_functions import search_pokeapi_db_by_id, get_pokemon_diff_lang_name
 import json
+from collections import defaultdict
+import uuid
+
+from aqt.utils import showInfo, showWarning
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
-from ..gui_classes.pokemon_details import PokemonCollectionDetails
 from aqt import mw
-from aqt.utils import showInfo
+import re
+
+from ..pyobj.InfoLogger import ShowInfoLogger
+from ..pyobj.pokemon_obj import PokemonObject
+from ..pyobj.settings import Settings
+from ..pyobj.pokemon_obj import PokemonObject
+from ..pyobj.InfoLogger import ShowInfoLogger
+from ..pyobj.translator import Translator
+from ..pyobj.test_window import TestWindow
+from ..pyobj.reviewer_obj import Reviewer_Manager
 from ..functions.sprite_functions import get_sprite_path
+from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
+from ..gui_classes.pokemon_details import PokemonCollectionDetails
+from ..gui_entities import MovieSplashLabel
+from ..resources import mypokemon_path, frontdefault, frontdefault, mainpokemon_path
+
 
 class PokemonCollectionDialog(QDialog):
-    def __init__(self, logger, settings_obj, mainpokemon_function, main_pokemon, parent=mw):
+    def __init__(
+            self,
+            logger: ShowInfoLogger,
+            translator: Translator,
+            reviewer_obj: Reviewer_Manager,
+            test_window: TestWindow,
+            settings_obj: Settings,
+            main_pokemon: PokemonObject,
+            parent=mw
+            ):
         super().__init__(parent)
 
         #logger and settings object
         self.logger = logger
+        self.translator = translator
+        self.reviewer_obj = reviewer_obj
+        self.test_window = test_window
         self.settings = settings_obj
         self.language = int(self.settings.get("misc.language", 11))
         self.remove_levelcap = settings_obj.get("remove_levelcap", False)
-        self.main_pokemon_function_callback = mainpokemon_function
+        self.main_pokemon_function_callback = lambda _pokemon_data: MainPokemon(_pokemon_data, main_pokemon, logger, translator, reviewer_obj, test_window)
         self.main_pokemon = main_pokemon
         #mypokemon file path
         self.mypokemon_path = mypokemon_path
@@ -157,10 +183,11 @@ class PokemonCollectionDialog(QDialog):
 
             row, column = 0, 0
             for pokemon in paginated_pokemon:
-                # Extract Pokemon data
+                # Extract Pokemon data (same as your existing logic)
                 pokemon_id = pokemon['id']
                 pokemon_name = pokemon['name']
                 pokemon_shiny = pokemon.get("shiny", False)
+                # Ensure nickname is always a string, even if None
                 pokemon_nickname = pokemon.get('nickname') or ''
                 if pokemon_shiny:
                     pokemon_nickname += " ⭐ "
@@ -168,20 +195,19 @@ class PokemonCollectionDialog(QDialog):
                 pokemon_level = pokemon['level']
                 pokemon_ability = pokemon['ability']
                 pokemon_type = pokemon['type']
-                
-                # --- THE FIX ---
-                # Get the form_name from the saved pokemon data
-                pokemon_form_name = pokemon.get('form_name', None)
-
+                pokemon_stats = pokemon['stats']
+                pokemon_hp = pokemon_stats["hp"]
+                if pokemon_shiny:
+                    pokemon_name += " ⭐ "
+                form_name = pokemon.get('form_name')
                 pkmn_image_path = get_sprite_path(
                     "front",
                     "gif" if self.gif_in_collection else "png",
                     pokemon_id,
                     pokemon_shiny,
                     pokemon_gender,
-                    form_name=pokemon_form_name # Pass the form name here
+                    form_name = form_name
                 )
-                # --- END OF FIX --
 
                 if self.gif_in_collection:
                     splash_label = MovieSplashLabel(pkmn_image_path)
@@ -228,13 +254,16 @@ class PokemonCollectionDialog(QDialog):
 
             self.container.setLayout(self.scroll_layout)
             self.scroll_area.setWidget(self.container)
+            # Add pagination controls (at the bottom)
             self.add_pagination_controls(pokemon_list)
+            # Add Pokémon grid to the main layout
             self.layout.addWidget(self.scroll_area)
             self.layout.addWidget(self.paginator)
+
             self.setLayout(self.layout)
         except FileNotFoundError:
             self.layout.addWidget(QLabel(f"Can't open the Saving File. {mypokemon_path}"))
-            
+
     def adjust_pixmap_size(self, pixmap, max_width, max_height):
         original_width = pixmap.width()
         original_height = pixmap.height()
@@ -278,29 +307,32 @@ class PokemonCollectionDialog(QDialog):
         return button
 
     def show_pokemon_details(self, pokemon, **kwargs):
-        try:
-            # 1. Create a new, empty QDialog window
-            dialog = QDialog(self)
-            dialog.setWindowTitle(f"Details for {pokemon.get('name')}")
-
-            # 2. Call your function to get the layout
-            details_layout = PokemonCollectionDetails(
-                pokemon_data=pokemon,
-                logger=self.logger,
-                refresh_callback=self.refresh_collection,
-                language=self.language,
-                gif_in_collection=self.gif_in_collection,
-                remove_levelcap=self.remove_levelcap
-            )
-
-            # 3. Set the layout for the dialog and execute it
-            dialog.setLayout(details_layout)
-            dialog.exec()
-
-        except Exception as e:
-            error_msg = f"Error showing Pokémon details: {e}"
-            self.logger.log("error", error_msg)
-            showInfo(error_msg)
+        PokemonCollectionDetails(
+            name=pokemon['name'],
+            level=pokemon['level'],
+            id=pokemon['id'],
+            shiny=pokemon.get("shiny", False),
+            ability=pokemon['ability'],
+            type=pokemon['type'],
+            detail_stats={**pokemon['stats'], "xp": pokemon.get("xp", 0)},
+            attacks=pokemon['attacks'],
+            base_experience=pokemon['base_experience'],
+            growth_rate=pokemon['growth_rate'],
+            ev=pokemon['ev'],
+            iv=pokemon['iv'],
+            gender=pokemon['gender'],
+            nickname=pokemon.get('nickname'),
+            individual_id=pokemon.get('individual_id'),
+            pokemon_defeated=pokemon.get('pokemon_defeated', 0),
+            everstone=pokemon.get('everstone', False),
+            captured_date=pokemon.get('captured_date', 'Missing'),
+            language=self.language,
+            gif_in_collection=self.gif_in_collection,
+            remove_levelcap=self.remove_levelcap,
+            logger=self.logger,
+            refresh_callback=self.refresh_collection,
+            form_name=pokemon.get('form_name'),
+        )
 
     def get_gender_symbol(self, gender):
         if gender == "M":
@@ -438,9 +470,6 @@ class PokemonCollectionDialog(QDialog):
         self.refresh_collection(pokemon_list)
 
 
-from aqt.utils import showWarning
-from ..resources import mainpokemon_path
-
 def PokemonTrade(name, id, level, ability, iv, ev, gender, attacks, position):
      # Load the data from the file
     with open(mainpokemon_path, "r", encoding="utf-8") as file:
@@ -479,11 +508,12 @@ def PokemonTrade(name, id, level, ability, iv, ev, gender, attacks, position):
 
         attacks_ids = []
         for attack in attacks:
-            attack = attack.replace(" ", "").lower()
-            move_details = find_details_move(attack)
-            if move_details:
-                attacks_ids.append(str(move_details["num"]))
-
+            key = re.sub(r'[^a-z0-9]', '', attack.lower())     # “U-turn” → “uturn”
+            move_details = find_details_move(key)
+            if not move_details:
+                raise ValueError(f"Unknown move: {attack}")
+            attacks_ids.append(str(move_details["num"]))
+            
         attacks_id_string = ','.join(attacks_ids)  # Concatenated with a delimiter
 
         # Concatenating details to form a single string
@@ -569,7 +599,6 @@ def PokemonTradeIn(number_code, old_pokemon_name, position):
     else:
         showWarning("Please enter a valid Code !")
 
-from aqt.utils import showWarning
 
 def trade_pokemon(old_pokemon_name, pokemon_trade, position):
     try:
@@ -598,3 +627,71 @@ def trade_pokemon(old_pokemon_name, pokemon_trade, position):
         showWarning(f"{old_pokemon_name} has been traded successfully!")
     except Exception as e:
         showWarning(f"An error occurred while writing to the file: {e}")
+
+def MainPokemon(
+        pokemon_data: dict,
+        main_pokemon: PokemonObject,
+        logger: ShowInfoLogger,
+        translator: Translator,
+        reviewer_obj: Reviewer_Manager,
+        test_window: TestWindow,
+        ):
+    pokemon_id = pokemon_data.get("id")
+    pokemon_name = search_pokedex_by_id(pokemon_id)
+    base_stats = search_pokedex(pokemon_name, "baseStats")
+    current_hp = PokemonObject.calc_stat(
+        "hp",
+        base_stats["hp"],
+        pokemon_data['level'],
+        pokemon_data['iv']['hp'],
+        pokemon_data['ev']['hp'],
+        pokemon_data.get("nature", "serious")
+        )
+    # Create NEW PokemonObject instance using class constructor
+    new_main_pokemon = PokemonObject(
+        name=pokemon_name,
+        level=pokemon_data.get('level', 5),
+        ability=pokemon_data.get('ability', ['none']),
+        type=pokemon_data.get('type', ['Normal']),
+        base_stats=base_stats,
+        ev=pokemon_data.get('ev', defaultdict(int)),
+        iv=pokemon_data.get('iv', defaultdict(int)),
+        attacks=pokemon_data.get('attacks', ['Struggle']),
+        base_experience=pokemon_data.get('base_experience', 0),
+        growth_rate=pokemon_data.get('growth_rate', 'medium'),
+        current_hp=current_hp,
+        gender=pokemon_data.get('gender', 'N'),
+        shiny=pokemon_data.get('shiny', False),
+        individual_id=pokemon_data.get('individual_id', str(uuid.uuid4())),
+        id=pokemon_data.get('id', 133),
+        status=pokemon_data.get('status', None),
+        volatile_status=set(pokemon_data.get('volatile_status', [])),
+        xp=pokemon_data.get("xp", 0),
+        tier=pokemon_data.get('tier', 'None'),
+        pokemon_defeated=pokemon_data.get('pokemon_defeated', 0),
+        everstone=pokemon_data.get('everstone', False),
+        captured_date=pokemon_data.get('captured_date', None),
+        is_favorite = pokemon_data.get('is_favorite', False)   
+    )
+    
+    # Update existing reference
+    main_pokemon.__dict__.update(new_main_pokemon.__dict__)
+    
+    # Save to JSON using the object's native serialization
+    main_pokemon_data = [main_pokemon.to_dict()]
+    with open(mainpokemon_path, "w") as f:
+        json.dump(main_pokemon_data, f, indent=2)
+
+    logger.log_and_showinfo(
+        "info",
+        translator.translate("picked_main_pokemon",main_pokemon_name=main_pokemon.name.capitalize())
+        )
+    
+    # Update UI components
+    class Container(object): pass
+    reviewer = Container()
+    reviewer.web = mw.reviewer.web
+    reviewer_obj.update_life_bar(reviewer, 0, 0)
+    
+    if test_window.isVisible():
+        test_window.display_first_encounter()

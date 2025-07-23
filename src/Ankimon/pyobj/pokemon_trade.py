@@ -138,12 +138,13 @@ class PokemonTrade:
             "everstone": False,
             "shiny": False,
             "mega": False,
-            "special-form": None,
+            "form_name": None,
             "capture_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "individual_id": str(uuid.uuid4())
         }
 
-        new_pokemon["stats"]["xp"] = 0
+        #new_pokemon["stats"]["xp"] = 0
+        new_pokemon["xp"] = 0
 
         self.replace_pokemon(new_pokemon)
 

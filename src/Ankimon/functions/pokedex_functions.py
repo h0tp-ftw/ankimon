@@ -3,6 +3,10 @@ from aqt.utils import showWarning
 import json
 import random
 import csv
+from ..pyobj.error_handler import show_warning_with_traceback
+
+with open(str(pokedex_path), "r", encoding="utf-8") as f:
+    POKEDEX_DATA = json.load(f)
 
 def special_pokemon_names_for_min_level(name):
     if name == "flabébé":
@@ -57,16 +61,32 @@ def special_pokemon_names_for_min_level(name):
         #showWarning("Error in Handling Pokémon name")
         return name
 
-def search_pokedex(pokemon_name,variable):
-    pokemon_name = special_pokemon_names_for_min_level(pokemon_name)
-    with open(str(pokedex_path), "r", encoding="utf-8") as json_file:
-            pokedex_data = json.load(json_file)
-            if pokemon_name in pokedex_data:
-                pokemon_info = pokedex_data[pokemon_name]
-                var = pokemon_info.get(variable, None)
-                return var
-            else:
-                return []
+def search_pokedex(pokemon_name, variable):
+    # This assumes POKEDEX_DATA is a globally loaded dictionary.
+    # If not, you'll need to load it here.
+    
+    # Normalize the name to match the keys in pokedex.json (e.g., "sandslash-alola" -> "sandslashalola")
+    lookup_key = pokemon_name.lower().replace('-', '').replace(' ', '')
+    
+    pokemon_info = POKEDEX_DATA.get(lookup_key)
+
+    if pokemon_info:
+        # 1. Try to get the variable from the specific form first.
+        value = pokemon_info.get(variable)
+        if value is not None:
+            return value
+
+        # 2. If not found, and it's a regional form, try the base species.
+        base_species_name = pokemon_info.get("baseSpecies")
+        if base_species_name:
+            base_lookup_key = base_species_name.lower().replace('-', '').replace(' ', '')
+            base_pokemon_info = POKEDEX_DATA.get(base_lookup_key)
+            if base_pokemon_info:
+                # Return the value from the base form (will be None if not found there either)
+                return base_pokemon_info.get(variable)
+    
+    # If the pokemon_name itself wasn't found, or no value was found on either form
+    return None
 
 def search_pokedex_by_name_for_id(pokemon_name, variable):
     pokemon_name = special_pokemon_names_for_min_level(pokemon_name)
@@ -415,7 +435,7 @@ def pokemon_evolves_from_id(pokemon_id):
         return evolves_from_ids
     except Exception as e:
         # Use a more specific error message
-        showWarning(f"Error in pokemon_evolves_from_id function: {e} with pokemon_id {pokemon_id}")
+        show_warning_with_traceback(exception=e, message="Error in pokemon_evolves_from_id function: {e} with pokemon_id {pokemon_id}")
         return []
 
 def get_pokemon_evolution_data(pokemon_id):

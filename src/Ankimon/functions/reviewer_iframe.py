@@ -26,10 +26,8 @@ def create_html_code(genderTop, genderBottom, nameTop, nameBottom, levelTop, lev
     return html_code
 
 def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
-    from . import ankimon_tracker_obj
-    from .functions.sprite_functions import get_sprite_path
-
-    text = str(textmsg).replace("'", "")
+    text = str(textmsg)
+    text = text.replace("'", "")
     nameBottom = main_pokemon.nickname if main_pokemon.nickname else main_pokemon.name
     nameTop = enemy_pokemon.name
     current_health_top = enemy_pokemon.hp
@@ -40,44 +38,21 @@ def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
     genderBottom = main_pokemon.gender
     max_hp_bottom = main_pokemon.max_hp
     max_hp_top = enemy_pokemon.max_hp
-    display = "block"
+    display = "block" #fallback
     mainpokemon_attack = False
     enemypokemon_attack = False
-    experience_for_next_lvl = int(find_experience_for_level(f"{main_pokemon.growth_rate}", int(main_pokemon.level), settings_obj.get("misc.remove_level_cap", False)))
-    xp_bar_width = int((int(main_pokemon.xp) / experience_for_next_lvl) * 100) if experience_for_next_lvl > 0 else 0
-    
+    experience_for_next_lvl = int(find_experience_for_level(f"{main_pokemon.growth_rate}", int(main_pokemon.level), settings_obj))
+    xp_bar_width = int((int(main_pokemon.xp) / experience_for_next_lvl) * 100)
     ankimon_package = mw.addonManager.addonFromModule(__name__)
-    
-    sprite_type = "gif" if settings_obj.get("gui.reviewer_image_gif", False) else "png"
-
-    # --- THE FIX ---
-    # This now correctly uses the standalone get_sprite_path function and passes the 
-    # form_name from the enemy_pokemon object itself, ensuring the correct sprite is always fetched.
-    top_sprite_full_path = get_sprite_path(
-        side='front',
-        sprite_type=sprite_type,
-        id=enemy_pokemon.id,
-        shiny=enemy_pokemon.shiny,
-        gender=enemy_pokemon.gender,
-        form_name=enemy_pokemon.form_name
-    )
-    
-    bottom_sprite_full_path = get_sprite_path(
-        side='back',
-        sprite_type=sprite_type,
-        id=main_pokemon.id,
-        shiny=main_pokemon.shiny,
-        gender=main_pokemon.gender,
-        form_name=main_pokemon.form_name
-    )
-
-    # Convert the full system path to a web-accessible URL for the iframe
-    top_pokemon_sprite = f"/_addons/{ankimon_package}/" + top_sprite_full_path.split(f"{ankimon_package}/", 1)[1]
-    bottom_pokemon_sprite = f"/_addons/{ankimon_package}/" + bottom_sprite_full_path.split(f"{ankimon_package}/", 1)[1]
-    
-    font_url = f"""/_addons/{ankimon_package}/user_files/web/Early_GameBoy.ttf"""
     general_url = f"""/_addons/{ankimon_package}/user_files/web/"""
-
+    sprites_url = f"""/_addons/{ankimon_package}/user_files/sprites/"""
+    if settings_obj.get("gui.reviewer_image_gif", False) == False:
+        top_pokemon_sprite = f"""{sprites_url}front_default/{enemy_pokemon.id}.png"""
+        bottom_pokemon_sprite = f"""{sprites_url}back_default/{main_pokemon.id}.png"""
+    else:
+        top_pokemon_sprite = f"""{sprites_url}front_default_gif/{enemy_pokemon.id}.gif"""
+        bottom_pokemon_sprite = f"""{sprites_url}back_default_gif/{main_pokemon.id}.gif"""
+    font_url = f"""/_addons/{ankimon_package}/web/assetts/PokemonGB.ttf"""
     html_code = create_html_code(genderTop, genderBottom, nameTop, nameBottom, levelTop, levelBottom, current_health_bottom, max_hp_bottom, max_hp_top, current_health_top, text, general_url, font_url, bottom_pokemon_sprite, top_pokemon_sprite, display, mainpokemon_attack, enemypokemon_attack, xp_bar_width)
     return html_code
 

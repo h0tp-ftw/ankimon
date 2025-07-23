@@ -6,6 +6,10 @@ from aqt import mw
 import os
 from ..resources import addon_dir, icon_path
 from ..functions.pokedex_functions import search_pokedex
+from ..functions.sprite_functions import get_sprite_path
+from ..singletons import main_pokemon
+from ..encounter_functions import new_pokemon
+from ..singletons import ankimon_tracker_obj, reviewer_obj
 
 class TestWindow(QWidget):
     def __init__(self, pkmn_window, first_start, video, test, pokemon_encounter, system, ankimon_key):
@@ -47,7 +51,13 @@ class TestWindow(QWidget):
         # Create and show the dynamic window
         try:
             if self.pkmn_window == False:
-                self.display_first_encounter()
+                # --- THIS IS THE FIX ---
+                # Generate the first encounter's data right before displaying it.
+                # This populates self.pokemon_encounter with a random Pokémon, including its form.
+                new_pokemon(self.pokemon_encounter, self, ankimon_tracker_obj, reviewer_obj)
+
+                # The new_pokemon function already calls self.display_first_encounter(),
+                # so we don't need to call it again here.
                 self.pkmn_window = True
             self.show()
         except Exception as e:
@@ -70,7 +80,7 @@ class TestWindow(QWidget):
         # Main window layout
         layout = QVBoxLayout()
         global pokemon_encounter
-        global hp, name, id, stats, level, max_hp, base_experience, ev, iv, gender
+        global hp, name, id, stats, level, max_hp, base_experience, ev, iv, gender, form_name
         global caught_pokemon, message_box_text
         global caught
         global mainpkmn
@@ -100,16 +110,29 @@ class TestWindow(QWidget):
             pixmap_bckg = QPixmap()
             pixmap_bckg.load(str(bckgimage_path))
 
-            # Display the Pokémon image
-            pkmnimage_file = f"{id}.png"
-            pkmnimage_path = frontdefault / pkmnimage_file
+            # Display the Pokémon image by calling our dynamic sprite function
+            pkmnimage_path = get_sprite_path(
+                side="front",
+                sprite_type="gif",
+                id=self.pokemon_encounter.id,
+                shiny=self.pokemon_encounter.shiny,
+                gender=self.pokemon_encounter.gender,
+                form_name=self.pokemon_encounter.form_name
+            )
             image_label = QLabel()
             pixmap = QPixmap()
             pixmap.load(str(pkmnimage_path))
 
             # Display the Main Pokémon image
-            pkmnimage_file2 = f"{mainpokemon_id}.png"
-            pkmnimage_path2 = backdefault / pkmnimage_file2
+            # Note: Using getattr for 'form_name' is safer in case the attribute doesn't exist.
+            pkmnimage_path2 = get_sprite_path(
+                side="back",
+                sprite_type="gif",
+                id=main_pokemon.id,
+                shiny=main_pokemon.shiny,
+                gender=main_pokemon.gender,
+                form_name=getattr(main_pokemon, 'form_name', None)
+            )
             pixmap2 = QPixmap()
             pixmap2.load(str(pkmnimage_path2))
 
@@ -230,16 +253,29 @@ class TestWindow(QWidget):
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(bckgimage_path))
 
-        # Display the Pokémon image
-        pkmnimage_file = f"{id}.png"
-        pkmnimage_path = frontdefault / pkmnimage_file
+        # Display the Pokémon image by calling our dynamic sprite function
+        pkmnimage_path = get_sprite_path(
+            side="front",
+            sprite_type="gif",
+            id=self.pokemon_encounter.id,
+            shiny=self.pokemon_encounter.shiny,
+            gender=self.pokemon_encounter.gender,
+            form_name=self.pokemon_encounter.form_name
+        )
         image_label = QLabel()
         pixmap = QPixmap()
         pixmap.load(str(pkmnimage_path))
 
         # Display the Main Pokémon image
-        pkmnimage_file2 = f"{mainpokemon_id}.png"
-        pkmnimage_path2 = backdefault / pkmnimage_file2
+        # Note: Using getattr for 'form_name' is safer in case the attribute doesn't exist.
+        pkmnimage_path2 = get_sprite_path(
+            side="back",
+            sprite_type="gif",
+            id=main_pokemon.id,
+            shiny=main_pokemon.shiny,
+            gender=main_pokemon.gender,
+            form_name=getattr(main_pokemon, 'form_name', None)
+        )
         pixmap2 = QPixmap()
         pixmap2.load(str(pkmnimage_path2))
 
@@ -459,21 +495,33 @@ class TestWindow(QWidget):
 
             return image_label
         except Exception as e:
-            showWarning(f"An error occured in badges window {e}")
+            show_warning_with_traceback(exception=e, message="An error occured in badges window")
 
     def pokemon_display_dead_pokemon(self):
         global pokemon_hp, name, id, level, type, caught_pokemon, caught
         # Create the dialog
         lang_name = get_pokemon_diff_lang_name(int(id))
-        window_title = (f"Would you want let the  wild {lang_name} free or catch the wild {lang_name} ?")
-        # Display the Pokémon image
-        pkmnimage_file = f"{int(search_pokedex(name.lower(),'num'))}.png"
-        pkmnimage_path = frontdefault / pkmnimage_file
+        window_title = (f"Would you want let the wild {lang_name} free or catch the wild {lang_name} ?")
+
+        # Display the Pokémon image by calling our dynamic sprite function
+        pkmnimage_path = get_sprite_path(
+            side="front",
+            sprite_type="gif",
+            id=self.pokemon_encounter.id,
+            shiny=self.pokemon_encounter.shiny,
+            gender=self.pokemon_encounter.gender,
+            form_name=self.pokemon_encounter.form_name
+        )
+        
+        # Use the correct variable names (pkmnimage_label, pkmnpixmap) to match the rest of the function
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
         pkmnpixmap.load(str(pkmnimage_path))
+
+        # This background image was missing in the previous version
         pkmnpixmap_bckg = QPixmap()
-        pkmnpixmap_bckg.load(str(pokedex_image_path))
+        pkmnpixmap_bckg.load(str(pokedex_image_path)) # Assuming pokedex_image_path is available
+
         # Calculate the new dimensions to maintain the aspect ratio
         pkmnpixmap = pkmnpixmap.scaled(230, 230)
 
@@ -529,7 +577,6 @@ class TestWindow(QWidget):
         qconnect(kill_button.clicked, kill_pokemon)
         # Set the merged image as the pixmap for the QLabel
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
-
 
         # align things needed to middle
         pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
