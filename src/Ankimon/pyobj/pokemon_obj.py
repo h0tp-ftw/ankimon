@@ -11,6 +11,7 @@ class PokemonObject:
         self,
         name="Ditto",
         shiny=False,
+        form_name = None,
         id=None,
         level=3,
         ability=None,
@@ -43,6 +44,7 @@ class PokemonObject:
         # Unique identifier
         self.individual_id = str(individual_id) if individual_id else str(uuid.uuid4())
         self.name = str(name)
+        self.form_name = str(form_name) if form_name is not None else ""
         self.nickname = str(nickname) if nickname is not None else ""
         self.shiny = bool(shiny)
         self.id = int(id) if id is not None else 132
