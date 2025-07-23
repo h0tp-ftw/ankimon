@@ -52,8 +52,11 @@ from ..config_var import remove_levelcap
 # form selection
 ALLOWED_FORMES = [
     "alola", "hisui", "galar", "paldea", "origin", "therian", "incarnate",
-    "paldea-aqua", "paldea-blaze", "paldea-combat",
-    # Add any other specific forms you want to allow
+    "paldea-aqua", "paldea-blaze", "paldea-combat", "origin", "altered", "incarnate", "therian", "average", "large", "small", "super",
+    "red-striped", "blue-striped", "white-striped", "autumn", "spring", "summer", "winter", "blue", "orange", "red", "white", "yellow", "eternal",
+    "natural", "dandy", "debutante", "diamond", "heart", "kabuki", "la-reine", "matron", "pharaoh", "star", "male", "female", "plant",
+    "sandy", "trash", "east", "west", "midday", "midnight", "dusk", "disguised", "bloodmoon", "cornerstone", "hearthflame", "wellspring",
+    "droopy", "stretchy", "curly", "four", "threesegment", "roaming"
 ]
 def select_pokemon_form(pokemon_id):
     """
@@ -204,19 +207,21 @@ def choose_random_pkmn_from_tier():
         show_warning_with_traceback(parent=mw, exception=e, message="Error occurred")
 
 def check_min_generate_level(name):
-    evoType = search_pokedex(name.lower(), "evoType")
-    evoLevel = search_pokedex(name.lower(), "evoLevel")
-    if evoLevel is not None:
-        return int(evoLevel)
-    elif evoType is not None:
-        min_level = 100
-        return int(min_level)
-    elif evoType and evoLevel is None:
-        min_level = 1
-        return int(min_level)
+    evo_type = search_pokedex(name.lower(), "evoType")
+    evo_level = search_pokedex(name.lower(), "evoLevel")
+
+    if evo_type is None and evo_level is None:
+        # This is likely a base form with no evolution — allow level 1
+        return 1
+    elif evo_type is not None and evo_level is None:
+        # This evolves by friendship, item, trade, or unknown — assume level 20 minimum
+        return 20
+    elif evo_level is not None:
+        # This evolves by level — we return its evolution level as minimum encounter level
+        return int(evo_level)
     else:
-        min_level = 1
-        return min_level
+        # Fallback
+        return 1
 
 def check_id_ok(id_num: Union[int, list[int]]):
     if isinstance(id_num, list):
@@ -240,118 +245,113 @@ def check_id_ok(id_num: Union[int, list[int]]):
             return gen_config[generation - 1]
 
     return False
+
+def is_pokemon_level_valid(pokemon_name: str, wild_level: int) -> bool:
+    """
+    Validate Pokémon level according to its evolution stage.
+
+    - If Pokémon has a pre-evolution, it must be at least its evolution level.
+    - If Pokémon has evolutions, it cannot appear at or above the next evolution's level.
+    """
+    key = pokemon_name.lower()
+    prevo = search_pokedex(key, "prevo")
+    evo_level = search_pokedex(key, "evoLevel")
+    evos = search_pokedex(key, "evos")
+
+    # Evolved Pokémon: must be at or above their evolution level
+    if prevo is not None:
+        if evo_level is None or wild_level < int(evo_level):
+            return False
+
+    # Unevolved Pokémon: cannot appear if level >= next evolution's level
+    if evos:
+        next_evo_key = evos[0].lower()
+        next_evo_level = search_pokedex(next_evo_key, "evoLevel")
+        if next_evo_level is not None and wild_level >= int(next_evo_level):
+            return False
+
+    return True
     
 def generate_random_pokemon(main_pokemon_level: int, ankimon_tracker_obj: AnkimonTracker):
     """
-    Generates a random wild Pokémon with attributes scaled to the level of the player's main Pokémon.
-
-    This function resets the encounter and battle round state in the provided `AnkimonTracker` object.
-    It then selects a valid Pokémon that can appear at the current level range, computes its stats, 
-    determines its moves, ability, and other combat-relevant characteristics, and returns all necessary 
-    data required for a battle.
-
-    Args:
-        main_pokemon_level (int): The level of the player's main Pokémon. Determines the level range of 
-            the generated wild Pokémon.
-        ankimon_tracker_obj (AnkimonTracker): An object used to track battle state, such as the number 
-            of Pokémon encountered and cards used in the battle.
-
-    Returns:
-        tuple: A tuple containing the following elements:
-            - name (str): Name of the wild Pokémon.
-            - pokemon_id (int): Unique ID of the Pokémon.
-            - wild_pokemon_lvl (int): The level of the generated Pokémon.
-            - ability (str): The selected ability of the Pokémon.
-            - pokemon_type (list[str]): List of type(s) the Pokémon belongs to.
-            - base_stats (dict): Dictionary of the Pokémon's base stats.
-            - moves (list[str]): List of up to 4 moves the Pokémon can use in battle.
-            - base_experience (int): Experience points awarded for defeating the Pokémon.
-            - growth_rate (str): Growth rate category of the Pokémon (e.g., "slow", "fast").
-            - ev (dict): Effort values (EVs) for each stat, initialized to 0.
-            - iv (dict): Randomly generated individual values (IVs) for each stat.
-            - gender (str): Randomly assigned gender.
-            - battle_status (str): Current status of the Pokémon in battle, defaulted to "fighting".
-            - final_stats (dict): Final computed stats of the Pokémon.
-            - tier (str): Tier from which the Pokémon was selected (e.g., common, rare).
-            - ev_yield (dict): Effort values (EVs) awarded upon defeating the Pokémon.
-            - is_shiny (bool): Indicates whether the Pokémon is shiny.
-
-    Raises:
-        ValueError: If no valid Pokémon can be generated (highly unlikely under normal conditions).
+    Generates a wild Pokémon with level-appropriate stats and legality,
+    including proper evolution-level filtering.
     """
     lvl_variation = 3
-    lvl_range = max(1, main_pokemon_level - lvl_variation), max(1, main_pokemon_level + lvl_variation)
-    wild_pokemon_lvl = random.randint(*lvl_range)
-    wild_pokemon_lvl = max(1, wild_pokemon_lvl)  # Ensures that the wild pokemon's level is at least 1
-    if main_pokemon_level == 100:
-        wild_pokemon_lvl = 100
-
-    # First, we draw a random, valid pokemon id.
-    pokemon_id, tier = choose_random_pkmn_from_tier()
-    #pokemon_id = 28 for testing
-    name, form_name = select_pokemon_form(pokemon_id)
-    min_allowed_pokemon_lvl = check_min_generate_level(str(name.lower()))  # Gets the minimum allowed level for that pokemon given its stage of evolution
-    while (not check_id_ok(pokemon_id)) or (wild_pokemon_lvl < min_allowed_pokemon_lvl):
-        pokemon_id, tier = choose_random_pkmn_from_tier()
-        # FIX: Call select_pokemon_form again to get the new name AND form_name
-        name, form_name = select_pokemon_form(pokemon_id)
-        min_allowed_pokemon_lvl = check_min_generate_level(str(name.lower()))
-
-    # Now we get all necessary information about the chosen pokemon.
-    pokemon_type = search_pokedex(name, "types")
-    base_experience = search_pokeapi_db_by_id(pokemon_id, "base_experience")  # Experience that the wild pokemon will give once beaten
-    growth_rate = search_pokeapi_db_by_id(pokemon_id, "growth_rate")
-    ev_yield = search_pokeapi_db_by_id(pokemon_id, "effort_values")
-    gender = pick_random_gender(name)
-    is_shiny = shiny_chance()
-    battle_status = "fighting"
-    base_stats = search_pokedex(name, "baseStats")
-
-    all_possible_moves = get_all_pokemon_moves(name, wild_pokemon_lvl)
-    if len(all_possible_moves) <= 4:
-        moves = all_possible_moves
-    else:
-        moves = random.sample(all_possible_moves, 4)
-
-    ability = "no_ability"  # Default value for ability
-    possible_abilities = search_pokedex(name, "abilities")
-    if possible_abilities:
-        numeric_abilities = {k: v for k, v in possible_abilities.items() if k.isdigit()}
-        if numeric_abilities:
-            ability = random.choice(list(numeric_abilities.values()))
-    
-    stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
-    # ev = {stat: 0 for stat in stat_names}
-    ev = get_ev_spread(random.choice(["random", "pair", "defense", "uniform"]))
-    # tau = 200
-    # mu = 31 * (1 - math.exp(-ankimon_tracker_obj.total_reviews / tau))  # At total reviews > 3 * tau, we get mu ~= 31
-    # iv = {stat: iv_rand_gauss(mu=mu, sigma=5) for stat in stat_names}  # The higher the number of reviews, the higher the IVs
-    iv = {stat: random.randint(0, 31) for stat in stat_names}
-    final_stats = base_stats
-
-    ankimon_tracker_obj.pokemon_encounter = 0  # 0: Start of Battle: 1: Current Battle
-    ankimon_tracker_obj.cards_battle_round = 0  # Amount of cards in this current battle
-
-    return (
-        name,
-        pokemon_id,
-        wild_pokemon_lvl,
-        ability,
-        pokemon_type,
-        base_stats,
-        moves,
-        base_experience,
-        growth_rate,
-        ev,
-        iv,
-        gender,
-        battle_status,
-        final_stats,
-        tier,
-        ev_yield,
-        is_shiny,
-        form_name
+    lvl_range = (
+        max(1, main_pokemon_level - lvl_variation),
+        min(100, main_pokemon_level + lvl_variation)
     )
+
+    attempts = 0
+    while attempts < 100:
+        wild_pokemon_lvl = random.randint(*lvl_range)
+        pokemon_id, tier = choose_random_pkmn_from_tier()
+        name, form_name = select_pokemon_form(pokemon_id)
+
+        if not name:
+            attempts += 1
+            continue
+
+        min_allowed_level = check_min_generate_level(name.lower())
+        # Check all conditions: ID validity, level >= min allowed, and evolution-level validity
+        if (check_id_ok(pokemon_id) and
+            wild_pokemon_lvl >= min_allowed_level and
+            is_pokemon_level_valid(name, wild_pokemon_lvl)):
+
+            # Gather Pokémon data
+            pokemon_type = search_pokedex(name, "types")
+            base_experience = search_pokeapi_db_by_id(pokemon_id, "base_experience")
+            growth_rate = search_pokeapi_db_by_id(pokemon_id, "growth_rate")
+            ev_yield = search_pokeapi_db_by_id(pokemon_id, "effort_values")
+            gender = pick_random_gender(name)
+            is_shiny = shiny_chance()
+            battle_status = "fighting"
+            base_stats = search_pokedex(name, "baseStats")
+
+            all_possible_moves = get_all_pokemon_moves(name, wild_pokemon_lvl)
+            moves = all_possible_moves if len(all_possible_moves) <= 4 else random.sample(all_possible_moves, 4)
+
+            ability = "no_ability"
+            possible_abilities = search_pokedex(name, "abilities")
+            if possible_abilities:
+                numeric_abilities = {k: v for k, v in possible_abilities.items() if k.isdigit()}
+                if numeric_abilities:
+                    ability = random.choice(list(numeric_abilities.values()))
+
+            stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
+            ev = get_ev_spread(random.choice(["random", "pair", "defense", "uniform"]))
+            iv = {stat: random.randint(0, 31) for stat in stat_names}
+            final_stats = base_stats
+
+            # Reset encounter tracker
+            ankimon_tracker_obj.pokemon_encounter = 0
+            ankimon_tracker_obj.cards_battle_round = 0
+
+            return (
+                name,
+                pokemon_id,
+                wild_pokemon_lvl,
+                ability,
+                pokemon_type,
+                base_stats,
+                moves,
+                base_experience,
+                growth_rate,
+                ev,
+                iv,
+                gender,
+                battle_status,
+                final_stats,
+                tier,
+                ev_yield,
+                is_shiny,
+                form_name
+            )
+
+        attempts += 1
+
+    raise ValueError("Failed to generate a valid Pokémon after 100 attempts.")
 
 def new_pokemon(
         pokemon: PokemonObject,
