@@ -56,44 +56,69 @@ ALLOWED_FORMES = [
     "red-striped", "blue-striped", "white-striped", "autumn", "spring", "summer", "winter", "blue", "orange", "red", "white", "yellow", "eternal",
     "natural", "dandy", "debutante", "diamond", "heart", "kabuki", "la-reine", "matron", "pharaoh", "star", "male", "female", "plant",
     "sandy", "trash", "east", "west", "midday", "midnight", "dusk", "disguised", "bloodmoon", "cornerstone", "hearthflame", "wellspring",
-    "droopy", "stretchy", "curly", "four", "threesegment", "roaming"
+    "droopy", "stretchy", "curly", "four", "threesegment", "roaming", "sunny", "rainy", "snowy", "autumn", "summer", "winter"
 ]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+# Get a logger specific to this module
+logger = logging.getLogger(__name__)
+
 
 def select_pokemon_form(pokemon_id):
     """
     Given a Pokémon ID, checks for alternate forms and randomly selects one
     that has a valid sprite, giving equal chance to all valid forms including base.
     """
+    logger.info(f"Starting form selection for Pokémon ID: {pokemon_id}")
     try:
         full_base_name = search_pokedex_by_id(pokemon_id)
         if not full_base_name:
+            # Log a warning if the initial search fails.
+            logger.warning(f"No Pokémon found for ID: {pokemon_id}. Cannot select form.")
             return None, None
 
-        # Remove any form suffix (e.g., "-Alola") from base name
+        logger.info(f"Found base name '{full_base_name}' for ID {pokemon_id}.")
         base_name = full_base_name.split("-")[0]
 
+        # The base form is always considered a valid option.
         valid_forms = [(base_name, None)]
 
         forme_order_list = search_pokedex(base_name.lower(), "formeOrder")
 
         if forme_order_list:
+            logger.info(f"Found {len(forme_order_list)} potential forms for '{base_name}'.")
             for full_forme_name in forme_order_list:
                 if full_forme_name.lower() == base_name.lower():
-                    continue
+                    continue  # Skip the base form, as it's already added
 
                 pokedex_key = full_forme_name.replace("-", "").lower()
                 form_key = search_pokedex(pokedex_key, "forme")
 
                 if form_key and any(allowed in form_key.lower() for allowed in ALLOWED_FORMES):
+                    logger.debug(f"Found valid alternate form: '{full_forme_name}'")
                     valid_forms.append((full_forme_name, form_key))
 
-        print(f"Valid forms for ID {pokemon_id}: {valid_forms}")
-        return random.choice(valid_forms)
+        # Replaced the print statement with a more informative log message.
+        logger.info(f"Final list of valid forms for ID {pokemon_id}: {valid_forms}")
+
+        chosen_name, chosen_key = random.choice(valid_forms)
+        logger.info(f"Successfully selected form '{chosen_name}' for Pokémon ID {pokemon_id}.")
+        return chosen_name, chosen_key
 
     except Exception as e:
+        # Use logger.exception to automatically include traceback information.
+        logger.exception(f"An error occurred during form selection for ID {pokemon_id}: {e}")
+        
+        # Fallback logic with added logging
         base_name = search_pokedex_by_id(pokemon_id)
         if base_name:
+            logger.warning(f"Falling back to base name '{base_name}' for ID {pokemon_id} after error.")
             return base_name, None
+        
+        logger.error(f"Could not resolve any name for ID {pokemon_id} after an exception.")
         return None, None
 
 def modify_percentages(total_reviews, daily_average, player_level):
