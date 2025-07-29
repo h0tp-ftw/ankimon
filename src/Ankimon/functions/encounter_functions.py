@@ -56,7 +56,8 @@ ALLOWED_FORMES = [
     "red-striped", "blue-striped", "white-striped", "autumn", "spring", "summer", "winter", "blue", "orange", "red", "white", "yellow", "eternal",
     "natural", "dandy", "debutante", "diamond", "heart", "kabuki", "la-reine", "matron", "pharaoh", "star", "male", "female", "plant",
     "sandy", "trash", "east", "west", "midday", "midnight", "dusk", "disguised", "bloodmoon", "cornerstone", "hearthflame", "wellspring",
-    "droopy", "stretchy", "curly", "four", "threesegment", "roaming", "sunny", "rainy", "snowy", "autumn", "summer", "winter"
+    "droopy", "stretchy", "curly", "four", "threesegment", "roaming", "sunny", "rainy", "snowy", "autumn", "summer", "winter", "fan", "frost",
+    "heat", "mow", "wash",
 ]
 
 logging.basicConfig(
