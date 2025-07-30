@@ -51,13 +51,23 @@ from ..config_var import remove_levelcap
 
 # form selection
 ALLOWED_FORMES = [
-    "alola", "hisui", "galar", "paldea", "origin", "therian", "incarnate",
-    "paldea-aqua", "paldea-blaze", "paldea-combat", "origin", "altered", "incarnate", "therian", "average", "large", "small", "super",
-    "red-striped", "blue-striped", "white-striped", "autumn", "spring", "summer", "winter", "blue", "orange", "red", "white", "yellow", "eternal",
-    "natural", "dandy", "debutante", "diamond", "heart", "kabuki", "la-reine", "matron", "pharaoh", "star", "male", "female", "plant",
-    "sandy", "trash", "east", "west", "midday", "midnight", "dusk", "disguised", "bloodmoon", "cornerstone", "hearthflame", "wellspring",
-    "droopy", "stretchy", "curly", "four", "threesegment", "roaming", "sunny", "rainy", "snowy", "autumn", "summer", "winter", "fan", "frost",
-    "heat", "mow", "wash",
+    "a", "alola", "altered", "archipelago", "attack", "autumn", "average",
+    "b", "bloodmoon", "blue", "blue-striped", "c", "continental",
+    "cornerstone", "curly", "d", "dandy", "debutante", "defense", "diamond",
+    "disguised", "droopy", "dusk", "e", "east", "elegant", "eternal",
+    "exclamation", "f", "fan", "fancy", "female", "four", "frost", "galar",
+    "garden", "g", "h", "hearthflame", "heart", "heat", "high-plains",
+    "hisui", "i", "icy-snow", "incarnate", "j", "jungle", "k", "kabuki", "l",
+    "la-reine", "large", "m", "male", "marine", "matron", "meadow", "midday",
+    "midnight", "modern", "monsoon", "mow", "n", "natural", "normal", "o",
+    "ocean", "orange", "origin", "p", "paldea", "paldea-aqua",
+    "paldea-blaze", "paldea-combat", "pharaoh", "plant", "poke-ball",
+    "polar", "q", "question", "r", "rainy", "red", "red-striped", "river",
+    "roaming", "s", "sandstorm", "sandy", "savanna", "small", "snowy",
+    "speed", "spring", "star", "stretchy", "summer", "sun", "sunny",
+    "super", "t", "therian", "threesegment", "trash", "tundra", "u", "v",
+    "w", "wash", "wellspring", "west", "white", "white-striped", "winter",
+    "x", "y", "yellow", "z"
 ]
 
 logging.basicConfig(
