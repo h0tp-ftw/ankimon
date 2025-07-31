@@ -273,9 +273,6 @@ def check_id_ok(id_num: Union[int, list[int]]):
     if not isinstance(id_num, int):
         return False
 
-    if id_num >= 898:
-        return False
-
     generation = 0
     for gen, max_id in gen_ids.items():
         if id_num <= max_id:
