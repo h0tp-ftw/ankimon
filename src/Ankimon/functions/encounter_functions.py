@@ -87,7 +87,6 @@ def select_pokemon_form(pokemon_id):
     try:
         full_base_name = search_pokedex_by_id(pokemon_id)
         if not full_base_name:
-            # Log a warning if the initial search fails.
             logger.warning(f"No Pokémon found for ID: {pokemon_id}. Cannot select form.")
             return None, None
 
@@ -108,22 +107,27 @@ def select_pokemon_form(pokemon_id):
                 pokedex_key = full_forme_name.replace("-", "").lower()
                 form_key = search_pokedex(pokedex_key, "forme")
 
-                if form_key and any(allowed in form_key.lower() for allowed in ALLOWED_FORMES):
+                # Checks that all parts of a form name (e.g., "alola") are in the allowlist.
+                if form_key and all(part in ALLOWED_FORMES for part in form_key.lower().split('-')):
                     logger.debug(f"Found valid alternate form: '{full_forme_name}'")
                     valid_forms.append((full_forme_name, form_key))
 
-        # Replaced the print statement with a more informative log message.
         logger.info(f"Final list of valid forms for ID {pokemon_id}: {valid_forms}")
 
         chosen_name, chosen_key = random.choice(valid_forms)
+
+        # --- NEW LINES HERE ---
+        # Ensure the returned form key is always lowercase to prevent downstream errors.
+        if chosen_key:
+            chosen_key = chosen_key.lower()
+        # --- END OF CORRECTION ---
+
         logger.info(f"Successfully selected form '{chosen_name}' for Pokémon ID {pokemon_id}.")
         return chosen_name, chosen_key
 
     except Exception as e:
-        # Use logger.exception to automatically include traceback information.
         logger.exception(f"An error occurred during form selection for ID {pokemon_id}: {e}")
         
-        # Fallback logic with added logging
         base_name = search_pokedex_by_id(pokemon_id)
         if base_name:
             logger.warning(f"Falling back to base name '{base_name}' for ID {pokemon_id} after error.")
