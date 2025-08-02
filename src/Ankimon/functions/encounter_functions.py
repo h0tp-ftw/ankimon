@@ -317,7 +317,7 @@ def generate_random_pokemon(main_pokemon_level: int, ankimon_tracker_obj: Ankimo
     lvl_variation = 3
     lvl_range = (
         max(1, main_pokemon_level - lvl_variation),
-        min(100, main_pokemon_level + lvl_variation)
+        min(200, main_pokemon_level + lvl_variation)
     )
 
     attempts = 0
