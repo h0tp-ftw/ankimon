@@ -321,7 +321,7 @@ def generate_random_pokemon(main_pokemon_level: int, ankimon_tracker_obj: Ankimo
     )
 
     attempts = 0
-    while attempts < 100:
+    while attempts < 200:
         wild_pokemon_lvl = random.randint(*lvl_range)
         pokemon_id, tier = choose_random_pkmn_from_tier()
         name, form_name = select_pokemon_form(pokemon_id)
@@ -388,7 +388,7 @@ def generate_random_pokemon(main_pokemon_level: int, ankimon_tracker_obj: Ankimo
 
         attempts += 1
 
-    raise ValueError("Failed to generate a valid Pokémon after 100 attempts.")
+    raise ValueError("Failed to generate a valid Pokémon after 200 attempts.")
 
 def new_pokemon(
         pokemon: PokemonObject,
