@@ -99,8 +99,8 @@ from .functions.encounter_functions import (
 from .functions.pokedex_functions import find_details_move
 from .gui_entities import UpdateNotificationWindow, CheckFiles
 from .pyobj.help_window import HelpWindow
-from .pyobj.sync_pokemon_data import CheckPokemonData
 from .pyobj.backup_files import run_backup
+from .pyobj.ankimon_sync import save_ankimon_configs, read_ankimon_configs, setup_ankimon_sync_hooks, check_and_sync_pokemon_data
 from .classes.choose_move_dialog import MoveSelectionDialog
 from .poke_engine.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
 from .poke_engine import constants
@@ -165,7 +165,7 @@ try:
     run_backup()
 except Exception as e:
     show_warning_with_traceback(parent=mw, exception=e, message="Backup error:")
-
+    
 # Initialize mutator and mutator_full_reset
 global new_state
 global mutator_full_reset 
@@ -245,7 +245,7 @@ if mainpokemon_path.is_file():
         else:
             mainpokemon_empty = False
 
-check_data = CheckPokemonData(settings_obj, logger)
+sync_dialog = None
 
 #If reviewer showed question; start card_timer for answering card
 def on_show_question(Card):
@@ -265,7 +265,7 @@ def on_show_answer(Card):
 gui_hooks.reviewer_did_show_question.append(on_show_question)
 gui_hooks.reviewer_did_show_answer.append(on_show_answer)
 
-setupHooks(check_data , ankimon_tracker_obj, prepare)
+setupHooks(None, ankimon_tracker_obj, prepare)  
 
 online_connectivity = test_online_connectivity()
 
@@ -273,18 +273,15 @@ online_connectivity = test_online_connectivity()
 try:           
     if online_connectivity and ssh != False:
         # URL of the file on GitHub
-        github_url = "https://raw.githubusercontent.com/Unlucky-Life/ankimon/main/update_txt.md"
-        
-        if IS_EXPERIMENTAL_BUILD == True:
-            github_url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/changelogs/{addon_ver}.md"
+        github_url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/changelogs/{addon_ver}.md"
         
         # Path to the local file
         local_file_path = addon_dir / "updateinfos.md"
         # Read content from GitHub
         github_content, github_html_content = read_github_file(github_url)
         
-        # If experimental build and content is None, try unknown.md
-        if IS_EXPERIMENTAL_BUILD == True and github_content is None:
+        # If changelog content is None, try unknown.md as a fallback for all builds
+        if github_content is None:
             github_url = "https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/changelogs/unknown.md"
             github_content, github_html_content = read_github_file(github_url)
             
@@ -509,10 +506,23 @@ def on_review_card(*args):
             # 2. Unpack results from the simulation
             battle_info = results[0]
             new_state = copy.deepcopy(results[1])
-            dmg_from_enemy_move = results[2]
+            dmg_from_enemy_move = results[2]  # NOTE : This is ACTUALLY the sum of all damages and heals that occured to the user during the turn
             dmg_from_user_move = results[3]
             mutator_full_reset = results[4]
             current_battle_info_changes = results[5]
+            instructions = results[0]["instructions"]
+            heals_to_user = sum([inst[2] for inst in instructions if inst[0:2] == ['heal', 'user']])
+            heals_to_opponent = sum([inst[2] for inst in instructions if inst[0:2] == ['heal', 'opponent']])
+            true_dmg_from_enemy_move = sum([inst[2] for inst in instructions if inst[0:2] == ['damage', 'user']])
+            true_dmg_from_user_move = sum([inst[2] for inst in instructions if inst[0:2] == ['damage', 'opponent']])
+
+            # workaround for the DAMAGE being negative in some cases
+            if true_dmg_from_enemy_move < 0:
+                true_dmg_from_enemy_move = 0
+                heals_to_user += abs(true_dmg_from_enemy_move)  # Add the negative damage as a heal
+            if true_dmg_from_user_move < 0:
+                true_dmg_from_user_move = 0
+                heals_to_opponent += abs(true_dmg_from_user_move)
 
             # 3. --- IMMEDIATE STATE SYNCHRONIZATION (THE FIX) ---
             # Update Pokémon objects with the new state from the engine BEFORE any other processing.
@@ -539,8 +549,8 @@ def on_review_card(*args):
                 enemy_pokemon=enemy_pokemon,
                 user_attack=user_attack,
                 enemy_attack=enemy_attack,
-                dmg_from_user_move=dmg_from_user_move,
-                dmg_from_enemy_move=dmg_from_enemy_move,
+                dmg_from_user_move=true_dmg_from_user_move,
+                dmg_from_enemy_move=true_dmg_from_enemy_move,
                 user_hp_after=main_pokemon.hp, # Use the already updated HP
                 opponent_hp_after=enemy_pokemon.hp, # Use the already updated HP
                 battle_status=main_pokemon.battle_status,
@@ -554,14 +564,14 @@ def on_review_card(*args):
             tooltipWithColour(formatted_battle_log, color)
             
             # Handle sound effects and animations (existing code)
-            if dmg_from_enemy_move > 0 and multiplier < 1:
+            if true_dmg_from_enemy_move > 0 and multiplier < 1:
                 reviewer_obj.myseconds = settings_obj.compute_special_variable("animate_time")
-                tooltipWithColour(f" -{dmg_from_enemy_move} HP ", "#F06060", x=-200)
+                tooltipWithColour(f" -{true_dmg_from_enemy_move} HP ", "#F06060", x=-200)
                 play_effect_sound("HurtNormal")
 
-            if dmg_from_user_move > 0:
+            if true_dmg_from_user_move > 0:
                 reviewer_obj.seconds = int(settings_obj.compute_special_variable("animate_time"))
-                tooltipWithColour(f" -{dmg_from_user_move} HP ", "#F06060", x=200)
+                tooltipWithColour(f" -{true_dmg_from_user_move} HP ", "#F06060", x=200)
                 if multiplier == 1:
                     play_effect_sound("HurtNormal")
                 elif multiplier < 1:
@@ -571,6 +581,17 @@ def on_review_card(*args):
             else:
                 reviewer_obj.seconds = 0
 
+            if int(heals_to_user) != 0:
+                # "Negative heal" can happen sometimes. That's how the Life Orb item deals its damage for instance
+                heal_color = "#68FA94" if heals_to_user > 0 else "#F06060"
+                sign = "+" if heals_to_user > 0 else ""
+                tooltipWithColour(f" {sign}{int(heals_to_user)} HP ", heal_color, x=-250)
+
+            if int(heals_to_opponent) != 0:
+                # "Negative heal" can happen sometimes. That's how the Life Orb item deals its damage for instance
+                heal_color = "#68FA94" if heals_to_opponent > 0 else "#F06060"
+                sign = "+" if heals_to_opponent > 0 else ""
+                tooltipWithColour(f" {sign}{int(heals_to_opponent)} HP ", heal_color, x=250)
 
             # if enemy pokemon faints, this handles AUTOMATIC BATTLE
             if enemy_pokemon.hp < 1:
@@ -706,6 +727,26 @@ def DefeatPokemonHook():
     for hook in defeat_pokemon_hooks:
         hook()
 
+def on_profile_did_open():
+    """Initialize sync system after profile is loaded."""
+    try:
+        # Import the sync setting
+        from .config_var import ankiweb_sync
+        
+        if not ankiweb_sync:
+            logger.log("info", "AnkiWeb sync is disabled in settings - skipping sync system initialization")
+            return
+            
+        # Set up sync hooks now that profile is available
+        setup_ankimon_sync_hooks(settings_obj, logger)
+        
+        # Check for sync conflicts and show dialog if needed
+        global sync_dialog
+        sync_dialog = check_and_sync_pokemon_data(settings_obj, logger)
+        logger.log("info", "Ankimon sync system initialized successfully")
+    except Exception as e:
+        show_warning_with_traceback(parent=mw, exception=e, message="Error setting up sync system:")
+
 # Hook to expose the function
 def on_profile_loaded():
     mw.defeatpokemon = DefeatPokemonHook
@@ -715,6 +756,8 @@ def on_profile_loaded():
 
 # Add hook to run on profile load
 addHook("profileLoaded", on_profile_loaded)
+
+gui_hooks.profile_did_open.append(on_profile_did_open)
 
 def catch_shorcut_function():
     if enemy_pokemon.hp >= 1:
