@@ -35,6 +35,7 @@ from ..pyobj.InfoLogger import ShowInfoLogger
 from ..pyobj.translator import Translator
 from ..pyobj.test_window import TestWindow
 from ..pyobj.reviewer_obj import Reviewer_Manager
+from ..pyobj.error_handler import show_warning_with_traceback
 from ..business import resize_pixmap_img
 from ..resources import (
     addon_dir,
@@ -301,26 +302,16 @@ class EvoWindow(QWidget):
                                             # Save the modified data to the output JSON file
                                     with open(str(mypokemon_path), "w") as output_file:
                                         json.dump(mypokemondata, output_file, indent=2)
-                                if main_pokemon.individual_id == individual_id:
-                                    with open(str(mainpokemon_path), "r", encoding="utf-8") as output_file:
-                                        mainpokemon_data = json.load(output_file)
-                                        # Find and replace the specified Pokémon's data in mypokemondata
-                                        for index, pokemon_data in enumerate(mainpokemon_data):
-                                            if pokemon_data["individual_id"] == individual_id:
-                                                mypokemondata[index] = pokemon
-                                                break
-                                            else:
-                                                pass
-                                                    # Save the modified data to the output JSON file
-                                        with open(str(mainpokemon_path), "w") as output_file:
-                                                pokemon = [pokemon]
-                                                json.dump(pokemon, output_file, indent=2)
                                 self.logger.log_and_showinfo("info", self.translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
         except Exception as e:
-            showWarning(f"{e}")
-        try:#Update Main Pokemon Object
-            if main_pokemon.individual_id == individual_id:
-                main_pokemon = update_main_pokemon(main_pokemon)
+            show_warning_with_traceback(parent=mw, exception=e, message=f"Error occured in evolving pokemon")
+            self.logger.log(f"{e}")
+            
+        try:  # Update Main Pokemon Object and sync with file
+            if main_pokemon is not None and main_pokemon.individual_id == individual_id:
+                # Update the in-memory main_pokemon object with the evolved data                # Call update_main_pokemon to ensure file and object are in sync (this will also save to disk)
+                main_pokemon, _ = update_main_pokemon(main_pokemon)
+                # Update UI as before
                 class Container(object):
                     pass
                 reviewer = Container()
@@ -329,7 +320,7 @@ class EvoWindow(QWidget):
                 if self.test_window.isVisible() is True:
                     self.test_window.display_first_encounter()
         except Exception as e:
-            showWarning(f"Error occured in updating main_pokemon obj. {e}")
+            show_warning_with_traceback(parent=mw, exception=e, message=f"Error occured in updating main_pokemon obj")
         self.display_evo_pokemon(prevo_id, evo_id)
         check = check_for_badge(self.achievements, 16)
         if check is False:
