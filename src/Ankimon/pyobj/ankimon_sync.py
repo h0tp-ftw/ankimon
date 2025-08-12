@@ -1,4 +1,5 @@
 # ankimon_sync.py - Improved Ankimon data sync system with subfolder approach
+import base64
 import filecmp
 import json
 import os
@@ -11,6 +12,7 @@ from aqt.utils import showWarning, showInfo, tooltip
 
 from ..resources import user_path, addon_dir
 from ..config_var import ankiweb_sync
+from ..utils import close_anki
 
 from PyQt6.QtGui import QTextOption
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QTextEdit, QPushButton, QDialog, QHBoxLayout, QScrollArea, QWidget
@@ -256,8 +258,8 @@ class ImprovedPokemonDataSync(QDialog):
                             
                             # Show specific field differences
                             max_lines = max(len(local_sub), len(remote_sub))
-                            local_sub.extend([""] * (max_lines - len(local_sub)))
-                            remote_sub.extend([""] * (max_lines - len(remote_sub)))
+                            local_sub.extend(["" ] * (max_lines - len(local_sub)))
+                            remote_sub.extend(["" ] * (max_lines - len(remote_sub)))
                             
                             for l_line, r_line in zip(local_sub, remote_sub):
                                 local_lines.append(f"    {l_line}")
@@ -432,7 +434,7 @@ class ImprovedPokemonDataSync(QDialog):
             local_content.append(f"Local file exists: {local_exists}")
             web_content.append(f"AnkiWeb file exists: {media_exists}")
             
-            if filename.endswith('.json'):
+            if filename.endswith(('.json', '.obf')):
                 local_data = diff_info.get('local_data')
                 media_data = diff_info.get('media_data')
                 
@@ -445,8 +447,8 @@ class ImprovedPokemonDataSync(QDialog):
                     
                     # Pad the shorter list to align output
                     max_lines = max(len(local_lines), len(remote_lines))
-                    local_lines.extend([""] * (max_lines - len(local_lines)))
-                    remote_lines.extend([""] * (max_lines - len(remote_lines)))
+                    local_lines.extend(["" ] * (max_lines - len(local_lines)))
+                    remote_lines.extend(["" ] * (max_lines - len(remote_lines)))
                     
                     local_content.extend(local_lines)
                     web_content.extend(remote_lines)
@@ -567,6 +569,7 @@ class ImprovedPokemonDataSync(QDialog):
                 
                 tooltip("Data imported from AnkiWeb successfully! Automatic sync is now enabled.")
                 self.close()
+                close_anki()
             else:
                 showWarning("Failed to import data from AnkiWeb.")
         except Exception as e:
@@ -588,16 +591,18 @@ class AnkimonDataSync:
     This leverages Anki's built-in media sync to AnkiWeb while keeping files organized.
     """
     
+    _OBFUSCATION_KEY = "H0tP-!s-N0t-4-C@tG!rL_v2"
+    
     # Files to sync and their locations
     SYNC_FILES = {
-        "meta.json": "addon_root",
         "mypokemon.json": "user_files", 
         "mainpokemon.json": "user_files",
         "badges.json": "user_files",
         "items.json": "user_files", 
         "teams.json": "user_files",
         "data.json": "user_files",
-        "todays_shop.json": "user_files"
+        "todays_shop.json": "user_files",
+        "config.obf": "user_files"
     }
     
     def __init__(self, addon_name: str = None):
@@ -652,7 +657,7 @@ class AnkimonDataSync:
     def _get_source_path(self, filename: str) -> Path:
         """Get the source path for a file based on its location."""
         location = self.SYNC_FILES.get(filename)
-        if location == "addon_root":
+        if location == "addon_root" or filename == "meta.json":
             return self.addon_path / filename
         elif location == "user_files":
             return self.user_files_path / filename
@@ -696,6 +701,89 @@ class AnkimonDataSync:
                     
         return migrated_files
     
+    def _obfuscate_data(self, data: dict) -> str:
+        """Obfuscates dictionary data into a string."""
+        json_str = json.dumps(data)
+        obfuscated_bytes = bytearray()
+        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
+        for i, byte in enumerate(json_str.encode('utf-8')):
+            obfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
+        return base64.b64encode(obfuscated_bytes).decode('utf-8')
+
+    def _deobfuscate_data(self, obfuscated_str: str) -> dict:
+        """De-obfuscates string back into a dictionary."""
+        separator = "---DATA_START---\n"
+        parts = obfuscated_str.split(separator)
+        if len(parts) > 1:
+            obfuscated_data = parts[1]
+        else:
+            obfuscated_data = parts[0] # Fallback for old format
+
+        obfuscated_bytes = base64.b64decode(obfuscated_data)
+        deobfuscated_bytes = bytearray()
+        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
+        for i, byte in enumerate(obfuscated_bytes):
+            deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
+        return json.loads(deobfuscated_bytes.decode('utf-8'))
+
+    def _save_obfuscated_config(self):
+        try:
+            meta_path = self._get_source_path("meta.json")
+            if not meta_path.is_file():
+                return
+
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta_data = json.load(f)
+            
+            config_data = meta_data.get("config")
+            if not config_data:
+                return
+
+            obfuscated_str = self._obfuscate_data(config_data)
+            
+            warning_message = "WARNING: This file contains important user data. Do not delete or modify this file. Deleting or modifying this file can lead to data loss in the Ankimon addon.\n---DATA_START---\n"
+            
+            file_content = warning_message + obfuscated_str
+
+            obfuscated_config_path = self.user_files_path / "config.obf"
+            with open(obfuscated_config_path, 'w', encoding='utf-8') as f:
+                f.write(file_content)
+
+        except Exception as e:
+            print(f"Ankimon: Could not save obfuscated config: {e}")
+
+    def _load_and_update_config_from_obfuscated_file(self):
+        try:
+            obfuscated_config_path = self.user_files_path / "config.obf"
+            if not obfuscated_config_path.is_file():
+                return
+
+            with open(obfuscated_config_path, 'r', encoding='utf-8') as f:
+                obfuscated_str = f.read()
+            
+            if not obfuscated_str:
+                return
+
+            stored_config = self._deobfuscate_data(obfuscated_str)
+
+            meta_path = self._get_source_path("meta.json")
+            if not meta_path.is_file():
+                return
+
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                meta_data = json.load(f)
+            
+            current_config = meta_data.get("config", {})
+            
+            current_config.update(stored_config)
+            meta_data["config"] = current_config
+
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, indent=4)
+
+        except Exception as e:
+            print(f"Ankimon: Could not load obfuscated config: {e}")
+            
     def save_configs(self) -> List[str]:
         """
         Save configs from addon folder to media subfolder to trigger AnkiWeb sync.
@@ -808,19 +896,43 @@ class AnkimonDataSync:
                     'media_data': None
                 }
                 
+                if filename.endswith('.obf'):
+                    try:
+                        if file_diff['local_exists']:
+                            with open(source_file, 'r', encoding='utf-8') as f:
+                                obfuscated_local_data = f.read()
+                            file_diff['local_data'] = self._deobfuscate_data(obfuscated_local_data)
+                        
+                        if file_diff['media_exists']:
+                            with open(media_file, 'r', encoding='utf-8') as f:
+                                obfuscated_media_data = f.read()
+                            file_diff['media_data'] = self._deobfuscate_data(obfuscated_media_data)
+
+                        file_diff['files_differ'] = file_diff['local_data'] != file_diff['media_data']
+                    except Exception as e:
+                        file_diff['error'] = f"Error deobfuscating file: {str(e)}"
+
                 # Load and compare JSON data if both exist
-                if file_diff['local_exists'] and file_diff['media_exists']:
+                elif file_diff['local_exists'] and file_diff['media_exists']:
                     try:
                         with open(source_file, 'r', encoding='utf-8') as f:
                             file_diff['local_data'] = json.load(f)
                         with open(media_file, 'r', encoding='utf-8') as f:
                             file_diff['media_data'] = json.load(f)
                         
+                        # First, compare the loaded data. This is the most reliable check.
+                        if file_diff['local_data'] != file_diff['media_data']:
+                            file_diff['files_differ'] = True
+                        else:
+                            # If data is semantically the same, we don't need to check further.
+                            file_diff['files_differ'] = False
+
+                    except (json.JSONDecodeError, Exception) as e:
+                        # If we can't parse the JSON, we can't compare data.
+                        # Fall back to the binary file comparison.
+                        file_diff['error'] = f"Could not parse JSON, falling back to binary comparison: {e}"
                         file_diff['files_differ'] = not filecmp.cmp(source_file, media_file, shallow=False)
-                    except json.JSONDecodeError as e:
-                        file_diff['error'] = f"JSON decode error: {str(e)}"
-                    except Exception as e:
-                        file_diff['error'] = f"Error reading file: {str(e)}"
+
                 elif file_diff['local_exists']:
                     try:
                         with open(source_file, 'r', encoding='utf-8') as f:
@@ -886,7 +998,7 @@ class AnkimonDataSync:
                     shutil.copy2(media_file, source_file)
                     updated_files.append(filename)
             
-            showInfo(f"Imported {len(updated_files)} files from AnkiWeb: {', '.join(updated_files)}\n\nPlease restart Anki to apply changes, otherwise Ankimon may get corrupted.")
+            showInfo(f"Imported {len(updated_files)} files from AnkiWeb: {', '.join(updated_files)}\n\nAnki will now close. Please reopen Anki to apply changes!")
             return True
         except Exception as e:
             showWarning(f"Failed to import from AnkiWeb: {str(e)}")
@@ -964,7 +1076,9 @@ def save_ankimon_configs():
         return []
         
     try:
-        return get_ankimon_sync().save_configs()
+        sync_handler = get_ankimon_sync()
+        sync_handler._save_obfuscated_config()
+        return sync_handler.save_configs()
     except Exception as e:
         # Gracefully handle errors during startup
         return []
@@ -976,7 +1090,9 @@ def read_ankimon_configs(media_sync_status: bool = False):
         return []
         
     try:
-        return get_ankimon_sync().read_configs(media_sync_status)
+        sync_handler = get_ankimon_sync()
+        sync_handler._load_and_update_config_from_obfuscated_file()
+        return sync_handler.read_configs(media_sync_status)
     except Exception as e:
         # Gracefully handle errors during startup
         return []

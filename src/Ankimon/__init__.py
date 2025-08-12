@@ -101,6 +101,7 @@ from .gui_entities import UpdateNotificationWindow, CheckFiles
 from .pyobj.help_window import HelpWindow
 from .pyobj.backup_files import run_backup
 from .pyobj.ankimon_sync import save_ankimon_configs, read_ankimon_configs, setup_ankimon_sync_hooks, check_and_sync_pokemon_data
+from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .classes.choose_move_dialog import MoveSelectionDialog
 from .poke_engine.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
 from .poke_engine import constants
@@ -442,10 +443,10 @@ def on_review_card(*args):
              
                 if enemy_move_category == "Status":
                     color = "#F7DC6F"
-                elif enemy_move_category == "Physical":
-                    color = "#F0B27A"
                 elif enemy_move_category == "Special":
                     color = "#D2B4DE"
+                else:
+                    color = "#F0B27A"
 
             else:
                 enemy_attack = "splash" # if enemy will NOT attack, it uses SPLASH
@@ -464,12 +465,11 @@ def on_review_card(*args):
                 if category == "Status":
                     color = "#F7DC6F"
 
-                if category == "Physical":
-                    color = "#F0B27A"
-
                 elif category == "Special":
                     color = "#D2B4DE"
-
+                
+                else:
+                    color = "#F0B27A"
 
             try:
                 new_state
@@ -744,6 +744,9 @@ def on_profile_did_open():
         global sync_dialog
         sync_dialog = check_and_sync_pokemon_data(settings_obj, logger)
         logger.log("info", "Ankimon sync system initialized successfully")
+
+        # Show tip of the day
+        show_tip_of_the_day()
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message="Error setting up sync system:")
 
