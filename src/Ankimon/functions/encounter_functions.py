@@ -486,7 +486,20 @@ def save_main_pokemon_progress(
     if main_pokemon.level != 100 or remove_levelcap:
         main_pokemon.xp += exp
 
-    # --- LEVEL UP LOGIC (This part is fine) ---
+    # --- THIS IS THE MERGED SECTION ---
+    try:
+        if mainpokemon_path.is_file():
+            with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
+                main_pokemon_data = json.load(json_file)
+        else:
+            showWarning(translator.translate("missing_mainpokemon_data"))
+            return # Exit if the file is missing
+    except Exception as e:
+        show_warning_with_traceback(parent=mw, exception=e, message="Error loading main pokemon data.")
+        return # Exit if there's an error
+    # --- END OF MERGED SECTION ---
+
+    # --- LEVEL UP LOGIC ---
     while int(find_experience_for_level(main_pokemon.growth_rate, main_pokemon.level, settings_obj.get("misc.remove_level_cap", False))) < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap):
         main_pokemon.level += 1
         msg = f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
@@ -524,15 +537,12 @@ def save_main_pokemon_progress(
                     else:
                         logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
 
-    # --- XP GAIN MESSAGE (This part is fine) ---
+    # --- XP GAIN MESSAGE ---
     msg = translator.translate("mainpokemon_gained_xp", main_pokemon_name=main_pokemon.name, exp=exp, experience_till_next_level=experience, main_pokemon_xp=main_pokemon.xp)
     if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
         logger.log_and_showinfo("info", msg)
 
-    # =================================================================
-    # --- NEW, RELIABLE SAVE LOGIC ---
-    # =================================================================
-    
+    # --- RELIABLE SAVE LOGIC ---
     # 1. Update all stats on the in-memory object first
     ev_yield = limit_ev_yield(main_pokemon.ev, enemy_pokemon.ev_yield)
     main_pokemon.ev["hp"] += ev_yield["hp"]
