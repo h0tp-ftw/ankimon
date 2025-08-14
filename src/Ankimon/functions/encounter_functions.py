@@ -481,135 +481,91 @@ def save_main_pokemon_progress(
         evo_window: EvoWindow,
         ):
     experience = int(find_experience_for_level(main_pokemon.growth_rate, main_pokemon.level, settings_obj.get("misc.remove_level_cap", False)))
-    if remove_levelcap is True:
+    level_cap = 100 if not remove_levelcap else None
+
+    if main_pokemon.level != 100 or remove_levelcap:
         main_pokemon.xp += exp
-        level_cap = None
-    elif main_pokemon.level != 100:
-        main_pokemon.xp += exp
-        level_cap = 100
-    if mainpokemon_path.is_file():
-        with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-            main_pokemon_data = json.load(json_file)
-    else:
-        showWarning(translator.translate("missing_mainpokemon_data"))
+
+    # --- LEVEL UP LOGIC (This part is fine) ---
     while int(find_experience_for_level(main_pokemon.growth_rate, main_pokemon.level, settings_obj.get("misc.remove_level_cap", False))) < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap):
         main_pokemon.level += 1
-        msg = ""
-        msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
-        color = "#6A4DAC" #pokemon leveling info color for tooltip
-        check = check_for_badge(achievements, 5)
-        if check is False:
-            achievements = receive_badge(5,achievements)
+        msg = f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
+        color = "#6A4DAC"
+        if not check_for_badge(achievements, 5):
+            achievements = receive_badge(5, achievements)
         try:
             tooltipWithColour(msg, color)
         except:
             pass
-        if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-            logger.log_and_showinfo("info",f"{msg}")
-        main_pokemon.xp = int(max(0, int(main_pokemon.xp) - int(experience)))
+        if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
+            logger.log_and_showinfo("info", msg)
+        main_pokemon.xp = int(max(0, main_pokemon.xp - int(experience)))
+
+        # Evolution Check
         evo_id = check_evolution_for_pokemon(main_pokemon.individual_id, main_pokemon.id, main_pokemon.level, evo_window, main_pokemon.everstone)
         if evo_id is not None:
-            msg += translator.translate("pokemon_about_to_evolve", main_pokemon_name=main_pokemon.name, evo_pokemon_name=return_name_for_id(evo_id).capitalize(), main_pokemon_level=main_pokemon.level)
-            logger.log_and_showinfo("info",f"{msg}")
-            color = "#6A4DAC"
-            try:
-                tooltipWithColour(msg, color)
-            except:
-                pass
-                    #evo_window.display_pokemon_evo(main_pokemon.name.lower())
-        for mainpkmndata in main_pokemon_data:
-            if mainpkmndata["name"] == main_pokemon.name.capitalize():
-                attacks = mainpkmndata["attacks"]
-                new_attacks = get_levelup_move_for_pokemon(main_pokemon.name.lower(),int(main_pokemon.level))
-                if new_attacks:
-                    msg = ""
-                    msg += translator.translate("mainpokemon_can_learn_new_attack", main_pokemon_name=main_pokemon.name.capitalize())
-                for new_attack in new_attacks:
-                    if len(attacks) < 4 and new_attack not in attacks:
-                        attacks.append(new_attack)
-                        msg += translator.translate("mainpokemon_learned_new_attack", new_attack_name=new_attack, main_pokemon_name=main_pokemon.name.capitalize())
-                        color = "#6A4DAC"
-                        tooltipWithColour(msg, color)
-                        if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-                            logger.log_and_showinfo("info",f"{msg}")
+            evo_msg = translator.translate("pokemon_about_to_evolve", main_pokemon_name=main_pokemon.name, evo_pokemon_name=return_name_for_id(evo_id).capitalize(), main_pokemon_level=main_pokemon.level)
+            logger.log_and_showinfo("info", evo_msg)
+
+        # New Move Check
+        new_attacks = get_levelup_move_for_pokemon(main_pokemon.name.lower(), int(main_pokemon.level))
+        if new_attacks:
+            if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
+                logger.log_and_showinfo("info", translator.translate("mainpokemon_can_learn_new_attack", main_pokemon_name=main_pokemon.name.capitalize()))
+            for new_attack in new_attacks:
+                if len(main_pokemon.attacks) < 4 and new_attack not in main_pokemon.attacks:
+                    main_pokemon.attacks.append(new_attack)
+                    logger.log_and_showinfo("info", translator.translate("mainpokemon_learned_new_attack", new_attack_name=new_attack, main_pokemon_name=main_pokemon.name.capitalize()))
+                else:
+                    dialog = AttackDialog(main_pokemon.attacks, new_attack)
+                    if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_attack in main_pokemon.attacks:
+                        main_pokemon.attacks[main_pokemon.attacks.index(dialog.selected_attack)] = new_attack
+                        logger.log_and_showinfo("info", f"Replaced '{dialog.selected_attack}' with '{new_attack}'")
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
-                            selected_attack = dialog.selected_attack
-                            index_to_replace = None
-                            for index, attack in enumerate(attacks):
-                                if attack == selected_attack:
-                                    index_to_replace = index
-                                    pass
-                                else:
-                                    pass
-                            # If the attack is found, replace it with 'new_attack'
-                            if index_to_replace is not None:
-                                attacks[index_to_replace] = new_attack
-                                logger.log_and_showinfo("info",
-                                    f"Replaced '{selected_attack}' with '{new_attack}'")
-                            else:
-                                logger.log_and_showinfo("info",f"'{selected_attack}' not found in the list")
-                        else:
-                            # Handle the case where the user cancels the dialog
-                            logger.log_and_showinfo("info",f"{new_attack} will be discarded.")
-                mainpkmndata["attacks"] = attacks
-                break
-    msg = ""
-    msg += translator.translate("mainpokemon_gained_xp", main_pokemon_name=main_pokemon.name, exp=exp, experience_till_next_level=experience, main_pokemon_xp=main_pokemon.xp)
-    color = "#a17cf7" #pokemon leveling info color for tooltip
-    try:
-        tooltipWithColour(msg, color)
-    except:
-        pass
-    if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-        logger.log_and_showinfo("info",f"{msg}")
-    # Load existing Pokémon data if it exists
+                        logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
 
-    for mainpkmndata in main_pokemon_data:
-        mainpkmndata["stats"] = main_pokemon.stats
-        mainpkmndata["xp"] = int(main_pokemon.xp)
-        #mainpkmndata["stats"]["xp"] = int(main_pokemon.xp)
-        mainpkmndata["level"] = int(main_pokemon.level)
-        ev_yield = limit_ev_yield(mainpkmndata["ev"], enemy_pokemon.ev_yield)
-        mainpkmndata["ev"]["hp"] += ev_yield["hp"]
-        mainpkmndata["ev"]["atk"] += ev_yield["attack"]
-        mainpkmndata["ev"]["def"] += ev_yield["defense"]
-        mainpkmndata["ev"]["spa"] += ev_yield["special-attack"]
-        mainpkmndata["ev"]["spd"] += ev_yield["special-defense"]
-        mainpkmndata["ev"]["spe"] += ev_yield["speed"]
-        mainpkmndata["current_hp"] = int(main_pokemon.current_hp)
-        main_pokemon.friendship += random.randint(5, 9)
-        if main_pokemon.friendship > 255:
-            main_pokemon.friendship = 255
-        mainpkmndata["friendship"] = main_pokemon.friendship
-        main_pokemon.pokemon_defeated += 1
-        mainpkmndata["pokemon_defeated"] = main_pokemon.pokemon_defeated
-        if hasattr(main_pokemon, "tier"):
-            mainpkmndata["tier"] = main_pokemon.tier
-        if hasattr(main_pokemon, "is_favorite"):
-            mainpkmndata["is_favorite"] = main_pokemon.is_favorite   
-    mypkmndata = mainpkmndata
-    mainpkmndata = [mainpkmndata]
-    # Save the caught Pokémon's data to a JSON file
-    with open(str(mainpokemon_path), "w") as json_file:
-        json.dump(mainpkmndata, json_file, indent=2)
+    # --- XP GAIN MESSAGE (This part is fine) ---
+    msg = translator.translate("mainpokemon_gained_xp", main_pokemon_name=main_pokemon.name, exp=exp, experience_till_next_level=experience, main_pokemon_xp=main_pokemon.xp)
+    if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
+        logger.log_and_showinfo("info", msg)
 
-    # Load data from the output JSON file
-    with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-        mypokemondata = json.load(output_file)
-
-        # Find and replace the specified Pokémon's data in mypokemondata
-        for index, pokemon_data in enumerate(mypokemondata):
-            if pokemon_data.get("individual_id") == main_pokemon.individual_id:  # Match by individual_id
-                mypokemondata[index] = mypkmndata  # Replace with new data
-                break
-
-        # Save the modified data to the output JSON file
-        with open(str(mypokemon_path), "w") as output_file:
-            json.dump(mypokemondata, output_file, indent=2)
+    # =================================================================
+    # --- NEW, RELIABLE SAVE LOGIC ---
+    # =================================================================
     
-    sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path)
+    # 1. Update all stats on the in-memory object first
+    ev_yield = limit_ev_yield(main_pokemon.ev, enemy_pokemon.ev_yield)
+    main_pokemon.ev["hp"] += ev_yield["hp"]
+    main_pokemon.ev["atk"] += ev_yield["attack"]
+    main_pokemon.ev["def"] += ev_yield["defense"]
+    main_pokemon.ev["spa"] += ev_yield["special-attack"]
+    main_pokemon.ev["spd"] += ev_yield["special-defense"]
+    main_pokemon.ev["spe"] += ev_yield["speed"]
+
+    main_pokemon.friendship = min(255, main_pokemon.friendship + random.randint(5, 9))
+    main_pokemon.pokemon_defeated += 1
+
+    # 2. Get a complete, up-to-date dictionary FROM the in-memory object
+    complete_pokemon_data = main_pokemon.to_dict()
+
+    # 3. Save the complete data to mainpokemon.json
+    with open(str(mainpokemon_path), "w") as json_file:
+        json.dump([complete_pokemon_data], json_file, indent=2)
+
+    # 4. Find and update the same Pokémon in mypokemon.json to keep them synced
+    if mypokemon_path.is_file():
+        with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
+            all_pokemon_data = json.load(output_file)
+
+        # Find by unique ID and replace with the complete, updated data
+        for i, pkm in enumerate(all_pokemon_data):
+            if pkm.get("individual_id") == main_pokemon.individual_id:
+                all_pokemon_data[i] = complete_pokemon_data
+                break
+        
+        # Save the updated full collection
+        with open(str(mypokemon_path), "w") as output_file:
+            json.dump(all_pokemon_data, output_file, indent=2)
 
     return main_pokemon.level
 
