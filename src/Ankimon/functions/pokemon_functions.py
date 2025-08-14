@@ -178,8 +178,11 @@ def get_random_moves_for_pokemon(pokemon_name, level):
         # Normalize the Pokémon name to lowercase for consistency
         pokemon_name = pokemon_name.lower()
 
+        #remove the "-" in the pokemon with forms
+        learnset_key = pokemon_name.replace('-', '')
+
         # Retrieve the learnset for the specified Pokémon
-        pokemon_learnset = learnsets.get(pokemon_name, {})
+        pokemon_learnset = learnsets.get(learnset_key, {})
 
         # Create a dictionary to store moves and their corresponding highest levels
         moves_at_level_and_lower = {}
@@ -316,8 +319,11 @@ def get_levelup_move_for_pokemon(pokemon_name, level):
     # Normalize the Pokémon name to lowercase for consistency
     pokemon_name = pokemon_name.lower()
 
+   #remove the "-" in the pokemon with forms
+    learnset_key = pokemon_name.replace('-', '')
+
     # Retrieve the learnset for the specified Pokémon
-    pokemon_learnset = learnsets.get(pokemon_name, {})
+    pokemon_learnset = learnsets.get(learnset_key, {})
 
     # Create a dictionary to store moves and their corresponding highest levels
     moves_at_level_and_lower = {}

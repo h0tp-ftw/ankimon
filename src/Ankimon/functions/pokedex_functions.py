@@ -193,7 +193,7 @@ def get_all_pokemon_moves(pk_name, level):
             learnsets = json.load(file)
 
         # Normalize the Pokémon name to lowercase for consistency
-        pk_name = pk_name.lower()
+        pk_name = pk_name.lower().replace('-', '').replace(' ', '')
 
         # Retrieve the learnset for the specified Pokémon
         pokemon_learnset = learnsets.get(pk_name, {})

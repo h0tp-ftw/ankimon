@@ -593,6 +593,7 @@ def tm_attack_details_window(id: int, current_pokemon_moveset: list[str], logger
         pokemon_tm_learnset = json.load(f)
     
     pokemon_name = search_pokedex_by_id(id)
+    pokemon_name = pokemon_name.replace('-', '').replace(' ', '')
     tm_learnset = pokemon_tm_learnset.get(pokemon_name, [])  # TMs that can be learnt by the Pokemon
     with open(itembag_path, "r", encoding="utf-8") as json_file:
         itembag_list = json.load(json_file)
