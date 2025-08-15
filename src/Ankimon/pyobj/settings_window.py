@@ -175,7 +175,7 @@ class SettingsWindow(QMainWindow):
         label = QLabel(friendly_name)
         description_label = QLabel(description)
         description_label.setWordWrap(True)
-        description_label.setStyleSheet("color: #FFFFFF; padding-left: 5px;")
+        description_label.setStyleSheet("color: #666; padding-left: 5px;")
         description_label.setMaximumWidth(self.width() - 50)
         
         layout.addWidget(label)
