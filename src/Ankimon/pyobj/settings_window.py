@@ -190,6 +190,7 @@ class SettingsWindow(QMainWindow):
             true_radio = QRadioButton("True")
             false_radio = QRadioButton("False")
             true_radio.setChecked(value)
+            false_radio.setChecked(not value)
             
             button_group = QButtonGroup(self)
             button_group.addButton(true_radio)
