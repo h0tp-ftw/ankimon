@@ -106,6 +106,7 @@ from .classes.choose_move_dialog import MoveSelectionDialog
 from .poke_engine.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
 from .poke_engine import constants
 from .singletons import (
+    reviewer_obj,
     logger,
     settings_obj,
     settings_window,
@@ -166,13 +167,13 @@ try:
     run_backup()
 except Exception as e:
     show_warning_with_traceback(parent=mw, exception=e, message="Backup error:")
-    
+
 # Initialize mutator and mutator_full_reset
 global new_state
-global mutator_full_reset 
-global user_hp_after 
-global opponent_hp_after 
-global dmg_from_enemy_move 
+global mutator_full_reset
+global user_hp_after
+global opponent_hp_after
+global dmg_from_enemy_move
 global dmg_from_user_move
 
 # Initialize collected IDs cache
@@ -204,20 +205,12 @@ get web exports ready for special reviewer look
 mw.addonManager.setWebExports(__name__, r"user_files/.*\.(css|js|jpg|gif|html|ttf|png|mp3)")
 
 def on_webview_will_set_content(web_content: WebContent, context) -> None:
+    if not isinstance(context, aqt.reviewer.Reviewer):
+        return
     ankimon_package = mw.addonManager.addonFromModule(__name__)
-    general_url = f"""/_addons/{ankimon_package}/user_files/web/"""
-    head_code = create_head_code(general_url)
-    web_content.head += f"<style>{head_code}</style>"
-    #add function to reviewer to toggle iframe
-    web_content.js.append(f"/_addons/{ankimon_package}/user_files/web/transparent.js")
-    web_content.css.append(f"/_addons/{ankimon_package}/user_files/web/styles.css")
+    web_content.js.append(f"/_addons/{ankimon_package}/user_files/web/ankimon_hud_portal.js")
 
-def prepare(html, content, context):
-    if int(settings_obj.get("gui.show_mainpkmn_in_reviewer", 1)) == 3:
-        html_code = create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg="")
-    else:
-        html_code = ""
-    return html + html_code
+
 
 webview_will_set_content.append(on_webview_will_set_content)
 
@@ -263,29 +256,33 @@ def on_show_answer(Card):
     """
     ankimon_tracker_obj.stop_card_timer()  # This line should have 4 spaces of indentation
 
+def on_reviewer_did_show_question(card):
+    reviewer_obj.update_life_bar(mw.reviewer, None, None)
+
 gui_hooks.reviewer_did_show_question.append(on_show_question)
 gui_hooks.reviewer_did_show_answer.append(on_show_answer)
+gui_hooks.reviewer_did_show_question.append(on_reviewer_did_show_question)
 
-setupHooks(None, ankimon_tracker_obj, prepare)  
+setupHooks(None, ankimon_tracker_obj)
 
 online_connectivity = test_online_connectivity()
 
 #Connect to GitHub and Check for Notification and HelpGuideChanges
-try:           
+try:
     if online_connectivity and ssh != False:
         # URL of the file on GitHub
         github_url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/changelogs/{addon_ver}.md"
-        
+
         # Path to the local file
         local_file_path = addon_dir / "updateinfos.md"
         # Read content from GitHub
         github_content, github_html_content = read_github_file(github_url)
-        
+
         # If changelog content is None, try unknown.md as a fallback for all builds
         if github_content is None:
             github_url = "https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/changelogs/unknown.md"
             github_content, github_html_content = read_github_file(github_url)
-            
+
         # Read content from the local file
         local_content = read_local_file(local_file_path)
         # If local content exists and is the same as GitHub content, do not open dialog
@@ -344,7 +341,7 @@ def answerCard_after(rev, card, ease):
 aqt.gui_hooks.reviewer_will_answer_card.append(answerCard_before)
 aqt.gui_hooks.reviewer_did_answer_card.append(answerCard_after)
 
-            
+
 #get main pokemon details:
 if database_complete:
     try:
@@ -398,7 +395,7 @@ def on_review_card(*args):
             enemy_attack = random.choice(enemy_pokemon.attacks)
         else:
             enemy_attack = "splash"
-        
+
         global mutator_full_reset
 
         global battle_sounds
@@ -408,7 +405,7 @@ def on_review_card(*args):
         global opponent_hp_after
         global dmg_from_enemy_move
         global dmg_from_user_move
-        
+
         # Increment the counter when a card is reviewed
         attack_counter = ankimon_tracker_obj.attack_counter
         ankimon_tracker_obj.cards_battle_round += 1
@@ -437,10 +434,10 @@ def on_review_card(*args):
             ankimon_tracker_obj.pokemon_encouter += 1
             multiplier = int(ankimon_tracker_obj.multiplier)
 
-            if ankimon_tracker_obj.pokemon_encouter > 0 and enemy_pokemon.hp > 0 and dmg_in_reviewer is True and multiplier < 1:               
+            if ankimon_tracker_obj.pokemon_encouter > 0 and enemy_pokemon.hp > 0 and dmg_in_reviewer is True and multiplier < 1:
                 enemy_move = safe_get_random_move(enemy_pokemon.attacks, logger=logger)
                 enemy_move_category = enemy_move.get("category")
-             
+
                 if enemy_move_category == "Status":
                     color = "#F7DC6F"
                 elif enemy_move_category == "Special":
@@ -453,21 +450,21 @@ def on_review_card(*args):
 
             move = safe_get_random_move(main_pokemon.attacks, logger=logger)
             category = move.get("category")
-            
+
             if ankimon_tracker_obj.pokemon_encouter > 0 and main_pokemon.hp > 0 and enemy_pokemon.hp > 0:
-                
+
                 if settings_obj.get("controls.allow_to_choose_moves", False) == True:
                     dialog = MoveSelectionDialog(main_pokemon.attacks)
                     if dialog.exec() == QDialog.DialogCode.Accepted:
                         if dialog.selected_move:
-                            user_attack = dialog.selected_move    
-                            
+                            user_attack = dialog.selected_move
+
                 if category == "Status":
                     color = "#F7DC6F"
 
                 elif category == "Special":
                     color = "#D2B4DE"
-                
+
                 else:
                     color = "#F0B27A"
 
@@ -482,13 +479,13 @@ def on_review_card(*args):
             except:
                 new_state = None
                 mutator_full_reset = 1
-                user_hp_after = 0 
-                opponent_hp_after = 0 
-                dmg_from_enemy_move = 0 
+                user_hp_after = 0
+                opponent_hp_after = 0
+                dmg_from_enemy_move = 0
                 dmg_from_user_move = 0
 
             '''
-            To the devs, 
+            To the devs,
             below is the MOST IMPORTANT function for the new engine.
             This runs our current Pokemon stats through the SirSkaro Poke-Engine.
             The "results" can then be used to access battle outcomes.
@@ -502,7 +499,7 @@ def on_review_card(*args):
                 mutator_full_reset,
                 new_state,
             )
-          
+
             # 2. Unpack results from the simulation
             battle_info = results[0]
             new_state = copy.deepcopy(results[1])
@@ -540,7 +537,7 @@ def on_review_card(*args):
             # Final validation to ensure consistency
             enemy_pokemon.battle_status = validate_pokemon_status(enemy_pokemon)
             main_pokemon.battle_status = validate_pokemon_status(main_pokemon)
-            
+
             # 4. Generate the battle log message using the now-correct Pokémon states
             formatted_battle_log = process_battle_data(
                 battle_info=battle_info,
@@ -562,7 +559,7 @@ def on_review_card(*args):
 
             # Display the complete message
             tooltipWithColour(formatted_battle_log, color)
-            
+
             # Handle sound effects and animations (existing code)
             if true_dmg_from_enemy_move > 0 and multiplier < 1:
                 reviewer_obj.myseconds = settings_obj.compute_special_variable("animate_time")
@@ -616,7 +613,7 @@ def on_review_card(*args):
         # user pokemon faints
         if main_pokemon.hp < 1:
             handle_main_pokemon_faint(main_pokemon, enemy_pokemon, test_window, reviewer_obj, translator)
-            mutator_full_reset = 1 # fully reset battle state 
+            mutator_full_reset = 1 # fully reset battle state
 
         class Container(object):
             pass
@@ -689,7 +686,7 @@ create_menu_actions(
     join_discord_url,
     open_leaderboard_url,
     settings_obj,
-    addon_dir,          
+    addon_dir,
     data_handler_obj,
     pokemon_pc,
 )
@@ -732,14 +729,14 @@ def on_profile_did_open():
     try:
         # Import the sync setting
         from .config_var import ankiweb_sync
-        
+
         if not ankiweb_sync:
             logger.log("info", "AnkiWeb sync is disabled in settings - skipping sync system initialization")
             return
-            
+
         # Set up sync hooks now that profile is available
         setup_ankimon_sync_hooks(settings_obj, logger)
-        
+
         # Check for sync conflicts and show dialog if needed
         global sync_dialog
         sync_dialog = check_and_sync_pokemon_data(settings_obj, logger)
@@ -837,7 +834,7 @@ if settings_obj.get("misc.discord_rich_presence",False) == True:
             mw.ankimon_presence = DiscordPresence(client_id, large_image_url, ankimon_tracker_obj, logger, settings_obj)  # Establish connection and get the presence instance
             mw.ankimon_presence.loop = True
             mw.ankimon_presence.start()
-            
+
     def on_reviewer_will_end(*args):
         mw.ankimon_presence.loop = False
         mw.ankimon_presence.stop_presence()

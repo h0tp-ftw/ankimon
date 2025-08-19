@@ -108,7 +108,7 @@ try:
 except Exception:
     addon_ver = "unknown"
 
-#note if it is an experimental build    
+#note if it is an experimental build
 IS_EXPERIMENTAL_BUILD = addon_ver.endswith("-E")
 
 
@@ -134,7 +134,7 @@ POKEMON_TIERS = {
   # Gen 3
   377, 378, 379, 380, 381, 382, 383, 384,
   # Gen 4
-  480, 481, 482, 483, 484, 485, 486, 487, 488, 
+  480, 481, 482, 483, 484, 485, 486, 487, 488,
   # Gen 5
   638, 639, 640, 641, 642, 643, 644, 645, 646,
   # Gen 6
@@ -234,14 +234,14 @@ def generate_startup_files(base_path, base_user_path):  # Add base_user_path par
     Generates blank personal files at startup with the value [].
     Introduced as a workaround to gitignore personal files.
     """
-    files = ['mypokemon.json', 'mainpokemon.json', 'items.json', 
+    files = ['mypokemon.json', 'mainpokemon.json', 'items.json',
              'team.json', 'data.json', 'badges.json']
-    
+
     for file in files:
         file_path = os.path.join(base_user_path, file)  # Use base_user_path parameter
         # Create parent directory if needed
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
+
         if not os.path.exists(file_path):
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump([], f, indent=2)
@@ -255,7 +255,7 @@ def generate_startup_files(base_path, base_user_path):  # Add base_user_path par
         os.makedirs(os.path.dirname(rate_path), exist_ok=True)
         with open(rate_path, "w", encoding="utf-8") as f:
             json.dump(default_rating_data, f, indent=4)
-            
+
     # Create blank HelpInfos.html and updateinfos.md at base_path if they don't exist
     helpinfos_path = os.path.join(base_path, 'HelpInfos.html')
     updateinfos_path = os.path.join(base_path, 'updateinfos.md')

@@ -184,12 +184,12 @@ def modify_percentages(total_reviews, daily_average, player_level):
                     percentages[tier] = max(percentages[tier] - adjustment, 0)
                 else:
                     percentages[tier] = percentages.get(tier, 0) + adjustment
-                    
+
     # Normalize percentages to ensure they sum to 100
     total = sum(percentages.values())
     for tier in percentages:
         percentages[tier] = (percentages[tier] / total) * 100 if total > 0 else 0
-    # this function gets called maybe 10 times per battle round, which is concerning. 
+    # this function gets called maybe 10 times per battle round, which is concerning.
     # it could be rewritten to run ONLY when the change in review ratio is detected.
     return percentages
 
@@ -216,14 +216,14 @@ def get_tier(total_reviews, player_level=1, event_modifier=None):
         event_modifier (?, optional): Unused argument. Defaults to None.
 
     Returns:
-        choice[0]: The first choice of TIER picked randomly (by a random.choices function) 
+        choice[0]: The first choice of TIER picked randomly (by a random.choices function)
     """
     daily_average = int(settings_obj.get('battle.daily_average', 100))
     percentages = modify_percentages(total_reviews, daily_average, player_level)
-    
+
     tiers = list(percentages.keys())
     probabilities = list(percentages.values())
-    
+
     choice = random.choices(tiers, probabilities, k=1)
     return choice[0]
 
@@ -231,7 +231,7 @@ def choose_random_pkmn_from_tier():
     """
     Runs a tier-selection and a subsequent ID-selection function to pick a random Pokemon from a given randomly picked Tier.
     The tier is a weighted probability selection, based on total_reviews and trainer_level.
-    Pokemon ID is picked randomly from within that tier. 
+    Pokemon ID is picked randomly from within that tier.
 
     Returns:
         id (int): Pokedex ID for generated Pokemon
@@ -269,7 +269,7 @@ def check_id_ok(id_num: Union[int, list[int]]):
             id_num = id_num[0]
         else:
             return False
-    
+
     if not isinstance(id_num, int):
         return False
 
@@ -284,9 +284,9 @@ def check_id_ok(id_num: Union[int, list[int]]):
     return False
 
 def is_pokemon_level_valid(pokemon_name: str, wild_level: int) -> bool:
+
     """
     Validate Pokémon level according to its evolution stage.
-
     - If Pokémon has a pre-evolution, it must be at least its evolution level.
     - If Pokémon has evolutions, it cannot appear at or above the next evolution's level.
     """
@@ -460,7 +460,7 @@ def new_pokemon(
     pokemon.current_hp = max_hp
     pokemon.hp = max_hp
     pokemon.max_hp = max_hp
-    
+
     ankimon_tracker.randomize_battle_scene()
     if test_window is not None:
         test_window.display_first_encounter()
@@ -632,20 +632,20 @@ def kill_pokemon(
         ):
     if trainer_card is not None:
         trainer_card.gain_xp(enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves", False))
-    
+
     # Calculate experience based on whether moves are chosen manually
     exp = calc_experience(main_pokemon.base_experience, enemy_pokemon.level)
     if settings_obj.get("controls.allow_to_choose_moves", False):
         exp *= 0.5
-    
+
     # Ensure exp is at least 1 and round up if it's a decimal
     exp = max(1, math.ceil(exp))
-    
+
     # Handle XP share logic
     xp_share_individual_id = settings_obj.get("trainer.xp_share", None)
     if xp_share_individual_id:
         exp = xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon.id, exp, xp_share_individual_id)
-    
+
     # Save main Pokémon's progress
     main_pokemon.level = save_main_pokemon_progress(
         main_pokemon,
@@ -655,7 +655,7 @@ def kill_pokemon(
         logger,
         evo_window,
     )
-    
+
     ankimon_tracker_obj.general_card_count_for_battle = 0
 
 def save_caught_pokemon(
@@ -749,7 +749,7 @@ def catch_pokemon(
     if collected_pokemon_ids is not None:
         collected_pokemon_ids.add(enemy_pokemon.id)  # Update cache
     save_caught_pokemon(enemy_pokemon, nickname, achievements)
-    
+
     ankimon_tracker_obj.general_card_count_for_battle = 0
 
     msg = translator.translate("caught_wild_pokemon", enemy_pokemon_name=enemy_pokemon.name.capitalize())
