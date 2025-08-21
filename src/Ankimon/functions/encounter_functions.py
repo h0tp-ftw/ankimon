@@ -715,6 +715,9 @@ def save_caught_pokemon(
         "mega": False,
         "form_name": form_name,
         "tier": enemy_pokemon.tier,
+        "evos": [],
+        "is_favorite": False,
+        "held_item": None
     }
 
     # Load existing Pokémon data if it exists
