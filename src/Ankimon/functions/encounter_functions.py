@@ -1,6 +1,7 @@
 
 import json
 import random
+import logging
 import math
 from typing import Union
 from datetime import datetime
@@ -26,7 +27,8 @@ from ..functions.pokedex_functions import (
     return_name_for_id,
     search_pokeapi_db_by_id,
     search_pokedex,
-    search_pokedex_by_id
+    search_pokedex_by_id,
+    get_pokedex_entry
 )
 from ..pyobj.error_handler import show_warning_with_traceback
 from ..functions.trainer_functions import xp_share_gain_exp
@@ -43,15 +45,97 @@ from ..singletons import (
     translator,
 )
 from ..resources import (
-    pokemon_species_baby_path,
-    pokemon_species_legendary_path,
-    pokemon_species_mythical_path,
-    pokemon_species_normal_path,
-    pokemon_species_ultra_path,
+    POKEMON_TIERS,
     mypokemon_path,
     mainpokemon_path,
 )
 from ..config_var import remove_levelcap
+
+# form selection
+ALLOWED_FORMES = [
+    "a", "alola", "altered", "archipelago", "attack", "autumn", "average",
+    "b", "bloodmoon", "blue", "blue-striped", "c", "continental",
+    "cornerstone", "curly", "d", "dandy", "debutante", "defense", "diamond",
+    "disguised", "droopy", "dusk", "e", "east", "elegant", "eternal",
+    "exclamation", "f", "fan", "fancy", "female", "four", "frost", "galar",
+    "garden", "g", "h", "hearthflame", "heart", "heat", "high-plains",
+    "hisui", "i", "icy-snow", "incarnate", "j", "jungle", "k", "kabuki", "l",
+    "la-reine", "large", "m", "male", "marine", "matron", "meadow", "midday",
+    "midnight", "modern", "monsoon", "mow", "n", "natural", "normal", "o",
+    "ocean", "orange", "origin", "p", "paldea", "paldea-aqua",
+    "paldea-blaze", "paldea-combat", "pharaoh", "plant", "poke-ball",
+    "polar", "q", "question", "r", "rainy", "red", "red-striped", "river",
+    "roaming", "s", "sandstorm", "sandy", "savanna", "small", "snowy",
+    "speed", "spring", "star", "stretchy", "summer", "sun", "sunny",
+    "super", "t", "therian", "threesegment", "trash", "tundra", "u", "v",
+    "w", "wash", "wellspring", "west", "white", "white-striped", "winter",
+    "x", "y", "yellow", "z"
+]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+# Get a logger specific to this module
+logger = logging.getLogger(__name__)
+
+
+def select_pokemon_form(pokemon_id):
+    """
+    Gathers all possible forms from the Pokedex, validates them against an
+    allowlist, and randomly selects one of the valid options.
+    """
+    logger.info(f"Starting form selection for Pokémon ID: {pokemon_id}")
+    try:
+        # 1. Get the lowercase key using your original, UNCHANGED function.
+        # This will return "floette".
+        base_key = search_pokedex_by_id(pokemon_id)
+        if not base_key or base_key == 'Pokémon not found':
+            logger.warning(f"Could not find a key for Pokémon ID: {pokemon_id}.")
+            return None, None
+        
+        # 2. Use the new helper function to get the full data dictionary for that key.
+        base_pokemon_data = get_pokedex_entry(base_key)
+        if not base_pokemon_data:
+            logger.warning(f"Could not find Pokedex entry for key: {base_key}")
+            return None, None # Fallback if data can't be found
+        
+        # The base name for display purposes
+        base_name = base_pokemon_data['name']
+
+        # Start the list of valid forms with the base form
+        valid_forms = [(base_name, None)]
+        
+        # Gather all candidate forms from the Pokedex data
+        candidate_forms = []
+        if base_pokemon_data.get("otherFormes"):
+            candidate_forms.extend(base_pokemon_data["otherFormes"])
+        if base_pokemon_data.get("cosmeticFormes"):
+            candidate_forms.extend(base_pokemon_data["cosmeticFormes"])
+
+        # Filter the candidates against the ALLOWED_FORMES list
+        if candidate_forms:
+            base_species_name = base_pokemon_data.get("baseSpecies", base_name)
+            for full_form_name in candidate_forms:
+                form_part = full_form_name.replace(base_species_name, "", 1)
+                if form_part.startswith('-'):
+                    form_part = form_part[1:]
+                form_key = form_part.lower()
+
+                if form_key and form_key in ALLOWED_FORMES:
+                    valid_forms.append((full_form_name, form_key))
+
+        # Randomly choose a name from the validated list
+        chosen_name, chosen_key = random.choice(valid_forms)
+
+        logger.info(f"Successfully selected form '{chosen_name}' for Pokémon ID {pokemon_id}.")
+        return chosen_name, chosen_key
+
+    except Exception as e:
+        logger.exception(f"An error occurred during form selection for ID {pokemon_id}: {e}")
+        # In case of error, just return the base name from the original function
+        name_fallback = search_pokedex_by_id(pokemon_id)
+        return name_fallback, None
 
 def modify_percentages(total_reviews, daily_average, player_level):
     """
@@ -77,7 +161,7 @@ def modify_percentages(total_reviews, daily_average, player_level):
         percentages["Legendary"] += 2
         percentages["Ultra"] += 3
         percentages["Normal"] -= 5
-
+    
     # Restrict access to certain tiers based on main Pokémon level
     if main_pokemon.level:
         # Define level thresholds for each tier
@@ -109,25 +193,18 @@ def modify_percentages(total_reviews, daily_average, player_level):
     # it could be rewritten to run ONLY when the change in review ratio is detected.
     return percentages
 
+import logging
+logger = logging.getLogger(__name__)
+
 def get_pokemon_id_by_tier(tier):
-    id_species_path = None
-    if tier == "Normal":
-        id_species_path = pokemon_species_normal_path
-    elif tier == "Baby":
-        id_species_path = pokemon_species_baby_path
-    elif tier == "Ultra":
-        id_species_path = pokemon_species_ultra_path
-    elif tier == "Legendary":
-        id_species_path = pokemon_species_legendary_path
-    elif tier == "Mythical":
-        id_species_path = pokemon_species_mythical_path
-
-    with open(id_species_path, "r", encoding="utf-8") as file:
-        id_data = json.load(file)
-
-    # Select a random Pokemon ID from those in the tier
-    random_pokemon_id = random.choice(id_data)
-    return random_pokemon_id
+    if tier not in POKEMON_TIERS:
+        logger.warning(f"Tier '{tier}' not found in POKEMON_TIERS dictionary.")
+        return None
+    tier_ids = POKEMON_TIERS[tier]
+    if not tier_ids:
+        logger.warning(f"No Pokémon IDs found in tier '{tier}'.")
+        return None
+    return random.choice(tier_ids)
 
 def get_tier(total_reviews, player_level=1, event_modifier=None):
     """_summary_
@@ -170,19 +247,21 @@ def choose_random_pkmn_from_tier():
         show_warning_with_traceback(parent=mw, exception=e, message="Error occurred")
 
 def check_min_generate_level(name):
-    evoType = search_pokedex(name.lower(), "evoType")
-    evoLevel = search_pokedex(name.lower(), "evoLevel")
-    if evoLevel is not None:
-        return int(evoLevel)
-    elif evoType is not None:
-        min_level = 100
-        return int(min_level)
-    elif evoType and evoLevel is None:
-        min_level = 1
-        return int(min_level)
+    evo_type = search_pokedex(name.lower(), "evoType")
+    evo_level = search_pokedex(name.lower(), "evoLevel")
+
+    if evo_type is None and evo_level is None:
+        # This is likely a base form with no evolution — allow level 1
+        return 1
+    elif evo_type is not None and evo_level is None:
+        # This evolves by friendship, item, trade, or unknown — assume level 20 minimum
+        return 20
+    elif evo_level is not None:
+        # This evolves by level — we return its evolution level as minimum encounter level
+        return int(evo_level)
     else:
-        min_level = 1
-        return min_level
+        # Fallback
+        return 1
 
 def check_id_ok(id_num: Union[int, list[int]]):
     if isinstance(id_num, list):
@@ -192,9 +271,6 @@ def check_id_ok(id_num: Union[int, list[int]]):
             return False
 
     if not isinstance(id_num, int):
-        return False
-
-    if id_num >= 898:
         return False
 
     generation = 0
@@ -207,114 +283,113 @@ def check_id_ok(id_num: Union[int, list[int]]):
 
     return False
 
+def is_pokemon_level_valid(pokemon_name: str, wild_level: int) -> bool:
+
+    """
+    Validate Pokémon level according to its evolution stage.
+    - If Pokémon has a pre-evolution, it must be at least its evolution level.
+    - If Pokémon has evolutions, it cannot appear at or above the next evolution's level.
+    """
+    key = pokemon_name.lower()
+    prevo = search_pokedex(key, "prevo")
+    evo_level = search_pokedex(key, "evoLevel")
+    evos = search_pokedex(key, "evos")
+
+    # Evolved Pokémon: must be at or above their evolution level
+    if prevo is not None:
+        if evo_level is None or wild_level < int(evo_level):
+            return False
+
+    # Unevolved Pokémon: cannot appear if level >= next evolution's level
+    if evos:
+        next_evo_key = evos[0].lower()
+        next_evo_level = search_pokedex(next_evo_key, "evoLevel")
+        if next_evo_level is not None and wild_level >= int(next_evo_level):
+            return False
+
+    return True
+    
 def generate_random_pokemon(main_pokemon_level: int, ankimon_tracker_obj: AnkimonTracker):
     """
-    Generates a random wild Pokémon with attributes scaled to the level of the player's main Pokémon.
-
-    This function resets the encounter and battle round state in the provided `AnkimonTracker` object.
-    It then selects a valid Pokémon that can appear at the current level range, computes its stats,
-    determines its moves, ability, and other combat-relevant characteristics, and returns all necessary
-    data required for a battle.
-
-    Args:
-        main_pokemon_level (int): The level of the player's main Pokémon. Determines the level range of
-            the generated wild Pokémon.
-        ankimon_tracker_obj (AnkimonTracker): An object used to track battle state, such as the number
-            of Pokémon encountered and cards used in the battle.
-
-    Returns:
-        tuple: A tuple containing the following elements:
-            - name (str): Name of the wild Pokémon.
-            - pokemon_id (int): Unique ID of the Pokémon.
-            - wild_pokemon_lvl (int): The level of the generated Pokémon.
-            - ability (str): The selected ability of the Pokémon.
-            - pokemon_type (list[str]): List of type(s) the Pokémon belongs to.
-            - base_stats (dict): Dictionary of the Pokémon's base stats.
-            - moves (list[str]): List of up to 4 moves the Pokémon can use in battle.
-            - base_experience (int): Experience points awarded for defeating the Pokémon.
-            - growth_rate (str): Growth rate category of the Pokémon (e.g., "slow", "fast").
-            - ev (dict): Effort values (EVs) for each stat, initialized to 0.
-            - iv (dict): Randomly generated individual values (IVs) for each stat.
-            - gender (str): Randomly assigned gender.
-            - battle_status (str): Current status of the Pokémon in battle, defaulted to "fighting".
-            - final_stats (dict): Final computed stats of the Pokémon.
-            - tier (str): Tier from which the Pokémon was selected (e.g., common, rare).
-            - ev_yield (dict): Effort values (EVs) awarded upon defeating the Pokémon.
-            - is_shiny (bool): Indicates whether the Pokémon is shiny.
-
-    Raises:
-        ValueError: If no valid Pokémon can be generated (highly unlikely under normal conditions).
+    Generates a wild Pokémon with level-appropriate stats and legality,
+    including proper evolution-level filtering.
     """
     lvl_variation = 3
-    lvl_range = max(1, main_pokemon_level - lvl_variation), max(1, main_pokemon_level + lvl_variation)
-    wild_pokemon_lvl = random.randint(*lvl_range)
-    wild_pokemon_lvl = max(1, wild_pokemon_lvl)  # Ensures that the wild pokemon's level is at least 1
-    if main_pokemon_level == 100:
-        wild_pokemon_lvl = 100
-
-    # First, we draw a random, valid pokemon id.
-    pokemon_id, tier = choose_random_pkmn_from_tier()
-    name = search_pokedex_by_id(pokemon_id)
-    min_allowed_pokemon_lvl = check_min_generate_level(str(name.lower()))  # Gets the minimum allowed level for that pokemon given its stage of evolution
-    while (not check_id_ok(pokemon_id)) or (wild_pokemon_lvl < min_allowed_pokemon_lvl):  # We keep drawing a random pokemon until we find a valid one
-        pokemon_id, tier = choose_random_pkmn_from_tier()
-        name = search_pokedex_by_id(pokemon_id)
-        min_allowed_pokemon_lvl = check_min_generate_level(str(name.lower()))  # Gets the minimum allowed level for that pokemon given its stage of evolution
-
-    # Now we get all necessary information about the chosen pokemon.
-    pokemon_type = search_pokedex(name, "types")
-    base_experience = search_pokeapi_db_by_id(pokemon_id, "base_experience")  # Experience that the wild pokemon will give once beaten
-    growth_rate = search_pokeapi_db_by_id(pokemon_id, "growth_rate")
-    ev_yield = search_pokeapi_db_by_id(pokemon_id, "effort_values")
-    gender = pick_random_gender(name)
-    is_shiny = shiny_chance()
-    battle_status = "fighting"
-    base_stats = search_pokedex(name, "baseStats")
-
-    all_possible_moves = get_all_pokemon_moves(name, wild_pokemon_lvl)
-    if len(all_possible_moves) <= 4:
-        moves = all_possible_moves
-    else:
-        moves = random.sample(all_possible_moves, 4)
-
-    ability = "no_ability"  # Default value for ability
-    possible_abilities = search_pokedex(name, "abilities")
-    if possible_abilities:
-        numeric_abilities = {k: v for k, v in possible_abilities.items() if k.isdigit()}
-        if numeric_abilities:
-            ability = random.choice(list(numeric_abilities.values()))
-
-    stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
-    # ev = {stat: 0 for stat in stat_names}
-    ev = get_ev_spread(random.choice(["random", "pair", "defense", "uniform"]))
-    # tau = 200
-    # mu = 31 * (1 - math.exp(-ankimon_tracker_obj.total_reviews / tau))  # At total reviews > 3 * tau, we get mu ~= 31
-    # iv = {stat: iv_rand_gauss(mu=mu, sigma=5) for stat in stat_names}  # The higher the number of reviews, the higher the IVs
-    iv = {stat: random.randint(0, 31) for stat in stat_names}
-    final_stats = base_stats
-
-    ankimon_tracker_obj.pokemon_encounter = 0  # 0: Start of Battle: 1: Current Battle
-    ankimon_tracker_obj.cards_battle_round = 0  # Amount of cards in this current battle
-
-    return (
-        name,
-        pokemon_id,
-        wild_pokemon_lvl,
-        ability,
-        pokemon_type,
-        base_stats,
-        moves,
-        base_experience,
-        growth_rate,
-        ev,
-        iv,
-        gender,
-        battle_status,
-        final_stats,
-        tier,
-        ev_yield,
-        is_shiny
+    lvl_range = (
+        max(1, main_pokemon_level - lvl_variation),
+        min(200, main_pokemon_level + lvl_variation)
     )
+
+    attempts = 0
+    while attempts < 200:
+        wild_pokemon_lvl = random.randint(*lvl_range)
+        pokemon_id, tier = choose_random_pkmn_from_tier()
+        name, form_name = select_pokemon_form(pokemon_id)
+
+        if not name:
+            attempts += 1
+            continue
+
+        min_allowed_level = check_min_generate_level(name.lower())
+        
+        if (check_id_ok(pokemon_id) and
+            wild_pokemon_lvl >= min_allowed_level and
+            is_pokemon_level_valid(name, wild_pokemon_lvl)):
+
+            base_stats = None
+            pokedex_data_key = ""
+
+            form_specific_key = name.replace("-", "").lower()
+            form_stats = search_pokedex(form_specific_key, "baseStats")
+
+            if form_stats:
+                pokedex_data_key = form_specific_key
+                base_stats = form_stats
+                logger.info(f"Found unique stats for functional form: {name}")
+            else:
+                base_key = search_pokedex_by_id(pokemon_id)
+                pokedex_data_key = base_key
+                base_stats = search_pokedex(base_key, "baseStats")
+                logger.info(f"Using base stats for cosmetic form: {name}")
+            
+            # Use the single, reliable 'pokedex_data_key' for all Pokedex lookups.
+            pokemon_type = search_pokedex(pokedex_data_key, "types")
+            possible_abilities = search_pokedex(pokedex_data_key, "abilities")
+            all_possible_moves = get_all_pokemon_moves(pokedex_data_key, wild_pokemon_lvl)
+
+            # Gather other data using their own dedicated functions.
+            base_experience = search_pokeapi_db_by_id(pokemon_id, "base_experience")
+            growth_rate = search_pokeapi_db_by_id(pokemon_id, "growth_rate")
+            ev_yield = search_pokeapi_db_by_id(pokemon_id, "effort_values")
+            gender = pick_random_gender(name)
+            is_shiny = shiny_chance()
+            battle_status = "fighting"
+
+            moves = all_possible_moves if len(all_possible_moves) <= 4 else random.sample(all_possible_moves, 4)
+
+            ability = "no_ability"
+            if possible_abilities:
+                numeric_abilities = {k: v for k, v in possible_abilities.items() if k.isdigit()}
+                if numeric_abilities:
+                    ability = random.choice(list(numeric_abilities.values()))
+
+            stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
+            ev = get_ev_spread(random.choice(["random", "pair", "defense", "uniform"]))
+            iv = {stat: random.randint(0, 31) for stat in stat_names}
+            final_stats = base_stats
+
+            ankimon_tracker_obj.pokemon_encounter = 0
+            ankimon_tracker_obj.cards_battle_round = 0
+
+            return (
+                name, pokemon_id, wild_pokemon_lvl, ability, pokemon_type, base_stats,
+                moves, base_experience, growth_rate, ev, iv, gender, battle_status,
+                final_stats, tier, ev_yield, is_shiny, form_name
+            )
+
+        attempts += 1
+
+    raise ValueError("Failed to generate a valid Pokémon after 200 attempts.")
 
 def new_pokemon(
         pokemon: PokemonObject,
@@ -357,7 +432,8 @@ def new_pokemon(
         battle_stats,
         tier,
         ev_yield,
-        is_shiny
+        is_shiny,
+        form_name
         ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
     pokemon_data = {
         'name': name,
@@ -377,7 +453,8 @@ def new_pokemon(
         'stat_stages': {'atk': 0, 'def': 0, 'spa': 0, 'spd': 0, 'spe': 0, 'accuracy': 0, 'evasion': 0},
         'tier': tier,
         'ev_yield': ev_yield,
-        'shiny': is_shiny
+        'shiny': is_shiny,
+        'form_name': form_name
     }
     pokemon.update_stats(**pokemon_data)
     max_hp = pokemon.calculate_max_hp()
@@ -405,139 +482,109 @@ def save_main_pokemon_progress(
         evo_window: EvoWindow,
         ):
     experience = int(find_experience_for_level(main_pokemon.growth_rate, main_pokemon.level, settings_obj.get("misc.remove_level_cap", False)))
-    if remove_levelcap is True:
+    level_cap = 100 if not remove_levelcap else None
+
+    if main_pokemon.level != 100 or remove_levelcap:
         main_pokemon.xp += exp
-        level_cap = None
-    elif main_pokemon.level != 100:
-        main_pokemon.xp += exp
-        level_cap = 100
+
+    # Load the main Pokémon data with proper error handling
     try:
         if mainpokemon_path.is_file():
             with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
                 main_pokemon_data = json.load(json_file)
         else:
             showWarning(translator.translate("missing_mainpokemon_data"))
+            return # Exit if the file is missing
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message="Error loading main pokemon data.")
-        return
+        return # Exit if there's an error
+
+    # --- LEVEL UP LOGIC ---
     while int(find_experience_for_level(main_pokemon.growth_rate, main_pokemon.level, settings_obj.get("misc.remove_level_cap", False))) < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap):
         main_pokemon.level += 1
-        msg = ""
-        msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
-        color = "#6A4DAC" #pokemon leveling info color for tooltip
-        check = check_for_badge(achievements, 5)
-        if check is False:
-            achievements = receive_badge(5,achievements)
+        msg = f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
+        color = "#6A4DAC"
+        if not check_for_badge(achievements, 5):
+            achievements = receive_badge(5, achievements)
         try:
             tooltipWithColour(msg, color)
         except:
             pass
-        if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-            logger.log_and_showinfo("info",f"{msg}")
-        main_pokemon.xp = int(max(0, int(main_pokemon.xp) - int(experience)))
+        if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
+            logger.log_and_showinfo("info", msg)
+        main_pokemon.xp = int(max(0, main_pokemon.xp - int(experience)))
+
+        # Evolution Check
         evo_id = check_evolution_for_pokemon(main_pokemon.individual_id, main_pokemon.id, main_pokemon.level, evo_window, main_pokemon.everstone)
         if evo_id is not None:
-            msg += translator.translate("pokemon_about_to_evolve", main_pokemon_name=main_pokemon.name, evo_pokemon_name=return_name_for_id(evo_id).capitalize(), main_pokemon_level=main_pokemon.level)
-            logger.log_and_showinfo("info",f"{msg}")
-            color = "#6A4DAC"
-            try:
-                tooltipWithColour(msg, color)
-            except:
-                pass
-                    #evo_window.display_pokemon_evo(main_pokemon.name.lower())
-        for mainpkmndata in main_pokemon_data:
-            if mainpkmndata["name"] == main_pokemon.name.capitalize():
-                attacks = mainpkmndata["attacks"]
-                new_attacks = get_levelup_move_for_pokemon(main_pokemon.name.lower(),int(main_pokemon.level))
-                if new_attacks:
-                    msg = ""
-                    msg += translator.translate("mainpokemon_can_learn_new_attack", main_pokemon_name=main_pokemon.name.capitalize())
-                for new_attack in new_attacks:
-                    if len(attacks) < 4 and new_attack not in attacks:
-                        attacks.append(new_attack)
-                        msg += translator.translate("mainpokemon_learned_new_attack", new_attack_name=new_attack, main_pokemon_name=main_pokemon.name.capitalize())
-                        color = "#6A4DAC"
-                        tooltipWithColour(msg, color)
-                        if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-                            logger.log_and_showinfo("info",f"{msg}")
+            evo_msg = translator.translate("pokemon_about_to_evolve", main_pokemon_name=main_pokemon.name, evo_pokemon_name=return_name_for_id(evo_id).capitalize(), main_pokemon_level=main_pokemon.level)
+            logger.log_and_showinfo("info", evo_msg)
+
+        # New Move Check
+        new_attacks = get_levelup_move_for_pokemon(main_pokemon.name.lower(), int(main_pokemon.level))
+        if new_attacks:
+            if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
+                logger.log_and_showinfo("info", translator.translate("mainpokemon_can_learn_new_attack", main_pokemon_name=main_pokemon.name.capitalize()))
+            for new_attack in new_attacks:
+                if len(main_pokemon.attacks) < 4 and new_attack not in main_pokemon.attacks:
+                    main_pokemon.attacks.append(new_attack)
+                    logger.log_and_showinfo("info", translator.translate("mainpokemon_learned_new_attack", new_attack_name=new_attack, main_pokemon_name=main_pokemon.name.capitalize()))
+                else:
+                    dialog = AttackDialog(main_pokemon.attacks, new_attack)
+                    if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_attack in main_pokemon.attacks:
+                        main_pokemon.attacks[main_pokemon.attacks.index(dialog.selected_attack)] = new_attack
+                        logger.log_and_showinfo("info", f"Replaced '{dialog.selected_attack}' with '{new_attack}'")
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
-                            selected_attack = dialog.selected_attack
-                            index_to_replace = None
-                            for index, attack in enumerate(attacks):
-                                if attack == selected_attack:
-                                    index_to_replace = index
-                                    pass
-                                else:
-                                    pass
-                            # If the attack is found, replace it with 'new_attack'
-                            if index_to_replace is not None:
-                                attacks[index_to_replace] = new_attack
-                                logger.log_and_showinfo("info",
-                                    f"Replaced '{selected_attack}' with '{new_attack}'")
-                            else:
-                                logger.log_and_showinfo("info",f"'{selected_attack}' not found in the list")
-                        else:
-                            # Handle the case where the user cancels the dialog
-                            logger.log_and_showinfo("info",f"{new_attack} will be discarded.")
-                mainpkmndata["attacks"] = attacks
-                break
-    msg = ""
-    msg += translator.translate("mainpokemon_gained_xp", main_pokemon_name=main_pokemon.name, exp=exp, experience_till_next_level=experience, main_pokemon_xp=main_pokemon.xp)
-    color = "#a17cf7" #pokemon leveling info color for tooltip
-    try:
-        tooltipWithColour(msg, color)
-    except:
-        pass
-    if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True) is True:
-        logger.log_and_showinfo("info",f"{msg}")
-    # Load existing Pokémon data if it exists
+                        logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
 
-    for mainpkmndata in main_pokemon_data:
-        mainpkmndata["stats"] = main_pokemon.stats
-        mainpkmndata["xp"] = int(main_pokemon.xp)
-        #mainpkmndata["stats"]["xp"] = int(main_pokemon.xp)
-        mainpkmndata["level"] = int(main_pokemon.level)
-        ev_yield = limit_ev_yield(mainpkmndata["ev"], enemy_pokemon.ev_yield)
-        mainpkmndata["ev"]["hp"] += ev_yield["hp"]
-        mainpkmndata["ev"]["atk"] += ev_yield["attack"]
-        mainpkmndata["ev"]["def"] += ev_yield["defense"]
-        mainpkmndata["ev"]["spa"] += ev_yield["special-attack"]
-        mainpkmndata["ev"]["spd"] += ev_yield["special-defense"]
-        mainpkmndata["ev"]["spe"] += ev_yield["speed"]
-        mainpkmndata["current_hp"] = int(main_pokemon.current_hp)
-        main_pokemon.friendship += random.randint(5, 9)
-        if main_pokemon.friendship > 255:
-            main_pokemon.friendship = 255
-        mainpkmndata["friendship"] = main_pokemon.friendship
-        main_pokemon.pokemon_defeated += 1
-        mainpkmndata["pokemon_defeated"] = main_pokemon.pokemon_defeated
-        if hasattr(main_pokemon, "tier"):
-            mainpkmndata["tier"] = main_pokemon.tier
-        if hasattr(main_pokemon, "is_favorite"):
-            mainpkmndata["is_favorite"] = main_pokemon.is_favorite
-    mypkmndata = mainpkmndata
-    mainpkmndata = [mainpkmndata]
-    # Save the caught Pokémon's data to a JSON file
+    # --- XP GAIN MESSAGE ---
+    msg = translator.translate("mainpokemon_gained_xp", main_pokemon_name=main_pokemon.name, exp=exp, experience_till_next_level=experience, main_pokemon_xp=main_pokemon.xp)
+    if settings_obj.get('gui.pop_up_dialog_message_on_defeat', True):
+        logger.log_and_showinfo("info", msg)
+
+    # --- RELIABLE SAVE LOGIC ---
+    # 1. Update all stats on the in-memory object first
+    ev_yield = limit_ev_yield(main_pokemon.ev, enemy_pokemon.ev_yield)
+    main_pokemon.ev["hp"] += ev_yield["hp"]
+    main_pokemon.ev["atk"] += ev_yield["attack"]
+    main_pokemon.ev["def"] += ev_yield["defense"]
+    main_pokemon.ev["spa"] += ev_yield["special-attack"]
+    main_pokemon.ev["spd"] += ev_yield["special-defense"]
+    main_pokemon.ev["spe"] += ev_yield["speed"]
+
+    main_pokemon.friendship = min(255, main_pokemon.friendship + random.randint(5, 9))
+    main_pokemon.pokemon_defeated += 1
+
+    # 2. Get a complete, up-to-date dictionary FROM the in-memory object
+    complete_pokemon_data = main_pokemon.to_dict()
+
+    # --- FIX STARTS HERE ---
+    # This block cleans the data to ensure a consistent save format.
+    if 'base_stats' in complete_pokemon_data:
+        # Copy the correct base stats into the 'stats' field.
+        complete_pokemon_data['stats'] = complete_pokemon_data['base_stats']
+        # Remove the redundant 'base_stats' field.
+        del complete_pokemon_data['base_stats']
+    # --- FIX ENDS HERE ---
+
+    # 3. Save the complete data to mainpokemon.json
     with open(str(mainpokemon_path), "w") as json_file:
-        json.dump(mainpkmndata, json_file, indent=2)
+        json.dump([complete_pokemon_data], json_file, indent=2)
 
-    # Load data from the output JSON file
-    with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-        mypokemondata = json.load(output_file)
+    # 4. Find and update the same Pokémon in mypokemon.json to keep them synced
+    if mypokemon_path.is_file():
+        with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
+            all_pokemon_data = json.load(output_file)
 
-        # Find and replace the specified Pokémon's data in mypokemondata
-        for index, pokemon_data in enumerate(mypokemondata):
-            if pokemon_data.get("individual_id") == main_pokemon.individual_id:  # Match by individual_id
-                mypokemondata[index] = mypkmndata  # Replace with new data
+        # Find by unique ID and replace with the complete, updated data
+        for i, pkm in enumerate(all_pokemon_data):
+            if pkm.get("individual_id") == main_pokemon.individual_id:
+                all_pokemon_data[i] = complete_pokemon_data
                 break
-
-        # Save the modified data to the output JSON file
+        
+        # Save the updated full collection
         with open(str(mypokemon_path), "w") as output_file:
-            json.dump(mypokemondata, output_file, indent=2)
-
-    sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path)
+            json.dump(all_pokemon_data, output_file, indent=2)
 
     return main_pokemon.level
 
@@ -652,6 +699,7 @@ def save_caught_pokemon(
 
     #enemy_pokemon.stats["xp"] = 0
     enemy_pokemon.xp = 0
+    form_name = getattr(enemy_pokemon, 'form_name', None)
     caught_pokemon = {
         "name": enemy_pokemon.name.capitalize(),
         "nickname": "",
@@ -675,7 +723,7 @@ def save_caught_pokemon(
         "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "individual_id": str(uuid.uuid4()),
         "mega": False,
-        "special-form": None,
+        "form_name": form_name,
         "tier": enemy_pokemon.tier,
         "evos": [],
         "is_favorite": False,

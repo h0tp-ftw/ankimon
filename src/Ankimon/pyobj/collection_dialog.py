@@ -200,12 +200,14 @@ class PokemonCollectionDialog(QDialog):
                 pokemon_hp = pokemon_stats["hp"]
                 if pokemon_shiny:
                     pokemon_name += " ⭐ "
+                form_name = pokemon.get('form_name')
                 pkmn_image_path = get_sprite_path(
                     "front",
                     "gif" if self.gif_in_collection else "png",
                     pokemon_id,
                     pokemon_shiny,
-                    pokemon_gender
+                    pokemon_gender,
+                    form_name = form_name
                 )
 
                 if self.gif_in_collection:
@@ -330,6 +332,7 @@ class PokemonCollectionDialog(QDialog):
             remove_levelcap=self.remove_levelcap,
             logger=self.logger,
             refresh_callback=self.refresh_collection,
+            form_name=pokemon.get('form_name'),
         )
 
     def get_gender_symbol(self, gender):
@@ -634,103 +637,38 @@ def MainPokemon(
         reviewer_obj: Reviewer_Manager,
         test_window: TestWindow,
         ):
-    # --- Save the existing mainpokemon to mypokemon before replacing ---
+    """
+    Correctly saves the selected Pokémon as the main Pokémon,
+    preserving all data including form_name.
+    """
     try:
-        # Load the current mainpokemon
-        with open(mainpokemon_path, "r", encoding="utf-8") as f:
-            current_main_list = json.load(f)
-        if current_main_list:
-            current_main = current_main_list[0]
-            # Load mypokemon
-            with open(mypokemon_path, "r", encoding="utf-8") as f:
-                mypokemondata = json.load(f)
-            # Update or append the current mainpokemon in mypokemon
-            found = False
-            for idx, pkmn in enumerate(mypokemondata):
-                if pkmn.get("individual_id") == current_main.get("individual_id"):
-                    mypokemondata[idx] = current_main
-                    found = True
-                    break
-            if not found:
-                mypokemondata.append(current_main)
-            with open(mypokemon_path, "w", encoding="utf-8") as f:
-                json.dump(mypokemondata, f, indent=2)
-    except Exception:
-        pass  # If files don't exist, just continue
+        # Step 1: Create a full PokemonObject directly from the selected Pokémon's data.
+        # This is the most reliable way to ensure ALL attributes are included.
+        new_main_pokemon = PokemonObject.from_dict(pokemon_data)
 
-    # --- Now proceed to set the new mainpokemon as before ---
-    pokemon_id = pokemon_data.get("id")
-    pokemon_name = search_pokedex_by_id(pokemon_id)
-    base_stats = search_pokedex(pokemon_name, "baseStats")
-    current_hp = PokemonObject.calc_stat(
-        "hp",
-        base_stats["hp"],
-        pokemon_data['level'],
-        pokemon_data['iv']['hp'],
-        pokemon_data['ev']['hp'],
-        pokemon_data.get("nature", "serious")
+        # Step 2: Update the in-memory singleton for the current session.
+        main_pokemon.update_stats(**new_main_pokemon.to_dict())
+
+        # Step 3: Use the object's own .to_dict() method to get a complete dictionary for saving.
+        complete_data_to_save = [main_pokemon.to_dict()]
+
+        # Step 4: Write the COMPLETE and correct data to mainpokemon.json.
+        with open(mainpokemon_path, "w", encoding="utf-8") as f:
+            json.dump(complete_data_to_save, f, indent=4)
+
+        logger.log_and_showinfo(
+            "info",
+            translator.translate("picked_main_pokemon", main_pokemon_name=main_pokemon.name.capitalize())
         )
-    # Create NEW PokemonObject instance using class constructor
-    new_main_pokemon = PokemonObject(
-        name=pokemon_name,
-        level=pokemon_data.get('level', 5),
-        ability=pokemon_data.get('ability', ['none']),
-        type=pokemon_data.get('type', ['Normal']),
-        base_stats=base_stats,
-        ev=pokemon_data.get('ev', defaultdict(int)),
-        iv=pokemon_data.get('iv', defaultdict(int)),
-        attacks=pokemon_data.get('attacks', ['Struggle']),
-        base_experience=pokemon_data.get('base_experience', 0),
-        growth_rate=pokemon_data.get('growth_rate', 'medium'),
-        current_hp=current_hp,
-        gender=pokemon_data.get('gender', 'N'),
-        shiny=pokemon_data.get('shiny', False),
-        individual_id=pokemon_data.get('individual_id', str(uuid.uuid4())),
-        id=pokemon_data.get('id', 133),
-        status=pokemon_data.get('status', None),
-        volatile_status=set(pokemon_data.get('volatile_status', [])),
-        xp=pokemon_data.get("xp", 0),
-        nickname=pokemon_data.get('nickname', ""),
-        # Add common extra fields if constructor supports them
-        friendship=pokemon_data.get('friendship', 0),
-        pokemon_defeated=pokemon_data.get('pokemon_defeated', 0),
-        everstone=pokemon_data.get('everstone', False),
-        mega=pokemon_data.get('mega', False),
-        special_form=pokemon_data.get('special-form', None),
-        evos=pokemon_data.get('evos', []),
-        tier=pokemon_data.get('tier', None),
-        captured_date=pokemon_data.get('captured_date', None),
-        is_favorite = pokemon_data.get('is_favorite', False),
-        held_item = pokemon_data.get('held_item'),
-    )
-    # Set any additional fields not in constructor
-    extra_fields = [
-        'captured_date', 'tier', 'friendship', 'pokemon_defeated', 'everstone', 'mega', 'special-form', 'evos', 'current_hp', 'base_experience'
-    ]
-    for key in extra_fields:
-        # Use attribute name 'special_form' for 'special-form'
-        attr = 'special_form' if key == 'special-form' else key
-        if key in pokemon_data:
-            setattr(new_main_pokemon, attr, pokemon_data[key])
+        
+        # Step 5: Update UI components
+        class Container(object): pass
+        reviewer = Container()
+        reviewer.web = mw.reviewer.web
+        reviewer_obj.update_life_bar(reviewer, 0, 0)
+        
+        if test_window.isVisible():
+            test_window.display_first_encounter()
 
-    # Update existing reference
-    main_pokemon.__dict__.update(new_main_pokemon.__dict__)
-
-    # Save to JSON using the object's native serialization
-    main_pokemon_data = [main_pokemon.to_dict()]
-    with open(mainpokemon_path, "w") as f:
-        json.dump(main_pokemon_data, f, indent=2)
-
-    logger.log_and_showinfo(
-        "info",
-        translator.translate("picked_main_pokemon",main_pokemon_name=main_pokemon.name.capitalize())
-        )
-
-    # Update UI components
-    class Container(object): pass
-    reviewer = Container()
-    reviewer.web = mw.reviewer.web
-    reviewer_obj.update_life_bar(reviewer, 0, 0)
-
-    if test_window.isVisible():
-        test_window.display_first_encounter()
+    except Exception as e:
+        showWarning(f"An error occurred while setting the main Pokémon: {e}")

@@ -257,7 +257,10 @@ class PokemonPC(QDialog):
                     continue
 
                 pokemon = pokemon_list_slice[pokemon_idx]
-                pkmn_image_path = get_sprite_path("front", "gif" if self.gif_in_collection else "png", pokemon['id'], pokemon.get("shiny", False), pokemon["gender"])
+                # Get the form name from the saved Pokémon data
+                form_name = pokemon.get('form_name')
+
+                pkmn_image_path = get_sprite_path("front", "gif" if self.gif_in_collection else "png", pokemon['id'], pokemon.get("shiny", False), pokemon["gender"], form_name=form_name)
                 pokemon_button = QPushButton("")
                 pokemon_button.setFixedSize(self.slot_size, self.slot_size)
 
@@ -680,6 +683,7 @@ class PokemonPC(QDialog):
         Raises:
             ValueError: If neither 'base_stats' nor 'stats' are available in the Pokémon dictionary.
         """
+        print(f"[PC BOX DEBUG] Showing details for {pokemon.get('name')}. Form name from data: {pokemon.get('form_name')}")
         if pokemon.get('base_stats'):
             detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0)}
         elif pokemon.get('stats'):
@@ -692,6 +696,7 @@ class PokemonPC(QDialog):
             level=pokemon['level'],
             id=pokemon['id'],
             shiny=pokemon.get("shiny", False),
+            form_name=pokemon.get('form_name'),
             ability=pokemon['ability'],
             type=pokemon['type'],
             detail_stats=detail_stats,
@@ -744,7 +749,7 @@ class PokemonPC(QDialog):
 
         if self.logger is not None:
             self.logger.log("info", f"Could not make/unmake {pokemon['name']} favorite")
-
+                
     def give_held_item(self, pokemon: dict[list, Any]):
         """
         Opens a window to select and give a held item to the specified Pokémon.

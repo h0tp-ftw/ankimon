@@ -6,6 +6,7 @@ import os
 from aqt import mw
 from aqt.utils import showInfo, showWarning
 from ..resources import mypokemon_path, frontdefault, team_pokemon_path
+from ..functions.sprite_functions import get_sprite_path
 
 class PokemonTeamDialog(QDialog):
     def __init__(self, settings_obj, logger, parent=mw):
@@ -142,7 +143,12 @@ class PokemonTeamDialog(QDialog):
                 pokemon = self.team_pokemon[i]
                 pokemon_name = pokemon['name']
                 pokemon_level = pokemon['level']
-                sprite_path = os.path.join(frontdefault, f"{pokemon['id']}.png")
+                
+                # Get the form name from the saved Pokémon data
+                form_name = pokemon.get('form_name')
+
+                # Use the get_sprite_path helper function
+                sprite_path = get_sprite_path("front", "png", pokemon['id'], pokemon.get('shiny', False), pokemon.get('gender'), form_name=form_name)
 
                 # Update label with name and level
                 frame_data['label'].setText(f"{pokemon_name} (Level {pokemon_level})")

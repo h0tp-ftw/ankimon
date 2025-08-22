@@ -9,7 +9,7 @@ new_values = {
     "everstone": False,
     "shiny": False,
     "mega": False,
-    "special-form": None,
+    "form_name": None,
     "friendship": 0,
     "pokemon_defeated": 0,
     "ability": "No Ability",

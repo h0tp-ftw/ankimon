@@ -6,6 +6,9 @@ import random
 import csv
 from ..pyobj.error_handler import show_warning_with_traceback
 
+with open(str(pokedex_path), "r", encoding="utf-8") as f:
+    POKEDEX_DATA = json.load(f)
+
 def special_pokemon_names_for_min_level(name):
     if name == "flabébé":
         return "flabebe"
@@ -58,16 +61,32 @@ def special_pokemon_names_for_min_level(name):
     else:
         return name
 
-def search_pokedex(pokemon_name,variable):
-    pokemon_name = special_pokemon_names_for_min_level(pokemon_name)
-    with open(str(pokedex_path), "r", encoding="utf-8") as json_file:
-            pokedex_data = json.load(json_file)
-            if pokemon_name in pokedex_data:
-                pokemon_info = pokedex_data[pokemon_name]
-                var = pokemon_info.get(variable, None)
-                return var
-            else:
-                return []
+def search_pokedex(pokemon_name, variable):
+    # This assumes POKEDEX_DATA is a globally loaded dictionary.
+    # If not, you'll need to load it here.
+    
+    # Normalize the name to match the keys in pokedex.json (e.g., "sandslash-alola" -> "sandslashalola")
+    lookup_key = pokemon_name.lower().replace('-', '').replace(' ', '')
+    
+    pokemon_info = POKEDEX_DATA.get(lookup_key)
+
+    if pokemon_info:
+        # 1. Try to get the variable from the specific form first.
+        value = pokemon_info.get(variable)
+        if value is not None:
+            return value
+
+        # 2. If not found, and it's a regional form, try the base species.
+        base_species_name = pokemon_info.get("baseSpecies")
+        if base_species_name:
+            base_lookup_key = base_species_name.lower().replace('-', '').replace(' ', '')
+            base_pokemon_info = POKEDEX_DATA.get(base_lookup_key)
+            if base_pokemon_info:
+                # Return the value from the base form (will be None if not found there either)
+                return base_pokemon_info.get(variable)
+    
+    # If the pokemon_name itself wasn't found, or no value was found on either form
+    return None
 
 def search_pokedex_by_name_for_id(pokemon_name, variable):
     pokemon_name = special_pokemon_names_for_min_level(pokemon_name)
@@ -113,6 +132,13 @@ def search_pokeapi_db_by_id(pkmn_id,variable):
                 if pokemon_data["id"] == pkmn_id:
                     var = pokemon_data.get(variable, None)
                     return var
+
+def get_pokedex_entry(key: str):
+    """
+    Safely retrieves the entire data dictionary for a given Pokedex key.
+    Uses the globally loaded POKEDEX_DATA for efficiency.
+    """
+    return POKEDEX_DATA.get(key)
 
 #TODO change all the functions to use language as a parameter
 def get_pokemon_descriptions(species_id, language):
@@ -174,7 +200,7 @@ def get_all_pokemon_moves(pk_name, level):
             learnsets = json.load(file)
 
         # Normalize the Pokémon name to lowercase for consistency
-        pk_name = pk_name.lower()
+        pk_name = pk_name.lower().replace('-', '').replace(' ', '')
 
         # Retrieve the learnset for the specified Pokémon
         pokemon_learnset = learnsets.get(pk_name, {})

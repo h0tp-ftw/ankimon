@@ -25,7 +25,7 @@ from ..utils import format_move_name, load_custom_font
 from ..resources import icon_path, addon_dir, mainpokemon_path, mypokemon_path, pokemon_tm_learnset_path, itembag_path
 from ..texts import attack_details_window_template, attack_details_window_template_end, remember_attack_details_window_template, remember_attack_details_window_template_end
 
-def PokemonCollectionDetails(name, level, id, shiny, ability, type, detail_stats, attacks, base_experience, growth_rate, ev, iv, gender, nickname, individual_id, pokemon_defeated, everstone, captured_date, language, gif_in_collection, remove_levelcap, logger, refresh_callback):
+def PokemonCollectionDetails(name, level, id, shiny, ability, type, detail_stats, attacks, base_experience, growth_rate, ev, iv, gender, nickname, individual_id, pokemon_defeated, everstone, captured_date, language, gif_in_collection, remove_levelcap, logger, refresh_callback,form_name):
     # Create a layout for the details panel
     try:
         lang_name = get_pokemon_diff_lang_name(int(id), language).capitalize()
@@ -37,7 +37,7 @@ def PokemonCollectionDetails(name, level, id, shiny, ability, type, detail_stats
         # Display the Pokémon image
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
-        pkmnimage_path = get_sprite_path("front", "gif" if gif_in_collection else "png", id, shiny, gender)
+        pkmnimage_path = get_sprite_path("front", "gif" if gif_in_collection else "png", id, shiny, gender, form_name=form_name)
 
         if gif_in_collection:
             pkmnimage_label = MovieSplashLabel(pkmnimage_path)
@@ -593,6 +593,7 @@ def tm_attack_details_window(id: int, current_pokemon_moveset: list[str], logger
         pokemon_tm_learnset = json.load(f)
 
     pokemon_name = search_pokedex_by_id(id)
+    pokemon_name = pokemon_name.replace('-', '').replace(' ', '')
     tm_learnset = pokemon_tm_learnset.get(pokemon_name, [])  # TMs that can be learnt by the Pokemon
     with open(itembag_path, "r", encoding="utf-8") as json_file:
         itembag_list = json.load(json_file)

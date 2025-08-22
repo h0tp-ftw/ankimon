@@ -38,11 +38,6 @@ from .resources import (
     mypokemon_path,
     mainpokemon_path,
     addon_dir,
-    pokemon_species_baby_path,
-    pokemon_species_legendary_path,
-    pokemon_species_mythical_path,
-    pokemon_species_normal_path,
-    pokemon_species_ultra_path,
     POKEMON_TIERS
 )
 
@@ -784,6 +779,10 @@ def get_ev_spread(mode: str="random") -> dict[str, int]:
 
     raise ValueError(f"Received unknown value for 'mode': {mode}")
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def get_tier_by_id(pokemon_id: int) -> Union[str, None]:
     """
     Determines the tier category of a Pokémon based on its ID.
@@ -800,9 +799,14 @@ def get_tier_by_id(pokemon_id: int) -> Union[str, None]:
         in one of the tier lists; otherwise, None.
     """
 
+    logger.debug(f"Looking up tier for Pokémon ID: {pokemon_id}")
+  
     for tier, ids in POKEMON_TIERS.items():
         if pokemon_id in ids:
+            logger.debug(f"Found tier '{tier}' for Pokémon ID: {pokemon_id}")
             return tier
+
+    logger.warning(f"No tier found for Pokémon ID: {pokemon_id}")
     return None
 
 def safe_get_random_move(

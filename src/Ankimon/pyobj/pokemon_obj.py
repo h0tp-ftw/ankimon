@@ -2,9 +2,10 @@ from typing import Union
 import uuid
 import json
 import os
+from pathlib import Path
 
 from ..poke_engine.objects import Pokemon
-from ..resources import pkmnimgfolder, mainpokemon_path, mypokemon_path
+from ..resources import pkmnimgfolder, mainpokemon_path, mypokemon_path, user_path_sprites, frontdefault
 from ..utils import substract_item_from_itembag, give_item
 
 class PokemonObject:
@@ -12,6 +13,7 @@ class PokemonObject:
         self,
         name="Ditto",
         shiny=False,
+        form_name = None,
         id=None,
         level=3,
         ability=None,
@@ -45,6 +47,7 @@ class PokemonObject:
         # Unique identifier
         self.individual_id = str(individual_id) if individual_id else str(uuid.uuid4())
         self.name = str(name)
+        self.form_name = str(form_name) if form_name is not None else ""
         self.nickname = str(nickname) if nickname is not None else ""
         self.shiny = bool(shiny)
         self.id = int(id) if id is not None else 132
@@ -180,7 +183,7 @@ class PokemonObject:
             "captured_date": getattr(self, "captured_date", None),
             "individual_id": self.individual_id,
             "mega": getattr(self, "mega", False),
-            "special-form": getattr(self, "special_form", None),
+            "form_name": getattr(self, "form_name", None),
             "evos": self.evos,
             "xp": self.xp,
             "hp": self.hp,  # Current HP
@@ -204,6 +207,10 @@ class PokemonObject:
     def update_stats(self, **kwargs):
         """Update the attributes of the Pokémon object with keyword arguments."""
         for key, value in kwargs.items():
+            # Add this check to skip the read-only 'stats' property
+            if key == "stats":
+                continue
+            
             if hasattr(self, key):
                 setattr(self, key, value)
         self._update_battle_stats()  # Update battle stats
@@ -229,30 +236,57 @@ class PokemonObject:
         return hp
 
     def get_sprite_path(self, side, sprite_type):
-        """Return the path to the sprite of the Pokémon."""
-        base_path = f"{side}_default_gif" if sprite_type == "gif" else f"{side}_default"
+        """
+        Returns the path to the sprite of the Pokémon, with several fallbacks.
+        - Checks for specific forms (e.g., alola, therian).
+        - Checks for shiny and female variants in their respective subfolders.
+        - If a GIF is requested but not found, it will fall back to the PNG version.
+        """
+        
+        def find_sprite(check_sprite_type):
+            """Internal helper to find a sprite by checking all possible variations."""
+            folder_name = f"{side}_default_gif" if check_sprite_type == "gif" else f"{side}_default"
+            base_path = user_path_sprites / folder_name
 
-        shiny_path = "shiny/" if self.shiny else ""
-        gender_path = "female/" if self.gender == "F" else ""
+            # Create a list of filenames to check, from most specific to least specific
+            filenames = []
+            if self.form_name:
+                filenames.append(f"{self.id}-{self.form_name.lower()}.{check_sprite_type}")
+            filenames.append(f"{self.id}.{check_sprite_type}")
 
-        path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
-        default_path = f"{pkmnimgfolder}/front_default/substitute.png"
-
-        # Check if the file exists at the given path
-        if os.path.exists(path):
-            return path
-        else:
+            # Create a list of subfolder paths to check, from most specific to least specific
+            subfolders = []
+            if self.shiny and self.gender == "F":
+                subfolders.append(Path("shiny/female"))
+            if self.shiny:
+                subfolders.append(Path("shiny"))
             if self.gender == "F":
-                gender_path = ""
-                path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
-                return path
-            elif self.shiny == "True":
-                shiny_path = ""
-                path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
-                return path
-            else:
-                return default_path
+                subfolders.append(Path("female"))
+            subfolders.append(Path(".")) # Root sprite folder
 
+            # Iterate through all possibilities to find the first matching sprite
+            for subfolder in subfolders:
+                for filename in filenames:
+                    path_to_check = base_path / subfolder / filename
+                    if os.path.exists(path_to_check):
+                        return str(path_to_check)
+            
+            return None
+
+        # 1. Try to find the requested sprite type (e.g., "gif")
+        found_path = find_sprite(sprite_type)
+        if found_path:
+            return found_path
+
+        # 2. If the requested type was "gif" and it wasn't found, automatically try "png"
+        if sprite_type == "gif":
+            png_path = find_sprite("png")
+            if png_path:
+                return png_path
+
+        # 3. If no valid sprite is found, return the placeholder image
+        return str(frontdefault / "substitute.png")
+    
     def to_engine_format(self):
         from ..poke_engine.helpers import normalize_name
         return {

@@ -1,6 +1,7 @@
 import json
 import random
 
+from ..functions.sprite_functions import get_sprite_path
 from aqt import mw
 from aqt.utils import showWarning
 from aqt.qt import (
@@ -150,8 +151,9 @@ class EvoWindow(QWidget):
         evo_name = return_name_for_id(evo_id)
 
         # Display the Pokémon image
-        pkmnimage_path = frontdefault / f"{prevo_id}.png"
-        pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
+        # Use the helper for both the pre-evolution and the evolution
+        pkmnimage_path = get_sprite_path("front", "png", id=prevo_id)
+        pkmnimage_path2 = get_sprite_path("front", "png", id=evo_id)
         pkmnpixmap = QPixmap()
         pkmnpixmap.load(str(pkmnimage_path))
         pkmnpixmap2 = QPixmap()
