@@ -642,8 +642,13 @@ def MainPokemon(
     preserving all data including form_name.
     """
     try:
-        # Step 1: Create a full PokemonObject directly from the selected Pokémon's data.
-        # This is the most reliable way to ensure ALL attributes are included.
+        # Before creating the object, we check if the incoming data is from
+        # mypokemon.json (where base stats are under the 'stats' key).
+        if 'stats' in pokemon_data and 'base_stats' not in pokemon_data:
+            # If so, we create the 'base_stats' key to match the expected format.
+            pokemon_data['base_stats'] = pokemon_data['stats']
+
+        # Step 1: Create a full PokemonObject from the now-corrected data dictionary.
         new_main_pokemon = PokemonObject.from_dict(pokemon_data)
 
         # Step 2: Update the in-memory singleton for the current session.
