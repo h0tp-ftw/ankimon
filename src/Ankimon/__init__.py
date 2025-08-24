@@ -370,7 +370,7 @@ if database_complete:
         'battle_stats': battle_stats,
         'tier': tier,
         'ev_yield': ev_yield,
-        'shiny': shiny,
+        'shiny': shiny
     }
     enemy_pokemon.update_stats(**pokemon_data)
     max_hp = enemy_pokemon.calculate_max_hp()
