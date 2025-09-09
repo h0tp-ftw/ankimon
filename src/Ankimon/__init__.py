@@ -58,6 +58,7 @@ from .resources import (
     sound_list_path,
     badges_list_path,
     items_list_path,
+    rate_path,
 )
 from .menu_buttons import create_menu_actions
 from .hooks import setupHooks
@@ -136,6 +137,8 @@ from .singletons import (
     pokemon_pc
 )
 
+from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+
 from .functions.battle_functions import (
     update_pokemon_battle_status,
     validate_pokemon_status,
@@ -184,8 +187,7 @@ if not _collection_loaded: # If the collection hasn't already been loaded
     collected_pokemon_ids = load_collected_pokemon_ids()
     _collection_loaded = True
 
-config = mw.addonManager.getConfig(__name__)
-#show config .json file
+
 
 items_list = []
 with open(items_list_path, "r", encoding="utf-8") as file:
@@ -313,7 +315,7 @@ def open_help_window(online_connectivity):
 
 gen_config = []
 for i in range(1,10):
-    gen_config.append(config[f"misc.gen{i}"])
+    gen_config.append(settings_obj.get(f"misc.gen{i}"))
 
 def answerCard_before(filter, reviewer, card):
 	utils.answBtnAmt = reviewer.mw.col.sched.answerButtons(card)
@@ -569,7 +571,7 @@ def on_review_card(*args):
                 play_effect_sound("HurtNormal")
 
             if true_dmg_from_user_move > 0:
-                reviewer_obj.seconds = int(settings_obj.compute_special_variable("animate_time"))
+                reviewer_obj.seconds = settings_obj.compute_special_variable("animate_time")
                 tooltipWithColour(f" -{true_dmg_from_user_move} HP ", "#F06060", x=200)
                 if multiplier == 1:
                     play_effect_sound("HurtNormal")
@@ -746,6 +748,9 @@ def on_profile_did_open():
 
         # Show tip of the day
         show_tip_of_the_day()
+
+        # Award monthly pokemon if applicable
+        check_and_award_monthly_pokemon(logger)
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message="Error setting up sync system:")
 
