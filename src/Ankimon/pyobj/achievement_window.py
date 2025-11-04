@@ -1,4 +1,4 @@
-import json
+import orjson
 
 from aqt import mw
 from aqt.qt import (
@@ -73,8 +73,8 @@ class AchievementWindow(QWidget):
     def BadgesLabel(self, badge_num):
         badge_path = badges_path / f"{str(badge_num)}.png"
         frame = QVBoxLayout() #itemframe
-        with open(badges_list_path, "r", encoding="utf-8") as json_file:
-            badges = json.load(json_file)
+        with open(badges_list_path, "rb") as f:
+            badges = orjson.loads(f.read())
         achievement_description = f"{(badges[str(badge_num)])}"
         badges_name_label = QLabel(f"{achievement_description}")
         badges_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -114,8 +114,8 @@ class AchievementWindow(QWidget):
 
     def read_item_file(self):
         # Read the list from the JSON file
-        with open(badgebag_path, "r", encoding="utf-8") as json_file:
-            self.badge_list = json.load(json_file)
+        with open(badgebag_path, "rb") as f:
+            self.badge_list = orjson.loads(f.read())
 
     def clear_layout(self, layout):
         while layout.count():

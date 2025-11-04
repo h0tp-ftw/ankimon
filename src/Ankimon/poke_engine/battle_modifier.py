@@ -1,5 +1,5 @@
 import re
-import json
+import orjson
 from copy import deepcopy
 import logging
 
@@ -102,7 +102,7 @@ def request(battle, split_msg):
     """Update the user's team given the battle JSON in split_msg[2]
        Also updates some battle meta-data such as rqid, force_switch, and wait"""
     if len(split_msg) >= 2:
-        battle_json = json.loads(split_msg[2].strip('\''))
+        battle_json = orjson.loads(split_msg[2].strip('\''))
         logger.debug("Received battle JSON from server: {}".format(battle_json))
         battle.rqid = battle_json[constants.RQID]
 

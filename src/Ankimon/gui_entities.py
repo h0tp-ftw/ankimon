@@ -1,5 +1,5 @@
 import markdown
-import json
+import orjson
 from PyQt6.QtGui import QMovie, QIcon
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QTextEdit, QCheckBox, QPushButton, QMessageBox, QWidget, QScrollArea, QGridLayout, QTextBrowser
 from aqt import mw
@@ -297,8 +297,8 @@ class Pokedex_Widget(QWidget):
         self.initUI()
 
     def read_poke_coll(self):
-        with (open(mypokemon_path, "r", encoding="utf-8") as json_file):
-            self.captured_pokemon_data = json.load(json_file)
+        with (open(mypokemon_path, "rb")) as f:
+            self.captured_pokemon_data = orjson.loads(f.read())
 
     def initUI(self):
         self.setWindowTitle("Pokédex")

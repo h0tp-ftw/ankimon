@@ -1,4 +1,4 @@
-import json
+import orjson
 import hashlib
 import requests
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QFrame
@@ -50,11 +50,11 @@ def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
 def add_pokemon_to_collection(new_pokemon, refresh_callback=None, parent_window=None):
     """Adds a Pokémon to the user's collection file."""
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_list = json.load(file)
+        with open(mypokemon_path, "rb") as file:
+            pokemon_list = orjson.loads(file.read())
         pokemon_list.append(new_pokemon)
-        with open(mypokemon_path, "w", encoding="utf-8") as file:
-            json.dump(pokemon_list, file, indent=2)
+        with open(mypokemon_path, "wb") as file:
+            file.write(orjson.dumps(pokemon_list, option=orjson.OPT_INDENT_2))
         if refresh_callback:
             refresh_callback()
     except Exception as e:
@@ -65,8 +65,8 @@ def check_and_award_monthly_pokemon(logger):
     try:
         should_check = False
         if rate_path.is_file():
-            with open(rate_path, "r", encoding="utf-8") as f:
-                if json.load(f).get("rate_this") is True:
+            with open(rate_path, "rb") as f:
+                if orjson.loads(f.read()).get("rate_this") is True:
                     should_check = True
         
         if not should_check:
@@ -104,9 +104,9 @@ def check_and_award_monthly_pokemon(logger):
             return
 
         try:
-            with open(mypokemon_path, "r", encoding="utf-8") as f:
-                my_pokemon = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
+            with open(mypokemon_path, "rb") as f:
+                my_pokemon = orjson.loads(f.read())
+        except (FileNotFoundError, orjson.JSONDecodeError) as e:
             logger.log("error", f"Failed to load or parse mypokemon.json: {e}")
             return
 

@@ -17,7 +17,7 @@ except ModuleNotFoundError:
     # Debug console should not be available to non devs, so it's fine if this import doesn't succeed
     pass
 
-import json
+import orjson
 import random
 import copy
 from pathlib import Path
@@ -149,11 +149,11 @@ from .pyobj.error_handler import show_warning_with_traceback
 from .functions.drawing_utils import draw_gender_symbols, draw_stat_boosts
 
 # Load move and pokemon name mapping at startup
-with open(pokemon_names_file_path, "r", encoding="utf-8") as f:
-    POKEMON_NAME_LOOKUP = json.load(f)
+with open(pokemon_names_file_path, "rb") as f:
+    POKEMON_NAME_LOOKUP = orjson.loads(f.read())
 
-with open(move_names_file_path, "r", encoding="utf-8") as f:
-    MOVE_NAME_LOOKUP = json.load(f)
+with open(move_names_file_path, "rb") as f:
+    MOVE_NAME_LOOKUP = orjson.loads(f.read())
 
 mw.settings_ankimon = settings_window
 mw.logger = logger
@@ -194,11 +194,11 @@ if not _collection_loaded: # If the collection hasn't already been loaded
 
 
 items_list = []
-with open(items_list_path, "r", encoding="utf-8") as file:
-    items_list = json.load(file)
+with open(items_list_path, "rb") as file:
+    items_list = orjson.loads(file.read())
 
-with open(sound_list_path, "r", encoding="utf-8") as json_file:
-    sound_list = json.load(json_file)
+with open(sound_list_path, "rb") as f:
+    sound_list = orjson.loads(f.read())
 
 ankimon_tracker_obj.pokemon_encouter = 0
 
@@ -239,8 +239,8 @@ if not database_complete:
     dialog.show()
 
 if mainpokemon_path.is_file():
-    with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-        main_pokemon_data = json.load(json_file)
+    with open(mainpokemon_path, "rb") as f:
+        main_pokemon_data = orjson.loads(f.read())
         if not main_pokemon_data or main_pokemon_data is None:
             mainpokemon_empty = True
         else:
@@ -657,21 +657,21 @@ def on_review_card(*args):
 gui_hooks.reviewer_did_answer_card.append(on_review_card)
 
 if database_complete:
-    with open(badgebag_path, "r", encoding="utf-8") as json_file:
-        badge_list = json.load(json_file)
+    with open(badgebag_path, "rb") as f:
+        badge_list = orjson.loads(f.read())
         if len(badge_list) > 1: # has atleast one badge
             rate_this_addon()
 
 #Badges needed for achievements:
-with open(badges_list_path, "r", encoding="utf-8") as json_file:
-    badges = json.load(json_file)
+with open(badges_list_path, "rb") as f:
+    badges = orjson.loads(f.read())
 
 if database_complete:
     if mypokemon_path.is_file() is False:
         starter_window.display_starter_pokemon()
     else:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_list = json.load(file)
+        with open(mypokemon_path, "rb") as file:
+            pokemon_list = orjson.loads(file.read())
             if not pokemon_list :
                 starter_window.display_starter_pokemon()
 

@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-import json
+import orjson
 
 addon_dir = Path(__file__).parents[0]
 
@@ -103,7 +103,7 @@ backup_folders = [os.path.join(backup_root, f"backup_{i}") for i in range(1, 4)]
 
 #detect add-on version
 try:
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = orjson.loads(manifest_path.read_text(encoding="utf-8"))
     addon_ver = manifest.get("version", "unknown")
 except Exception:
     addon_ver = "unknown"
@@ -288,8 +288,8 @@ def generate_startup_files(base_path, base_user_path):  # Add base_user_path par
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         if not os.path.exists(file_path):
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump([], f, indent=2)
+            with open(file_path, 'wb') as f:
+                f.write(orjson.dumps([], option=orjson.OPT_INDENT_2))
 
     # Default data for the file
     default_rating_data = {"rate_this": False}
@@ -298,8 +298,8 @@ def generate_startup_files(base_path, base_user_path):  # Add base_user_path par
     # Create the file with default contents if it doesn't exist
     if not os.path.exists(rate_path):
         os.makedirs(os.path.dirname(rate_path), exist_ok=True)
-        with open(rate_path, "w", encoding="utf-8") as f:
-            json.dump(default_rating_data, f, indent=4)
+        with open(rate_path, "wb") as f:
+            f.write(orjson.dumps(default_rating_data, option=orjson.OPT_INDENT_2))
 
     # Create blank HelpInfos.html and updateinfos.md at base_path if they don't exist
     helpinfos_path = os.path.join(base_path, 'HelpInfos.html')

@@ -3,7 +3,7 @@ from aqt.utils import showInfo
 from ..functions.pokemon_functions import find_experience_for_level
 from ..business import get_image_as_base64
 from ..functions.create_css_for_reviewer import create_css_for_reviewer
-import json
+import orjson
 import os
 from ..functions.create_gui_functions import create_status_html
 from ..functions.pokedex_functions import get_pokemon_diff_lang_name
@@ -237,7 +237,7 @@ class Reviewer_Manager:
             if(window.__ankimonHud && window.__ankimonHud.update){{
                 window.__ankimonHud.update(h,c);
             }}
-        }})({json.dumps(hud_html)}, {json.dumps(hud_css)});
+        }})({orjson.dumps(hud_html).decode('utf-8')}, {orjson.dumps(hud_css).decode('utf-8')});
         """
         reviewer.web.eval(js_code)
 

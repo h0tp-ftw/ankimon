@@ -2,7 +2,7 @@ from ..functions.sprite_functions import get_sprite_path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QGroupBox, QFrame, QGridLayout, QComboBox, QDialogButtonBox
 from PyQt6.QtGui import QPixmap
-import json
+import orjson
 import os
 from aqt import mw
 from aqt.utils import showInfo, showWarning
@@ -113,14 +113,14 @@ class PokemonTeamDialog(QDialog):
     def load_my_pokemon(self):
         """Load the player's Pokémon data from a JSON string (in this case, hardcoded)"""
         # Replace the following with the actual loading method if from a file:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_data = json.load(file)
+        with open(mypokemon_path, "rb") as file:
+            pokemon_data = orjson.loads(file.read())
         return pokemon_data
 
     def load_pokemon_team(self):
         """Load the player's Pokémon Team from a JSON string (in this case, hardcoded)"""
-        with open(team_pokemon_path, "r", encoding="utf-8") as file:
-            team_data = json.load(file)
+        with open(team_pokemon_path, "rb") as file:
+            team_data = orjson.loads(file.read())
 
         # Load the player's Pokémon data (mypokemon_path)
         my_pokemon_data = self.load_my_pokemon()
@@ -300,8 +300,8 @@ class PokemonTeamDialog(QDialog):
         self.settings.set("trainer.xp_share", xp_share_individual_id)  # Save XP Share Pokémon
 
         try:
-            with open(team_pokemon_path, "w") as json_file:
-                json.dump(team_data, json_file, indent=4)
+            with open(team_pokemon_path, "wb") as f:
+                f.write(orjson.dumps(team_data, option=orjson.OPT_INDENT_2))
 
             self.logger.log_and_showinfo("info", f"Trainer settings saved to {team_pokemon_path}.")
             self.logger.log_and_showinfo("info", f"You chose the following team: [{', '.join([pokemon['name'] for pokemon in pokemon_names])}]\nXP Share: {xp_share_pokemon}")

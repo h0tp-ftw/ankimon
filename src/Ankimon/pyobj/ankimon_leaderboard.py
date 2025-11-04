@@ -1,9 +1,8 @@
 import sys
-import json
+import orjson
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton
 from aqt.utils import showInfo
 from ..resources import user_path_credentials, mypokemon_path
-import json
 import requests
 from aqt import mw # import setting values direct from init file
 
@@ -59,8 +58,8 @@ class ApiKeyDialog(QDialog):
     def save_credentials(self, credentials):
         try:
             # Save the new credentials as a single object
-            with open(user_path_credentials, "w", encoding="utf-8") as f:
-                json.dump(credentials, f, indent=4)
+            with open(user_path_credentials, "wb") as f:
+                f.write(orjson.dumps(credentials, option=orjson.OPT_INDENT_2))
             showInfo("Credentials saved successfully!")
         except Exception as e:
             showInfo(f"Error saving credentials: {e}")
@@ -73,8 +72,8 @@ def sync_data_to_leaderboard(data):
 
         try:
             # Load credentials from the file
-            with open(user_path_credentials, "r", encoding="utf-8") as f:
-                credentials = json.load(f)
+            with open(user_path_credentials, "rb") as f:
+                credentials = orjson.loads(f.read())
 
             # Extract username and api_key from the list of dictionaries
             username = credentials.get("username")
@@ -122,8 +121,8 @@ def get_unique_pokemon():
         return
 
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_data = json.load(file)
+        with open(mypokemon_path, "rb") as file:
+            pokemon_data = orjson.loads(file.read())
             pokemon_info = {}  # Define as a dictionary
             id_list = []  # Initialize id_list as an empty list
 
@@ -149,8 +148,8 @@ def get_unique_pokemon():
 
 def get_total_pokemon():
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_data = json.load(file)
+        with open(mypokemon_path, "rb") as file:
+            pokemon_data = orjson.loads(file.read())
             total_pokemon = len(pokemon_data)
             return total_pokemon
     except:
@@ -159,8 +158,8 @@ def get_total_pokemon():
 
 def get_shinies():
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_data = json.load(file)
+        with open(mypokemon_path, "rb") as file:
+            pokemon_data = orjson.loads(file.read())
             shinies = 0
             for pokemon in pokemon_data:
                 if pokemon.get("shiny") is True:

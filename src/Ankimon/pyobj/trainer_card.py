@@ -2,7 +2,7 @@ from ..resources import trainer_sprites_path, mypokemon_path
 from ..functions.trainer_functions import find_trainer_rank
 from aqt.utils import showWarning, showInfo
 import math
-import json
+import orjson
 from .ankimon_leaderboard import sync_data_to_leaderboard, get_unique_pokemon, get_total_pokemon, get_shinies
 
 
@@ -62,8 +62,8 @@ class TrainerCard:
         """Method to find the name of the highest-level Pokémon from the mypokemon_path."""
         try:
             # Read the Pokémon data from the file
-            with open(mypokemon_path, "r", encoding="utf-8") as file:
-                pokemon_data = json.load(file)
+            with open(mypokemon_path, "rb") as file:
+                pokemon_data = orjson.loads(file.read())
 
             if not pokemon_data:
                 return None  # Return None if the data is empty
@@ -82,8 +82,8 @@ class TrainerCard:
         """Method to find the name of the highest-level Pokémon from the mypokemon_path."""
         try:
             # Read the Pokémon data from the file
-            with open(mypokemon_path, "r", encoding="utf-8") as file:
-                pokemon_data = json.load(file)
+            with open(mypokemon_path, "rb") as file:
+                pokemon_data = orjson.loads(file.read())
 
             if not pokemon_data:
                 return int(0)  # Return None if the data is empty

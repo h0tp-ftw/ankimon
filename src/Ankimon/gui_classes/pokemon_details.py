@@ -1,5 +1,5 @@
 from math import exp
-import json
+import orjson
 from typing import Any
 
 from aqt import mw, qconnect
@@ -598,8 +598,8 @@ def remember_attack(
         logger.log_and_showinfo("warning", "Missing Mainpokemon Data !")
         return
 
-    with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-        mypokemondata = json.load(output_file)
+    with open(str(mypokemon_path), "rb") as output_file:
+        mypokemondata = orjson.loads(output_file.read())
     for pokemon_data in mypokemondata:
         # Use individual_id for matching
         if pokemon_data["individual_id"] != individual_id:
@@ -632,18 +632,18 @@ def remember_attack(
                         )
         pokemon_data["attacks"] = attacks
 
-        with open(str(mypokemon_path), "w") as output_file:
-            json.dump(mypokemondata, output_file, indent=2)
+        with open(str(mypokemon_path), "wb") as output_file:
+            output_file.write(orjson.dumps(mypokemondata, option=orjson.OPT_INDENT_2))
 
         # Update mainpokemon file if necessary
-        with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-            main_pokemon_data = json.load(json_file)
+        with open(mainpokemon_path, "rb") as f:
+            main_pokemon_data = orjson.loads(f.read())
         for mainpkmndata in main_pokemon_data:
             if mainpkmndata["individual_id"] == individual_id:
                 mainpkmndata["attacks"] = attacks
                 break
-        with open(str(mainpokemon_path), "w") as json_file:
-            json.dump(main_pokemon_data, json_file, indent=2)
+        with open(str(mainpokemon_path), "wb") as f:
+            f.write(orjson.dumps(main_pokemon_data, option=orjson.OPT_INDENT_2))
 
         break
 
@@ -673,8 +673,8 @@ def forget_attack(
         logger.log_and_showinfo("warning", "Missing Mainpokemon Data !")
         return
 
-    with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-        mypokemondata = json.load(output_file)
+    with open(str(mypokemon_path), "rb") as output_file:
+        mypokemondata = orjson.loads(output_file.read())
     for pokemon_data in mypokemondata:
         # Use individual_id for matching
         if pokemon_data["individual_id"] != individual_id:
@@ -694,18 +694,18 @@ def forget_attack(
             logger.log_and_showinfo("info", f"{msg}")
         pokemon_data["attacks"] = attacks
 
-        with open(str(mypokemon_path), "w") as output_file:
-            json.dump(mypokemondata, output_file, indent=2)
+        with open(str(mypokemon_path), "wb") as output_file:
+            output_file.write(orjson.dumps(mypokemondata, option=orjson.OPT_INDENT_2))
 
         # Update mainpokemon file if necessary
-        with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-            main_pokemon_data = json.load(json_file)
+        with open(mainpokemon_path, "rb") as f:
+            main_pokemon_data = orjson.loads(f.read())
         for mainpkmndata in main_pokemon_data:
             if mainpkmndata["individual_id"] == individual_id:
                 mainpkmndata["attacks"] = attacks
                 break
-        with open(str(mainpokemon_path), "w") as json_file:
-            json.dump(main_pokemon_data, json_file, indent=2)
+        with open(str(mainpokemon_path), "wb") as f:
+            f.write(orjson.dumps(main_pokemon_data, option=orjson.OPT_INDENT_2))
 
         break
 
@@ -747,15 +747,15 @@ def tm_attack_details_window(
     html_content = remember_attack_details_window_template
     from pathlib import Path
 
-    with open(pokemon_tm_learnset_path, "r") as f:
-        pokemon_tm_learnset = json.load(f)
+    with open(pokemon_tm_learnset_path, "rb") as f:
+        pokemon_tm_learnset = orjson.loads(f.read())
 
     pokemon_name = search_pokedex_by_id(id)
     tm_learnset = pokemon_tm_learnset.get(
         pokemon_name, []
     )  # TMs that can be learnt by the Pokemon
-    with open(itembag_path, "r", encoding="utf-8") as json_file:
-        itembag_list = json.load(json_file)
+    with open(itembag_path, "rb") as f:
+        itembag_list = orjson.loads(f.read())
     owned_tms = [item["item"] for item in itembag_list if item.get("type") == "TM"]
     attack_set = [tm for tm in tm_learnset if tm in owned_tms]
 
@@ -823,8 +823,8 @@ def rename_pkmn(
 ):
     try:
         # Load the captured Pokémon data
-        with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-            captured_pokemon_data = json.load(json_file)
+        with open(mypokemon_path, "rb") as f:
+            captured_pokemon_data = orjson.loads(f.read())
             pokemon = None
 
             # Find the Pokémon by individual_id
@@ -837,16 +837,16 @@ def rename_pkmn(
                 # Update the nickname
                 pokemon["nickname"] = nickname
                 # Reflect the change in the output JSON file
-                with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-                    mypokemondata = json.load(output_file)
+                with open(str(mypokemon_path), "rb") as output_file:
+                    mypokemondata = orjson.loads(output_file.read())
                     # Update the specified Pokémon's data
                     for idx, data in enumerate(mypokemondata):
                         if data["individual_id"] == individual_id:
                             mypokemondata[idx] = pokemon
                             break
                 # Save the modified data
-                with open(str(mypokemon_path), "w") as output_file:
-                    json.dump(mypokemondata, output_file, indent=2)
+                with open(str(mypokemon_path), "wb") as output_file:
+                    output_file.write(orjson.dumps(mypokemondata, option=orjson.OPT_INDENT_2))
                 # Logging and UI update
                 logger.log_and_showinfo(
                     "info",
@@ -878,8 +878,8 @@ def PokemonFree(
         return
 
     # Check if the Pokémon is in the main Pokémon file
-    with open(mainpokemon_path, "r", encoding="utf-8") as file:
-        pokemon_data = json.load(file)
+    with open(mainpokemon_path, "rb") as file:
+        pokemon_data = orjson.loads(file.read())
 
     for pokemon in pokemon_data:
         if pokemon["individual_id"] == individual_id:
@@ -888,9 +888,9 @@ def PokemonFree(
 
     # Load Pokémon list from 'mypokemon_path' file
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_list = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
+        with open(mypokemon_path, "rb") as file:
+            pokemon_list = orjson.loads(file.read())
+    except (FileNotFoundError, orjson.JSONDecodeError):
         logger.log_and_showinfo("info", "Error: Could not load Pokémon data.")
         return
 
@@ -904,8 +904,8 @@ def PokemonFree(
     # If the Pokémon was found, remove it from the list
     if position != -1:
         pokemon_list.pop(position)
-        with open(mypokemon_path, "w") as file:
-            json.dump(pokemon_list, file, indent=2)
+        with open(mypokemon_path, "wb") as file:
+            file.write(orjson.dumps(pokemon_list, option=orjson.OPT_INDENT_2))
         logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")
     else:
         logger.log_and_showinfo("info", "No Pokémon found with the specified ID.")

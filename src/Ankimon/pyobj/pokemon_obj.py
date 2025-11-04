@@ -1,6 +1,6 @@
 from typing import Union
 import uuid
-import json
+import orjson
 import os
 
 from ..poke_engine.objects import Pokemon
@@ -419,25 +419,25 @@ class PokemonObject:
 
         # Then, We save that information in the user data
         # First, we save the info in mypokemon_path
-        with open(mypokemon_path, "r", encoding="utf-8") as f:
-            pokemon_list_data = json.load(f)
+        with open(mypokemon_path, "rb") as f:
+            pokemon_list_data = orjson.loads(f.read())
 
         for i in range(len(pokemon_list_data)):
             if pokemon_list_data[i]["individual_id"] == self.individual_id:
                 pokemon_list_data[i]["held_item"] = held_item
                 break
 
-        with open(str(mypokemon_path), "w") as f:
-            json.dump(pokemon_list_data, f, indent=2)
+        with open(str(mypokemon_path), "wb") as f:
+            f.write(orjson.dumps(pokemon_list_data, option=orjson.OPT_INDENT_2))
 
         # Secondly, we save the info in mainpokemon_path, if the pokemon happens to be our main pokemon
-        with open(mainpokemon_path, "r", encoding="utf-8") as f:
-            main_pokemon_data = json.load(f)
+        with open(mainpokemon_path, "rb") as f:
+            main_pokemon_data = orjson.loads(f.read())
 
         if main_pokemon_data[0]["individual_id"] == self.individual_id:
             main_pokemon_data[0]["held_item"] = held_item
-            with open(str(mainpokemon_path), "w") as f:
-                json.dump(main_pokemon_data, f, indent=2)
+            with open(str(mainpokemon_path), "wb") as f:
+                f.write(orjson.dumps(main_pokemon_data, option=orjson.OPT_INDENT_2))
 
     def remove_held_item(self) -> None:
         """
@@ -464,34 +464,22 @@ class PokemonObject:
 
         # Then, We save that information in the user data
         # First, we save the info in mypokemon_path
-        with open(mypokemon_path, "r", encoding="utf-8") as f:
-            pokemon_list_data = json.load(f)
+        with open(mypokemon_path, "rb") as f:
+            pokemon_list_data = orjson.loads(f.read())
 
         for i in range(len(pokemon_list_data)):
             if pokemon_list_data[i]["individual_id"] == self.individual_id:
                 pokemon_list_data[i]["held_item"] = None
                 break
 
-        with open(str(mypokemon_path), "w") as f:
-            json.dump(pokemon_list_data, f, indent=2)
+        with open(str(mypokemon_path), "wb") as f:
+            f.write(orjson.dumps(pokemon_list_data, option=orjson.OPT_INDENT_2))
 
         # Secondly, we save the info in mainpokemon_path, if the pokemon happens to be our main pokemon
-        with open(mainpokemon_path, "r", encoding="utf-8") as f:
-            main_pokemon_data = json.load(f)
+        with open(mainpokemon_path, "rb") as f:
+            main_pokemon_data = orjson.loads(f.read())
 
         if main_pokemon_data[0]["individual_id"] == self.individual_id:
             main_pokemon_data[0]["held_item"] = None
-            with open(str(mainpokemon_path), "w") as f:
-                json.dump(main_pokemon_data, f, indent=2)
-
-
-class PokemonEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, PokemonObject):
-            data = obj.__dict__.copy()
-            # Convert complex types to serializable formats
-            data['volatile_status'] = list(data['volatile_status'])
-            data['stat_stages'] = data.get('stat_stages', {})
-            data['moves'] = data.get('attacks', [])
-            return data
-        return super().default(obj)
+            with open(str(mainpokemon_path), "wb") as f:
+                f.write(orjson.dumps(main_pokemon_data, option=orjson.OPT_INDENT_2))

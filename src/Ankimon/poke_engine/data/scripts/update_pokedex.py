@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import requests
 import re
-import json
+import orjson
 
 # Fetch latest version
 data = requests.get(
@@ -37,7 +37,7 @@ data = re.sub(r': ""(.*)":(.*)",', r': "\1:\2",', data)
 data = data.replace("};", "}")
 
 # should be parseable as JSON now
-data_json = json.loads(data)
+data_json = orjson.loads(data)
 
 # some custom changes for this project
 for k, v in data_json.items():
@@ -63,5 +63,5 @@ sorted_dex = [i for i in sorted_dex if i[1]["num"] > 0]
 for k, v in sorted_dex + negative_nums:
     new_dict[k] = v
 
-with open("pokedex_new.json", "w") as f:
-    json.dump(data_json, f, indent=4)
+with open("pokedex_new.json", "wb") as f:
+    f.write(orjson.dumps(data_json, option=orjson.OPT_INDENT_2))

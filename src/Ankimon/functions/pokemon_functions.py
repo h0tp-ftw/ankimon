@@ -1,5 +1,5 @@
 import csv
-import json
+import orjson
 import random
 import uuid
 from datetime import datetime
@@ -26,8 +26,8 @@ def pick_random_gender(pokemon_name):
     Returns:
         str: "M" for male, "F" for female, or "Genderless" for genderless Pokémon.
     """
-    with open(pokedex_path, 'r', encoding="utf-8") as file:
-        pokedex_data = json.load(file)
+    with open(pokedex_path, 'rb') as file:
+        pokedex_data = orjson.loads(file.read())
     pokemon_name = pokemon_name.lower()  # Normalize Pokémon name to lowercase
     pokemon = pokedex_data.get(pokemon_name)
     if not pokemon:
@@ -173,8 +173,8 @@ def get_random_moves_for_pokemon(pokemon_name, level):
             list: A list of up to 4 random moves and their highest levels.
         """
         # Load the JSON file
-        with open(learnset_path, "r", encoding="utf-8") as file:
-            learnsets = json.load(file)
+        with open(learnset_path, "rb") as file:
+            learnsets = orjson.loads(file.read())
 
         # Normalize the Pokémon name to lowercase for consistency
         pokemon_name = pokemon_name.lower()
@@ -296,16 +296,16 @@ def save_fossil_pokemon(pokemon_id):
     }
     # Load existing Pokémon data if it exists
     if mypokemon_path.is_file():
-        with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-            caught_pokemon_data = json.load(json_file)
+        with open(mypokemon_path, "rb") as f:
+            caught_pokemon_data = orjson.loads(f.read())
     else:
         caught_pokemon_data = []
 
     # Append the caught Pokémon's data to the list
     caught_pokemon_data.append(caught_pokemon)
     # Save the caught Pokémon's data to a JSON file
-    with open(str(mypokemon_path), "w") as json_file:
-        json.dump(caught_pokemon_data, json_file, indent=2)
+    with open(str(mypokemon_path), "wb") as f:
+        f.write(orjson.dumps(caught_pokemon_data, option=orjson.OPT_INDENT_2))
 
 def get_levelup_move_for_pokemon(pokemon_name, level):
     """
@@ -319,8 +319,8 @@ def get_levelup_move_for_pokemon(pokemon_name, level):
         str: A random move and its highest level.
     """
     # Load the JSON file
-    with open(learnset_path, "r", encoding="utf-8") as file:
-        learnsets = json.load(file)
+    with open(learnset_path, "rb") as file:
+        learnsets = orjson.loads(file.read())
 
     # Normalize the Pokémon name to lowercase for consistency
     pokemon_name = pokemon_name.lower()

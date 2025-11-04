@@ -1,5 +1,5 @@
 import os
-import json
+import orjson
 from aqt import QDialog, QVBoxLayout, QWebEngineView, mw
 from aqt.qt import QPushButton, QCheckBox, QFrame, Qt
 from PyQt6.QtCore import QUrl, QUrlQuery
@@ -34,8 +34,8 @@ class AchievementsDialog(QDialog):
     def load_html(self):
         # Load badge definitions
         badges_path = self.addon_dir / "addon_files" / "badges.json"
-        with open(badges_path, "r") as f:
-            badge_definitions = json.load(f)
+        with open(badges_path, "rb") as f:
+            badge_definitions = orjson.loads(f.read())
 
         # Load user's unlocked badges
         unlocked_badges = getattr(self.data_handler, "badges", [])
@@ -51,11 +51,11 @@ class AchievementsDialog(QDialog):
         query.addQueryItem("addon_name", mw.addonManager.addonFromModule(__name__))
         query.addQueryItem(
             "unlocked_badges",
-            json.dumps(unlocked_badges)
+            orjson.dumps(unlocked_badges).decode('utf-8')
         )
         query.addQueryItem(
             "badge_definitions",
-            json.dumps(badge_definitions)
+            orjson.dumps(badge_definitions).decode('utf-8')
         )
 
         url.setQuery(query.query(QUrl.ComponentFormattingOption.FullyEncoded))

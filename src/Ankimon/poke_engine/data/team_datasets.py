@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-import json
+import orjson
 import logging
 import typing
 from typing import Tuple
@@ -96,8 +96,8 @@ class _TeamDatasets:
 
     def append_to_team_datasets(self, pkmn_names):
         sets = os.path.join(PWD, 'team_datasets.json')
-        with open(sets, 'r') as f:
-            sets_dict = json.load(f)["pokemon"]
+        with open(sets, 'rb') as f:
+            sets_dict = orjson.loads(f.read())["pokemon"]
 
         for pkmn in pkmn_names:
             try:
@@ -108,8 +108,8 @@ class _TeamDatasets:
     @staticmethod
     def get_exact_team(pkmn_names):
         sets = os.path.join(PWD, 'team_datasets.json')
-        with open(sets, 'r') as f:
-            teams_dict = json.load(f)["teams"]
+        with open(sets, 'rb') as f:
+            teams_dict = orjson.loads(f.read())["teams"]
 
         pkmn_lookup = "|".join(pkmn_names)
         try:

@@ -1,5 +1,5 @@
 import os
-import json
+import orjson
 from aqt import QDialog, QVBoxLayout, QWebEngineView, mw
 from PyQt6.QtCore import QUrlQuery
 from aqt.qt import Qt, QFile, QUrl, QFrame, QPushButton
@@ -61,11 +61,11 @@ class Pokedex(QDialog):
 
         if os.path.exists(mypokemon_path):
             try:
-                with open(mypokemon_path, "r", encoding="utf-8") as file:
-                    pokemon_list = json.load(file)
+                with open(mypokemon_path, "rb") as file:
+                    pokemon_list = orjson.loads(file.read())
                     print("POKEDEX_DEBUG: Loaded pokemon_list!")
 
-            except json.JSONDecodeError:
+            except orjson.JSONDecodeError:
                 print("POKEDEX_DEBUG: Invalid JSON in mypokemon.json at", mypokemon_path)
             except Exception as e:
                 print("POKEDEX_DEBUG: Error reading mypokemon.json at", mypokemon_path, ":", str(e))

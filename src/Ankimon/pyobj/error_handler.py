@@ -1,6 +1,6 @@
 import os
 import re
-import json
+import orjson
 import random
 import traceback
 import requests
@@ -24,7 +24,7 @@ manifest_path = addon_dir / "manifest.json"
 def get_environment_info() -> str:
     """Collect add-on, Anki, Python, and OS version information."""
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = orjson.loads(manifest_path.read_text(encoding="utf-8"))
         addon_ver = manifest.get("version", "unknown")
     except Exception:
         addon_ver = "unknown"
@@ -69,8 +69,8 @@ def load_error_images(json_path: Path) -> Dict[str, str]:
     """Load and select random error image metadata."""
     default_image = {"path": "", "credit": "", "url": ""}
     try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            error_images = json.load(f)
+        with open(json_path, 'rb') as f:
+            error_images = orjson.loads(f.read())
         return random.choice(error_images)
     except Exception as e:
         mw.logger.log("error", f"Failed to load error images: {str(e)}")

@@ -12,7 +12,7 @@ More detailed explanation if needed:
 Author: Axil
 Created: 2025-06-03 (YYY-MM-DD)
 """
-import json
+import orjson
 import uuid
 
 from aqt import mw

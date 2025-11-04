@@ -1,6 +1,6 @@
 
 import base64
-import json
+import orjson
 import os
 import shutil
 import datetime
@@ -58,7 +58,7 @@ class BackupManager:
             key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
             for i, byte in enumerate(obfuscated_bytes):
                 deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-            return json.loads(deobfuscated_bytes.decode('utf-8'))
+            return orjson.loads(deobfuscated_bytes.decode('utf-8'))
         except Exception as e:
             self.logger.log("error", f"Failed to deobfuscate data: {e}")
             return None
@@ -70,12 +70,12 @@ class BackupManager:
             if backup_dir.is_dir():
                 summary_path = backup_dir / "summary.json"
                 if summary_path.exists():
-                    with open(summary_path, 'r', encoding='utf-8') as f:
+                    with open(summary_path, 'rb') as f:
                         try:
-                            summary = json.load(f)
+                            summary = orjson.loads(f.read())
                             summary['path'] = str(backup_dir)
                             backups.append(summary)
-                        except json.JSONDecodeError:
+                        except orjson.JSONDecodeError:
                             self.logger.log("error", f"Could not read summary for backup: {backup_dir.name}")
         return backups
 
@@ -94,8 +94,8 @@ class BackupManager:
 
             summary = self._generate_summary(backup_dir)
             summary['manual'] = manual
-            with open(backup_dir / "summary.json", 'w', encoding='utf-8') as f:
-                json.dump(summary, f, indent=4)
+            with open(backup_dir / "summary.json", 'wb') as f:
+                f.write(orjson.dumps(summary, option=orjson.OPT_INDENT_2))
             
             if manual:
                 showInfo("Manual backup created successfully.")
@@ -124,33 +124,33 @@ class BackupManager:
         # Read mainpokemon.json for main Pokémon info
         mainpokemon_path = backup_dir / "mainpokemon.json"
         if mainpokemon_path.exists():
-            with open(mainpokemon_path, 'r', encoding='utf-8') as f:
+            with open(mainpokemon_path, 'rb') as f:
                 try:
-                    mainpokemon_data = json.load(f)
+                    mainpokemon_data = orjson.loads(f.read())
                     if mainpokemon_data:
                         summary["main_pokemon_name"] = mainpokemon_data[0].get("name", "N/A")
                         summary["main_pokemon_level"] = mainpokemon_data[0].get("level", "N/A")
-                except (json.JSONDecodeError, IndexError):
+                except (orjson.JSONDecodeError, IndexError):
                     pass
 
         # Read mypokemon.json for total Pokémon count
         mypokemon_path = backup_dir / "mypokemon.json"
         if mypokemon_path.exists():
-            with open(mypokemon_path, 'r', encoding='utf-8') as f:
+            with open(mypokemon_path, 'rb') as f:
                 try:
-                    mypokemon_data = json.load(f)
+                    mypokemon_data = orjson.loads(f.read())
                     summary["pokemon_count"] = len(mypokemon_data)
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     pass
 
         # Read items.json for total item count
         items_path = backup_dir / "items.json"
         if items_path.exists():
-            with open(items_path, 'r', encoding='utf-8') as f:
+            with open(items_path, 'rb') as f:
                 try:
-                    items_data = json.load(f)
+                    items_data = orjson.loads(f.read())
                     summary["item_count"] = sum(item.get('quantity', 0) for item in items_data)
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     pass
 
         # Read config.obf for trainer info

@@ -2,7 +2,7 @@ import os
 import sys
 import importlib
 import pkgutil
-import json
+import orjson
 import ast
 from unittest.mock import patch, MagicMock
 import pytest

@@ -1,4 +1,4 @@
-import json
+import orjson
 from ..resources import lang_path_de, lang_path_ch, lang_path_en, lang_path_fr, lang_path_jp, lang_path_sp, lang_path_kr, lang_path_it, lang_path_cz, lang_path_po
 
 LANG_PATHS = {
@@ -35,11 +35,11 @@ class Translator:
         short_language = LANG_NUMBERS.get(int(language), 'en')
         self.filepath = LANG_PATHS.get(short_language, lang_path_en)
         try:
-            with open(self.filepath, 'r', encoding='utf-8') as f:
-                self.translations = json.load(f)
+            with open(self.filepath, 'rb') as f:
+                self.translations = orjson.loads(f.read())
         except FileNotFoundError:
             raise Exception(f"Translation file not found: {self.filepath}")
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             raise Exception(f"Invalid JSON format in translation file: {self.filepath}")
 
     def translate(self, key, **kwargs):
@@ -50,8 +50,8 @@ class Translator:
         # Fallback to English if key not found
         if template is None:
             try:
-                with open(lang_path_en, 'r', encoding='utf-8') as f:
-                    fallback_translations = json.load(f)
+                with open(lang_path_en, 'rb') as f:
+                    fallback_translations = orjson.loads(f.read())
                 template = fallback_translations.get(key, key)
                 source_file = lang_path_en  # Now using fallback file
             except Exception as e:

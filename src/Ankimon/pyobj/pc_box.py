@@ -1,4 +1,4 @@
-import json
+import orjson
 import uuid
 from typing import Any, Callable
 
@@ -514,14 +514,14 @@ class PokemonPC(QDialog):
     def load_pokemon_data(self) -> list:
         """Reads the mypokemon.json file and loads Pokémon data into self.pokemon_list."""
         try:
-            with open(mypokemon_path, "r", encoding="utf-8") as file:
-                pokemon_list = json.load(file)
+            with open(mypokemon_path, "rb") as file:
+                pokemon_list = orjson.loads(file.read())
                 for i, pokemon in enumerate(pokemon_list):
                     pokemon['original_index'] = i
                 return pokemon_list
         except FileNotFoundError:
             self.logger.log("error","mypokemon.json file not found.")
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             self.logger.log("error","mypokemon.json file not found.")
 
         return []
@@ -749,8 +749,8 @@ class PokemonPC(QDialog):
                 is_currently_favorite = pokemon_list[i].get("is_favorite", False)
                 pokemon_list[i]["is_favorite"] = not is_currently_favorite
 
-                with open(str(mypokemon_path), "w", encoding="utf-8") as json_file:
-                    json.dump(pokemon_list, json_file, indent=2)
+                with open(str(mypokemon_path), "wb") as f:
+                    f.write(orjson.dumps(pokemon_list, option=orjson.OPT_INDENT_2))
 
                 self.refresh_gui()
                 return
@@ -779,8 +779,8 @@ class PokemonPC(QDialog):
             - Logs and displays an info message using `ShowInfoLogger`.
             - Refreshes the GUI via `self.refresh_gui()`.
         """
-        with open(itembag_path, "r", encoding="utf-8") as f:
-            items_list = json.load(f)
+        with open(itembag_path, "rb") as f:
+            items_list = orjson.loads(f.read())
         items_names = [item_data["item"] for item_data in items_list if item_data.get("type") is None]
         pokemon_obj = PokemonObject.from_dict(pokemon)
 
@@ -884,8 +884,8 @@ class PokemonPC(QDialog):
                     pokemon_list[i][key] = value
 
         if needs_update:
-            with open(str(mypokemon_path), "w", encoding="utf-8") as json_file:
-                json.dump(pokemon_list, json_file, indent=2)
+            with open(str(mypokemon_path), "wb") as f:
+                f.write(orjson.dumps(pokemon_list, option=orjson.OPT_INDENT_2))
 
     def on_window_close(self):
         if self.pokemon_details_layout is not None:

@@ -1,4 +1,4 @@
-import json
+import orjson
 
 from aqt import mw
 from aqt.qt import QDialog, QLabel,Qt, QVBoxLayout
@@ -85,8 +85,8 @@ def export_all_pkmn_showdown():
     # Get all pokemon data
     pokemon_info_complete_text = ""
     try:
-        with (open(mypokemon_path, "r", encoding="utf-8") as json_file):
-            captured_pokemon_data = json.load(json_file)
+        with (open(mypokemon_path, "rb") as f):
+            captured_pokemon_data = orjson.loads(f.read())
 
             # Check if there are any captured Pokémon
             if captured_pokemon_data:
@@ -184,8 +184,8 @@ def flex_pokemon_collection():
 # Get all pokemon data
     pokemon_info_complete_text = ""
     try:
-        with (open(mypokemon_path, "r", encoding="utf-8") as json_file):
-            captured_pokemon_data = json.load(json_file)
+        with (open(mypokemon_path, "rb") as f):
+            captured_pokemon_data = orjson.loads(f.read())
 
             # Check if there are any captured Pokémon
             if captured_pokemon_data:

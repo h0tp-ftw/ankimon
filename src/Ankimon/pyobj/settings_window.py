@@ -1,4 +1,4 @@
-import json
+import orjson
 import os
 from aqt.qt import (
     QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -166,9 +166,9 @@ class SettingsWindow(QMainWindow):
         descriptions_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lang', 'setting_description.json')
         if os.path.exists(descriptions_file):
             try:
-                with open(descriptions_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                with open(descriptions_file, 'rb') as f:
+                    return orjson.loads(f.read())
+            except (orjson.JSONDecodeError, UnicodeDecodeError) as e:
                 showWarning(f"Error reading descriptions file: {e}")
         return {}
 
@@ -176,9 +176,9 @@ class SettingsWindow(QMainWindow):
         names_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lang', 'setting_name.json')
         if os.path.exists(names_file):
             try:
-                with open(names_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                with open(names_file, "rb") as f:
+                    return orjson.loads(f.read())
+            except (orjson.JSONDecodeError, UnicodeDecodeError) as e:
                 showWarning(f"Error reading friendly names file: {e}")
         return {}
 

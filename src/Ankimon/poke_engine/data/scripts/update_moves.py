@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import requests
-import json
+import orjson
 import copy
 import subprocess
 
@@ -52,7 +52,7 @@ stdout = p.stdout.read()
 stderr = p.stderr.read()
 
 # stdout should now be parse-able as JSON
-moves_dict = json.loads(stdout)
+moves_dict = orjson.loads(stdout)
 
 
 # make modifications to some values for the bot
@@ -127,13 +127,13 @@ for k, v in moves_dict.copy().items():
 
 
 # the bot needs these keys to be named differently
-string_json = json.dumps(moves_dict)
+string_json = orjson.dumps(moves_dict).decode('utf-8')
 string_json = string_json.replace('"atk"', '"attack"')
 string_json = string_json.replace('"def"', '"defense"')
 string_json = string_json.replace('"spa"', '"special-attack"')
 string_json = string_json.replace('"spd"', '"special-defense"')
 string_json = string_json.replace('"spe"', '"speed"')
-moves_dict = json.loads(string_json)
+moves_dict = orjson.loads(string_json)
 
 # custom changes for the bot to work
 # some of these are dumb, but here we are
@@ -300,6 +300,6 @@ moves_dict["jumpkick"]["crash"] = [1, 2]
 moves_dict["highjumpkick"]["crash"] = [1, 2]
 moves_dict["axekick"]["crash"] = [1, 2]
 
-with open("data/new_moves.json", "w") as f:
-    json.dump(moves_dict, f, indent=4, sort_keys=True)
+with open("data/new_moves.json", "wb") as f:
+    f.write(orjson.dumps(moves_dict, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS))
 a=5

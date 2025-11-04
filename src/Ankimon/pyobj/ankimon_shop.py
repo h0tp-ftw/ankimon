@@ -1,7 +1,7 @@
 import os
 import random
 from datetime import datetime
-import json
+import orjson
 from typing import Union
 
 from aqt import mw
@@ -395,8 +395,8 @@ class PokemonShopManager:
     def get_daily_items(self):
         """Generate daily items based on the current date."""
         if os.path.isfile(self.shop_save_file):
-            with open(self.shop_save_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            with open(self.shop_save_file, 'rb') as f:
+                data = orjson.loads(f.read())
                 if data.get("items") and data.get("date") == datetime.now().strftime("%Y-%m-%d"):
                     return data.get("items")
 
@@ -407,8 +407,8 @@ class PokemonShopManager:
     def get_daily_tms(self):
         """Works like get_daily_items, but for TMs"""
         if os.path.isfile(self.shop_save_file):
-            with open(self.shop_save_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            with open(self.shop_save_file, 'rb') as f:
+                data = orjson.loads(f.read())
                 if data.get("technical_machines") and data.get("date") == datetime.now().strftime("%Y-%m-%d"):
                     return data.get("technical_machines")
 
@@ -418,8 +418,8 @@ class PokemonShopManager:
         return random.sample(tm_pool, self.number_of_daily_items)
 
     def get_tm_pool(self) -> list[str]:
-        with open(pokemon_tm_learnset_path, "r") as f:
-            pokemon_tm_learnset = json.load(f)
+        with open(pokemon_tm_learnset_path, "rb") as f:
+            pokemon_tm_learnset = orjson.loads(f.read())
 
         def flatten(xss):
             return [x for xs in xss for x in xs]
@@ -527,13 +527,13 @@ class PokemonShopManager:
         self.todays_daily_tms = random.sample(self.get_tm_pool(), self.number_of_daily_items)
 
         # SAVE IMMEDIATELY - before GUI refresh
-        with open(self.shop_save_file, 'w', encoding='utf-8') as f:
+        with open(self.shop_save_file, 'wb') as f:
             data = {
                 "items": self.todays_daily_items,
                 "technical_machines": self.todays_daily_tms,
                 "date": datetime.now().strftime("%Y-%m-%d"),
             }
-            json.dump(data, f, ensure_ascii=False, indent=4)
+            f.write(orjson.dumps(data, option=orjson.OPT_INDENT_2))
 
         # Now refresh the window - it will load from the updated JSON file
         self.toggle_window()

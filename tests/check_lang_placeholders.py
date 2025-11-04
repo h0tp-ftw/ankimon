@@ -1,4 +1,4 @@
-import json
+import orjson
 import re
 from pathlib import Path
 
@@ -17,8 +17,8 @@ def check_language_files():
         print(f"Error: Reference file not found at {en_file}")
         return
 
-    with open(en_file, "r", encoding="utf-8") as f:
-        en_data = json.load(f)
+    with open(en_file, "rb") as f:
+        en_data = orjson.loads(f.read())
 
     en_placeholders = {key: find_placeholders(value) for key, value in en_data.items()}
 
@@ -28,9 +28,9 @@ def check_language_files():
             continue
 
         try:
-            with open(lang_file, "r", encoding="utf-8") as f:
-                lang_data = json.load(f)
-        except json.JSONDecodeError:
+            with open(lang_file, "rb") as f:
+                lang_data = orjson.loads(f.read())
+        except orjson.JSONDecodeError:
             print(f"Error: Could not decode JSON from {lang_file}")
             errors_found = True
             continue

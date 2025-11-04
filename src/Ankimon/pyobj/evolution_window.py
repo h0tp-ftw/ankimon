@@ -1,4 +1,4 @@
-import json
+import orjson
 import random
 
 from aqt import mw
@@ -227,8 +227,8 @@ class EvoWindow(QWidget):
     def evolve_pokemon(self, individual_id, prevo_id, prevo_name, evo_id, evo_name, main_pokemon):
         #global achievements
         try:
-            with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-                captured_pokemon_data = json.load(json_file)
+            with open(mypokemon_path, "rb") as f:
+                captured_pokemon_data = orjson.loads(f.read())
                 pokemon = None
                 if captured_pokemon_data:
                     for pokemon_data in captured_pokemon_data:
@@ -288,16 +288,16 @@ class EvoWindow(QWidget):
                                     pokemon["ability"] = random.choice(abilities_list)
                                 else:
                                     pokemon["ability"] = self.translator.translate("no_ability")
-                                with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-                                    mypokemondata = json.load(output_file)
+                                with open(str(mypokemon_path), "rb") as output_file:
+                                    mypokemondata = orjson.loads(output_file.read())
                                     # Find and replace the specified Pokémon's data in mypokemondata
                                     for index, pokemon_data in enumerate(mypokemondata):
                                         if pokemon_data["individual_id"] == individual_id:
                                             mypokemondata[index] = pokemon
                                             break
                                             # Save the modified data to the output JSON file
-                                    with open(str(mypokemon_path), "w") as output_file:
-                                        json.dump(mypokemondata, output_file, indent=2)
+                                    with open(str(mypokemon_path), "wb") as output_file:
+                                        output_file.write(orjson.dumps(mypokemondata, option=orjson.OPT_INDENT_2))
                                 self.logger.log_and_showinfo("info", self.translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
         except Exception as e:
             show_warning_with_traceback(parent=mw, exception=e, message=f"Error occured in evolving pokemon")
@@ -324,8 +324,8 @@ class EvoWindow(QWidget):
 
     def cancel_evolution(self, individual_id, prevo_name):
         try:
-            with open(mypokemon_path, "r+", encoding="utf-8") as f:
-                all_pokemon = json.load(f)
+            with open(mypokemon_path, "rb+") as f:
+                all_pokemon = orjson.loads(f.read())
 
                 pokemon_to_update = None
                 for p in all_pokemon:
@@ -367,7 +367,7 @@ class EvoWindow(QWidget):
 
                 # Write the changes back to the file
                 f.seek(0)
-                json.dump(all_pokemon, f, indent=2)
+                f.write(orjson.dumps(all_pokemon, option=orjson.OPT_INDENT_2))
                 f.truncate()
 
             # If the main pokemon was the one, update its object in memory

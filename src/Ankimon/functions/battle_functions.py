@@ -1,11 +1,11 @@
 import copy
-import json
+import orjson
 from ..poke_engine import constants
 from ..resources import move_names_file_path
 from ..pyobj.error_handler import show_warning_with_traceback
 
-with open(move_names_file_path, "r", encoding="utf-8") as f:
-    MOVE_NAME_LOOKUP = json.load(f)
+with open(move_names_file_path, "rb") as f:
+    MOVE_NAME_LOOKUP = orjson.loads(f.read())
 
 def format_move_name(move: str) -> str:
     """

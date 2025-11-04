@@ -1,7 +1,6 @@
 import os
 import shutil
 from datetime import datetime
-import json
 from aqt.utils import showInfo
 from aqt import mw
 from ..resources import mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, backup_root

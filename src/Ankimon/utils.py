@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import requests
-import json
+import orjson
 import markdown
 import random
 import csv
@@ -45,10 +45,10 @@ media_player = QMediaPlayer()
 media_player.setAudioOutput(audio_output)
 
 # Load move and pokemon name mapping at startup
-with open(pokemon_names_file_path, "r", encoding="utf-8") as f:
-    POKEMON_NAME_LOOKUP = json.load(f)
-with open(move_names_file_path, "r", encoding="utf-8") as f:
-    MOVE_NAME_LOOKUP = json.load(f)
+with open(pokemon_names_file_path, "rb") as f:
+    POKEMON_NAME_LOOKUP = orjson.loads(f.read())
+with open(move_names_file_path, "rb") as f:
+    MOVE_NAME_LOOKUP = orjson.loads(f.read())
 
 
 def format_pokemon_name(name: str) -> str:
@@ -102,7 +102,7 @@ def addon_config_editor_will_display_json(text: str) -> str:
     """
     try:
         # Parse the JSON text
-        config = json.loads(text)
+        config = orjson.loads(text)
         if "mainpokemon" in config:
             #showInfo(f"{config}")
             showInfo("This Configuration is old and wont be used anymore. \n Please use the Settings Window in the Ankimon Menu => Settings")
@@ -117,10 +117,10 @@ def addon_config_editor_will_display_json(text: str) -> str:
 
 
             # Convert back to JSON string
-            modified_text = json.dumps(config, indent=4)
+            modified_text = orjson.dumps(config, option=orjson.OPT_INDENT_2).decode('utf-8')
             return modified_text
         return text
-    except json.JSONDecodeError:
+    except orjson.JSONDecodeError:
         # Handle JSON parsing error
         return text
 
@@ -383,8 +383,8 @@ def daily_item_list():
 
 # Function to give an item to the player
 def give_item(item_name, item_type: str | None=None):
-    with open(itembag_path, "r", encoding="utf-8") as json_file:
-        itembag_list = json.load(json_file)
+    with open(itembag_path, "rb") as f:
+        itembag_list = orjson.loads(f.read())
         # Check if the item exists and update quantity, otherwise append
         for item in itembag_list:
             if item.get("item") == item_name:
@@ -396,8 +396,8 @@ def give_item(item_name, item_type: str | None=None):
             if item_type is not None:
                 item_dict["type"] = item_type
             itembag_list.append(item_dict)
-    with open(itembag_path, 'w', encoding="utf-8") as json_file:
-        json.dump(itembag_list, json_file, indent=4)
+    with open(itembag_path, 'wb') as f:
+        f.write(orjson.dumps(itembag_list, option=orjson.OPT_INDENT_2))
     #logger.log_and_showinfo('game', f"Player bought item {item_name.capitalize()}")
 
 #Function to return a cost of an item
@@ -479,8 +479,8 @@ def count_items_and_rewrite(file_path):
     sums their quantities, and rewrites the file preserving every other field.
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            items = json.load(f)
+        with open(file_path, "rb") as f:
+            items = orjson.loads(f.read())
 
         aggregated = {}  # maps a frozenset of (key,value) pairs to the merged entry
 
@@ -509,8 +509,8 @@ def count_items_and_rewrite(file_path):
 
         updated_items = list(aggregated.values())
 
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(updated_items, f, indent=4, ensure_ascii=False)
+        with open(file_path, "wb") as f:
+            f.write(orjson.dumps(updated_items, option=orjson.OPT_INDENT_2))
 
         print("items.json has been updated with aggregated quantities!")
 
@@ -649,8 +649,8 @@ def save_error_code(error_code, logger=None):
         logger.log_and_showinfo("info",f"{error_fix_msg}")
 
 def get_main_pokemon_data():
-    with (open(str(mainpokemon_path), "r", encoding="utf-8") as json_file):
-        main_pokemon_datalist = json.load(json_file)
+    with (open(str(mainpokemon_path), "rb") as f):
+        main_pokemon_datalist = orjson.loads(f.read())
 
     main_pokemon_data = []
     for main_pokemon_data in main_pokemon_datalist:
@@ -719,8 +719,8 @@ def load_collected_pokemon_ids() -> set:
 
     collected_pokemon_ids = set()
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as f:
-            collection = json.load(f)
+        with open(mypokemon_path, "rb") as f:
+            collection = orjson.loads(f.read())
             collected_pokemon_ids = {pkmn["id"] for pkmn in collection}
     except Exception as e:
         show_warning_with_traceback(exception=e, message="Error loading collection cache")
@@ -930,8 +930,8 @@ def substract_item_from_itembag(item: str, quantity: int=1) -> None:
             - Item does not have a 'quantity' field.
             - Insufficient quantity to subtract.
     """
-    with open(itembag_path, "r", encoding="utf-8") as f:
-        items_list = json.load(f)
+    with open(itembag_path, "rb") as f:
+        items_list = orjson.loads(f.read())
 
     # First, we check if the item is in the item bag
     if item not in [item_data["item"] for item_data in items_list]:
@@ -956,13 +956,13 @@ def substract_item_from_itembag(item: str, quantity: int=1) -> None:
     # Finally, we substract the given amount
     if items_list[index].get("quantity") == quantity:
         del items_list[index]
-        with open(str(itembag_path), "w") as f:
-            json.dump(items_list, f, indent=2)
+        with open(str(itembag_path), "wb") as f:
+            f.write(orjson.dumps(items_list, option=orjson.OPT_INDENT_2))
         return
     if items_list[index].get("quantity") > quantity:
         items_list[index]["quantity"] -= quantity
-        with open(str(itembag_path), "w") as f:
-            json.dump(items_list, f, indent=2)
+        with open(str(itembag_path), "wb") as f:
+            f.write(orjson.dumps(items_list, option=orjson.OPT_INDENT_2))
         return
 
 def close_anki():

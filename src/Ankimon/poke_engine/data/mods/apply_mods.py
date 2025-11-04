@@ -1,5 +1,5 @@
 import os
-import json
+import orjson
 import logging
 import constants
 import data
@@ -37,8 +37,8 @@ PRE_PHYSICAL_SPECIAL_SPLIT_CATEGORY_LOOKUP = {
 def apply_move_mods(gen_number):
     logger.debug("Applying move mod for gen {}".format(gen_number))
     for gen_number in reversed(range(gen_number, CURRENT_GEN)):
-        with open("{}/gen{}_move_mods.json".format(PWD, gen_number), 'r') as f:
-            move_mods = json.load(f)
+        with open("{}/gen{}_move_mods.json".format(PWD, gen_number), 'rb') as f:
+            move_mods = orjson.loads(f.read())
         for move, modifications in move_mods.items():
             all_move_json[move].update(modifications)
 
@@ -46,16 +46,16 @@ def apply_move_mods(gen_number):
 def apply_pokedex_mods(gen_number):
     logger.debug("Applying dex mod for gen {}".format(gen_number))
     for gen_number in reversed(range(gen_number, CURRENT_GEN)):
-        with open("{}/gen{}_pokedex_mods.json".format(PWD, gen_number), 'r') as f:
-            pokedex_mods = json.load(f)
+        with open("{}/gen{}_pokedex_mods.json".format(PWD, gen_number), 'rb') as f:
+            pokedex_mods = orjson.loads(f.read())
         for pokemon, modifications in pokedex_mods.items():
             pokedex[pokemon].update(modifications)
 
 
 def set_random_battle_sets(gen_number):
     logger.debug("Setting random battle sets for gen {}".format(gen_number))
-    with open("{}/random_battle_sets_gen{}.json".format(PWD, gen_number), 'r') as f:
-        data.random_battle_sets = json.load(f)
+    with open("{}/random_battle_sets_gen{}.json".format(PWD, gen_number), 'rb') as f:
+        data.random_battle_sets = orjson.loads(f.read())
 
 
 def apply_gen_3_mods():

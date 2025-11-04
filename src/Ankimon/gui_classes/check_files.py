@@ -1,6 +1,6 @@
 import sys
 import os
-import json
+import orjson
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QLabel, QPushButton,
     QLineEdit, QFileDialog, QTextEdit, QWidget, QDialog
@@ -37,8 +37,8 @@ def check_files_in_json(json_file=json_file_structure, root_directory=addon_dir)
                     missing_files.append(folder_path)
 
     # Load the JSON file
-    with open(json_file, 'r', encoding='utf-8') as f:
-        folder_structure = json.load(f)
+    with open(json_file, 'rb') as f:
+        folder_structure = orjson.loads(f.read())
 
     missing_files = []
     verify_files(folder_structure, root_directory, missing_files)

@@ -6,7 +6,7 @@ Creates a JSON file with the data arranged in a way that the bot can use to unde
 This was made for the purposes of random battles
 """
 
-import json
+import orjson
 from copy import deepcopy
 import constants
 from showdown.engine.helpers import normalize_name
@@ -25,8 +25,8 @@ def add_thing_to_dict_or_increment(d, second_key, thing):
         d[second_key][thing] = 1
 
 
-with open(pokedex_path, 'r') as f:
-    pokedex = json.load(f)
+with open(pokedex_path, 'rb') as f:
+    pokedex = orjson.loads(f.read())
 
 
 with open(fp, 'r') as f:
@@ -132,5 +132,5 @@ for k, v in deepcopy(final_json).items():
         final_json.pop(k)
 
 
-with open("out.json", 'w') as f:
-    json.dump(final_json, f, indent=4, sort_keys=True)
+with open("out.json", 'wb') as f:
+    f.write(orjson.dumps(final_json, option=orjson.OPT_INDENT_2 | orjson.OPT_SORT_KEYS))

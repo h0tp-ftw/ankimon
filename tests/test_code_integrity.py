@@ -1,7 +1,7 @@
 import pytest
 import os
 import sys
-import json
+import orjson
 import ast
 import importlib.util
 import platform
