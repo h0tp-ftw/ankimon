@@ -217,6 +217,9 @@ class BackupManager:
         
         backups_to_keep = []
         for backup_dir in backups:
+            # Skip hidden files like .DS_Store
+            if backup_dir.name.startswith("."):
+                continue
             backup_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup_dir))
             if (datetime.datetime.now() - backup_time).days > self.MAX_BACKUP_AGE_DAYS:
                 shutil.rmtree(backup_dir)
