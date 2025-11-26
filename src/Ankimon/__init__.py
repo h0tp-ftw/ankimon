@@ -127,6 +127,8 @@ from .functions.battle_functions import (
     process_battle_data,
 )
 
+from .gui_classes.overview_team import *
+
 from .pyobj.error_handler import show_warning_with_traceback
 
 mw.settings_ankimon = settings_window
