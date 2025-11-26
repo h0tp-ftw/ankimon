@@ -19,6 +19,7 @@
     "gui.reviewer_text_message_box": "Enable colorful pop-up messages in the reviewer.",
     "gui.reviewer_text_message_box_time": "Duration for message box display in seconds [1-5].",
     "gui.show_mainpkmn_in_reviewer": "Show main Pokémon in reviewer. [0: Hide, 1: Same level view, 2: Battle view]",
+    "gui.team_deck_view": "Enable a quick overview of your Pokémon team at the bottom of the deck overview.",
     "gui.view_main_front": "View front of main Pokémon in reviewer when GIFs are enabled. Set Disabled to show from the back.",
     "gui.xp_bar_config": "Enable XP bar in the reviewer to show XP progression for main Pokémon.",
     "gui.xp_bar_location": "Location of the XP bar in the reviewer. [1: Top, 2: Bottom]",

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
  
 import aqt
-from aqt import gui_hooks
+from aqt import gui_hooks, mw
 from aqt.qt import *
 from aqt.utils import showInfo
 
@@ -270,5 +270,6 @@ def on_overview_will_render_content(overview, content):
     content.table = custom_div + (content.table or "")
 
 # Register the hooks
-gui_hooks.deck_browser_will_render_content.append(deck_browser_will_render)
-gui_hooks.overview_will_render_content.append(on_overview_will_render_content)
+if mw.settings_obj.get("gui.team_deck_view", False) is True:
+    gui_hooks.deck_browser_will_render_content.append(deck_browser_will_render)
+    gui_hooks.overview_will_render_content.append(on_overview_will_render_content)

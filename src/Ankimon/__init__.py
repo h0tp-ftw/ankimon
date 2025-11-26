@@ -128,6 +128,7 @@ from .functions.battle_functions import (
 )
 
 from .gui_classes.overview_team import *
+from .gui_classes.quick_team_swap_dialog import *
 
 from .pyobj.error_handler import show_warning_with_traceback
 

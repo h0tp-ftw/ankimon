@@ -20,6 +20,7 @@
     "gui.reviewer_text_message_box": true,
     "gui.reviewer_text_message_box_time": 3,
     "gui.show_mainpkmn_in_reviewer": 1,
+    "gui.team_deck_view": false,
     "gui.view_main_front": true,
     "gui.xp_bar_config": true,
     "gui.xp_bar_location": 2,
