@@ -269,7 +269,7 @@ def on_overview_will_render_content(overview, content):
     # Prepend the pokemon grid to the table content so it appears first
     content.table = custom_div + (content.table or "")
 
-# Register the hooks
-if mw.settings_obj.get("gui.team_deck_view", False) is True:
+# Register hooks if the setting is enabled
+if mw.settings_obj.get("gui.team_deck_view") is True:
     gui_hooks.deck_browser_will_render_content.append(deck_browser_will_render)
     gui_hooks.overview_will_render_content.append(on_overview_will_render_content)

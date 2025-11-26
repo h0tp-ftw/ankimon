@@ -29,6 +29,7 @@ DEFAULT_CONFIG = {
     "gui.reviewer_text_message_box": True,
     "gui.reviewer_text_message_box_time": 3,
     "gui.show_mainpkmn_in_reviewer": 1,
+    "gui.team_deck_view": True,
     "gui.view_main_front": True,
     "gui.xp_bar_config": True,
     "gui.xp_bar_location": 2,

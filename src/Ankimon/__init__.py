@@ -20,6 +20,7 @@ except ModuleNotFoundError:
 import json
 import random
 import copy
+from typing import Union
 
 import aqt
 from anki.hooks import addHook, wrap
@@ -49,6 +50,7 @@ from .resources import (
     mypokemon_path,
     itembag_path,
     sound_list_path,
+    check_current_files
 )
 from .menu_buttons import create_menu_actions
 from .hooks import setupHooks
@@ -127,15 +129,18 @@ from .functions.battle_functions import (
     process_battle_data,
 )
 
-from .gui_classes.overview_team import *
-from .gui_classes.quick_team_swap_dialog import *
-
 from .pyobj.error_handler import show_warning_with_traceback
 
 mw.settings_ankimon = settings_window
 mw.logger = logger
 mw.translator = translator
 mw.settings_obj = settings_obj
+
+from .gui_classes.overview_team import *
+from .gui_classes.quick_team_swap_dialog import *
+
+if check_current_files() == False:
+    show_agreement_and_download_dialog(force_download=True)
 
 # Log an startup message
 logger.log_and_showinfo('game', translator.translate("startup"))
@@ -168,8 +173,6 @@ if not _collection_loaded: # If the collection hasn't already been loaded
     collected_pokemon_ids = load_collected_pokemon_ids()
     _collection_loaded = True
 
-
-
 with open(sound_list_path, "r", encoding="utf-8") as json_file:
     sound_list = json.load(json_file)
 
@@ -188,8 +191,6 @@ def on_webview_will_set_content(web_content: WebContent, context) -> None:
         return
     ankimon_package = mw.addonManager.addonFromModule(__name__)
     web_content.js.append(f"/_addons/{ankimon_package}/user_files/web/ankimon_hud_portal.js")
-
-
 
 webview_will_set_content.append(on_webview_will_set_content)
 
@@ -259,7 +260,7 @@ def download_changelog():
         return e
 
 if online_connectivity and ssh:
-    def done(result: Exception | str | None):
+    def done(result: Union[Exception, str, None]):
         if isinstance(result, Exception):
             show_warning_with_traceback(parent=mw, exception=result, message="Error connecting to GitHub:")
             return
@@ -676,6 +677,7 @@ create_menu_actions(
     data_handler_obj,
     pokemon_pc,
     backup_manager,
+    show_quick_team_swap_dialog
 )
 
     #https://goo.gl/uhAxsg
@@ -845,3 +847,7 @@ if settings_obj.get("misc.discord_rich_presence") == True:
     gui_hooks.reviewer_did_answer_card.append(on_reviewer_initialized)
     gui_hooks.reviewer_will_end.append(mw.ankimon_presence.stop_presence)
     gui_hooks.sync_did_finish.append(mw.ankimon_presence.stop)
+
+# register shortcut (Tab then P) — replace with your preferred key if desired
+#shortcut = QShortcut(QKeySequence("Tab, P"), mw)
+#shortcut.activated.connect(open_quick_swap_with_context)
