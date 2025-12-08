@@ -670,8 +670,7 @@ create_menu_actions(
     addon_dir,
     data_handler_obj,
     pokemon_pc,
-    backup_manager,
-    show_quick_team_swap_dialog
+    backup_manager
 )
 
     #https://goo.gl/uhAxsg
