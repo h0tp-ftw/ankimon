@@ -139,9 +139,6 @@ mw.settings_obj = settings_obj
 from .gui_classes.overview_team import *
 from .gui_classes.quick_team_swap_dialog import *
 
-if check_current_files() == False:
-    show_agreement_and_download_dialog(force_download=True)
-
 # Log an startup message
 logger.log_and_showinfo('game', translator.translate("startup"))
 logger.log_and_showinfo('game', translator.translate("backing_up_files"))
@@ -260,7 +257,7 @@ def download_changelog():
         return e
 
 if online_connectivity and ssh:
-    def done(result: Union[Exception, str, None]):
+    def done(result: Exception | str | None):
         if isinstance(result, Exception):
             show_warning_with_traceback(parent=mw, exception=result, message="Error connecting to GitHub:")
             return
@@ -847,7 +844,3 @@ if settings_obj.get("misc.discord_rich_presence") == True:
     gui_hooks.reviewer_did_answer_card.append(on_reviewer_initialized)
     gui_hooks.reviewer_will_end.append(mw.ankimon_presence.stop_presence)
     gui_hooks.sync_did_finish.append(mw.ankimon_presence.stop)
-
-# register shortcut (Tab then P) — replace with your preferred key if desired
-#shortcut = QShortcut(QKeySequence("Tab, P"), mw)
-#shortcut.activated.connect(open_quick_swap_with_context)
