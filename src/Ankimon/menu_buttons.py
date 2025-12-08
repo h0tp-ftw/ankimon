@@ -34,7 +34,6 @@ from .pyobj.achievement_window import AchievementWindow
 from .pyobj.ankimon_tracker_window import AnkimonTrackerWindow
 from .pyobj.backup_manager import BackupManager
 from .gui_classes.backup_manager_dialog import BackupManagerDialog
-from .gui_classes.quick_team_swap_dialog import show_quick_team_swap_dialog
 from .gui_entities import (
     License,
     Credits,
@@ -90,7 +89,6 @@ def create_menu_actions(
     data_handler_obj: DataHandler,
     pokemon_pc: PokemonPC,
     backup_manager: BackupManager,
-    team_overview_window: show_quick_team_swap_dialog,
 ):
     actions = []
 
@@ -101,13 +99,6 @@ def create_menu_actions(
             pokecol_action.setMenuRole(QAction.MenuRole.NoRole)
             collection_menu.addAction(pokecol_action)
             qconnect(pokecol_action.triggered, pokecollection_win.show)
-
-        #Pokemon Team Quick Swap
-        quick_swap_action = QAction(mw.translator.translate("quick_team_swap_button"), mw)
-        quick_swap_action.setMenuRole(QAction.MenuRole.NoRole)
-        collection_menu.addAction(quick_swap_action)
-        quick_swap_action.setShortcut(QKeySequence("Tab+P"))
-        qconnect(quick_swap_action.triggered, team_overview_window)
 
         # Pokémon PC
         pokemon_pc_action = QAction("Pokémon PC", mw)
