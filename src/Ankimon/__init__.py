@@ -47,8 +47,7 @@ from .resources import (
     pkmnimgfolder,
     mypokemon_path,
     itembag_path,
-    sound_list_path,
-    check_current_files
+    sound_list_path
 )
 from .menu_buttons import create_menu_actions
 from .hooks import setupHooks
