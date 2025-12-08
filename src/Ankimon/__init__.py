@@ -20,8 +20,6 @@ except ModuleNotFoundError:
 import json
 import random
 import copy
-from typing import Union
-
 import aqt
 from anki.hooks import addHook, wrap
 from aqt import gui_hooks, mw, utils
@@ -137,7 +135,6 @@ mw.translator = translator
 mw.settings_obj = settings_obj
 
 from .gui_classes.overview_team import *
-from .gui_classes.quick_team_swap_dialog import *
 
 # Log an startup message
 logger.log_and_showinfo('game', translator.translate("startup"))
