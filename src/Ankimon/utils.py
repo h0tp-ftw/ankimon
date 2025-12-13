@@ -4,6 +4,7 @@ import requests
 import json
 import random
 import csv
+import base64
 
 from aqt import mw
 from aqt.utils import showWarning, showInfo
@@ -16,6 +17,7 @@ from .pyobj.InfoLogger import ShowInfoLogger
 
 from .functions.battle_functions import calculate_hp
 from .functions.pokedex_functions import find_details_move, search_pokedex
+
 from .pyobj.error_handler import show_warning_with_traceback
 from .resources import (
     battlescene_path,
@@ -38,6 +40,7 @@ from .resources import (
     addon_dir,
     POKEMON_TIERS
 )
+
 
 audio_output = QAudioOutput()
 media_player = QMediaPlayer()
@@ -653,10 +656,10 @@ def get_main_pokemon_data():
     main_pokemon_data = []
     for main_pokemon_data in main_pokemon_datalist:
         _name = main_pokemon_data["name"]
-        if not main_pokemon_data.get('nickname') or main_pokemon_data.get('nickname') is None:
+        if not main_pokemon_data.get("nickname") or main_pokemon_data.get("nickname") is None:
             _nickname = None
         else:
-            _nickname = main_pokemon_data['nickname']
+            _nickname = main_pokemon_data["nickname"]
         _id = main_pokemon_data["id"]
         _ability = main_pokemon_data["ability"]
         _type = main_pokemon_data["type"]
@@ -965,3 +968,25 @@ def substract_item_from_itembag(item: str, quantity: int=1) -> None:
 
 def close_anki():
     mw.close()
+
+def png_to_base64(file_path: str) -> str | None:
+    """
+    Converts a PNG image file to a Base64 encoded string.
+
+    Args:
+        file_path (str): The path to the PNG image file.
+
+    Returns:
+        str | None: The Base64 encoded string of the image, or None if an error occurs.
+    """
+    try:
+        with open(file_path, "rb") as image_file:
+            image_data = image_file.read()
+            encoded_string = base64.b64encode(image_data).decode('utf-8')
+            return encoded_string
+    except FileNotFoundError:
+        print(f"Error: File not found at {file_path}")
+        return None
+    except Exception as e:
+        print(f"Error converting PNG to Base64: {e}")
+        return None
