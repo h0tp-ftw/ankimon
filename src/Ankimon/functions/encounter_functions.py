@@ -58,17 +58,17 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     """
 
     percentages = {
-        "Baby": 2,
+        "Baby": 3,
         "Legendary": 0.5,
         "Mythical": 0.2,
         "Normal": 92.3,
-        "Ultra": 5,
+        "Ultra": 4,
     }
 
     level_thresholds = {"Ultra": 30, "Legendary": 50, "Mythical": 75}
     for tier in level_thresholds:
         # let high level players have high tiers even if their main pokemon level is low
-        scale = 1 - min(trainer_level * 0.1, 1)
+        scale = 1 - min(trainer_level * (1/12), 1)
         theshold = level_thresholds[tier] * scale
 
         if main_pokemon.level < theshold:
@@ -76,8 +76,8 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
             percentages[tier] = 0
 
     trainer_level_bonus = min(trainer_level * 0.04, 1)
-    main_pokemon_level_bonus = min(main_pokemon.level * 0.002, 1)
-    review_bonus = min((total_reviews / daily_average) * 0.2, 1)
+    main_pokemon_level_bonus = min(main_pokemon.level * 0.003, 1)
+    review_bonus = min((total_reviews / daily_average) * 0.25, 1)
 
     luck_factor = 1.0 + trainer_level_bonus + main_pokemon_level_bonus + review_bonus
 
