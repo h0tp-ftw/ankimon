@@ -87,6 +87,9 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
         original_value = percentages[p_type]
         new_value = original_value * luck_factor
 
+        if p_type == "Baby":
+            new_value = min(new_value, 4)
+
         percentages[p_type] = new_value
         total_boost_amount += new_value - original_value
 

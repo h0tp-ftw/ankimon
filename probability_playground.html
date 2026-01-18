@@ -180,6 +180,10 @@ def calculate_probabilities(total_reviews, daily_average, trainer_level, main_po
         if percentages[p_type] > 0:
             original = percentages[p_type]
             new_val = original * luck_factor
+
+            if p_type == "Baby":
+                new_val = min(new_val, 4)
+
             percentages[p_type] = new_val
             total_boost += (new_val - original)
 
