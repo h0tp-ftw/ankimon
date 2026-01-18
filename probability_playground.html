@@ -1,474 +1,338 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ankimon Encounter Probability Playground</title>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ankimon Python Playground</title>
+    <!-- Load Pyodide -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
-      :root {
-        --bg-color: #0d1117;
-        --text-color: #c9d1d9;
-        --sidebar-width: 400px;
-        --accent-color: #58a6ff;
-        --border-color: #30363d;
-      }
-      body {
-        margin: 0;
-        padding: 0;
-        font-family:
-          -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
-          sans-serif;
-        background-color: var(--bg-color);
-        color: var(--text-color);
-        display: flex;
-        height: 100vh;
-        overflow: hidden;
-      }
-      .sidebar {
-        width: var(--sidebar-width);
-        background-color: #161b22;
-        border-right: 1px solid var(--border-color);
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        overflow-y: auto;
-      }
-      .main-content {
-        flex: 1;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-      }
-      .chart-container {
-        flex: 1;
-        background-color: #161b22;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        padding: 20px;
-        position: relative;
-      }
-      .editor-container {
-        height: 300px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      textarea {
-        flex: 1;
-        background-color: #0d1117;
-        color: #c9d1d9;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        padding: 10px;
-        font-family:
-          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier,
-          monospace;
-        font-size: 14px;
-        resize: none;
-      }
-      label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: 600;
-        font-size: 0.9em;
-      }
-      input[type="range"] {
-        width: 100%;
-        margin-bottom: 5px;
-      }
-      .value-display {
-        float: right;
-        font-family: monospace;
-        color: var(--accent-color);
-      }
-      button {
-        background-color: #238636;
-        color: white;
-        border: 1px solid rgba(240, 246, 252, 0.1);
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-size: 14px;
-        cursor: pointer;
-        font-weight: 600;
-      }
-      button:hover {
-        background-color: #2ea043;
-      }
-      h2 {
-        margin-top: 0;
-        font-size: 1.2em;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 10px;
-      }
-      .control-group {
-        background: #21262d;
-        padding: 15px;
-        border-radius: 6px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="sidebar">
-      <h2>Configuration</h2>
-
-      <div class="control-group">
-        <label>X-Axis Variable</label>
-        <select
-          id="xAxisSelect"
-          style="
-            width: 100%;
-            padding: 5px;
-            background: #0d1117;
-            color: white;
-            border: 1px solid #30363d;
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --sidebar-width: 400px;
+            --accent-color: #58a6ff;
+            --border-color: #30363d;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: #161b22;
+            border-right: 1px solid var(--border-color);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .chart-container {
+            flex: 1;
+            background-color: #161b22;
+            border: 1px solid var(--border-color);
             border-radius: 6px;
-          "
-        >
-          <option value="playerLevel">Player Level (1-100)</option>
-          <option value="totalReviews">Total Reviews (0-500)</option>
-          <option value="mainLevel">Main Pokemon Level (1-100)</option>
-        </select>
-      </div>
+            padding: 20px;
+            position: relative;
+        }
+        .editor-container {
+            height: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        textarea {
+            flex: 1;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            font-size: 14px;
+            resize: none;
+        }
+        .control-group { background: #21262d; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        .value-display { float: right; font-family: monospace; color: var(--accent-color); }
+        h2 { margin-top: 0; font-size: 1.2em; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.9em; }
+        input[type="range"] { width: 100%; }
+        
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(13, 17, 23, 0.9);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            font-size: 1.5em;
+        }
+        .run-btn {
+            background-color: #238636;
+            color: white;
+            border: 1px solid rgba(240, 246, 252, 0.1);
+            border-radius: 6px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+        }
+        .run-btn:hover { background-color: #2ea043; }
+        select { width: 100%; padding: 5px; background: #0d1117; color: white; border: 1px solid #30363d; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">Loading Python Engine (Pyodide)...</div>
 
-      <div class="control-group">
-        <label
-          >Fixed Parameter: Player Level
-          <span id="val_playerLevel" class="value-display">10</span></label
-        >
-        <input
-          type="range"
-          id="param_playerLevel"
-          min="1"
-          max="100"
-          value="10"
-        />
-      </div>
-
-      <div class="control-group">
-        <label
-          >Fixed Parameter: Total Reviews
-          <span id="val_totalReviews" class="value-display">100</span></label
-        >
-        <input
-          type="range"
-          id="param_totalReviews"
-          min="0"
-          max="1000"
-          value="100"
-        />
-      </div>
-
-      <div class="control-group">
-        <label
-          >Fixed Parameter: Daily Average
-          <span id="val_dailyAverage" class="value-display">50</span></label
-        >
-        <input
-          type="range"
-          id="param_dailyAverage"
-          min="1"
-          max="200"
-          value="50"
-        />
-      </div>
-
-      <div class="control-group">
-        <label
-          >Fixed Parameter: Main Pkmn Level
-          <span id="val_mainLevel" class="value-display">50</span></label
-        >
-        <input type="range" id="param_mainLevel" min="1" max="100" value="50" />
-      </div>
-
-      <button onclick="updateChart()">Refresh Graph</button>
-      <p style="font-size: 0.8em; color: #8b949e">
-        Adjust the sliders to set the "fixed" values. The chart will vary the
-        selected X-Axis variable while keeping others constant.
-      </p>
+    <div class="sidebar">
+        <h2>Configuration</h2>
+        <div class="control-group">
+            <label>X-Axis Variable</label>
+            <select id="xAxisSelect">
+                <option value="playerLevel">Player Level (1-100)</option>
+                <option value="totalReviews">Total Reviews (0-500)</option>
+                <option value="mainLevel">Main Pokemon Level (1-100)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Player Level <span id="val_playerLevel" class="value-display">10</span></label>
+            <input type="range" id="param_playerLevel" min="1" max="100" value="10">
+        </div>
+        <div class="control-group">
+            <label>Total Reviews <span id="val_totalReviews" class="value-display">100</span></label>
+            <input type="range" id="param_totalReviews" min="0" max="1000" value="100">
+        </div>
+        <div class="control-group">
+            <label>Daily Average <span id="val_dailyAverage" class="value-display">50</span></label>
+            <input type="range" id="param_dailyAverage" min="1" max="200" value="50">
+        </div>
+        <div class="control-group">
+            <label>Main Pkmn Level <span id="val_mainLevel" class="value-display">50</span></label>
+            <input type="range" id="param_mainLevel" min="1" max="100" value="50">
+        </div>
+        <button class="run-btn" onclick="updateChart()">Run Python & Update Graph</button>
     </div>
 
     <div class="main-content">
-      <div class="chart-container">
-        <canvas id="probabilityChart"></canvas>
-      </div>
-
-      <div class="editor-container">
-        <h2>Algorithm Output Logic (JavaScript)</h2>
-        <p style="font-size: 0.8em; color: #8b949e; margin-top: -15px">
-          Edit the function body below to test new scaling logic. Must return an
-          object with tier keys.
-        </p>
-        <textarea id="algorithmCode">
-// Current Implementation Logic from Ankimon
-// Available arguments: totalReviews, dailyAverage, playerLevel, mainPokemonLevel
-
-let percentages = {"Baby": 2, "Legendary": 0.5, "Mythical": 0.2, "Normal": 92.3, "Ultra": 5};
-
-// Adjust based on review ratio
-let reviewRatio = (dailyAverage > 0) ? totalReviews / dailyAverage : 0;
-
-if (reviewRatio < 0.4) {
-    percentages["Normal"] += (percentages["Baby"] || 0) + (percentages["Legendary"] || 0) + 
-                            (percentages["Mythical"] || 0) + (percentages["Ultra"] || 0);
-    percentages["Baby"] = 0;
-    percentages["Legendary"] = 0;
-    percentages["Mythical"] = 0;
-    percentages["Ultra"] = 0;
-} else if (reviewRatio < 0.6) {
-    percentages["Baby"] += 2;
-    percentages["Normal"] -= 2;
-} else if (reviewRatio < 0.8) {
-    percentages["Ultra"] += 3;
-    percentages["Normal"] -= 3;
-} else {
-    percentages["Legendary"] += 2;
-    percentages["Ultra"] += 3;
-    percentages["Normal"] -= 5;
-}
-
-// Level Thresholds
-if (mainPokemonLevel) {
-    const thresholds = {"Ultra": 30, "Legendary": 50, "Mythical": 75};
-    for (let tier of ["Ultra", "Legendary", "Mythical"]) {
-        if (mainPokemonLevel < thresholds[tier]) {
-            percentages[tier] = 0;
-        }
+        <div class="chart-container">
+            <canvas id="probabilityChart"></canvas>
+        </div>
+        <div class="editor-container">
+            <h2>Python Algorithm</h2>
+            <p style="font-size: 0.8em; color: #8b949e; margin-top: -15px;">Modify the Python function below. It must accept the 4 arguments and return a DICT.</p>
+            <textarea id="pythonCode">
+# Current PR Logic (Extracted from file)
+def calculate_probabilities(total_reviews, daily_average, trainer_level, main_pokemon_level):
+    
+    percentages = {
+        "Baby": 3.0,
+        "Legendary": 0.5,
+        "Mythical": 0.2,
+        "Normal": 92.3,
+        "Ultra": 4.0,
     }
-}
 
-// Player Level Adjustment (The "Bad Scaling" part)
-if (playerLevel) {
-    let adjustment = 5;
-    if (playerLevel > 10) {
-        for (let tier in percentages) {
-            if (tier === "Normal") {
-                percentages[tier] = Math.max(percentages[tier] - adjustment, 0);
-            } else {
-                percentages[tier] = (percentages[tier] || 0) + adjustment;
-            }
-        }
-    }
-}
+    # 1. Level Access Thresholds
+    level_thresholds = {"Ultra": 30, "Legendary": 50, "Mythical": 75}
+    for tier, base_thresh in level_thresholds.items():
+        # Scale: High level players unlock tiers earlier
+        scale = 1.0 - min(trainer_level * (1/12.0), 1.0)
+        threshold = base_thresh * scale
+        
+        if main_pokemon_level < threshold:
+            # If main pokemon is too weak (and trainer is low level), lock the tier
+            percentages["Normal"] += percentages[tier]
+            percentages[tier] = 0.0
 
-// Normalize
-let total = 0;
-for (let key in percentages) total += percentages[key];
-for (let key in percentages) {
-    percentages[key] = (total > 0) ? (percentages[key] / total) * 100 : 0;
-}
+    # 2. Multipliers (The improvements from the PR)
+    # Trainer Level Bonus (Max +100% at level 25)
+    trainer_level_bonus = min(trainer_level * 0.04, 1.0)
+    
+    # Main Pkmn Bonus (Max +30% at level 100)
+    main_pokemon_level_bonus = min(main_pokemon_level * 0.003, 1.0)
+    
+    # Review Bonus (Max +100% at 4x daily average)
+    ratio = total_reviews / daily_average if daily_average > 0 else 0
+    review_bonus = min(ratio * 0.25, 1.0)
 
-return percentages;</textarea
-        >
-      </div>
+    # Luck Factor: Base 1.0 + Bonuses
+    luck_factor = 1.0 + trainer_level_bonus + main_pokemon_level_bonus + review_bonus
+
+    # Apply Luck to Rares
+    total_boost = 0.0
+    for p_type in ["Baby", "Legendary", "Mythical", "Ultra"]:
+        if percentages[p_type] > 0:
+            original = percentages[p_type]
+            new_val = original * luck_factor
+            percentages[p_type] = new_val
+            total_boost += (new_val - original)
+
+    # Normalize (Subtract boost from Normal)
+    # Ensure Normal doesn't go below 0
+    available_normal = percentages["Normal"]
+    actual_reduction = min(total_boost, available_normal)
+    percentages["Normal"] -= actual_reduction
+    
+    return percentages
+</textarea>
+        </div>
     </div>
 
     <script>
-      // Setup UI
-      const sliders = [
-        "playerLevel",
-        "totalReviews",
-        "dailyAverage",
-        "mainLevel",
-      ];
-      sliders.forEach((id) => {
-        const el = document.getElementById("param_" + id);
-        const disp = document.getElementById("val_" + id);
-        el.addEventListener("input", (e) => {
-          disp.textContent = e.target.value;
-          updateChart();
+        let pyodide = null;
+
+        // Initialize Pyodide
+        async function main() {
+            try {
+                pyodide = await loadPyodide();
+                document.getElementById('loading-overlay').style.display = 'none';
+                updateChart();
+            } catch (err) {
+                document.getElementById('loading-overlay').innerText = "Error loading Python: " + err;
+            }
+        }
+        main();
+
+        // UI Helpers
+        const inputs = ['playerLevel', 'totalReviews', 'dailyAverage', 'mainLevel'];
+        inputs.forEach(id => {
+            const el = document.getElementById('param_' + id);
+            const disp = document.getElementById('val_' + id);
+            el.addEventListener('input', (e) => {
+                disp.textContent = e.target.value;
+                updateChart(); // Live update
+            });
         });
-      });
 
-      document
-        .getElementById("xAxisSelect")
-        .addEventListener("change", updateChart);
-      document
-        .getElementById("algorithmCode")
-        .addEventListener("input", updateChart); // Live update
+        document.getElementById('xAxisSelect').addEventListener('change', updateChart);
+        
+        // Don't live update text area for performance, rely on button or blur? 
+        // Pyodide is fast enough for small funcs, let's try debounce
+        let timeout;
+        document.getElementById('pythonCode').addEventListener('input', () => {
+            clearTimeout(timeout);
+            timeout = setTimeout(updateChart, 500);
+        });
 
-      let chart = null;
+        let chart = null;
 
-      function runAlgorithm(
-        totalReviews,
-        dailyAverage,
-        playerLevel,
-        mainPokemonLevel,
-      ) {
-        const code = document.getElementById("algorithmCode").value;
-        try {
-          // Wrap code in a function
-          const func = new Function(
-            "totalReviews",
-            "dailyAverage",
-            "playerLevel",
-            "mainPokemonLevel",
-            code,
-          );
-          return func(
-            totalReviews,
-            dailyAverage,
-            playerLevel,
-            mainPokemonLevel,
-          );
-        } catch (e) {
-          console.error("Algorithm Error:", e);
-          return { Error: 100 };
-        }
-      }
+        async function updateChart() {
+            if (!pyodide) return;
 
-      function updateChart() {
-        const xAxisMode = document.getElementById("xAxisSelect").value;
+            const xAxisMode = document.getElementById('xAxisSelect').value;
+            const code = document.getElementById('pythonCode').value;
 
-        // Fixed Params
-        const fixedPlayerLevel = parseInt(
-          document.getElementById("param_playerLevel").value,
-        );
-        const fixedTotalReviews = parseInt(
-          document.getElementById("param_totalReviews").value,
-        );
-        const fixedDailyAverage = parseInt(
-          document.getElementById("param_dailyAverage").value,
-        );
-        const fixedMainLevel = parseInt(
-          document.getElementById("param_mainLevel").value,
-        );
+            // Define Fixed Params
+            const fixedData = {
+                playerLevel: parseInt(document.getElementById('param_playerLevel').value),
+                totalReviews: parseInt(document.getElementById('param_totalReviews').value),
+                dailyAverage: parseInt(document.getElementById('param_dailyAverage').value),
+                mainLevel: parseInt(document.getElementById('param_mainLevel').value)
+            };
 
-        // Generate Data Points
-        const labels = [];
-        const dataSets = {
-          Normal: [],
-          Baby: [],
-          Ultra: [],
-          Legendary: [],
-          Mythical: [],
-        };
+            // Prepare Python Environment
+            try {
+                // Ensure fresh context or just redefine function
+                await pyodide.runPythonAsync(code);
+                
+                // Get the function
+                const pyFunc = pyodide.globals.get('calculate_probabilities');
+                if (!pyFunc) throw new Error("Function 'calculate_probabilities' not found in code.");
 
-        let steps = 50; // Resolution
-        let min = 0,
-          max = 100;
+                // Generate Data
+                let labels = [];
+                let datasets = { "Normal": [], "Baby": [], "Ultra": [], "Legendary": [], "Mythical": [] };
 
-        if (xAxisMode === "playerLevel") {
-          min = 1;
-          max = 100;
-        } else if (xAxisMode === "totalReviews") {
-          min = 0;
-          max = 500;
-        } else if (xAxisMode === "mainLevel") {
-          min = 1;
-          max = 100;
+                let min = 0, max = 100;
+                if (xAxisMode === 'totalReviews') max = 500;
+                
+                let steps = 50;
+                let stepSize = (max - (xAxisMode === 'playerLevel' ? 1 : 0)) / steps;
+
+                for(let i=0; i<=steps; i++) {
+                    let xVal = Math.round((xAxisMode === 'playerLevel' || xAxisMode === 'mainLevel' ? 1 : 0) + (i * stepSize));
+                    labels.push(xVal);
+
+                    // Map args
+                    let args = { ...fixedData };
+                    if (xAxisMode === 'playerLevel') args.playerLevel = xVal;
+                    if (xAxisMode === 'totalReviews') args.totalReviews = xVal;
+                    if (xAxisMode === 'mainLevel') args.mainLevel = xVal;
+
+                    // Call Python
+                    // calculate_probabilities(total_reviews, daily_average, trainer_level, main_pokemon_level)
+                    let resultProxy = pyFunc(args.totalReviews, args.dailyAverage, args.playerLevel, args.mainLevel);
+                    let result = resultProxy.toJs();
+                    resultProxy.destroy();
+
+                    for (let key in datasets) {
+                        datasets[key].push(result.get(key) || 0);
+                    }
+                }
+
+                pyFunc.destroy();
+                renderChart(labels, datasets, xAxisMode);
+
+            } catch (err) {
+                console.error("Python Error:", err);
+                // Optionally show error in UI
+            }
         }
 
-        let stepSize = (max - min) / steps;
+        function renderChart(labels, data, xAxisMode) {
+            const ctx = document.getElementById('probabilityChart').getContext('2d');
+            if (chart) chart.destroy();
 
-        for (let i = 0; i <= steps; i++) {
-          let xVal = Math.round(min + i * stepSize);
-          labels.push(xVal);
-
-          // Determine inputs based on what is variable and what is fixed
-          let pL = xAxisMode === "playerLevel" ? xVal : fixedPlayerLevel;
-          let tR = xAxisMode === "totalReviews" ? xVal : fixedTotalReviews;
-          let mL = xAxisMode === "mainLevel" ? xVal : fixedMainLevel;
-          let dA = fixedDailyAverage;
-
-          let result = runAlgorithm(tR, dA, pL, mL);
-
-          // Populate datasets
-          for (let key in dataSets) {
-            dataSets[key].push(result[key] || 0);
-          }
-        }
-
-        // Render Chart
-        const ctx = document
-          .getElementById("probabilityChart")
-          .getContext("2d");
-
-        if (chart) chart.destroy();
-
-        chart = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels: labels,
-            datasets: [
-              {
-                label: "Normal",
-                data: dataSets["Normal"],
-                borderColor: "#8b949e",
-                backgroundColor: "rgba(139, 148, 158, 0.2)",
-                fill: true,
-              },
-              {
-                label: "Baby",
-                data: dataSets["Baby"],
-                borderColor: "#79c0ff",
-                backgroundColor: "rgba(121, 192, 255, 0.2)",
-                fill: true,
-              },
-              {
-                label: "Ultra",
-                data: dataSets["Ultra"],
-                borderColor: "#d2a8ff",
-                backgroundColor: "rgba(210, 168, 255, 0.2)",
-                fill: true,
-              },
-              {
-                label: "Legendary",
-                data: dataSets["Legendary"],
-                borderColor: "#ff7b72",
-                backgroundColor: "rgba(255, 123, 114, 0.2)",
-                fill: true,
-              },
-              {
-                label: "Mythical",
-                data: dataSets["Mythical"],
-                borderColor: "#f2cc60",
-                backgroundColor: "rgba(242, 204, 96, 0.2)",
-                fill: true,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: "index", intersect: false },
-            plugins: {
-              title: { display: true, text: `Probability vs ${xAxisMode}` },
-              tooltip: {
-                callbacks: {
-                  label: function (context) {
-                    return (
-                      context.dataset.label +
-                      ": " +
-                      context.parsed.y.toFixed(2) +
-                      "%"
-                    );
-                  },
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Normal', data: data['Normal'], borderColor: '#8b949e', backgroundColor: 'rgba(139, 148, 158, 0.2)', fill: true },
+                        { label: 'Baby', data: data['Baby'], borderColor: '#79c0ff', backgroundColor: 'rgba(121, 192, 255, 0.2)', fill: true },
+                        { label: 'Ultra', data: data['Ultra'], borderColor: '#d2a8ff', backgroundColor: 'rgba(210, 168, 255, 0.2)', fill: true },
+                        { label: 'Legendary', data: data['Legendary'], borderColor: '#ff7b72', backgroundColor: 'rgba(255, 123, 114, 0.2)', fill: true },
+                        { label: 'Mythical', data: data['Mythical'], borderColor: '#f2cc60', backgroundColor: 'rgba(242, 204, 96, 0.2)', fill: true }
+                    ]
                 },
-              },
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 100,
-                title: { display: true, text: "Percentage Chance" },
-                stacked: true,
-              },
-              x: {
-                title: { display: true, text: xAxisMode },
-              },
-            },
-            elements: {
-              point: { radius: 0 }, // Smooth lines without dots
-            },
-          },
-        });
-      }
-
-      // Init
-      setTimeout(updateChart, 100);
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: { display: true, text: `Probability vs ${xAxisMode}` },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, stacked: true },
+                        x: { title: { display: true, text: xAxisMode } }
+                    },
+                    elements: { point: { radius: 0 } }
+                }
+            });
+        }
     </script>
-  </body>
+</body>
 </html>
