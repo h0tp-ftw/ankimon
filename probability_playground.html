@@ -105,8 +105,8 @@
         <div class="control-group">
             <label>X-Axis Variable</label>
             <select id="xAxisSelect">
-                <option value="playerLevel">Player Level (1-100)</option>
                 <option value="totalReviews">Total Reviews (0-500)</option>
+                <option value="playerLevel">Player Level (1-100)</option>
                 <option value="mainLevel">Main Pokemon Level (1-100)</option>
             </select>
         </div>
@@ -139,7 +139,6 @@
             <textarea id="pythonCode">
 # Current PR Logic (Extracted from file)
 def calculate_probabilities(total_reviews, daily_average, trainer_level, main_pokemon_level):
-    
     percentages = {
         "Baby": 2,
         "Legendary": 0.5,
@@ -168,7 +167,7 @@ def calculate_probabilities(total_reviews, daily_average, trainer_level, main_po
     main_pokemon_level_bonus = min(main_pokemon_level * 0.005, 0.8)
     
     # Review Bonus (Max +100% at 4x daily average)
-    ratio = total_reviews / daily_average if daily_average > 0 else 0
+    ratio = total_reviews / max(daily_average, 30)
     review_bonus = min(ratio * 0.25, 1.0)
 
     # Luck Factor: Base 1.0 + Bonuses
