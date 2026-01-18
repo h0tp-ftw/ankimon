@@ -69,9 +69,9 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     for tier in level_thresholds:
         # let high level players have high tiers even if their main pokemon level is low
         scale = 1 - min(trainer_level * (1/12), 1)
-        theshold = level_thresholds[tier] * scale
+        threshold = level_thresholds[tier] * scale
 
-        if main_pokemon.level < theshold:
+        if main_pokemon.level < threshold:
             percentages["Normal"] += percentages[tier]
             percentages[tier] = 0
 
