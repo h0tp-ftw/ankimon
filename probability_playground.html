@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ankimon Encounter Probability Playground</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      :root {
+        --bg-color: #0d1117;
+        --text-color: #c9d1d9;
+        --sidebar-width: 400px;
+        --accent-color: #58a6ff;
+        --border-color: #30363d;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+          sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+      .sidebar {
+        width: var(--sidebar-width);
+        background-color: #161b22;
+        border-right: 1px solid var(--border-color);
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        overflow-y: auto;
+      }
+      .main-content {
+        flex: 1;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .chart-container {
+        flex: 1;
+        background-color: #161b22;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 20px;
+        position: relative;
+      }
+      .editor-container {
+        height: 300px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      textarea {
+        flex: 1;
+        background-color: #0d1117;
+        color: #c9d1d9;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 10px;
+        font-family:
+          "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier,
+          monospace;
+        font-size: 14px;
+        resize: none;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 600;
+        font-size: 0.9em;
+      }
+      input[type="range"] {
+        width: 100%;
+        margin-bottom: 5px;
+      }
+      .value-display {
+        float: right;
+        font-family: monospace;
+        color: var(--accent-color);
+      }
+      button {
+        background-color: #238636;
+        color: white;
+        border: 1px solid rgba(240, 246, 252, 0.1);
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 14px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:hover {
+        background-color: #2ea043;
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 1.2em;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 10px;
+      }
+      .control-group {
+        background: #21262d;
+        padding: 15px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sidebar">
+      <h2>Configuration</h2>
+
+      <div class="control-group">
+        <label>X-Axis Variable</label>
+        <select
+          id="xAxisSelect"
+          style="
+            width: 100%;
+            padding: 5px;
+            background: #0d1117;
+            color: white;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+          "
+        >
+          <option value="playerLevel">Player Level (1-100)</option>
+          <option value="totalReviews">Total Reviews (0-500)</option>
+          <option value="mainLevel">Main Pokemon Level (1-100)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label
+          >Fixed Parameter: Player Level
+          <span id="val_playerLevel" class="value-display">10</span></label
+        >
+        <input
+          type="range"
+          id="param_playerLevel"
+          min="1"
+          max="100"
+          value="10"
+        />
+      </div>
+
+      <div class="control-group">
+        <label
+          >Fixed Parameter: Total Reviews
+          <span id="val_totalReviews" class="value-display">100</span></label
+        >
+        <input
+          type="range"
+          id="param_totalReviews"
+          min="0"
+          max="1000"
+          value="100"
+        />
+      </div>
+
+      <div class="control-group">
+        <label
+          >Fixed Parameter: Daily Average
+          <span id="val_dailyAverage" class="value-display">50</span></label
+        >
+        <input
+          type="range"
+          id="param_dailyAverage"
+          min="1"
+          max="200"
+          value="50"
+        />
+      </div>
+
+      <div class="control-group">
+        <label
+          >Fixed Parameter: Main Pkmn Level
+          <span id="val_mainLevel" class="value-display">50</span></label
+        >
+        <input type="range" id="param_mainLevel" min="1" max="100" value="50" />
+      </div>
+
+      <button onclick="updateChart()">Refresh Graph</button>
+      <p style="font-size: 0.8em; color: #8b949e">
+        Adjust the sliders to set the "fixed" values. The chart will vary the
+        selected X-Axis variable while keeping others constant.
+      </p>
+    </div>
+
+    <div class="main-content">
+      <div class="chart-container">
+        <canvas id="probabilityChart"></canvas>
+      </div>
+
+      <div class="editor-container">
+        <h2>Algorithm Output Logic (JavaScript)</h2>
+        <p style="font-size: 0.8em; color: #8b949e; margin-top: -15px">
+          Edit the function body below to test new scaling logic. Must return an
+          object with tier keys.
+        </p>
+        <textarea id="algorithmCode">
+// Current Implementation Logic from Ankimon
+// Available arguments: totalReviews, dailyAverage, playerLevel, mainPokemonLevel
+
+let percentages = {"Baby": 2, "Legendary": 0.5, "Mythical": 0.2, "Normal": 92.3, "Ultra": 5};
+
+// Adjust based on review ratio
+let reviewRatio = (dailyAverage > 0) ? totalReviews / dailyAverage : 0;
+
+if (reviewRatio < 0.4) {
+    percentages["Normal"] += (percentages["Baby"] || 0) + (percentages["Legendary"] || 0) + 
+                            (percentages["Mythical"] || 0) + (percentages["Ultra"] || 0);
+    percentages["Baby"] = 0;
+    percentages["Legendary"] = 0;
+    percentages["Mythical"] = 0;
+    percentages["Ultra"] = 0;
+} else if (reviewRatio < 0.6) {
+    percentages["Baby"] += 2;
+    percentages["Normal"] -= 2;
+} else if (reviewRatio < 0.8) {
+    percentages["Ultra"] += 3;
+    percentages["Normal"] -= 3;
+} else {
+    percentages["Legendary"] += 2;
+    percentages["Ultra"] += 3;
+    percentages["Normal"] -= 5;
+}
+
+// Level Thresholds
+if (mainPokemonLevel) {
+    const thresholds = {"Ultra": 30, "Legendary": 50, "Mythical": 75};
+    for (let tier of ["Ultra", "Legendary", "Mythical"]) {
+        if (mainPokemonLevel < thresholds[tier]) {
+            percentages[tier] = 0;
+        }
+    }
+}
+
+// Player Level Adjustment (The "Bad Scaling" part)
+if (playerLevel) {
+    let adjustment = 5;
+    if (playerLevel > 10) {
+        for (let tier in percentages) {
+            if (tier === "Normal") {
+                percentages[tier] = Math.max(percentages[tier] - adjustment, 0);
+            } else {
+                percentages[tier] = (percentages[tier] || 0) + adjustment;
+            }
+        }
+    }
+}
+
+// Normalize
+let total = 0;
+for (let key in percentages) total += percentages[key];
+for (let key in percentages) {
+    percentages[key] = (total > 0) ? (percentages[key] / total) * 100 : 0;
+}
+
+return percentages;</textarea
+        >
+      </div>
+    </div>
+
+    <script>
+      // Setup UI
+      const sliders = [
+        "playerLevel",
+        "totalReviews",
+        "dailyAverage",
+        "mainLevel",
+      ];
+      sliders.forEach((id) => {
+        const el = document.getElementById("param_" + id);
+        const disp = document.getElementById("val_" + id);
+        el.addEventListener("input", (e) => {
+          disp.textContent = e.target.value;
+          updateChart();
+        });
+      });
+
+      document
+        .getElementById("xAxisSelect")
+        .addEventListener("change", updateChart);
+      document
+        .getElementById("algorithmCode")
+        .addEventListener("input", updateChart); // Live update
+
+      let chart = null;
+
+      function runAlgorithm(
+        totalReviews,
+        dailyAverage,
+        playerLevel,
+        mainPokemonLevel,
+      ) {
+        const code = document.getElementById("algorithmCode").value;
+        try {
+          // Wrap code in a function
+          const func = new Function(
+            "totalReviews",
+            "dailyAverage",
+            "playerLevel",
+            "mainPokemonLevel",
+            code,
+          );
+          return func(
+            totalReviews,
+            dailyAverage,
+            playerLevel,
+            mainPokemonLevel,
+          );
+        } catch (e) {
+          console.error("Algorithm Error:", e);
+          return { Error: 100 };
+        }
+      }
+
+      function updateChart() {
+        const xAxisMode = document.getElementById("xAxisSelect").value;
+
+        // Fixed Params
+        const fixedPlayerLevel = parseInt(
+          document.getElementById("param_playerLevel").value,
+        );
+        const fixedTotalReviews = parseInt(
+          document.getElementById("param_totalReviews").value,
+        );
+        const fixedDailyAverage = parseInt(
+          document.getElementById("param_dailyAverage").value,
+        );
+        const fixedMainLevel = parseInt(
+          document.getElementById("param_mainLevel").value,
+        );
+
+        // Generate Data Points
+        const labels = [];
+        const dataSets = {
+          Normal: [],
+          Baby: [],
+          Ultra: [],
+          Legendary: [],
+          Mythical: [],
+        };
+
+        let steps = 50; // Resolution
+        let min = 0,
+          max = 100;
+
+        if (xAxisMode === "playerLevel") {
+          min = 1;
+          max = 100;
+        } else if (xAxisMode === "totalReviews") {
+          min = 0;
+          max = 500;
+        } else if (xAxisMode === "mainLevel") {
+          min = 1;
+          max = 100;
+        }
+
+        let stepSize = (max - min) / steps;
+
+        for (let i = 0; i <= steps; i++) {
+          let xVal = Math.round(min + i * stepSize);
+          labels.push(xVal);
+
+          // Determine inputs based on what is variable and what is fixed
+          let pL = xAxisMode === "playerLevel" ? xVal : fixedPlayerLevel;
+          let tR = xAxisMode === "totalReviews" ? xVal : fixedTotalReviews;
+          let mL = xAxisMode === "mainLevel" ? xVal : fixedMainLevel;
+          let dA = fixedDailyAverage;
+
+          let result = runAlgorithm(tR, dA, pL, mL);
+
+          // Populate datasets
+          for (let key in dataSets) {
+            dataSets[key].push(result[key] || 0);
+          }
+        }
+
+        // Render Chart
+        const ctx = document
+          .getElementById("probabilityChart")
+          .getContext("2d");
+
+        if (chart) chart.destroy();
+
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Normal",
+                data: dataSets["Normal"],
+                borderColor: "#8b949e",
+                backgroundColor: "rgba(139, 148, 158, 0.2)",
+                fill: true,
+              },
+              {
+                label: "Baby",
+                data: dataSets["Baby"],
+                borderColor: "#79c0ff",
+                backgroundColor: "rgba(121, 192, 255, 0.2)",
+                fill: true,
+              },
+              {
+                label: "Ultra",
+                data: dataSets["Ultra"],
+                borderColor: "#d2a8ff",
+                backgroundColor: "rgba(210, 168, 255, 0.2)",
+                fill: true,
+              },
+              {
+                label: "Legendary",
+                data: dataSets["Legendary"],
+                borderColor: "#ff7b72",
+                backgroundColor: "rgba(255, 123, 114, 0.2)",
+                fill: true,
+              },
+              {
+                label: "Mythical",
+                data: dataSets["Mythical"],
+                borderColor: "#f2cc60",
+                backgroundColor: "rgba(242, 204, 96, 0.2)",
+                fill: true,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              title: { display: true, text: `Probability vs ${xAxisMode}` },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    return (
+                      context.dataset.label +
+                      ": " +
+                      context.parsed.y.toFixed(2) +
+                      "%"
+                    );
+                  },
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                title: { display: true, text: "Percentage Chance" },
+                stacked: true,
+              },
+              x: {
+                title: { display: true, text: xAxisMode },
+              },
+            },
+            elements: {
+              point: { radius: 0 }, // Smooth lines without dots
+            },
+          },
+        });
+      }
+
+      // Init
+      setTimeout(updateChart, 100);
+    </script>
+  </body>
+</html>
