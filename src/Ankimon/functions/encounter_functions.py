@@ -58,11 +58,11 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     """
 
     percentages = {
-        "Baby": 3,
+        "Baby": 2,
         "Legendary": 0.5,
         "Mythical": 0.2,
-        "Normal": 92.3,
-        "Ultra": 4,
+        "Normal": 95.3,
+        "Ultra": 2,
     }
 
     level_thresholds = {"Ultra": 30, "Legendary": 50, "Mythical": 75}
@@ -76,7 +76,7 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
             percentages[tier] = 0
 
     trainer_level_bonus = min(trainer_level * 0.04, 1)
-    main_pokemon_level_bonus = min(main_pokemon.level * 0.003, 1)
+    main_pokemon_level_bonus = min(main_pokemon.level * 0.005, 0.8)
     review_bonus = min((total_reviews / daily_average) * 0.25, 1)
 
     luck_factor = 1.0 + trainer_level_bonus + main_pokemon_level_bonus + review_bonus

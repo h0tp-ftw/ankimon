@@ -141,11 +141,11 @@
 def calculate_probabilities(total_reviews, daily_average, trainer_level, main_pokemon_level):
     
     percentages = {
-        "Baby": 3.0,
+        "Baby": 2,
         "Legendary": 0.5,
         "Mythical": 0.2,
-        "Normal": 92.3,
-        "Ultra": 4.0,
+        "Normal": 95.3,
+        "Ultra": 2,
     }
 
     # 1. Level Access Thresholds
@@ -164,8 +164,8 @@ def calculate_probabilities(total_reviews, daily_average, trainer_level, main_po
     # Trainer Level Bonus (Max +100% at level 25)
     trainer_level_bonus = min(trainer_level * 0.04, 1.0)
     
-    # Main Pkmn Bonus (Max +30% at level 100)
-    main_pokemon_level_bonus = min(main_pokemon_level * 0.003, 1.0)
+    # Main Pkmn Bonus (Max +50% at level 100)
+    main_pokemon_level_bonus = min(main_pokemon_level * 0.005, 0.8)
     
     # Review Bonus (Max +100% at 4x daily average)
     ratio = total_reviews / daily_average if daily_average > 0 else 0
