@@ -3,13 +3,12 @@
     "battle.cards_per_round": "Cards per Round",
     "battle.daily_average": "Goal of Daily Average Cards",
     "battle.card_max_time": "Card Max Time",
-
     "controls.pokemon_buttons": "Show Pokémon Buttons",
     "controls.defeat_key": "Key for Defeat",
     "controls.catch_key": "Key for Catching",
     "controls.key_for_opening_closing_ankimon": "Key for Opening/Closing Ankimon",
+    "controls.switch_team_key": "Key for Switching Team",
     "controls.allow_to_choose_moves": "Allow Choosing Moves",
-    
     "gui.animate_time": "Animate Time",
     "gui.gif_in_collection": "Show GIFs in Collection",
     "gui.styling_in_reviewer": "Styling in Reviewer",
@@ -23,12 +22,10 @@
     "gui.view_main_front": "View Main Pokémon Front",
     "gui.xp_bar_config": "XP Bar Configuration",
     "gui.xp_bar_location": "XP Bar Location",
-    
     "audio.sound_effects": "Enable Sound Effects",
     "audio.sounds": "Enable Sounds",
     "audio.battle_sounds": "Enable Battle Sounds",
     "audio.volume": "Volume",
-
     "misc.gen1": "Generation 1",
     "misc.gen2": "Generation 2",
     "misc.gen3": "Generation 3",
@@ -49,5 +46,4 @@
     "misc.show_tip_on_startup": "Show Tip of the Day On Startup",
     "misc.developer_mode": "Developer Mode",
     "trainer.name": "Trainer Name"
-
 }

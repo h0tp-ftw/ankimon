@@ -42,6 +42,7 @@ no_more_news = settings_obj.get("misc.YouShallNotPass_Ankimon_News")
 ssh = settings_obj.get("misc.ssh")
 defeat_shortcut = settings_obj.get("controls.defeat_key") #default: 5; ; Else if not 5 => controll + Key for capture
 catch_shortcut = settings_obj.get("controls.catch_key") #default: 6; Else if not 6 => controll + Key for capture
+switch_team_shortcut = settings_obj.get("controls.switch_team_key") #default: 7
 reviewer_buttons = settings_obj.get("controls.pokemon_buttons") #default: true; false = no pokemon buttons in reviewer
 
 from .resources import (
@@ -82,6 +83,7 @@ from .functions.encounter_functions import (
     handle_enemy_faint,
     handle_main_pokemon_faint
 )
+from .functions.switch_team import switch_team_member
 from .gui_entities import UpdateNotificationWindow, CheckFiles
 from .pyobj.download_sprites import show_agreement_and_download_dialog
 from .pyobj.help_window import HelpWindow
@@ -776,11 +778,13 @@ def defeat_shortcut_function():
 
 catch_shortcut = catch_shortcut.lower()
 defeat_shortcut = defeat_shortcut.lower()
+switch_team_shortcut = switch_team_shortcut.lower()
 #// adding shortcuts to _shortcutKeys function in anki
 def _shortcutKeys_wrap(self, _old):
     original = _old(self)
     original.append((catch_shortcut, lambda: catch_shortcut_function()))
     original.append((defeat_shortcut, lambda: defeat_shortcut_function()))
+    original.append((switch_team_shortcut, lambda: switch_team_member()))
     return original
 
 Reviewer._shortcutKeys = wrap(Reviewer._shortcutKeys, _shortcutKeys_wrap, 'around')
