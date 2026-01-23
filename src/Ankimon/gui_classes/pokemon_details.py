@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QWidget,
     QMessageBox,
+    QTabWidget,
 )
 
 from ..pyobj.attack_dialog import AttackDialog
@@ -90,6 +91,8 @@ def PokemonCollectionDetails(
     remove_levelcap: bool,
     logger: ShowInfoLogger,
     refresh_callback,
+    initial_tab_index: int = 0,
+    tab_changed_callback=None,
 ):
     # Create a layout for the details panel
     try:
@@ -317,10 +320,35 @@ def PokemonCollectionDetails(
         layout.addWidget(name_label)
         layout.addLayout(first_layout)
         layout.addWidget(description_label)
-        statstablelayout = QWidget()
-        statstablelayout.setLayout(CompleteTable_layout)
-        statstablelayout.setFixedHeight(190)
-        layout.addWidget(statstablelayout)
+        
+        # Create tabbed widget for Stats / IV / EV
+        stats_tabs = QTabWidget()
+        
+        # Tab 1: Stats
+        stats_widget = QWidget()
+        stats_widget.setLayout(CompleteTable_layout)
+        stats_tabs.addTab(stats_widget, "Stats")
+        
+        # Tab 2: IV
+        iv_widget = QWidget()
+        iv_layout = create_iv_ev_tab_layout(iv, "IV", 31, language)
+        iv_widget.setLayout(iv_layout)
+        stats_tabs.addTab(iv_widget, "IV")
+        
+        # Tab 3: EV
+        ev_widget = QWidget()
+        ev_layout = create_iv_ev_tab_layout(ev, "EV", 255, language)
+        ev_widget.setLayout(ev_layout)
+        stats_tabs.addTab(ev_widget, "EV")
+        
+        stats_tabs.setFixedHeight(220)
+        
+        # Set initial tab and connect callback for persistence
+        stats_tabs.setCurrentIndex(initial_tab_index)
+        if tab_changed_callback:
+            stats_tabs.currentChanged.connect(tab_changed_callback)
+        
+        layout.addWidget(stats_tabs)
 
         free_pokemon_button = QPushButton("Release Pokemon")
         qconnect(
@@ -446,6 +474,122 @@ def createStatBar(color, value):
     painter.drawRect(0, 0, value, 10)
 
     painter.end()  # Important: end the painter to avoid memory leaks
+    return pixmap
+
+
+def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: int, language: int) -> QVBoxLayout:
+    """
+    Create a layout for displaying IV or EV values in a tab.
+    
+    Args:
+        values: Dictionary of stat values (hp, atk, def, spa, spd, spe)
+        value_type: "IV" or "EV" for display purposes
+        max_val: Maximum value (31 for IV, 255 for EV)
+        language: Language code for font loading
+    
+    Returns:
+        QVBoxLayout containing the stat display
+    """
+    layout = QVBoxLayout()
+    custom_font = load_custom_font(20, language)
+    
+    # Stat names and colors
+    stat_info = {
+        "hp": ("HP", QColor(255, 0, 0)),
+        "atk": ("Attack", QColor(255, 165, 0)),
+        "def": ("Defense", QColor(255, 255, 0)),
+        "spa": ("Sp. Atk", QColor(0, 0, 255)),
+        "spd": ("Sp. Def", QColor(0, 128, 0)),
+        "spe": ("Speed", QColor(255, 192, 203)),
+    }
+    
+    for stat_key in ["hp", "atk", "def", "spa", "spd", "spe"]:
+        row_layout = QHBoxLayout()
+        
+        stat_name, base_color = stat_info.get(stat_key, (stat_key, QColor(128, 128, 128)))
+        val = values.get(stat_key, 0)
+        
+        # Stat name label - same width as Stats tab (200px)
+        stat_label = QLabel(stat_name)
+        stat_label.setFont(custom_font)
+        stat_label.setFixedWidth(200)
+        stat_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Combined value + star widget (no spacing between them)
+        value_star_widget = QWidget()
+        value_star_layout = QHBoxLayout()
+        value_star_layout.setContentsMargins(0, 0, 0, 0)
+        value_star_layout.setSpacing(2)  # Minimal spacing
+        
+        value_label = QLabel(str(val))
+        value_label.setFont(custom_font)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        
+        star_label = QLabel("⭐" if (value_type == "IV" and val == 31) else "")
+        star_label.setFont(custom_font)
+        star_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        
+        value_star_layout.addWidget(value_label)
+        value_star_layout.addWidget(star_label)
+        value_star_widget.setLayout(value_star_layout)
+        
+        if value_type == "IV":
+            # Color code for bars based on IV quality - extended gradient
+            if val == 31:
+                bar_color = QColor(255, 215, 0)   # Gold for perfect
+            elif val >= 26:
+                bar_color = QColor(0, 255, 0)     # Green for great
+            elif val >= 16:
+                bar_color = QColor(255, 255, 0)   # Yellow for good
+            elif val >= 10:
+                bar_color = QColor(255, 165, 0)   # Orange for poor
+            else:
+                bar_color = QColor(255, 80, 80)   # Red for very low (0-9)
+        else:
+            # EV uses stat-based colors
+            bar_color = base_color
+        
+        # Bar visualization
+        bar_label = QLabel()
+        bar_width = int((val / max_val) * 150)
+        bar_pixmap = _create_iv_ev_bar(bar_color, bar_width, 150)
+        bar_label.setPixmap(bar_pixmap)
+        bar_label.setFixedWidth(150)
+        
+        row_layout.addWidget(stat_label)
+        row_layout.addWidget(value_star_widget)
+        row_layout.addWidget(bar_label)
+        layout.addLayout(row_layout)
+    
+    # For EV, show total
+    if value_type == "EV":
+        total_ev = sum(values.values())
+        total_label = QLabel(f"Total: {total_ev} / 510")
+        total_label.setFont(custom_font)
+        total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(total_label)
+    
+    return layout
+
+
+def _create_iv_ev_bar(color: QColor, filled_width: int, max_width: int) -> QPixmap:
+    """Create a colored bar pixmap for IV/EV display."""
+    pixmap = QPixmap(max_width, 12)
+    pixmap.fill(QColor(0, 0, 0, 0))  # Transparent background
+    
+    painter = QPainter(pixmap)
+    
+    # Background bar - same color as Stats bar
+    painter.setPen(QColor(Qt.GlobalColor.black))
+    painter.setBrush(QColor(0, 0, 0, 200))  # Semi-transparent black (same as Stats)
+    painter.drawRect(0, 0, max_width, 12)
+    
+    # Filled portion
+    if filled_width > 0:
+        painter.setBrush(color)
+        painter.drawRect(0, 0, filled_width, 12)
+    
+    painter.end()
     return pixmap
 
 
