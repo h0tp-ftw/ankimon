@@ -1,6 +1,7 @@
 from pathlib import Path
 import random
 import json
+import csv
 from typing import Any, Optional
 
 from aqt import mw
@@ -25,6 +26,7 @@ from ..pyobj.InfoLogger import ShowInfoLogger
 from ..pyobj.evolution_window import EvoWindow
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.starter_window import StarterWindow
+from ..pyobj.pc_box import GiveItemWindow
 
 from ..business import (
     get_id_and_description_by_item_name
@@ -36,7 +38,7 @@ from ..functions.pokedex_functions import (
     find_details_move
 )
 
-from ..resources import mypokemon_path, icon_path, items_path, itembag_path
+from ..resources import mypokemon_path, icon_path, items_path, itembag_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
 from ..utils import play_effect_sound
@@ -116,7 +118,8 @@ class ItemWindow(QWidget):
             'ultra-ball': 13      # Increased catch rate (original was 10, now 13)
         }
 
-        self.evolution_items = {}
+        self.evolution_items = set()
+        self.load_evolution_items()
 
         self.setWindowIcon(QIcon(str(icon_path)))  # Add a Pokeball icon
         self.setWindowTitle("Itembag")
@@ -267,6 +270,28 @@ class ItemWindow(QWidget):
                 row += 1
                 col = 0
 
+    def give_held_item(self, comboBox, item_name):
+        individual_id = comboBox.itemData(comboBox.currentIndex(), role=UserRole)
+        try:
+             with open(mypokemon_path, "r", encoding="utf-8") as json_file:
+                pokemon_list_data = json.load(json_file)
+                target_pokemon_data = None
+                for pokemon in pokemon_list_data:
+                    if pokemon.get('individual_id') == individual_id:
+                        target_pokemon_data = pokemon
+                        break
+                
+                if target_pokemon_data:
+                    pokemon_obj = PokemonObject.from_dict(target_pokemon_data)
+                    pokemon_obj.give_held_item(item_name)
+                    self.logger.log_and_showinfo("info", f"{item_name} was given to {target_pokemon_data.get('name')}.")
+                    self.renewWidgets()
+                else:
+                    self.logger.log_and_showinfo("error", "Could not find Pokemon data.")
+
+        except Exception as e:
+            self.logger.log_and_showinfo("error", f"Error giving item: {e}")
+
     def ItemLabel(self, item_name: str, quantity: int, item_type: Optional[str]):
         item_frame = QVBoxLayout()  # itemframe
         info_item_button = QPushButton("More Info")
@@ -323,7 +348,7 @@ class ItemWindow(QWidget):
             # Optional: Set alignment for better appearance
             info_item_button.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        else:
+        elif item_name in self.evolution_items:
             use_item_button = QPushButton("Evolve Pokemon")
             use_item_button.clicked.connect(
                 lambda: self.Check_Evo_Item(
@@ -335,6 +360,18 @@ class ItemWindow(QWidget):
             comboBox = QComboBox()
             self.PokemonList(comboBox)
             item_frame.addWidget(comboBox)
+        elif item_name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS or item_name.endswith("-berry") or item_name.endswith("-gem"):
+            use_item_button = QLabel("Not implemented yet")
+            use_item_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        else:
+            comboBox = QComboBox()
+            self.PokemonList(comboBox)
+            use_item_button = QPushButton("Give Item To Pokemon")
+            use_item_button.clicked.connect(
+                lambda: self.give_held_item(comboBox, item_name)
+            )
+            item_frame.addWidget(comboBox)
+
         item_frame.addWidget(use_item_button)
         item_frame.addWidget(info_item_button)
         item_frame_widget = QWidget()
@@ -439,6 +476,26 @@ class ItemWindow(QWidget):
                 self.logger.log_and_showinfo("info", "This Pokemon does not need this item.")
         except Exception as e:
             show_warning_with_traceback(parent=self, exception=e, message=f"{e}")
+
+    def load_evolution_items(self):
+        try:
+            evolution_item_ids = set()
+            with open(poke_evo_path, mode='r', newline='', encoding='utf-8') as evo_file:
+                reader = csv.DictReader(evo_file)
+                for row in reader:
+                    if row['evolution_trigger_id'] == '3':
+                        item_id = row['trigger_item_id']
+                        if item_id:
+                            evolution_item_ids.add(item_id)
+
+            with open(csv_file_items_cost, mode='r', newline='', encoding='utf-8') as items_file:
+                reader = csv.DictReader(items_file)
+                for row in reader:
+                    if row['id'] in evolution_item_ids:
+                        self.evolution_items.add(row['identifier'])
+            
+        except Exception as e:
+            self.logger.log_and_showinfo("error", f"Error loading evolution items: {e}")
 
     def write_items_file(self, itembag_list: list[Any]):
         with open(itembag_path, 'w') as json_file:
