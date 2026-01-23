@@ -1,12 +1,13 @@
+import math
 from math import exp
 import json
 from typing import Any
+import re
 
 from aqt import mw, qconnect
 from aqt.utils import showWarning
-from PyQt6.QtGui import QPixmap, QPainter, QIcon
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor, QPolygonF, QPen, QBrush
+from PyQt6.QtCore import Qt, QPointF, QRectF
 from PyQt6.QtWidgets import QScrollArea
 from PyQt6.QtWidgets import (
     QDialog,
@@ -18,6 +19,8 @@ from PyQt6.QtWidgets import (
     QWidget,
     QMessageBox,
     QTabWidget,
+    QGridLayout,
+    QSizePolicy,
 )
 
 from ..pyobj.attack_dialog import AttackDialog
@@ -282,7 +285,7 @@ def PokemonCollectionDetails(
         TopL_layout_Box.addWidget(captured_date_label)
         TopL_layout_Box.addWidget(pokemon_defeated_label)
 
-        TopR_layout_Box.addWidget(attacks_label)
+
         attacks_details_button = QPushButton("Attack Details")
         qconnect(attacks_details_button.clicked, lambda: attack_details_window(attacks))
         remember_attacks_details_button = QPushButton("Remember Attacks")
@@ -305,14 +308,12 @@ def PokemonCollectionDetails(
             lambda: tm_attack_details_window(id, individual_id, attacks, logger),
         )
 
-        # free_pokemon_button = QPushButton("Release Pokemon") #add Details to Moves unneeded button
         TopR_layout_Box.addWidget(attacks_label)
         TopR_layout_Box.addWidget(attacks_details_button)
         TopR_layout_Box.addWidget(remember_attacks_details_button)
         TopR_layout_Box.addWidget(forget_attacks_details_button)
         TopR_layout_Box.addWidget(tm_attacks_details_button)
-        TopR_layout_Box.addWidget(captured_date_label)
-        TopR_layout_Box.addWidget(pokemon_defeated_label)
+
 
         first_layout.addLayout(TopL_layout_Box)
         first_layout.addLayout(TopR_layout_Box)
@@ -383,22 +384,35 @@ def PokemonCollectionDetails(
             ),
         )
 
-        layout.addWidget(trade_pokemon_button)
-        layout.addWidget(free_pokemon_button)
-        layout.addWidget(rename_input)
-        layout.addWidget(rename_button)
+        # Row 1: Action Buttons (Trade / Release)
+        actions_layout = QHBoxLayout()
+        actions_layout.addWidget(trade_pokemon_button)
+        actions_layout.addWidget(free_pokemon_button)
+        
+        # Row 2: Rename (Input + Button)
+        rename_layout = QHBoxLayout()
+        rename_layout.addWidget(rename_input, 1) 
+        rename_button.setSizePolicy(
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+        ) 
+        rename_button.adjustSize() 
+        rename_layout.addWidget(rename_button, 0)
 
-        return layout  # Return layout instead of showing dialog
+        layout.addLayout(actions_layout)
+        layout.addLayout(rename_layout)
+
+        return layout
 
     except Exception as e:
         show_warning_with_traceback(
             exception=e, message="Error occured in Pokemon Details Button:"
         )
-        return QVBoxLayout()  # Return empty layout on error
+        return QVBoxLayout() 
 
 
 def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, language):
     CompleteTable_layout = QVBoxLayout()
+    CompleteTable_layout.addSpacing(15) 
     # Stat colors
     stat_colors = {
         "hp": QColor(255, 0, 0),  # Red
@@ -418,17 +432,33 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
     custom_font = load_custom_font(int(20), language)
 
     # Populate the table and create the stat bars
+    # Use short names matching IV/EV to allow fitting in compact views
+    display_names = {
+        "hp": "HP",
+        "atk": "Attack",
+        "def": "Defense",
+        "spa": "Sp. Atk",
+        "spd": "Sp. Def",
+        "spe": "Speed",
+        "xp": "XP"
+    }
+
     for row, (stat, value) in enumerate(detail_stats.items()):
         # Skip unknown stats that are not in stat_colors
         if stat not in stat_colors:
             continue
-
-        stat_item2 = QLabel(stat.capitalize())
-        max_width_stat_item = 200
-        stat_item2.setFixedWidth(max_width_stat_item)
+        
+        display_name = display_names.get(stat, stat.capitalize())
+        stat_item2 = QLabel(display_name)
+        max_width_stat_item = 200 # Used for BAR math, not label width anymore
+        stat_item2.setFixedWidth(100) # Match IV/EV width
+        stat_item2.setAlignment(Qt.AlignmentFlag.AlignCenter) # Match IV/EV alignment
+        
         value_item2 = QLabel(str(value))
         stat_item2.setFont(custom_font)
         value_item2.setFont(custom_font)
+        value_item2.setFixedWidth(50)  # Match IV/EV width
+        value_item2.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter) # Align number to right
         # Create a bar item
         bar_item2 = QLabel()
         if stat == "xp":
@@ -444,9 +474,13 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         # Set the QIcon as the background for the QLabel
         bar_item2.setPixmap(pixmap2)
         layout_row = QHBoxLayout()
+        layout_row.setContentsMargins(0, 0, 0, 0) # Tight layout
+        layout_row.addStretch() # Add stretch padding at start (Centers the content)
         layout_row.addWidget(stat_item2)
-        layout_row.addWidget(value_item2)
+        layout_row.addWidget(value_item2) # Value is now fixed width
+
         layout_row.addWidget(bar_item2)
+        layout_row.addStretch() # Ensure alignment logic is identical
         stat_item2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bar_item2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         CompleteTable_layout.addLayout(layout_row)
@@ -463,21 +497,22 @@ def createStatBar(color, value):
         color = QColor(128, 128, 128)  # Gray
 
     painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     # Draw bar in the background
-    painter.setPen(QColor(Qt.GlobalColor.black))
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(0, 0, 0, 200))  # Semi-transparent black
-    painter.drawRect(0, 0, 200, 10)
+    painter.drawRoundedRect(0, 0, 200, 10, 3, 3)
 
     # Draw the colored bar based on the value
     painter.setBrush(color)  # Now color is guaranteed to be a valid QColor
-    painter.drawRect(0, 0, value, 10)
+    painter.drawRoundedRect(0, 0, value, 10, 3, 3)
 
     painter.end()  # Important: end the painter to avoid memory leaks
     return pixmap
 
 
-def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: int, language: int) -> QVBoxLayout:
+def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: int, language: int) -> QGridLayout:
     """
     Create a layout for displaying IV or EV values in a tab.
     
@@ -488,106 +523,204 @@ def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: in
         language: Language code for font loading
     
     Returns:
-        QVBoxLayout containing the stat display
+        QGridLayout containing the stat display
     """
-    layout = QVBoxLayout()
-    custom_font = load_custom_font(20, language)
+    layout = QGridLayout()
+    layout.setContentsMargins(0, 0, 0, 0) # Remove default margins to use full space
     
-    # Stat names and colors
-    stat_info = {
-        "hp": ("HP", QColor(255, 0, 0)),
-        "atk": ("Attack", QColor(255, 165, 0)),
-        "def": ("Defense", QColor(255, 255, 0)),
-        "spa": ("Sp. Atk", QColor(0, 0, 255)),
-        "spd": ("Sp. Def", QColor(0, 128, 0)),
-        "spe": ("Speed", QColor(255, 192, 203)),
-    }
+    # --- Chart Section ---
+    chart_color = QColor(61, 125, 202, 150) if value_type == "IV" else QColor(255, 165, 0, 150) # Blue for IV, Orange for EV
+    border_color = QColor(61, 125, 202) if value_type == "IV" else QColor(255, 165, 0)
+
+    radar_chart = RadarChart(values, max_val, chart_color, border_color, language)
     
-    for stat_key in ["hp", "atk", "def", "spa", "spd", "spe"]:
-        row_layout = QHBoxLayout()
-        
-        stat_name, base_color = stat_info.get(stat_key, (stat_key, QColor(128, 128, 128)))
-        val = values.get(stat_key, 0)
-        
-        # Stat name label - same width as Stats tab (200px)
-        stat_label = QLabel(stat_name)
-        stat_label.setFont(custom_font)
-        stat_label.setFixedWidth(200)
-        stat_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Combined value + star widget (no spacing between them)
-        value_star_widget = QWidget()
-        value_star_layout = QHBoxLayout()
-        value_star_layout.setContentsMargins(0, 0, 0, 0)
-        value_star_layout.setSpacing(2)  # Minimal spacing
-        
-        value_label = QLabel(str(val))
-        value_label.setFont(custom_font)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        
-        star_label = QLabel("⭐" if (value_type == "IV" and val == 31) else "")
-        star_label.setFont(custom_font)
-        star_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        
-        value_star_layout.addWidget(value_label)
-        value_star_layout.addWidget(star_label)
-        value_star_widget.setLayout(value_star_layout)
-        
-        if value_type == "IV":
-            # Color code for bars based on IV quality - extended gradient
-            if val == 31:
-                bar_color = QColor(255, 215, 0)   # Gold for perfect
-            elif val >= 26:
-                bar_color = QColor(0, 255, 0)     # Green for great
-            elif val >= 16:
-                bar_color = QColor(255, 255, 0)   # Yellow for good
-            elif val >= 10:
-                bar_color = QColor(255, 165, 0)   # Orange for poor
-            else:
-                bar_color = QColor(255, 80, 80)   # Red for very low (0-9)
-        else:
-            # EV uses stat-based colors
-            bar_color = base_color
-        
-        # Bar visualization
-        bar_label = QLabel()
-        bar_width = int((val / max_val) * 150)
-        bar_pixmap = _create_iv_ev_bar(bar_color, bar_width, 150)
-        bar_label.setPixmap(bar_pixmap)
-        bar_label.setFixedWidth(150)
-        
-        row_layout.addWidget(stat_label)
-        row_layout.addWidget(value_star_widget)
-        row_layout.addWidget(bar_label)
-        layout.addLayout(row_layout)
-    
-    # For EV, show total
+    # Add chart to center (row 0, col 0)
+    layout.addWidget(radar_chart, 0, 0, Qt.AlignmentFlag.AlignCenter)
+
+    # For EV, show total at top left of same cell (overlap)
+    # This prevents the text from pushing the chart down/sideways
     if value_type == "EV":
+        custom_font = load_custom_font(16, language)
         total_ev = sum(values.values())
-        total_label = QLabel(f"Total: {total_ev} / 510")
+        total_label = QLabel(f"TOTAL: {total_ev} / 510")
         total_label.setFont(custom_font)
-        total_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(total_label)
-    
+        # Add margin for visual spacing
+        total_label.setStyleSheet("margin-top: 5px; margin-left: 5px;")
+        # Top-Left Alignment in the same cell
+        layout.addWidget(total_label, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        
+    # Ensure cell expands to fill space
+    layout.setRowStretch(0, 1)
+    layout.setColumnStretch(0, 1)
+
     return layout
+
+
+class RadarChart(QWidget):
+    def __init__(self, stats, max_value, fill_color, border_color, language, parent=None):
+        super().__init__(parent)
+        self.stats = stats
+        self.max_value = max_value if max_value > 0 else 1
+        self.fill_color = fill_color
+        self.border_color = border_color
+        self.language = language
+        # Minimum size to prevent text clipping
+        self.setMinimumSize(340, 180) 
+        
+        # Order: HP, Attack, Defense, Speed, Sp. Def, Sp. Atk
+        # Clockwise starting from Top
+        self.stat_keys = ["hp", "atk", "def", "spe", "spd", "spa"]
+        self.display_names = {
+            "hp": "HP",
+            "atk": "Attack",
+            "def": "Defense",
+            "spe": "Speed",
+            "spd": "Sp. Def",
+            "spa": "Sp. Atk"
+        }
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        # Shift center down to clear top buttons
+        center = QPointF(rect.width() / 2, rect.height() / 2 + 5)
+        
+        # Radius calculation
+        padding = 35
+        radius = min(rect.width(), rect.height()) / 2 - padding
+
+        # ensure radius is positive
+        if radius < 10: 
+            radius = 10
+
+        # Draw Background Hexagons (Grid)
+        # 4 levels: 25%, 50%, 75%, 100%
+        grid_pen = QPen(QColor(150, 150, 150, 100)) # Light gray transparent
+        painter.setPen(grid_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        for i in range(1, 5):
+            r = radius * (i / 4.0)
+            self._draw_hexagon(painter, center, r)
+
+        # Draw Axis Lines
+        painter.setPen(grid_pen)
+        for i in range(6):
+            angle_deg = -90 + (i * 60)
+            angle_rad = math.radians(angle_deg)
+            end_point = QPointF(center.x() + radius * math.cos(angle_rad), 
+                                center.y() + radius * math.sin(angle_rad))
+            painter.drawLine(center, end_point)
+
+        # Draw Data Polygon
+        data_points = []
+        for i, key in enumerate(self.stat_keys):
+            val = self.stats.get(key, 0)
+            # Cap value at max_value
+            val = min(val, self.max_value)
+            ratio = val / self.max_value
+            
+            r = radius * ratio
+            angle_deg = -90 + (i * 60)
+            angle_rad = math.radians(angle_deg)
+            p = QPointF(center.x() + r * math.cos(angle_rad), 
+                        center.y() + r * math.sin(angle_rad))
+            data_points.append(p)
+        
+        poly = QPolygonF(data_points)
+        
+        # Fill
+        painter.setBrush(QBrush(self.fill_color))
+        # Stroke
+        pen = QPen(self.border_color)
+        pen.setWidth(2)
+        painter.setPen(pen)
+        
+        painter.drawPolygon(poly)
+
+        # Draw Labels & Values
+        # Increase Font Size
+        text_color = self.palette().color(self.foregroundRole())
+        painter.setPen(text_color)
+        
+        # Label font
+        label_font = load_custom_font(13, self.language) 
+        label_font.setBold(True)
+        painter.setFont(label_font)
+
+        font_metrics = painter.fontMetrics()
+        
+        for i, key in enumerate(self.stat_keys):
+            angle_deg = -90 + (i * 60)
+            angle_rad = math.radians(angle_deg)
+            
+            # Position for label is radius + padding
+            # We push it out a bit more
+            label_radius = radius + 22
+            
+            lx = center.x() + label_radius * math.cos(angle_rad)
+            ly = center.y() + label_radius * math.sin(angle_rad)
+            
+            # Manual tweaks to prevent overlap
+            if key in ["def", "atk"]:
+                lx += 15
+            elif key in ["spd", "spa"]:
+                lx -= 15
+            
+            text = self.display_names[key]
+            val = self.stats.get(key, 0)
+            
+            # Draw Stat Name
+            rect_width = 140
+            rect_height = 50
+            text_rect = QRectF(lx - rect_width/2, ly - rect_height/2, rect_width, rect_height)
+            
+            # Check for Max Value (IV=31, EV>=252)
+            is_max = False
+            if self.max_value == 31 and val == 31: # IV Case
+                is_max = True
+            elif self.max_value > 100 and val >= 252: # EV Case
+                is_max = True
+
+            if is_max:
+                # Gold color for max values
+                painter.setPen(QColor(218, 165, 32)) 
+            else:
+                painter.setPen(text_color)
+
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, f"{text}\n{val}")
+
+
+    def _draw_hexagon(self, painter, center, radius):
+        points = []
+        for i in range(6):
+            angle_deg = -90 + (i * 60)
+            angle_rad = math.radians(angle_deg)
+            p = QPointF(center.x() + radius * math.cos(angle_rad), 
+                        center.y() + radius * math.sin(angle_rad))
+            points.append(p)
+        painter.drawPolygon(QPolygonF(points))
 
 
 def _create_iv_ev_bar(color: QColor, filled_width: int, max_width: int) -> QPixmap:
     """Create a colored bar pixmap for IV/EV display."""
-    pixmap = QPixmap(max_width, 12)
+    pixmap = QPixmap(max_width, 10)
     pixmap.fill(QColor(0, 0, 0, 0))  # Transparent background
     
     painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     
     # Background bar - same color as Stats bar
-    painter.setPen(QColor(Qt.GlobalColor.black))
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(0, 0, 0, 200))  # Semi-transparent black (same as Stats)
-    painter.drawRect(0, 0, max_width, 12)
+    painter.drawRoundedRect(0, 0, max_width, 10, 3, 3)
     
     # Filled portion
     if filled_width > 0:
         painter.setBrush(color)
-        painter.drawRect(0, 0, filled_width, 12)
+        painter.drawRoundedRect(0, 0, filled_width, 10, 3, 3)
     
     painter.end()
     return pixmap

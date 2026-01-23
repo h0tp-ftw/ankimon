@@ -176,7 +176,7 @@ class PokemonPC(QDialog):
 
         # Define authentic Pokémon-themed color palettes
         if is_dark_mode:
-            # Dark Mode: Inspired by modern, sleek game UIs
+            # Dark Mode
             background_color = "#003A70"
             text_color = "#E0E0E0"
             button_bg = "#3B4CCA"
@@ -187,7 +187,7 @@ class PokemonPC(QDialog):
             input_bg = "#002B5A" # Slightly lighter than background for input fields
             slot_bg_color = "#002B5A"
         else:
-            # Light Mode: Inspired by classic PC Box / Pokédex
+            # Light Mode
             background_color = "#E6F3FF"
             text_color = "#003A70"
             button_bg = "#3D7DCA"
@@ -227,8 +227,8 @@ class PokemonPC(QDialog):
                 color: {text_color};
             }}
             QTabWidget {{
-                background-color: {input_bg};
-                border-radius: 5px;
+                background-color: transparent;
+                border: none;
             }}
             QTabBar {{
                 background: transparent;
@@ -236,8 +236,9 @@ class PokemonPC(QDialog):
             }}
             QTabWidget::pane {{
                 border: 1px solid {button_border};
-                background: transparent;
                 border-radius: 5px;
+                background: transparent;
+                padding: 3px;
             }}
             QTabBar::tab {{
                 background: {button_bg};
@@ -707,8 +708,8 @@ class PokemonPC(QDialog):
             - Connects menu actions to respective handlers in the parent class.
         """
         menu = QMenu(self)
-
-        # QMenu doesn't have a "window name" property or the like. So let's emulate one.
+        
+        # Emulate a window title for QMenu
         if pokemon.get("gender") == "M":
             gender_symbol = "♂"
         elif pokemon.get("gender") == "F":
@@ -865,8 +866,7 @@ class PokemonPC(QDialog):
         pokemon_obj = PokemonObject.from_dict(pokemon)
 
         def func(item_name: str):
-            # small intermediary function. This allows me to display a confirmation message after giving the item and refresh the PC after giving the item.
-            # Refreshing the PC after giving the item is important in order to update the pokemon information with the new held item
+            # Callback to handle item assignment and GUI refresh
             pokemon_obj.give_held_item(item_name)
             self.logger.log_and_showinfo("info", f"{item_name} was given to {pokemon.get('name')}.")
             self.refresh_gui()
@@ -1023,11 +1023,7 @@ class GiveItemWindow(QDialog):
             give_button = QPushButton(f"Give {format_item_name(item)}")
             give_button.clicked.connect(lambda clicked, i=item: self.expanded_give_item_func(i))
             if item in NOT_YET_IMPLEMENTED_ITEMS or item.endswith("-berry") or item.endswith("-gem"):
-                # NOTE (Axil): As time of writing, single use items are not yet implemented.
-                # It seems to me that, actually, they are not even implemented in the Poke-engine. Although
-                # I haven't dug too much.
-                # Therefore, for now, and hopefully as a not too permanent temporary fix, I will prevent the
-                # user from giving out single-use items.
+                # Single use items are currently not implemented
                 give_button.setToolTip("Single use held items are not yet implemented.")
                 give_button.setEnabled(False)
                 give_button.clicked.connect(
@@ -1051,6 +1047,6 @@ class GiveItemWindow(QDialog):
         self.setLayout(main_layout)
 
     def expanded_give_item_func(self, item_name: str):
-        # small intermediary function. This allows me to display a confirmation message after giving the item.
+        # Wrapper to close window after giving item
         self.give_item_func(item_name)
         self.close()
