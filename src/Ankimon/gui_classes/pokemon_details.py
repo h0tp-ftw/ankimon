@@ -910,6 +910,8 @@ def PokemonFree(
         history_data = {
             "id": pokemon_to_release.get("id"),
             "name": pokemon_to_release.get("name"),
+            "level": pokemon_to_release.get("level"),
+            "tier": pokemon_to_release.get("tier", "Normal"),
             "shiny": pokemon_to_release.get("shiny", False),
             "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
             "individual_id": pokemon_to_release.get("individual_id"),

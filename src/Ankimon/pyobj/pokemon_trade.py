@@ -611,6 +611,8 @@ class PokemonTrade:
                             history_data = {
                                 "id": pokemon.get("id"),
                                 "name": pokemon.get("name"),
+                                "level": pokemon.get("level"),
+                                "tier": pokemon.get("tier", "Normal"),
                                 "shiny": pokemon.get("shiny", False),
                                 "pokemon_defeated": pokemon.get("pokemon_defeated", 0),
                                 "individual_id": pokemon.get("individual_id"),
