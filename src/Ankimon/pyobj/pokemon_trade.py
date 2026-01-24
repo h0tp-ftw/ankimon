@@ -609,15 +609,34 @@ class PokemonTrade:
                         # Save to history before replacing
                         try:
                             history_data = {
-                                "id": pokemon.get("id"),
                                 "name": pokemon.get("name"),
+                                "nickname": pokemon.get("nickname", ""),
                                 "level": pokemon.get("level"),
-                                "tier": pokemon.get("tier", "Normal"),
+                                "gender": pokemon.get("gender"),
+                                "id": pokemon.get("id"),
+                                "ability": pokemon.get("ability"),
+                                "ev": pokemon.get("ev"),
+                                "iv": pokemon.get("iv"),
+                                "attacks": pokemon.get("attacks", []),
                                 "shiny": pokemon.get("shiny", False),
-                                "pokemon_defeated": pokemon.get("pokemon_defeated", 0),
+                                "captured_date": pokemon.get("captured_date"),
                                 "individual_id": pokemon.get("individual_id"),
+                                "mega": pokemon.get("mega", False),
+                                "special_form": pokemon.get("special_form", None),
+                                "pokemon_defeated": pokemon.get("pokemon_defeated", 0),
+                                "tier": pokemon.get("tier", "Normal"),
                                 "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                "action": "trade"
+                                "action": "trade",
+                                "traded_for_name": new_pokemon.get("name"),
+                                "traded_for_level": new_pokemon.get("level"),
+                                "traded_for_gender": new_pokemon.get("gender"),
+                                "traded_for_id": new_pokemon.get("id"),
+                                "traded_for_ev": new_pokemon.get("ev"),
+                                "traded_for_iv": new_pokemon.get("iv"),
+                                "traded_for_attacks": new_pokemon.get("attacks", []),
+                                "traded_for_shiny": new_pokemon.get("shiny", False),
+                                "traded_for_mega": new_pokemon.get("mega", False),
+                                "traded_for_special_form": new_pokemon.get("special_form", None),
                             }
                             
                             history_list = []

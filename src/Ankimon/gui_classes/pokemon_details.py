@@ -908,13 +908,22 @@ def PokemonFree(
         # Save important stats to history before release
         from datetime import datetime
         history_data = {
-            "id": pokemon_to_release.get("id"),
             "name": pokemon_to_release.get("name"),
+            "nickname": pokemon_to_release.get("nickname", ""),
             "level": pokemon_to_release.get("level"),
-            "tier": pokemon_to_release.get("tier", "Normal"),
+            "gender": pokemon_to_release.get("gender"),
+            "id": pokemon_to_release.get("id"),
+            "ability": pokemon_to_release.get("ability"),
+            "ev": pokemon_to_release.get("ev"),
+            "iv": pokemon_to_release.get("iv"),
+            "attacks": pokemon_to_release.get("attacks", []),
             "shiny": pokemon_to_release.get("shiny", False),
-            "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
+            "captured_date": pokemon_to_release.get("captured_date"),
             "individual_id": pokemon_to_release.get("individual_id"),
+            "mega": pokemon_to_release.get("mega", False),
+            "special_form": pokemon_to_release.get("special_form", None),
+            "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
+            "tier": pokemon_to_release.get("tier", "Normal"),
             "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "action": "release"
         }
