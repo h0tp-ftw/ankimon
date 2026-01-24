@@ -452,13 +452,13 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         stat_item2 = QLabel(display_name)
         max_width_stat_item = 200 # Used for BAR math, not label width anymore
         stat_item2.setFixedWidth(100) # Match IV/EV width
-        stat_item2.setAlignment(Qt.AlignmentFlag.AlignCenter) # Match IV/EV alignment
+        stat_item2.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         value_item2 = QLabel(str(value))
         stat_item2.setFont(custom_font)
         value_item2.setFont(custom_font)
-        value_item2.setFixedWidth(50)  # Match IV/EV width
-        value_item2.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter) # Align number to right
+        value_item2.setFixedWidth(80) 
+        value_item2.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         # Create a bar item
         bar_item2 = QLabel()
         if stat == "xp":
@@ -467,7 +467,7 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         else:
             value = int(
                 max_width_stat_item * (1 - exp(-value / max_width_stat_item))
-            )  # Small function to ensure that the length of the colored bar doesn't exceed max_width_stat_item
+            ) 
         pixmap2 = createStatBar(stat_colors.get(stat), value)
         # Convert the QPixmap to an QIcon
         icon = QIcon(pixmap2)
