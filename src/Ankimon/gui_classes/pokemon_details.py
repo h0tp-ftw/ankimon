@@ -913,7 +913,8 @@ def PokemonFree(
             "shiny": pokemon_to_release.get("shiny", False),
             "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
             "individual_id": pokemon_to_release.get("individual_id"),
-            "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "action": "release"
         }
         
         # Load existing history or create new

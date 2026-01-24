@@ -6,7 +6,7 @@ from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
 from aqt import mw, utils
-from ..resources import mainpokemon_path, mypokemon_path, pokeapi_db_path, moves_file_path, pokedex_path, rate_path
+from ..resources import mainpokemon_path, mypokemon_path, pokeapi_db_path, moves_file_path, pokedex_path, rate_path, pokemon_history_path
 from ..functions.sprite_functions import get_sprite_path
 from datetime import datetime
 import uuid
@@ -606,6 +606,34 @@ class PokemonTrade:
 
                 for idx, pokemon in enumerate(pokemon_list):
                     if pokemon.get("individual_id") == self.individual_id:
+                        # Save to history before replacing
+                        try:
+                            history_data = {
+                                "id": pokemon.get("id"),
+                                "name": pokemon.get("name"),
+                                "shiny": pokemon.get("shiny", False),
+                                "pokemon_defeated": pokemon.get("pokemon_defeated", 0),
+                                "individual_id": pokemon.get("individual_id"),
+                                "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "action": "trade"
+                            }
+                            
+                            history_list = []
+                            if pokemon_history_path.is_file():
+                                with open(pokemon_history_path, "r", encoding="utf-8") as h_file:
+                                    try:
+                                        history_list = json.load(h_file)
+                                    except json.JSONDecodeError:
+                                        pass
+                            
+                            history_list.append(history_data)
+                            
+                            with open(pokemon_history_path, "w", encoding="utf-8") as h_file:
+                                json.dump(history_list, h_file, indent=2)
+                                
+                        except Exception as e:
+                            self.logger.log_and_showinfo("error", f"Error saving trade history: {e}")
+
                         pokemon_list[idx] = new_pokemon
                         break
                 else:
