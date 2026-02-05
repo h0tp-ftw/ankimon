@@ -104,7 +104,7 @@ class PokemonPC(QDialog):
         self.main_layout = QHBoxLayout()  # Main horizontal layout for split panels
         self.details_layout = QVBoxLayout()  # Layout for details panel
         self.details_widget = QWidget()  # Widget to hold details
-        self.pokemon_details_layout = None
+        self.selected_pokemon = None
 
         # Widgets for filtering and sorting
         self.search_edit = None
@@ -422,13 +422,47 @@ class PokemonPC(QDialog):
 
         self.main_layout.addWidget(collection_widget, 1)
 
-        # Check for existing details panel and apply styles
-        if self.pokemon_details_layout is not None:
-            self.details_widget = QWidget()
-            self.details_widget.setLayout(self.pokemon_details_layout)
-            self.details_widget.setMinimumWidth(470) # Ensure it's visible
-            self.details_widget.setStyleSheet(f"background-color: {background_color};")
-            self.main_layout.addWidget(self.details_widget, 2)
+        # Check for selected Pokémon and recreate details panel
+        if self.selected_pokemon is not None:
+            detail_stats = None
+            if self.selected_pokemon.get('base_stats'):
+                detail_stats = {**self.selected_pokemon['base_stats'], "xp": self.selected_pokemon.get("xp", 0)}
+            elif self.selected_pokemon.get('stats'):
+                detail_stats = {**self.selected_pokemon['stats'], "xp": self.selected_pokemon.get("xp", 0)}
+            else:
+                raise ValueError("Pokemon has no stats")
+                
+            if detail_stats:
+                pokemon_details_layout = PokemonCollectionDetails(
+                    name=self.selected_pokemon['name'],
+                    level=self.selected_pokemon['level'],
+                    id=self.selected_pokemon['id'],
+                    shiny=self.selected_pokemon.get("shiny", False),
+                    ability=self.selected_pokemon['ability'],
+                    type=self.selected_pokemon['type'],
+                    detail_stats=detail_stats,
+                    attacks=self.selected_pokemon['attacks'],
+                    base_experience=self.selected_pokemon['base_experience'],
+                    growth_rate=self.selected_pokemon['growth_rate'],
+                    ev=self.selected_pokemon['ev'],
+                    iv=self.selected_pokemon['iv'],
+                    gender=self.selected_pokemon['gender'],
+                    nickname=self.selected_pokemon.get('nickname'),
+                    individual_id=self.selected_pokemon.get('individual_id'),
+                    pokemon_defeated=self.selected_pokemon.get('pokemon_defeated', 0),
+                    everstone=self.selected_pokemon.get('everstone', False),
+                    captured_date=self.selected_pokemon.get('captured_date', 'Missing'),
+                    language=int(self.settings.get("misc.language")),
+                    gif_in_collection=self.gif_in_collection,
+                    remove_levelcap=self.settings.get("misc.remove_level_cap"),
+                    logger=self.logger,
+                    refresh_callback=self.refresh_gui
+                )
+                self.details_widget = QWidget()
+                self.details_widget.setLayout(pokemon_details_layout)
+                self.details_widget.setMinimumWidth(470) # Ensure it's visible
+                self.details_widget.setStyleSheet(f"background-color: {background_color};")
+                self.main_layout.addWidget(self.details_widget, 2)
         else:
             # Ensure the panel is collapsed if no pokemon is selected
             self.details_widget = QWidget()
@@ -690,52 +724,12 @@ class PokemonPC(QDialog):
     def show_pokemon_details(self, pokemon):
         """
         Displays detailed information about a specific Pokémon in the right-hand details panel.
-
-        The method prepares detailed stats by merging base stats or stats with experience points,
-        then updates the `self.details_layout` with a `PokemonCollectionDetails` layout.
+        Selects pokemon and refreshes the GUI.
 
         Args:
-            pokemon (dict): A dictionary containing Pokémon data with expected keys such as:
-                - 'name', 'level', 'id', 'ability', 'type', 'attacks', 'base_experience',
-                'growth_rate', 'ev', 'iv', 'gender'
-                - Optional keys include 'shiny', 'nickname', 'individual_id', 'pokemon_defeated',
-                'everstone', 'captured_date', and 'xp'.
-
-        Raises:
-            ValueError: If neither 'base_stats' nor 'stats' are available in the Pokémon dictionary.
+            pokemon (dict): A dictionary containing Pokémon data.
         """
-        if pokemon.get('base_stats'):
-            detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0)}
-        elif pokemon.get('stats'):
-            detail_stats = {**pokemon['stats'], "xp": pokemon.get("xp", 0)}
-        else:
-            raise ValueError("Could not get the stats information of the Pokémon")
-
-        self.pokemon_details_layout = PokemonCollectionDetails(
-            name=pokemon['name'],
-            level=pokemon['level'],
-            id=pokemon['id'],
-            shiny=pokemon.get("shiny", False),
-            ability=pokemon['ability'],
-            type=pokemon['type'],
-            detail_stats=detail_stats,
-            attacks=pokemon['attacks'],
-            base_experience=pokemon['base_experience'],
-            growth_rate=pokemon['growth_rate'],
-            ev=pokemon['ev'],
-            iv=pokemon['iv'],
-            gender=pokemon['gender'],
-            nickname=pokemon.get('nickname'),
-            individual_id=pokemon.get('individual_id'),
-            pokemon_defeated=pokemon.get('pokemon_defeated', 0),
-            everstone=pokemon.get('everstone', False),
-            captured_date=pokemon.get('captured_date', 'Missing'),
-            language=int(self.settings.get("misc.language")),
-            gif_in_collection=self.gif_in_collection,
-            remove_levelcap=self.settings.get("misc.remove_level_cap"),
-            logger=self.logger,
-            refresh_callback=self.refresh_gui
-        )
+        self.selected_pokemon = pokemon
         self.refresh_gui()
 
     def toggle_favorite(self, pokemon: dict[list, Any]):
@@ -899,10 +893,10 @@ class PokemonPC(QDialog):
                 json.dump(pokemon_list, json_file, indent=2)
 
     def on_window_close(self):
-        if self.pokemon_details_layout is not None:
-            clear_layout(self.pokemon_details_layout)
-            self.details_widget.setFixedSize(0, 0)
-            self.pokemon_details_layout = None
+        if self.details_widget is not None and self.details_widget.layout() is not None:
+            clear_layout(self.details_widget.layout())
+        self.details_widget.setFixedSize(0, 0)
+        self.selected_pokemon = None
 
     def closeEvent(self, event: QCloseEvent):
         self.on_window_close()
