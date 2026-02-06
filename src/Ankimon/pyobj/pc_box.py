@@ -102,7 +102,6 @@ class PokemonPC(QDialog):
 
         self.slot_size = 75  # Side length in pixels of a PC slot
         self.main_layout = QHBoxLayout()  # Main horizontal layout for split panels
-        self.details_layout = QVBoxLayout()  # Layout for details panel
         self.details_widget = QWidget()  # Widget to hold details
         self.selected_pokemon = None
 
@@ -424,45 +423,63 @@ class PokemonPC(QDialog):
 
         # Check for selected Pokémon and recreate details panel
         if self.selected_pokemon is not None:
-            detail_stats = None
-            if self.selected_pokemon.get('base_stats'):
-                detail_stats = {**self.selected_pokemon['base_stats'], "xp": self.selected_pokemon.get("xp", 0)}
-            elif self.selected_pokemon.get('stats'):
-                detail_stats = {**self.selected_pokemon['stats'], "xp": self.selected_pokemon.get("xp", 0)}
+             # Resolve the currently selected Pokémon from the up-to-date pokemon_list
+            selected_data = None
+            individual_id = None
+            # self.selected_pokemon may be a dict or an identifier
+            if isinstance(self.selected_pokemon, dict):
+                individual_id = self.selected_pokemon.get("individual_id")
+            else:
+                individual_id = self.selected_pokemon
+            if individual_id is not None:
+                for pkm in getattr(self, "pokemon_list", []):
+                    if pkm.get("individual_id") == individual_id:
+                        selected_data = pkm
+                        break
+            # Fallback to the existing reference if lookup failed but we still have data
+            if selected_data is None and isinstance(self.selected_pokemon, dict):
+                selected_data = self.selected_pokemon
+            # If we still have nothing meaningful, do not attempt to build the details panel
+            if selected_data is None:
+                return
+            # Keep internal state in sync with the fresh data
+            self.selected_pokemon = selected_data
+            if selected_data.get('base_stats'):
+                detail_stats = {**selected_data['base_stats'], "xp": selected_data.get("xp", 0)}
+            elif selected_data.get('stats'):
+                detail_stats = {**selected_data['stats'], "xp": selected_data.get("xp", 0)}
             else:
                 raise ValueError("Pokemon has no stats")
-                
-            if detail_stats:
-                pokemon_details_layout = PokemonCollectionDetails(
-                    name=self.selected_pokemon['name'],
-                    level=self.selected_pokemon['level'],
-                    id=self.selected_pokemon['id'],
-                    shiny=self.selected_pokemon.get("shiny", False),
-                    ability=self.selected_pokemon['ability'],
-                    type=self.selected_pokemon['type'],
+            pokemon_details_layout = PokemonCollectionDetails(
+                    name=selected_data['name'],
+                    level=selected_data['level'],
+                    id=selected_data['id'],
+                    shiny=selected_data.get("shiny", False),
+                    ability=selected_data['ability'],
+                    type=selected_data['type'],
                     detail_stats=detail_stats,
-                    attacks=self.selected_pokemon['attacks'],
-                    base_experience=self.selected_pokemon['base_experience'],
-                    growth_rate=self.selected_pokemon['growth_rate'],
-                    ev=self.selected_pokemon['ev'],
-                    iv=self.selected_pokemon['iv'],
-                    gender=self.selected_pokemon['gender'],
-                    nickname=self.selected_pokemon.get('nickname'),
-                    individual_id=self.selected_pokemon.get('individual_id'),
-                    pokemon_defeated=self.selected_pokemon.get('pokemon_defeated', 0),
-                    everstone=self.selected_pokemon.get('everstone', False),
-                    captured_date=self.selected_pokemon.get('captured_date', 'Missing'),
+                    attacks=selected_data['attacks'],
+                    base_experience=selected_data['base_experience'],
+                    growth_rate=selected_data['growth_rate'],
+                    ev=selected_data['ev'],
+                    iv=selected_data['iv'],
+                    gender=selected_data['gender'],
+                    nickname=selected_data.get('nickname'),
+                    individual_id=selected_data.get('individual_id'),
+                    pokemon_defeated=selected_data.get('pokemon_defeated', 0),
+                    everstone=selected_data.get('everstone', False),
+                    captured_date=selected_data.get('captured_date', 'Missing'),
                     language=int(self.settings.get("misc.language")),
                     gif_in_collection=self.gif_in_collection,
                     remove_levelcap=self.settings.get("misc.remove_level_cap"),
                     logger=self.logger,
                     refresh_callback=self.refresh_gui
                 )
-                self.details_widget = QWidget()
-                self.details_widget.setLayout(pokemon_details_layout)
-                self.details_widget.setMinimumWidth(470) # Ensure it's visible
-                self.details_widget.setStyleSheet(f"background-color: {background_color};")
-                self.main_layout.addWidget(self.details_widget, 2)
+            self.details_widget = QWidget()
+            self.details_widget.setLayout(pokemon_details_layout)
+            self.details_widget.setMinimumWidth(470) # Ensure it's visible
+            self.details_widget.setStyleSheet(f"background-color: {background_color};")
+            self.main_layout.addWidget(self.details_widget, 2)
         else:
             # Ensure the panel is collapsed if no pokemon is selected
             self.details_widget = QWidget()
