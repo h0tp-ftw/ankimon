@@ -51,7 +51,6 @@ class PokemonObject:
         self.shiny = shiny
         self.id = id
         self.level = level
-        self.xp = xp
         self.ability = ability
         self.type = type
         self.gender = gender
