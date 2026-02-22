@@ -51,6 +51,7 @@ class PokemonObject:
         self.shiny = shiny
         self.id = id
         self.level = level
+        self.xp = xp
         self.ability = ability
         self.type = type
         self.gender = gender
@@ -76,7 +77,7 @@ class PokemonObject:
         # Experience and growth
         self.base_experience = base_experience
         self.growth_rate = growth_rate
-        self.xp = xp
+        self.xp = xp if xp is not None else 0
         self.friendship = friendship
 
         # Battle and status

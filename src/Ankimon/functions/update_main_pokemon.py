@@ -14,7 +14,7 @@ MAIN_POKEMON_DEFAULT = {
     "ability": None,
     "type": None,
     "base_stats": None,
-    "xp": None,
+    "xp": 0,
     "ev": None,
     "iv": None,
     "attacks": None,
@@ -28,7 +28,7 @@ MAIN_POKEMON_DEFAULT = {
 }
 
 
-def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
+def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None) -> tuple[PokemonObject, bool]:
     """
     Updates or initializes the main Pokémon object using data from a JSON file.
 
@@ -89,6 +89,8 @@ def save_main_pokemon(main_pokemon: PokemonObject):
     Args:
         main_pokemon (PokemonObject): The Pokémon object to save.
     """
+    # xp None legacy fix
+    main_pokemon.xp = main_pokemon.xp if main_pokemon.xp is not None else 0
     # If the object has a to_dict method, use it; otherwise, use __dict__
     if hasattr(main_pokemon, 'to_dict'):
         data = main_pokemon.to_dict()
