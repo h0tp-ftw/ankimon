@@ -89,13 +89,16 @@ def modify_percentages(total_reviews, daily_average, player_level):
 
     # Example modification based on player level
     if player_level:
-        adjustment = 5  # Adjustment value for the example
-        if player_level > 10:
-            for tier in percentages:
-                if tier == "Normal":
-                    percentages[tier] = max(percentages[tier] - adjustment, 0)
-                else:
-                    percentages[tier] = percentages.get(tier, 0) + adjustment
+        # Adjustment value based on player level: 0.01 per level
+        # Level 100 -> 1.0 adjustment
+        # Level 200 -> 2.0 adjustment
+        adjustment = player_level * 0.01
+        
+        for tier in percentages:
+            if tier == "Normal":
+                percentages[tier] = max(percentages[tier] - adjustment, 0)
+            else:
+                percentages[tier] = percentages.get(tier, 0) + adjustment
 
     # Normalize percentages to ensure they sum to 100
     total = sum(percentages.values())

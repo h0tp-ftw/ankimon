@@ -13,36 +13,36 @@
             "id": 399,
             "ability": "Simple",
             "type": [
-            "Normal"
+                "Normal"
             ],
             "stats": {
-            "hp": 59,
-            "atk": 45,
-            "def": 40,
-            "spa": 35,
-            "spd": 40,
-            "spe": 31,
-            "xp": 0
+                "hp": 59,
+                "atk": 45,
+                "def": 40,
+                "spa": 35,
+                "spd": 40,
+                "spe": 31,
+                "xp": 0
             },
             "ev": {
-            "hp": 0,
-            "atk": 0,
-            "def": 0,
-            "spa": 0,
-            "spd": 0,
-            "spe": 0
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
             },
             "iv": {
-            "hp": 1,
-            "atk": 15,
-            "def": 13,
-            "spa": 15,
-            "spd": 23,
-            "spe": 26
+                "hp": 1,
+                "atk": 15,
+                "def": 13,
+                "spa": 15,
+                "spd": 23,
+                "spe": 26
             },
             "attacks": [
-            "Growl",
-            "Rollout"
+                "Growl",
+                "Rollout"
             ],
             "base_experience": 50,
             "current_hp": 59,
@@ -56,7 +56,7 @@
             "mega": false,
             "special-form": null,
             "evos": []
-                }
+        }
     },
     {
         "code": "MONTHLY-2025-10-GASTLY",
@@ -237,7 +237,7 @@
             "individual_id": "693dda86-93c6-41d0-9b01-f8b0d0f95c17",
             "mega": false,
             "special-form": null,
-        "evos": []
+            "evos": []
         }
     },
     {
@@ -295,6 +295,65 @@
             "shiny": false,
             "captured_date": "2025-12-26 01:12:35",
             "individual_id": "056b53f0-70a7-47e1-9be5-cae4f4b28e3b",
+            "mega": false,
+            "special-form": null,
+            "evos": []
+        }
+    },
+    {
+        "code": "MONTHLY-2026-02-PONYTA",
+        "month": "February 2026",
+        "description": "A fiery challenge for February 2026, featuring Ponyta!",
+        "previous_challenge_individual_id": "056b53f0-70a7-47e1-9be5-cae4f4b28e3b",
+        "defeat_threshold": 200,
+        "pokemon": {
+            "name": "Ponyta",
+            "nickname": "",
+            "level": 1,
+            "gender": "M",
+            "id": 77,
+            "ability": "Run away",
+            "type": [
+                "Fire"
+            ],
+            "stats": {
+                "hp": 50,
+                "atk": 85,
+                "def": 55,
+                "spa": 65,
+                "spd": 65,
+                "spe": 90,
+                "xp": 0
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 20,
+                "atk": 4,
+                "def": 11,
+                "spa": 30,
+                "spd": 29,
+                "spe": 21
+            },
+            "attacks": [
+                "Tackle",
+                "Ember"
+            ],
+            "base_experience": 82,
+            "current_hp": 50,
+            "growth_rate": "medium",
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "shiny": false,
+            "captured_date": "2026-01-29 03:50:12",
+            "individual_id": "66077066-07b1-428c-a7fd-a0a1e7e44ae8",
             "mega": false,
             "special-form": null,
             "evos": []

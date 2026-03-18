@@ -9,13 +9,14 @@ from aqt.utils import showInfo, showWarning
 from ..resources import mypokemon_path, frontdefault, team_pokemon_path
 
 class PokemonTeamDialog(QDialog):
-    def __init__(self, settings_obj, logger, parent=mw):
+    def __init__(self, settings_obj, logger, trainer_card=None, parent=mw):
         super().__init__(parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setWindowTitle("Choose Your Pokémon Team (Max 6 Pokémon)")
         self.settings = settings_obj
         self.logger = logger
+        self.trainer_card = trainer_card
 
         # Set the minimum size of the dialog
         self.setMinimumSize(900, 500)  # Minimum size of 900x500 pixels
@@ -307,5 +308,9 @@ class PokemonTeamDialog(QDialog):
             self.logger.log_and_showinfo("info", f"You chose the following team: [{', '.join([pokemon['name'] for pokemon in pokemon_names])}]\nXP Share: {xp_share_pokemon}")
         except Exception as e:
             self.logger.log_and_showinfo("error", f"Failed to save trainer settings: {e}")
+
+        # Reload trainer card team data when confirmed new team
+        if self.trainer_card is not None:
+            self.trainer_card.reload_team()
 
         self.accept()  # Close the dialog

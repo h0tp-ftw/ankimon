@@ -12,6 +12,7 @@ More detailed explanation if needed:
 Author: Axil
 Created: 2025-06-03 (YYY-MM-DD)
 """
+
 import json
 import uuid
 
@@ -57,13 +58,13 @@ settings_obj = Settings()
 
 # Pass the correct attributes to SettingsWindow
 settings_window = SettingsWindow(
-    config=settings_obj.config,                 # Use settings_obj.config instead of settings_obj.settings.config
+    config=settings_obj.config,  # Use settings_obj.config instead of settings_obj.settings.config
     set_config_callback=settings_obj.set,
     save_config_callback=settings_obj.save_config,
-    load_config_callback=settings_obj.load_config
+    load_config_callback=settings_obj.load_config,
 )
 
-#Init Translator
+# Init Translator
 translator = Translator(language=int(settings_obj.get("misc.language")))
 
 # Not sure what this does, but from afar it looks like a bad idea
@@ -75,45 +76,45 @@ mw.settings_obj = settings_obj
 main_pokemon, mainpokemon_empty = update_main_pokemon()
 
 enemy_pokemon = PokemonObject(
-    name="Rattata",             # Name of the Pokémon
-    shiny=False,                # Shiny status (False for normal appearance)
-    id=19,                      # ID number
-    level=5,                    # Level
-    ability="Run Away",         # Ability specific to Rattata
-    type=["Normal"],              # Type (Normal type for Rattata)
-    stats = {                     # Base stats for Rattata
-      "hp": 39,
-      "atk": 52,
-      "def": 43,
-      "spa": 60,
-      "spd": 50,
-      "spe": 65,
-      "xp": 101
+    name="Rattata",  # Name of the Pokémon
+    shiny=False,  # Shiny status (False for normal appearance)
+    id=19,  # ID number
+    level=5,  # Level
+    ability="Run Away",  # Ability specific to Rattata
+    type=["Normal"],  # Type (Normal type for Rattata)
+    stats={  # Base stats for Rattata
+        "hp": 39,
+        "atk": 52,
+        "def": 43,
+        "spa": 60,
+        "spd": 50,
+        "spe": 65,
+        "xp": 101,
     },
-    attacks=["Quick Attack", "Tackle", "Tail Whip"], # Typical moves for Rattata
-    base_experience=58,          # Base experience points
-    growth_rate="medium-slow",        # Growth rate
-    hp=30,                       # Hit points (HP)
+    attacks=["Quick Attack", "Tackle", "Tail Whip"],  # Typical moves for Rattata
+    base_experience=58,  # Base experience points
+    growth_rate="medium-slow",  # Growth rate
+    hp=30,  # Hit points (HP)
     ev={
-      "hp": 3,
-      "atk": 5,
-      "def": 4,
-      "spa": 1,
-      "spd": 2,
-      "spe": 3
+        "hp": 3,
+        "atk": 5,
+        "def": 4,
+        "spa": 1,
+        "spd": 2,
+        "spe": 3,
     },  # EVs (Effort Values) for stats
     iv={
-      "hp": 27,
-      "atk": 24,
-      "def": 3,
-      "spa": 24,
-      "spd": 16,
-      "spe": 21
-    }, # IVs (Individual Values) for stats
-    gender="M",                   # Gender
-    battle_status="Fighting",    # Status during battle
-    xp=0,                         # XP (experience points)
-    position=(5, 5),              # Position in battle
+        "hp": 27,
+        "atk": 24,
+        "def": 3,
+        "spa": 24,
+        "spd": 16,
+        "spe": 21,
+    },  # IVs (Individual Values) for stats
+    gender="M",  # Gender
+    battle_status="Fighting",  # Status during battle
+    xp=0,  # XP (experience points)
+    position=(5, 5),  # Position in battle
     tier="Normal",
     captured_date=None,
     individual_id=str(uuid.uuid4()),
@@ -125,10 +126,9 @@ trainer_card = TrainerCard(
     main_pokemon,
     settings_obj,
     trainer_name=settings_obj.get("trainer.name"),
-    trainer_id = ''.join(filter(str.isdigit, str(uuid.uuid4()).replace('-', ''))),
-    xp=0,
+    trainer_id="".join(filter(str.isdigit, str(uuid.uuid4()).replace("-", ""))),
     team="Pikachu (Level 25), Charizard (Level 50), Bulbasaur (Level 15)",
-    league = 'Unranked',
+    league="Unranked",
 )
 
 ankimon_tracker_obj = AnkimonTracker(
@@ -147,19 +147,19 @@ test_window = TestWindow(
     translator=translator,
     parent=mw,
     logger=logger,
-    )
+)
 
 achievement_bag = AchievementWindow()
 
 data_handler_obj = DataHandler()
-data_handler_window = DataHandlerWindow(data_handler = data_handler_obj)
+data_handler_window = DataHandlerWindow(data_handler=data_handler_obj)
 
 # Initialize the Pokémon Shop Manager
 shop_manager = PokemonShopManager(
     logger=logger,
     settings_obj=settings_obj,
     set_callback=settings_obj.set,
-    get_callback=settings_obj.get
+    get_callback=settings_obj.get,
 )
 
 ankimon_tracker_window = AnkimonTrackerWindow(tracker=ankimon_tracker_obj)
@@ -216,4 +216,4 @@ pokemon_pc = PokemonPC(
     test_window=test_window,
     settings=settings_obj,
     main_pokemon=main_pokemon,
-    )
+)
