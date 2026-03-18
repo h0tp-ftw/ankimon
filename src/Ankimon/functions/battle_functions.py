@@ -526,7 +526,7 @@ def process_battle_data(
     battle_status: str,
     pokemon_encounter: int,
     translator,
-    changes
+    changes,
 ) -> str:
     """
     Generate complete battle message from battle data.

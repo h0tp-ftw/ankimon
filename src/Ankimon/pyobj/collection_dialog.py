@@ -727,3 +727,6 @@ def MainPokemon(
 
     if test_window.isVisible():
         test_window.display_first_encounter()
+
+    from ..singletons import pokemon_pc
+    pokemon_pc.refresh_pokemon_grid()

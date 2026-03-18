@@ -1,0 +1,141 @@
+{
+  "projectName": "ankimon",
+  "projectOwner": "h0tp-ftw",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 80,
+  "commit": false,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "h0tp-ftw",
+      "name": "h0tp",
+      "avatar_url": "https://github.com/h0tp-ftw.png",
+      "profile": "https://github.com/h0tp-ftw",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "thepeacemonk",
+      "name": "Peace",
+      "avatar_url": "https://github.com/thepeacemonk.png",
+      "profile": "https://github.com/thepeacemonk",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Axil12",
+      "name": "Axil",
+      "avatar_url": "https://github.com/Axil12.png",
+      "profile": "https://github.com/Axil12",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Someon1e",
+      "name": "Someon1e",
+      "avatar_url": "https://github.com/Someon1e.png",
+      "profile": "https://github.com/Someon1e",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "ArdentRoe",
+      "name": "ArdentRoe",
+      "avatar_url": "https://github.com/ArdentRoe.png",
+      "profile": "https://github.com/ArdentRoe",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "abr-projects",
+      "name": "abr-projects",
+      "avatar_url": "https://github.com/abr-projects.png",
+      "profile": "https://github.com/abr-projects",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Zuukiny",
+      "name": "Zuukiny",
+      "avatar_url": "https://github.com/Zuukiny.png",
+      "profile": "https://github.com/Zuukiny",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "marbaret",
+      "name": "marbaret",
+      "avatar_url": "https://github.com/marbaret.png",
+      "profile": "https://github.com/marbaret",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "gjgress",
+      "name": "gjgress",
+      "avatar_url": "https://github.com/gjgress.png",
+      "profile": "https://github.com/gjgress",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "richy431",
+      "name": "richy431",
+      "avatar_url": "https://github.com/richy431.png",
+      "profile": "https://github.com/richy431",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "MrElektronz",
+      "name": "MrElektronz",
+      "avatar_url": "https://github.com/MrElektronz.png",
+      "profile": "https://github.com/MrElektronz",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Koconnor03",
+      "name": "Koconnor03",
+      "avatar_url": "https://github.com/Koconnor03.png",
+      "profile": "https://github.com/Koconnor03",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "MORGANlTE",
+      "name": "MORGANlTE",
+      "avatar_url": "https://github.com/MORGANlTE.png",
+      "profile": "https://github.com/MORGANlTE",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "OuraN2O",
+      "name": "OuraN2O",
+      "avatar_url": "https://github.com/OuraN2O.png",
+      "profile": "https://github.com/OuraN2O",
+      "contributions": [
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 5
+}

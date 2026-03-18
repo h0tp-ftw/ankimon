@@ -410,13 +410,13 @@ def get_item_price(item_name, file_path=csv_file_items_cost):
                     return int(cost)
     except FileNotFoundError:
         showWarning(f"Error: File {file_path} not found.")
-        return int(1000)
+        return 1000
     except KeyError:
         showWarning("Error: CSV file does not contain the expected headers.")
-        return int(1000)
+        return 1000
     except Exception as e:
         showWarning(f"Unexpected error: {e}")
-        return int(1000)
+        return 1000
 
     return None
 
@@ -441,13 +441,13 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
                     return int(id)
     except FileNotFoundError as e:
         show_warning_with_traceback(parent=mw, exception=e, message=f"Error: File {file_path} not found.")
-        return int(4)
+        return 4
     except KeyError as e:
         show_warning_with_traceback(parent=mw, exception=e, message="Error: CSV file does not contain the expected headers.")
-        return int(4)
+        return 4
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message=f"Unexpected error: {e}")
-        return int(4)
+        return 4
 
 #Function to return a random fossil
 def random_fossil():

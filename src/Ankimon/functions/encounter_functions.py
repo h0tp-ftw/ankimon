@@ -43,6 +43,7 @@ from ..singletons import (
     trainer_card,
     settings_obj,
     translator,
+    pokemon_pc,
 )
 from ..resources import (
     mypokemon_path,
@@ -734,6 +735,8 @@ def catch_pokemon(
     except Exception as e:
         if logger is not None:
             show_warning_with_traceback(parent=mw, exception=e, message="Error while catching Pokemon:") # Display a message when the Pokémon is caught
+
+    pokemon_pc.refresh_pokemon_grid()
 
 def handle_enemy_faint(
         main_pokemon: PokemonObject,

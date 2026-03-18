@@ -837,10 +837,6 @@
                     "type": "file"
                 },
                 {
-                    "name": "LegendaryCatchingFunction.py",
-                    "type": "file"
-                },
-                {
                     "name": "pokedex_functions.py",
                     "type": "file"
                 },
@@ -866,10 +862,6 @@
             "name": "gui_classes",
             "type": "folder",
             "children": [
-                {
-                    "name": "AnkimonWindow copy.py",
-                    "type": "file"
-                },
                 {
                     "name": "check_files.py",
                     "type": "file"

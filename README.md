@@ -6,9 +6,38 @@
 ### GitHub Contributors
 #### Ankimon Experimental: `h0tp-ftw/ankimon`
 
-| <img src="https://github.com/h0tp-ftw.png" width="80"><br>[h0tp](https://github.com/h0tp-ftw)<br>Owner<br>@h0tp-ftw | <img src="https://github.com/thepeacemonk.png" width="80"><br>[Peace](https://github.com/thepeacemonk)<br>Contributor<br>@thepeacemonk | <img src="https://github.com/Axil12.png" width="80"><br>[Axil](https://github.com/Axil12)<br>Contributor<br>@Axil12 | <img src="https://github.com/gykoh.png" width="80"><br>[Gill](https://github.com/gykoh)<br>Contributor<br>@gykoh |
-| :---: | :---: | :---: | :---: |
-| <img src="https://github.com/richy431.png" width="80"><br>[richy](https://github.com/richy431)<br>Contributor<br>@richy431 | <img src="https://github.com/MORGANlTE.png" width="80"><br>[Morganite](https://github.com/MORGANlTE)<br>Contributor<br>@MORGANlTE | <img src="https://github.com/unlucky-life.png" width="80"><br>[Unlucky](https://github.com/unlucky-life)<br>Ankimon creator<br>@unlucky-life | <img src="https://github.com/primer.png" width="80"><br>[You?](#i-dont-know-how-to-code-where-do-i-start)<br>Join us!<br>Be a Contributor! |
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/h0tp-ftw"><img src="https://github.com/h0tp-ftw.png?s=80" width="80px;" alt="h0tp"/><br /><sub><b>h0tp</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=h0tp-ftw" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/thepeacemonk"><img src="https://github.com/thepeacemonk.png?s=80" width="80px;" alt="Peace"/><br /><sub><b>Peace</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=thepeacemonk" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/Axil12"><img src="https://github.com/Axil12.png?s=80" width="80px;" alt="Axil"/><br /><sub><b>Axil</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Axil12" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/Someon1e"><img src="https://github.com/Someon1e.png?s=80" width="80px;" alt="Someon1e"/><br /><sub><b>Someon1e</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Someon1e" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/ArdentRoe"><img src="https://github.com/ArdentRoe.png?s=80" width="80px;" alt="ArdentRoe"/><br /><sub><b>ArdentRoe</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=ArdentRoe" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/abr-projects"><img src="https://github.com/abr-projects.png?s=80" width="80px;" alt="abr-projects"/><br /><sub><b>abr-projects</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=abr-projects" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/Zuukiny"><img src="https://github.com/Zuukiny.png?s=80" width="80px;" alt="Zuukiny"/><br /><sub><b>Zuukiny</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Zuukiny" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/marbaret"><img src="https://github.com/marbaret.png?s=80" width="80px;" alt="marbaret"/><br /><sub><b>marbaret</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=marbaret" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/gjgress"><img src="https://github.com/gjgress.png?s=80" width="80px;" alt="gjgress"/><br /><sub><b>gjgress</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=gjgress" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/richy431"><img src="https://github.com/richy431.png?s=80" width="80px;" alt="richy431"/><br /><sub><b>richy431</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=richy431" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/MrElektronz"><img src="https://github.com/MrElektronz.png?s=80" width="80px;" alt="MrElektronz"/><br /><sub><b>MrElektronz</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=MrElektronz" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/Koconnor03"><img src="https://github.com/Koconnor03.png?s=80" width="80px;" alt="Koconnor03"/><br /><sub><b>Koconnor03</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Koconnor03" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/MORGANlTE"><img src="https://github.com/MORGANlTE.png?s=80" width="80px;" alt="MORGANlTE"/><br /><sub><b>MORGANlTE</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=MORGANlTE" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/OuraN2O"><img src="https://github.com/OuraN2O.png?s=80" width="80px;" alt="OuraN2O"/><br /><sub><b>OuraN2O</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=OuraN2O" title="Code">💻</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
 
 #### Ankimon: `Unlucky-Life/ankimon`
 

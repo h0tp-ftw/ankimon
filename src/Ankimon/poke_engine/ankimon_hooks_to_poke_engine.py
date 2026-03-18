@@ -4,6 +4,10 @@ import copy
 import traceback
 from typing import Union
 
+from . import constants
+from ..singletons import ankimon_tracker_obj, settings_obj
+import math
+
 from .battle import Move
 from .objects import Pokemon, State, StateMutator, Side
 from .helpers import normalize_name
@@ -216,7 +220,17 @@ def simulate_battle_with_poke_engine(
         weights = [outcome.percentage for outcome in transpose_instructions]
         chosen_outcome = random.choices(transpose_instructions, weights=weights, k=1)[0]
 
-        instrs = chosen_outcome.instructions
+    
+        if settings_obj.get("battle.review_based_damage"):
+            instrs = []
+            for instr in chosen_outcome.instructions:
+                if instr[0] == constants.DAMAGE and instr[1] == constants.OPPONENT:
+                    modified_instr = (instr[0], instr[1], math.floor(instr[2] * ankimon_tracker_obj.multiplier)) + instr[3:]
+                    instrs.append(modified_instr)
+                else:
+                    instrs.append(instr)
+        else:
+            instrs = chosen_outcome.instructions
 
         user_hp_before = int(state.user.active.hp)
         opponent_hp_before = int(state.opponent.active.hp)
@@ -293,7 +307,7 @@ def simulate_battle_with_poke_engine(
         # inflict a certain status (like sleep or paralyze), etc.
 
         battle_effects = []
-        for instr in chosen_outcome.instructions:
+        for instr in instrs:
             battle_effects.append(list(instr))  # Convert tuples to lists
 
         battle_info = {

@@ -120,17 +120,17 @@ class TrainerCard:
                 pokemon_data = json.load(file)
 
             if not pokemon_data:
-                return int(0)  # Return None if the data is empty
+                return 0  # Return None if the data is empty
 
             # Find the Pokémon with the highest level and return its name
             highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
             return int(highest_pokemon.get("level", 0))
         except FileNotFoundError:
             showInfo(f"File not found: {mypokemon_path}")
-            return int(0)
+            return 0
         except json.JSONDecodeError:
             showInfo(f"Error decoding JSON from file: {mypokemon_path}")
-            return int(0)
+            return 0
 
     def add_achievement(self, achievement):
         """Method to add a new achievement"""

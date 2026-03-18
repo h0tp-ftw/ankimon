@@ -167,6 +167,9 @@ class StarterWindow(QWidget):
 
         self.display_chosen_starter_pokemon(starter_name)
 
+        from ..singletons import pokemon_pc
+        pokemon_pc.refresh_pokemon_grid()
+
         close_anki()
 
     def get_starters_of_gen(self):
@@ -327,14 +330,14 @@ class StarterWindow(QWidget):
         painter.drawPixmap(311,-3,grass_pixmap)
 
         # custom font
-        custom_font = load_custom_font(int(28), int(self.settings_obj.get("misc.language")))
+        custom_font = load_custom_font(28, int(self.settings_obj.get("misc.language")))
         message_box_text = "Choose your Starter Pokemon"
         # Draw the text on top of the image
         # Adjust the font size as needed
         painter.setFont(custom_font)
         painter.setPen(QColor(255,255,255))  # Text color
         painter.drawText(110, 310, message_box_text)
-        custom_font = load_custom_font(int(20), int(self.settings_obj.get("misc.language")))
+        custom_font = load_custom_font(20, int(self.settings_obj.get("misc.language")))
         painter.setFont(custom_font)
         next_gen = (self.current_gen + 1) % total_generations + 1
         painter.drawText(10, 330, f"Press G for Gen {next_gen}")
@@ -371,7 +374,7 @@ class StarterWindow(QWidget):
         painter.drawPixmap(125,10,image_pixmap)
 
         # custom font
-        custom_font = load_custom_font(int(32), int(self.settings_obj.get("misc.language")))
+        custom_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))
         message_box_text = f"{(starter_name).capitalize()} was chosen as Starter !"
         # Draw the text on top of the image
         # Adjust the font size as needed
@@ -411,7 +414,7 @@ class StarterWindow(QWidget):
         painter.drawPixmap(125,10,image_pixmap)
 
         # custom font
-        custom_font = load_custom_font(int(32), int(self.settings_obj.get("misc.language")))
+        custom_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))
         message_box_text = f"{(fossil_name).capitalize()} was brought to life !"
         # Draw the text on top of the image
         # Adjust the font size as needed

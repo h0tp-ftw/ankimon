@@ -3,6 +3,7 @@
     "battle.cards_per_round": "Number of cards to review per round until the next battle action.",
     "battle.daily_average": "Set the amount of Cards you want to review per day.",
     "battle.card_max_time": "Goal of maximum amount of time needed to answer a card in seconds",
+    "battle.review_based_damage": "If enabled, your Pokémon's damage will be modified depending on how you graded your last few cards.",
 
     "controls.pokemon_buttons": "Enable action buttons for Pokémon commands during reviews.",
     "controls.defeat_key": "Key for defeating Pokémon when its HP is 0. [A-Z]",

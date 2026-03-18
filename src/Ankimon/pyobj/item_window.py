@@ -305,7 +305,14 @@ class ItemWindow(QWidget):
         item_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         if item_type == "TM":
-            item_file_path = items_path / f"Bag_TM_{find_details_move(item_name)['type'].lower()}_SV_Sprite.png"
+            details = find_details_move(item_name)
+            if not details or "type" not in details:
+                self.logger.log_and_showinfo("error", f"Report the following: Missing details for item: {item_name!r}")
+                tm_type = "normal"
+            else:
+                tm_type = details["type"].lower()
+
+            item_file_path = items_path / f"Bag_TM_{tm_type}_SV_Sprite.png"
         else:
             item_file_path = items_path / f"{item_name}.png"
         item_picture_pixmap = QPixmap(str(item_file_path))
@@ -401,6 +408,9 @@ class ItemWindow(QWidget):
         self.starter_window.display_fossil_pokemon(fossil_id, fossil_poke_name)
         save_fossil_pokemon(fossil_id)
         self.delete_item(item_name)
+        
+        from ..singletons import pokemon_pc
+        pokemon_pc.refresh_pokemon_grid()
 
     def modified_pokeball_chances(self, item_name: str, catch_chance: int):
         # Adjust catch chance based on Pokémon type and Poké Ball
