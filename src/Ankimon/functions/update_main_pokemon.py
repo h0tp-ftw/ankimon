@@ -76,7 +76,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
 
     # Normalize xp to 0 if it's None
     if main_pokemon.xp is None:
-        main_pokemon.xp = int(0)
+        main_pokemon.xp = 0
 
     mainpokemon_empty = True
     if mainpokemon_path.is_file():
