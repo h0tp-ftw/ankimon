@@ -7,27 +7,13 @@ from unittest.mock import mock_open, patch
 
 import pytest
 
-# We need to import learnset_retrieval without triggering Ankimon/__init__.py
-# (which depends on Anki internals). We do this by:
-# 1. Creating stub parent packages in sys.modules
-# 2. Loading only the target module from its file path.
-
-_src = Path(__file__).parent.parent / "src"
-
-# Stub parent packages so relative imports resolve without loading __init__.py
-for _pkg in ("Ankimon", "Ankimon.functions"):
-    if _pkg not in sys.modules:
-        _mod = types.ModuleType(_pkg)
-        _mod.__path__ = [str(_src / _pkg.replace(".", "/"))]
-        _mod.__package__ = _pkg
-        sys.modules[_pkg] = _mod
-
-# Stub the resources module with a fake learnset_path
+# Stub resources module with a fake learnset_path
 _resources = types.ModuleType("Ankimon.resources")
 _resources.learnset_path = "/fake/learnsets.json"
 sys.modules["Ankimon.resources"] = _resources
 
 # Now load learnset_retrieval from its file
+_src = Path(__file__).parent.parent / "src"
 _spec = importlib.util.spec_from_file_location(
     "Ankimon.functions.learnset_retrieval",
     _src / "Ankimon" / "functions" / "learnset_retrieval.py",
@@ -36,10 +22,12 @@ _lr = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = _lr
 _spec.loader.exec_module(_lr)
 
-_get_learnset_moves = _lr._get_learnset_moves
-get_all_pokemon_moves = _lr.get_all_pokemon_moves
-get_levelup_move_for_pokemon = _lr.get_levelup_move_for_pokemon
-get_random_moves_for_pokemon = _lr.get_random_moves_for_pokemon
+from Ankimon.functions.learnset_retrieval import (
+    _get_learnset_moves,
+    get_all_pokemon_moves,
+    get_levelup_move_for_pokemon,
+    get_random_moves_for_pokemon,
+)
 
 
 FAKE_LEARNSET = {
