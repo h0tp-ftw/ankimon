@@ -51,10 +51,14 @@ def tooltipWithColour(msg, color, x=0, y=20, xref=1, parent=None, width=0, heigh
         lab.setPalette(p)
         lab.show()
         lab.move(QPoint(x - round(lab.width() * 0.5 * xref), y))
-        try:
-            QTimer.singleShot(period, lambda: lab.hide())
-        except:
-            QTimer.singleShot(3000, lambda: lab.hide())
+        
+        def hide_lab():
+            try:
+                lab.hide()
+            except RuntimeError:
+                pass
+
+        QTimer.singleShot(period, lambda: hide_lab())
         mw.logger.log_and_showinfo("game", msg)
 
 def draw_gender_symbols(
