@@ -109,7 +109,7 @@ class EvoWindow(QWidget):
         painter.drawPixmap(125,10,image_pixmap)
 
         # custom font
-        custom_font = load_custom_font(int(20), int(self.settings_obj.get("misc.language")))
+        custom_font = load_custom_font(20, int(self.settings_obj.get("misc.language")))
         message_box_text = f"{(prevo_name).capitalize()} has evolved to {(evo_name).capitalize()} !"
         self.logger.log("game", message_box_text)
         # Draw the text on top of the image
@@ -314,6 +314,9 @@ class EvoWindow(QWidget):
         check = check_for_badge(self.achievements, 16)
         if check is False:
             receive_badge(16, self.achievements)
+            
+        from ..singletons import pokemon_pc
+        pokemon_pc.refresh_pokemon_grid()
 
     def cancel_evolution(self, individual_id, prevo_name):
         try:

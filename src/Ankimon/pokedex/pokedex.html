@@ -386,6 +386,8 @@
         const caughtTotalParam = params.get("caught_total");
         const caughtTotal = parseInt(caughtTotalParam, 10);
         return isNaN(caughtTotal) ? 0 : Math.max(0, caughtTotal);
+      }
+
       function getShinyNumbersFromURL() {
         const params = new URLSearchParams(window.location.search);
         const shiniesParam = params.get("shinies");

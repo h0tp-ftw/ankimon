@@ -290,7 +290,18 @@ def get_all_pokemon_moves(pk_name, level):
     return attacks
 
 
-def find_details_move(move_name: str):
+def find_details_move(move_name: str) -> dict:
+    """
+    Retrieve the move details for the given move.
+    Due to the JSON objects structure it attempts various normalization steps to improve matching.
+
+    Args:
+        move_name (str): The name of the move to search for.
+
+    Returns:
+        dict: A dictionary containing information about the given move if found. If not it tries falling back to 
+        either tackle (preferred) or None.
+    """
     try:
         with open(moves_file_path, "r", encoding="utf-8") as json_file:
             moves_data = json.load(json_file)
@@ -300,20 +311,33 @@ def find_details_move(move_name: str):
             if move:
                 return move
             move_name = move_name.replace(" ", "")
-            try:
-                move = moves_data.get(move_name.lower())
+            move = moves_data.get(move_name.lower())
+            if move:
                 return move
-            except:
-                # logger.log_and_showinfo("info",f"Can't find the attack {move_name} in the database.")
+            move_name = move_name.replace("-", "")
+            move = moves_data.get(move_name.lower())
+            if move:
+                return move
+            else:
                 move = moves_data.get("tackle")
+                showWarning(f"Move '{move_name}' not found. Returning default move 'tackle'.")
                 return move
+                
+    except FileNotFoundError as f:
+        show_warning_with_traceback(
+            parent=mw,
+            exception=f,
+            message="The is an issue finding moves.json."
+        )
+        return None
+        
     except Exception as e:
         show_warning_with_traceback(
             parent=mw,
             exception=e,
-            message=f"There is an issue in find_details_move for move: {move_name}",
+            message=f"There is an issue in find_details_move for move: {move_name}. Returning to default move 'tackle'."
         )
-        return None
+        return moves_data.get("tackle")
 
 
 def get_pokemon_evolution_data_all(pokemon_id, file_path=poke_evo_path):

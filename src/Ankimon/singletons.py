@@ -127,7 +127,7 @@ trainer_card = TrainerCard(
     settings_obj,
     trainer_name=settings_obj.get("trainer.name"),
     trainer_id="".join(filter(str.isdigit, str(uuid.uuid4()).replace("-", ""))),
-    xp=0,
+    team="Pikachu (Level 25), Charizard (Level 50), Bulbasaur (Level 15)",
     league="Unranked",
 )
 

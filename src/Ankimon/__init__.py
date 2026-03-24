@@ -424,7 +424,7 @@ def on_review_card(*args):
             ankimon_tracker_obj.attack_counter = 0
             slp_counter = 0
             ankimon_tracker_obj.pokemon_encouter += 1
-            multiplier = int(ankimon_tracker_obj.multiplier)
+            multiplier = ankimon_tracker_obj.multiplier
 
             if ankimon_tracker_obj.pokemon_encouter > 0 and enemy_pokemon.hp > 0 and multiplier < 1:
                 enemy_move = safe_get_random_move(enemy_pokemon.attacks, logger=logger)
@@ -545,7 +545,7 @@ def on_review_card(*args):
                 battle_status=main_pokemon.battle_status,
                 pokemon_encounter=ankimon_tracker_obj.pokemon_encouter,
                 translator=translator,
-                changes=current_battle_info_changes
+                changes=current_battle_info_changes,
             )
 
             # Display the complete message

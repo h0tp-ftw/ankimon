@@ -16,9 +16,19 @@ from aqt.qt import (
 
 from aqt.theme import theme_manager # Check if light / dark mode in Anki
 
-from PyQt6.QtWidgets import QLineEdit, QComboBox, QCheckBox, QMenu, QWidget, QScrollArea, QFrame, QRadioButton, QButtonGroup
-from PyQt6.QtCore import QSize, pyqtSignal
-from PyQt6.QtGui import QIcon, QFont, QAction, QMovie, QCloseEvent
+from PyQt6.QtWidgets import (
+    QLineEdit,
+    QComboBox,
+    QCheckBox,
+    QMenu,
+    QWidget,
+    QScrollArea,
+    QFrame,
+    QRadioButton,
+    QButtonGroup,
+)
+from PyQt6.QtCore import QSize, pyqtSignal, QTimer
+from PyQt6.QtGui import QIcon, QFont, QAction, QMovie, QCloseEvent, QResizeEvent
 
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.reviewer_obj import Reviewer_Manager
@@ -109,6 +119,11 @@ class PokemonPC(QDialog):
         self.gif_in_collection = settings.get("gui.gif_in_collection")
 
         self.slot_size = 75  # Side length in pixels of a PC slot
+
+        self.resize_timer = QTimer()
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(self.on_resize_timeout) # Debounce resize events to avoid excessive refreshes during window resizing
+        
         self.main_layout = QHBoxLayout()  # Main horizontal layout for split panels
         self.details_layout = QVBoxLayout()  # Layout for details panel
         self.details_widget = QWidget()  # Widget to hold details
@@ -135,7 +150,13 @@ class PokemonPC(QDialog):
         gui_hooks.theme_did_change.append(self.on_theme_change)
 
         self.ensure_data_integrity()  # Necessary for legacy reasons
+
+        self.grid_container = None
+        self.pokemon_grid = None
+        self.curr_box_label = None
+        
         self.create_gui()
+        self.refresh_pokemon_grid()
 
     def on_theme_change(self):
         """
@@ -258,100 +279,93 @@ class PokemonPC(QDialog):
             }}
         """)
 
-        self.gif_in_collection = self.settings.get("gui.gif_in_collection")
+        # Theme variables for building the grid
+        self.theme_vars = {
+            "button_border": button_border,
+            "background_color": background_color,
+            "slot_bg_color": slot_bg_color,
+            "favorite_color": favorite_color,
+            "favorite_hover_color": favorite_hover_color,
+            "hover_color": hover_color
+        }
 
-        pokemon_list = self.load_pokemon_data()
-        pokemon_list = self.filter_pokemon_list(pokemon_list)
-        pokemon_list = self.sort_pokemon_list(pokemon_list)
-        max_box_idx = (len(pokemon_list) - 1) // (self.n_rows * self.n_cols)
+        # Clear existing layout if this is called via refresh_gui
+        if self.layout():
+            clear_layout(self.layout())
+        else:
+            self.setLayout(self.main_layout)
 
         # Collection panel
         collection_layout = QVBoxLayout()
+        collection_layout.setContentsMargins(20, 10, 20, 10) # Consistent margins
         box_selector_layout = QHBoxLayout()
+        box_selector_layout.setContentsMargins(0, 0, 0, 10)
         prev_box_button = QPushButton("◀")
         next_box_button = QPushButton("▶")
         prev_box_button.setFixedSize(70, 50)
         next_box_button.setFixedSize(70, 50)
         prev_box_button.setFont(QFont('System', 25))
         next_box_button.setFont(QFont('System', 25))
-        prev_box_button.clicked.connect(lambda: self.looparound_go_to_box(self.current_box_idx - 1, max_box_idx))
-        next_box_button.clicked.connect(lambda: self.looparound_go_to_box(self.current_box_idx + 1, max_box_idx))
-        box_label_text = self.translator.translate(
-            "pc_box_label",
-            current=self.current_box_idx + 1,
-            total=max_box_idx + 1,
+        # Max box idx is updated in refresh_pokemon_grid
+        prev_box_button.clicked.connect(lambda: self.navigate_box(-1))
+        next_box_button.clicked.connect(lambda: self.navigate_box(1))
+        self.curr_box_label = QLabel(
+            self.translator.translate(
+                "pc_box_label",
+                current=1,
+                total=1,
+            )
         )
-        if box_label_text == "pc_box_label":
-            box_label_text = f"Box {self.current_box_idx + 1}/{max_box_idx + 1}"
-            
-        curr_box_label = QLabel(box_label_text)
-        curr_box_label.setFixedSize(150, 50)
-        curr_box_label.setFont(load_custom_font(20, int(self.settings.get("misc.language"))))
-        curr_box_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        curr_box_label.setStyleSheet(f"border: 1px solid {button_border}; background-color: {background_color};")
-        box_selector_layout.addWidget(prev_box_button, alignment=Qt.AlignmentFlag.AlignCenter)
-        box_selector_layout.addWidget(curr_box_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        box_selector_layout.addWidget(next_box_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.curr_box_label.setFixedSize(150, 50)
+        self.curr_box_label.setFont(load_custom_font(20, int(self.settings.get("misc.language"))))
+        self.curr_box_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.curr_box_label.setStyleSheet(f"border: 1px solid {button_border}; background-color: {background_color};")
+        
+        box_selector_layout.addStretch(1) # Push buttons to center
+        box_selector_layout.addWidget(prev_box_button)
+        box_selector_layout.addWidget(self.curr_box_label)
+        box_selector_layout.addWidget(next_box_button)
+        box_selector_layout.addStretch(1) # Push buttons to center
         collection_layout.addLayout(box_selector_layout)
 
-        # Pokémon grid
-        start_index = self.current_box_idx * self.n_cols * self.n_rows
-        end_index = (self.current_box_idx + 1) * self.n_cols * self.n_rows
-        pokemon_list_slice = pokemon_list[start_index:end_index]
-        pokemon_grid = QGridLayout()
-        for row in range(self.n_rows):
-            for col in range(self.n_cols):
-                pokemon_idx = col * self.n_rows + row
-                if pokemon_idx >= len(pokemon_list_slice):
-                    empty_label = QLabel()
-                    empty_label.setFixedSize(self.slot_size, self.slot_size)
-                    pokemon_grid.addWidget(empty_label, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-                    continue
+        # Grid Container in a Scroll Area to allow window shrinking
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setStyleSheet("background: transparent; border: none;")
+        self.scroll_area.setMinimumSize(200, 200) # Minimum size required for shrinking
+        # Enforce pagination by turning off scrollbars
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        
+        self.grid_container = QWidget()
+        self.grid_container.setStyleSheet("background: transparent;")
+        self.pokemon_grid = QGridLayout(self.grid_container)
+        self.pokemon_grid.setSpacing(5)
+        self.pokemon_grid.setContentsMargins(0, 0, 0, 0)
+        self.pokemon_grid.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll_area.setWidget(self.grid_container)
+        
+        collection_layout.addWidget(self.scroll_area, 1)
+        self.setup_filters_layout(collection_layout)
 
-                pokemon = pokemon_list_slice[pokemon_idx]
-                pkmn_image_path = get_sprite_path("front", "gif" if self.gif_in_collection else "png", pokemon['id'], pokemon.get("shiny", False), pokemon["gender"])
-                pokemon_button = PokemonSlotButton("")
-                pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+        collection_widget = QWidget()
+        collection_widget.setLayout(collection_layout)
+        self.main_layout.addWidget(collection_widget, 1)
 
-                if pokemon.get("is_favorite", False):
-                    slot_style_bg = favorite_color
-                    slot_style_hover_bg = favorite_hover_color # Favorite color doesn't change on hover
-                else:
-                    slot_style_bg = slot_bg_color
-                    slot_style_hover_bg = hover_color
+        self.setup_details_panel(background_color)
 
-                # Apply the style
-                style_sheet_str = f"""
-                    QPushButton {{
-                        background-color: {slot_style_bg};
-                        border: 1px solid {button_border};
-                        border-radius: 5px;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {slot_style_hover_bg};
-                    }}
-                """
-                pokemon_button.setStyleSheet(style_sheet_str)
+    def setup_filters_layout(self, parent_layout):
+        """
+        Build and attach filter/sort controls below the PC grid.
 
-                # Connect signals
-                # Left click: Show details
-                pokemon_button.clicked.connect(lambda checked, pkmn=pokemon: self.show_pokemon_details(pkmn))
-                # Right click: Show actions menu
-                pokemon_button.rightClicked.connect(lambda pb=pokemon_button, pkmn=pokemon: self.show_actions_submenu(pb, pkmn))
+        The method preserves previous control state when rebuilding the GUI,
+        reconnects all filter/sort signals, and appends the resulting layout
+        to ``parent_layout``.
 
-                if self.gif_in_collection:
-                    scaled_movie_label = ScaledMovieLabel(pkmn_image_path, self.slot_size - 10, self.slot_size - 10)
-                    scaled_movie_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-                    pokemon_grid.addWidget(pokemon_button, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-                    pokemon_grid.addWidget(scaled_movie_label, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-                else:
-                    pixmap = QPixmap(pkmn_image_path)
-                    pixmap = self.adjust_pixmap_size(pixmap, max_width=300, max_height=230)
-                    pokemon_button.setIcon(QIcon(pkmn_image_path))
-                    pokemon_button.setIconSize(QSize(self.slot_size - 10, self.slot_size - 10))
-                    pokemon_grid.addWidget(pokemon_button, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-        collection_layout.addLayout(pokemon_grid)
-
+        Args:
+            parent_layout (QLayout): Layout that receives the filter controls.
+        """
         # Bottom part to filter the Pokémon displayed
         filters_layout = QGridLayout()
         # Name filtering
@@ -467,17 +481,9 @@ class PokemonPC(QDialog):
 
         filters_layout.addWidget(checkboxes_widget, 2, 0, 1, 5)
         filters_layout.addWidget(sort_radio_widget, 3, 0, 1, 5)
-        collection_layout.addLayout(filters_layout)
+        parent_layout.addLayout(filters_layout)
 
-        # Finalizing layout
-        collection_widget = QWidget()
-        collection_widget.setLayout(collection_layout)
-        collection_widget.setFixedWidth(self.n_cols * (self.slot_size + 20) + 50)
-        collection_widget.setFixedHeight(self.n_rows * (self.slot_size + 20) + 100)
-
-        self.main_layout.addWidget(collection_widget, 1)
-
-        # Check for existing details panel and apply styles
+    def setup_details_panel(self, background_color):
         if self.pokemon_details_layout is not None:
             self.details_widget = QWidget()
             self.details_widget.setLayout(self.pokemon_details_layout)
@@ -487,27 +493,127 @@ class PokemonPC(QDialog):
         else:
             # Ensure the panel is collapsed if no pokemon is selected
             self.details_widget = QWidget()
-            self.details_widget.setLayout(QVBoxLayout()) # Placeholder layout
-            self.details_widget.setMinimumWidth(0)
-            self.details_widget.setMaximumWidth(0)
-            self.main_layout.addWidget(self.details_widget, 2)
+            self.details_widget.hide()
+            self.main_layout.addWidget(self.details_widget, 0)
 
-        self.setLayout(self.main_layout)
+    def refresh_pokemon_grid(self):
+        """
+        Clears and rebuilds the grid.
+        """
+        if self.pokemon_grid is None:
+            return
+
+        clear_layout(self.pokemon_grid)
+        self.gif_in_collection = self.settings.get("gui.gif_in_collection")
+
+        pokemon_list = self.load_pokemon_data()
+        pokemon_list = self.filter_pokemon_list(pokemon_list)
+        pokemon_list = self.sort_pokemon_list(pokemon_list)
+        max_box_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
+        
+        if self.current_box_idx > max_box_idx:
+            self.current_box_idx = max_box_idx
+            
+        if self.curr_box_label:
+            self.curr_box_label.setText(
+                self.translator.translate("pc_box_label", current=self.current_box_idx + 1, total=max_box_idx + 1)
+            )
+
+        start_index = self.current_box_idx * self.n_rows * self.n_cols
+        pokemon_list_slice = pokemon_list[start_index : start_index + self.n_rows * self.n_cols]
+
+        theme_vars = self.theme_vars
+        border = theme_vars["button_border"]
+
+        for row in range(self.n_rows):
+            for col in range(self.n_cols):
+                pokemon_idx = row * self.n_cols + col
+                if pokemon_idx >= len(pokemon_list_slice):
+                    empty_label = QLabel()
+                    empty_label.setFixedSize(self.slot_size, self.slot_size)
+                    self.pokemon_grid.addWidget(empty_label, row, col, alignment=Qt.AlignmentFlag.AlignCenter)
+                    continue
+
+                pokemon = pokemon_list_slice[pokemon_idx]
+                pkmn_image_path = get_sprite_path("front", "gif" if self.gif_in_collection else "png", pokemon['id'], pokemon.get("shiny", False), pokemon["gender"])
+                pokemon_button = PokemonSlotButton("")
+                pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+                
+                bg = theme_vars["favorite_color"] if pokemon.get("is_favorite") else theme_vars["slot_bg_color"]
+                h_bg = theme_vars["favorite_hover_color"] if pokemon.get("is_favorite") else theme_vars["hover_color"]
+                pokemon_button.setStyleSheet(f"QPushButton {{ background-color: {bg}; border: 1px solid {border}; border-radius: 5px; }} QPushButton:hover {{ background-color: {h_bg}; }}")
+                
+                # Connect signals
+                # Left click: Show details
+                pokemon_button.clicked.connect(lambda checked, pkmn=pokemon: self.show_pokemon_details(pkmn))
+                # Right click: Show actions menu
+                pokemon_button.rightClicked.connect(lambda pb=pokemon_button, pkmn=pokemon: self.show_actions_submenu(pb, pkmn))
+                self.pokemon_grid.addWidget(pokemon_button, row, col, alignment=Qt.AlignmentFlag.AlignCenter)
+
+                if self.gif_in_collection:
+                    scaled_movie_label = ScaledMovieLabel(pkmn_image_path, self.slot_size - 10, self.slot_size - 10)
+                    scaled_movie_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                    self.pokemon_grid.addWidget(scaled_movie_label, row, col, alignment=Qt.AlignmentFlag.AlignCenter)
+                else:
+                    pokemon_button.setIcon(QIcon(pkmn_image_path))
+                    pokemon_button.setIconSize(QSize(self.slot_size - 10, self.slot_size - 10))
+
+    def navigate_box(self, delta):
+        """
+        Move to a different box relative to the current one.
+
+        Applies active filters to compute the valid page range and then
+        navigates with wrap-around behavior.
+
+        Args:
+            delta (int): Relative box movement (for example ``-1`` or ``+1``).
+        """
+        pokemon_list = self.load_pokemon_data()
+        pokemon_list = self.filter_pokemon_list(pokemon_list)
+        max_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
+        self.looparound_go_to_box(self.current_box_idx + delta, max_idx)
+
+    def resizeEvent(self, event: QResizeEvent):
+        """
+        Triggered when the dialog is resized.
+        Uses a timer to debounce the GUI refresh.
+        """
+        super().resizeEvent(event)
+        self.resize_timer.start(200)
+
+    def on_resize_timeout(self):
+        """
+        Recalculates dimensions and refreshes the grid if they have changed.
+        Ensures the current box index remains valid for the new grid capacity.
+        """
+        new_cols, new_rows = self.calculate_grid_dimensions()
+        if new_cols != self.n_cols or new_rows != self.n_rows:
+            self.n_cols = new_cols
+            self.n_rows = new_rows
+            self.refresh_pokemon_grid()
+
+    def calculate_grid_dimensions(self):
+        """
+        Calculates how many columns and rows of slots fit in the current viewport.
+        Ensures only fully visible slots are displayed by using scroll_area dimensions.
+        """
+        vw = self.scroll_area.viewport().width()
+        vh = self.scroll_area.viewport().height()
+
+        slot = self.slot_size
+        spacing = 5
+        new_cols = max(1, (vw + spacing) // (slot + spacing))
+        new_rows = max(1, (vh + spacing) // (slot + spacing))
+
+        return int(new_cols), int(new_rows)
 
     def refresh_gui(self):
         """
-        Refreshes the entire graphical user interface by rebuilding its layout.
-
-        This method clears the current main layout, reconstructs it by calling `create_gui()`,
-        and then invalidates and reactivates the layout to ensure proper rendering.
-
-        Side Effects:
-            - Removes all widgets from the main layout.
-            - Recreates and re-adds all GUI elements.
-            - Forces layout recalculation and update.
+        Refreshes the entire graphical user interface by rebuilding its structure 
+        and then populating the grid.
         """
-        clear_layout(self.main_layout)
         self.create_gui()
+        self.refresh_pokemon_grid()
         self.layout().invalidate()
         self.layout().activate()
 
@@ -520,10 +626,10 @@ class PokemonPC(QDialog):
 
         Side Effects:
             - Updates the current box index.
-            - Triggers a full GUI refresh to display the selected box's contents.
+            - Refreshes the Pokémon grid to display the selected box's contents.
         """
         self.current_box_idx = idx
-        self.refresh_gui()
+        self.refresh_pokemon_grid()
 
     def looparound_go_to_box(self, idx: int, max_idx: int):
         """

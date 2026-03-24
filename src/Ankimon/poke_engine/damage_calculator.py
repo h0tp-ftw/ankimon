@@ -5,9 +5,6 @@ from . import constants
 from .data import all_move_json
 from .data import pokedex
 
-from ..singletons import ankimon_tracker_obj
-
-import math
 
 pokemon_type_indicies = {
     'normal': 0,
@@ -156,10 +153,7 @@ def _calculate_damage(attacker, defender, move, conditions=None, calc_type='aver
 
     damage_rolls = get_damage_rolls(damage, calc_type)
 
-    # Allow for multiplier adjustments to the damage rolls
-    modified_damage_rolls = [math.floor(dmg * ankimon_tracker_obj.multiplier) for dmg in damage_rolls]
-
-    return list(set(modified_damage_rolls))
+    return list(set(damage_rolls))
 
 
 def is_super_effective(move_type, defending_pokemon_types):
