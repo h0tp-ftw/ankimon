@@ -5,6 +5,7 @@ from .error_handler import show_warning_with_traceback
 from ..functions.pokedex_functions import extract_ids_from_file
 from ..utils import random_battle_scene
 from aqt import mw
+import re
 
 class AnkimonTracker:
     def __init__(self, trainer_card):
@@ -68,10 +69,7 @@ class AnkimonTracker:
         self.start_session_timer()
 
     def get_total_reviews(self):
-        return mw.col.db.scalar(
-            "SELECT COUNT(*) FROM revlog WHERE id >= ?",
-           (mw.col.sched.day_cutoff - 86400) * 1000
-        )
+        return int(re.search(r'(?i)\b(\d+)\b(?=[^\n]*\bcards\b)', mw.col.studied_today()).group(1))
 
     def set_main_pokemon(self, pokemon):
         """Set the main Pokémon being used."""
