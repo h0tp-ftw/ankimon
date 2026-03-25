@@ -69,7 +69,11 @@ class AnkimonTracker:
         self.start_session_timer()
 
     def get_total_reviews(self):
-        return int(re.search(r'(?i)\b(\d+)\b(?=[^\n]*\bcards\b)', mw.col.studied_today()).group(1))
+        studied_today_num = re.search(r'(?i)\b(\d+)\b(?=[^\n]*\bcards\b)', mw.col.studied_today())
+        if typeof(studied_today_num) == None:
+            return 0
+        else:
+            return int(studied_today_num.group(1))
 
     def set_main_pokemon(self, pokemon):
         """Set the main Pokémon being used."""
