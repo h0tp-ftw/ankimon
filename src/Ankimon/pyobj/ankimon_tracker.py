@@ -69,7 +69,7 @@ class AnkimonTracker:
         self.start_session_timer()
 
     def get_total_reviews(self):
-        studied_today_num = re.search(r'(?i)\b(\d+)\b(?=[^\n]*\bcards\b)', mw.col.studied_today())
+        studied_today_num = re.search(r'(?i)\b(\d+)\b(?=[^\n]*\bcard\b)', mw.col.studied_today())
         if studied_today_num is None:
             return 0
         else:
