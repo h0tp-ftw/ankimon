@@ -70,7 +70,7 @@ class AnkimonTracker:
 
     def get_total_reviews(self):
         studied_today_num = re.search(r'(?i)\b(\d+)\b(?=[^\n]*\bcards\b)', mw.col.studied_today())
-        if type(studied_today_num) == None:
+        if studied_today_num is None:
             return 0
         else:
             return int(studied_today_num.group(1))
