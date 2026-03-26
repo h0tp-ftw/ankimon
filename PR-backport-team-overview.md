@@ -1,8 +1,8 @@
 # PR: Backport Team Pokémon Overview to Stable Addon
 
-**Date:** 2026-02-06  
-**Target:** `1908235722/` (stable Anki addon)  
-**Source:** `ankimon__experimental/src/Ankimon/` (experimental build)  
+**Date:** 2026-02-06
+**Target:** `1908235722/` (stable Anki addon)
+**Source:** `ankimon__experimental/src/Ankimon/` (experimental build)
 **Feature:** Team Pokémon Overview grid on Deck Browser & Deck Overview pages
 
 ---
@@ -172,7 +172,7 @@ if mw.settings_obj.get("gui.team_deck_view") is True:
 
 ```diff
  mw.settings_obj = settings_obj
- 
+
 +from .gui_classes.overview_team import *
 +
  # Log an startup message

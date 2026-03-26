@@ -794,7 +794,7 @@ def _get_cards_per_round() -> int:
 
     if isinstance(cards_per_round, int):
         return cards_per_round
-    
+
     # If it's a string in "number-number" format, return random value between bounds
     if isinstance(cards_per_round, str) and "-" in cards_per_round:
         try:
@@ -803,7 +803,7 @@ def _get_cards_per_round() -> int:
             return random_value
         except (ValueError, IndexError) as e:
             return 2
-    
+
     return 2
 
 if reviewer_buttons is True:

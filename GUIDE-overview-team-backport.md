@@ -1,7 +1,7 @@
 # AI Agent Guide: Backporting the Team Pokémon Overview into the Stable Addon
 
-> **Target folder (stable addon):** `<ANKI_ADDONS>/1908235722/`  
-> **Reference folder (experimental):** `ankimon__experimental/src/Ankimon/`  
+> **Target folder (stable addon):** `<ANKI_ADDONS>/1908235722/`
+> **Reference folder (experimental):** `ankimon__experimental/src/Ankimon/`
 > This guide lists **every file you must touch**, the **exact changes** needed, and the **order** to apply them.
 
 ---
@@ -32,14 +32,14 @@ The stable addon is missing `gui_classes/overview_team.py` entirely, plus:
 
 ### Step 0a: Create `gui_classes/__init__.py` (package initializer)
 
-**File:** `1908235722/gui_classes/__init__.py`  
+**File:** `1908235722/gui_classes/__init__.py`
 **Action:** Create an **empty** file. This makes `gui_classes/` a proper Python package so `from .gui_classes.overview_team import *` works reliably.
 
 > **Why this was missed originally:** The experimental build also lacks this file and relies on Python's implicit namespace packages. However, Anki's addon loader can behave differently — an explicit `__init__.py` avoids `ModuleNotFoundError` in edge cases.
 
 ### Step 0b: Create `gui_classes/overview_team.py` (the module itself)
 
-**File:** `1908235722/gui_classes/overview_team.py`  
+**File:** `1908235722/gui_classes/overview_team.py`
 **Action:** Copy the module from the experimental build (`src/Ankimon/gui_classes/overview_team.py`) into the stable addon's `gui_classes/` folder.
 
 > **Critical:** The original guide assumed this file was already on disk. It was **not**. The file must be created with the full content from the experimental build. Without it, Python raises `ModuleNotFoundError: No module named '1908235722.gui_classes.overview_team'`.
@@ -59,8 +59,8 @@ The file content should be an exact copy of the experimental `overview_team.py`,
 
 ### Step 1: Add `pokeball_path` to `resources.py`
 
-**File:** `1908235722/resources.py`  
-**Action:** Add a single line defining the pokeball image path.  
+**File:** `1908235722/resources.py`
+**Action:** Add a single line defining the pokeball image path.
 **Where:** Near the existing `icon_path` definition (around line 52), which already points to the same file but under a different variable name.
 
 ```python
@@ -77,7 +77,7 @@ pokeball_path = addon_dir / "addon_files" / "pokeball.png"
 
 ### Step 2: Add `png_to_base64` helper to `utils.py`
 
-**File:** `1908235722/utils.py`  
+**File:** `1908235722/utils.py`
 **Action:** Add the `import base64` statement at the top and the function at the bottom.
 
 #### 2a. Add `import base64` to the imports
@@ -121,7 +121,7 @@ def png_to_base64(path):
 
 ### Step 3: Add `gui.team_deck_view` to `config.json`
 
-**File:** `1908235722/config.json`  
+**File:** `1908235722/config.json`
 **Action:** Add the key `"gui.team_deck_view": true` in the `gui.*` section.
 
 ```jsonc
@@ -141,7 +141,7 @@ def png_to_base64(path):
 
 ### Step 4: Add `gui.team_deck_view` to DEFAULT_CONFIG in `pyobj/settings.py`
 
-**File:** `1908235722/pyobj/settings.py`  
+**File:** `1908235722/pyobj/settings.py`
 **Action:** Add the key to the `DEFAULT_CONFIG` dictionary.
 
 ```python
@@ -161,7 +161,7 @@ def png_to_base64(path):
 
 ### Step 5: Add the setting to `lang/setting_name.json`
 
-**File:** `1908235722/lang/setting_name.json`  
+**File:** `1908235722/lang/setting_name.json`
 **Action:** Add the display name for the new setting key.
 
 ```jsonc
@@ -181,7 +181,7 @@ def png_to_base64(path):
 
 ### Step 6: Add the setting to `lang/setting_description.json`
 
-**File:** `1908235722/lang/setting_description.json`  
+**File:** `1908235722/lang/setting_description.json`
 **Action:** Add the description for the new setting key.
 
 ```jsonc
@@ -201,7 +201,7 @@ def png_to_base64(path):
 
 ### Step 7: Add the setting to the "Styling" group in `pyobj/settings_window.py`
 
-**File:** `1908235722/pyobj/settings_window.py`  
+**File:** `1908235722/pyobj/settings_window.py`
 **Action:** Add `"Team Overview in Deck Overview"` to the `"Styling"` group's settings list.
 
 ```python
@@ -218,7 +218,7 @@ def png_to_base64(path):
 
 ### Step 8: Import `overview_team` in `__init__.py`
 
-**File:** `1908235722/__init__.py`  
+**File:** `1908235722/__init__.py`
 **Action:** Add the import statement **after** `mw.settings_obj = settings_obj` is set.
 
 This is **critical** — the `overview_team.py` module reads `mw.settings_obj` at module level (line 211: `if mw.settings_obj.get("gui.team_deck_view") is True:`), so the import **must** come after `mw.settings_obj` has been assigned.
@@ -400,7 +400,7 @@ user_files/team.json          user_files/mypokemon.json
 ### `__init__.py`
 ```diff
   mw.settings_obj = settings_obj
-+ 
++
 + from .gui_classes.overview_team import *
 ```
 
@@ -442,7 +442,7 @@ Apply changes in this order to avoid import errors if you test incrementally:
 0a. `gui_classes/__init__.py` — create empty file (package initializer)
 0b. `gui_classes/overview_team.py` — create the module (copy from experimental)
 1. `resources.py` — add `pokeball_path`
-2. `utils.py` — add `import base64` + `png_to_base64()` 
+2. `utils.py` — add `import base64` + `png_to_base64()`
 3. `config.json` — add `gui.team_deck_view`
 4. `pyobj/settings.py` — add to `DEFAULT_CONFIG`
 5. `lang/setting_name.json` — add display name
