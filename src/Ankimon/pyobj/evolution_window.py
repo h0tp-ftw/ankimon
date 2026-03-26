@@ -21,7 +21,7 @@ from ..utils import load_custom_font
 from ..functions.pokedex_functions import return_name_for_id, search_pokeapi_db_by_id, search_pokedex
 from ..functions.pokemon_functions import get_random_moves_for_pokemon
 from ..functions.battle_functions import calculate_hp
-from ..functions.update_main_pokemon import update_main_pokemon
+from ..functions.update_main_pokemon import update_main_pokemon, update_main_pokemon_from_dict
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..pyobj.attack_dialog import AttackDialog
 from ..pyobj.settings import Settings
@@ -71,7 +71,17 @@ class EvoWindow(QWidget):
     def open_dynamic_window(self):
         self.show()
 
-    def display_evo_complete(self, prevo_id, evo_id):
+    def display_evo_complete(self, prevo_id: int, evo_id: int):
+        """
+        Displays the GUI notification that the given Pokemon has evolved.
+
+        This function handles the overall display logic and calls the 
+        underlying layout generator to build the GUI content.
+
+        Args:
+            prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
+            evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
+        """
         self.clear_layout(self.layout())
         layout = self.layout()
         pkmn_label = self._display_evo_complete_layout(prevo_id, evo_id)
@@ -82,7 +92,17 @@ class EvoWindow(QWidget):
         self.setMaximumHeight(300)
         self.show()
 
-    def _display_evo_complete_layout(self, prevo_id, evo_id):
+    def _display_evo_complete_layout(self, prevo_id: int, evo_id: int):
+        """
+        Creates the GUI layout for the successful evolution.
+        
+        This function generates the visual components (images, text, etc.)
+        to inform the user that a Pokémon has evolved.
+
+        Args:
+            prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
+            evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
+        """
         bckgimage_path = addon_dir / "addon_sprites" / "starter_screen" / "bg.png"
         prevo_name = return_name_for_id(prevo_id)
         evo_name = return_name_for_id(evo_id)
@@ -93,7 +113,6 @@ class EvoWindow(QWidget):
 
         # Display the Pokémon image
         image_path = frontdefault / f"{evo_id}.png"
-        image_label = QLabel()
         image_pixmap = QPixmap()
         image_pixmap.load(str(image_path))
         image_pixmap = resize_pixmap_img(image_pixmap, 250)
@@ -101,9 +120,10 @@ class EvoWindow(QWidget):
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
         merged_pixmap.fill(QColor(0, 0, 0, 0))  # RGBA where A (alpha) is 0 for full transparency
-        #merged_pixmap.fill(Qt.transparent)
+        
         # merge both images together
         painter = QPainter(merged_pixmap)
+        
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
         painter.drawPixmap(125,10,image_pixmap)
@@ -117,14 +137,27 @@ class EvoWindow(QWidget):
         painter.setFont(custom_font)
         painter.setPen(QColor(255,255,255))  # Text color
         painter.drawText(40, 290, message_box_text)
+        
         painter.end()
         # Set the merged image as the pixmap for the QLabel
+        
         pkmn_label = QLabel()
         pkmn_label.setPixmap(merged_pixmap)
-
         return pkmn_label
 
-    def ask_pokemon_evo(self, individual_id, prevo_id, evo_id):
+    def ask_pokemon_evo(self, individual_id: int, prevo_id: int, evo_id: int):
+        """
+        Displays the GUI notification that the given Pokemon is about to evolve.
+
+        This function handles the overall display logic and calls the 
+        underlying layout generator to build the GUI content.
+
+        Args:
+            individual_id (int): The UUID of the Pokemon to evolve.
+            prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
+            evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
+        """
+
         self.setMaximumWidth(600)
         self.setMaximumHeight(530)
         self.clear_layout(self.layout())
@@ -137,7 +170,19 @@ class EvoWindow(QWidget):
         self.setLayout(layout)
         self.show()
 
-    def _ask_pokemon_evo_layout(self, individual_id, prevo_id, evo_id):
+    def _ask_pokemon_evo_layout(self, individual_id: int, prevo_id: int, evo_id: int):
+        """
+        Creates the GUI layout for the upcoming evolution.
+        
+        This function generates the visual components (images, text, etc.)
+        to inform the user that a Pokémon is about to evolve.
+
+        Args:
+            individual_id (int): The UUID of the Pokemon to evolve.
+            prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
+            evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
+        """
+
         # Update mainpokemon_evolution and handle evolution logic
         prevo_name = return_name_for_id(prevo_id)
         evo_name = return_name_for_id(evo_id)
@@ -217,20 +262,41 @@ class EvoWindow(QWidget):
             if widget:
                 widget.deleteLater()
 
-    def evolve_pokemon(self, individual_id, prevo_id, prevo_name, evo_id, evo_name, main_pokemon):
+    def evolve_pokemon(self, individual_id: int, prevo_id: int, prevo_name: str, evo_id: int, evo_name: str, main_pokemon: PokemonObject):
+        """
+        Evolve the given Pokémon and persist the updated state.
+
+        Replaces the Pokémon's attributes with those of its evolved form,
+        handles move learning (including move replacement if necessary),
+        persists the changes to storage, updates the UI, and triggers
+        evolution-related achievements.
+        Args:
+            individual_id (int): The UUID of the Pokemon to evolve.
+            prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
+            prevo_name (str): The name of the Pokémon to evolve.
+            evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
+            evo_name (str): The name of the evolved Pokémon.
+            main_pokemon (PokemonObject): The main Pokemon.
+        """
         #global achievements
         try:
             with open(mypokemon_path, "r", encoding="utf-8") as json_file:
                 captured_pokemon_data = json.load(json_file)
                 pokemon = None
                 if captured_pokemon_data:
+                    # Match individual_id in myPokemon file via linear search
                     for pokemon_data in captured_pokemon_data:
-                        if pokemon_data['individual_id'] != individual_id:
+                        if pokemon_data.get("individual_id") != individual_id:
                             continue
+
                         pokemon = pokemon_data
                         pokemon["name"] = evo_name.capitalize()
                         pokemon["id"] = evo_id
                         pokemon["type"] = search_pokedex(evo_name.lower(), "types")
+
+                        # mainPkmn lvl was updated during encounter defeat – this allows for multiple lvlUps after enemy Pkmn was defeated
+                        if pokemon["individual_id"] == main_pokemon.individual_id: # Check evolving pokemon is the main pokemon
+                            pokemon["level"] = main_pokemon.level
                         attacks = pokemon["attacks"]
                         new_attacks = get_random_moves_for_pokemon(evo_name.lower(), int(pokemon["level"]))
                         for new_attack in new_attacks:
@@ -275,7 +341,7 @@ class EvoWindow(QWidget):
                         try:
                             numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()}
                         except Exception:
-                            ability = self.translator.translate("no_ability")
+                            self.translator.translate("no_ability")
                         if numeric_abilities:
                             abilities_list = list(numeric_abilities.values())
                             pokemon["ability"] = random.choice(abilities_list)
@@ -285,13 +351,36 @@ class EvoWindow(QWidget):
                             mypokemondata = json.load(output_file)
                             # Find and replace the specified Pokémon's data in mypokemondata
                             for index, pokemon_data in enumerate(mypokemondata):
-                                if pokemon_data["individual_id"] == individual_id:
+                                 if pokemon_data.get("individual_id") == individual_id:
                                     mypokemondata[index] = pokemon
                                     break
                                     # Save the modified data to the output JSON file
                             with open(str(mypokemon_path), "w") as output_file:
                                 json.dump(mypokemondata, output_file, indent=2)
-                        self.logger.log_and_showinfo("info", self.translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
+                        main_pokemon_obj, file_update_successful = update_main_pokemon_from_dict(pokemon)
+                        
+                        if file_update_successful:
+                            self.logger.log_and_showinfo("info", self.translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
+                            
+                            # New MainPkmn instance is needed to update HUD with newly evolved MainPkmn
+                            self.reviewer_obj.main_pokemon = main_pokemon_obj
+                        else:
+                            self.logger.log_and_showinfo("warning", self.translator.translate("missing_mainpokemon_data"))
+
+                    # Update UI as before
+                    class Container(object):
+                        pass
+                    reviewer = Container()
+                    reviewer.web = mw.reviewer.web
+                    self.reviewer_obj.update_life_bar(reviewer, 0, 0)
+                    if self.test_window.isVisible() is True:
+                        self.test_window.display_first_encounter()
+
+                    self.display_evo_complete(prevo_id, evo_id)
+                    check = check_for_badge(self.achievements, 16)
+                    if check is False:
+                        receive_badge(16, self.achievements)
+
         except Exception as e:
             show_warning_with_traceback(parent=mw, exception=e, message=f"Error occured in evolving pokemon")
             self.logger.log(f"{e}")
