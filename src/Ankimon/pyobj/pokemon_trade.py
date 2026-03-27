@@ -96,9 +96,9 @@ def check_and_award_monthly_pokemon(logger):
             return
 
         db = mw.ankimon_db
-        my_pokemon = db.get_all_pokemon()
+        target_pokemon = db.get_pokemon(challenge_individual_id)
 
-        if any(p.get("individual_id") == challenge_individual_id for p in my_pokemon):
+        if target_pokemon is not None:
             logger.log("info", f"User already has the Pokémon for {current_month_str} (ID: {challenge_individual_id}).")
             return
 
@@ -109,11 +109,10 @@ def check_and_award_monthly_pokemon(logger):
 
         if prev_id and threshold:
             logger.log("info", f"Checking for shiny eligibility: prev_id={prev_id}, threshold={threshold}")
-            for p in my_pokemon:
-                if p.get("individual_id") == prev_id and p.get("pokemon_defeated", 0) >= threshold:
-                    logger.log("info", f"Shiny criteria met for {challenge_pokemon_data.get('name')}.")
-                    make_shiny = True
-                    break
+            previous_challenge_pokemon = db.get_pokemon(prev_id)
+            if previous_challenge_pokemon.get("pokemon_defeated", 0) >= threshold:
+                logger.log("info", f"Shiny criteria met for {challenge_pokemon_data.get('name')}.")
+                make_shiny = True
         
         new_pokemon = create_monthly_challenge_pokemon(challenge_pokemon_data, make_shiny=make_shiny)
         add_pokemon_to_collection(new_pokemon)

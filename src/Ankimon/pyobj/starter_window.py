@@ -148,13 +148,10 @@ class StarterWindow(QWidget):
 
         # Load existing Pokémon data from database
         db = mw.ankimon_db
-        caught_pokemon_data = db.get_all_pokemon()
-
-        # Append the caught Pokémon's data to the list
-        caught_pokemon_data.append(main_pokemon.to_dict())
+        caught_pokemon_data = main_pokemon.to_dict()
 
         # Save to database - both as captured pokemon and main pokemon
-        db.save_pokemon(main_pokemon.to_dict())
+        db.save_pokemon(caught_pokemon_data)
         db.save_main_pokemon(main_pokemon.to_dict())
 
         self.logger.log_and_showinfo("info",f"{name.capitalize()} has been chosen as Starter Pokemon !")

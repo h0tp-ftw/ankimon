@@ -112,25 +112,41 @@ class PokemonTeamDialog(QDialog):
         self.exec()
 
     def load_my_pokemon(self):
-        """Load the player's Pokémon data from database"""
-        return mw.ankimon_db.get_all_pokemon()
+        """Load the player's Pokémon data from database using lightweight stubs"""
+        cursor = mw.ankimon_db.execute("""
+            SELECT individual_id, 
+                   name as name,
+                   level as level,
+                   pokedex_id as id,
+                   shiny as shiny,
+                   json_extract(data, '$.gender') as gender
+            FROM captured_pokemon
+            ORDER BY individual_id ASC
+        """)
+        
+        my_pokemon = []
+        for row in cursor.fetchall():
+            my_pokemon.append({
+                "individual_id": row[0],
+                "name": row[1],
+                "level": row[2],
+                "id": row[3],
+                "shiny": bool(row[4]),
+                "gender": row[5]
+            })
+        return my_pokemon
 
     def load_pokemon_team(self):
         """Load the player's Pokémon Team from the database"""
         team_data = mw.ankimon_db.get_team()
-
-        # Load the player's Pokémon data (mypokemon_path)
-        my_pokemon_data = self.load_my_pokemon()
-
         matching_pokemon = []
 
-        # Loop through each Pokémon in the team and find corresponding Pokémon in 'mypokemon_path'
         for pokemon_in_team in team_data:
             individual_id = pokemon_in_team.get('individual_id')
-            # Find Pokémon in 'mypokemon_path' with matching individual_id
-            for pokemon_in_my_pokemon in my_pokemon_data:
-                if pokemon_in_my_pokemon.get('individual_id', '') == individual_id:
-                    matching_pokemon.append(pokemon_in_my_pokemon)
+            if individual_id:
+                pokemon = mw.ankimon_db.get_pokemon(individual_id)
+                if pokemon:
+                    matching_pokemon.append(pokemon)
 
         return matching_pokemon
 
