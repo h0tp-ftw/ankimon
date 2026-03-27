@@ -78,7 +78,7 @@ def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_id, exp, xp
     msg = ""
     evolution_triggered = False
 
-    pokemon = db.get_pokemon_by_individual_id(xp_share_individual_id)
+    pokemon = db.get_pokemon(xp_share_individual_id)
     # Increase the xp of the matched Pokémon
     current_level = int(pokemon['level'])  # MODIFIED: Use local variable for level
     current_xp = pokemon.get("xp") or pokemon.get("stats", {}).get("xp", 0)
