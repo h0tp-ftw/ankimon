@@ -242,29 +242,56 @@ class AnkimonDB:
         self._get_connection().commit()
         return cursor.rowcount > 0
 
-    def replace_pokemon(self, pokemon_data: Dict[str, Any], individual_id: str) -> bool:
+    def replace_pokemon(self, pokemon_data: Dict[str, Any], old_individual_id: str) -> bool:
         """Replaces a pokemon with the given individual_id with the given pokemon_data."""
 
         obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
-        
-        # Check if pokemon already exists to preserve is_main flag
-        cursor.execute("SELECT is_main FROM captured_pokemon WHERE individual_id = ?", (individual_id,))
-        row = cursor.fetchone()
-        
-        if row:
+
+        new_individual_id = pokemon_data["individual_id"]
+
+        # Are we trying to replace ourselves?
+        if new_individual_id == old_individual_id:
             self._log("error", f"You already have this {pokemon_data['name']} in your collection!")
             return False
-        else:
-            # Insert new with is_main = 0
-            cursor.execute(
-                "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?) WHERE individual_id=old_individual_id",
-                (pokemon_data["individual_id"], obfuscated_data, individual_id)
-            )
-        conn.commit()        
-        self.delete_pokemon(individual_id)
-        self._get_connection().commit()
+
+
+        # Does the pokemon being replaced exist?
+        cursor.execute(
+            "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
+            (old_individual_id,)
+        )
+        row = cursor.fetchone()
+
+        if row is None:
+            self._log("error", f"No Pokémon found with individual_id {old_individual_id}")
+            return False
+
+        is_main = row[0]
+
+        # Does the incoming Pokémon already exist somewhere else?
+        cursor.execute(
+            "SELECT 1 FROM captured_pokemon WHERE individual_id = ?",
+            (new_individual_id,)
+        )
+        if cursor.fetchone() is not None:
+            self._log("error", f"You already have this {pokemon_data['name']} in your collection!")
+            return False
+
+        # You passed all the checks. Full steam ahead!
+        # Replace the row in-place
+        cursor.execute(
+            """
+            UPDATE captured_pokemon
+            SET individual_id = ?, is_main = ?, data = ?
+            WHERE individual_id = ?
+            """,
+            (new_individual_id, is_main, obfuscated_data, old_individual_id)
+        )
+
+        conn.commit()
+
         return cursor.rowcount > 0
 
     def get_pokemon_count(self) -> int:

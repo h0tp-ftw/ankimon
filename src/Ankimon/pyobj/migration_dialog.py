@@ -185,7 +185,6 @@ class MigrationDialog(QDialog):
                         items_list = json.load(f)
                     for item in items_list:
                         if self.cancelled: break
-                        print(f"item: {item}")
                         item_name = item.get("item") or item.get("item_name")
                         quantity = item.get("quantity", item.get("amount", 1))
                         if item_name:
