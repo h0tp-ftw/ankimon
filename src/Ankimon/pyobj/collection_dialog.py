@@ -23,21 +23,21 @@ from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 def PokemonTrade(individual_id):
      # Load the data from database
     db = mw.ankimon_db
-    old_pokemon = db.get_pokemon_by_individual_id(individual_id)
+    old_pokemon = db.get_pokemon(individual_id)
     main_pokemon = db.get_main_pokemon()
 
     #check if player tries to trade mainpokemon
     if not main_pokemon["individual_id"] == individual_id:
         # Create a main window
         window = QDialog()
-        window.setWindowTitle(f"Trade Pokemon {name}")
+        window.setWindowTitle(f"Trade Pokemon {old_pokemon['name']}")
         # Create an input field for error code
         trade_code_input = QLineEdit()
         trade_code_input.setPlaceholderText("Enter Pokemon Code you want to Trade for")
 
         # Create a button to save the input
         trade_button = QPushButton("Trade Pokemon")
-        qconnect(trade_button.clicked, lambda: PokemonTradeIn(trade_code_input.text(), individual_id))
+        qconnect(trade_button.clicked, lambda: PokemonTradeIn(trade_code_input.text(), old_pokemon))
         # Information label
         info = "Pokemon Infos have been Copied to your Clipboard! \nNow simply paste this text into Teambuilder in PokemonShowdown. \nNote: Fight in the [Gen 9] Anything Goes - Battle Mode"
 
