@@ -20,7 +20,6 @@ from .pyobj.ankimon_leaderboard import show_api_key_dialog
 from .pyobj.settings import Settings
 from .pyobj.translator import Translator
 from .pyobj.InfoLogger import ShowInfoLogger
-from .pyobj.collection_dialog import PokemonCollectionDialog
 from .pyobj.item_window import ItemWindow
 from .pyobj.pc_box import PokemonPC
 from .pyobj.trainer_card import TrainerCard
@@ -89,13 +88,6 @@ def create_menu_actions(
     actions = []
 
     if database_complete:
-        # Pokémon collection
-        if pokecollection_win is not None:
-            pokecol_action = QAction(mw.translator.translate("show_collection_button"), mw)
-            pokecol_action.setMenuRole(QAction.MenuRole.NoRole)
-            collection_menu.addAction(pokecol_action)
-            qconnect(pokecol_action.triggered, pokecollection_win.show)
-
         # Pokémon PC
         pokemon_pc_action = QAction("Pokémon PC", mw)
         pokemon_pc_action.setMenuRole(QAction.MenuRole.NoRole)
