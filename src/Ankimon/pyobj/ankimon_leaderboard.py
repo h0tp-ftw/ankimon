@@ -111,58 +111,7 @@ def sync_data_to_leaderboard(data):
         except Exception as e:
             showInfo(f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}")
 
-def get_unique_pokemon():
 
-    # Check if leaderboard syncing is enabled in config
-    if not mw.settings_obj.get("misc.leaderboard"):
-        return
-
-    try:
-        pokemon_data = mw.ankimon_db.get_all_pokemon()
-        pokemon_info = {}  # Define as a dictionary
-        id_list = []  # Initialize id_list as an empty list
-
-        for pokemon in pokemon_data:
-            pokemon_id = int(pokemon.get("id"))
-
-            # Check if the pokemon_id is already in id_list
-            if pokemon_id not in id_list:
-                id_list.append(pokemon_id)  # Add the ID to the list
-
-                # Extract the name and individual_id
-                individual_id = pokemon.get("individual_id")
-                name = pokemon.get("name")
-
-                # Add the extracted information to the dictionary with name as the key
-                if individual_id:  # Make sure individual_id exists
-                    pokemon_info[name] = individual_id
-
-        return len(pokemon_info)
-    except Exception as e:
-        showInfo(f"Error getting unique pokemon: {e}")
-        return 1
-
-def get_total_pokemon():
-    try:
-        pokemon_data = mw.ankimon_db.get_all_pokemon()
-        total_pokemon = len(pokemon_data)
-        return total_pokemon
-    except:
-        showInfo(f"Error getting total pokemon count")
-        return 1
-
-def get_shinies():
-    try:
-        pokemon_data = mw.ankimon_db.get_all_pokemon()
-        shinies = 0
-        for pokemon in pokemon_data:
-            if pokemon.get("shiny") is True:
-                shinies += 1
-
-        return shinies
-    except:
-        showInfo(f"Error getting shinies count")
-        return 0
 
 def show_api_key_dialog():
     dialog = ApiKeyDialog()  # Create the dialog instance

@@ -18,7 +18,6 @@ import uuid
 
 from aqt import mw
 
-from .pyobj.collection_dialog import PokemonCollectionDialog
 from .pyobj.ankimon_tracker import AnkimonTracker
 from .pyobj.settings import Settings
 from .pyobj.settings_window import SettingsWindow
@@ -199,15 +198,6 @@ item_window = ItemWindow(  # Create an instance of the MainWindow
     achievements=achievements,
     starter_window=starter_window,
     evo_window=evo_window,
-)
-
-pokecollection_win = PokemonCollectionDialog(
-    logger=logger,
-    translator=translator,
-    reviewer_obj=reviewer_obj,
-    test_window=test_window,
-    settings_obj=settings_obj,
-    main_pokemon=main_pokemon,
 )
 
 pokemon_pc = PokemonPC(
