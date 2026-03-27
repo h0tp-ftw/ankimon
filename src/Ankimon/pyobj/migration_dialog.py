@@ -180,11 +180,13 @@ class MigrationDialog(QDialog):
                 # Step 3: Migrate items.json
                 if self.items_path.is_file():
                     self._update_progress(56, "Migrating items...")
+                    print(f"items_path: {self.items_path}")
                     with open(self.items_path, 'r', encoding='utf-8') as f:
                         items_list = json.load(f)
                     for item in items_list:
                         if self.cancelled: break
-                        item_name = item.get("name") or item.get("item_name")
+                        print(f"item: {item}")
+                        item_name = item.get("item") or item.get("item_name")
                         quantity = item.get("quantity", item.get("amount", 1))
                         if item_name:
                             self.db.save_item(item_name, quantity, item)

@@ -221,9 +221,7 @@ class PokemonPC(QDialog):
 
         self.gif_in_collection = self.settings.get("gui.gif_in_collection")
 
-        pokemon_list = self.load_pokemon_data()
-        pokemon_list = self.filter_pokemon_list(pokemon_list)
-        pokemon_list = self.sort_pokemon_list(pokemon_list)
+        pokemon_list = self.fetch_filtered_pokemon()
         max_box_idx = (len(pokemon_list) - 1) // (self.n_rows * self.n_cols)
 
         # Collection panel
@@ -517,106 +515,106 @@ class PokemonPC(QDialog):
 
         return pixmap
 
-    def load_pokemon_data(self) -> list:
-        """Reads Pokémon data from the database."""
-        try:
-            pokemon_list = mw.ankimon_db.get_all_pokemon()
-            for i, pokemon in enumerate(pokemon_list):
-                pokemon['original_index'] = i
-            return pokemon_list
-        except Exception as e:
-            self.logger.log("error", f"Error loading pokemon data: {e}")
+    def fetch_filtered_pokemon(self) -> list:
+        """Dynamically builds a SQL query to filter and sort Pokemon, fetching only the lightweight stub data needed for the grid."""
+        # Base query mapping direct virtual columns where available
+        query_parts = [
+            "SELECT individual_id, name, level, pokedex_id as id, shiny as shiny, "
+            "rowid as original_index, json_extract(data, '$.nickname') as nickname, "
+            "json_extract(data, '$.gender') as gender, json_extract(data, '$.is_favorite') as is_favorite, "
+            "json_extract(data, '$.held_item') as held_item "
+            "FROM captured_pokemon WHERE 1=1"
+        ]
+        params = []
 
-        return []
+        # Name / Nickname filtering
+        if self.search_edit is not None and self.search_edit.text():
+            search_text = f"%{self.search_edit.text()}%"
+            query_parts.append("AND (name LIKE ? OR json_extract(data, '$.nickname') LIKE ?)")
+            params.extend([search_text, search_text])
 
-    def filter_pokemon_list(self, pokemon_list: list) -> list:
-        """
-        Filters a list of Pokémon dictionaries based on multiple UI-selected criteria.
+        # Type filtering
+        if self.type_combo is not None and self.type_combo.currentIndex() != 0:
+            type_text = f"%{self.type_combo.currentText()}%"
+            query_parts.append("AND json_extract(data, '$.type') LIKE ?")
+            params.append(type_text)
 
-        The filtering considers:
-        - Search text matching Pokémon name (case-insensitive).
-        - Selected Pokémon type from a dropdown.
-        - Selected tier category from a dropdown.
-        - Whether only favorites should be shown.
-        - Selected generation range based on Pokémon ID.
+        # Tier filtering
+        if self.tier_combo is not None and self.tier_combo.currentIndex() != 0:
+            query_parts.append("AND json_extract(data, '$.tier') = ?")
+            params.append(self.tier_combo.currentText())
 
-        Args:
-            pokemon_list (list): List of Pokémon dictionaries to filter. Each dictionary should
-                contain keys like "name", "type", "tier", "is_favorite", and "id".
+        # Favorites filtering
+        if self.filter_favorites is not None and self.filter_favorites.isChecked():
+            query_parts.append("AND json_extract(data, '$.is_favorite') = 1")
 
-        Returns:
-            list: A new list containing only Pokémon that match all the active filter criteria.
-        """
-        def filtering_func(pokemon: dict) -> bool:
-            if self.search_edit is not None:
-                if self.search_edit.text().lower() not in pokemon.get("name").lower():
-                    return False
+        # Held item filtering
+        if self.filter_is_holding_item is not None and self.filter_is_holding_item.isChecked():
+            query_parts.append("AND json_extract(data, '$.held_item') IS NOT NULL")
 
-            if self.type_combo is not None:
-                if self.type_combo.currentIndex() != 0 and self.type_combo.currentText() not in pokemon.get("type", ""):
-                    return False
+        # Shiny filtering
+        if self.filter_shiny is not None and self.filter_shiny.isChecked():
+            query_parts.append("AND shiny = 1")
 
-            if self.tier_combo is not None:
-                if (
-                    self.tier_combo.currentIndex() != 0
-                    and pokemon.get("tier") is not None
-                    and self.tier_combo.currentText() != pokemon.get("tier")
-                ):
-                    return False
+        # Generation filtering
+        if self.generation_combo is not None:
+            gen_idx = self.generation_combo.currentIndex()
+            if gen_idx != 0:
+                gen_ranges = {
+                    1: (1, 151),
+                    2: (152, 251),
+                    3: (252, 386),
+                    4: (387, 493),
+                    5: (494, 649),
+                    6: (650, 721),
+                    7: (722, 809),
+                    8: (810, 898)
+                }
+                if gen_idx in gen_ranges:
+                    start_id, end_id = gen_ranges[gen_idx]
+                    query_parts.append("AND pokedex_id BETWEEN ? AND ?")
+                    params.extend([start_id, end_id])
 
-            if self.filter_favorites is not None:
-                if self.filter_favorites.isChecked() and not pokemon.get("is_favorite", False):
-                    return False
-
-            if self.filter_is_holding_item is not None:
-                if self.filter_is_holding_item.isChecked() and not pokemon.get("held_item", False):
-                    return False
-
-            if self.filter_shiny is not None:
-                if self.filter_shiny.isChecked() and not pokemon.get("shiny", False):
-                    return False
-
-            if self.generation_combo is not None:
-                gen_idx = self.generation_combo.currentIndex()
-                if gen_idx != 0 and (
-                    (1 <= pokemon["id"] <= 151 and gen_idx != 1) or
-                    (152 <= pokemon["id"] <= 251 and gen_idx != 2) or
-                    (252 <= pokemon["id"] <= 386 and gen_idx != 3) or
-                    (387 <= pokemon["id"] <= 493 and gen_idx != 4) or
-                    (494 <= pokemon["id"] <= 649 and gen_idx != 5) or
-                    (650 <= pokemon["id"] <= 721 and gen_idx != 6) or
-                    (722 <= pokemon["id"] <= 809 and gen_idx != 7) or
-                    (810 <= pokemon["id"] <= 898 and gen_idx != 8)
-                ):
-                    return False
-
-            return True
-
-        return list(filter(filtering_func, pokemon_list.copy()))
-
-    def sort_pokemon_list(self, pokemon_list: list) -> list:
+        # Sorting
+        sort_key_str = self.selected_sort_key.lower() if hasattr(self, 'selected_sort_key') else "date"
         reverse = self.desc_sort is not None and self.desc_sort.isChecked()
+        direction = "DESC" if reverse else "ASC"
 
-        sort_key_str = self.selected_sort_key.lower()
         if sort_key_str == "date":
-            sort_key_str = "original_index"
+            order_clause = f"ORDER BY original_index {direction}"
+        elif sort_key_str == "name":
+            order_clause = f"ORDER BY name {direction}, json_extract(data, '$.nickname') {direction}"
+        elif sort_key_str == "level":
+            order_clause = f"ORDER BY level {direction}"
+        elif sort_key_str == "id":
+            order_clause = f"ORDER BY pokedex_id {direction}"
+        else:
+            order_clause = f"ORDER BY original_index {direction}"
 
-        def sort_key(p):
-            if sort_key_str == "name":
-                name = p.get("name") or ""
-                nickname = p.get("nickname") or ""
-                return (name.lower(), nickname.lower())
-            else:
-                val = p.get(sort_key_str)
-                if val is None:
-                    return 0 if sort_key_str in ["id", "level", "original_index"] else ""
-                return val
+        query = " ".join(query_parts) + " " + order_clause
 
-        return sorted(
-            pokemon_list,
-            reverse=reverse,
-            key=sort_key
-        )
+        try:
+            cursor = mw.ankimon_db.execute(query, tuple(params))
+            results = []
+            for row in cursor.fetchall():
+                p = {
+                    "original_index": row["original_index"],
+                    "individual_id": row["individual_id"],
+                    "id": row["id"],
+                    "name": row["name"],
+                    "nickname": row["nickname"],
+                    "shiny": bool(row["shiny"]),
+                    "level": row["level"],
+                    "gender": row["gender"],
+                    "is_favorite": bool(row["is_favorite"]),
+                    "held_item": row["held_item"],
+                }
+                results.append(p)
+            return results
+        except Exception as e:
+            if self.logger:
+                self.logger.log("error", f"Error fetching filtered pokemon: {e}")
+            return []
 
     def on_sort_button_clicked(self, button):
         self.selected_sort_key = button.text()
@@ -668,7 +666,7 @@ class PokemonPC(QDialog):
 
         # Connect actions to methods or lambda functions
         pokemon_details_action.triggered.connect(lambda: self.show_pokemon_details(pokemon))
-        main_pokemon_action.triggered.connect(lambda: self.main_pokemon_function_callback(pokemon))
+        main_pokemon_action.triggered.connect(lambda: self.main_pokemon_function_callback(mw.ankimon_db.get_pokemon(pokemon['individual_id'])))
         make_favorite_action.triggered.connect(lambda: self.toggle_favorite(pokemon))
         give_held_item.triggered.connect(lambda: self.give_held_item(pokemon))
 
@@ -684,7 +682,7 @@ class PokemonPC(QDialog):
         # Show the menu at the button's position, aligned below the button
         menu.exec(button.mapToGlobal(button.rect().topRight()))
 
-    def show_pokemon_details(self, pokemon):
+    def show_pokemon_details(self, pokemon_stub):
         """
         Displays detailed information about a specific Pokémon in the right-hand details panel.
 
@@ -692,15 +690,12 @@ class PokemonPC(QDialog):
         then updates the `self.details_layout` with a `PokemonCollectionDetails` layout.
 
         Args:
-            pokemon (dict): A dictionary containing Pokémon data with expected keys such as:
-                - 'name', 'level', 'id', 'ability', 'type', 'attacks', 'base_experience',
-                'growth_rate', 'ev', 'iv', 'gender'
-                - Optional keys include 'shiny', 'nickname', 'individual_id', 'pokemon_defeated',
-                'everstone', 'captured_date', and 'xp'.
-
-        Raises:
-            ValueError: If neither 'base_stats' nor 'stats' are available in the Pokémon dictionary.
+            pokemon_stub (dict): A lightweight dictionary containing the pokemon's `individual_id`.
         """
+        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub['individual_id'])
+        if not pokemon:
+            return
+
         if pokemon.get('base_stats'):
             detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0)}
         elif pokemon.get('stats'):
@@ -761,7 +756,7 @@ class PokemonPC(QDialog):
         if self.logger is not None:
             self.logger.log("info", f"Could not make/unmake {pokemon['name']} favorite")
 
-    def give_held_item(self, pokemon: dict[list, Any]):
+    def give_held_item(self, pokemon_stub: dict):
         """
         Opens a window to select and give a held item to the specified Pokémon.
 
@@ -771,7 +766,7 @@ class PokemonPC(QDialog):
         confirmation message is shown, and the GUI is refreshed to reflect the change.
 
         Args:
-            pokemon (dict[list, Any]): A dictionary representing the Pokémon's data.
+            pokemon_stub (dict): A lightweight dictionary containing the pokemon's `individual_id`.
 
         Returns:
             None
@@ -782,6 +777,10 @@ class PokemonPC(QDialog):
             - Logs and displays an info message using `ShowInfoLogger`.
             - Refreshes the GUI via `self.refresh_gui()`.
         """
+        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub['individual_id'])
+        if not pokemon:
+            return
+
         items_list = mw.ankimon_db.get_all_items()
         # Filter to holdable items (items without a type, stored in data field)
         items_names = []
@@ -806,7 +805,7 @@ class PokemonPC(QDialog):
         )
         give_item_window.exec()
 
-    def remove_held_item(self, pokemon: dict[list, Any]):
+    def remove_held_item(self, pokemon_stub: dict):
         """
         Removes the held item from the specified Pokémon.
 
@@ -815,7 +814,7 @@ class PokemonPC(QDialog):
         raises a `ValueError`.
 
         Args:
-            pokemon (dict[list, Any]): A dictionary representing the Pokémon's data.
+            pokemon_stub (dict): A lightweight dictionary containing the pokemon's `individual_id`.
 
         Returns:
             None
@@ -828,6 +827,10 @@ class PokemonPC(QDialog):
             - Logs and displays an info message using `ShowInfoLogger`.
             - Refreshes the GUI via `self.refresh_gui()`.
         """
+        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub['individual_id'])
+        if not pokemon:
+            return
+            
         pokemon_obj = PokemonObject.from_dict(pokemon)
         if pokemon.get('held_item') is None:
             raise ValueError("The pokemon does not hold an item.")
@@ -843,7 +846,7 @@ class PokemonPC(QDialog):
         adding default values if fields are missing. This handles data
         from older addon versions. Stat-related fields are ignored.
         """
-        pokemon_list = self.load_pokemon_data()
+        pokemon_list = mw.ankimon_db.get_all_pokemon()
         if not pokemon_list:
             return
 

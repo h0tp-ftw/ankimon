@@ -22,13 +22,10 @@ def find_trainer_rank(highest_level, trainer_level):
     """
     try:
         # Count the amount of Pokémon caught based on the Pokedex
-        caught_pokemon = len(extract_ids_from_file())
+        caught_pokemon = mw.ankimon_db.execute("SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon").fetchone()[0]
 
         # Count the number of shiny Pokémon
-        shiny_pokemon_count = 0
-        db = mw.ankimon_db
-        my_pokemon = db.get_all_pokemon()
-        shiny_pokemon_count = sum(1 for pokemon in my_pokemon if pokemon.get('shiny', False))  # Assuming 'shiny' is a key
+        shiny_pokemon_count = mw.ankimon_db.get_shiny_count()
 
         # Count badges
         badge_count = len(get_achieved_badges())
@@ -77,63 +74,55 @@ def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_id, exp, xp
 
     # Load pokemon from database
     db = mw.ankimon_db
-    mypokemon_data = db.get_all_pokemon()
 
     msg = ""
     evolution_triggered = False
 
-    # Iterate through the Pokémon data and find the matching individual_id
-    for pokemon in mypokemon_data:
-        if pokemon["individual_id"] != str(xp_share_individual_id):  # Ensure same type comparison
-            continue
+    pokemon = db.get_pokemon_by_individual_id(xp_share_individual_id)
+    # Increase the xp of the matched Pokémon
+    current_level = int(pokemon['level'])  # MODIFIED: Use local variable for level
+    current_xp = pokemon.get("xp") or pokemon.get("stats", {}).get("xp", 0)
+    growth_rate = pokemon['growth_rate']  # MODIFIED: Use local variable for growth rate
+    experience_needed = int(find_experience_for_level(growth_rate, current_level, remove_level_cap))  # MODIFIED: Pre-calculate needed XP
+    evo_id = None # Initialize variable
 
-        # Increase the xp of the matched Pokémon
-        current_level = int(pokemon['level'])  # MODIFIED: Use local variable for level
-        current_xp = pokemon.get("xp") or pokemon.get("stats", {}).get("xp", 0)
-        growth_rate = pokemon['growth_rate']  # MODIFIED: Use local variable for growth rate
-        experience_needed = int(find_experience_for_level(growth_rate, current_level, remove_level_cap))  # MODIFIED: Pre-calculate needed XP
-        evo_id = None # Initialize variable
+    logger.log("info", "Running XP share function")
+    if experience_needed > exp + current_xp:
+        pokemon["xp"] = current_xp + exp
+    else:
+        while exp + current_xp > experience_needed:
+            if (remove_level_cap or current_level < 100):
+                current_level += 1
+                exp = exp + current_xp - experience_needed
+                current_xp = 0
+                experience_needed = int(find_experience_for_level(growth_rate, current_level, remove_level_cap))  # MODIFIED: Recalculate needed XP
+                msg += f"XP increased for {pokemon['name']} with level {current_level} and XP {exp}\n"
+            else:
+                break
+        pokemon['level'] = current_level
+        pokemon['xp'] = 0 if exp < 0 else exp
 
-        logger.log("info", "Running XP share function")
-        if experience_needed > exp + current_xp:
-            pokemon["xp"] = current_xp + exp
-        else:
-            while exp + current_xp > experience_needed:
-                if (remove_level_cap or current_level < 100):
-                    current_level += 1
-                    exp = exp + current_xp - experience_needed
-                    current_xp = 0
-                    experience_needed = int(find_experience_for_level(growth_rate, current_level, remove_level_cap))  # MODIFIED: Recalculate needed XP
-                    msg += f"XP increased for {pokemon['name']} with level {current_level} and XP {exp}\n"
-                else:
-                    break
-            pokemon['level'] = current_level
-            pokemon['xp'] = 0 if exp < 0 else exp
+    # Check for evolution
+    evo_id = check_evolution_for_pokemon(
+        pokemon['individual_id'],
+        pokemon['id'],
+        pokemon['level'],
+        evo_window,
+        pokemon['everstone']
+    )
 
-        # Check for evolution
-        evo_id = check_evolution_for_pokemon(
-            pokemon['individual_id'],
-            pokemon['id'],
-            pokemon['level'],
-            evo_window,
-            pokemon['everstone']
-        )
+    if evo_id is not None:
+        msg += f"{pokemon['name']} is about to evolve to {return_name_for_id(evo_id).capitalize()} at level {pokemon['level']}"
+        evolution_triggered = True
 
-        if evo_id is not None:
-            msg += f"{pokemon['name']} is about to evolve to {return_name_for_id(evo_id).capitalize()} at level {pokemon['level']}"
-            evolution_triggered = True
+        # Write the XP/level changes to database BEFORE calling evolution
+        db.save_pokemon(pokemon)
 
-            # Write the XP/level changes to database BEFORE calling evolution
-            for p in mypokemon_data:
-                db.save_pokemon(p)
-
-            # Now call evolution (which will read the updated file and handle the evolution)
-            break  # Exit the loop since we found and processed the Pokemon
+        # Now call evolution (which will read the updated file and handle the evolution)
 
     # Only save to database if no evolution was triggered (since evolution already saved)
     if not evolution_triggered:
-        for p in mypokemon_data:
-            db.save_pokemon(p)
+        db.save_pokemon(pokemon)
 
     logger.log("info", f"{msg}")
     return original_exp  # Return the amount of experience added

@@ -7,9 +7,7 @@ import math
 import json
 from .ankimon_leaderboard import (
     sync_data_to_leaderboard,
-    get_unique_pokemon,
-    get_total_pokemon,
-    get_shinies,
+    show_api_key_dialog
 )
 
 
@@ -75,10 +73,11 @@ class TrainerCard:
             "trainerRank": f"{league}",  # Example rank
             "trainerName": trainer_name,  # Example trainer name
             "level": max(1, int(settings_obj.get("trainer.level"))),
-            "pokedex": get_unique_pokemon(),  # Example Pokedex
-            "caughtPokemon": get_total_pokemon(),  # Example Pokedex
+            "pokedex": mw.ankimon_db.execute("SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon WHERE pokedex_id IS NOT NULL").fetchone()[0],
+            "caughtPokemon": mw.ankimon_db.get_pokemon_count(),
+            "trainerLevel": self.level,  # Add a logic for trainer's level if applicable
             "highestLevel": highest_pokemon_level,  # Example highest level
-            "shinies": f"{get_shinies()}",  # Example shinies
+            "shinies": f"{mw.ankimon_db.get_shiny_count()}",  # Example shinies
             "cash": cash,  # Example cash,
             "trainerSprite": f"{settings_obj.get('trainer.sprite') + '.png'}",
         }
@@ -97,14 +96,13 @@ class TrainerCard:
         """Method to find the name of the highest-level Pokémon from the database."""
         try:
             db = mw.ankimon_db
-            pokemon_data = db.get_all_pokemon()
+            cursor = db.execute("SELECT name, level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1")
+            row = cursor.fetchone()
 
-            if not pokemon_data:
+            if not row:
                 return None  # Return None if the data is empty
 
-            # Find the Pokémon with the highest level and return its name
-            highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
-            return f"{highest_pokemon.get('name', 'None')} (Level {highest_pokemon.get('level', 0)})"
+            return f"{row['name']} (Level {row['level']})"
         except Exception as e:
             showInfo(f"Error getting highest level pokemon: {e}")
             return "None"
@@ -113,14 +111,13 @@ class TrainerCard:
         """Method to find the highest level from all Pokémon in the database."""
         try:
             db = mw.ankimon_db
-            pokemon_data = db.get_all_pokemon()
+            cursor = db.execute("SELECT level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1")
+            row = cursor.fetchone()
 
-            if not pokemon_data:
+            if not row:
                 return int(0)  # Return 0 if the data is empty
 
-            # Find the Pokémon with the highest level and return its level
-            highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
-            return int(highest_pokemon.get("level", 0))
+            return int(row["level"])
         except Exception as e:
             showInfo(f"Error getting highest level: {e}")
             return int(0)
@@ -137,8 +134,9 @@ class TrainerCard:
             if not team_data:
                 return "No Team Set"
 
-            # Load user pokemon data from database
-            my_pokemon_data = mw.ankimon_db.get_all_pokemon()
+            # Use new DB method for targeted fetch
+            ids_to_fetch = [str(t.get("individual_id")) for t in team_data if t.get("individual_id")]
+            my_pokemon_data = mw.ankimon_db.get_pokemons_by_individual_ids(ids_to_fetch)
 
             # Create lookup dict
             pokemon_map = {str(p.get("individual_id")): p for p in my_pokemon_data}

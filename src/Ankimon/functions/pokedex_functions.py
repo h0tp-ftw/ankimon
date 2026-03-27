@@ -212,11 +212,9 @@ def get_pokemon_diff_lang_name(pokemon_id: int, language: int):
 
 def extract_ids_from_file():
     try:
-        db = mw.ankimon_db
-        pokemon_list = db.get_all_pokemon()
-        ids = [pokemon["id"] for pokemon in pokemon_list]
-        owned_pokemon_ids = sorted(list(set(ids)))
-        return owned_pokemon_ids
+        # get_all_pokemon_ids returns a set of integer IDs natively from SQLite virtual columns
+        ids = mw.ankimon_db.get_all_pokemon_ids()
+        return sorted(list(ids))
     except Exception as e:
         show_warning_with_traceback(
             parent=mw, exception=e, message="Error extracting IDs from file"

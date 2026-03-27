@@ -198,7 +198,7 @@ class ItemWindow(QWidget):
             self.contentLayout.addWidget(empty_label, 1, 1)
         else:
             for item in itembag_list:
-                item_widget = self.ItemLabel(item["item"], item["quantity"], item.get("type"))
+                item_widget = self.ItemLabel(item["item"], item["quantity"], item["type"])
                 # FIX 4: Set consistent size policy for all item widgets
                 item_widget.setMinimumWidth(180)  # Ensure minimum width for each item
                 self.contentLayout.addWidget(item_widget, row, col)
@@ -377,12 +377,12 @@ class ItemWindow(QWidget):
     def PokemonList(self, comboBox):
         try:
             db = mw.ankimon_db
-            captured_pokemon_data = db.get_all_pokemon()
-            if captured_pokemon_data:
-                for pokemon in captured_pokemon_data:
-                    pokemon_name = pokemon['name']
-                    individual_id = pokemon.get('individual_id', None)
-                    id_ = pokemon.get('id', None)
+            pokemon_list = db.execute("SELECT name, individual_id, pokedex_id FROM captured_pokemon").fetchall()
+            if pokemon_list:
+                for pokemon in pokemon_list:
+                    pokemon_name = pokemon[0]
+                    individual_id = pokemon[1]
+                    id_ = pokemon[2]
                     if individual_id and id_:  # Ensure the ID exists
                         # Add Pokémon name to comboBox
                         comboBox.addItem(pokemon_name)
@@ -390,7 +390,7 @@ class ItemWindow(QWidget):
                         comboBox.setItemData(comboBox.count() - 1, individual_id, role=UserRole)
                         comboBox.setItemData(comboBox.count() - 1, id_, role=UserRole + 1)
         except Exception as e:
-            self.logger.log_and_showinfo("error", f"Error loading Pokémon list: {e}")
+            self.logger.log_and_showinfo("error", f"Error loading Pokémon list: {e} {pokemon}")
 
     def Evolve_Fossil(self, item_name: str, fossil_id: int, fossil_poke_name: str):
         self.starter_window.display_fossil_pokemon(fossil_id, fossil_poke_name)

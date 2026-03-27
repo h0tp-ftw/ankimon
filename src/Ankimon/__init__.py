@@ -643,8 +643,7 @@ if database_complete:
     # Check if user has any pokemon in database
     from .pyobj.database_manager import get_db
     db = get_db()
-    pokemon_list = db.get_all_pokemon()
-    if not pokemon_list:
+    if db.get_pokemon_count() == 0:
         starter_window.display_starter_pokemon()
 
 count_items_and_rewrite(itembag_path)

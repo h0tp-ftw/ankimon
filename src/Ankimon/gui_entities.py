@@ -298,15 +298,15 @@ class Pokedex_Widget(QWidget):
 
     def read_poke_coll(self):
         db = mw.ankimon_db
-        self.captured_pokemon_data = db.get_all_pokemon()
+        self.available_pokedex_ids = db.get_all_pokemon_ids()
 
     def initUI(self):
         self.setWindowTitle("Pokédex")
 
         # Create a label and set HTML content
         label = QLabel()
-        # Extract the IDs of the Pokémon listed in the JSON file
-        self.available_pokedex_ids = {pokemon['id'] for pokemon in self.captured_pokemon_data}
+        # Use the already fetched set of existing ids
+        # (self.available_pokedex_ids is fetched in read_poke_coll)
 
         # Now we generate the HTML rows for each Pokémon in the range 1-898, graying out those not in the JSON file
         table_rows = [self.generate_table_row(i, i not in self.available_pokedex_ids) for i in range(1, 899)]

@@ -15,9 +15,8 @@ from ..resources import user_path
 
 
 class AnkimonDB:
-    """Handles all database operations for Ankimon with obfuscation. Currently, the database is obfuscated using a simple XOR cipher."""
-
-    _OBFUSCATION_KEY = "H0tP-!s-N0t-4-C@tG!rL_v2"
+    """Handles all database operations for Ankimon. Stores data in SQLite."""
+    
     DB_FILENAME = "ankimon.db"
 
     def __init__(self, logger=None):
@@ -51,26 +50,17 @@ class AnkimonDB:
     # --- Obfuscation / De-obfuscation ---
 
     def _obfuscate(self, data: Any) -> str:
-        """Obfuscates a Python object to a base64 string using a simple XOR cipher."""
-        json_str = json.dumps(data, ensure_ascii=False)
-        data_bytes = json_str.encode('utf-8')
-        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
-        obfuscated_bytes = bytearray()
-        for i, byte in enumerate(data_bytes):
-            obfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-        return base64.b64encode(obfuscated_bytes).decode('utf-8')
+        """Serializes a Python object to a JSON string. (Formerly obfuscated)"""
+        return json.dumps(data, ensure_ascii=False)
 
-    def _deobfuscate(self, obfuscated_str: str) -> Optional[Any]:
-        """De-obfuscates a base64 string back to a Python object using a simple XOR cipher."""
+    def _deobfuscate(self, data_str: str) -> Optional[Any]:
+        """Deserializes a JSON string to a Python object. (Formerly deobfuscated)"""
+        if not data_str:
+            return None
         try:
-            obfuscated_bytes = base64.b64decode(obfuscated_str)
-            key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
-            deobfuscated_bytes = bytearray()
-            for i, byte in enumerate(obfuscated_bytes):
-                deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-            return json.loads(deobfuscated_bytes.decode('utf-8'))
+            return json.loads(data_str)
         except Exception as e:
-            self._log("error", f"Failed to deobfuscate data: {e}")
+            self._log("error", f"Failed to load json data: {e}")
             return None
 
     # --- Database Setup ---
@@ -86,9 +76,17 @@ class AnkimonDB:
             CREATE TABLE IF NOT EXISTS captured_pokemon (
                 individual_id TEXT PRIMARY KEY,
                 is_main INTEGER DEFAULT 0,
-                data TEXT NOT NULL
+                data TEXT NOT NULL,
+                name TEXT GENERATED ALWAYS AS (json_extract(data, '$.name')) VIRTUAL,
+                pokedex_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.id')) VIRTUAL,
+                shiny BOOLEAN GENERATED ALWAYS AS (json_extract(data, '$.shiny')) VIRTUAL,
+                level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL
             )
         """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_name ON captured_pokemon(name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)")
 
         # Check if is_main column exists (for migration from old schema)
         cursor.execute("PRAGMA table_info(captured_pokemon)")
@@ -207,9 +205,7 @@ class AnkimonDB:
 
     def get_pokemon(self, individual_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a specific pokemon by its individual_id."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
+        cursor = self.execute(
             "SELECT data FROM captured_pokemon WHERE individual_id = ?",
             (individual_id,)
         )
@@ -220,9 +216,81 @@ class AnkimonDB:
 
     def get_all_pokemon(self) -> List[Dict[str, Any]]:
         """Retrieves all captured pokemon."""
+        cursor = self.execute("SELECT data FROM captured_pokemon")
+        results = []
+        for row in cursor.fetchall():
+            pokemon = self._deobfuscate(row["data"])
+            if pokemon:
+                results.append(pokemon)
+
+        return results
+
+    def has_pokemon_by_name(self, name: str) -> bool:
+        """
+        Efficiently checks if a pokemon with the given name exists in the collection.
+        Uses a direct SQL query on the virtual name index.
+        """
+        cursor = self.execute("SELECT 1 FROM captured_pokemon WHERE LOWER(name) = LOWER(?) LIMIT 1", (name,))
+        return cursor.fetchone() is not None
+
+    def delete_pokemon(self, individual_id: str) -> bool:
+        """Deletes a pokemon from the captured collection."""
+        cursor = self.execute(
+            "DELETE FROM captured_pokemon WHERE individual_id = ?",
+            (individual_id,)
+        )
+        self._get_connection().commit()
+        return cursor.rowcount > 0
+
+    def replace_pokemon(self, pokemon_data: Dict[str, Any], individual_id: str) -> bool:
+        """Replaces a pokemon with the given individual_id with the given pokemon_data."""
+
+        obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT data FROM captured_pokemon")
+        
+        # Check if pokemon already exists to preserve is_main flag
+        cursor.execute("SELECT is_main FROM captured_pokemon WHERE individual_id = ?", (individual_id,))
+        row = cursor.fetchone()
+        
+        if row:
+            self._log("error", f"You already have this {pokemon_data['name']} in your collection!")
+            return False
+        else:
+            # Insert new with is_main = 0
+            cursor.execute(
+                "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?) WHERE individual_id=old_individual_id",
+                (pokemon_data["individual_id"], obfuscated_data, individual_id)
+            )
+        conn.commit()        
+        self.delete_pokemon(individual_id)
+        self._get_connection().commit()
+        return cursor.rowcount > 0
+
+    def get_pokemon_count(self) -> int:
+        """Returns the count of captured pokemon."""
+        cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon")
+        return cursor.fetchone()[0]
+
+    def get_shiny_count(self) -> int:
+        """Returns the count of shiny pokemon."""
+        cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon WHERE shiny = 1")
+        return cursor.fetchone()[0]
+
+    def execute(self, query: str, parameters: tuple = ()) -> sqlite3.Cursor:
+        """Executes a custom SQL query and returns the cursor. 
+        Useful for caller-specific fast-path queries without cluttering the manager."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, parameters)
+        return cursor
+
+    def get_pokemons_by_individual_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
+        """Retrieves multiple pokemon by their individual_ids."""
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        cursor = self.execute(f"SELECT data FROM captured_pokemon WHERE individual_id IN ({placeholders})", ids)
         results = []
         for row in cursor.fetchall():
             pokemon = self._deobfuscate(row["data"])
@@ -230,44 +298,10 @@ class AnkimonDB:
                 results.append(pokemon)
         return results
 
-    def has_pokemon_by_name(self, name: str) -> bool:
-        """
-        Efficiently checks if a pokemon with the given name exists in the collection.
-        Uses a direct SQL query instead of loading all pokemon data.
-        """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        # We need to check deobfuscated data, so we iterate but stop at first match
-        cursor.execute("SELECT data FROM captured_pokemon")
-        name_lower = name.lower()
-        for row in cursor.fetchall():
-            pokemon = self._deobfuscate(row["data"])
-            if pokemon and pokemon.get('name', '').lower() == name_lower:
-                return True
-        return False
-
-    def delete_pokemon(self, individual_id: str) -> bool:
-        """Deletes a pokemon from the captured collection."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "DELETE FROM captured_pokemon WHERE individual_id = ?",
-            (individual_id,)
-        )
-        conn.commit()
-        return cursor.rowcount > 0
-
-    def get_pokemon_count(self) -> int:
-        """Returns the count of captured pokemon."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM captured_pokemon")
-        return cursor.fetchone()[0]
-
     def get_all_pokemon_ids(self) -> set:
-        """Returns a set of all captured pokemon's pokedex IDs."""
-        pokemon_list = self.get_all_pokemon()
-        return {p.get("id") for p in pokemon_list if p.get("id")}
+        """Returns a set of all captured pokemon's pokedex IDs using the virtual index."""
+        cursor = self.execute("SELECT pokedex_id FROM captured_pokemon WHERE pokedex_id IS NOT NULL")
+        return {row[0] for row in cursor.fetchall()}
 
     # --- Main Pokemon Operations ---
 
@@ -295,9 +329,7 @@ class AnkimonDB:
 
     def get_main_pokemon(self) -> Optional[Dict[str, Any]]:
         """Retrieves the main pokemon (the one with is_main=1)."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT data FROM captured_pokemon WHERE is_main = 1")
+        cursor = self.execute("SELECT data FROM captured_pokemon WHERE is_main = 1")
         row = cursor.fetchone()
         if row:
             return self._deobfuscate(row["data"])
@@ -336,9 +368,7 @@ class AnkimonDB:
 
     def get_item(self, item_name: str) -> Optional[Dict[str, Any]]:
         """Retrieves an item by name."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
+        cursor = self.execute(
             "SELECT item_name, quantity, data FROM items WHERE item_name = ?",
             (item_name,)
         )
@@ -353,9 +383,7 @@ class AnkimonDB:
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         """Retrieves all items."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT item_name, quantity, data FROM items")
+        cursor = self.execute("SELECT item_name, quantity, data FROM items")
         results = []
         for row in cursor.fetchall():
             results.append({
@@ -403,9 +431,7 @@ class AnkimonDB:
 
     def get_badge(self, badge_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a badge by ID."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT data FROM badges WHERE badge_id = ?", (badge_id,))
+        cursor = self.execute("SELECT data FROM badges WHERE badge_id = ?", (badge_id,))
         row = cursor.fetchone()
         if row:
             return self._deobfuscate(row["data"])
@@ -413,9 +439,7 @@ class AnkimonDB:
 
     def get_all_badges(self) -> List[Dict[str, Any]]:
         """Retrieves all badges."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT badge_id, data FROM badges")
+        cursor = self.execute("SELECT badge_id, data FROM badges")
         results = []
         for row in cursor.fetchall():
             badge = self._deobfuscate(row["data"])
@@ -446,9 +470,7 @@ class AnkimonDB:
 
     def get_team(self) -> List[Dict[str, Any]]:
         """Retrieves the current team as a list of dicts with individual_id."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT individual_id FROM team ORDER BY slot_position ASC")
+        cursor = self.execute("SELECT individual_id FROM team ORDER BY slot_position ASC")
         results = []
         for row in cursor.fetchall():
             results.append({"individual_id": row["individual_id"]})
@@ -477,9 +499,7 @@ class AnkimonDB:
 
     def get_history(self) -> List[Dict[str, Any]]:
         """Retrieves all released pokemon history."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT data FROM pokemon_history")
+        cursor = self.execute("SELECT data FROM pokemon_history")
         results = []
         for row in cursor.fetchall():
             data = self._deobfuscate(row["data"])
@@ -505,9 +525,7 @@ class AnkimonDB:
 
     def get_user_data(self, key: str, default: Any = None) -> Any:
         """Retrieves user data by key."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM user_data WHERE key = ?", (key,))
+        cursor = self.execute("SELECT value FROM user_data WHERE key = ?", (key,))
         row = cursor.fetchone()
         if row:
             val = row["value"]
@@ -520,9 +538,7 @@ class AnkimonDB:
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT key, value FROM user_data")
+        cursor = self.execute("SELECT key, value FROM user_data")
         result = {}
         for row in cursor.fetchall():
             key = row["key"]
@@ -551,9 +567,7 @@ class AnkimonDB:
 
     def get_config_value(self, key: str, default: Any = None) -> Any:
         """Retrieves a config value by key."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+        cursor = self.execute("SELECT value FROM config WHERE key = ?", (key,))
         row = cursor.fetchone()
         if row:
             val = row["value"]
@@ -566,9 +580,7 @@ class AnkimonDB:
 
     def get_all_config(self) -> Dict[str, Any]:
         """Retrieves all config settings as a dictionary."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT key, value FROM config")
+        cursor = self.execute("SELECT key, value FROM config")
         result = {}
         for row in cursor.fetchall():
             key = row["key"]
@@ -594,9 +606,7 @@ class AnkimonDB:
 
     def has_config(self) -> bool:
         """Checks if config data exists in the database."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM config")
+        cursor = self.execute("SELECT COUNT(*) FROM config")
         return cursor.fetchone()[0] > 0
 
     def get_stats(self) -> Dict[str, int]:
