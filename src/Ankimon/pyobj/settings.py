@@ -20,7 +20,6 @@ DEFAULT_CONFIG = {
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
     "battle.review_based_damage": True,
-
     "controls.pokemon_buttons": True,
     "controls.defeat_key": "5",
     "controls.catch_key": "6",
@@ -125,7 +124,7 @@ class Settings:
                             print(
                                 f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int. Keeping as string."
                             )
-                            
+
             except (OSError, json.JSONDecodeError) as e:
                 print(
                     f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config."

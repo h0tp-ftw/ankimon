@@ -17,15 +17,18 @@ with open(actual_learnset_path, "r", encoding="utf-8") as file:
 
 # Mock modules
 mock_aqt = MagicMock()
-sys.modules['aqt'] = mock_aqt
-sys.modules['aqt.utils'] = mock_aqt.utils
-sys.modules['Anki'] = MagicMock()
-sys.modules['aqt.qt'] = MagicMock()
+sys.modules["aqt"] = mock_aqt
+sys.modules["aqt.utils"] = mock_aqt.utils
+sys.modules["Anki"] = MagicMock()
+sys.modules["aqt.qt"] = MagicMock()
+
 
 class MockResources:
     learnset_path = str(actual_learnset_path)
+
     def __getattr__(self, name):
         return "dummy"
+
 
 sys.modules["Ankimon.resources"] = MockResources()
 
@@ -48,6 +51,7 @@ _spec.loader.exec_module(_pf)
 
 from Ankimon.functions.pokedex_functions import get_all_pokemon_moves
 
+
 def test_all_pokemon_learnsets_are_valid():
     """
     Test that retrieving learnsets for all Pokemon in learnsets.json
@@ -55,7 +59,7 @@ def test_all_pokemon_learnsets_are_valid():
     """
     pokemon_names = list(LEARNSETS_DATA.keys())
 
-    with patch.object(_pf.json, 'load', return_value=LEARNSETS_DATA):
+    with patch.object(_pf.json, "load", return_value=LEARNSETS_DATA):
         with patch("builtins.open"):
             for pokemon_name in pokemon_names:
                 try:

@@ -285,7 +285,6 @@ def PokemonCollectionDetails(
         TopL_layout_Box.addWidget(captured_date_label)
         TopL_layout_Box.addWidget(pokemon_defeated_label)
 
-
         attacks_details_button = QPushButton("Attack Details")
         qconnect(attacks_details_button.clicked, lambda: attack_details_window(attacks))
         remember_attacks_details_button = QPushButton("Remember Attacks")
@@ -314,41 +313,40 @@ def PokemonCollectionDetails(
         TopR_layout_Box.addWidget(forget_attacks_details_button)
         TopR_layout_Box.addWidget(tm_attacks_details_button)
 
-
         first_layout.addLayout(TopL_layout_Box)
         first_layout.addLayout(TopR_layout_Box)
 
         layout.addWidget(name_label)
         layout.addLayout(first_layout)
         layout.addWidget(description_label)
-        
+
         # Create tabbed widget for Stats / IV / EV
         stats_tabs = QTabWidget()
-        
+
         # Tab 1: Stats
         stats_widget = QWidget()
         stats_widget.setLayout(CompleteTable_layout)
         stats_tabs.addTab(stats_widget, "Stats")
-        
+
         # Tab 2: IV
         iv_widget = QWidget()
         iv_layout = create_iv_ev_tab_layout(iv, "IV", 31, language)
         iv_widget.setLayout(iv_layout)
         stats_tabs.addTab(iv_widget, "IV")
-        
+
         # Tab 3: EV
         ev_widget = QWidget()
         ev_layout = create_iv_ev_tab_layout(ev, "EV", 255, language)
         ev_widget.setLayout(ev_layout)
         stats_tabs.addTab(ev_widget, "EV")
-        
+
         stats_tabs.setFixedHeight(220)
-        
+
         # Set initial tab and connect callback for persistence
         stats_tabs.setCurrentIndex(initial_tab_index)
         if tab_changed_callback:
             stats_tabs.currentChanged.connect(tab_changed_callback)
-        
+
         layout.addWidget(stats_tabs)
 
         free_pokemon_button = QPushButton("Release Pokemon")
@@ -388,14 +386,14 @@ def PokemonCollectionDetails(
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(trade_pokemon_button)
         actions_layout.addWidget(free_pokemon_button)
-        
+
         # Row 2: Rename (Input + Button)
         rename_layout = QHBoxLayout()
-        rename_layout.addWidget(rename_input, 1) 
+        rename_layout.addWidget(rename_input, 1)
         rename_button.setSizePolicy(
             QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
-        ) 
-        rename_button.adjustSize() 
+        )
+        rename_button.adjustSize()
         rename_layout.addWidget(rename_button, 0)
 
         layout.addLayout(actions_layout)
@@ -407,12 +405,12 @@ def PokemonCollectionDetails(
         show_warning_with_traceback(
             exception=e, message="Error occured in Pokemon Details Button:"
         )
-        return QVBoxLayout() 
+        return QVBoxLayout()
 
 
 def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, language):
     CompleteTable_layout = QVBoxLayout()
-    CompleteTable_layout.addSpacing(15) 
+    CompleteTable_layout.addSpacing(15)
     # Stat colors
     stat_colors = {
         "hp": QColor(255, 0, 0),  # Red
@@ -440,47 +438,49 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         "spa": "Sp. Atk",
         "spd": "Sp. Def",
         "spe": "Speed",
-        "xp": "XP"
+        "xp": "XP",
     }
 
     for row, (stat, value) in enumerate(detail_stats.items()):
         # Skip unknown stats that are not in stat_colors
         if stat not in stat_colors:
             continue
-        
+
         display_name = display_names.get(stat, stat.capitalize())
         stat_item2 = QLabel(display_name)
-        max_width_stat_item = 200 # Used for BAR math, not label width anymore
-        stat_item2.setFixedWidth(100) # Match IV/EV width
-        stat_item2.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        
+        max_width_stat_item = 200  # Used for BAR math, not label width anymore
+        stat_item2.setFixedWidth(100)  # Match IV/EV width
+        stat_item2.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+
         value_item2 = QLabel(str(value))
         stat_item2.setFont(custom_font)
         value_item2.setFont(custom_font)
-        value_item2.setFixedWidth(80) 
-        value_item2.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        value_item2.setFixedWidth(80)
+        value_item2.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         # Create a bar item
         bar_item2 = QLabel()
         if stat == "xp":
             experience = int(find_experience_for_level(growth_rate, level, True))
             value = int((int(value) / int(experience)) * max_width_stat_item)
         else:
-            value = int(
-                max_width_stat_item * (1 - exp(-value / max_width_stat_item))
-            ) 
+            value = int(max_width_stat_item * (1 - exp(-value / max_width_stat_item)))
         pixmap2 = createStatBar(stat_colors.get(stat), value)
         # Convert the QPixmap to an QIcon
         icon = QIcon(pixmap2)
         # Set the QIcon as the background for the QLabel
         bar_item2.setPixmap(pixmap2)
         layout_row = QHBoxLayout()
-        layout_row.setContentsMargins(0, 0, 0, 0) # Tight layout
-        layout_row.addStretch() # Add stretch padding at start (Centers the content)
+        layout_row.setContentsMargins(0, 0, 0, 0)  # Tight layout
+        layout_row.addStretch()  # Add stretch padding at start (Centers the content)
         layout_row.addWidget(stat_item2)
-        layout_row.addWidget(value_item2) # Value is now fixed width
+        layout_row.addWidget(value_item2)  # Value is now fixed width
 
         layout_row.addWidget(bar_item2)
-        layout_row.addStretch() # Ensure alignment logic is identical
+        layout_row.addStretch()  # Ensure alignment logic is identical
         stat_item2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         bar_item2.setAlignment(Qt.AlignmentFlag.AlignCenter)
         CompleteTable_layout.addLayout(layout_row)
@@ -512,28 +512,32 @@ def createStatBar(color, value):
     return pixmap
 
 
-def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: int, language: int) -> QGridLayout:
+def create_iv_ev_tab_layout(
+    values: dict[str, int], value_type: str, max_val: int, language: int
+) -> QGridLayout:
     """
     Create a layout for displaying IV or EV values in a tab.
-    
+
     Args:
         values: Dictionary of stat values (hp, atk, def, spa, spd, spe)
         value_type: "IV" or "EV" for display purposes
         max_val: Maximum value (31 for IV, 255 for EV)
         language: Language code for font loading
-    
+
     Returns:
         QGridLayout containing the stat display
     """
     layout = QGridLayout()
-    layout.setContentsMargins(0, 0, 0, 0) # Remove default margins to use full space
-    
+    layout.setContentsMargins(0, 0, 0, 0)  # Remove default margins to use full space
+
     # --- Chart Section ---
-    chart_color = QColor(61, 125, 202, 150) if value_type == "IV" else QColor(255, 165, 0, 150) # Blue for IV, Orange for EV
+    chart_color = (
+        QColor(61, 125, 202, 150) if value_type == "IV" else QColor(255, 165, 0, 150)
+    )  # Blue for IV, Orange for EV
     border_color = QColor(61, 125, 202) if value_type == "IV" else QColor(255, 165, 0)
 
     radar_chart = RadarChart(values, max_val, chart_color, border_color, language)
-    
+
     # Add chart to center (row 0, col 0)
     layout.addWidget(radar_chart, 0, 0, Qt.AlignmentFlag.AlignCenter)
 
@@ -547,8 +551,10 @@ def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: in
         # Add margin for visual spacing
         total_label.setStyleSheet("margin-top: 5px; margin-left: 5px;")
         # Top-Left Alignment in the same cell
-        layout.addWidget(total_label, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        
+        layout.addWidget(
+            total_label, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
+
     # Ensure cell expands to fill space
     layout.setRowStretch(0, 1)
     layout.setColumnStretch(0, 1)
@@ -557,7 +563,9 @@ def create_iv_ev_tab_layout(values: dict[str, int], value_type: str, max_val: in
 
 
 class RadarChart(QWidget):
-    def __init__(self, stats, max_value, fill_color, border_color, language, parent=None):
+    def __init__(
+        self, stats, max_value, fill_color, border_color, language, parent=None
+    ):
         super().__init__(parent)
         self.stats = stats
         self.max_value = max_value if max_value > 0 else 1
@@ -565,8 +573,8 @@ class RadarChart(QWidget):
         self.border_color = border_color
         self.language = language
         # Minimum size to prevent text clipping
-        self.setMinimumSize(340, 180) 
-        
+        self.setMinimumSize(340, 180)
+
         # Order: HP, Attack, Defense, Speed, Sp. Def, Sp. Atk
         # Clockwise starting from Top
         self.stat_keys = ["hp", "atk", "def", "spe", "spd", "spa"]
@@ -576,7 +584,7 @@ class RadarChart(QWidget):
             "def": "Defense",
             "spe": "Speed",
             "spd": "Sp. Def",
-            "spa": "Sp. Atk"
+            "spa": "Sp. Atk",
         }
 
     def paintEvent(self, event):
@@ -586,18 +594,18 @@ class RadarChart(QWidget):
         rect = self.rect()
         # Shift center down to clear top buttons
         center = QPointF(rect.width() / 2, rect.height() / 2 + 5)
-        
+
         # Radius calculation
         padding = 35
         radius = min(rect.width(), rect.height()) / 2 - padding
 
         # ensure radius is positive
-        if radius < 10: 
+        if radius < 10:
             radius = 10
 
         # Draw Background Hexagons (Grid)
         # 4 levels: 25%, 50%, 75%, 100%
-        grid_pen = QPen(QColor(150, 150, 150, 100)) # Light gray transparent
+        grid_pen = QPen(QColor(150, 150, 150, 100))  # Light gray transparent
         painter.setPen(grid_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
 
@@ -610,8 +618,10 @@ class RadarChart(QWidget):
         for i in range(6):
             angle_deg = -90 + (i * 60)
             angle_rad = math.radians(angle_deg)
-            end_point = QPointF(center.x() + radius * math.cos(angle_rad), 
-                                center.y() + radius * math.sin(angle_rad))
+            end_point = QPointF(
+                center.x() + radius * math.cos(angle_rad),
+                center.y() + radius * math.sin(angle_rad),
+            )
             painter.drawLine(center, end_point)
 
         # Draw Data Polygon
@@ -621,85 +631,90 @@ class RadarChart(QWidget):
             # Cap value at max_value
             val = min(val, self.max_value)
             ratio = val / self.max_value
-            
+
             r = radius * ratio
             angle_deg = -90 + (i * 60)
             angle_rad = math.radians(angle_deg)
-            p = QPointF(center.x() + r * math.cos(angle_rad), 
-                        center.y() + r * math.sin(angle_rad))
+            p = QPointF(
+                center.x() + r * math.cos(angle_rad),
+                center.y() + r * math.sin(angle_rad),
+            )
             data_points.append(p)
-        
+
         poly = QPolygonF(data_points)
-        
+
         # Fill
         painter.setBrush(QBrush(self.fill_color))
         # Stroke
         pen = QPen(self.border_color)
         pen.setWidth(2)
         painter.setPen(pen)
-        
+
         painter.drawPolygon(poly)
 
         # Draw Labels & Values
         # Increase Font Size
         text_color = self.palette().color(self.foregroundRole())
         painter.setPen(text_color)
-        
+
         # Label font
-        label_font = load_custom_font(13, self.language) 
+        label_font = load_custom_font(13, self.language)
         label_font.setBold(True)
         painter.setFont(label_font)
 
         font_metrics = painter.fontMetrics()
-        
+
         for i, key in enumerate(self.stat_keys):
             angle_deg = -90 + (i * 60)
             angle_rad = math.radians(angle_deg)
-            
+
             # Position for label is radius + padding
             # We push it out a bit more
             label_radius = radius + 22
-            
+
             lx = center.x() + label_radius * math.cos(angle_rad)
             ly = center.y() + label_radius * math.sin(angle_rad)
-            
+
             # Manual tweaks to prevent overlap
             if key in ["def", "atk"]:
                 lx += 15
             elif key in ["spd", "spa"]:
                 lx -= 15
-            
+
             text = self.display_names[key]
             val = self.stats.get(key, 0)
-            
+
             # Draw Stat Name
             rect_width = 140
             rect_height = 50
-            text_rect = QRectF(lx - rect_width/2, ly - rect_height/2, rect_width, rect_height)
-            
+            text_rect = QRectF(
+                lx - rect_width / 2, ly - rect_height / 2, rect_width, rect_height
+            )
+
             # Check for Max Value (IV=31, EV>=252)
             is_max = False
-            if self.max_value == 31 and val == 31: # IV Case
+            if self.max_value == 31 and val == 31:  # IV Case
                 is_max = True
-            elif self.max_value > 100 and val >= 252: # EV Case
+            elif self.max_value > 100 and val >= 252:  # EV Case
                 is_max = True
 
             if is_max:
                 # Gold color for max values
-                painter.setPen(QColor(218, 165, 32)) 
+                painter.setPen(QColor(218, 165, 32))
             else:
                 painter.setPen(text_color)
 
             painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, f"{text}\n{val}")
-
 
     def _draw_hexagon(self, painter, center, radius):
         points = []
         for i in range(6):
             angle_deg = -90 + (i * 60)
             angle_rad = math.radians(angle_deg)
-            p = QPointF(center.x() + radius * math.cos(angle_rad), 
-                        center.y() + radius * math.sin(angle_rad))
+            p = QPointF(
+                center.x() + radius * math.cos(angle_rad),
+                center.y() + radius * math.sin(angle_rad),
+            )
             points.append(p)
         painter.drawPolygon(QPolygonF(points))
 
@@ -708,20 +723,20 @@ def _create_iv_ev_bar(color: QColor, filled_width: int, max_width: int) -> QPixm
     """Create a colored bar pixmap for IV/EV display."""
     pixmap = QPixmap(max_width, 10)
     pixmap.fill(QColor(0, 0, 0, 0))  # Transparent background
-    
+
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    
+
     # Background bar - same color as Stats bar
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(QColor(0, 0, 0, 200))  # Semi-transparent black (same as Stats)
     painter.drawRoundedRect(0, 0, max_width, 10, 3, 3)
-    
+
     # Filled portion
     if filled_width > 0:
         painter.setBrush(color)
         painter.drawRoundedRect(0, 0, filled_width, 10, 3, 3)
-    
+
     painter.end()
     return pixmap
 
@@ -1068,9 +1083,10 @@ def tm_attack_details_window(
         move = find_details_move(attack)
         learn_attack_button = QPushButton(f"Learn {attack}")  # add Details to Moves
         learn_attack_button.clicked.connect(
-            lambda checked,
-            a=attack: remember_attack(  # We can use "remember_attack()" because the process is the same
-                individual_id, current_pokemon_moveset, a, logger
+            lambda checked, a=attack: (
+                remember_attack(  # We can use "remember_attack()" because the process is the same
+                    individual_id, current_pokemon_moveset, a, logger
+                )
             )
         )
         attack_layout.addWidget(learn_attack_button)
@@ -1184,15 +1200,16 @@ def PokemonFree(
     if position != -1:
         # Save important stats to history before release
         from datetime import datetime
+
         history_data = {
             "id": pokemon_to_release.get("id"),
             "name": pokemon_to_release.get("name"),
             "shiny": pokemon_to_release.get("shiny", False),
             "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
             "individual_id": pokemon_to_release.get("individual_id"),
-            "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         }
-        
+
         # Load existing history or create new
         history_list = []
         if pokemon_history_path.is_file():
@@ -1201,14 +1218,14 @@ def PokemonFree(
                     history_list = json.load(file)
             except (json.JSONDecodeError, Exception):
                 history_list = []
-        
+
         # Add to history (only save essential stats, not full Pokémon data)
         history_list.append(history_data)
-        
+
         # Save history
         with open(pokemon_history_path, "w", encoding="utf-8") as file:
             json.dump(history_list, file, indent=2)
-        
+
         # Now remove from active collection
         pokemon_list.pop(position)
         with open(mypokemon_path, "w") as file:

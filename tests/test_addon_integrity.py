@@ -14,9 +14,12 @@ except ImportError:
     pass
 
 # Add the 'src' directory to the Python path to allow for absolute imports of Ankimon
-ANKIMON_SRC_PARENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src'))
+ANKIMON_SRC_PARENT_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "src")
+)
 if ANKIMON_SRC_PARENT_DIR not in sys.path:
     sys.path.insert(0, ANKIMON_SRC_PARENT_DIR)
+
 
 def test_ankimon_initialization(qapp):
     """
@@ -60,11 +63,15 @@ def test_ankimon_initialization(qapp):
         errors.append(error_msg)
 
     # Walk packages and catch remaining errors
-    package = sys.modules.get('Ankimon')
+    package = sys.modules.get("Ankimon")
     if package:
         prefix = package.__name__ + "."
 
-        ignore_modules = ["pypresence", "Ankimon.poke_engine.data.scripts", "Ankimon.poke_engine.data.mods"]
+        ignore_modules = [
+            "pypresence",
+            "Ankimon.poke_engine.data.scripts",
+            "Ankimon.poke_engine.data.mods",
+        ]
 
         for importer, modname, ispkg in pkgutil.walk_packages(package.__path__, prefix):
             if any(ignored in modname for ignored in ignore_modules):
@@ -77,8 +84,15 @@ def test_ankimon_initialization(qapp):
                 errors.append(error_msg)
 
     # Ignore the known bug in __init__.py until it is fixed in a separate PR
-    errors = [e for e in errors if "module 'Ankimon.gui_classes.overview_team' has no attribute 'init_hooks'" not in e]
+    errors = [
+        e
+        for e in errors
+        if "module 'Ankimon.gui_classes.overview_team' has no attribute 'init_hooks'"
+        not in e
+    ]
 
     if errors:
         error_text = "\n".join(errors)
-        pytest.fail(f"Integrity check failed with {len(errors)} error(s):\n{error_text}")
+        pytest.fail(
+            f"Integrity check failed with {len(errors)} error(s):\n{error_text}"
+        )
