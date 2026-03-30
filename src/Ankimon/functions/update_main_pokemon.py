@@ -5,6 +5,7 @@ from typing import Optional
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..resources import mainpokemon_path
 from ..pyobj.pokemon_obj import PokemonObject
+from ..singletons import ShowInfoLogger, Translator
 
 # default values to fall back in case of load error
 MAIN_POKEMON_DEFAULT = {
@@ -76,7 +77,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
 
     # Normalize xp to 0 if it's None
     if main_pokemon.xp is None:
-        main_pokemon.xp = int(0)
+        main_pokemon.xp = 0
 
     mainpokemon_empty = True
     if mainpokemon_path.is_file():
@@ -103,7 +104,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
                 return main_pokemon, mainpokemon_empty
 
 
-            except Exception as e:
+            except Exception:
                 main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
                 return main_pokemon, mainpokemon_empty
     else:
@@ -125,4 +126,28 @@ def save_main_pokemon(main_pokemon: PokemonObject):
     with open(mainpokemon_path, "w", encoding="utf-8") as f:
         json.dump([data], f, indent=4)
 
+def update_main_pokemon_from_dict(pokemon_data: dict) -> tuple:
+    """
+    Update the main Pokémon JSON file with the provided data.
 
+    Attempts to persist the given Pokémon data. If writing fails,
+    a default Pokémon object is returned.
+
+    Args:
+        pokemon_data: Dictionary containing Pokémon data.
+
+    Raises:
+        FileNotFoundError: If the target file path is invalid.
+        TypeError: If pokemon_data contains non-serializable values.
+
+    Returns:
+        A tuple containing:
+            - The resulting PokemonObject Instance.
+            - A boolean indicating whether the file update succeeded.
+    """
+    try:
+        with open(mainpokemon_path, "w", encoding="utf-8") as file:
+            json.dump([pokemon_data], file, indent=2)
+        return PokemonObject(**pokemon_data), True
+    except (FileNotFoundError, TypeError):
+        return PokemonObject(**MAIN_POKEMON_DEFAULT), False

@@ -5,15 +5,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Required to push changes back
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Get changed files
         id: changed-files
-        uses: step-security/changed-files@v46
+        uses: tj-actions/changed-files@v45
         with:
-          files: "**.py"
+          files: "**/*.py"
 
-      - name: Check Ruff Format on changed files only
+      - name: Setup Python
         if: steps.changed-files.outputs.any_changed == 'true'
-        uses: astral-sh/ruff-action@v3
+        uses: actions/setup-python@v5
         with:
-          args: "format --check --diff --config ci_ruff_check.toml"
-          src: ${{ steps.changed-files.outputs.all_changed_files }}
+          python-version: "3.12"
+
+      - name: Install Ruff
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: pip install ruff
+
+      - name: Run Ruff Format on changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          # Use xargs to handle spaces in filenames
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | xargs -r ruff format --config ci_ruff_check.toml
+
+      - name: Commit formatting changes
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto ruff format [skip ci]"

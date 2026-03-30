@@ -59,7 +59,7 @@ class AnkimonTracker:
         self.owned_pokemon_ids = extract_ids_from_file()
         self.pokemon_in_collection = False
 
-        self.pokemon_encouter = 0 #mode for pokemon encounter
+        self.pokemon_encounter = 0 #mode for pokemon encounter
         self.general_card_count_for_battle = 0 #count for general card count for battle
         self.caught = 0 #check if pokemon is caught
 

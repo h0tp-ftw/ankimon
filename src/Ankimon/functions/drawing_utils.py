@@ -1,7 +1,7 @@
 from typing import Optional
 
 from aqt import mw
-from aqt.qt import QPainter, QLabel, Qt
+from aqt.qt import QPainter, QLabel, Qt, sip
 from PyQt6.QtGui import QColor, QFont, QColor, QPalette
 from PyQt6.QtCore import Qt, QRect, QPoint, QSize, QPoint, QTimer
 from PyQt6.QtWidgets import QApplication, QLabel, QFrame
@@ -52,9 +52,9 @@ def tooltipWithColour(msg, color, x=0, y=20, xref=1, parent=None, width=0, heigh
         lab.show()
         lab.move(QPoint(x - round(lab.width() * 0.5 * xref), y))
         try:
-            QTimer.singleShot(period, lambda: lab.hide())
+            QTimer.singleShot(period, lambda: lab.hide() if lab and not sip.isdeleted(lab) else None)
         except:
-            QTimer.singleShot(3000, lambda: lab.hide())
+            QTimer.singleShot(3000, lambda: lab.hide() if lab and not sip.isdeleted(lab) else None)
         mw.logger.log_and_showinfo("game", msg)
 
 def draw_gender_symbols(

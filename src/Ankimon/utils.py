@@ -4,7 +4,8 @@ import requests
 import json
 import random
 import csv
-from typing import Optional
+import base64
+from typing import Any, Optional
 
 from aqt import mw
 from aqt.utils import showWarning, showInfo
@@ -110,8 +111,8 @@ def addon_config_editor_will_display_json(text: str) -> str:
             modified_text = json.dumps(config, indent=4)
             return modified_text
         return text
-    except json.JSONDecodeError:
-        # Handle JSON parsing error
+    except (requests.RequestException, json.JSONDecodeError):
+        # Handle JSON parsing or network errors
         return text
 
 # Function to read the content of the local file
@@ -439,11 +440,8 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
                 if row['identifier'] == item_name:
                     id = row['id']
                     return int(id)
-    except FileNotFoundError as e:
-        show_warning_with_traceback(parent=mw, exception=e, message=f"Error: File {file_path} not found.")
-        return 4
-    except KeyError as e:
-        show_warning_with_traceback(parent=mw, exception=e, message="Error: CSV file does not contain the expected headers.")
+    except (OSError, KeyError) as e:
+        show_warning_with_traceback(parent=mw, exception=e, message="Error reading item data:")
         return 4
     except Exception as e:
         show_warning_with_traceback(parent=mw, exception=e, message=f"Unexpected error: {e}")
@@ -962,5 +960,19 @@ def substract_item_from_itembag(item: str, quantity: int=1) -> None:
             json.dump(items_list, f, indent=2)
         return
 
+def png_to_base64(path: str) -> str:
+    """Convert a PNG file to a base64 data URI for embedding into HTML.
+
+    Args:
+        path (str): absolute or relative filesystem path to a PNG file.
+
+    Returns:
+        str: a data URI string like ``data:image/png;base64,...`` or empty
+             string if the file does not exist.
+    """
+    if not os.path.exists(path):
+        return ""
+    with open(path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("utf-8")
 def close_anki():
     mw.close()

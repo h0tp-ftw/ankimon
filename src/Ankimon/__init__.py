@@ -135,6 +135,8 @@ mw.logger = logger
 mw.translator = translator
 mw.settings_obj = settings_obj
 
+from .gui_classes import overview_team
+
 # Log an startup message
 logger.log_and_showinfo('game', translator.translate("startup"))
 logger.log_and_showinfo('game', translator.translate("backing_up_files"))
@@ -407,7 +409,7 @@ def on_review_card(*args):
             if not check_for_badge(achievements,6):
                 receive_badge(6, achievements)
 
-        if total_reviews == 10:
+        if total_reviews == settings_obj.get("battle.daily_average"):
             settings_obj.set("trainer.cash", settings_obj.get("trainer.cash") + 200)
             trainer_card.cash = settings_obj.get("trainer.cash")
 
@@ -419,7 +421,7 @@ def on_review_card(*args):
         if battle_sounds == True and ankimon_tracker_obj.general_card_count_for_battle == 1:
             play_sound(enemy_pokemon.id, settings_obj)
 
-        if ankimon_tracker_obj.cards_battle_round >= int(settings_obj.get("battle.cards_per_round")):
+        if ankimon_tracker_obj.cards_battle_round >= _get_cards_per_round():
             ankimon_tracker_obj.cards_battle_round = 0
             ankimon_tracker_obj.attack_counter = 0
             slp_counter = 0
@@ -784,6 +786,23 @@ def _shortcutKeys_wrap(self, _old):
     return original
 
 Reviewer._shortcutKeys = wrap(Reviewer._shortcutKeys, _shortcutKeys_wrap, 'around')
+
+def _get_cards_per_round() -> int:
+    cards_per_round = settings_obj.get("battle.cards_per_round")
+
+    if isinstance(cards_per_round, int):
+        return cards_per_round
+
+    # If it's a string in "number-number" format, return random value between bounds
+    if isinstance(cards_per_round, str) and "-" in cards_per_round:
+        try:
+            min_val, max_val = map(int, cards_per_round.split("-"))
+            random_value = random.randint(min_val, max_val)
+            return random_value
+        except (ValueError, IndexError) as e:
+            return 2
+
+    return 2
 
 if reviewer_buttons is True:
     #// Choosing styling for review other buttons in reviewer bottombar based on chosen style

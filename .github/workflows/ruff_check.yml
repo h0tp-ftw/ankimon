@@ -5,6 +5,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
         with:
-          args: "check --config ci_ruff_check.toml"
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v45
+        with:
+          files: "**/*.py"
+
+      - name: Setup Python
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ruff
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: pip install ruff
+
+      - name: Run Ruff Check --fix on changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | xargs -r ruff check --fix --config ci_ruff_check.toml || true
+
+      - name: Commit formatting changes
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto ruff fix [skip ci]"
+
+      - name: Run Ruff Check strictly on changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | xargs -r ruff check --config ci_ruff_check.toml

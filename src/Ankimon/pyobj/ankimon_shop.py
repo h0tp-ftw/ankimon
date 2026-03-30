@@ -183,7 +183,7 @@ class PokemonShopManager:
         """)
 
         # Money display
-        self.currency_qlabel = QLabel(f"MONEY: ${self.settings_obj.get('trainer.cash')}")
+        self.currency_qlabel = QLabel(f"MONEY: {self.settings_obj.get('trainer.cash')}¥")
         money_font = QFont(self.early_gameboy_font)
         money_font.setPointSize(12)
         self.currency_qlabel.setFont(money_font)
@@ -198,7 +198,7 @@ class PokemonShopManager:
         """)
 
         # Create the reroll button with the desired text
-        reroll_button = QPushButton(f"REROLL SHOP\n${self.daily_items_reroll_cost}")
+        reroll_button = QPushButton(f"REROLL SHOP\n{self.daily_items_reroll_cost}¥")
 
         button_font = QFont(self.early_gameboy_font)
         button_font.setPointSize(10)
@@ -347,7 +347,7 @@ class PokemonShopManager:
         info_layout.addWidget(name_label)
 
         # Price
-        price_label = QLabel(f"${item.get('price', 1000)}")
+        price_label = QLabel(f"{item.get('price', 1000)}¥")
         price_font = QFont(self.early_gameboy_font)
         price_font.setPointSize(9)
         price_label.setFont(price_font)
@@ -466,11 +466,11 @@ class PokemonShopManager:
                 return
 
             self.set_callback('trainer.cash', int(self.get_callback('trainer.cash') - item['price']))
-            self.currency_qlabel.setText(f"MONEY: ${self.settings_obj.get('trainer.cash')}")
+            self.currency_qlabel.setText(f"MONEY: {self.settings_obj.get('trainer.cash')}¥")
 
             msg = QMessageBox(mw)
             msg.setWindowTitle("Ankimon Mart")
-            msg.setText(f"Thank you!\nYou bought {item.get('UI_NAME', 'Unknown')} for ${item['price']}!")
+            msg.setText(f"Thank you!\nYou bought {item.get('UI_NAME', 'Unknown')} for {item['price']}¥!")
             msg.setIcon(QMessageBox.Icon.Information)
             msg.setStyleSheet(f"""
                 QMessageBox {{
@@ -519,7 +519,7 @@ class PokemonShopManager:
             return
 
         self.set_callback('trainer.cash', int(self.get_callback('trainer.cash') - cost))
-        self.currency_qlabel.setText(f"MONEY: ${self.settings_obj.get('trainer.cash')}")
+        self.currency_qlabel.setText(f"MONEY: {self.settings_obj.get('trainer.cash')}¥")
 
         # Generate new random items
         random.seed()  # Use current time for truly random reroll
