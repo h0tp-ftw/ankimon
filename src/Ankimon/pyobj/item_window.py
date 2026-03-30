@@ -22,12 +22,12 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 
-from ..pyobj.InfoLogger import ShowInfoLogger
 from ..pyobj.evolution_window import EvoWindow
+from ..pyobj.InfoLogger import ShowInfoLogger
+from ..pyobj.pc_box import GiveItemWindow
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.settings import Settings
 from ..pyobj.starter_window import StarterWindow
-from ..pyobj.pc_box import GiveItemWindow
 
 from ..business import (
     get_id_and_description_by_item_name
