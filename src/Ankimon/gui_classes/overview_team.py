@@ -207,7 +207,8 @@ def _build_pokemon_grid(pokemon_list, id_prefix="pokemon", max_items=6):
 
         safe_id = f"{id_prefix}-{name.lower().replace(' ', '-')}"
         sprite_path = get_sprite_path('front', 'png', p.get('id', 132), p.get('shiny', False), gender)
-        sprite_src = png_to_base64(sprite_path)  # convert PNG to Base64
+        base64_data = png_to_base64(sprite_path)
+        sprite_src = f"data:image/png;base64,{base64_data}" if base64_data else ""
 
         # compute inline background style based on types
         bg_style = _bg_style_from_types(types)
