@@ -34,15 +34,8 @@ from aqt.gui_hooks import webview_will_set_content
 from aqt.webview import WebContent
 import markdown
 
-from .resources import (
-    generate_startup_files,
-    user_path,
-    IS_EXPERIMENTAL_BUILD,
-    addon_ver,
-    addon_dir,
-)
-
-generate_startup_files(addon_dir, user_path)
+from .resources import ensure_ankimon_infrastructure, user_path, IS_EXPERIMENTAL_BUILD, addon_ver, addon_dir
+ensure_ankimon_infrastructure(addon_dir, user_path)
 
 from .singletons import settings_obj
 
@@ -132,8 +125,6 @@ from .singletons import (
     ankimon_tracker_obj,
     test_window,
     achievement_bag,
-    data_handler_obj,
-    data_handler_window,
     shop_manager,
     ankimon_tracker_window,
     pokedex_window,
@@ -147,6 +138,7 @@ from .singletons import (
     version_dialog,
     achievements,
     pokemon_pc,
+    ankimon_db,
 )
 
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
@@ -177,6 +169,19 @@ except Exception as e:
     show_warning_with_traceback(parent=mw, exception=e, message="Backup error:")
 
 backup_manager = BackupManager(logger, settings_obj)
+
+# Migrate existing JSON data to SQLite database (one-time operation with dialog)
+if not ankimon_db.is_migrated():
+    from .pyobj.migration_dialog import show_migration_dialog_if_needed
+    from .resources import (
+        mypokemon_path, mainpokemon_path, itembag_path, badgebag_path,
+        team_pokemon_path, pokemon_history_path, user_path_credentials,
+        rate_path
+    )
+    show_migration_dialog_if_needed(
+        ankimon_db, mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, mw,
+        team_pokemon_path, pokemon_history_path, user_path_credentials, rate_path
+    )
 
 if settings_obj.get("misc.developer_mode"):
     backup_manager.create_backup(manual=False)
@@ -770,13 +775,11 @@ if database_complete:
         rate_this_addon()
 
 if database_complete:
-    if mypokemon_path.is_file() is False:
+    # Check if user has any pokemon in database
+    from .pyobj.database_manager import get_db
+    db = get_db()
+    if db.get_pokemon_count() == 0:
         starter_window.display_starter_pokemon()
-    else:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_list = json.load(file)
-            if not pokemon_list:
-                starter_window.display_starter_pokemon()
 
 count_items_and_rewrite(itembag_path)
 
@@ -805,7 +808,6 @@ create_menu_actions(
     trainer_card,
     ankimon_tracker_window,
     logger,
-    data_handler_window,
     settings_window,
     shop_manager,
     pokedex_window,
@@ -814,7 +816,6 @@ create_menu_actions(
     open_leaderboard_url,
     settings_obj,
     addon_dir,
-    data_handler_obj,
     pokemon_pc,
     backup_manager,
 )

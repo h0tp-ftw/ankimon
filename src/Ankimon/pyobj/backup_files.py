@@ -4,10 +4,10 @@ from datetime import datetime
 import json
 from aqt.utils import showInfo
 from aqt import mw
-from ..resources import mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, backup_root
+from ..resources import mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, backup_root, user_path
 # Define backup directory and files to back up
 backup_folders = [os.path.join(backup_root, f"backup_{i}") for i in range(1, 4)]
-files_to_backup = [mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials]  # Adjust as needed
+files_to_backup = [mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, user_path / "ankimon.db"]  # Adjust as needed
 
 def create_backup_folder(folder_path):
     """Creates a backup folder and places a timestamped text file inside."""

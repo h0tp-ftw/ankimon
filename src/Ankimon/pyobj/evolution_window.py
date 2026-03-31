@@ -290,174 +290,65 @@ class EvoWindow(QWidget):
             if widget:
                 widget.deleteLater()
 
-    def evolve_pokemon(
-        self,
-        individual_id: int,
-        prevo_id: int,
-        prevo_name: str,
-        evo_id: int,
-        evo_name: str,
-        main_pokemon: PokemonObject,
-    ):
-        """
-        Evolve the given Pokémon and persist the updated state.
-
-        Replaces the Pokémon's attributes with those of its evolved form,
-        handles move learning (including move replacement if necessary),
-        persists the changes to storage, updates the UI, and triggers
-        evolution-related achievements.
-        Args:
-            individual_id (int): The UUID of the Pokemon to evolve.
-            prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
-            prevo_name (str): The name of the Pokémon to evolve.
-            evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
-            evo_name (str): The name of the evolved Pokémon.
-            main_pokemon (PokemonObject): The main Pokemon.
-        """
-        # global achievements
+    def evolve_pokemon(self, individual_id, prevo_id, prevo_name, evo_id, evo_name, main_pokemon):
+        """Evolve a pokemon and save to database."""
+        db = mw.ankimon_db
+        
         try:
-            with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-                captured_pokemon_data = json.load(json_file)
-                pokemon = None
-                if captured_pokemon_data:
-                    # Match individual_id in myPokemon file via linear search
-                    for pokemon_data in captured_pokemon_data:
-                        if pokemon_data.get("individual_id") != individual_id:
-                            continue
-
-                        pokemon = pokemon_data
-                        pokemon["name"] = evo_name.capitalize()
-                        pokemon["id"] = evo_id
-                        pokemon["type"] = search_pokedex(evo_name.lower(), "types")
-
-                        # mainPkmn lvl was updated during encounter defeat – this allows for multiple lvlUps after enemy Pkmn was defeated
-                        if (
-                            pokemon["individual_id"] == main_pokemon.individual_id
-                        ):  # Check evolving pokemon is the main pokemon
-                            pokemon["level"] = main_pokemon.level
-                        attacks = pokemon["attacks"]
-                        new_attacks = get_random_moves_for_pokemon(
-                            evo_name.lower(), int(pokemon["level"])
-                        )
-                        for new_attack in new_attacks:
-                            if new_attack not in new_attacks:
-                                if len(attacks) < 4:
-                                    attacks.append(new_attack)
-                                else:
-                                    dialog = AttackDialog(attacks, new_attack)
-                                    if dialog.exec() == QDialog.DialogCode.Accepted:
-                                        selected_attack = dialog.selected_attack
-                                        index_to_replace = None
-                                        for index, attack in enumerate(attacks):
-                                            if attack == selected_attack:
-                                                index_to_replace = index
-                                                pass
-                                            else:
-                                                pass
-                                        # If the attack is found, replace it with 'new_attack'
-                                        if index_to_replace is not None:
-                                            attacks[index_to_replace] = new_attack
-                                            self.logger.log_and_showinfo(
-                                                "info",
-                                                self.translator.translate(
-                                                    "replaced_selected_attack",
-                                                    selected_attack=selected_attack,
-                                                    new_attack=new_attack,
-                                                ),
-                                            )
-                                        else:
-                                            self.logger.log_and_showinfo(
-                                                "info",
-                                                self.translator.translate(
-                                                    "selected_attack_not_found",
-                                                    selected_attack=selected_attack,
-                                                ),
-                                            )
-                                    else:
-                                        # Handle the case where the user cancels the dialog
-                                        self.logger.log_and_showinfo(
-                                            "info",
-                                            self.translator.translate(
-                                                "no_attack_selected"
-                                            ),
-                                        )
-                        pokemon["attacks"] = attacks
-                        base_stats = search_pokedex(evo_name.lower(), "baseStats")
-                        pokemon["base_stats"] = base_stats
-                        pokemon["stats"] = base_stats
-                        pokemon["xp"] = 0
-                        hp_stat = int(base_stats["hp"])
-                        iv = pokemon["iv"]
-                        ev = pokemon["ev"]
-                        level = pokemon["level"]
-                        hp = calculate_hp(hp_stat, level, ev, iv)
-                        pokemon["current_hp"] = int(hp)
-                        pokemon["growth_rate"] = get_growth_rate(evo_id)
-                        pokemon["base_experience"] = search_pokedex(
-                            evo_name.lower(), "actual_id"
-                        )
-                        abilities = search_pokedex(evo_name.lower(), "abilities")
-                        numeric_abilities = None
-                        try:
-                            numeric_abilities = {
-                                k: v for k, v in abilities.items() if k.isdigit()
-                            }
-                        except Exception:
-                            self.translator.translate("no_ability")
-                        if numeric_abilities:
-                            abilities_list = list(numeric_abilities.values())
-                            pokemon["ability"] = random.choice(abilities_list)
+            pokemon = db.get_pokemon(individual_id)
+            if not pokemon:
+                self.logger.log("error", f"Could not find pokemon with id {individual_id}")
+                return
+            
+            pokemon["name"] = evo_name.capitalize()
+            pokemon["id"] = evo_id
+            pokemon["type"] = search_pokedex(evo_name.lower(), "types")
+            attacks = pokemon["attacks"]
+            new_attacks = get_random_moves_for_pokemon(evo_name.lower(), int(pokemon["level"]))
+            for new_attack in new_attacks:
+                if new_attack not in attacks:
+                    if len(attacks) < 4:
+                        attacks.append(new_attack)
+                    else:
+                        dialog = AttackDialog(attacks, new_attack)
+                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                            selected_attack = dialog.selected_attack
+                            try:
+                                index_to_replace = attacks.index(selected_attack)
+                                attacks[index_to_replace] = new_attack
+                                self.logger.log_and_showinfo("info", self.translator.translate("replaced_selected_attack", selected_attack=selected_attack, new_attack=new_attack))
+                            except ValueError:
+                                self.logger.log_and_showinfo("info", self.translator.translate("selected_attack_not_found", selected_attack=selected_attack))
                         else:
-                            pokemon["ability"] = self.translator.translate("no_ability")
-                        with open(
-                            str(mypokemon_path), "r", encoding="utf-8"
-                        ) as output_file:
-                            mypokemondata = json.load(output_file)
-                            # Find and replace the specified Pokémon's data in mypokemondata
-                            for index, pokemon_data in enumerate(mypokemondata):
-                                if pokemon_data.get("individual_id") == individual_id:
-                                    mypokemondata[index] = pokemon
-                                    break
-                                    # Save the modified data to the output JSON file
-                            with open(str(mypokemon_path), "w") as output_file:
-                                json.dump(mypokemondata, output_file, indent=2)
-                        main_pokemon_obj, file_update_successful = (
-                            update_main_pokemon_from_dict(pokemon)
-                        )
-
-                        if file_update_successful:
-                            self.logger.log_and_showinfo(
-                                "info",
-                                self.translator.translate(
-                                    "mainpokemon_has_evolved",
-                                    prevo_name=prevo_name,
-                                    evo_name=evo_name,
-                                ),
-                            )
-
-                            # New MainPkmn instance is needed to update HUD with newly evolved MainPkmn
-                            self.reviewer_obj.main_pokemon = main_pokemon_obj
-                        else:
-                            self.logger.log_and_showinfo(
-                                "warning",
-                                self.translator.translate("missing_mainpokemon_data"),
-                            )
-
-                    # Update UI as before
-                    class Container(object):
-                        pass
-
-                    reviewer = Container()
-                    reviewer.web = mw.reviewer.web
-                    self.reviewer_obj.update_life_bar(reviewer, 0, 0)
-                    if self.test_window.isVisible() is True:
-                        self.test_window.display_first_encounter()
-
-                    self.display_evo_complete(prevo_id, evo_id)
-                    check = check_for_badge(self.achievements, 16)
-                    if check is False:
-                        receive_badge(16, self.achievements)
-
+                            self.logger.log_and_showinfo("info", self.translator.translate("no_attack_selected"))
+            pokemon["attacks"] = attacks
+            base_stats = search_pokedex(evo_name.lower(), "baseStats")
+            pokemon["base_stats"] = base_stats
+            pokemon["stats"] = base_stats
+            pokemon["xp"] = 0
+            hp_stat = int(base_stats['hp'])
+            iv = pokemon["iv"]
+            ev = pokemon["ev"]
+            level = pokemon["level"]
+            hp = calculate_hp(hp_stat, level, ev, iv)
+            pokemon["current_hp"] = int(hp)
+            pokemon["growth_rate"] = search_pokeapi_db_by_id(evo_id,"growth_rate")
+            pokemon["base_experience"] = search_pokeapi_db_by_id(evo_id,"base_experience")
+            abilities = search_pokedex(evo_name.lower(), "abilities")
+            numeric_abilities = None
+            try:
+                numeric_abilities = {k: v for k, v in abilities.items() if k.isdigit()}
+            except Exception:
+                pass
+            if numeric_abilities:
+                abilities_list = list(numeric_abilities.values())
+                pokemon["ability"] = random.choice(abilities_list)
+            else:
+                pokemon["ability"] = self.translator.translate("no_ability")
+            
+            # Save to database
+            db.save_pokemon(pokemon)
+            self.logger.log_and_showinfo("info", self.translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
         except Exception as e:
             show_warning_with_traceback(
                 parent=mw, exception=e, message=f"Error occured in evolving pokemon"
@@ -494,82 +385,49 @@ class EvoWindow(QWidget):
         pokemon_pc.refresh_pokemon_grid()
 
     def cancel_evolution(self, individual_id, prevo_name):
+        """Cancel evolution and save changes to database."""
+        db = mw.ankimon_db
+        
         try:
-            with open(mypokemon_path, "r+", encoding="utf-8") as f:
-                all_pokemon = json.load(f)
+            pokemon_to_update = db.get_pokemon(individual_id)
+            if not pokemon_to_update:
+                self.logger.log(f"Could not find pokemon with individual_id {individual_id} to cancel evolution.")
+                return
 
-                pokemon_to_update = None
-                for p in all_pokemon:
-                    if p.get("individual_id") == individual_id:
-                        pokemon_to_update = p
-                        break
-
-                if not pokemon_to_update:
-                    self.logger.log(
-                        f"Could not find pokemon with individual_id {individual_id} to cancel evolution."
-                    )
-                    return
-
-                # Add logic to learn new moves, similar to the original function
-                attacks = pokemon_to_update.get("attacks", [])
-                # The level should come from the pokemon itself, not self.main_pokemon
-                level = pokemon_to_update.get("level", 1)
-                new_attacks = get_random_moves_for_pokemon(
-                    prevo_name.lower(), int(level)
-                )
-
-                for new_attack in new_attacks:
-                    if new_attack not in attacks:
-                        if len(attacks) < 4:
-                            attacks.append(new_attack)
+            # Add logic to learn new moves
+            attacks = pokemon_to_update.get("attacks", [])
+            level = pokemon_to_update.get("level", 1) 
+            new_attacks = get_random_moves_for_pokemon(prevo_name.lower(), int(level))
+            
+            for new_attack in new_attacks:
+                if new_attack not in attacks:
+                    if len(attacks) < 4:
+                        attacks.append(new_attack)
+                    else:
+                        dialog = AttackDialog(attacks, new_attack)
+                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                            selected_attack = dialog.selected_attack
+                            try:
+                                index_to_replace = attacks.index(selected_attack)
+                                attacks[index_to_replace] = new_attack
+                                self.logger.log_and_showinfo("info", self.translator.translate("replaced_attack", selected_attack=selected_attack, new_attack=new_attack))
+                            except ValueError:
+                                self.logger.log_and_showinfo("info", self.translator.translate("selected_attack_not_found", selected_attack=selected_attack))
                         else:
-                            # Attack replacement dialog
-                            dialog = AttackDialog(attacks, new_attack)
-                            if dialog.exec() == QDialog.DialogCode.Accepted:
-                                selected_attack = dialog.selected_attack
-                                try:
-                                    index_to_replace = attacks.index(selected_attack)
-                                    attacks[index_to_replace] = new_attack
-                                    self.logger.log_and_showinfo(
-                                        "info",
-                                        self.translator.translate(
-                                            "replaced_attack",
-                                            selected_attack=selected_attack,
-                                            new_attack=new_attack,
-                                        ),
-                                    )
-                                except ValueError:
-                                    self.logger.log_and_showinfo(
-                                        "info",
-                                        self.translator.translate(
-                                            "selected_attack_not_found",
-                                            selected_attack=selected_attack,
-                                        ),
-                                    )
-                            else:
-                                self.logger.log_and_showinfo(
-                                    "info",
-                                    self.translator.translate("no_attack_selected"),
-                                )
-
-                pokemon_to_update["attacks"] = attacks
-                # Set everstone to true to prevent evolution loop
-                pokemon_to_update["everstone"] = True
-
-                # Write the changes back to the file
-                f.seek(0)
-                json.dump(all_pokemon, f, indent=2)
-                f.truncate()
+                            self.logger.log_and_showinfo("info", self.translator.translate("no_attack_selected"))
+            
+            pokemon_to_update["attacks"] = attacks
+            pokemon_to_update["everstone"] = True
+            
+            # Save to database
+            db.save_pokemon(pokemon_to_update)
 
             # If the main pokemon was the one, update its object in memory
             if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
-                # This function reloads from file, so it will get the changes we just saved
                 self.main_pokemon, _ = update_main_pokemon(self.main_pokemon)
 
-            self.logger.log_and_showinfo(
-                "info", f"Canceled evolution for {prevo_name}."
-            )
-            self.close()  # Close the window after action is taken
+            self.logger.log_and_showinfo("info", f"Canceled evolution for {prevo_name}.")
+            self.close()
 
         except Exception as e:
             show_warning_with_traceback(

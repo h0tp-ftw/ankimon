@@ -18,14 +18,8 @@ class BackupManager:
 
     _OBFUSCATION_KEY = "H0tP-!s-N0t-4-C@tG!rL_v2"
     FILES_TO_BACKUP = [
-        "mypokemon.json",
-        "mainpokemon.json",
-        "badges.json",
-        "items.json",
-        "teams.json",
-        "data.json",
-        "todays_shop.json",
-        "config.obf",
+        "ankimon.db",
+        # config.obf removed - now stored in ankimon.db
     ]
     MAX_BACKUPS = 5
     MAX_BACKUP_AGE_DAYS = 14
@@ -121,6 +115,31 @@ class BackupManager:
             "item_count": 0,
         }
 
+        # Prefer database stats if available
+        db = mw.ankimon_db
+        if db:
+            try:
+                stats = db.get_stats()
+                summary["pokemon_count"] = stats.get("pokemon", 0)
+                summary["item_count"] = stats.get("items", 0)
+                
+                main_pokemon = db.get_main_pokemon()
+                if main_pokemon:
+                    summary["main_pokemon_name"] = main_pokemon.get("name", "N/A")
+                    summary["main_pokemon_level"] = main_pokemon.get("level", "N/A")
+                
+                # Trainer info from user_data
+                summary["trainer_name"] = db.get_user_data("trainer.name", "N/A")
+                summary["trainer_cash"] = db.get_user_data("trainer.cash", 0)
+                summary["trainer_level"] = db.get_user_data("trainer.level", 1)
+                
+                return summary
+            except Exception as e:
+                self.logger.log("error", f"Failed to get DB stats for backup summary: {e}")
+
+        # Fallback to legacy JSON for older backups or migration period
+        # (Remaining legacy code omitted for brevity but I will keep it in the replacement)
+        
         # Read mainpokemon.json for main Pokémon info
         mainpokemon_path = backup_dir / "mainpokemon.json"
         if mainpokemon_path.exists():

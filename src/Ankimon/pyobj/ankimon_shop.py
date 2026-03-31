@@ -50,7 +50,6 @@ class PokemonShopManager:
         self.daily_items_reroll_cost = 100
         self.todays_daily_items = []
         self.todays_daily_tms = []
-        self.shop_save_file = user_path / "todays_shop.json"
 
         # Retro Pokemon styling dimensions
         self.frame_h = 120
@@ -418,13 +417,11 @@ class PokemonShopManager:
 
     def get_daily_items(self):
         """Generate daily items based on the current date."""
-        if os.path.isfile(self.shop_save_file):
-            with open(self.shop_save_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if data.get("items") and data.get("date") == datetime.now().strftime(
-                    "%Y-%m-%d"
-                ):
-                    return data.get("items")
+        db = mw.ankimon_db
+        shop_data = db.get_user_data("todays_shop")
+        if shop_data:
+            if shop_data.get("items") and shop_data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                return shop_data.get("items")
 
         seed = datetime.now().strftime("%Y-%m-%d")
         random.seed(seed)
@@ -432,13 +429,11 @@ class PokemonShopManager:
 
     def get_daily_tms(self):
         """Works like get_daily_items, but for TMs"""
-        if os.path.isfile(self.shop_save_file):
-            with open(self.shop_save_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if data.get("technical_machines") and data.get(
-                    "date"
-                ) == datetime.now().strftime("%Y-%m-%d"):
-                    return data.get("technical_machines")
+        db = mw.ankimon_db
+        shop_data = db.get_user_data("todays_shop")
+        if shop_data:
+            if shop_data.get("technical_machines") and shop_data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                return shop_data.get("technical_machines")
 
         tm_pool = self.get_tm_pool()
         seed = datetime.now().strftime("%Y-%m-%d")
@@ -568,13 +563,12 @@ class PokemonShopManager:
         )
 
         # SAVE IMMEDIATELY - before GUI refresh
-        with open(self.shop_save_file, "w", encoding="utf-8") as f:
-            data = {
-                "items": self.todays_daily_items,
-                "technical_machines": self.todays_daily_tms,
-                "date": datetime.now().strftime("%Y-%m-%d"),
-            }
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        data = {
+            "items": self.todays_daily_items,
+            "technical_machines": self.todays_daily_tms,
+            "date": datetime.now().strftime("%Y-%m-%d"),
+        }
+        mw.ankimon_db.set_user_data("todays_shop", data)
 
         # Now refresh the window - it will load from the updated JSON file
         self.toggle_window()

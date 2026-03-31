@@ -80,69 +80,78 @@ class Settings:
         return self.descriptions.get(key, "No description available.")
 
     def load_config(self):
-        obfuscated_config_path = user_path / "config.obf"
+        from aqt import mw
+        
         config = {}
-        from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse deobfuscation logic
-
-        sync_handler = AnkimonDataSync()  # Re-use the deobfuscation logic
-
-        if obfuscated_config_path.is_file():
+        
+        # First, try to load from database
+        if hasattr(mw, 'ankimon_db') and mw.ankimon_db is not None:
             try:
-                with open(obfuscated_config_path, "r", encoding="utf-8") as f:
-                    obfuscated_str = f.read()
-                config = sync_handler._deobfuscate_data(obfuscated_str)
-                # Migration logic for old keys (items, trainer.team, trainer.xp_share)
-                # These keys are removed from the config dictionary after being processed.
-                # This ensures config.obf only contains the 'config' section going forward.
-                if "items" in config and isinstance(config["items"], list):
-                    items_path = user_path / "items.json"
-                    try:
-                        with open(items_path, "w", encoding="utf-8") as f:
-                            json.dump(config["items"], f, indent=4)
-                    except Exception as e:
-                        print(
-                            f"Ankimon: Error migrating 'items' data during load_config: {e}"
-                        )
-                    del config["items"]
-
-                if "trainer.team" in config:
-                    del config["trainer.team"]
-
-                # Type Coercion (from ankimon_sync.py)
-                keys_to_coerce_to_int = [
-                    "battle.automatic_battle",
-                    "battle.daily_average",
-                    "gui.reviewer_text_message_box_time",
-                    "gui.xp_bar_location",
-                    "misc.discord_rich_presence_text",
-                ]
-                for key in keys_to_coerce_to_int:
-                    if key in config and isinstance(config[key], str):
+                if mw.ankimon_db.has_config():
+                    config = mw.ankimon_db.get_all_config()
+                    self._apply_type_coercion(config)
+            except Exception as e:
+                print(f"Ankimon: Error loading config from database: {e}")
+        
+        # If no config in database, fall back to config.obf for migration
+        if not config:
+            obfuscated_config_path = user_path / "config.obf"
+            if obfuscated_config_path.is_file():
+                try:
+                    from ..pyobj.ankimon_sync import AnkimonDataSync
+                    sync_handler = AnkimonDataSync()
+                    
+                    with open(obfuscated_config_path, "r", encoding="utf-8") as f:
+                        obfuscated_str = f.read()
+                    config = sync_handler._deobfuscate_data(obfuscated_str)
+                    
+                    # Migration: remove legacy keys
+                    if "items" in config and isinstance(config["items"], list):
+                        del config["items"]
+                    if "trainer.team" in config:
+                        del config["trainer.team"]
+                    
+                    self._apply_type_coercion(config)
+                    
+                    # Migrate config to database
+                    if hasattr(mw, 'ankimon_db') and mw.ankimon_db is not None:
                         try:
-                            config[key] = int(config[key])
-                        except ValueError:
-                            print(
-                                f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int. Keeping as string."
-                            )
+                            mw.ankimon_db.save_all_config(config)
+                            print("Ankimon: Migrated config from config.obf to database")
+                        except Exception as e:
+                            print(f"Ankimon: Failed to migrate config to database: {e}")
+                            
+                except Exception as e:
+                    print(f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config.")
+                    config = {}
 
-            except (OSError, json.JSONDecodeError) as e:
-                print(
-                    f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config."
-                )
-                config = {}  # Fallback to default if error occurs
-
+        # Ensure all default settings are present
         modified = False
-
-        # Ensure new settings are present in existing configurations
         for key in DEFAULT_CONFIG:
             if key not in config:
                 modified = True
                 config[key] = DEFAULT_CONFIG[key]
 
         if modified:
-            self.save_config(config)  # Save modified config to config.obf
+            self.save_config(config)
 
         return config
+    
+    def _apply_type_coercion(self, config):
+        """Apply type coercion to config values that need to be integers."""
+        keys_to_coerce_to_int = [
+            "battle.automatic_battle",
+            "battle.daily_average",
+            "gui.reviewer_text_message_box_time",
+            "gui.xp_bar_location",
+            "misc.discord_rich_presence_text",
+        ]
+        for key in keys_to_coerce_to_int:
+            if key in config and isinstance(config[key], str):
+                try:
+                    config[key] = int(config[key])
+                except ValueError:
+                    print(f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int.")
 
     def save_config(self, config):
         from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse obfuscation logic
@@ -155,7 +164,7 @@ class Settings:
             file_content = warning_message + obfuscated_str
             with open(obfuscated_config_path, "w", encoding="utf-8") as f:
                 f.write(file_content)
-        except OSError as e:
+        except Exception as e:
             print(f"Ankimon: Could not save obfuscated config: {e}")
 
     def get(self, key, default=None):

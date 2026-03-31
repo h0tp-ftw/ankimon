@@ -47,7 +47,7 @@ from ..singletons import (
     trainer_card,
     settings_obj,
     translator,
-    pokemon_pc,
+    ankimon_db,
 )
 from ..resources import (
     mypokemon_path,
@@ -466,13 +466,9 @@ def save_main_pokemon_progress(
         main_pokemon.xp += exp
         level_cap = 100
     try:
-        if mainpokemon_path.is_file():
-            with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-                main_pokemon_data = json.load(json_file)
-        else:
-            mw.logger.log(
-                "warning", f"Main pokemon data file not found at {mainpokemon_path}"
-            )
+        db = mw.ankimon_db
+        main_pokemon_data = db.get_main_pokemon()
+        if not main_pokemon_data:
             showWarning(translator.translate("missing_mainpokemon_data"))
     except Exception as e:
         mw.logger.log("error", f"Error loading main pokemon data: {str(e)}")
@@ -611,35 +607,35 @@ def save_main_pokemon_progress(
             mainpkmndata["tier"] = main_pokemon.tier
         if hasattr(main_pokemon, "is_favorite"):
             mainpkmndata["is_favorite"] = main_pokemon.is_favorite
-    mainpkmndata = [mainpkmndata]
-    # Save the caught Pokémon's data to a JSON file
-    try:
-        with open(str(mainpokemon_path), "w") as json_file:
-            json.dump(mainpkmndata, json_file, indent=2)
-
-        # Load data from the output JSON file
-        with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-            mypokemondata = json.load(output_file)
-
-            # Find and replace the specified Pokémon's data in mypokemondata
-            for index, pokemon_data in enumerate(mypokemondata):
-                if (
-                    pokemon_data.get("individual_id") == main_pokemon.individual_id
-                ):  # Match by individual_id
-                    mypokemondata[index] = mypkmndata  # Replace with new data
-                    break
-
-            # Save the modified data to the output JSON file
-            with open(str(mypokemon_path), "w") as output_file:
-                json.dump(mypokemondata, output_file, indent=2)
-
-        sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path)
-        mw.logger.log("info", f"Successfully saved progress for {main_pokemon.name}")
-    except Exception as e:
-        mw.logger.log("error", f"Failed to save pokemon progress: {str(e)}")
+    mypkmndata = mainpkmndata
+    # Save to database (replaces JSON file I/O for performance)
+    ankimon_db.save_main_pokemon(mypkmndata)
+    ankimon_db.save_pokemon(mypkmndata)  # Also update the captured pokemon collection
 
     return main_pokemon.level
 
+# --- Utility: Sync mainpokemon to mypokemon ---
+def sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path):
+    """
+    Update the relevant entry in mypokemon database with the latest values from mainpokemon.
+    Uses database instead of JSON files.
+    """
+    db = mw.ankimon_db
+    
+    # Get main pokemon from database
+    main_entry = db.get_main_pokemon()
+    if not main_entry:
+        return
+    
+    main_id = main_entry.get("individual_id", None)
+    if not main_id:
+        main_id = getattr(main_pokemon, "individual_id", None)
+    if not main_id:
+        return
+    
+    # Save/update in captured_pokemon table
+    db.save_pokemon(main_entry)
+    return
 
 def kill_pokemon(
     main_pokemon: PokemonObject,
@@ -747,18 +743,8 @@ def save_caught_pokemon(
         "held_item": None,
     }
 
-    # Load existing Pokémon data if it exists
-    caught_pokemon_data = []
-    if mypokemon_path.is_file():
-        with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-            caught_pokemon_data = json.load(json_file)
-
-    # Append the caught Pokémon's data to the list
-    caught_pokemon_data.append(caught_pokemon)
-
-    # Save the caught Pokémon's data to a JSON file
-    with open(str(mypokemon_path), "w") as json_file:
-        json.dump(caught_pokemon_data, json_file, indent=2)
+    # Save to database (replaces JSON file I/O for performance)
+    ankimon_db.save_pokemon(caught_pokemon)
 
 
 def catch_pokemon(

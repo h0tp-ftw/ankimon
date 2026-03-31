@@ -558,44 +558,25 @@ POKEMON_TIERS = {
 
 }
 
-def generate_startup_files(base_path, base_user_path):  # Add base_user_path parameter
+def ensure_ankimon_infrastructure(base_path, base_user_path):
     """
-    Generates blank personal files at startup with the value [].
-    Introduced as a workaround to gitignore personal files.
+    Ensures the necessary directories and static files exist at startup.
+    NOTE: No longer generates legacy JSON data files as these are managed by SQLite.
     """
-    files = ['mypokemon.json', 'mainpokemon.json', 'items.json',
-             'team.json', 'data.json', 'badges.json']
-
-    for file in files:
-        file_path = os.path.join(base_user_path, file)  # Use base_user_path parameter
-        # Create parent directory if needed
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        if not os.path.exists(file_path):
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump([], f, indent=2)
-
-    # Default data for the file
-    default_rating_data = {"rate_this": False}
-    rate_path = os.path.join(base_user_path, 'rate_this.json')
-
-    # Create the file with default contents if it doesn't exist
-    if not os.path.exists(rate_path):
-        os.makedirs(os.path.dirname(rate_path), exist_ok=True)
-        with open(rate_path, "w", encoding="utf-8") as f:
-            json.dump(default_rating_data, f, indent=4)
+    # Create user files directory
+    os.makedirs(base_user_path, exist_ok=True)
+    os.makedirs(os.path.join(base_user_path, "data_files"), exist_ok=True)
+    os.makedirs(os.path.join(base_user_path, "sprites"), exist_ok=True)
 
     # Create blank HelpInfos.html and updateinfos.md at base_path if they don't exist
     helpinfos_path = os.path.join(base_path, 'HelpInfos.html')
     updateinfos_path = os.path.join(base_path, 'updateinfos.md')
 
     if not os.path.exists(helpinfos_path):
-        os.makedirs(os.path.dirname(helpinfos_path), exist_ok=True)
         with open(helpinfos_path, 'w', encoding='utf-8') as f:
             f.write('')
 
     if not os.path.exists(updateinfos_path):
-        os.makedirs(os.path.dirname(updateinfos_path), exist_ok=True)
         with open(updateinfos_path, 'w', encoding='utf-8') as f:
             f.write('')
 

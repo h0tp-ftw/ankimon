@@ -6,7 +6,7 @@ from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
 from aqt import mw, utils
-from ..resources import mainpokemon_path, mypokemon_path, moves_file_path, pokedex_path, rate_path
+from ..resources import pokeapi_db_path, moves_file_path, pokedex_path
 from ..functions.sprite_functions import get_sprite_path
 from datetime import datetime
 import uuid
@@ -48,13 +48,10 @@ def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
     }
 
 def add_pokemon_to_collection(new_pokemon, refresh_callback=None, parent_window=None):
-    """Adds a Pokémon to the user's collection file."""
+    """Adds a Pokémon to the user's collection in the database."""
     try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_list = json.load(file)
-        pokemon_list.append(new_pokemon)
-        with open(mypokemon_path, "w", encoding="utf-8") as file:
-            json.dump(pokemon_list, file, indent=2)
+        db = mw.ankimon_db
+        db.save_pokemon(new_pokemon)
         if refresh_callback:
             refresh_callback()
 
@@ -66,13 +63,8 @@ def add_pokemon_to_collection(new_pokemon, refresh_callback=None, parent_window=
 def check_and_award_monthly_pokemon(logger):
     """Checks for and automatically awards the current monthly challenge Pokémon."""
     try:
-        should_check = False
-        if rate_path.is_file():
-            with open(rate_path, "r", encoding="utf-8") as f:
-                if json.load(f).get("rate_this") is True:
-                    should_check = True
-        
-        if not should_check:
+        db = mw.ankimon_db
+        if db.get_user_data("rate_this") is not True:
             logger.log("info", "Monthly Pokemon check skipped: user has not rated the addon.")
             return
 
@@ -106,14 +98,10 @@ def check_and_award_monthly_pokemon(logger):
             logger.log("warning", f"Monthly challenge for {current_month_str} is missing 'individual_id' in 'pokemon' data.")
             return
 
-        try:
-            with open(mypokemon_path, "r", encoding="utf-8") as f:
-                my_pokemon = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.log("error", f"Failed to load or parse mypokemon.json: {e}")
-            return
+        db = mw.ankimon_db
+        target_pokemon = db.get_pokemon(challenge_individual_id)
 
-        if any(p.get("individual_id") == challenge_individual_id for p in my_pokemon):
+        if target_pokemon is not None:
             logger.log("info", f"User already has the Pokémon for {current_month_str} (ID: {challenge_individual_id}).")
             return
 
@@ -124,11 +112,10 @@ def check_and_award_monthly_pokemon(logger):
 
         if prev_id and threshold:
             logger.log("info", f"Checking for shiny eligibility: prev_id={prev_id}, threshold={threshold}")
-            for p in my_pokemon:
-                if p.get("individual_id") == prev_id and p.get("pokemon_defeated", 0) >= threshold:
-                    logger.log("info", f"Shiny criteria met for {challenge_pokemon_data.get('name')}.")
-                    make_shiny = True
-                    break
+            previous_challenge_pokemon = db.get_pokemon(prev_id)
+            if previous_challenge_pokemon.get("pokemon_defeated", 0) >= threshold:
+                logger.log("info", f"Shiny criteria met for {challenge_pokemon_data.get('name')}.")
+                make_shiny = True
         
         new_pokemon = create_monthly_challenge_pokemon(challenge_pokemon_data, make_shiny=make_shiny)
         add_pokemon_to_collection(new_pokemon)
@@ -166,18 +153,19 @@ class PokemonTrade:
         self.refresh_callback = refresh_callback
         self.logger = logger
         self.parent_window = parent_window
-        self.mainpokemon_path = mainpokemon_path
-        self.mypokemon_path = mypokemon_path
+        self.pokeapi_db_path = pokeapi_db_path
         self.moves_file_path = moves_file_path
         self.pokedex_path = pokedex_path
         self.check_and_trade()
 
     def load_pokemon_data(self):
+        """Load main pokemon data from database."""
         try:
-            with open(self.mainpokemon_path, "r", encoding="utf-8") as file:
-                return json.load(file)
-        except FileNotFoundError as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message="Main Pokémon file not found!")
+            db = mw.ankimon_db
+            main_pokemon = db.get_main_pokemon()
+            return [main_pokemon] if main_pokemon else []
+        except Exception as e:
+            show_warning_with_traceback(parent=self.parent_window, exception=e, message="Error loading main Pokémon!")
             return []
 
     def check_and_trade(self):
@@ -593,26 +581,20 @@ class PokemonTrade:
         return {0: "M", 1: "F", 2: "N"}.get(gender_id, "N/A")
 
     def replace_pokemon(self, new_pokemon):
+        """Replace the traded pokemon with the new one in the database."""
         try:
-            with open(self.mypokemon_path, 'r+') as file:
-                pokemon_list = json.load(file)
-
-                for idx, pokemon in enumerate(pokemon_list):
-                    if pokemon.get("individual_id") == self.individual_id:
-                        pokemon_list[idx] = new_pokemon
-                        break
-                else:
-                    self.logger.log_and_showinfo("warning","Could not find the Pokémon with the specified Individual ID.")
-                    return
-
-                file.seek(0)
-                file.truncate()
-                json.dump(pokemon_list, file, indent=2)
+            db = mw.ankimon_db
+            
+            # Delete the old pokemon
+            db.delete_pokemon(self.individual_id)
+            
+            # Save the new pokemon
+            db.save_pokemon(new_pokemon)
 
             self.logger.log_and_showinfo("warning",f"Successfully traded for {new_pokemon['name']}!")
             self.refresh_callback()
 
-        except (FileNotFoundError, json.JSONDecodeError) as e:
+        except Exception as e:
             show_warning_with_traceback(parent=self.parent_window, exception=e, message="Error updating Pokémon data.")
     
     def format_gender(self):

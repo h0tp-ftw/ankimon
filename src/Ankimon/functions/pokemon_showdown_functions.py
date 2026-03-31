@@ -5,9 +5,9 @@ from aqt.qt import QDialog, QLabel,Qt, QVBoxLayout
 from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout, QLineEdit
 
 from ..functions.pokedex_functions import search_pokedex
-from ..functions.url_functions import open_browser_window
+
 from ..utils import save_error_code
-from ..resources import mypokemon_path
+
 from ..singletons import main_pokemon, logger
 from ..pyobj.error_handler import show_warning_with_traceback
 
@@ -85,83 +85,82 @@ def export_all_pkmn_showdown():
     # Get all pokemon data
     pokemon_info_complete_text = ""
     try:
-        with (open(mypokemon_path, "r", encoding="utf-8") as json_file):
-            captured_pokemon_data = json.load(json_file)
+        captured_pokemon_data = mw.ankimon_db.get_all_pokemon()
 
-            # Check if there are any captured Pokémon
-            if captured_pokemon_data:
-                # Counter for tracking the column position
-                column = 0
-                row = 0
-                for pokemon in captured_pokemon_data:
-                    pokemon_level = pokemon['level']
-                    pokemon_ability = pokemon['ability']
-                    pokemon_type = pokemon['type']
-                    pokemon_type_text = pokemon_type[0].capitalize()
-                    if len(pokemon_type) > 1:
-                        pokemon_type_text = ""
-                        pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                        pokemon_type_text += f" {pokemon_type[1].capitalize()}"
-                    pokemon_attacks = pokemon['attacks']
-                    pokemon_ev = pokemon['ev']
-                    pokemon_iv = pokemon['iv']
+        # Check if there are any captured Pokémon
+        if captured_pokemon_data:
+            # Counter for tracking the column position
+            column = 0
+            row = 0
+            for pokemon in captured_pokemon_data:
+                pokemon_level = pokemon['level']
+                pokemon_ability = pokemon['ability']
+                pokemon_type = pokemon['type']
+                pokemon_type_text = pokemon_type[0].capitalize()
+                if len(pokemon_type) > 1:
+                    pokemon_type_text = ""
+                    pokemon_type_text += f"{pokemon_type[0].capitalize()}"
+                    pokemon_type_text += f" {pokemon_type[1].capitalize()}"
+                pokemon_attacks = pokemon['attacks']
+                pokemon_ev = pokemon['ev']
+                pokemon_iv = pokemon['iv']
 
-                    if pokemon["nickname"]:
-                        pokemon_name_and_nickname = f"{pokemon['nickname']} ({pokemon['name']})"
-                    else:
-                        pokemon_name_and_nickname = f"{pokemon['name']}"
+                if pokemon["nickname"]:
+                    pokemon_name_and_nickname = f"{pokemon['nickname']} ({pokemon['name']})"
+                else:
+                    pokemon_name_and_nickname = f"{pokemon['name']}"
 
-                    if pokemon["gender"] in ["M", "F"]:
-                        exported_gender = f" ({pokemon['gender']})"
-                    else:
-                        exported_gender = ""
+                if pokemon["gender"] in ["M", "F"]:
+                    exported_gender = f" ({pokemon['gender']})"
+                else:
+                    exported_gender = ""
 
-                    pokemon_info = POKEMON_INFO_FORMAT.format(
-                        pokemon_name_and_nickname,
-                        exported_gender,
-                        pokemon_ability.capitalize(),
-                        pokemon_level,
-                        pokemon_type_text,
-                        pokemon_ev["hp"],
-                        pokemon_ev["atk"],
-                        pokemon_ev["def"],
-                        pokemon_ev["spa"],
-                        pokemon_ev["spd"],
-                        pokemon_ev["spe"],
-                        pokemon_iv["hp"],
-                        pokemon_iv["atk"],
-                        pokemon_iv["def"],
-                        pokemon_iv["spa"],
-                        pokemon_iv["spd"],
-                        pokemon_iv["spe"]
-                    )
-                    for attack in pokemon_attacks:
-                        pokemon_info += f"- {attack}\n"
-                    pokemon_info += "\n"
-                    pokemon_info_complete_text += pokemon_info
+                pokemon_info = POKEMON_INFO_FORMAT.format(
+                    pokemon_name_and_nickname,
+                    exported_gender,
+                    pokemon_ability.capitalize(),
+                    pokemon_level,
+                    pokemon_type_text,
+                    pokemon_ev["hp"],
+                    pokemon_ev["atk"],
+                    pokemon_ev["def"],
+                    pokemon_ev["spa"],
+                    pokemon_ev["spd"],
+                    pokemon_ev["spe"],
+                    pokemon_iv["hp"],
+                    pokemon_iv["atk"],
+                    pokemon_iv["def"],
+                    pokemon_iv["spa"],
+                    pokemon_iv["spd"],
+                    pokemon_iv["spe"]
+                )
+                for attack in pokemon_attacks:
+                    pokemon_info += f"- {attack}\n"
+                pokemon_info += "\n"
+                pokemon_info_complete_text += pokemon_info
 
-                    # Create labels to display the text
-                    #label = QLabel(pokemon_info_complete_text)
-                    # Align labels
-                    #label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
-                    info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
+                # Create labels to display the text
+                #label = QLabel(pokemon_info_complete_text)
+                # Align labels
+                #label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
+                info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
 
-                    # Create an input field for error code
-                    error_code_input = QLineEdit()
-                    error_code_input.setPlaceholderText("Enter Error Code")
+                # Create an input field for error code
+                error_code_input = QLineEdit()
+                error_code_input.setPlaceholderText("Enter Error Code")
 
-                    # Create a button to save the input
-                    save_button = QPushButton("Fix Pokemon Export Code")
+                # Create a button to save the input
+                save_button = QPushButton("Fix Pokemon Export Code")
 
-                    # Create a layout and add the labels, input field, and button
-                    layout = QVBoxLayout()
-                    layout.addWidget(info_label)
-                    #layout.addWidget(label)
-                    layout.addWidget(error_code_input)
-                    layout.addWidget(save_button)
+                # Create a layout and add the labels, input field, and button
+                layout = QVBoxLayout()
+                layout.addWidget(info_label)
+                #layout.addWidget(label)
+                layout.addWidget(error_code_input)
+                layout.addWidget(save_button)
 
-                    # Copy text to clipboard in Anki
-                    mw.app.clipboard().setText(pokemon_info_complete_text)
+                # Copy text to clipboard in Anki
+                mw.app.clipboard().setText(pokemon_info_complete_text)
 
         save_button.clicked.connect(lambda: save_error_code(error_code_input.text(), logger=logger))
 
@@ -181,77 +180,76 @@ def flex_pokemon_collection():
     info = "Pokemon Infos have been Copied to your Clipboard! \nNow simply paste this text into https://pokepast.es/.\nAfter pasting the infos in your clipboard and submitting the needed infos on the right,\n you will receive a link to send friends to flex."
     info_label = QLabel(info)
 
-# Get all pokemon data
+    # Get all pokemon data
     pokemon_info_complete_text = ""
     try:
-        with (open(mypokemon_path, "r", encoding="utf-8") as json_file):
-            captured_pokemon_data = json.load(json_file)
+        captured_pokemon_data = mw.ankimon_db.get_all_pokemon()
 
-            # Check if there are any captured Pokémon
-            if captured_pokemon_data:
-                # Counter for tracking the column position
-                column = 0
-                row = 0
-                for pokemon in captured_pokemon_data:
-                    pokemon_level = pokemon['level']
-                    pokemon_ability = pokemon['ability']
-                    pokemon_type = pokemon['type']
-                    pokemon_type_text = pokemon_type[0].capitalize()
-                    if len(pokemon_type) > 1:
-                        pokemon_type_text = ""
-                        pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                        pokemon_type_text += f" {pokemon_type[1].capitalize()}"
-                    pokemon_attacks = pokemon['attacks']
-                    pokemon_ev = pokemon['ev']
-                    pokemon_iv = pokemon['iv']
+        # Check if there are any captured Pokémon
+        if captured_pokemon_data:
+            # Counter for tracking the column position
+            column = 0
+            row = 0
+            for pokemon in captured_pokemon_data:
+                pokemon_level = pokemon['level']
+                pokemon_ability = pokemon['ability']
+                pokemon_type = pokemon['type']
+                pokemon_type_text = pokemon_type[0].capitalize()
+                if len(pokemon_type) > 1:
+                    pokemon_type_text = ""
+                    pokemon_type_text += f"{pokemon_type[0].capitalize()}"
+                    pokemon_type_text += f" {pokemon_type[1].capitalize()}"
+                pokemon_attacks = pokemon['attacks']
+                pokemon_ev = pokemon['ev']
+                pokemon_iv = pokemon['iv']
 
-                    if pokemon["nickname"]:
-                        pokemon_name_and_nickname = f"{pokemon['nickname']} ({pokemon['name']})"
-                    else:
-                        pokemon_name_and_nickname = f"{pokemon['name']}"
+                if pokemon["nickname"]:
+                    pokemon_name_and_nickname = f"{pokemon['nickname']} ({pokemon['name']})"
+                else:
+                    pokemon_name_and_nickname = f"{pokemon['name']}"
 
-                    if pokemon["gender"] in ["M", "F"]:
-                        exported_gender = f" ({pokemon['gender']})"
-                    else:
-                        exported_gender = ""
+                if pokemon["gender"] in ["M", "F"]:
+                    exported_gender = f" ({pokemon['gender']})"
+                else:
+                    exported_gender = ""
 
-                    pokemon_info = POKEMON_INFO_FORMAT.format(
-                        pokemon_name_and_nickname,
-                        exported_gender,
-                        pokemon_ability.capitalize(),
-                        pokemon_level,
-                        pokemon_type_text,
-                        pokemon_ev["hp"],
-                        pokemon_ev["atk"],
-                        pokemon_ev["def"],
-                        pokemon_ev["spa"],
-                        pokemon_ev["spd"],
-                        pokemon_ev["spe"],
-                        pokemon_iv["hp"],
-                        pokemon_iv["atk"],
-                        pokemon_iv["def"],
-                        pokemon_iv["spa"],
-                        pokemon_iv["spd"],
-                        pokemon_iv["spe"]
-                    )
-                    for attack in pokemon_attacks:
-                        pokemon_info += f"- {attack}\n"
-                    pokemon_info += "\n"
-                    pokemon_info_complete_text += pokemon_info
+                pokemon_info = POKEMON_INFO_FORMAT.format(
+                    pokemon_name_and_nickname,
+                    exported_gender,
+                    pokemon_ability.capitalize(),
+                    pokemon_level,
+                    pokemon_type_text,
+                    pokemon_ev["hp"],
+                    pokemon_ev["atk"],
+                    pokemon_ev["def"],
+                    pokemon_ev["spa"],
+                    pokemon_ev["spd"],
+                    pokemon_ev["spe"],
+                    pokemon_iv["hp"],
+                    pokemon_iv["atk"],
+                    pokemon_iv["def"],
+                    pokemon_iv["spa"],
+                    pokemon_iv["spd"],
+                    pokemon_iv["spe"]
+                )
+                for attack in pokemon_attacks:
+                    pokemon_info += f"- {attack}\n"
+                pokemon_info += "\n"
+                pokemon_info_complete_text += pokemon_info
 
-                    # Create labels to display the text
-                    #label = QLabel(pokemon_info_complete_text)
-                    # Align labels
-                    #label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
-                    info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
+                # Create labels to display the text
+                #label = QLabel(pokemon_info_complete_text)
+                # Align labels
+                #label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
+                info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # Align center
 
-                    # Create a layout and add the labels, input field, and button
-                    layout = QVBoxLayout()
-                    layout.addWidget(info_label)
-                    #layout.addWidget(label)
+                # Create a layout and add the labels, input field, and button
+                layout = QVBoxLayout()
+                layout.addWidget(info_label)
+                #layout.addWidget(label)
 
-                    # Copy text to clipboard in Anki
-                    mw.app.clipboard().setText(pokemon_info_complete_text)
+                # Copy text to clipboard in Anki
+                mw.app.clipboard().setText(pokemon_info_complete_text)
         #save_button.clicked.connect(lambda: save_error_code(error_code_input.text()))
         # Set the layout for the main window
         open_browser_for_pokepaste = QPushButton("Open Pokepaste")

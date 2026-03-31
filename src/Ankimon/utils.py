@@ -394,22 +394,18 @@ def daily_item_list():
 
 # Function to give an item to the player
 def give_item(item_name: str, item_type: Optional[str] = None):
-    with open(itembag_path, "r", encoding="utf-8") as json_file:
-        itembag_list = json.load(json_file)
-        # Check if the item exists and update quantity, otherwise append
-        for item in itembag_list:
-            if item.get("item") == item_name:
-                item["quantity"] += 1
-                break
-        else:
-            # Add a new item if not found
-            item_dict = {"item": item_name, "quantity": 1}
-            if item_type is not None:
-                item_dict["type"] = item_type
-            itembag_list.append(item_dict)
-    with open(itembag_path, "w", encoding="utf-8") as json_file:
-        json.dump(itembag_list, json_file, indent=4)
-    # logger.log_and_showinfo('game', f"Player bought item {item_name.capitalize()}")
+    """Adds an item to the player's inventory using the database."""
+    db = mw.ankimon_db
+    
+    # Get current item or create new
+    existing = db.get_item(item_name)
+    if existing:
+        new_qty = existing["quantity"] + 1
+    else:
+        new_qty = 1
+    
+    extra_data = {"type": item_type} if item_type else None
+    db.save_item(item_name, new_qty, extra_data)
 
 
 # Function to return a cost of an item
@@ -491,44 +487,21 @@ def random_fossil():
 
 def count_items_and_rewrite(file_path):
     """
-    Reads the items.json file, groups entries by all keys except 'quantity',
-    sums their quantities, and rewrites the file preserving every other field.
+    Consolidates item quantities in the database.
+    Legacy: Previously read from items.json, now uses database.
+    The file_path parameter is kept for backwards compatibility but ignored.
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            items = json.load(f)
-
-        aggregated = {}  # maps a frozenset of (key,value) pairs to the merged entry
-
-        for item_data in items:
-            # Normalize item_data to be a dictionary
-            if isinstance(item_data, str):
-                item_data = {"item": item_data, "quantity": 1}
-
-            if not isinstance(item_data, dict) or "item" not in item_data:
-                continue  # Skip malformed entries
-
-            # Create a key for aggregation from all fields except 'quantity'
-            key_dict = {k: v for k, v in item_data.items() if k != "quantity"}
-            # The key must be hashable, so we use a frozenset of items.
-            agg_key = frozenset(key_dict.items())
-
-            quantity = item_data.get("quantity", 1)
-
-            if agg_key in aggregated:
-                aggregated[agg_key]["quantity"] += quantity
-            else:
-                # Start with a copy of the item data
-                aggregated[agg_key] = item_data.copy()
-                # Ensure quantity is set correctly
-                aggregated[agg_key]["quantity"] = quantity
-
-        updated_items = list(aggregated.values())
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(updated_items, f, indent=4, ensure_ascii=False)
-
-        print("items.json has been updated with aggregated quantities!")
+        db = mw.ankimon_db
+        
+        # Get all items from database - they're already unique by item_name
+        # so no need to aggregate, the database handles this automatically
+        items = db.get_all_items()
+        
+        if items:
+            print(f"Database contains {len(items)} unique items.")
+        else:
+            print("No items in database.")
 
     except Exception as e:
         show_warning_with_traceback(
@@ -685,63 +658,50 @@ def save_error_code(error_code, logger=None):
 
 
 def get_main_pokemon_data():
-    with open(str(mainpokemon_path), "r", encoding="utf-8") as json_file:
-        main_pokemon_datalist = json.load(json_file)
+    main_pokemon_data = mw.ankimon_db.get_main_pokemon()
+    
+    if not main_pokemon_data:
+        return None
 
-    main_pokemon_data = []
-    for main_pokemon_data in main_pokemon_datalist:
-        _name = main_pokemon_data["name"]
-        if (
-            not main_pokemon_data.get("nickname")
-            or main_pokemon_data.get("nickname") is None
-        ):
-            _nickname = None
-        else:
-            _nickname = main_pokemon_data["nickname"]
-        _id = main_pokemon_data["id"]
-        _ability = main_pokemon_data["ability"]
-        _type = main_pokemon_data["type"]
-        _stats = main_pokemon_data["stats"]
-        _attacks = main_pokemon_data["attacks"]
-        _level = main_pokemon_data["level"]
-        _hp_base_stat = main_pokemon_data["stats"]["hp"]
-        _evolutions = search_pokedex(main_pokemon_data["name"], "evos")
-        _xp = main_pokemon_data.get("xp") or main_pokemon_data["stats"].get("xp", 0)
-        _ev = main_pokemon_data["ev"]
-        _iv = main_pokemon_data["iv"]
-        # mainpokemon_battle_stats = mainpokemon_stats
-        _battle_stats = {}
-        for d in [_stats, _iv, _ev]:
-            for key, value in d.items():
-                _battle_stats[key] = value
-        # mainpokemon_battle_stats += mainpokemon_iv
-        # mainpokemon_battle_stats += mainpokemon_ev
-        _hp = calculate_hp(_hp_base_stat, _level, _ev, _iv)
-        _current_hp = _hp
-        _base_experience = main_pokemon_data["base_experience"]
-        _growth_rate = main_pokemon_data["growth_rate"]
-        _gender = main_pokemon_data["gender"]
+    _name = main_pokemon_data["name"]
+    if not main_pokemon_data.get('nickname') or main_pokemon_data.get('nickname') is None:
+        _nickname = None
+    else:
+        _nickname = main_pokemon_data['nickname']
+    _id = main_pokemon_data["id"]
+    _ability = main_pokemon_data["ability"]
+    _type = main_pokemon_data["type"]
+    _stats = main_pokemon_data.get("stats") or main_pokemon_data.get("base_stats", {})
+    _attacks = main_pokemon_data["attacks"]
+    _level = main_pokemon_data["level"]
+    _hp_base_stat = _stats.get("hp", 1)
+    _growth_rate = main_pokemon_data["growth_rate"]
+    _base_experience = main_pokemon_data["base_experience"]
+    _ev = main_pokemon_data["ev"]
+    _iv = main_pokemon_data["iv"]
+    _gender = main_pokemon_data["gender"]
+    _shiny = main_pokemon_data.get("shiny", False)
+    _individual_id = main_pokemon_data.get("individual_id")
+    _pokemon_defeated = main_pokemon_data.get("pokemon_defeated", 0)
+    _current_hp = main_pokemon_data.get("current_hp")
+    _xp = main_pokemon_data.get("xp", 0)
+    _max_moves = main_pokemon_data.get("max_moves", [])
+    _mega = main_pokemon_data.get("mega", False)
+    _everstone = main_pokemon_data.get("everstone", False)
+    _friendship = main_pokemon_data.get("friendship", 0)
+    _held_item = main_pokemon_data.get("held_item")
+    _status = main_pokemon_data.get("status")
 
-        return (
-            _name,
-            _id,
-            _ability,
-            _type,
-            _stats,
-            _attacks,
-            _level,
-            _base_experience,
-            _xp,
-            _hp,
-            _current_hp,
-            _growth_rate,
-            _ev,
-            _iv,
-            _evolutions,
-            _battle_stats,
-            _gender,
-            _nickname,
-        )
+    return {
+        "name": _name, "nickname": _nickname, "id": _id, "ability": _ability,
+        "type": _type, "stats": _stats, "attacks": _attacks,
+        "level": _level, "hp": _hp_base_stat, "growth_rate": _growth_rate,
+        "base_experience": _base_experience, "ev": _ev, "iv": _iv,
+        "gender": _gender, "shiny": _shiny, "individual_id": _individual_id,
+        "pokemon_defeated": _pokemon_defeated, "current_hp": _current_hp, "xp": _xp,
+        "max_moves": _max_moves, "mega": _mega, "everstone": _everstone,
+        "friendship": _friendship, "held_item": _held_item, "status": _status
+    }
 
 
 def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
@@ -755,20 +715,8 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
 
 
 def load_collected_pokemon_ids() -> set:
-    if not mypokemon_path.is_file():
-        return set()
-
-    collected_pokemon_ids = set()
-    try:
-        with open(mypokemon_path, "r", encoding="utf-8") as f:
-            collection = json.load(f)
-            collected_pokemon_ids = {pkmn["id"] for pkmn in collection}
-    except Exception as e:
-        show_warning_with_traceback(
-            exception=e, message="Error loading collection cache"
-        )
-
-    return collected_pokemon_ids
+    """Loads all captured pokemon IDs from the database."""
+    return mw.ankimon_db.get_all_pokemon_ids()
 
 
 def limit_ev_yield(
@@ -998,46 +946,20 @@ def substract_item_from_itembag(item: str, quantity: int = 1) -> None:
             - Item does not have a 'quantity' field.
             - Insufficient quantity to subtract.
     """
-    with open(itembag_path, "r", encoding="utf-8") as f:
-        items_list = json.load(f)
-
-    # First, we check if the item is in the item bag
-    if item not in [item_data["item"] for item_data in items_list]:
+    db = mw.ankimon_db
+    
+    existing = db.get_item(item)
+    if not existing:
         mw.logger.log_and_showinfo("error", f"Could not find {item} in the item bag.")
         return
-
-    # Now that we know the item is in the item bag, we retrieve its index
-    index = None
-    for i in range(len(items_list)):
-        if items_list[i]["item"] == item:
-            index = i
-            break
-
-    # Now we check whether we can actually substract the chosen amount
-    if items_list[index].get("quantity") is None:
-        mw.logger.log_and_showinfo(
-            "error",
-            f"{item} does not seem to have a 'quantity' attribute in the item bag.",
-        )
+    
+    current_qty = existing["quantity"]
+    if current_qty < quantity:
+        mw.logger.log_and_showinfo("error", f"There are {current_qty} instances of {item} in the item bag, but you are trying to remove {quantity}.")
         return
-    if items_list[index].get("quantity") < quantity:
-        mw.logger.log_and_showinfo(
-            "error",
-            f"There are {items_list[index].get('quantity')} instances of {item} in the item bag, but you are trying to remove {quantity}.",
-        )
-        return
-
-    # Finally, we substract the given amount
-    if items_list[index].get("quantity") == quantity:
-        del items_list[index]
-        with open(str(itembag_path), "w") as f:
-            json.dump(items_list, f, indent=2)
-        return
-    if items_list[index].get("quantity") > quantity:
-        items_list[index]["quantity"] -= quantity
-        with open(str(itembag_path), "w") as f:
-            json.dump(items_list, f, indent=2)
-        return
+    
+    # Use negative delta to decrease quantity
+    db.update_item_quantity(item, -quantity)
 
 
 def png_to_base64(path: str) -> str:

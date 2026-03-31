@@ -18,7 +18,6 @@ import uuid
 
 from aqt import mw
 
-from .pyobj.collection_dialog import PokemonCollectionDialog
 from .pyobj.ankimon_tracker import AnkimonTracker
 from .pyobj.settings import Settings
 from .pyobj.settings_window import SettingsWindow
@@ -28,8 +27,7 @@ from .pyobj.trainer_card import TrainerCard
 from .pyobj.translator import Translator
 from .pyobj.test_window import TestWindow
 from .pyobj.achievement_window import AchievementWindow
-from .pyobj.data_handler import DataHandler
-from .pyobj.data_handler_window import DataHandlerWindow
+from .pyobj.settings_window import SettingsWindow
 from .pyobj.ankimon_tracker_window import AnkimonTrackerWindow
 from .pyobj.ankimon_shop import PokemonShopManager
 from .pokedex.pokedex_obj import Pokedex
@@ -38,6 +36,7 @@ from .pyobj.evolution_window import EvoWindow
 from .pyobj.starter_window import StarterWindow
 from .pyobj.item_window import ItemWindow
 from .pyobj.pc_box import PokemonPC
+from .pyobj.database_manager import get_db
 from .gui_entities import (
     License,
     Credits,
@@ -52,6 +51,9 @@ from .resources import addon_dir, itembag_path
 
 # start loggerobject for Ankimon
 logger = ShowInfoLogger()
+
+# Initialize the database (this also runs migrations on first startup)
+ankimon_db = get_db(logger)
 
 # Create the Settings object
 settings_obj = Settings()
@@ -72,6 +74,7 @@ mw.settings_ankimon = settings_window
 mw.logger = logger
 mw.translator = translator
 mw.settings_obj = settings_obj
+mw.ankimon_db = ankimon_db  # Database singleton for global access
 
 main_pokemon, mainpokemon_empty = update_main_pokemon()
 
@@ -151,9 +154,6 @@ test_window = TestWindow(
 
 achievement_bag = AchievementWindow()
 
-data_handler_obj = DataHandler()
-data_handler_window = DataHandlerWindow(data_handler=data_handler_obj)
-
 # Initialize the Pokémon Shop Manager
 shop_manager = PokemonShopManager(
     logger=logger,
@@ -198,15 +198,6 @@ item_window = ItemWindow(  # Create an instance of the MainWindow
     achievements=achievements,
     starter_window=starter_window,
     evo_window=evo_window,
-)
-
-pokecollection_win = PokemonCollectionDialog(
-    logger=logger,
-    translator=translator,
-    reviewer_obj=reviewer_obj,
-    test_window=test_window,
-    settings_obj=settings_obj,
-    main_pokemon=main_pokemon,
 )
 
 pokemon_pc = PokemonPC(

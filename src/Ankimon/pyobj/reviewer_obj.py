@@ -63,19 +63,12 @@ class Reviewer_Manager:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
             return
 
-        # Check if the enemy pokemon is in the user's collection
+        # Check if the enemy pokemon is in the user's collection (optimized query)
         enemy_name_lower = self.enemy_pokemon.name.lower()
         is_pokemon_owned = False
         try:
-            addon_package = mw.addonManager.addonFromModule(__name__)
-            collection_path = os.path.join(mw.addonManager.addonsFolder(), addon_package, "user_files", "mypokemon.json")
-            if os.path.exists(collection_path):
-                with open(collection_path, 'r', encoding='utf-8') as f:
-                    my_pokemon_list = json.load(f)
-                for p in my_pokemon_list:
-                    if p.get('name', '').lower() == enemy_name_lower:
-                        is_pokemon_owned = True
-                        break
+            db = mw.ankimon_db
+            is_pokemon_owned = db.has_pokemon_by_name(enemy_name_lower)
         except Exception:
             pass
 

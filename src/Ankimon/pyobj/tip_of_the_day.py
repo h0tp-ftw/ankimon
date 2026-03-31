@@ -6,7 +6,7 @@ from aqt import mw
 from aqt.qt import *
 
 from ..pyobj.settings import Settings
-from ..resources import rate_path
+
 
 class TipOfTheDayDialog(QDialog):
     def __init__(self, tip_text, tip_number, total_tips, parent=None):
@@ -66,12 +66,7 @@ def show_tip_of_the_day():
         return
 
     # Check if the addon has been rated
-    try:
-        with open(rate_path, "r", encoding="utf-8") as f:
-            rate_data = json.load(f)
-            if not rate_data.get("rate_this", False):
-                return
-    except (FileNotFoundError, json.JSONDecodeError):
+    if mw.ankimon_db.get_user_data("rate_this") is not True:
         return
 
     tips_path = Path(__file__).parent.parent / "addon_files" / "tips.json"

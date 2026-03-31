@@ -5,7 +5,7 @@ from typing import Optional
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..resources import mainpokemon_path
 from ..pyobj.pokemon_obj import PokemonObject
-from ..singletons import ShowInfoLogger, Translator
+from aqt import mw
 
 # default values to fall back in case of load error
 MAIN_POKEMON_DEFAULT = {
@@ -33,24 +33,10 @@ MAIN_POKEMON_DEFAULT = {
 
 def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
     """
-    Updates or initializes the main Pokémon object using data from a JSON file.
-
-    This function attempts to read the main Pokémon's stats from a JSON file
-    located at `mainpokemon_path`. If the file exists and contains valid data,
-    the given `main_pokemon` object is updated with those stats. If the file is
-    missing, empty, or contains invalid JSON, a new `PokemonObject` is created
-    using default values.
-
-    Args:
-        main_pokemon (Optional[PokemonObject]): An optional existing Pokémon object
-            to update. If None, a new object is created using `MAIN_POKEMON_DEFAULT`.
-
-    Returns:
-        tuple:
-            PokemonObject: The updated or newly created Pokémon object.
-            bool: True if the file was empty or invalid (i.e., default was used),
-                  False if the object was successfully updated with file data.
+    Updates or initializes the main Pokémon object using data from the database.
+    Falls back to JSON file for backwards compatibility.
     """
+    db = mw.ankimon_db
 
     if main_pokemon is None:
         main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
@@ -60,11 +46,32 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
         main_pokemon.xp = 0
 
     mainpokemon_empty = True
+    
+    # Try database first
+    if db.is_migrated():
+        main_pokemon_data = db.get_main_pokemon()
+        if main_pokemon_data:
+            mainpokemon_empty = False
+            pokemon_name = search_pokedex_by_id(main_pokemon_data["id"])
+            main_pokemon_data["base_stats"] = search_pokedex(pokemon_name, "baseStats")
+            if "stats" in main_pokemon_data:
+                del main_pokemon_data["stats"]
+            main_pokemon.update_stats(**main_pokemon_data)
+            
+            max_hp = main_pokemon.calculate_max_hp()
+            main_pokemon.max_hp = max_hp
+            if main_pokemon_data.get("current_hp", max_hp) > max_hp:
+                main_pokemon_data["current_hp"] = max_hp
+            main_pokemon.hp = main_pokemon_data.get("current_hp", max_hp)
+            return main_pokemon, mainpokemon_empty
+        else:
+            return PokemonObject(**MAIN_POKEMON_DEFAULT), mainpokemon_empty
+    
+    # Fallback to JSON for backwards compatibility
     if mainpokemon_path.is_file():
         with open(mainpokemon_path, "r", encoding="utf-8") as mainpokemon_json:
             try:
                 main_pokemon_data = json.load(mainpokemon_json)
-                # if main pokemon is successfully loaded make empty false
                 if main_pokemon_data:
                     mainpokemon_empty = False
                     pokemon_name = search_pokedex_by_id(main_pokemon_data[0]["id"])
@@ -90,7 +97,6 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
                 if main_pokemon_data:
                     main_pokemon.hp = main_pokemon_data[0].get("current_hp", max_hp)
                 return main_pokemon, mainpokemon_empty
-
             except Exception:
                 main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
                 return main_pokemon, mainpokemon_empty
@@ -99,44 +105,14 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
         return main_pokemon, mainpokemon_empty
 
 
+
 def save_main_pokemon(main_pokemon: PokemonObject):
-    """
-    Saves the main Pokémon object to the mainpokemon.json file.
-    Args:
-        main_pokemon (PokemonObject): The Pokémon object to save.
-    """
-    # If the object has a to_dict method, use it; otherwise, use __dict__
-    if hasattr(main_pokemon, "to_dict"):
+    """Saves the main Pokémon object to the database."""
+    db = mw.ankimon_db
+    
+    if hasattr(main_pokemon, 'to_dict'):
         data = main_pokemon.to_dict()
     else:
         data = main_pokemon.__dict__
-    # Write as a single-element list for compatibility
-    with open(mainpokemon_path, "w", encoding="utf-8") as f:
-        json.dump([data], f, indent=4)
-
-
-def update_main_pokemon_from_dict(pokemon_data: dict) -> tuple:
-    """
-    Update the main Pokémon JSON file with the provided data.
-
-    Attempts to persist the given Pokémon data. If writing fails,
-    a default Pokémon object is returned.
-
-    Args:
-        pokemon_data: Dictionary containing Pokémon data.
-
-    Raises:
-        FileNotFoundError: If the target file path is invalid.
-        TypeError: If pokemon_data contains non-serializable values.
-
-    Returns:
-        A tuple containing:
-            - The resulting PokemonObject Instance.
-            - A boolean indicating whether the file update succeeded.
-    """
-    try:
-        with open(mainpokemon_path, "w", encoding="utf-8") as file:
-            json.dump([pokemon_data], file, indent=2)
-        return PokemonObject(**pokemon_data), True
-    except (FileNotFoundError, TypeError):
-        return PokemonObject(**MAIN_POKEMON_DEFAULT), False
+    
+    db.save_main_pokemon(data)

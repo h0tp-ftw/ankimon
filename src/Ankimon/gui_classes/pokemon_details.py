@@ -885,61 +885,46 @@ def forget_attack_details_window(
 def remember_attack(
     individual_id: str, attacks: list[str], new_attack: str, logger: ShowInfoLogger
 ):
+    """Learn a new attack using database."""
+    db = mw.ankimon_db
+    
     if new_attack in attacks:
         logger.log_and_showinfo("warning", "Your pokemon already knows this move!")
         return
-    if not mainpokemon_path.is_file():
-        logger.log_and_showinfo("warning", "Missing Mainpokemon Data !")
+
+    pokemon_data = db.get_pokemon(individual_id)
+    if not pokemon_data:
+        logger.log_and_showinfo("warning", "Pokemon not found!")
         return
 
-    with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-        mypokemondata = json.load(output_file)
-    for pokemon_data in mypokemondata:
-        # Use individual_id for matching
-        if pokemon_data["individual_id"] != individual_id:
-            continue
-
-        attacks = pokemon_data["attacks"]
-        if new_attack:
-            msg = ""
-            msg += f"Your {pokemon_data['name'].capitalize()} can learn a new attack !"
-            if len(attacks) < 4:
-                attacks.append(new_attack)
-                msg += f"\n Your {pokemon_data['name'].capitalize()} has learned {new_attack} !"
-                logger.log_and_showinfo("info", f"{msg}")
+    attacks = pokemon_data["attacks"]
+    if new_attack:
+        msg = f"Your {pokemon_data['name'].capitalize()} can learn a new attack !"
+        if len(attacks) < 4:
+            attacks.append(new_attack)
+            msg += f"\n Your {pokemon_data['name'].capitalize()} has learned {new_attack} !"
+            logger.log_and_showinfo("info", f"{msg}")
+        else:
+            dialog = AttackDialog(attacks, new_attack)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                selected_attack = dialog.selected_attack
+                try:
+                    index_to_replace = attacks.index(selected_attack)
+                    attacks[index_to_replace] = new_attack
+                    logger.log_and_showinfo("info", f"Replaced '{selected_attack}' with '{new_attack}'")
+                except ValueError:
+                    logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
             else:
-                dialog = AttackDialog(attacks, new_attack)
-                if dialog.exec() == QDialog.DialogCode.Accepted:
-                    selected_attack = dialog.selected_attack
-                    index_to_replace = None
-                    for index, attack in enumerate(attacks):
-                        if attack == selected_attack:
-                            index_to_replace = index
-                    if index_to_replace is not None:
-                        attacks[index_to_replace] = new_attack
-                        logger.log_and_showinfo(
-                            "info", f"Replaced '{selected_attack}' with '{new_attack}'"
-                        )
-                    else:
-                        logger.log_and_showinfo(
-                            "info", f"{new_attack} will be discarded."
-                        )
-        pokemon_data["attacks"] = attacks
+                logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
+    
+    pokemon_data["attacks"] = attacks
+    db.save_pokemon(pokemon_data)
 
-        with open(str(mypokemon_path), "w") as output_file:
-            json.dump(mypokemondata, output_file, indent=2)
-
-        # Update mainpokemon file if necessary
-        with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-            main_pokemon_data = json.load(json_file)
-        for mainpkmndata in main_pokemon_data:
-            if mainpkmndata["individual_id"] == individual_id:
-                mainpkmndata["attacks"] = attacks
-                break
-        with open(str(mainpokemon_path), "w") as json_file:
-            json.dump(main_pokemon_data, json_file, indent=2)
-
-        break
+    # Also update main_pokemon if this is the main pokemon
+    main_pokemon = db.get_main_pokemon()
+    if main_pokemon and main_pokemon.get("individual_id") == individual_id:
+        main_pokemon["attacks"] = attacks
+        db.save_main_pokemon(main_pokemon)
 
 
 def forget_attack(
@@ -948,60 +933,35 @@ def forget_attack(
     attack_to_forget: str,
     logger: ShowInfoLogger,
 ) -> None:
-    """
-    Forgets a Pokemon's move. This is done by erasing the chosen move from the list
-    of attacks known by the Pokemon and then saving that new Pokemon data in the main
-    Pokemon data file.
+    """Forget a move using database."""
+    db = mw.ankimon_db
 
-    Args:
-        id (int): The Pokemon's identifier.
-        attacks (list[str]): The Pokemon's move set.
-        attack_to_forget (str): Name of the move to forget.
-        logger: Logger object that can log info and display windows containing messages.
-
-    Returns:
-        None
-    """
-
-    if not mainpokemon_path.is_file():
-        logger.log_and_showinfo("warning", "Missing Mainpokemon Data !")
+    pokemon_data = db.get_pokemon(individual_id)
+    if not pokemon_data:
+        logger.log_and_showinfo("warning", "Pokemon not found!")
         return
 
-    with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-        mypokemondata = json.load(output_file)
-    for pokemon_data in mypokemondata:
-        # Use individual_id for matching
-        if pokemon_data["individual_id"] != individual_id:
-            continue
-
-        attacks = pokemon_data["attacks"]
-        if attack_to_forget in attacks:
-            if len(attacks) > 1:
-                attacks.remove(attack_to_forget)
-                msg = f"Your {pokemon_data['name'].capitalize()} forgot {attack_to_forget}."
-                logger.log_and_showinfo("info", f"{msg}")
-            else:  # If we reach here, it means the Pokemon only has 1 move left. We can't allow this move to be forgotten
-                msg = f"Your {pokemon_data['name'].capitalize()} only knows this move, you can't forget it ! "
-                logger.log_and_showinfo("info", f"{msg}")
-        else:
-            msg = f"Your {pokemon_data['name'].capitalize()} does not know {attack_to_forget}."
+    attacks = pokemon_data["attacks"]
+    if attack_to_forget in attacks:
+        if len(attacks) > 1:
+            attacks.remove(attack_to_forget)
+            msg = f"Your {pokemon_data['name'].capitalize()} forgot {attack_to_forget}."
             logger.log_and_showinfo("info", f"{msg}")
-        pokemon_data["attacks"] = attacks
+        else:
+            msg = f"Your {pokemon_data['name'].capitalize()} only knows this move, you can't forget it!"
+            logger.log_and_showinfo("info", f"{msg}")
+    else:
+        msg = f"Your {pokemon_data['name'].capitalize()} does not know {attack_to_forget}."
+        logger.log_and_showinfo("info", f"{msg}")
+    
+    pokemon_data["attacks"] = attacks
+    db.save_pokemon(pokemon_data)
 
-        with open(str(mypokemon_path), "w") as output_file:
-            json.dump(mypokemondata, output_file, indent=2)
-
-        # Update mainpokemon file if necessary
-        with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
-            main_pokemon_data = json.load(json_file)
-        for mainpkmndata in main_pokemon_data:
-            if mainpkmndata["individual_id"] == individual_id:
-                mainpkmndata["attacks"] = attacks
-                break
-        with open(str(mainpokemon_path), "w") as json_file:
-            json.dump(main_pokemon_data, json_file, indent=2)
-
-        break
+    # Also update main_pokemon if this is the main pokemon
+    main_pokemon = db.get_main_pokemon()
+    if main_pokemon and main_pokemon.get("individual_id") == individual_id:
+        main_pokemon["attacks"] = attacks
+        db.save_main_pokemon(main_pokemon)
 
 
 def tm_attack_details_window(
@@ -1048,9 +1008,11 @@ def tm_attack_details_window(
     tm_learnset = pokemon_tm_learnset.get(
         pokemon_name, []
     )  # TMs that can be learnt by the Pokemon
-    with open(itembag_path, "r", encoding="utf-8") as json_file:
-        itembag_list = json.load(json_file)
-    owned_tms = [item["item"] for item in itembag_list if item.get("type") == "TM"]
+    
+    # Get owned TMs from database
+    db = mw.ankimon_db
+    all_items = db.get_all_items()
+    owned_tms = [item["item_name"] for item in all_items if item.get("extra_data", {}).get("type") == "TM"]
     attack_set = [tm for tm in tm_learnset if tm in owned_tms]
 
     # Loop through the list of attacks and add them to the HTML content
@@ -1114,40 +1076,21 @@ def rename_pkmn(
     logger: ShowInfoLogger,
     refresh_callback,
 ):
+    """Rename a pokemon using database."""
+    db = mw.ankimon_db
+    
     try:
-        # Load the captured Pokémon data
-        with open(mypokemon_path, "r", encoding="utf-8") as json_file:
-            captured_pokemon_data = json.load(json_file)
-            pokemon = None
-
-            # Find the Pokémon by individual_id
-            for index, pokemon_data in enumerate(captured_pokemon_data):
-                if pokemon_data["individual_id"] == individual_id:
-                    pokemon = pokemon_data
-                    break
-
-            if pokemon is not None:
-                # Update the nickname
-                pokemon["nickname"] = nickname
-                # Reflect the change in the output JSON file
-                with open(str(mypokemon_path), "r", encoding="utf-8") as output_file:
-                    mypokemondata = json.load(output_file)
-                    # Update the specified Pokémon's data
-                    for idx, data in enumerate(mypokemondata):
-                        if data["individual_id"] == individual_id:
-                            mypokemondata[idx] = pokemon
-                            break
-                # Save the modified data
-                with open(str(mypokemon_path), "w") as output_file:
-                    json.dump(mypokemondata, output_file, indent=2)
-                # Logging and UI update
-                logger.log_and_showinfo(
-                    "info",
-                    f"Your {pkmn_name.capitalize()} has been renamed to {nickname}!",
-                )
-                refresh_callback()
-            else:
-                showWarning("Pokémon not found.")
+        pokemon = db.get_pokemon(individual_id)
+        if pokemon is not None:
+            pokemon["nickname"] = nickname
+            db.save_pokemon(pokemon)
+            logger.log_and_showinfo(
+                "info",
+                f"Your {pkmn_name.capitalize()} has been renamed to {nickname}!",
+            )
+            refresh_callback()
+        else:
+            showWarning("Pokémon not found.")
     except Exception as e:
         show_warning_with_traceback(
             parent=mw, exception=e, message=f"An error occurred: {e}"
@@ -1157,6 +1100,8 @@ def rename_pkmn(
 def PokemonFree(
     individual_id: str, name: str, logger: ShowInfoLogger, refresh_callback
 ):
+    """Release a pokemon using database."""
+    
     # Confirmation dialog
     reply = QMessageBox.question(
         None,
@@ -1170,68 +1115,38 @@ def PokemonFree(
         logger.log_and_showinfo("info", "Release cancelled.")
         return
 
-    # Check if the Pokémon is in the main Pokémon file
-    with open(mainpokemon_path, "r", encoding="utf-8") as file:
-        pokemon_data = json.load(file)
-
-    for pokemon in pokemon_data:
-        if pokemon["individual_id"] == individual_id:
-            logger.log_and_showinfo("info", "You can't free your Main Pokémon!")
-            return  # Exit the function if it's a Main Pokémon
-
-    # Load Pokémon list from 'mypokemon_path' file
-    try:
-        with open(mypokemon_path, "r", encoding="utf-8") as file:
-            pokemon_list = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        logger.log_and_showinfo("info", "Error: Could not load Pokémon data.")
+    # Check if the Pokémon is the main pokemon
+    main_pokemon = mw.ankimon_db.get_main_pokemon()
+    if main_pokemon and main_pokemon.get("individual_id") == individual_id:
+        logger.log_and_showinfo("info", "You can't free your Main Pokémon!")
         return
 
-    # Find the position of the Pokémon with the given individual_id
-    position = -1
-    pokemon_to_release = None
-    for idx, pokemon in enumerate(pokemon_list):
-        if pokemon.get("individual_id") == individual_id:
-            position = idx
-            pokemon_to_release = pokemon
-            break
-
-    # If the Pokémon was found, save its data to history before removing
-    if position != -1:
-        # Save important stats to history before release
-        from datetime import datetime
-
-        history_data = {
-            "id": pokemon_to_release.get("id"),
-            "name": pokemon_to_release.get("name"),
-            "shiny": pokemon_to_release.get("shiny", False),
-            "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
-            "individual_id": pokemon_to_release.get("individual_id"),
-            "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-        # Load existing history or create new
-        history_list = []
-        if pokemon_history_path.is_file():
-            try:
-                with open(pokemon_history_path, "r", encoding="utf-8") as file:
-                    history_list = json.load(file)
-            except (json.JSONDecodeError, Exception):
-                history_list = []
-
-        # Add to history (only save essential stats, not full Pokémon data)
-        history_list.append(history_data)
-
-        # Save history
-        with open(pokemon_history_path, "w", encoding="utf-8") as file:
-            json.dump(history_list, file, indent=2)
-
-        # Now remove from active collection
-        pokemon_list.pop(position)
-        with open(mypokemon_path, "w") as file:
-            json.dump(pokemon_list, file, indent=2)
-        logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")
-    else:
+    # Get the pokemon from database
+    pokemon_to_release = mw.ankimon_db.get_pokemon(individual_id)
+    if not pokemon_to_release:
         logger.log_and_showinfo("info", "No Pokémon found with the specified ID.")
+        refresh_callback()
+        return
+
+    # Save important stats to history before release
+    from datetime import datetime
+    history_data = {
+        "id": pokemon_to_release.get("id"),
+        "name": pokemon_to_release.get("name"),
+        "shiny": pokemon_to_release.get("shiny", False),
+        "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
+        "individual_id": pokemon_to_release.get("individual_id"),
+        "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    # Add to history via database
+    if mw.ankimon_db.add_to_history(history_data):
+        pass  # Success
+    else:
+        logger.log_and_showinfo("error", f"Failed to add {name} to history.")
+    
+    # Delete from database
+    mw.ankimon_db.delete_pokemon(individual_id)
+    logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")
 
     refresh_callback()

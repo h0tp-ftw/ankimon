@@ -1,14 +1,13 @@
 from ..resources import trainer_sprites_path, mypokemon_path, team_pokemon_path
 from ..functions.trainer_functions import find_trainer_rank
 from ..functions.badges_functions import get_achieved_badges
+from aqt import mw
 from aqt.utils import showWarning, showInfo
 import math
 import json
 from .ankimon_leaderboard import (
     sync_data_to_leaderboard,
-    get_unique_pokemon,
-    get_total_pokemon,
-    get_shinies,
+    show_api_key_dialog
 )
 
 
@@ -74,10 +73,11 @@ class TrainerCard:
             "trainerRank": f"{league}",  # Example rank
             "trainerName": trainer_name,  # Example trainer name
             "level": max(1, int(settings_obj.get("trainer.level"))),
-            "pokedex": get_unique_pokemon(),  # Example Pokedex
-            "caughtPokemon": get_total_pokemon(),  # Example Pokedex
+            "pokedex": mw.ankimon_db.execute("SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon WHERE pokedex_id IS NOT NULL").fetchone()[0],
+            "caughtPokemon": mw.ankimon_db.get_pokemon_count(),
+            "trainerLevel": self.level,  # Add a logic for trainer's level if applicable
             "highestLevel": highest_pokemon_level,  # Example highest level
-            "shinies": f"{get_shinies()}",  # Example shinies
+            "shinies": f"{mw.ankimon_db.get_shiny_count()}",  # Example shinies
             "cash": cash,  # Example cash,
             "trainerSprite": f"{settings_obj.get('trainer.sprite') + '.png'}",
         }
@@ -93,44 +93,34 @@ class TrainerCard:
         return len(get_achieved_badges())
 
     def get_highest_level_pokemon(self):
-        """Method to find the name of the highest-level Pokémon from the mypokemon_path."""
+        """Method to find the name of the highest-level Pokémon from the database."""
         try:
-            # Read the Pokémon data from the file
-            with open(mypokemon_path, "r", encoding="utf-8") as file:
-                pokemon_data = json.load(file)
+            db = mw.ankimon_db
+            cursor = db.execute("SELECT name, level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1")
+            row = cursor.fetchone()
 
-            if not pokemon_data:
+            if not row:
                 return None  # Return None if the data is empty
 
-            # Find the Pokémon with the highest level and return its name
-            highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
-            return f"{highest_pokemon.get('name', 'None')} (Level {highest_pokemon.get('level', 0)})"
-        except FileNotFoundError:
-            showInfo(f"File not found: {mypokemon_path}")
-            return "None"
-        except json.JSONDecodeError:
-            showInfo(f"Error decoding JSON from file: {mypokemon_path}")
+            return f"{row['name']} (Level {row['level']})"
+        except Exception as e:
+            showInfo(f"Error getting highest level pokemon: {e}")
             return "None"
 
     def highest_pokemon_level(self):
-        """Method to find the name of the highest-level Pokémon from the mypokemon_path."""
+        """Method to find the highest level from all Pokémon in the database."""
         try:
-            # Read the Pokémon data from the file
-            with open(mypokemon_path, "r", encoding="utf-8") as file:
-                pokemon_data = json.load(file)
+            db = mw.ankimon_db
+            cursor = db.execute("SELECT level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1")
+            row = cursor.fetchone()
 
-            if not pokemon_data:
-                return 0  # Return None if the data is empty
+            if not row:
+                return int(0)  # Return 0 if the data is empty
 
-            # Find the Pokémon with the highest level and return its name
-            highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
-            return int(highest_pokemon.get("level", 0))
-        except FileNotFoundError:
-            showInfo(f"File not found: {mypokemon_path}")
-            return 0
-        except json.JSONDecodeError:
-            showInfo(f"Error decoding JSON from file: {mypokemon_path}")
-            return 0
+            return int(row["level"])
+        except Exception as e:
+            showInfo(f"Error getting highest level: {e}")
+            return int(0)
 
     def add_achievement(self, achievement):
         """Method to add a new achievement"""
@@ -139,17 +129,14 @@ class TrainerCard:
     def get_team(self):
         """Method to get the trainer's active team (team as a string)"""
         try:
-            with open(team_pokemon_path, "r", encoding="utf-8") as f:
-                team_data = json.load(f)
+            team_data = mw.ankimon_db.get_team()
+            
             if not team_data:
                 return "No Team Set"
 
-            # Optimization: Load mypokemon data once
-            try:
-                with open(mypokemon_path, "r", encoding="utf-8") as f:
-                    my_pokemon_data = json.load(f)
-            except Exception:
-                my_pokemon_data = []
+            # Use new DB method for targeted fetch
+            ids_to_fetch = [str(t.get("individual_id")) for t in team_data if t.get("individual_id")]
+            my_pokemon_data = mw.ankimon_db.get_pokemons_by_individual_ids(ids_to_fetch)
 
             # Create lookup dict
             pokemon_map = {str(p.get("individual_id")): p for p in my_pokemon_data}

@@ -153,263 +153,32 @@ class ImprovedPokemonDataSync(QDialog):
             else:
                 return str(value)[:50] + ("..." if len(str(value)) > 50 else "")
 
-        def compare_dicts(local_dict: Dict, remote_dict: Dict, path: str = "") -> Tuple[List[str], List[str]]:
-            """Compare two dictionaries and return differences with specific key details."""
+        def compare_databases(filename: str) -> Tuple[List[str], List[str]]:
+            """Returns stats-based comparison for the database."""
             local_lines = []
             remote_lines = []
-
-            all_keys = set(local_dict.keys()) | set(remote_dict.keys())
-
-            for key in sorted(all_keys):
-                current_path = f"{path}.{key}" if path else key
-                local_val = local_dict.get(key, "<MISSING>")
-                remote_val = remote_dict.get(key, "<MISSING>")
-
-                if local_val == "<MISSING>":
-                    local_lines.append(f"  {current_path}: <MISSING>")
-                    remote_lines.append(f"+ {current_path}: {format_value(remote_val)}")
-                elif remote_val == "<MISSING>":
-                    local_lines.append(f"- {current_path}: {format_value(local_val)}")
-                    remote_lines.append(f"  {current_path}: <MISSING>")
-                elif local_val != remote_val:
-                    # Show the actual different values
-                    local_lines.append(f"- {current_path}: {format_value(local_val)}")
-                    remote_lines.append(f"+ {current_path}: {format_value(remote_val)}")
-
-                    # If both are dicts, recursively compare them (but don't double-nest)
-                    if isinstance(local_val, dict) and isinstance(remote_val, dict) and not path:
-                        sub_local, sub_remote = compare_dicts(local_val, remote_val, current_path)
-                        local_lines.extend([f"    {line}" for line in sub_local])
-                        remote_lines.extend([f"    {line}" for line in sub_remote])
-                # Don't show unchanged values
-
-            return local_lines, remote_lines
-
-        def get_pokemon_identifier(pokemon: Dict) -> str:
-            """Get a unique identifier for a Pokemon."""
-            # Try individual_id first (most unique)
-            if 'individual_id' in pokemon and pokemon['individual_id']:
-                return pokemon['individual_id']
-
-            # Fall back to a combination of name, level, and captured_date
-            name = pokemon.get('name', 'Unknown')
-            level = pokemon.get('level', 0)
-            captured = pokemon.get('captured_date', '')
-
-            return f"{name}_L{level}_{captured}"
-
-        def compare_pokemon_lists(local_list: List[Dict], remote_list: List[Dict]) -> Tuple[List[str], List[str]]:
-            """Compare two lists of Pokemon with detailed differences."""
-            local_lines = []
-            remote_lines = []
-
-            # Index by unique identifier
-            local_map = {}
-            remote_map = {}
-
-            for i, pokemon in enumerate(local_list):
-                if isinstance(pokemon, dict):
-                    identifier = get_pokemon_identifier(pokemon)
-                    local_map[identifier] = pokemon
-                else:
-                    local_map[f"invalid_pokemon_{i}"] = pokemon
-
-            for i, pokemon in enumerate(remote_list):
-                if isinstance(pokemon, dict):
-                    identifier = get_pokemon_identifier(pokemon)
-                    remote_map[identifier] = pokemon
-                else:
-                    remote_map[f"invalid_pokemon_{i}"] = pokemon
-
-            all_identifiers = set(local_map.keys()) | set(remote_map.keys())
-
-            local_lines.append(f"Total Pokemon: {len(local_list)}")
-            remote_lines.append(f"Total Pokemon: {len(remote_list)}")
-
-            changes_found = False
-
-            for identifier in sorted(all_identifiers):
-                local_pokemon = local_map.get(identifier)
-                remote_pokemon = remote_map.get(identifier)
-
-                # Get display name
-                if local_pokemon and isinstance(local_pokemon, dict):
-                    display_name = f"{local_pokemon.get('name', 'Unknown')} (L{local_pokemon.get('level', '?')})"
-                elif remote_pokemon and isinstance(remote_pokemon, dict):
-                    display_name = f"{remote_pokemon.get('name', 'Unknown')} (L{remote_pokemon.get('level', '?')})"
-                else:
-                    display_name = identifier[:20] + "..." if len(identifier) > 20 else identifier
-
-                if local_pokemon is None:
-                    remote_lines.append(f"+ {display_name}: (new Pokemon)")
-                    local_lines.append(f"  {display_name}: <MISSING>")
-                    changes_found = True
-                elif remote_pokemon is None:
-                    local_lines.append(f"- {display_name}: (removed Pokemon)")
-                    remote_lines.append(f"  {display_name}: <MISSING>")
-                    changes_found = True
-                elif local_pokemon != remote_pokemon:
-                    # Show what changed in this Pokemon
-                    if isinstance(local_pokemon, dict) and isinstance(remote_pokemon, dict):
-                        local_sub, remote_sub = compare_dicts(local_pokemon, remote_pokemon)
-                        if local_sub or remote_sub:
-                            local_lines.append(f"~ {display_name}: (modified)")
-                            remote_lines.append(f"~ {display_name}: (modified)")
-
-                            # Show specific field differences
-                            max_lines = max(len(local_sub), len(remote_sub))
-                            local_sub.extend(["" ] * (max_lines - len(local_sub)))
-                            remote_sub.extend(["" ] * (max_lines - len(remote_sub)))
-
-                            for l_line, r_line in zip(local_sub, remote_sub):
-                                local_lines.append(f"    {l_line}")
-                                remote_lines.append(f"    {r_line}")
-
-                            changes_found = True
-                    else:
-                        # Non-dict Pokemon (shouldn't happen, but handle it)
-                        local_lines.append(f"- {display_name}: {format_value(local_pokemon)}")
-                        remote_lines.append(f"+ {display_name}: {format_value(remote_pokemon)}")
-                        changes_found = True
-
-            if not changes_found:
-                local_lines = ["No Pokemon differences detected"]
-                remote_lines = ["No Pokemon differences detected"]
-
-            return local_lines, remote_lines
-
-        def compare_item_lists(local_list: List[Dict], remote_list: List[Dict]) -> Tuple[List[str], List[str]]:
-            """Compare two lists of items with detailed differences."""
-            local_lines = []
-            remote_lines = []
-
-            # Index by item name
-            local_map = {item.get('item', f"item_{i}"): item for i, item in enumerate(local_list) if isinstance(item, dict)}
-            remote_map = {item.get('item', f"item_{i}"): item for i, item in enumerate(remote_list) if isinstance(item, dict)}
-
-            all_keys = set(local_map.keys()) | set(remote_map.keys())
-
-            local_lines.append(f"Total items: {len(local_list)}")
-            remote_lines.append(f"Total items: {len(remote_list)}")
-
-            changes_found = False
-
-            for key in sorted(all_keys):
-                local_item = local_map.get(key)
-                remote_item = remote_map.get(key)
-
-                if local_item is None:
-                    remote_lines.append(f"+ {key}: {remote_item.get('quantity', '?')}")
-                    local_lines.append(f"  {key}: <MISSING>")
-                    changes_found = True
-                elif remote_item is None:
-                    local_lines.append(f"- {key}: {local_item.get('quantity', '?')}")
-                    remote_lines.append(f"  {key}: <MISSING>")
-                    changes_found = True
-                elif local_item != remote_item:
-                    # Most likely quantity changed
-                    local_qty = local_item.get('quantity', '?')
-                    remote_qty = remote_item.get('quantity', '?')
-
-                    if local_qty != remote_qty:
-                        local_lines.append(f"- {key}: {local_qty}")
-                        remote_lines.append(f"+ {key}: {remote_qty}")
-                        changes_found = True
-                    else:
-                        # Some other field changed, show full comparison
-                        local_sub, remote_sub = compare_dicts(local_item, remote_item)
-                        if local_sub or remote_sub:
-                            local_lines.append(f"~ {key}: (other changes)")
-                            remote_lines.append(f"~ {key}: (other changes)")
-
-                            for l_line, r_line in zip(local_sub, remote_sub):
-                                local_lines.append(f"    {l_line}")
-                                remote_lines.append(f"    {r_line}")
-
-                            changes_found = True
-
-            if not changes_found:
-                local_lines = ["No item differences detected"]
-                remote_lines = ["No item differences detected"]
-
-            return local_lines, remote_lines
-
-        def compare_simple_lists(local_list: List, remote_list: List) -> Tuple[List[str], List[str]]:
-            """Compare two simple lists with specific differences."""
-            local_set = set(str(item) for item in local_list)
-            remote_set = set(str(item) for item in remote_list)
-
-            local_lines = []
-            remote_lines = []
-
-            # Items only in local
-            only_local = local_set - remote_set
-            for item in sorted(only_local):
-                local_lines.append(f"- {item}")
-                remote_lines.append("  <removed>")
-
-            # Items only in remote
-            only_remote = remote_set - local_set
-            for item in sorted(only_remote):
-                local_lines.append("  <added>")
-                remote_lines.append(f"+ {item}")
-
-            # Show counts for context
-            if only_local or only_remote:
-                local_lines.insert(0, f"Total items: {len(local_list)}")
-                remote_lines.insert(0, f"Total items: {len(remote_list)}")
-            else:
-                local_lines = ["No list differences detected"]
-                remote_lines = ["No list differences detected"]
-
+            
+            # Since it's a binary DB, we show stats
+            db = mw.ankimon_db
+            local_stats = db.get_stats()
+            
+            # We don't have an easy way to 'query' the remote DB without loading it
+            # For now, we show local stats and acknowledge the file difference
+            local_lines.append(f"Pokemon: {local_stats.get('pokemon', 0)}")
+            local_lines.append(f"Items: {local_stats.get('items', 0)}")
+            local_lines.append(f"History: {local_stats.get('history', 0)}")
+            
+            remote_lines.append("(Database stats comparisons require sync)")
+            remote_lines.append("(File size or hash difference detected)")
+            
             return local_lines, remote_lines
 
         def detect_structure_and_compare(local_data: Any, remote_data: Any, filename: str) -> Tuple[List[str], List[str]]:
             """Detect the data structure and apply appropriate comparison."""
-
-            # Handle None/missing data cases
-            if local_data is None and remote_data is None:
-                return ["Both files are empty"], ["Both files are empty"]
-            elif local_data is None:
-                return ["Local file is empty"], [f"Remote has data: {type(remote_data).__name__}"]
-            elif remote_data is None:
-                return [f"Local has data: {type(local_data).__name__}"], ["Remote file is empty"]
-
-            # Both are lists
-            if isinstance(local_data, list) and isinstance(remote_data, list):
-                # Special handling for Pokemon files
-                if filename in ['mypokemon.json', 'mainpokemon.json']:
-                    return compare_pokemon_lists(local_data, remote_data)
-
-                # Special handling for items
-                elif filename == 'items.json':
-                    if (local_data and isinstance(local_data[0], dict) and 'item' in local_data[0]) or \
-                    (remote_data and isinstance(remote_data[0], dict) and 'item' in remote_data[0]):
-                        return compare_item_lists(local_data, remote_data)
-
-                # Fall back to simple list comparison
-                return compare_simple_lists(local_data, remote_data)
-
-            # Both are dictionaries
-            elif isinstance(local_data, dict) and isinstance(remote_data, dict):
-                return compare_dicts(local_data, remote_data)
-
-            # Different types or simple values
-            else:
-                local_lines = [f"Type: {type(local_data).__name__}"]
-                remote_lines = [f"Type: {type(remote_data).__name__}"]
-
-                if local_data is not None:
-                    local_lines.append(f"- Value: {format_value(local_data)}")
-                else:
-                    local_lines.append("- Value: <no data>")
-
-                if remote_data is not None:
-                    remote_lines.append(f"+ Value: {format_value(remote_data)}")
-                else:
-                    remote_lines.append("+ Value: <no data>")
-
-                return local_lines, remote_lines
+            if filename == 'ankimon.db':
+                return compare_databases(filename)
+            
+            return ["(Settings file)"], ["(Settings file)"]
 
         # Main display logic
         local_content = []
@@ -595,14 +364,8 @@ class AnkimonDataSync:
 
     # Files to sync and their locations
     SYNC_FILES = {
-        "mypokemon.json": "user_files",
-        "mainpokemon.json": "user_files",
-        "badges.json": "user_files",
-        "items.json": "user_files",
-        "teams.json": "user_files",
-        "data.json": "user_files",
-        "todays_shop.json": "user_files",
-        "config.obf": "user_files"
+        "ankimon.db": "user_files"
+        # config.obf removed - now stored in ankimon.db
     }
 
     def __init__(self, addon_name: str = None):
@@ -847,57 +610,12 @@ class AnkimonDataSync:
                     'media_data': None
                 }
 
-                if filename.endswith('.obf'):
-                    try:
-                        if file_diff['local_exists']:
-                            with open(source_file, 'r', encoding='utf-8') as f:
-                                obfuscated_local_data = f.read()
-                            file_diff['local_data'] = self._deobfuscate_data(obfuscated_local_data)
-
-                        if file_diff['media_exists']:
-                            with open(media_file, 'r', encoding='utf-8') as f:
-                                obfuscated_media_data = f.read()
-                            file_diff['media_data'] = self._deobfuscate_data(obfuscated_media_data)
-
-                        file_diff['files_differ'] = file_diff['local_data'] != file_diff['media_data']
-                    except Exception as e:
-                        file_diff['error'] = f"Error deobfuscating file: {str(e)}"
-
-                # Load and compare JSON data if both exist
-                elif file_diff['local_exists'] and file_diff['media_exists']:
-                    try:
-                        with open(source_file, 'r', encoding='utf-8') as f:
-                            file_diff['local_data'] = json.load(f)
-                        with open(media_file, 'r', encoding='utf-8') as f:
-                            file_diff['media_data'] = json.load(f)
-
-                        # First, compare the loaded data. This is the most reliable check.
-                        if file_diff['local_data'] != file_diff['media_data']:
-                            file_diff['files_differ'] = True
-                        else:
-                            # If data is semantically the same, we don't need to check further.
-                            file_diff['files_differ'] = False
-
-                    except (json.JSONDecodeError, Exception) as e:
-                        # If we can't parse the JSON, we can't compare data.
-                        # Fall back to the binary file comparison.
-                        file_diff['error'] = f"Could not parse JSON, falling back to binary comparison: {e}"
-                        file_diff['files_differ'] = not filecmp.cmp(source_file, media_file, shallow=False)
-
-                elif file_diff['local_exists']:
-                    try:
-                        with open(source_file, 'r', encoding='utf-8') as f:
-                            file_diff['local_data'] = json.load(f)
-                        file_diff['files_differ'] = True
-                    except:
-                        pass
-                elif file_diff['media_exists']:
-                    try:
-                        with open(media_file, 'r', encoding='utf-8') as f:
-                            file_diff['media_data'] = json.load(f)
-                        file_diff['files_differ'] = True
-                    except:
-                        pass
+                # Legacy: Load and compare JSON data if both exist
+                # Now we only do binary comparison for the DB and OBF files
+                if file_diff['local_exists'] and file_diff['media_exists']:
+                    file_diff['files_differ'] = not filecmp.cmp(source_file, media_file, shallow=False)
+                elif file_diff['local_exists'] or file_diff['media_exists']:
+                    file_diff['files_differ'] = True
 
                 if file_diff['files_differ'] or file_diff.get('error'):
                     differences[filename] = file_diff

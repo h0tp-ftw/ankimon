@@ -20,14 +20,11 @@ from .pyobj.ankimon_leaderboard import show_api_key_dialog
 from .pyobj.settings import Settings
 from .pyobj.translator import Translator
 from .pyobj.InfoLogger import ShowInfoLogger
-from .pyobj.collection_dialog import PokemonCollectionDialog
 from .pyobj.item_window import ItemWindow
 from .pyobj.pc_box import PokemonPC
 from .pyobj.trainer_card import TrainerCard
-from .pyobj.data_handler_window import DataHandlerWindow
 from .pyobj.settings_window import SettingsWindow
 from .pyobj.test_window import TestWindow
-from .pyobj.data_handler import DataHandler
 from .pyobj.ankimon_shop import PokemonShopManager
 from .pokedex.pokedex_obj import Pokedex
 from .pyobj.achievement_window import AchievementWindow
@@ -77,7 +74,6 @@ def create_menu_actions(
     trainer_card: TrainerCard,
     ankimon_tracker_window: AnkimonTrackerWindow,
     logger: ShowInfoLogger,
-    data_handler_window: DataHandlerWindow,
     settings_window: SettingsWindow,
     shop_manager: PokemonShopManager,
     pokedex_window: Pokedex,
@@ -86,20 +82,12 @@ def create_menu_actions(
     open_leaderboard_url: Callable,
     settings_obj: Settings,
     addon_dir: Path,
-    data_handler_obj: DataHandler,
     pokemon_pc: PokemonPC,
     backup_manager: BackupManager,
 ):
     actions = []
 
     if database_complete:
-        # Pokémon collection
-        if pokecollection_win is not None:
-            pokecol_action = QAction(mw.translator.translate("show_collection_button"), mw)
-            pokecol_action.setMenuRole(QAction.MenuRole.NoRole)
-            collection_menu.addAction(pokecol_action)
-            qconnect(pokecol_action.triggered, pokecollection_win.show)
-
         # Pokémon PC
         pokemon_pc_action = QAction("Pokémon PC", mw)
         pokemon_pc_action.setMenuRole(QAction.MenuRole.NoRole)
@@ -123,7 +111,7 @@ def create_menu_actions(
         def show_achievements_window():
             from .pyobj.achievements_dialog import AchievementsDialog
             if not hasattr(mw, "_achievements_dialog") or mw._achievements_dialog is None:
-                mw._achievements_dialog = AchievementsDialog(addon_dir, data_handler_obj)
+                mw._achievements_dialog = AchievementsDialog(addon_dir)
             mw._achievements_dialog.setWindowModality(Qt.WindowModality.NonModal)
             mw._achievements_dialog.show()
             mw._achievements_dialog.raise_()
@@ -235,12 +223,6 @@ def create_menu_actions(
     mw.pokemenu.addAction(config_action)
 
     if debug is True:
-        data_window_action = QAction(mw.translator.translate("ankimon_data_button"), mw)
-        data_window_action.setMenuRole(QAction.MenuRole.NoRole)
-        data_window_action.triggered.connect(data_handler_window.show_window)
-        # Show the Settings window
-        debug_menu.addAction(data_window_action)
-
         tracker_window_action = QAction(mw.translator.translate("ankimon_tracker_button"), mw)
         tracker_window_action.setMenuRole(QAction.MenuRole.NoRole)
         tracker_window_action.triggered.connect(ankimon_tracker_window.toggle_window)

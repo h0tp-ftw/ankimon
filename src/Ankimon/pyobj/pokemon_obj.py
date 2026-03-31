@@ -3,6 +3,7 @@ import uuid
 import json
 import os
 from typing import Optional
+from aqt import mw
 
 from ..functions.sprite_functions import get_sprite_path
 
@@ -369,28 +370,12 @@ class PokemonObject:
 
     def give_held_item(self, held_item: str) -> None:
         """
-        Assigns a held item to the Pokémon and updates relevant data files.
+        Assigns a held item to the Pokémon and updates the database.
 
-        If the Pokémon is already holding an item, it is removed first. The specified
-        item is subtracted from the item bag, assigned as the Pokémon's held item,
-        and then saved in the user's Pokémon data files.
-
-        This method updates both `mypokemon_path` (the full Pokémon list) and
-        `mainpokemon_path` (if the Pokémon is the main one) to reflect the new held item.
-
-        Args:
-            held_item (str): The name of the item to be given to the Pokémon.
-
-        Returns:
-            None
-
-        Side Effects:
-            - Modifies `mypokemon_path` JSON file to set the held item.
-            - Modifies `mainpokemon_path` JSON file if the Pokémon is the main one.
-            - Removes one instance of the held item from the item bag.
-            - If an item is already held, it is removed first.
-            - Uses `ShowInfoLogger` for logging in case of errors via `substract_item_from_itembag`.
+        If the Pokémon is already holding an item, it is removed first.
         """
+        db = mw.ankimon_db
+        
         # If the pokemon already holds an object, we remove it to make room for the new one.
         if self.held_item:
             self.remove_held_item()
@@ -398,72 +383,41 @@ class PokemonObject:
         substract_item_from_itembag(held_item, quantity=1)
         self.held_item = held_item
 
-        # Then, We save that information in the user data
-        # First, we save the info in mypokemon_path
-        with open(mypokemon_path, "r", encoding="utf-8") as f:
-            pokemon_list_data = json.load(f)
+        # Save to captured_pokemon in database
+        pokemon_data = db.get_pokemon(self.individual_id)
+        if pokemon_data:
+            pokemon_data["held_item"] = held_item
+            db.save_pokemon(pokemon_data)
 
-        for i in range(len(pokemon_list_data)):
-            if pokemon_list_data[i]["individual_id"] == self.individual_id:
-                pokemon_list_data[i]["held_item"] = held_item
-                break
-
-        with open(str(mypokemon_path), "w") as f:
-            json.dump(pokemon_list_data, f, indent=2)
-
-        # Secondly, we save the info in mainpokemon_path, if the pokemon happens to be our main pokemon
-        with open(mainpokemon_path, "r", encoding="utf-8") as f:
-            main_pokemon_data = json.load(f)
-
-        if main_pokemon_data[0]["individual_id"] == self.individual_id:
-            main_pokemon_data[0]["held_item"] = held_item
-            with open(str(mainpokemon_path), "w") as f:
-                json.dump(main_pokemon_data, f, indent=2)
+        # Also update main_pokemon if this is the main pokemon
+        main_pokemon = db.get_main_pokemon()
+        if main_pokemon and main_pokemon.get("individual_id") == self.individual_id:
+            main_pokemon["held_item"] = held_item
+            db.save_main_pokemon(main_pokemon)
 
     def remove_held_item(self) -> None:
         """
-        Removes the held item from the Pokémon and updates relevant data files.
-
-        If the Pokémon is currently holding an item, the item is returned to the item bag
-        via `give_item`, the `held_item` attribute is cleared, and the change is saved
-        in both `mypokemon_path` (the user's Pokémon list) and `mainpokemon_path` (if the
-        Pokémon is the main one).
-
-        Returns:
-            None
-
-        Side Effects:
-            - Adds the held item back to the item bag using `give_item`.
-            - Updates the `mypokemon_path` JSON file to set `held_item` to `None`.
-            - If the Pokémon is the main Pokémon, updates the `mainpokemon_path` file as well.
+        Removes the held item from the Pokémon and updates the database.
         """
         if self.held_item is None:
             return
 
+        db = mw.ankimon_db
+
         give_item(self.held_item)  # We put the item back in the item bag
         self.held_item = None
 
-        # Then, We save that information in the user data
-        # First, we save the info in mypokemon_path
-        with open(mypokemon_path, "r", encoding="utf-8") as f:
-            pokemon_list_data = json.load(f)
+        # Save to captured_pokemon in database
+        pokemon_data = db.get_pokemon(self.individual_id)
+        if pokemon_data:
+            pokemon_data["held_item"] = None
+            db.save_pokemon(pokemon_data)
 
-        for i in range(len(pokemon_list_data)):
-            if pokemon_list_data[i]["individual_id"] == self.individual_id:
-                pokemon_list_data[i]["held_item"] = None
-                break
-
-        with open(str(mypokemon_path), "w") as f:
-            json.dump(pokemon_list_data, f, indent=2)
-
-        # Secondly, we save the info in mainpokemon_path, if the pokemon happens to be our main pokemon
-        with open(mainpokemon_path, "r", encoding="utf-8") as f:
-            main_pokemon_data = json.load(f)
-
-        if main_pokemon_data[0]["individual_id"] == self.individual_id:
-            main_pokemon_data[0]["held_item"] = None
-            with open(str(mainpokemon_path), "w") as f:
-                json.dump(main_pokemon_data, f, indent=2)
+        # Also update main_pokemon if this is the main pokemon
+        main_pokemon = db.get_main_pokemon()
+        if main_pokemon and main_pokemon.get("individual_id") == self.individual_id:
+            main_pokemon["held_item"] = None
+            db.save_main_pokemon(main_pokemon)
 
 
 class PokemonEncoder(json.JSONEncoder):
