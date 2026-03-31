@@ -170,7 +170,7 @@ def _build_pokemon_grid(pokemon_list, id_prefix="pokemon", max_items=6):
              content but does not perform any escaping of values; ensure your
              data is sanitized if it can contain HTML.
     """
-    pokemon_list = pokemon_list[:max_items] if len(pokemon_list) > max_items else pokemon_list
+    pokemon_list = pokemon_list[:max_items]
     if len(pokemon_list) == 0:
         return ""
 
