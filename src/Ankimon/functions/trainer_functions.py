@@ -2,7 +2,6 @@ import json
 
 from .badges_functions import get_achieved_badges
 from .pokedex_functions import extract_ids_from_file
-from ..resources import mypokemon_path
 from .pokemon_functions import find_experience_for_level
 from .pokedex_functions import check_evolution_for_pokemon, return_name_for_id
 from aqt.utils import showInfo, showWarning
@@ -78,7 +77,7 @@ def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_id, exp, xp
     msg = ""
     evolution_triggered = False
 
-    pokemon = db.get_pokemon_by_individual_id(xp_share_individual_id)
+    pokemon = db.get_pokemon(xp_share_individual_id)
     # Increase the xp of the matched Pokémon
     current_level = int(pokemon['level'])  # MODIFIED: Use local variable for level
     current_xp = pokemon.get("xp") or pokemon.get("stats", {}).get("xp", 0)

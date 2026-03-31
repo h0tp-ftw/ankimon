@@ -79,7 +79,7 @@ class TestWindow(QWidget):
         global attack_counter, merged_pixmap, window
         attack_counter = 0
         caught = 0
-        id = int(search_pokedex(name.lower(), "num"))
+        id = int(search_pokedex(name.lower(), "species_id"))
         # Capitalize the first letter of the Pokémon's name
         lang_name = get_pokemon_diff_lang_name(int(id))
         name = name.capitalize()
@@ -467,7 +467,7 @@ class TestWindow(QWidget):
         lang_name = get_pokemon_diff_lang_name(int(id))
         window_title = (f"Would you want let the  wild {lang_name} free or catch the wild {lang_name} ?")
         # Display the Pokémon image
-        pkmnimage_file = f"{int(search_pokedex(name.lower(),'num'))}.png"
+        pkmnimage_file = f"{int(search_pokedex(name.lower(),'species_id'))}.png"
         pkmnimage_path = frontdefault / pkmnimage_file
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()

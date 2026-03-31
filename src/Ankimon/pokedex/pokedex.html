@@ -314,7 +314,7 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", async function () {
-      const totalPokemon = 905;
+      const totalPokemon = 1025;
       const pokemonGrid = document.getElementById("pokemon-grid");
       const obtainedCount = document.getElementById("obtained-count");
       const seenCount = document.getElementById("seen-count");
@@ -585,7 +585,7 @@
           const idSpan = document.createElement("span");
           idSpan.className = "pokemon-id";
           idSpan.textContent = isOwned ?
-            (pokemonNames[formattedId] || `Unknown #${formattedId}`) :
+            (pokemonNames[i] || `Unknown #${formattedId}`) :
             `#${formattedId}`;
 
           pokemonItem.appendChild(idSpan);

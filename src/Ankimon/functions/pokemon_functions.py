@@ -7,12 +7,11 @@ from datetime import datetime
 from aqt.utils import showWarning
 from aqt import mw
 
-from .pokedex_functions import search_pokeapi_db_by_id, search_pokedex, search_pokedex_by_id, get_all_pokemon_moves
+from .pokedex_functions import get_base_experience, get_growth_rate, search_pokedex, search_pokedex_by_id, get_all_pokemon_moves
 from .battle_functions import calculate_hp
 from ..resources import (
     pokedex_path,
     next_lvl_file_path,
-    mypokemon_path,
     learnset_path,
 )
 
@@ -245,11 +244,8 @@ def save_fossil_pokemon(pokemon_id):
         # Set to "No Ability" if there are no numeric abilities
         ability = "No Ability"
     type = search_pokedex(name, "types")
-    name = search_pokedex(name, "name")
-    generation_file = "pokeapi_db.json"
-    growth_rate = search_pokeapi_db_by_id(id, "growth_rate")
-    base_experience = search_pokeapi_db_by_id(id, "base_experience")
-    description= search_pokeapi_db_by_id(id, "description")
+    growth_rate = get_growth_rate(id)
+    base_experience = search_pokedex(name.lower(), "actual_id")
     level = 5
     attacks = get_random_moves_for_pokemon(name, level)
     #stats["xp"] = 0

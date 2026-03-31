@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "battle.cards_per_round": 2,
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
+    "battle.review_based_damage": True,
     "controls.pokemon_buttons": True,
     "controls.defeat_key": "5",
     "controls.catch_key": "6",
@@ -34,6 +35,7 @@ DEFAULT_CONFIG = {
     "gui.reviewer_text_message_box": True,
     "gui.reviewer_text_message_box_time": 3,
     "gui.show_mainpkmn_in_reviewer": 1,
+    "gui.team_deck_view": True,
     "gui.view_main_front": True,
     "gui.xp_bar_config": True,
     "gui.xp_bar_location": 2,
@@ -152,15 +154,18 @@ class Settings:
                     print(f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int.")
 
     def save_config(self, config):
-        from aqt import mw
-        
-        # Save to database
-        if hasattr(mw, 'ankimon_db') and mw.ankimon_db is not None:
-            try:
-                mw.ankimon_db.save_all_config(config)
-                return
-            except Exception as e:
-                print(f"Ankimon: Error saving config to database: {e}")
+        from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse obfuscation logic
+
+        obfuscated_config_path = user_path / "config.obf"
+        sync_handler = AnkimonDataSync()  # Re-use the obfuscation logic
+        try:
+            obfuscated_str = sync_handler._obfuscate_data(config)
+            warning_message = "WARNING: This file contains important user data. Do not delete or modify this file. Deleting or modifying this file can lead to data loss in the Ankimon addon.\n---"
+            file_content = warning_message + obfuscated_str
+            with open(obfuscated_config_path, "w", encoding="utf-8") as f:
+                f.write(file_content)
+        except Exception as e:
+            print(f"Ankimon: Could not save obfuscated config: {e}")
 
     def get(self, key, default=None):
         return self.config.get(key, default)

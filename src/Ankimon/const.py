@@ -11,7 +11,7 @@ gen_ids = {
 }
 
 # total generations implemented by Ankimon
-total_generations = 8
+total_generations = 9
 
 #to create status symbols
 # Define the background and outline colors for each status
