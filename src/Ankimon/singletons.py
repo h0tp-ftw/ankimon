@@ -192,6 +192,7 @@ evo_window = EvoWindow(
 starter_window = StarterWindow(logger, settings_obj)
 item_window = ItemWindow(  # Create an instance of the MainWindow
     logger=logger,
+    settings_obj=settings_obj,
     main_pokemon=main_pokemon,
     enemy_pokemon=enemy_pokemon,
     itembagpath=itembag_path,
