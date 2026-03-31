@@ -873,10 +873,6 @@ def DefeatPokemonHook():
 def on_profile_did_open():
     """Initialize services after profile is loaded."""
 
-    # Initialize main and enemy pokemon
-    if database_complete:
-        initialize_pokemon()
-
     # Show tip of the day
     try:
         show_tip_of_the_day()
