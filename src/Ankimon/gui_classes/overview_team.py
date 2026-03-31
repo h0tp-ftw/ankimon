@@ -95,7 +95,7 @@ def _bg_style_from_types(types: list[str]) -> str:
     return f"background: linear-gradient(135deg, {stops_css});"
 
 # cache the pokeball data uri once
-POKEBALL_DATA_URI = png_to_base64(str(pokeball_path))
+POKEBALL_DATA_URI = f"data:image/png;base64,{png_to_base64(str(pokeball_path))}" if png_to_base64(str(pokeball_path)) else ""
 
 def load_pokemon_team():
     """Load Pokémon records for use by the overview grid.
