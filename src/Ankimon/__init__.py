@@ -133,7 +133,7 @@ mw.logger = logger
 mw.translator = translator
 mw.settings_obj = settings_obj
 
-from .gui_classes.overview_team import *
+from .gui_classes.overview_team import deck_browser_will_render, on_overview_will_render_content
 
 # Log an startup message
 logger.log_and_showinfo('game', translator.translate("startup"))
