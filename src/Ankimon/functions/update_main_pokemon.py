@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Optional
 
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
@@ -8,24 +9,25 @@ from aqt import mw
 
 # default values to fall back in case of load error
 MAIN_POKEMON_DEFAULT = {
-    "name": "RESTART ANKI",
-    "gender": None,
+    "name": "Please Restart Anki",
+    "gender": "N",  # Ditto is genderless
     "level": 5,
-    "id": None,
-    "ability": None,
-    "type": None,
-    "base_stats": None,
-    "xp": None,
-    "ev": None,
-    "iv": None,
-    "attacks": None,
-    "base_experience": None,
+    "id": 132,
+    "ability": "Limber",
+    "type": ["Normal"],
+    "base_stats": {"hp": 48, "atk": 48, "def": 48, "spa": 48, "spd": 48, "spe": 48},
+    "xp": 0,
+    "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+    "iv": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+    "attacks": ["Transform", "Tackle"],
+    "base_experience": 101,
     "hp": 100,
-    "growth_rate": None,
-    "individual_id": None,
-    "tier": None,
-    "shiny": None,
-    "captured_date": None
+    "growth_rate": "medium-fast",
+    "individual_id": "00000000-0000-0000-0000-000000000"
+    + str(uuid.uuid4())[-3:],  # Last 3 digits random
+    "tier": "Normal",
+    "shiny": False,
+    "captured_date": "2000-01-01 00:00:00",
 }
 
 
@@ -38,6 +40,10 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
 
     if main_pokemon is None:
         main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
+
+    # Normalize xp to 0 if it's None
+    if main_pokemon.xp is None:
+        main_pokemon.xp = 0
 
     mainpokemon_empty = True
     
@@ -69,11 +75,19 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
                 if main_pokemon_data:
                     mainpokemon_empty = False
                     pokemon_name = search_pokedex_by_id(main_pokemon_data[0]["id"])
-                    main_pokemon_data[0]["base_stats"] = search_pokedex(pokemon_name, "baseStats")
-                    if "stats" in main_pokemon_data[0]:
-                        del main_pokemon_data[0]["stats"]
+                    main_pokemon_data[0]["base_stats"] = search_pokedex(
+                        pokemon_name, "baseStats"
+                    )
+                    del main_pokemon_data[
+                        0
+                    ][
+                        "stats"
+                    ]  # For legacy code, i.e. for when "stats" in the JSON actually meant "base_stat"
                     main_pokemon.update_stats(**main_pokemon_data[0])
-                    save_main_pokemon(main_pokemon)
+                    save_main_pokemon(
+                        main_pokemon
+                    )  # Save the updated main Pokémon data
+                # if file does load or is empty use default value
                 else:
                     main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
                 max_hp = main_pokemon.calculate_max_hp()
@@ -87,7 +101,9 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
                 main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
                 return main_pokemon, mainpokemon_empty
     else:
-        return PokemonObject(**MAIN_POKEMON_DEFAULT), mainpokemon_empty
+        main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
+        return main_pokemon, mainpokemon_empty
+
 
 
 def save_main_pokemon(main_pokemon: PokemonObject):

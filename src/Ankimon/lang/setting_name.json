@@ -3,6 +3,7 @@
     "battle.cards_per_round": "Cards per Round",
     "battle.daily_average": "Goal of Daily Average Cards",
     "battle.card_max_time": "Card Max Time",
+    "battle.review_based_damage": "Review Based Damage",
 
     "controls.pokemon_buttons": "Show Pokémon Buttons",
     "controls.defeat_key": "Key for Defeat",
@@ -20,6 +21,7 @@
     "gui.reviewer_text_message_box": "Show Text Message Box in Reviewer",
     "gui.reviewer_text_message_box_time": "Message Box Display Time",
     "gui.show_mainpkmn_in_reviewer": "Show Main Pokémon in Reviewer",
+    "gui.team_deck_view": "Team Overview in Deck Overview",
     "gui.view_main_front": "View Main Pokémon Front",
     "gui.xp_bar_config": "XP Bar Configuration",
     "gui.xp_bar_location": "XP Bar Location",

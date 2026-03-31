@@ -47,7 +47,7 @@ from .gui_entities import (
 )
 from .functions.update_main_pokemon import update_main_pokemon
 from .functions.badges_functions import populate_achievements_from_badges
-from .resources import addon_dir, itembag_path
+from .resources import addon_dir
 
 # start loggerobject for Ankimon
 logger = ShowInfoLogger()
@@ -194,10 +194,10 @@ item_window = ItemWindow(  # Create an instance of the MainWindow
     logger=logger,
     main_pokemon=main_pokemon,
     enemy_pokemon=enemy_pokemon,
-    itembagpath=itembag_path,
     achievements=achievements,
     starter_window=starter_window,
     evo_window=evo_window,
+    settings=settings_obj,
 )
 
 pokemon_pc = PokemonPC(

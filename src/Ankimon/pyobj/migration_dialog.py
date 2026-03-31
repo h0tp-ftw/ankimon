@@ -17,7 +17,9 @@ from PyQt6.QtGui import QFont
 from pathlib import Path
 from typing import Dict, Any
 
+import csv
 from ..utils import show_warning_with_traceback
+from ..resources import csv_file_items_cost
 
 
 class MigrationDialog(QDialog):
@@ -177,10 +179,29 @@ class MigrationDialog(QDialog):
                             stats["main"] = 1
                     self._update_progress(55, "✓ Migrated main Pokemon")
                 
-                # Step 3: Migrate items.json
+                # Step 3: Migrate items.json joined with items.csv metadata
                 if self.items_path.is_file():
-                    self._update_progress(56, "Migrating items...")
-                    print(f"items_path: {self.items_path}")
+                    self._update_progress(56, "Loading item metadata...")
+                    
+                    # Load items.csv for metadata (cost, category, etc.)
+                    item_metadata = {}
+                    if Path(csv_file_items_cost).is_file():
+                        try:
+                            with open(csv_file_items_cost, 'r', encoding='utf-8') as f:
+                                reader = csv.DictReader(f)
+                                for row in reader:
+                                    # Use identifier as the lookup key
+                                    item_metadata[row['identifier']] = {
+                                        'id': int(row['id']) if row.get('id') else None,
+                                        'category_id': int(row['category_id']) if row.get('category_id') else None,
+                                        'cost': int(row['cost']) if row.get('cost') else None,
+                                        'fling_power': int(row['fling_power']) if row.get('fling_power') else None,
+                                        'fling_effect_id': int(row['fling_effect_id']) if row.get('fling_effect_id') else None
+                                    }
+                        except Exception as e:
+                            self.log_area.append(f"  ⚠ Could not load items.csv: {e}")
+
+                    self._update_progress(58, "Migrating items...")
                     with open(self.items_path, 'r', encoding='utf-8') as f:
                         items_list = json.load(f)
                     for item in items_list:
@@ -188,7 +209,18 @@ class MigrationDialog(QDialog):
                         item_name = item.get("item") or item.get("item_name")
                         quantity = item.get("quantity", item.get("amount", 1))
                         if item_name:
-                            self.db.save_item(item_name, quantity, item)
+                            # Look up metadata from CSV
+                            meta = item_metadata.get(item_name, {})
+                            self.db.save_item(
+                                meta.get('id'),
+                                item_name, 
+                                quantity, 
+                                extra_data=item,
+                                category_id=meta.get('category_id'),
+                                cost=meta.get('cost'),
+                                fling_power=meta.get('fling_power'),
+                                fling_effect_id=meta.get('fling_effect_id')
+                            )
                             stats["items"] += 1
                     if not self.cancelled:
                         self._update_progress(60, f"✓ Migrated {stats['items']} items")

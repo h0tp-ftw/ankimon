@@ -11,7 +11,8 @@ def get_achieved_badges() -> List[int]:
     
     if db.is_migrated():
         badges = db.get_all_badges()
-        return [int(b.get("badge_id", b.get("id", 0))) for b in badges]
+        # Filter for only achieved badges
+        return [int(b["badge_id"]) for b in badges if b.get("achieved") in [True, 1, "true", "True"]]
     
     # Fallback to JSON for backwards compatibility
     try:

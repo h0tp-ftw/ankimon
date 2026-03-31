@@ -1,5 +1,5 @@
 target-version = "py39"
 
 [lint]
-extend-select = ["PLE"]
+extend-select = ["PLE", "UP018"]
 ignore = ["E501"]

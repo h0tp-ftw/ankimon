@@ -38,7 +38,7 @@ from ..functions.pokedex_functions import (
     find_details_move
 )
 
-from ..resources import mypokemon_path, icon_path, items_path, itembag_path, csv_file_items_cost, poke_evo_path
+from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
 from ..utils import play_effect_sound
@@ -53,19 +53,19 @@ class ItemWindow(QWidget):
             logger: ShowInfoLogger,
             main_pokemon: PokemonObject,
             enemy_pokemon: PokemonObject,
-            itembagpath: Path,
             achievements: dict[str, bool],
             starter_window: StarterWindow,
-            evo_window: EvoWindow
+            evo_window: EvoWindow,
+            settings: Any
             ):
         super().__init__()
-        self.itembag_path: Path = itembagpath
         self.logger: ShowInfoLogger = logger
         self.main_pokemon: PokemonObject = main_pokemon
         self.enemy_pokemon: PokemonObject = enemy_pokemon
         self.achievements: dict[str, bool] = achievements
         self.starter_window: StarterWindow = starter_window
         self.evo_window: EvoWindow = evo_window
+        self.settings = settings
         self.initUI()
 
     def initUI(self):
@@ -300,7 +300,14 @@ class ItemWindow(QWidget):
         item_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         if item_type == "TM":
-            item_file_path = items_path / f"Bag_TM_{find_details_move(item_name)['type'].lower()}_SV_Sprite.png"
+            details = find_details_move(item_name)
+            if not details or "type" not in details:
+                self.logger.log_and_showinfo("error", f"Report the following: Missing details for item: {item_name!r}")
+                tm_type = "normal"
+            else:
+                tm_type = details["type"].lower()
+
+            item_file_path = items_path / f"Bag_TM_{tm_type}_SV_Sprite.png"
         else:
             item_file_path = items_path / f"{item_name}.png"
         item_picture_pixmap = QPixmap(str(item_file_path))
@@ -396,6 +403,9 @@ class ItemWindow(QWidget):
         self.starter_window.display_fossil_pokemon(fossil_id, fossil_poke_name)
         save_fossil_pokemon(fossil_id)
         self.delete_item(item_name)
+        
+        from ..singletons import pokemon_pc
+        pokemon_pc.refresh_pokemon_grid()
 
     def modified_pokeball_chances(self, item_name: str, catch_chance: int):
         # Adjust catch chance based on Pokémon type and Poké Ball
@@ -432,18 +442,8 @@ class ItemWindow(QWidget):
             self.logger.log_and_showinfo("error", f"{item_name} is not a valid Poké Ball!")
 
     def delete_item(self, item_name: str):
-        itembag_list = self.read_items_file()
-        for item in itembag_list:
-            # Check if the item exists and if the name matches
-            if item['item'] == item_name:
-                # Decrease the quantity by 1
-                item['quantity'] -= 1
-
-                # If quantity reaches 0, remove the item from the list
-                if item['quantity'] == 0:
-                    itembag_list.remove(item)
-
-        self.write_items_file(itembag_list)
+        # Update database directly for performance
+        mw.ankimon_db.update_item_quantity(item_name, -1)
         self.renewWidgets()
 
     def Check_Heal_Item(self, prevo_name: str, heal_points: int, item_name: str, achievements):
@@ -456,7 +456,7 @@ class ItemWindow(QWidget):
         if self.main_pokemon.hp > (self.main_pokemon.max_hp):
             self.main_pokemon.hp = self.main_pokemon.max_hp
         self.delete_item(item_name)
-        play_effect_sound(settings_obj, "HpHeal")
+        play_effect_sound(self.settings, "HpHeal")
         self.logger.log_and_showinfo("info", f"{prevo_name} was healed for {heal_points}")
 
     def Check_Evo_Item(self, individual_id: str, prevo_id: str, item_name: str):
@@ -496,15 +496,25 @@ class ItemWindow(QWidget):
         """Writes items to the database. Legacy method kept for compatibility."""
         db = mw.ankimon_db
         for item in itembag_list:
-            item_name = item.get("item", "")
+            item_id = item.get("id")
+            item_name = item.get("item") or item.get("item_name", "")
             quantity = item.get("quantity", 1)
-            if item_name:
-                db.save_item(item_name, quantity, item)
+            # Pass cached metadata back to database
+            db.save_item(
+                item_id, 
+                item_name, 
+                quantity, 
+                extra_data=item, 
+                category_id=item.get("category_id"),
+                cost=item.get("cost"),
+                fling_power=item.get("fling_power"),
+                fling_effect_id=item.get("fling_effect_id")
+            )
 
     def read_items_file(self):
         """
         Reads the item list from the database.
-        Returns items in the expected format for the UI.
+        Returns items in the expected format for the UI, using SQL columns for efficiency.
         """
         try:
             db = mw.ankimon_db
@@ -512,47 +522,33 @@ class ItemWindow(QWidget):
             # Convert database format to UI format
             result = []
             for item in items:
-                item_data = item.get("data") or {}
-                result.append({
-                    "item": item.get("item_name") or item_data.get("item", ""),
+                # Prioritize SQL columns over JSON blob
+                cat_id = item.get("category_id")
+                item_type = "TM" if cat_id == 37 else None
+                
+                # Combine database columns into the UI dictionary (preserving extra_data for legacy)
+                item_dict = {
+                    "id": item.get("id"),
+                    "item": item.get("item_name"),
                     "quantity": item.get("quantity", 1),
-                    "type": item_data.get("type")
-                })
+                    "type": item_type,
+                    "category_id": cat_id,
+                    "cost": item.get("cost"),
+                    "fling_power": item.get("fling_power"),
+                    "fling_effect_id": item.get("fling_effect_id")
+                }
+                
+                # Merge with any existing extra_data for backward compatibility
+                if item.get("extra_data"):
+                    for k, v in item["extra_data"].items():
+                        if k not in item_dict:
+                            item_dict[k] = v
+                            
+                result.append(item_dict)
             return result
         except Exception as e:
             self.logger.log("error", f"Error reading items from database: {e}")
             return []
-
-    def _fix_and_load_items(self):
-        """
-        Attempts to fix and load malformed JSON items.
-        Reads the JSON file as a string and corrects malformed items.
-        """
-        try:
-            with open(self.itembag_path, "r", encoding="utf-8") as json_file:
-                raw_data = json_file.read()
-
-            # Parse raw data as JSON (handling malformed structures)
-            corrected_items = []
-            json_data = raw_data.strip().lstrip("[").rstrip("]").split("},")
-            for entry in json_data:
-                entry = entry.strip()
-                if not entry.endswith("}"):
-                    entry += "}"
-
-                try:
-                    item = json.loads(entry)
-                    corrected_items.append(item)
-                except json.JSONDecodeError:
-                    # Fix malformed item (assume it's missing proper structure)
-                    if entry.startswith('{"') and entry.endswith('"}'):
-                        item_name = entry[2:-2]  # Extract item name
-                        corrected_items.append({"item": item_name, "quantity": 1})
-                        self.logger.log("info", f"Fixed malformed item: {item_name}")
-                    else:
-                        self.logger.log("warning", f"Skipping unknown item format: {entry}")
-
-            return corrected_items
 
         except Exception as e:
             self.logger.log("error", f"Error fixing and loading items: {e}")
