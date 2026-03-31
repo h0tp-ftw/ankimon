@@ -225,7 +225,11 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
     safe_id = f"{id_prefix}-{name.lower().replace(' ', '-')}"
 
     sprite_path = get_sprite_path(
-        "front", "png", pokemon.get("id", 132), pokemon.get("shiny", False), gender,
+        "front",
+        "png",
+        pokemon.get("id", 132),
+        pokemon.get("shiny", False),
+        gender,
     )
     sprite_src = png_to_base64(sprite_path)
 
@@ -295,9 +299,7 @@ def load_pokemon_team() -> list[dict[str, Any]]:
                 if p.get("individual_id") is not None
             }
             ordered = [
-                pokemon_by_id[ind]
-                for ind in individual_ids
-                if ind in pokemon_by_id
+                pokemon_by_id[ind] for ind in individual_ids if ind in pokemon_by_id
             ]
             if ordered:
                 return ordered
@@ -336,9 +338,7 @@ def _build_pokemon_grid(
     if not pokemon_list:
         return ""
 
-    cards = "".join(
-        _build_card_html(pokemon, id_prefix) for pokemon in pokemon_list
-    )
+    cards = "".join(_build_card_html(pokemon, id_prefix) for pokemon in pokemon_list)
     return f"{_GRID_CSS}<div class='poke-grid'>{cards}</div>"
 
 
