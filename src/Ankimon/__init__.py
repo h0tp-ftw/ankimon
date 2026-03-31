@@ -63,7 +63,7 @@ from .resources import (
     pkmnimgfolder,
     mypokemon_path,
     itembag_path,
-    sound_list_path,
+    sound_list_path
 )
 from .menu_buttons import create_menu_actions
 from .hooks import setupHooks
@@ -221,7 +221,6 @@ def on_webview_will_set_content(web_content: WebContent, context) -> None:
     web_content.js.append(
         f"/_addons/{ankimon_package}/user_files/web/ankimon_hud_portal.js"
     )
-
 
 webview_will_set_content.append(on_webview_will_set_content)
 
@@ -816,7 +815,7 @@ create_menu_actions(
     addon_dir,
     data_handler_obj,
     pokemon_pc,
-    backup_manager,
+    backup_manager
 )
 
 # https://goo.gl/uhAxsg

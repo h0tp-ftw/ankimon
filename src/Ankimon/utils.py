@@ -18,6 +18,7 @@ from .pyobj.InfoLogger import ShowInfoLogger
 
 from .functions.battle_functions import calculate_hp
 from .functions.pokedex_functions import find_details_move, search_pokedex
+
 from .pyobj.error_handler import show_warning_with_traceback
 from .resources import (
     battlescene_path,
@@ -40,6 +41,7 @@ from .resources import (
     pokedex_path,
 )
 from .move_names import format_move_name
+
 
 audio_output = QAudioOutput()
 media_player = QMediaPlayer()
