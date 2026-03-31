@@ -285,7 +285,7 @@ def simulate_battle_with_poke_engine(
 
         new_state = copy.deepcopy(state)
 
-        mutator_full_reset = int(0) # preserve battle state - until something else changes this value
+        mutator_full_reset = 0 # preserve battle state - until something else changes this value
 
         user_hp_after = int(new_state.user.active.hp)
         opponent_hp_after = int(new_state.opponent.active.hp)
@@ -298,7 +298,7 @@ def simulate_battle_with_poke_engine(
         # It's been a pleasure being part of this journey. -- h0tp (and friends)
 
         if int(chosen_outcome.percentage) == 0:
-            unlucky_life = int(1)
+            unlucky_life = 1
         else:
             unlucky_life = int(chosen_outcome.percentage)
 
