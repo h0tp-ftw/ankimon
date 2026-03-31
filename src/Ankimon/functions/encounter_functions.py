@@ -48,6 +48,7 @@ from ..singletons import (
     settings_obj,
     translator,
     ankimon_db,
+    pokemon_pc,
 )
 
 
@@ -514,7 +515,8 @@ def save_main_pokemon_progress(
                 ),
             )
 
-        for mainpkmndata in main_pokemon_data:
+        if main_pokemon_data:
+            mainpkmndata = main_pokemon_data
             if mainpkmndata["name"] == main_pokemon.name.capitalize():
                 attacks = mainpkmndata["attacks"]
                 new_attacks = get_levelup_move_for_pokemon(
@@ -566,7 +568,6 @@ def save_main_pokemon_progress(
                                 "info", f"{new_attack} will be discarded."
                             )
                 mainpkmndata["attacks"] = attacks
-                break
     msg = ""
     msg += translator.translate(
         "mainpokemon_gained_xp",
@@ -581,7 +582,8 @@ def save_main_pokemon_progress(
         logger.log_and_showinfo("info", f"{msg}")
 
     # Load existing Pokémon data if it exists
-    for mainpkmndata in main_pokemon_data:
+    if main_pokemon_data:
+        mainpkmndata = main_pokemon_data
         mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["xp"] = int(main_pokemon.xp)
         mainpkmndata["level"] = int(main_pokemon.level)
@@ -603,10 +605,10 @@ def save_main_pokemon_progress(
             mainpkmndata["tier"] = main_pokemon.tier
         if hasattr(main_pokemon, "is_favorite"):
             mainpkmndata["is_favorite"] = main_pokemon.is_favorite
-    mypkmndata = mainpkmndata
-    # Save to database (replaces JSON file I/O for performance)
-    ankimon_db.save_main_pokemon(mypkmndata)
-    ankimon_db.save_pokemon(mypkmndata)  # Also update the captured pokemon collection
+
+        # Save to database (replaces JSON file I/O for performance)
+        ankimon_db.save_main_pokemon(mainpkmndata)
+        ankimon_db.save_pokemon(mainpkmndata)  # Also update the captured pokemon collection
 
     return main_pokemon.level
 
