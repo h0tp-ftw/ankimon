@@ -69,10 +69,10 @@ class AnkimonTracker:
         self.start_session_timer()
 
     def get_total_reviews(self):
-        studied_today_num = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
-        if studied_today_num is None:
+        if mw.col is None:
             return 0
         else:
+            studied_today_num = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
             return int(studied_today_num.group(1))
 
     def set_main_pokemon(self, pokemon):
