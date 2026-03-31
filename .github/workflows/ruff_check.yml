@@ -3,10 +3,14 @@ on: [push, pull_request]
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_PAT }}
+          # Use GITHUB_TOKEN for fork compatibility. 
+          # Note: Auto-commits using this token will NOT trigger subsequent CI runs (like tests).
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get changed files
         id: changed-files
