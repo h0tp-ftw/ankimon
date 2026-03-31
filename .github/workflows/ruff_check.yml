@@ -6,7 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Get changed files
         id: changed-files
@@ -33,7 +33,7 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "style: auto ruff fix [skip ci]"
+          commit_message: "style: auto ruff fix"
 
       - name: Run Ruff Check strictly on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
