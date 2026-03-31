@@ -292,6 +292,7 @@
     <div class="header">
       <span id="obtained-count">Pokémon Obtained: 0</span>
       <div>
+        <button id="shiny-toggle" class="theme-toggle">Normal</button>
         <button id="gif-toggle" class="theme-toggle">GIF Off</button>
         <button id="theme-toggle" class="theme-toggle">Dark</button>
       </div>
@@ -313,7 +314,7 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", async function () {
-      const totalPokemon = 905;
+      const totalPokemon = 1025;
       const pokemonGrid = document.getElementById("pokemon-grid");
       const obtainedCount = document.getElementById("obtained-count");
       const seenCount = document.getElementById("seen-count");
@@ -323,6 +324,7 @@
       const filterNotCaughtBtn = document.getElementById("filter-not-caught");
       const themeToggleBtn = document.getElementById("theme-toggle");
       const gifToggleBtn = document.getElementById("gif-toggle");
+      const shinyToggleBtn = document.getElementById("shiny-toggle");
 
       let pokemonNames = {};
       try {
@@ -346,6 +348,14 @@
         displayPokemon();
       });
 
+      let useShiny = false;
+      shinyToggleBtn.addEventListener("click", () => {
+        useShiny = !useShiny;
+        shinyToggleBtn.textContent = useShiny ? "Shiny" : "Normal";
+        updateCounts();
+        displayPokemon();
+      });
+
       function getNumbersFromURL() {
         const params = new URLSearchParams(window.location.search);
         const numbersParam = params.get("numbers");
@@ -364,15 +374,58 @@
         return isNaN(defeatedCount) ? 0 : Math.max(0, defeatedCount);
       }
 
+      function getReleasedCountFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const releasedParam = params.get("released");
+        const releasedCount = parseInt(releasedParam, 10);
+        return isNaN(releasedCount) ? 0 : Math.max(0, releasedCount);
+      }
+
+      function getCaughtTotalFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const caughtTotalParam = params.get("caught_total");
+        const caughtTotal = parseInt(caughtTotalParam, 10);
+        return isNaN(caughtTotal) ? 0 : Math.max(0, caughtTotal);
+      }
+
+      function getShinyNumbersFromURL() {
+        const params = new URLSearchParams(window.location.search);
+        const shiniesParam = params.get("shinies");
+        if (shiniesParam && shiniesParam.trim() !== "") {
+          return shiniesParam.split(',')
+            .map(num => parseInt(num.trim(), 10))
+            .filter(num => !isNaN(num));
+        }
+        return [];
+      }
+
       const givenNumbers = getNumbersFromURL();
+      const givenShinyNumbers = getShinyNumbersFromURL();
       const allNumbers = Array.from({ length: totalPokemon }, (_, i) => i + 1);
       const caughtNumbers = allNumbers.filter(number => givenNumbers.includes(number));
+      const shinyNumbers = allNumbers.filter(number => givenShinyNumbers.includes(number));
       const defeatedCount = getDefeatedCountFromURL();
-      const caughtCount = caughtNumbers.length;
-      const seenTotal = caughtCount + defeatedCount;
+      const releasedCount = getReleasedCountFromURL();
+      const caughtCount = caughtNumbers.length; // Unique IDs (for display)
+      const caughtTotal = getCaughtTotalFromURL(); // Total instances (for "Seen" calculation)
+      // Seen = Obtained instances (current) + Released instances (were obtained before) + Defeated (Pokémon defeated by our Pokémon)
+      // Use caughtTotal (instances) instead of caughtCount (unique IDs) to handle multiple instances of same Pokémon
+      const seenTotal = caughtTotal + releasedCount + defeatedCount;
+      
+      const shinyCount = shinyNumbers.length;
 
-      obtainedCount.textContent = `Pokémon Obtained: ${caughtCount}`;
-      seenCount.textContent = `Pokémon Seen: ${seenTotal}`;
+      function updateCounts() {
+        if (useShiny) {
+          obtainedCount.textContent = `Shiny Obtained: ${shinyCount}`;
+          // For shiny, "Seen" = "Obtained" since we don't track defeated shiny separately
+          // (you can only "see" a shiny if you've caught it)
+          seenCount.textContent = `Pokémon Seen: ${seenTotal}`;
+        } else {
+          obtainedCount.textContent = `Pokémon Obtained: ${caughtCount}`;
+          seenCount.textContent = `Pokémon Seen: ${seenTotal}`;
+        }
+      }
+      updateCounts();
 
       let currentPage = 0;
       const itemsPerPage = 25;
@@ -386,8 +439,8 @@
 
       function getTotalItems() {
         return currentFilter === "all" ? totalPokemon :
-               currentFilter === "caught" ? caughtNumbers.length :
-               totalPokemon - caughtNumbers.length;
+               currentFilter === "caught" ? (useShiny ? shinyNumbers.length : caughtNumbers.length) :
+               totalPokemon - (useShiny ? shinyNumbers.length : caughtNumbers.length);
       }
 
       function updatePagination() {
@@ -443,11 +496,18 @@
 
       function displayPokemon() {
         pokemonGrid.innerHTML = "";
-        let displayNumbers = allNumbers;
+        let displayNumbers;
+        
+        // In shiny mode, show all Pokémon but use shiny sprites
+        // In normal mode, show all Pokémon with normal sprites
         if (currentFilter === "caught") {
-          displayNumbers = caughtNumbers;
+          displayNumbers = useShiny ? shinyNumbers : caughtNumbers;
         } else if (currentFilter === "not-caught") {
-          displayNumbers = allNumbers.filter(number => !caughtNumbers.includes(number));
+          displayNumbers = useShiny 
+            ? allNumbers.filter(number => !shinyNumbers.includes(number))
+            : allNumbers.filter(number => !caughtNumbers.includes(number));
+        } else {
+          displayNumbers = allNumbers; // Show all Pokémon
         }
 
         const startIndex = currentPage * itemsPerPage;
@@ -460,16 +520,31 @@
 
           const formattedId = i.toString().padStart(3, '0');
           const spriteFolder = useGif ? "front_default_gif" : "front_default";
-          const spritePath = `../user_files/sprites/${spriteFolder}/${i}.${useGif ? 'gif' : 'png'}`;
+          // In shiny mode, always use shiny sprites; in normal mode, use normal sprites
+          const shinyPath = useShiny ? "shiny/" : "";
+          const spritePath = `../user_files/sprites/${spriteFolder}/${shinyPath}${i}.${useGif ? 'gif' : 'png'}`;
           const placeholderPath = `../user_files/sprites/front_default/0.png`;
+          const placeholderShinyPath = useShiny ? `../user_files/sprites/front_default/shiny/0.png` : placeholderPath;
 
-          if (caughtNumbers.includes(i)) {
+          // Check if Pokémon is owned: in shiny mode check shinyNumbers, in normal mode check caughtNumbers
+          const isOwned = useShiny ? shinyNumbers.includes(i) : caughtNumbers.includes(i);
+          
+          if (isOwned) {
             const img = document.createElement("img");
             img.src = spritePath;
             img.loading = "lazy"; // Enable lazy loading
             img.onerror = function() {
               console.error(`Failed to load sprite: ${spritePath}`);
-              this.src = placeholderPath;
+              // Fallback to normal sprite if shiny doesn't exist
+              if (useShiny) {
+                const normalPath = `../user_files/sprites/${spriteFolder}/${i}.${useGif ? 'gif' : 'png'}`;
+                this.src = normalPath;
+                this.onerror = function() {
+                  this.src = placeholderPath;
+                };
+              } else {
+                this.src = placeholderPath;
+              }
             };
             pokemonItem.appendChild(img);
           } else {
@@ -477,9 +552,12 @@
             spriteContainer.className = "pokemon-sprite-container";
 
             const baseImg = document.createElement("img");
-            baseImg.src = placeholderPath;
+            baseImg.src = placeholderShinyPath;
             baseImg.classList.add("base");
             baseImg.loading = "lazy"; // Enable lazy loading
+            baseImg.onerror = function() {
+              this.src = placeholderPath;
+            };
 
             const hoverImg = document.createElement("img");
             hoverImg.src = spritePath;
@@ -487,7 +565,16 @@
             hoverImg.loading = "lazy"; // Enable lazy loading
             hoverImg.onerror = function() {
               console.error(`Failed to load sprite: ${spritePath}`);
-              this.src = placeholderPath;
+              // Fallback to normal sprite if shiny doesn't exist
+              if (useShiny) {
+                const normalPath = `../user_files/sprites/${spriteFolder}/${i}.${useGif ? 'gif' : 'png'}`;
+                this.src = normalPath;
+                this.onerror = function() {
+                  this.src = placeholderPath;
+                };
+              } else {
+                this.src = placeholderPath;
+              }
             };
 
             spriteContainer.appendChild(baseImg);
@@ -497,8 +584,8 @@
 
           const idSpan = document.createElement("span");
           idSpan.className = "pokemon-id";
-          idSpan.textContent = caughtNumbers.includes(i) ?
-            (pokemonNames[formattedId] || `Unknown #${formattedId}`) :
+          idSpan.textContent = isOwned ?
+            (pokemonNames[i] || `Unknown #${formattedId}`) :
             `#${formattedId}`;
 
           pokemonItem.appendChild(idSpan);

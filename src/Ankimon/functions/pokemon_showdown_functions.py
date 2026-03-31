@@ -107,12 +107,12 @@ def export_all_pkmn_showdown():
                     pokemon_iv = pokemon['iv']
 
                     if pokemon["nickname"]:
-                        pokemon_name_and_nickname = f"{pokemon["nickname"]} ({pokemon["name"]})"
+                        pokemon_name_and_nickname = f"{pokemon['nickname']} ({pokemon['name']})"
                     else:
-                        pokemon_name_and_nickname = f"{pokemon["name"]}"
+                        pokemon_name_and_nickname = f"{pokemon['name']}"
 
                     if pokemon["gender"] in ["M", "F"]:
-                        exported_gender = f" ({pokemon["gender"]})"
+                        exported_gender = f" ({pokemon['gender']})"
                     else:
                         exported_gender = ""
 
@@ -206,12 +206,12 @@ def flex_pokemon_collection():
                     pokemon_iv = pokemon['iv']
 
                     if pokemon["nickname"]:
-                        pokemon_name_and_nickname = f"{pokemon["nickname"]} ({pokemon["name"]})"
+                        pokemon_name_and_nickname = f"{pokemon['nickname']} ({pokemon['name']})"
                     else:
-                        pokemon_name_and_nickname = f"{pokemon["name"]}"
+                        pokemon_name_and_nickname = f"{pokemon['name']}"
 
                     if pokemon["gender"] in ["M", "F"]:
-                        exported_gender = f" ({pokemon["gender"]})"
+                        exported_gender = f" ({pokemon['gender']})"
                     else:
                         exported_gender = ""
 

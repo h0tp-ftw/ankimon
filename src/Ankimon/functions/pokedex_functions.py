@@ -1,7 +1,7 @@
+from typing import Literal
 from ..resources import (
     pokedex_path,
     pokedesc_lang_path,
-    pokeapi_db_path,
     pokenames_lang_path,
     mypokemon_path,
     learnset_path,
@@ -9,6 +9,7 @@ from ..resources import (
     poke_evo_path,
     poke_species_path,
     csv_file_items_cost,
+    stats_csv,
     pokemon_csv,
 )
 from aqt.utils import showWarning
@@ -17,6 +18,34 @@ import json
 import random
 import csv
 from ..pyobj.error_handler import show_warning_with_traceback
+
+GROWTH_RATES = {
+    1: "slow", 
+    2: "medium", 
+    3: "fast", 
+    4: "medium-slow", 
+    5: "slow-then-very-fast", 
+    6: "fast-then-very-slow"
+}
+
+STATS = {
+    1: "hp",
+    2: "attack",
+    3: "defense", 
+    4: "special-attack", 
+    5: "special-defense", 
+    6: "speed", 
+}
+
+def _normalize_language_id(language):
+    """Map unsupported language IDs to a fallback that exists in data files."""
+    try:
+        lang = int(language)
+    except Exception:
+        return 9  # default to English on any parsing issue
+    if lang == 14:  # Spanish (LatAm) falls back to Spanish data
+        return 7
+    return lang
 
 
 def special_pokemon_names_for_min_level(name):
@@ -110,24 +139,11 @@ def search_pokedex(pokemon_name, variable):
         )
         return []
 
-
-def search_pokedex_by_name_for_id(pokemon_name, variable):
-    pokemon_name = special_pokemon_names_for_min_level(pokemon_name)
-    with open(str(pokedex_path), "r", encoding="utf-8") as json_file:
-        pokedex_data = json.load(json_file)
-        if pokemon_name in pokedex_data:
-            pokemon_info = pokedex_data[pokemon_name]
-            var = pokemon_info.get("num", None)
-            return var
-        else:
-            return None
-
-
-def search_pokedex_by_id(pokemon_id):
+def search_pokedex_by_id(species_id):
     with open(str(pokedex_path), "r", encoding="utf-8") as json_file:
         pokedex_data = json.load(json_file)
         for entry_name, attributes in pokedex_data.items():
-            if attributes["num"] == pokemon_id:
+            if attributes["species_id"] == species_id:
                 return entry_name
     return "Pokémon not found"
 
@@ -141,29 +157,47 @@ def get_mainpokemon_evo(pokemon_name):
         evolutions = pokemon_info.get("evos", [])
         return evolutions
 
+def get_growth_rate(species_id: int) -> str:
+    with open(poke_species_path, mode="r", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        
+        for row in reader:
+            if int(row["id"]) == species_id:
+                return GROWTH_RATES[int(row["growth_rate_id"])]
 
-def search_pokeapi_db(pkmn_name, variable):
-    with open(str(pokeapi_db_path), "r", encoding="utf-8") as json_file:
-        pokedex_data = json.load(json_file)
-        for pokemon_data in pokedex_data:
-            name = pokemon_data["name"]
-            if pokemon_data["name"] == pkmn_name:
-                var = pokemon_data.get(variable, None)
-                return var
+    raise ValueError(species_id)
 
+def get_base_experience(actual_id: int) -> int:
+    with open(pokemon_csv, mode="r", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
 
-def search_pokeapi_db_by_id(pkmn_id, variable):
-    with open(str(pokeapi_db_path), "r", encoding="utf-8") as json_file:
-        pokedex_data = json.load(json_file)
-        for pokemon_data in pokedex_data:
-            if pokemon_data["id"] == pkmn_id:
-                var = pokemon_data.get(variable, None)
-                return var
+        for row in reader:
+            if int(row["id"]) == actual_id:
+                return int(row["base_experience"])
 
+    raise ValueError(actual_id)
 
-# TODO change all the functions to use language as a parameter
+def get_effort_values(actual_id: int) -> dict[str, int]:
+    evs = {}
+    with open(stats_csv, mode="r", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+            
+        for row in reader:
+            if int(row["pokemon_id"]) == actual_id:
+                evs[STATS[int(row["stat_id"])]] = int(row["effort"])
+
+    return {
+        "hp": evs["hp"],
+        "attack": evs["attack"],
+        "defense": evs["defense"],
+        "special-attack": evs["special-attack"], 
+        "special-defense": evs["special-defense"],
+        "speed": evs["speed"],
+    }
+
 def get_pokemon_descriptions(species_id, language):
     descriptions = []  # Initialize an empty list to store matching descriptions
+    language = _normalize_language_id(language)
     with open(pokedesc_lang_path, mode="r", encoding="utf-8") as csv_file:
         csv_reader = csv.DictReader(csv_file)
         for row in csv_reader:
@@ -185,8 +219,8 @@ def get_pokemon_descriptions(species_id, language):
         return "Description not found."
 
 
-# TODO change all the functions to use language as a parameter
 def get_pokemon_diff_lang_name(pokemon_id: int, language: int):
+    language = _normalize_language_id(language)
     with open(pokenames_lang_path, mode="r", encoding="utf-8") as file:
         reader = csv.reader(file)
         next(reader)  # Skip the header row if there is one
@@ -229,11 +263,8 @@ def get_all_pokemon_moves(pk_name, level):
     with open(learnset_path, "r", encoding="utf-8") as file:
         learnsets = json.load(file)
 
-    # Normalize the Pokémon name to lowercase for consistency
-    pk_name = pk_name.lower()
-
     # Retrieve the learnset for the specified Pokémon
-    pokemon_learnset = learnsets.get(pk_name, {})
+    pokemon_learnset = learnsets.get(pk_name.lower(), {})
 
     # Create a dictionary to store moves and their corresponding highest levels
     moves_at_level_and_lower = {}
@@ -277,7 +308,18 @@ def get_all_pokemon_moves(pk_name, level):
     return attacks
 
 
-def find_details_move(move_name: str):
+def find_details_move(move_name: str) -> dict:
+    """
+    Retrieve the move details for the given move.
+    Due to the JSON objects structure it attempts various normalization steps to improve matching.
+
+    Args:
+        move_name (str): The name of the move to search for.
+
+    Returns:
+        dict: A dictionary containing information about the given move if found. If not it tries falling back to 
+        either tackle (preferred) or None.
+    """
     try:
         with open(moves_file_path, "r", encoding="utf-8") as json_file:
             moves_data = json.load(json_file)
@@ -287,20 +329,33 @@ def find_details_move(move_name: str):
             if move:
                 return move
             move_name = move_name.replace(" ", "")
-            try:
-                move = moves_data.get(move_name.lower())
+            move = moves_data.get(move_name.lower())
+            if move:
                 return move
-            except:
-                # logger.log_and_showinfo("info",f"Can't find the attack {move_name} in the database.")
+            move_name = move_name.replace("-", "")
+            move = moves_data.get(move_name.lower())
+            if move:
+                return move
+            else:
                 move = moves_data.get("tackle")
+                showWarning(f"Move '{move_name}' not found. Returning default move 'tackle'.")
                 return move
+                
+    except FileNotFoundError as f:
+        show_warning_with_traceback(
+            parent=mw,
+            exception=f,
+            message="The is an issue finding moves.json."
+        )
+        return None
+        
     except Exception as e:
         show_warning_with_traceback(
             parent=mw,
             exception=e,
-            message=f"There is an issue in find_details_move for move: {move_name}",
+            message=f"There is an issue in find_details_move for move: {move_name}. Returning to default move 'tackle'."
         )
-        return None
+        return moves_data.get("tackle")
 
 
 def get_pokemon_evolution_data_all(pokemon_id, file_path=poke_evo_path):

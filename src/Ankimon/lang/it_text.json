@@ -453,5 +453,6 @@
   "futuresight_hits": "L'attacco previsto colpisce {side}!",
   "futuresight_fails": "Divinazione fallisce!",
   "weather_raindance_still": "Sta ancora piovendo!",
-  "wish_started": "{pokemon_name} ha espresso un desiderio! Guarirà {heal_amount} PS a breve."
+  "wish_started": "{pokemon_name} ha espresso un desiderio! Guarirà {heal_amount} PS a breve.",
+  "pc_box_label": "Box {current}/{total}"
 }

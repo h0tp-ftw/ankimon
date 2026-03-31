@@ -14,11 +14,21 @@ from aqt.qt import (
     QPixmap,
 )
 
-from aqt.theme import theme_manager # Check if light / dark mode in Anki
+from aqt.theme import theme_manager  # Check if light / dark mode in Anki
 
-from PyQt6.QtWidgets import QLineEdit, QComboBox, QCheckBox, QMenu, QWidget, QScrollArea, QFrame, QRadioButton, QButtonGroup
-from PyQt6.QtCore import QSize
-from PyQt6.QtGui import QIcon, QFont, QAction, QMovie, QCloseEvent
+from PyQt6.QtWidgets import (
+    QLineEdit,
+    QComboBox,
+    QCheckBox,
+    QMenu,
+    QWidget,
+    QScrollArea,
+    QFrame,
+    QRadioButton,
+    QButtonGroup,
+)
+from PyQt6.QtCore import QSize, pyqtSignal, QTimer
+from PyQt6.QtGui import QIcon, QFont, QAction, QMovie, QCloseEvent, QResizeEvent
 
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.reviewer_obj import Reviewer_Manager
@@ -36,6 +46,7 @@ from ..resources import mypokemon_path, itembag_path
 
 def format_item_name(item_name: str) -> str:
     return item_name.replace("-", " ").title()
+
 
 def clear_layout(layout):
     """
@@ -56,6 +67,16 @@ def clear_layout(layout):
         elif item.layout():
             clear_layout(item.layout())
 
+
+class PokemonSlotButton(QPushButton):
+    rightClicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self.rightClicked.emit()
+        super().mouseReleaseEvent(event)
+
+
 class ScaledMovieLabel(QLabel):
     def __init__(self, gif_path, width, height):
         super().__init__()
@@ -71,20 +92,26 @@ class ScaledMovieLabel(QLabel):
         pixmap = self.movie.currentPixmap()
 
         # Scale pixmap to target size (keep aspect ratio if you want)
-        scaled_pixmap = pixmap.scaled(self.target_width, self.target_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled_pixmap = pixmap.scaled(
+            self.target_width,
+            self.target_height,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
 
         self.setPixmap(scaled_pixmap)
 
+
 class PokemonPC(QDialog):
     def __init__(
-            self,
-            logger: ShowInfoLogger,
-            translator: Translator,
-            reviewer_obj: Reviewer_Manager,
-            test_window: TestWindow,
-            settings: Settings,
-            main_pokemon: PokemonObject,
-            parent=mw,
+        self,
+        logger: ShowInfoLogger,
+        translator: Translator,
+        reviewer_obj: Reviewer_Manager,
+        test_window: TestWindow,
+        settings: Settings,
+        main_pokemon: PokemonObject,
+        parent=mw,
     ):
         super().__init__(parent)
 
@@ -93,7 +120,9 @@ class PokemonPC(QDialog):
         self.reviewer_obj = reviewer_obj
         self.test_window = test_window
         self.settings = settings
-        self.main_pokemon_function_callback = lambda _pokemon_data: MainPokemon(_pokemon_data, main_pokemon, logger, translator, reviewer_obj, test_window)
+        self.main_pokemon_function_callback = lambda _pokemon_data: MainPokemon(
+            _pokemon_data, main_pokemon, logger, translator, reviewer_obj, test_window
+        )
 
         self.n_cols = 5
         self.n_rows = 6
@@ -101,6 +130,13 @@ class PokemonPC(QDialog):
         self.gif_in_collection = settings.get("gui.gif_in_collection")
 
         self.slot_size = 75  # Side length in pixels of a PC slot
+
+        self.resize_timer = QTimer()
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(
+            self.on_resize_timeout
+        )  # Debounce resize events to avoid excessive refreshes during window resizing
+
         self.main_layout = QHBoxLayout()  # Main horizontal layout for split panels
         self.details_layout = QVBoxLayout()  # Layout for details panel
         self.details_widget = QWidget()  # Widget to hold details
@@ -121,12 +157,19 @@ class PokemonPC(QDialog):
         self.sort_group = None
         self.selected_sort_key = "Date"
         self.desc_sort = None  # Sort by descending order
+        self.current_stats_tab_index = 0  # Remember selected tab (Stats/IV/EV)
 
         # Subscribe to theme change hook to update UI dynamically
         gui_hooks.theme_did_change.append(self.on_theme_change)
 
         self.ensure_data_integrity()  # Necessary for legacy reasons
+
+        self.grid_container = None
+        self.pokemon_grid = None
+        self.curr_box_label = None
+
         self.create_gui()
+        self.refresh_pokemon_grid()
 
     def on_theme_change(self):
         """
@@ -134,7 +177,6 @@ class PokemonPC(QDialog):
         Refreshes the GUI to apply the new theme settings.
         """
         self.refresh_gui()
-
 
     def create_gui(self):
         """
@@ -163,11 +205,11 @@ class PokemonPC(QDialog):
         self.setWindowTitle("Pokémon PC")
 
         # Determine theme based on Anki's night mode
-        is_dark_mode = theme_manager.night_mode # Correctly checks Anki's theme
+        is_dark_mode = theme_manager.night_mode  # Correctly checks Anki's theme
 
         # Define authentic Pokémon-themed color palettes
         if is_dark_mode:
-            # Dark Mode: Inspired by modern, sleek game UIs
+            # Dark Mode
             background_color = "#003A70"
             text_color = "#E0E0E0"
             button_bg = "#3B4CCA"
@@ -175,10 +217,10 @@ class PokemonPC(QDialog):
             hover_color = "#6A73D9"
             favorite_color = "#B3A125"
             favorite_hover_color = "#AF8308"
-            input_bg = "#002B5A" # Slightly lighter than background for input fields
+            input_bg = "#002B5A"  # Slightly lighter than background for input fields
             slot_bg_color = "#002B5A"
         else:
-            # Light Mode: Inspired by classic PC Box / Pokédex
+            # Light Mode
             background_color = "#E6F3FF"
             text_color = "#003A70"
             button_bg = "#3D7DCA"
@@ -186,7 +228,7 @@ class PokemonPC(QDialog):
             hover_color = "#A8D8FF"
             favorite_color = "#FFDE00"
             favorite_hover_color = "#FFA600"
-            input_bg = "#FFFFFF" # White background for input fields
+            input_bg = "#FFFFFF"  # White background for input fields
             slot_bg_color = "#CCE5FF"
 
         # Set stylesheet for the entire dialog, now correctly using all theme variables
@@ -217,90 +259,133 @@ class PokemonPC(QDialog):
             QLabel {{
                 color: {text_color};
             }}
+            QTabWidget {{
+                background-color: transparent;
+                border: none;
+            }}
+            QTabBar {{
+                background: transparent;
+                qproperty-drawBase: 0;
+            }}
+            QTabWidget::pane {{
+                border: 1px solid {button_border};
+                border-radius: 5px;
+                background: transparent;
+                padding: 3px;
+            }}
+            QTabBar::tab {{
+                background: {button_bg};
+                border: 1px solid {button_border};
+                padding: 6px;
+                color: {text_color};
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 2px;
+                /* No bottom margin needed if background is unified */
+            }}
+            QTabBar::tab:selected {{
+                background: {hover_color};
+            }}
+            QTabBar::tab:!selected {{
+                margin-top: 2px;
+            }}
         """)
 
-        self.gif_in_collection = self.settings.get("gui.gif_in_collection")
+        # Theme variables for building the grid
+        self.theme_vars = {
+            "button_border": button_border,
+            "background_color": background_color,
+            "slot_bg_color": slot_bg_color,
+            "favorite_color": favorite_color,
+            "favorite_hover_color": favorite_hover_color,
+            "hover_color": hover_color,
+        }
 
-        pokemon_list = self.load_pokemon_data()
-        pokemon_list = self.filter_pokemon_list(pokemon_list)
-        pokemon_list = self.sort_pokemon_list(pokemon_list)
-        max_box_idx = (len(pokemon_list) - 1) // (self.n_rows * self.n_cols)
+        # Clear existing layout if this is called via refresh_gui
+        if self.layout():
+            clear_layout(self.layout())
+        else:
+            self.setLayout(self.main_layout)
 
         # Collection panel
         collection_layout = QVBoxLayout()
+        collection_layout.setContentsMargins(20, 10, 20, 10)  # Consistent margins
         box_selector_layout = QHBoxLayout()
+        box_selector_layout.setContentsMargins(0, 0, 0, 10)
         prev_box_button = QPushButton("◀")
         next_box_button = QPushButton("▶")
         prev_box_button.setFixedSize(70, 50)
         next_box_button.setFixedSize(70, 50)
-        prev_box_button.setFont(QFont('System', 25))
-        next_box_button.setFont(QFont('System', 25))
-        prev_box_button.clicked.connect(lambda: self.looparound_go_to_box(self.current_box_idx - 1, max_box_idx))
-        next_box_button.clicked.connect(lambda: self.looparound_go_to_box(self.current_box_idx + 1, max_box_idx))
-        curr_box_label = QLabel(f"Box {self.current_box_idx + 1}/{max_box_idx + 1}")
-        curr_box_label.setFixedSize(150, 50)
-        curr_box_label.setFont(load_custom_font(20, int(self.settings.get("misc.language"))))
-        curr_box_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        curr_box_label.setStyleSheet(f"border: 1px solid {button_border}; background-color: {background_color};")
-        box_selector_layout.addWidget(prev_box_button, alignment=Qt.AlignmentFlag.AlignCenter)
-        box_selector_layout.addWidget(curr_box_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        box_selector_layout.addWidget(next_box_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        prev_box_button.setFont(QFont("System", 25))
+        next_box_button.setFont(QFont("System", 25))
+        # Max box idx is updated in refresh_pokemon_grid
+        prev_box_button.clicked.connect(lambda: self.navigate_box(-1))
+        next_box_button.clicked.connect(lambda: self.navigate_box(1))
+        self.curr_box_label = QLabel(
+            self.translator.translate(
+                "pc_box_label",
+                current=1,
+                total=1,
+            )
+        )
+        self.curr_box_label.setFixedSize(150, 50)
+        self.curr_box_label.setFont(
+            load_custom_font(20, int(self.settings.get("misc.language")))
+        )
+        self.curr_box_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.curr_box_label.setStyleSheet(
+            f"border: 1px solid {button_border}; background-color: {background_color};"
+        )
+
+        box_selector_layout.addStretch(1)  # Push buttons to center
+        box_selector_layout.addWidget(prev_box_button)
+        box_selector_layout.addWidget(self.curr_box_label)
+        box_selector_layout.addWidget(next_box_button)
+        box_selector_layout.addStretch(1)  # Push buttons to center
         collection_layout.addLayout(box_selector_layout)
 
-        # Pokémon grid
-        start_index = self.current_box_idx * self.n_cols * self.n_rows
-        end_index = (self.current_box_idx + 1) * self.n_cols * self.n_rows
-        pokemon_list_slice = pokemon_list[start_index:end_index]
-        pokemon_grid = QGridLayout()
-        for row in range(self.n_rows):
-            for col in range(self.n_cols):
-                pokemon_idx = col * self.n_rows + row
-                if pokemon_idx >= len(pokemon_list_slice):
-                    empty_label = QLabel()
-                    empty_label.setFixedSize(self.slot_size, self.slot_size)
-                    pokemon_grid.addWidget(empty_label, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-                    continue
+        # Grid Container in a Scroll Area to allow window shrinking
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setStyleSheet("background: transparent; border: none;")
+        self.scroll_area.setMinimumSize(200, 200)  # Minimum size required for shrinking
+        # Enforce pagination by turning off scrollbars
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
 
-                pokemon = pokemon_list_slice[pokemon_idx]
-                pkmn_image_path = get_sprite_path("front", "gif" if self.gif_in_collection else "png", pokemon['id'], pokemon.get("shiny", False), pokemon["gender"])
-                pokemon_button = QPushButton("")
-                pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+        self.grid_container = QWidget()
+        self.grid_container.setStyleSheet("background: transparent;")
+        self.pokemon_grid = QGridLayout(self.grid_container)
+        self.pokemon_grid.setSpacing(5)
+        self.pokemon_grid.setContentsMargins(0, 0, 0, 0)
+        self.pokemon_grid.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.scroll_area.setWidget(self.grid_container)
 
-                if pokemon.get("is_favorite", False):
-                    slot_style_bg = favorite_color
-                    slot_style_hover_bg = favorite_hover_color # Favorite color doesn't change on hover
-                else:
-                    slot_style_bg = slot_bg_color
-                    slot_style_hover_bg = hover_color
+        collection_layout.addWidget(self.scroll_area, 1)
+        self.setup_filters_layout(collection_layout)
 
-                # Apply the style
-                style_sheet_str = f"""
-                    QPushButton {{
-                        background-color: {slot_style_bg};
-                        border: 1px solid {button_border};
-                        border-radius: 5px;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {slot_style_hover_bg};
-                    }}
-                """
-                pokemon_button.setStyleSheet(style_sheet_str)
+        collection_widget = QWidget()
+        collection_widget.setLayout(collection_layout)
+        self.main_layout.addWidget(collection_widget, 1)
 
-                pokemon_button.clicked.connect(lambda checked, pb=pokemon_button, pkmn=pokemon: self.show_actions_submenu(pb, pkmn))
+        self.setup_details_panel(background_color)
 
-                if self.gif_in_collection:
-                    scaled_movie_label = ScaledMovieLabel(pkmn_image_path, self.slot_size - 10, self.slot_size - 10)
-                    scaled_movie_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-                    pokemon_grid.addWidget(pokemon_button, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-                    pokemon_grid.addWidget(scaled_movie_label, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-                else:
-                    pixmap = QPixmap(pkmn_image_path)
-                    pixmap = self.adjust_pixmap_size(pixmap, max_width=300, max_height=230)
-                    pokemon_button.setIcon(QIcon(pkmn_image_path))
-                    pokemon_button.setIconSize(QSize(self.slot_size - 10, self.slot_size - 10))
-                    pokemon_grid.addWidget(pokemon_button, col, row, alignment=Qt.AlignmentFlag.AlignCenter)
-        collection_layout.addLayout(pokemon_grid)
+    def setup_filters_layout(self, parent_layout):
+        """
+        Build and attach filter/sort controls below the PC grid.
 
+        The method preserves previous control state when rebuilding the GUI,
+        reconnects all filter/sort signals, and appends the resulting layout
+        to ``parent_layout``.
+
+        Args:
+            parent_layout (QLayout): Layout that receives the filter controls.
+        """
         # Bottom part to filter the Pokémon displayed
         filters_layout = QGridLayout()
         # Name filtering
@@ -315,35 +400,72 @@ class PokemonPC(QDialog):
         prev_idx = self.type_combo.currentIndex() if self.type_combo is not None else 0
         self.type_combo = QComboBox()
         self.type_combo.addItem("All types")
-        self.type_combo.addItems(["Normal", "Fire", "Water", "Electric", "Grass", "Ice", "Fighting", "Poison", "Ground", "Flying", "Psychic", "Bug", "Rock", "Ghost", "Dragon", "Dark", "Steel", "Fairy"])
+        self.type_combo.addItems(
+            [
+                "Normal",
+                "Fire",
+                "Water",
+                "Electric",
+                "Grass",
+                "Ice",
+                "Fighting",
+                "Poison",
+                "Ground",
+                "Flying",
+                "Psychic",
+                "Bug",
+                "Rock",
+                "Ghost",
+                "Dragon",
+                "Dark",
+                "Steel",
+                "Fairy",
+            ]
+        )
         self.type_combo.setCurrentIndex(prev_idx)
         self.type_combo.currentIndexChanged.connect(lambda: self.go_to_box(0))
         # Generation filtering
-        prev_idx = self.generation_combo.currentIndex() if self.generation_combo is not None else 0
+        prev_idx = (
+            self.generation_combo.currentIndex()
+            if self.generation_combo is not None
+            else 0
+        )
         self.generation_combo = QComboBox()
         self.generation_combo.addItem("All gens")
-        self.generation_combo.addItems([f"Gen {i}" for i in range(1, 9, 1)])
+        self.generation_combo.addItems([f"Gen {i}" for i in range(1, 10, 1)])
         self.generation_combo.setCurrentIndex(prev_idx)
         self.generation_combo.currentIndexChanged.connect(lambda: self.go_to_box(0))
         # Tier filtering
         prev_idx = self.tier_combo.currentIndex() if self.tier_combo is not None else 0
         self.tier_combo = QComboBox()
         self.tier_combo.addItem("All tiers")
-        self.tier_combo.addItems(["Normal", "Legendary", "Mythical", "Baby", "Ultra", "Fossil", "Starter"])
+        self.tier_combo.addItems(
+            ["Normal", "Legendary", "Mythical", "Baby", "Ultra", "Fossil", "Starter"]
+        )
         self.tier_combo.setCurrentIndex(prev_idx)
         self.tier_combo.currentIndexChanged.connect(lambda: self.go_to_box(0))
         # Sorting by favorites
-        is_checked = self.filter_favorites.isChecked() if self.filter_favorites is not None else False
+        is_checked = (
+            self.filter_favorites.isChecked()
+            if self.filter_favorites is not None
+            else False
+        )
         self.filter_favorites = QCheckBox("Favorites")
         self.filter_favorites.setChecked(is_checked)
         self.filter_favorites.stateChanged.connect(lambda: self.go_to_box(0))
         # Filtering Pokemon who hold items
-        is_checked = self.filter_is_holding_item.isChecked() if self.filter_is_holding_item is not None else False
+        is_checked = (
+            self.filter_is_holding_item.isChecked()
+            if self.filter_is_holding_item is not None
+            else False
+        )
         self.filter_is_holding_item = QCheckBox("Holds item")
         self.filter_is_holding_item.setChecked(is_checked)
         self.filter_is_holding_item.stateChanged.connect(lambda: self.go_to_box(0))
         # Shiny filter
-        is_checked = self.filter_shiny.isChecked() if self.filter_shiny is not None else False
+        is_checked = (
+            self.filter_shiny.isChecked() if self.filter_shiny is not None else False
+        )
         self.filter_shiny = QCheckBox("Shiny")
         self.filter_shiny.setChecked(is_checked)
         self.filter_shiny.stateChanged.connect(lambda: self.go_to_box(0))
@@ -355,11 +477,15 @@ class PokemonPC(QDialog):
         self.sort_by_id = QRadioButton("ID")
         self.sort_by_name = QRadioButton("Name")
         self.sort_by_level = QRadioButton("Level")
+        self.sort_by_iv = QRadioButton("IV")
+        self.sort_by_ev = QRadioButton("EV")
         self.sort_by_date = QRadioButton("Date")
 
         self.sort_group.addButton(self.sort_by_id)
         self.sort_group.addButton(self.sort_by_name)
         self.sort_group.addButton(self.sort_by_level)
+        self.sort_group.addButton(self.sort_by_iv)
+        self.sort_group.addButton(self.sort_by_ev)
         self.sort_group.addButton(self.sort_by_date)
 
         if self.selected_sort_key == "ID":
@@ -368,6 +494,10 @@ class PokemonPC(QDialog):
             self.sort_by_name.setChecked(True)
         elif self.selected_sort_key == "Level":
             self.sort_by_level.setChecked(True)
+        elif self.selected_sort_key == "IV":
+            self.sort_by_iv.setChecked(True)
+        elif self.selected_sort_key == "EV":
+            self.sort_by_ev.setChecked(True)
         else:  # Date is the default
             self.sort_by_date.setChecked(True)
 
@@ -379,6 +509,8 @@ class PokemonPC(QDialog):
         sort_radio_layout.addWidget(self.sort_by_id)
         sort_radio_layout.addWidget(self.sort_by_name)
         sort_radio_layout.addWidget(self.sort_by_level)
+        sort_radio_layout.addWidget(self.sort_by_iv)
+        sort_radio_layout.addWidget(self.sort_by_ev)
         sort_radio_layout.addWidget(self.sort_by_date)
         sort_radio_widget = QWidget()
         sort_radio_widget.setLayout(sort_radio_layout)
@@ -406,47 +538,182 @@ class PokemonPC(QDialog):
 
         filters_layout.addWidget(checkboxes_widget, 2, 0, 1, 5)
         filters_layout.addWidget(sort_radio_widget, 3, 0, 1, 5)
-        collection_layout.addLayout(filters_layout)
+        parent_layout.addLayout(filters_layout)
 
-        # Finalizing layout
-        collection_widget = QWidget()
-        collection_widget.setLayout(collection_layout)
-        collection_widget.setFixedWidth(self.n_cols * (self.slot_size + 20) + 50)
-        collection_widget.setFixedHeight(self.n_rows * (self.slot_size + 20) + 100)
-
-        self.main_layout.addWidget(collection_widget, 1)
-
-        # Check for existing details panel and apply styles
+    def setup_details_panel(self, background_color):
         if self.pokemon_details_layout is not None:
             self.details_widget = QWidget()
             self.details_widget.setLayout(self.pokemon_details_layout)
-            self.details_widget.setMinimumWidth(470) # Ensure it's visible
+            self.details_widget.setMinimumWidth(470)  # Ensure it's visible
             self.details_widget.setStyleSheet(f"background-color: {background_color};")
             self.main_layout.addWidget(self.details_widget, 2)
         else:
             # Ensure the panel is collapsed if no pokemon is selected
             self.details_widget = QWidget()
-            self.details_widget.setLayout(QVBoxLayout()) # Placeholder layout
-            self.details_widget.setMinimumWidth(0)
-            self.details_widget.setMaximumWidth(0)
-            self.main_layout.addWidget(self.details_widget, 2)
+            self.details_widget.hide()
+            self.main_layout.addWidget(self.details_widget, 0)
 
-        self.setLayout(self.main_layout)
+    def refresh_pokemon_grid(self):
+        """
+        Clears and rebuilds the grid.
+        """
+        if self.pokemon_grid is None:
+            return
+
+        clear_layout(self.pokemon_grid)
+        self.gif_in_collection = self.settings.get("gui.gif_in_collection")
+
+        pokemon_list = self.load_pokemon_data()
+        pokemon_list = self.filter_pokemon_list(pokemon_list)
+        pokemon_list = self.sort_pokemon_list(pokemon_list)
+        max_box_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
+
+        if self.current_box_idx > max_box_idx:
+            self.current_box_idx = max_box_idx
+
+        if self.curr_box_label:
+            self.curr_box_label.setText(
+                self.translator.translate(
+                    "pc_box_label",
+                    current=self.current_box_idx + 1,
+                    total=max_box_idx + 1,
+                )
+            )
+
+        start_index = self.current_box_idx * self.n_rows * self.n_cols
+        pokemon_list_slice = pokemon_list[
+            start_index : start_index + self.n_rows * self.n_cols
+        ]
+
+        theme_vars = self.theme_vars
+        border = theme_vars["button_border"]
+
+        for row in range(self.n_rows):
+            for col in range(self.n_cols):
+                pokemon_idx = row * self.n_cols + col
+                if pokemon_idx >= len(pokemon_list_slice):
+                    empty_label = QLabel()
+                    empty_label.setFixedSize(self.slot_size, self.slot_size)
+                    self.pokemon_grid.addWidget(
+                        empty_label, row, col, alignment=Qt.AlignmentFlag.AlignCenter
+                    )
+                    continue
+
+                pokemon = pokemon_list_slice[pokemon_idx]
+                pkmn_image_path = get_sprite_path(
+                    "front",
+                    "gif" if self.gif_in_collection else "png",
+                    pokemon["id"],
+                    pokemon.get("shiny", False),
+                    pokemon["gender"],
+                )
+                pokemon_button = PokemonSlotButton("")
+                pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+
+                bg = (
+                    theme_vars["favorite_color"]
+                    if pokemon.get("is_favorite")
+                    else theme_vars["slot_bg_color"]
+                )
+                h_bg = (
+                    theme_vars["favorite_hover_color"]
+                    if pokemon.get("is_favorite")
+                    else theme_vars["hover_color"]
+                )
+                pokemon_button.setStyleSheet(
+                    f"QPushButton {{ background-color: {bg}; border: 1px solid {border}; border-radius: 5px; }} QPushButton:hover {{ background-color: {h_bg}; }}"
+                )
+
+                # Connect signals
+                # Left click: Show details
+                pokemon_button.clicked.connect(
+                    lambda checked, pkmn=pokemon: self.show_pokemon_details(pkmn)
+                )
+                # Right click: Show actions menu
+                pokemon_button.rightClicked.connect(
+                    lambda pb=pokemon_button, pkmn=pokemon: self.show_actions_submenu(
+                        pb, pkmn
+                    )
+                )
+                self.pokemon_grid.addWidget(
+                    pokemon_button, row, col, alignment=Qt.AlignmentFlag.AlignCenter
+                )
+
+                if self.gif_in_collection:
+                    scaled_movie_label = ScaledMovieLabel(
+                        pkmn_image_path, self.slot_size - 10, self.slot_size - 10
+                    )
+                    scaled_movie_label.setAttribute(
+                        Qt.WidgetAttribute.WA_TransparentForMouseEvents
+                    )
+                    self.pokemon_grid.addWidget(
+                        scaled_movie_label,
+                        row,
+                        col,
+                        alignment=Qt.AlignmentFlag.AlignCenter,
+                    )
+                else:
+                    pokemon_button.setIcon(QIcon(pkmn_image_path))
+                    pokemon_button.setIconSize(
+                        QSize(self.slot_size - 10, self.slot_size - 10)
+                    )
+
+    def navigate_box(self, delta):
+        """
+        Move to a different box relative to the current one.
+
+        Applies active filters to compute the valid page range and then
+        navigates with wrap-around behavior.
+
+        Args:
+            delta (int): Relative box movement (for example ``-1`` or ``+1``).
+        """
+        pokemon_list = self.load_pokemon_data()
+        pokemon_list = self.filter_pokemon_list(pokemon_list)
+        max_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
+        self.looparound_go_to_box(self.current_box_idx + delta, max_idx)
+
+    def resizeEvent(self, event: QResizeEvent):
+        """
+        Triggered when the dialog is resized.
+        Uses a timer to debounce the GUI refresh.
+        """
+        super().resizeEvent(event)
+        self.resize_timer.start(200)
+
+    def on_resize_timeout(self):
+        """
+        Recalculates dimensions and refreshes the grid if they have changed.
+        Ensures the current box index remains valid for the new grid capacity.
+        """
+        new_cols, new_rows = self.calculate_grid_dimensions()
+        if new_cols != self.n_cols or new_rows != self.n_rows:
+            self.n_cols = new_cols
+            self.n_rows = new_rows
+            self.refresh_pokemon_grid()
+
+    def calculate_grid_dimensions(self):
+        """
+        Calculates how many columns and rows of slots fit in the current viewport.
+        Ensures only fully visible slots are displayed by using scroll_area dimensions.
+        """
+        vw = self.scroll_area.viewport().width()
+        vh = self.scroll_area.viewport().height()
+
+        slot = self.slot_size
+        spacing = 5
+        new_cols = max(1, (vw + spacing) // (slot + spacing))
+        new_rows = max(1, (vh + spacing) // (slot + spacing))
+
+        return int(new_cols), int(new_rows)
 
     def refresh_gui(self):
         """
-        Refreshes the entire graphical user interface by rebuilding its layout.
-
-        This method clears the current main layout, reconstructs it by calling `create_gui()`,
-        and then invalidates and reactivates the layout to ensure proper rendering.
-
-        Side Effects:
-            - Removes all widgets from the main layout.
-            - Recreates and re-adds all GUI elements.
-            - Forces layout recalculation and update.
+        Refreshes the entire graphical user interface by rebuilding its structure
+        and then populating the grid.
         """
-        clear_layout(self.main_layout)
         self.create_gui()
+        self.refresh_pokemon_grid()
         self.layout().invalidate()
         self.layout().activate()
 
@@ -459,10 +726,10 @@ class PokemonPC(QDialog):
 
         Side Effects:
             - Updates the current box index.
-            - Triggers a full GUI refresh to display the selected box's contents.
+            - Refreshes the Pokémon grid to display the selected box's contents.
         """
         self.current_box_idx = idx
-        self.refresh_gui()
+        self.refresh_pokemon_grid()
 
     def looparound_go_to_box(self, idx: int, max_idx: int):
         """
@@ -517,12 +784,12 @@ class PokemonPC(QDialog):
             with open(mypokemon_path, "r", encoding="utf-8") as file:
                 pokemon_list = json.load(file)
                 for i, pokemon in enumerate(pokemon_list):
-                    pokemon['original_index'] = i
+                    pokemon["original_index"] = i
                 return pokemon_list
         except FileNotFoundError:
-            self.logger.log("error","mypokemon.json file not found.")
+            self.logger.log("error", "mypokemon.json file not found.")
         except json.JSONDecodeError:
-            self.logger.log("error","mypokemon.json file not found.")
+            self.logger.log("error", "mypokemon.json file not found.")
 
         return []
 
@@ -544,13 +811,17 @@ class PokemonPC(QDialog):
         Returns:
             list: A new list containing only Pokémon that match all the active filter criteria.
         """
+
         def filtering_func(pokemon: dict) -> bool:
             if self.search_edit is not None:
                 if self.search_edit.text().lower() not in pokemon.get("name").lower():
                     return False
 
             if self.type_combo is not None:
-                if self.type_combo.currentIndex() != 0 and self.type_combo.currentText() not in pokemon.get("type", ""):
+                if (
+                    self.type_combo.currentIndex() != 0
+                    and self.type_combo.currentText() not in pokemon.get("type", "")
+                ):
                     return False
 
             if self.tier_combo is not None:
@@ -562,11 +833,15 @@ class PokemonPC(QDialog):
                     return False
 
             if self.filter_favorites is not None:
-                if self.filter_favorites.isChecked() and not pokemon.get("is_favorite", False):
+                if self.filter_favorites.isChecked() and not pokemon.get(
+                    "is_favorite", False
+                ):
                     return False
 
             if self.filter_is_holding_item is not None:
-                if self.filter_is_holding_item.isChecked() and not pokemon.get("held_item", False):
+                if self.filter_is_holding_item.isChecked() and not pokemon.get(
+                    "held_item", False
+                ):
                     return False
 
             if self.filter_shiny is not None:
@@ -576,14 +851,14 @@ class PokemonPC(QDialog):
             if self.generation_combo is not None:
                 gen_idx = self.generation_combo.currentIndex()
                 if gen_idx != 0 and (
-                    (1 <= pokemon["id"] <= 151 and gen_idx != 1) or
-                    (152 <= pokemon["id"] <= 251 and gen_idx != 2) or
-                    (252 <= pokemon["id"] <= 386 and gen_idx != 3) or
-                    (387 <= pokemon["id"] <= 493 and gen_idx != 4) or
-                    (494 <= pokemon["id"] <= 649 and gen_idx != 5) or
-                    (650 <= pokemon["id"] <= 721 and gen_idx != 6) or
-                    (722 <= pokemon["id"] <= 809 and gen_idx != 7) or
-                    (810 <= pokemon["id"] <= 898 and gen_idx != 8)
+                    (1 <= pokemon["id"] <= 151 and gen_idx != 1)
+                    or (152 <= pokemon["id"] <= 251 and gen_idx != 2)
+                    or (252 <= pokemon["id"] <= 386 and gen_idx != 3)
+                    or (387 <= pokemon["id"] <= 493 and gen_idx != 4)
+                    or (494 <= pokemon["id"] <= 649 and gen_idx != 5)
+                    or (650 <= pokemon["id"] <= 721 and gen_idx != 6)
+                    or (722 <= pokemon["id"] <= 809 and gen_idx != 7)
+                    or (810 <= pokemon["id"] <= 898 and gen_idx != 8)
                 ):
                     return False
 
@@ -600,15 +875,26 @@ class PokemonPC(QDialog):
 
         def sort_key(p):
             if sort_key_str == "name":
-                return (p.get("name", ""), p.get("nickname", ""))
+                name = p.get("name") or ""
+                nickname = p.get("nickname") or ""
+                return (name.lower(), nickname.lower())
+            elif sort_key_str == "iv":
+                # Sum all IV values for total IV score
+                iv_dict = p.get("iv", {})
+                return sum(iv_dict.values()) if iv_dict else 0
+            elif sort_key_str == "ev":
+                # Sum all EV values for total EV score
+                ev_dict = p.get("ev", {})
+                return sum(ev_dict.values()) if ev_dict else 0
             else:
-                return p.get(sort_key_str, 0)
+                val = p.get(sort_key_str)
+                if val is None:
+                    return (
+                        0 if sort_key_str in ["id", "level", "original_index"] else ""
+                    )
+                return val
 
-        return sorted(
-            pokemon_list,
-            reverse=reverse,
-            key=sort_key
-        )
+        return sorted(pokemon_list, reverse=reverse, key=sort_key)
 
     def on_sort_button_clicked(self, button):
         self.selected_sort_key = button.text()
@@ -635,7 +921,7 @@ class PokemonPC(QDialog):
         """
         menu = QMenu(self)
 
-        # QMenu doesn't have a "window name" property or the like. So let's emulate one.
+        # Emulate a window title for QMenu
         if pokemon.get("gender") == "M":
             gender_symbol = "♂"
         elif pokemon.get("gender") == "F":
@@ -643,9 +929,9 @@ class PokemonPC(QDialog):
         else:
             gender_symbol = ""
         if pokemon.get("nickname"):
-            title = f'{pokemon["nickname"]} ({pokemon["name"]}) {gender_symbol} - lvl {pokemon["level"]}'
+            title = f"{pokemon['nickname']} ({pokemon['name']}) {gender_symbol} - lvl {pokemon['level']}"
         else:
-            title = f'{pokemon["name"]} {gender_symbol} - lvl {pokemon["level"]}'
+            title = f"{pokemon['name']} {gender_symbol} - lvl {pokemon['level']}"
         title_action = QAction(title, menu)
         title_action.setEnabled(False)  # Disabled, so it can't be clicked
         menu.addAction(title_action)
@@ -655,12 +941,16 @@ class PokemonPC(QDialog):
         main_pokemon_action = QAction("Pick as main Pokémon", self)
         make_favorite_action = QAction(
             "Unmake favorite" if pokemon.get("is_favorite", False) else "Make favorite"
-            )
+        )
         give_held_item = QAction("Give a held item", self)
 
         # Connect actions to methods or lambda functions
-        pokemon_details_action.triggered.connect(lambda: self.show_pokemon_details(pokemon))
-        main_pokemon_action.triggered.connect(lambda: self.main_pokemon_function_callback(pokemon))
+        pokemon_details_action.triggered.connect(
+            lambda: self.show_pokemon_details(pokemon)
+        )
+        main_pokemon_action.triggered.connect(
+            lambda: self.main_pokemon_function_callback(pokemon)
+        )
         make_favorite_action.triggered.connect(lambda: self.toggle_favorite(pokemon))
         give_held_item.triggered.connect(lambda: self.give_held_item(pokemon))
 
@@ -669,7 +959,9 @@ class PokemonPC(QDialog):
         menu.addAction(make_favorite_action)
         menu.addAction(give_held_item)
         if pokemon.get("held_item"):
-            remove_held_item = QAction(f"Remove held item : {format_item_name(pokemon['held_item'])}", self)
+            remove_held_item = QAction(
+                f"Remove held item : {format_item_name(pokemon['held_item'])}", self
+            )
             remove_held_item.triggered.connect(lambda: self.remove_held_item(pokemon))
             menu.addAction(remove_held_item)
 
@@ -693,39 +985,45 @@ class PokemonPC(QDialog):
         Raises:
             ValueError: If neither 'base_stats' nor 'stats' are available in the Pokémon dictionary.
         """
-        if pokemon.get('base_stats'):
-            detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0)}
-        elif pokemon.get('stats'):
-            detail_stats = {**pokemon['stats'], "xp": pokemon.get("xp", 0)}
+        if pokemon.get("base_stats"):
+            detail_stats = {**pokemon["base_stats"], "xp": pokemon.get("xp", 0)}
+        elif pokemon.get("stats"):
+            detail_stats = {**pokemon["stats"], "xp": pokemon.get("xp", 0)}
         else:
             raise ValueError("Could not get the stats information of the Pokémon")
 
         self.pokemon_details_layout = PokemonCollectionDetails(
-            name=pokemon['name'],
-            level=pokemon['level'],
-            id=pokemon['id'],
+            name=pokemon["name"],
+            level=pokemon["level"],
+            id=pokemon["id"],
             shiny=pokemon.get("shiny", False),
-            ability=pokemon['ability'],
-            type=pokemon['type'],
+            ability=pokemon["ability"],
+            type=pokemon["type"],
             detail_stats=detail_stats,
-            attacks=pokemon['attacks'],
-            base_experience=pokemon['base_experience'],
-            growth_rate=pokemon['growth_rate'],
-            ev=pokemon['ev'],
-            iv=pokemon['iv'],
-            gender=pokemon['gender'],
-            nickname=pokemon.get('nickname'),
-            individual_id=pokemon.get('individual_id'),
-            pokemon_defeated=pokemon.get('pokemon_defeated', 0),
-            everstone=pokemon.get('everstone', False),
-            captured_date=pokemon.get('captured_date', 'Missing'),
+            attacks=pokemon["attacks"],
+            base_experience=pokemon["base_experience"],
+            growth_rate=pokemon["growth_rate"],
+            ev=pokemon["ev"],
+            iv=pokemon["iv"],
+            gender=pokemon["gender"],
+            nickname=pokemon.get("nickname"),
+            individual_id=pokemon.get("individual_id"),
+            pokemon_defeated=pokemon.get("pokemon_defeated", 0),
+            everstone=pokemon.get("everstone", False),
+            captured_date=pokemon.get("captured_date", "Missing"),
             language=int(self.settings.get("misc.language")),
             gif_in_collection=self.gif_in_collection,
             remove_levelcap=self.settings.get("misc.remove_level_cap"),
             logger=self.logger,
-            refresh_callback=self.refresh_gui
+            refresh_callback=self.refresh_gui,
+            initial_tab_index=self.current_stats_tab_index,
+            tab_changed_callback=self.on_stats_tab_changed,
         )
         self.refresh_gui()
+
+    def on_stats_tab_changed(self, index: int):
+        """Callback to remember which tab (Stats/IV/EV) is selected."""
+        self.current_stats_tab_index = index
 
     def toggle_favorite(self, pokemon: dict[list, Any]):
         """
@@ -781,20 +1079,25 @@ class PokemonPC(QDialog):
         """
         with open(itembag_path, "r", encoding="utf-8") as f:
             items_list = json.load(f)
-        items_names = [item_data["item"] for item_data in items_list if item_data.get("type") is None]
+        items_names = [
+            item_data["item"]
+            for item_data in items_list
+            if item_data.get("type") is None
+        ]
         pokemon_obj = PokemonObject.from_dict(pokemon)
 
         def func(item_name: str):
-            # small intermediary function. This allows me to display a confirmation message after giving the item and refresh the PC after giving the item.
-            # Refreshing the PC after giving the item is important in order to update the pokemon information with the new held item
+            # Callback to handle item assignment and GUI refresh
             pokemon_obj.give_held_item(item_name)
-            self.logger.log_and_showinfo("info", f"{item_name} was given to {pokemon.get('name')}.")
+            self.logger.log_and_showinfo(
+                "info", f"{item_name} was given to {pokemon.get('name')}."
+            )
             self.refresh_gui()
 
         give_item_window = GiveItemWindow(
             item_list=items_names,
             give_item_func=lambda item_name: func(item_name),
-            logger=self.logger
+            logger=self.logger,
         )
         give_item_window.exec()
 
@@ -821,10 +1124,13 @@ class PokemonPC(QDialog):
             - Refreshes the GUI via `self.refresh_gui()`.
         """
         pokemon_obj = PokemonObject.from_dict(pokemon)
-        if pokemon.get('held_item') is None:
+        if pokemon.get("held_item") is None:
             raise ValueError("The pokemon does not hold an item.")
         pokemon_obj.remove_held_item()
-        self.logger.log_and_showinfo("info", f"{format_item_name(pokemon['held_item'])} was removed from {pokemon.get('name')}.")
+        self.logger.log_and_showinfo(
+            "info",
+            f"{format_item_name(pokemon['held_item'])} was removed from {pokemon.get('name')}.",
+        )
 
         # Refreshing the PC after giving the item is important in order to update the pokemon information without the held item
         self.refresh_gui()
@@ -842,12 +1148,27 @@ class PokemonPC(QDialog):
         # --- QUICK CHECK ---
         # First, quickly determine if any migration is needed at all.
         default_keys = {
-            "nickname", "gender", "ability", "type", "attacks", "base_experience", 
-            "growth_rate", "everstone", "shiny", "captured_date", "individual_id", 
-            "mega", "special_form", "xp", "friendship", "pokemon_defeated", 
-            "tier", "is_favorite", "held_item"
+            "nickname",
+            "gender",
+            "ability",
+            "type",
+            "attacks",
+            "base_experience",
+            "growth_rate",
+            "everstone",
+            "shiny",
+            "captured_date",
+            "individual_id",
+            "mega",
+            "special_form",
+            "xp",
+            "friendship",
+            "pokemon_defeated",
+            "tier",
+            "is_favorite",
+            "held_item",
         }
-        
+
         is_migration_needed = any(
             key not in pokemon
             for pokemon in pokemon_list
@@ -861,13 +1182,25 @@ class PokemonPC(QDialog):
         # --- FULL MIGRATION (only if needed) ---
         needs_update = False
         default_values = {
-            "nickname": "", "gender": "N", "ability": "Illuminate", "type": ["Normal"],
-            "attacks": ["Struggle"], "base_experience": 0, "growth_rate": "medium",
-            "everstone": False, "shiny": False, "captured_date": None,
-            "individual_id": lambda p: str(uuid.uuid4()), "mega": False,
-            "special_form": None, "xp": 0, "friendship": 0,
-            "pokemon_defeated": 0, "tier": lambda p: get_tier_by_id(p.get("id", 0)) or "Normal",
-            "is_favorite": False, "held_item": None
+            "nickname": "",
+            "gender": "N",
+            "ability": "Illuminate",
+            "type": ["Normal"],
+            "attacks": ["Struggle"],
+            "base_experience": 0,
+            "growth_rate": "medium",
+            "everstone": False,
+            "shiny": False,
+            "captured_date": None,
+            "individual_id": lambda p: str(uuid.uuid4()),
+            "mega": False,
+            "special_form": None,
+            "xp": 0,
+            "friendship": 0,
+            "pokemon_defeated": 0,
+            "tier": lambda p: get_tier_by_id(p.get("id", 0)) or "Normal",
+            "is_favorite": False,
+            "held_item": None,
         }
 
         for i, pokemon in enumerate(pokemon_list):
@@ -906,6 +1239,18 @@ class GiveItemWindow(QDialog):
     """
     Small window that opens up when the user gives an item to the Pokemon from a PC box
     """
+
+    # Make it a class variable so it can be accessed from other classes
+    NOT_YET_IMPLEMENTED_ITEMS = {
+        "focus-sash",
+        "focus-band",
+        "white-herb",
+        "mental-herb",
+        "power-herb",
+        "throat-spray",
+        "weakness-policy",
+    }
+
     def __init__(self, item_list: list[str], give_item_func: Callable, logger):
         super().__init__()
         self.setWindowTitle("Give an Item")
@@ -925,24 +1270,20 @@ class GiveItemWindow(QDialog):
         self.give_item_func = give_item_func
         self.logger = logger
 
-        NOT_YET_IMPLEMENTED_ITEMS = [
-            "focus-sash",
-            "focus-band",
-            "white-herb",
-            "mental-herb",
-            "power-herb",
-            "throat-spray",
-            "weakness-policy",
-        ]
-
         # Add item rows
         for item in item_list:
             row_layout = QHBoxLayout()
 
             item_label = QLabel(format_item_name(item))
             give_button = QPushButton(f"Give {format_item_name(item)}")
-            give_button.clicked.connect(lambda clicked, i=item: self.expanded_give_item_func(i))
-            if item in NOT_YET_IMPLEMENTED_ITEMS or item.endswith("-berry") or item.endswith("-gem"):
+            give_button.clicked.connect(
+                lambda clicked, i=item: self.expanded_give_item_func(i)
+            )
+            if (
+                item in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
+                or item.endswith("-berry")
+                or item.endswith("-gem")
+            ):
                 # NOTE (Axil): As time of writing, single use items are not yet implemented.
                 # It seems to me that, actually, they are not even implemented in the Poke-engine. Although
                 # I haven't dug too much.
@@ -951,8 +1292,10 @@ class GiveItemWindow(QDialog):
                 give_button.setToolTip("Single use held items are not yet implemented.")
                 give_button.setEnabled(False)
                 give_button.clicked.connect(
-                    lambda clicked: self.logger.log_and_showinfo("info", "Single use held items are not yet implemented.")
+                    lambda clicked: self.logger.log_and_showinfo(
+                        "info", "Single use held items are not yet implemented."
                     )
+                )
 
             row_layout.addWidget(item_label)
             row_layout.addStretch()
@@ -971,6 +1314,6 @@ class GiveItemWindow(QDialog):
         self.setLayout(main_layout)
 
     def expanded_give_item_func(self, item_name: str):
-        # small intermediary function. This allows me to display a confirmation message after giving the item.
+        # Wrapper to close window after giving item
         self.give_item_func(item_name)
         self.close()

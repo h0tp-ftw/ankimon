@@ -141,7 +141,7 @@ class Reviewer_Manager:
         else:
             hud_html += create_status_html("fainted", self.settings, is_pokemon_owned, addon_package)
 
-        hud_html += f'<div id="hp-display" class="Ankimon">HP: {self.enemy_pokemon.hp}/{self.enemy_pokemon.max_hp}</div>'
+        hud_html += f'<div id="hp-display" class="Ankimon">HP: {int(self.enemy_pokemon.hp)}/{int(self.enemy_pokemon.max_hp)}</div>'
 
 
         enemy_poke_animation_style = f"animation: ankimon-shake-normal {self.seconds}s ease;"
@@ -171,7 +171,7 @@ class Reviewer_Manager:
             main_name_display_text = f"{main_lang_name} LvL: {self.main_pokemon.level}"
             main_name_display_text += self.get_boost_values_string(self.main_pokemon, display_neutral_boost=False)
             hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
-            hud_html += f'<div id="myhp-display" class="Ankimon">HP: {self.main_pokemon.hp}/{self.main_pokemon.max_hp}</div>'
+            hud_html += f'<div id="myhp-display" class="Ankimon">HP: {int(self.main_pokemon.hp)}/{int(self.main_pokemon.max_hp)}</div>'
             if self.settings.get("gui.hp_bar_config") is True:
                 hud_html += '<div id="mylife-bar" class="Ankimon"></div>'
 

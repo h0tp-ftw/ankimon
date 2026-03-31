@@ -61,10 +61,10 @@ class DiscordPresence:
             f"Level up and take down {self.ankimon_tracker.enemy_pokemon.name.capitalize()}!",
 
             f"Total reviews completed: {self.ankimon_tracker.total_reviews}",
-            f"{self.ankimon_tracker.card_ratings_count["good"]} good reviews so far—keep it up!",
-            f"You've marked {self.ankimon_tracker.card_ratings_count["again"]} cards as 'Again'—let's focus and improve!",
-            f"Great job! {self.ankimon_tracker.card_ratings_count["easy"]} cards rated 'Easy'!",
-            f"{self.ankimon_tracker.card_ratings_count["hard"]} cards rated 'Hard'—you're tackling the tough ones!",
+            f"{self.ankimon_tracker.card_ratings_count['good']} good reviews so far—keep it up!",
+            f"You've marked {self.ankimon_tracker.card_ratings_count['again']} cards as Again—let's focus and improve!",
+            f"Great job! {self.ankimon_tracker.card_ratings_count['easy']} cards rated Easy!",
+            f"{self.ankimon_tracker.card_ratings_count['hard']} cards rated Hard—you're tackling the tough ones!",
         ]
 
     def update_presence(self):

@@ -16,22 +16,22 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.x'
+        python-version: '3.12'
 
-    - name: Install dependencies
+    - name: Install system dependencies for headless Qt
       run: |
-        python -m venv venv
-        source venv/bin/activate
-        pip install pytest
+        sudo apt-get update
+        sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 x11-utils libegl1 libpulse0 libnss3 libasound2t64
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-qt anki aqt PyQt6 orjson requests
 
     - name: Set PYTHONPATH
       run: |
         echo "PYTHONPATH=$GITHUB_WORKSPACE/src" >> $GITHUB_ENV
 
-    - name: Run tests
+    - name: Run tests with xvfb
       run: |
-        echo "Content of tests/test_ankimon_integrity.py:"
-        cat tests/test_ankimon_integrity.py
-        echo "PYTHONPATH: $PYTHONPATH"
-        source venv/bin/activate
-        pytest tests/
+        xvfb-run -a env QT_QPA_PLATFORM=offscreen pytest tests/

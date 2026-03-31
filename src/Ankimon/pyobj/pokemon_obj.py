@@ -2,6 +2,9 @@ from typing import Union
 import uuid
 import json
 import os
+from typing import Optional
+
+from ..functions.sprite_functions import get_sprite_path
 
 from ..poke_engine.objects import Pokemon
 from ..resources import pkmnimgfolder, mainpokemon_path, mypokemon_path
@@ -19,7 +22,7 @@ class PokemonObject:
         ability,
         gender: str,
         growth_rate: str,
-        captured_date: str | None,
+        captured_date: Optional[str],
         tier: str,
         individual_id: str,
 
@@ -228,29 +231,7 @@ class PokemonObject:
         return hp
 
     def get_sprite_path(self, side, sprite_type):
-        """Return the path to the sprite of the Pokémon."""
-        base_path = f"{side}_default_gif" if sprite_type == "gif" else f"{side}_default"
-
-        shiny_path = "shiny/" if self.shiny else ""
-        gender_path = "female/" if self.gender == "F" else ""
-
-        path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
-        default_path = f"{pkmnimgfolder}/front_default/substitute.png"
-
-        # Check if the file exists at the given path
-        if os.path.exists(path):
-            return path
-        else:
-            if self.gender == "F":
-                gender_path = ""
-                path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
-                return path
-            elif self.shiny == "True":
-                shiny_path = ""
-                path = f"{pkmnimgfolder}/{base_path}/{shiny_path}{gender_path}{self.id}.{sprite_type}"
-                return path
-            else:
-                return default_path
+        return get_sprite_path(side, sprite_type, self.id, self.shiny, self.gender)
 
     def to_engine_format(self):
         from ..poke_engine.helpers import normalize_name

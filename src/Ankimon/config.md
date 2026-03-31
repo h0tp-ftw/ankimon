@@ -118,3 +118,5 @@ Language Options (Select a Number from the ones below to the corresponding langu
     | 12  | Chinese (Simplified)   | Yes      |
 
     | 13  | Portuguese (Brazil)    | No       |
+
+    | 14  | Spanish (Latin America)| No       |
