@@ -1,0 +1,13 @@
+pytest
+
+pytest-qt
+
+anki
+
+aqt
+
+PyQt6
+
+orjson
+
+requests

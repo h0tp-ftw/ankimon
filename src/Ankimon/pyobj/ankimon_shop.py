@@ -19,7 +19,7 @@ from aqt.qt import (
     QSizePolicy,
     QFont,
     QFontDatabase,
-    QToolTip
+    QToolTip,
 )
 from aqt.theme import theme_manager
 
@@ -37,6 +37,7 @@ DAILY_ITEMS_POOL = daily_item_list()
     {"name": "potion"},
     {"name": "rare-candy"},
 ]"""
+
 
 class PokemonShopManager:
     def __init__(self, logger, settings_obj, set_callback, get_callback):
@@ -74,35 +75,35 @@ class PokemonShopManager:
         # Use Anki's built-in color variables that work with both themes
         if self._is_night_mode():
             return {
-                'background': 'var(--window-bg)',
-                'border': 'var(--border)',
-                'text_primary': 'var(--text)',
-                'text_secondary': 'var(--text-fg)',
-                'accent_red': '#FD4F49',  # Red for Daily Items
-                'accent_teal': "#1A99DD",  # Blue for Daily TMs
-                'accent_yellow': '#84D437',  # Gray for Standard Items
-                'button_bg': 'var(--button-bg)',
-                'button_hover': 'var(--button-hover-bg)',
-                'frame_bg': 'var(--frame-bg)',
-                'frame_hover': 'var(--button-hover-bg)',
-                'success': '#66BB6A',
-                'warning': '#FF7043'
+                "background": "var(--window-bg)",
+                "border": "var(--border)",
+                "text_primary": "var(--text)",
+                "text_secondary": "var(--text-fg)",
+                "accent_red": "#FD4F49",  # Red for Daily Items
+                "accent_teal": "#1A99DD",  # Blue for Daily TMs
+                "accent_yellow": "#84D437",  # Gray for Standard Items
+                "button_bg": "var(--button-bg)",
+                "button_hover": "var(--button-hover-bg)",
+                "frame_bg": "var(--frame-bg)",
+                "frame_hover": "var(--button-hover-bg)",
+                "success": "#66BB6A",
+                "warning": "#FF7043",
             }
         else:
             return {
-                'background': 'var(--window-bg)',
-                'border': 'var(--border)',
-                'text_primary': 'var(--text)',
-                'text_secondary': 'var(--text-fg)',
-                'accent_red': '#FD4F49',  # Red for Daily Items
-                'accent_teal': '#1A99DD',  # Blue for Daily TMs
-                'accent_yellow': '#84D437',  # Gray for Standard Items
-                'button_bg': 'var(--button-bg)',
-                'button_hover': 'var(--button-hover-bg)',
-                'frame_bg': 'var(--frame-bg)',
-                'frame_hover': 'var(--button-hover-bg)',
-                'success': '#4CAF50',
-                'warning': '#FF6B6B'
+                "background": "var(--window-bg)",
+                "border": "var(--border)",
+                "text_primary": "var(--text)",
+                "text_secondary": "var(--text-fg)",
+                "accent_red": "#FD4F49",  # Red for Daily Items
+                "accent_teal": "#1A99DD",  # Blue for Daily TMs
+                "accent_yellow": "#84D437",  # Gray for Standard Items
+                "button_bg": "var(--button-bg)",
+                "button_hover": "var(--button-hover-bg)",
+                "frame_bg": "var(--frame-bg)",
+                "frame_hover": "var(--button-hover-bg)",
+                "success": "#4CAF50",
+                "warning": "#FF6B6B",
             }
 
     def toggle_window(self):
@@ -128,8 +129,8 @@ class PokemonShopManager:
         # Theme-aware background using Anki's CSS variables
         self.window.setStyleSheet(f"""
             QDialog {{
-                background-color: {colors['background']};
-                border: 4px solid {colors['border']};
+                background-color: {colors["background"]};
+                border: 4px solid {colors["border"]};
             }}
         """)
 
@@ -149,13 +150,17 @@ class PokemonShopManager:
         shop_layout.setSpacing(15)
 
         # Create the two shop sections with theme colors
-        daily_section = self._create_shop_section("Daily Items", self.get_daily_items(), colors['accent_red'])
-        tm_section = self._create_shop_section("Daily TMs", self.get_daily_tms(), colors['accent_teal'], is_tm=True)
-        #standard_section = self._create_shop_section("Standard Items", STANDARD_ITEMS, colors['accent_yellow'])
+        daily_section = self._create_shop_section(
+            "Daily Items", self.get_daily_items(), colors["accent_red"]
+        )
+        tm_section = self._create_shop_section(
+            "Daily TMs", self.get_daily_tms(), colors["accent_teal"], is_tm=True
+        )
+        # standard_section = self._create_shop_section("Standard Items", STANDARD_ITEMS, colors['accent_yellow'])
 
         shop_layout.addWidget(daily_section)
         shop_layout.addWidget(tm_section)
-        #shop_layout.addWidget(standard_section)
+        # shop_layout.addWidget(standard_section)
 
         main_layout.addLayout(shop_layout)
 
@@ -170,12 +175,14 @@ class PokemonShopManager:
         title_font = QFont(self.early_gameboy_font)
         title_font.setPointSize(18)
         title_label.setFont(title_font)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        title_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         title_label.setStyleSheet(f"""
             QLabel {{
-                color: {colors['text_primary']};
-                background-color: {colors['border']};
-                border: 3px solid {colors['text_primary']};
+                color: {colors["text_primary"]};
+                background-color: {colors["border"]};
+                border: 3px solid {colors["text_primary"]};
                 border-radius: 8px;
                 padding: 8px 16px;
                 margin: 4px;
@@ -183,22 +190,24 @@ class PokemonShopManager:
         """)
 
         # Money display
-        self.currency_qlabel = QLabel(f"MONEY: ${self.settings_obj.get('trainer.cash')}")
+        self.currency_qlabel = QLabel(
+            f"MONEY: {self.settings_obj.get('trainer.cash')}¥"
+        )
         money_font = QFont(self.early_gameboy_font)
         money_font.setPointSize(12)
         self.currency_qlabel.setFont(money_font)
         self.currency_qlabel.setStyleSheet(f"""
             QLabel {{
-                color: {colors['text_primary']};
-                background-color: {colors['button_bg']};
-                border: 2px solid {colors['text_primary']};
+                color: {colors["text_primary"]};
+                background-color: {colors["button_bg"]};
+                border: 2px solid {colors["text_primary"]};
                 border-radius: 6px;
                 padding: 6px 12px;
             }}
         """)
 
         # Create the reroll button with the desired text
-        reroll_button = QPushButton(f"REROLL SHOP\n${self.daily_items_reroll_cost}")
+        reroll_button = QPushButton(f"REROLL SHOP\n{self.daily_items_reroll_cost}¥")
 
         button_font = QFont(self.early_gameboy_font)
         button_font.setPointSize(10)
@@ -210,21 +219,23 @@ class PokemonShopManager:
 
         reroll_button.setStyleSheet(f"""
             QPushButton {{
-                background-color: {colors['accent_red']};
-                color: {colors['text_primary']};
-                border: 3px solid {colors['text_primary']};
+                background-color: {colors["accent_red"]};
+                color: {colors["text_primary"]};
+                border: 3px solid {colors["text_primary"]};
                 border-radius: 8px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background-color: {colors['button_hover']};
-                border: 3px solid {colors['accent_yellow']};
+                background-color: {colors["button_hover"]};
+                border: 3px solid {colors["accent_yellow"]};
             }}
             QPushButton:pressed {{
-                background-color: {colors['border']};
+                background-color: {colors["border"]};
             }}
         """)
-        reroll_button.clicked.connect(lambda: self.reroll_daily_items(cost=self.daily_items_reroll_cost))
+        reroll_button.clicked.connect(
+            lambda: self.reroll_daily_items(cost=self.daily_items_reroll_cost)
+        )
 
         header_layout.addWidget(title_label)
         header_layout.addStretch()
@@ -241,7 +252,7 @@ class PokemonShopManager:
         # Removed border styles to remove boundaries
         section_frame.setStyleSheet(f"""
             QFrame {{
-                background-color: {colors['frame_bg']};
+                background-color: {colors["frame_bg"]};
                 border-radius: 12px;
                 margin: 4px;
             }}
@@ -257,7 +268,7 @@ class PokemonShopManager:
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setStyleSheet(f"""
             QLabel {{
-                color: {colors['text_primary']};
+                color: {colors["text_primary"]};
                 background-color: {color};
                 border-radius: 6px;
                 padding: 6px;
@@ -290,15 +301,19 @@ class PokemonShopManager:
         colors = self._get_theme_colors()
 
         if is_tm:
-            item['UI_NAME'] = item["name"].replace('-', ' ').title()
-            item['price'] = self.tm_price
+            item["UI_NAME"] = item["name"].replace("-", " ").title()
+            item["price"] = self.tm_price
             # Description for TMs: fixed string
-            description_text = f"Allows a Pokémon to be taught the move {item['UI_NAME']} (if able)"
+            description_text = (
+                f"Allows a Pokémon to be taught the move {item['UI_NAME']} (if able)"
+            )
         else:
-            item['UI_NAME'] = item["name"].replace('-', ' ').title()
-            item['price'] = get_item_price(item["name"])
+            item["UI_NAME"] = item["name"].replace("-", " ").title()
+            item["price"] = get_item_price(item["name"])
             # Description for regular items: use get_item_description with language from settings
-            description_text = get_item_description(item['name'], self.settings_obj.get('misc.language'))
+            description_text = get_item_description(
+                item["name"], self.settings_obj.get("misc.language")
+            )
             if not description_text:
                 description_text = f"A useful item: {item['UI_NAME']}"
 
@@ -309,12 +324,12 @@ class PokemonShopManager:
 
         frame.setStyleSheet(f"""
             QFrame {{
-                background-color: {colors['frame_bg']};
+                background-color: {colors["frame_bg"]};
                 border-radius: 8px;
                 margin: 2px;
             }}
             QFrame:hover {{
-                background-color: {colors['frame_hover']};
+                background-color: {colors["frame_hover"]};
             }}
         """)
 
@@ -325,7 +340,10 @@ class PokemonShopManager:
         # Item image
         image_label = QLabel()
         if is_tm:
-            image_path = items_path / f"Bag_TM_{(find_details_move(item['name']) or {}).get('type', 'Normal')}_SV_Sprite.png"
+            image_path = (
+                items_path
+                / f"Bag_TM_{(find_details_move(item['name']) or {}).get('type', 'Normal')}_SV_Sprite.png"
+            )
         else:
             image_path = f"{items_path}/{item['name']}.png"
 
@@ -339,19 +357,23 @@ class PokemonShopManager:
         info_layout.setSpacing(2)
 
         # Item name
-        name_label = QLabel(item['UI_NAME'])
+        name_label = QLabel(item["UI_NAME"])
         name_font = QFont(self.early_gameboy_font)
         name_font.setPointSize(10)
         name_label.setFont(name_font)
-        name_label.setStyleSheet(f"QLabel {{ color: {colors['text_secondary']}; font-weight: bold; }}")
+        name_label.setStyleSheet(
+            f"QLabel {{ color: {colors['text_secondary']}; font-weight: bold; }}"
+        )
         info_layout.addWidget(name_label)
 
         # Price
-        price_label = QLabel(f"${item.get('price', 1000)}")
+        price_label = QLabel(f"{item.get('price', 1000)}¥")
         price_font = QFont(self.early_gameboy_font)
         price_font.setPointSize(9)
         price_label.setFont(price_font)
-        price_label.setStyleSheet(f"QLabel {{ color: {colors['success']}; font-weight: bold; }}")
+        price_label.setStyleSheet(
+            f"QLabel {{ color: {colors['success']}; font-weight: bold; }}"
+        )
         info_layout.addWidget(price_label)
 
         layout.addLayout(info_layout)
@@ -368,23 +390,25 @@ class PokemonShopManager:
         buy_button.setStyleSheet(f"""
             QPushButton {{
                 background-color: {section_color};
-                color: {colors['text_primary']};
-                border: 2px solid {colors['text_primary']};
+                color: {colors["text_primary"]};
+                border: 2px solid {colors["text_primary"]};
                 border-radius: 6px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background-color: {colors['button_hover']};
+                background-color: {colors["button_hover"]};
                 color: {section_color};
                 border: 2px solid {section_color};
             }}
             QPushButton:pressed {{
-                background-color: {colors['border']};
+                background-color: {colors["border"]};
             }}
         """)
 
         if is_tm:
-            buy_button.clicked.connect(lambda checked, item=item: self.buy_item(item, item.get("item_type")))
+            buy_button.clicked.connect(
+                lambda checked, item=item: self.buy_item(item, item.get("item_type"))
+            )
         else:
             buy_button.clicked.connect(lambda checked, item=item: self.buy_item(item))
 
@@ -395,9 +419,11 @@ class PokemonShopManager:
     def get_daily_items(self):
         """Generate daily items based on the current date."""
         if os.path.isfile(self.shop_save_file):
-            with open(self.shop_save_file, 'r', encoding='utf-8') as f:
+            with open(self.shop_save_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if data.get("items") and data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                if data.get("items") and data.get("date") == datetime.now().strftime(
+                    "%Y-%m-%d"
+                ):
                     return data.get("items")
 
         seed = datetime.now().strftime("%Y-%m-%d")
@@ -407,9 +433,11 @@ class PokemonShopManager:
     def get_daily_tms(self):
         """Works like get_daily_items, but for TMs"""
         if os.path.isfile(self.shop_save_file):
-            with open(self.shop_save_file, 'r', encoding='utf-8') as f:
+            with open(self.shop_save_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if data.get("technical_machines") and data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+                if data.get("technical_machines") and data.get(
+                    "date"
+                ) == datetime.now().strftime("%Y-%m-%d"):
                     return data.get("technical_machines")
 
         tm_pool = self.get_tm_pool()
@@ -423,40 +451,43 @@ class PokemonShopManager:
 
         def flatten(xss):
             return [x for xs in xss for x in xs]
+
         all_tms = flatten(pokemon_tm_learnset.values())
         all_tms = set(all_tms)
         all_tms = list(
             {
-            "name": tm,
-            "description": f"Allows a Pokemon to be taught the move {tm} (if able).",
-            "price": self.tm_price,
-            "item_type": "TM",
-            } for tm in all_tms)
+                "name": tm,
+                "description": f"Allows a Pokemon to be taught the move {tm} (if able).",
+                "price": self.tm_price,
+                "item_type": "TM",
+            }
+            for tm in all_tms
+        )
 
         # Ensure deterministic order
-        all_tms.sort(key = lambda tm: tm["name"])
+        all_tms.sort(key=lambda tm: tm["name"])
 
         return all_tms
 
-    def buy_item(self, item, item_type: Union[str, None]=None):
+    def buy_item(self, item, item_type: Union[str, None] = None):
         """Handle item purchase with theme-aware retro-style messages."""
         colors = self._get_theme_colors()
 
         try:
-            if self.settings_obj.get('trainer.cash') < item['price']:
+            if self.settings_obj.get("trainer.cash") < item["price"]:
                 msg = QMessageBox(mw)
                 msg.setWindowTitle("Ankimon Mart")
                 msg.setText("You don't have enough money!")
                 msg.setIcon(QMessageBox.Icon.Warning)
                 msg.setStyleSheet(f"""
                     QMessageBox {{
-                        background-color: {colors['background']};
-                        color: {colors['text_primary']};
+                        background-color: {colors["background"]};
+                        color: {colors["text_primary"]};
                     }}
                     QMessageBox QPushButton {{
-                        background-color: {colors['warning']};
-                        color: {colors['text_primary']};
-                        border: 2px solid {colors['text_primary']};
+                        background-color: {colors["warning"]};
+                        color: {colors["text_primary"]};
+                        border: 2px solid {colors["text_primary"]};
                         border-radius: 4px;
                         padding: 4px 8px;
                         font-weight: bold;
@@ -465,22 +496,28 @@ class PokemonShopManager:
                 msg.exec()
                 return
 
-            self.set_callback('trainer.cash', int(self.get_callback('trainer.cash') - item['price']))
-            self.currency_qlabel.setText(f"MONEY: ${self.settings_obj.get('trainer.cash')}")
+            self.set_callback(
+                "trainer.cash", int(self.get_callback("trainer.cash") - item["price"])
+            )
+            self.currency_qlabel.setText(
+                f"MONEY: {self.settings_obj.get('trainer.cash')}¥"
+            )
 
             msg = QMessageBox(mw)
             msg.setWindowTitle("Ankimon Mart")
-            msg.setText(f"Thank you!\nYou bought {item.get('UI_NAME', 'Unknown')} for ${item['price']}!")
+            msg.setText(
+                f"Thank you!\nYou bought {item.get('UI_NAME', 'Unknown')} for {item['price']}¥!"
+            )
             msg.setIcon(QMessageBox.Icon.Information)
             msg.setStyleSheet(f"""
                 QMessageBox {{
-                    background-color: {colors['background']};
-                    color: {colors['text_primary']};
+                    background-color: {colors["background"]};
+                    color: {colors["text_primary"]};
                 }}
                 QMessageBox QPushButton {{
-                    background-color: {colors['success']};
-                    color: {colors['text_primary']};
-                    border: 2px solid {colors['text_primary']};
+                    background-color: {colors["success"]};
+                    color: {colors["text_primary"]};
+                    border: 2px solid {colors["text_primary"]};
                     border-radius: 4px;
                     padding: 4px 8px;
                     font-weight: bold;
@@ -488,7 +525,7 @@ class PokemonShopManager:
             """)
             msg.exec()
 
-            give_item(item['name'], item_type)
+            give_item(item["name"], item_type)
         except Exception as e:
             self.logger.log_and_showinfo("error", f"Failed to purchase item: {e}")
 
@@ -496,20 +533,20 @@ class PokemonShopManager:
         """Rerolls the daily items in the shop with theme-aware messaging"""
         colors = self._get_theme_colors()
 
-        if self.settings_obj.get('trainer.cash') < cost:
+        if self.settings_obj.get("trainer.cash") < cost:
             msg = QMessageBox(mw)
             msg.setWindowTitle("Ankimon Mart")
             msg.setText("You don't have enough money to reroll!")
             msg.setIcon(QMessageBox.Icon.Warning)
             msg.setStyleSheet(f"""
                 QMessageBox {{
-                    background-color: {colors['background']};
-                    color: {colors['text_primary']};
+                    background-color: {colors["background"]};
+                    color: {colors["text_primary"]};
                 }}
                 QMessageBox QPushButton {{
-                    background-color: {colors['warning']};
-                    color: {colors['text_primary']};
-                    border: 2px solid {colors['text_primary']};
+                    background-color: {colors["warning"]};
+                    color: {colors["text_primary"]};
+                    border: 2px solid {colors["text_primary"]};
                     border-radius: 4px;
                     padding: 4px 8px;
                     font-weight: bold;
@@ -518,16 +555,20 @@ class PokemonShopManager:
             msg.exec()
             return
 
-        self.set_callback('trainer.cash', int(self.get_callback('trainer.cash') - cost))
-        self.currency_qlabel.setText(f"MONEY: ${self.settings_obj.get('trainer.cash')}")
+        self.set_callback("trainer.cash", int(self.get_callback("trainer.cash") - cost))
+        self.currency_qlabel.setText(f"MONEY: {self.settings_obj.get('trainer.cash')}¥")
 
         # Generate new random items
         random.seed()  # Use current time for truly random reroll
-        self.todays_daily_items = random.sample(DAILY_ITEMS_POOL, self.number_of_daily_items)
-        self.todays_daily_tms = random.sample(self.get_tm_pool(), self.number_of_daily_items)
+        self.todays_daily_items = random.sample(
+            DAILY_ITEMS_POOL, self.number_of_daily_items
+        )
+        self.todays_daily_tms = random.sample(
+            self.get_tm_pool(), self.number_of_daily_items
+        )
 
         # SAVE IMMEDIATELY - before GUI refresh
-        with open(self.shop_save_file, 'w', encoding='utf-8') as f:
+        with open(self.shop_save_file, "w", encoding="utf-8") as f:
             data = {
                 "items": self.todays_daily_items,
                 "technical_machines": self.todays_daily_tms,
