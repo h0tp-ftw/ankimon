@@ -41,7 +41,7 @@ from ..pyobj.InfoLogger import ShowInfoLogger
 from ..pyobj.settings import Settings
 from ..functions.sprite_functions import get_sprite_path
 from ..utils import load_custom_font, get_tier_by_id
-from ..resources import mypokemon_path, itembag_path
+from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
 
 
 def format_item_name(item_name: str) -> str:
@@ -565,9 +565,7 @@ class PokemonPC(QDialog):
         clear_layout(self.pokemon_grid)
         self.gif_in_collection = self.settings.get("gui.gif_in_collection")
 
-        pokemon_list = self.load_pokemon_data()
-        pokemon_list = self.filter_pokemon_list(pokemon_list)
-        pokemon_list = self.sort_pokemon_list(pokemon_list)
+        pokemon_list = self.fetch_filtered_pokemon()
         max_box_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
 
         if self.current_box_idx > max_box_idx:
@@ -670,8 +668,7 @@ class PokemonPC(QDialog):
         Args:
             delta (int): Relative box movement (for example ``-1`` or ``+1``).
         """
-        pokemon_list = self.load_pokemon_data()
-        pokemon_list = self.filter_pokemon_list(pokemon_list)
+        pokemon_list = self.fetch_filtered_pokemon()
         max_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
         self.looparound_go_to_box(self.current_box_idx + delta, max_idx)
 
@@ -787,7 +784,8 @@ class PokemonPC(QDialog):
             "SELECT individual_id, name, level, pokedex_id as id, shiny as shiny, "
             "rowid as original_index, json_extract(data, '$.nickname') as nickname, "
             "json_extract(data, '$.gender') as gender, json_extract(data, '$.is_favorite') as is_favorite, "
-            "json_extract(data, '$.held_item') as held_item "
+            "json_extract(data, '$.held_item') as held_item, "
+            "json_extract(data, '$.iv') as iv_json, json_extract(data, '$.ev') as ev_json "
             "FROM captured_pokemon WHERE 1=1"
         ]
         params = []
@@ -833,7 +831,8 @@ class PokemonPC(QDialog):
                     5: (494, 649),
                     6: (650, 721),
                     7: (722, 809),
-                    8: (810, 898)
+                    8: (810, 905),
+                    9: (906, 1025)
                 }
                 if gen_idx in gen_ranges:
                     start_id, end_id = gen_ranges[gen_idx]
@@ -854,6 +853,7 @@ class PokemonPC(QDialog):
         elif sort_key_str == "id":
             order_clause = f"ORDER BY pokedex_id {direction}"
         else:
+            # For IV/EV or default, sort by original_index first, then override in Python if needed
             order_clause = f"ORDER BY original_index {direction}"
 
         query = " ".join(query_parts) + " " + order_clause
@@ -874,7 +874,19 @@ class PokemonPC(QDialog):
                     "is_favorite": bool(row["is_favorite"]),
                     "held_item": row["held_item"],
                 }
+                
+                # Pre-calculate sums for sorting if needed
+                if sort_key_str in ["iv", "ev"]:
+                    stats_json = row[f"{sort_key_str}_json"]
+                    stats_dict = json.loads(stats_json) if stats_json else {}
+                    p["_sort_value"] = sum(stats_dict.values()) if isinstance(stats_dict, dict) else 0
+                
                 results.append(p)
+                
+            # Perform Python sorting for IV/EV
+            if sort_key_str in ["iv", "ev"]:
+                results.sort(key=lambda x: x.get("_sort_value", 0), reverse=reverse)
+            
             return results
         except Exception as e:
             if self.logger:

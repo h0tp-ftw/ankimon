@@ -28,7 +28,6 @@ from ..functions.pokemon_functions import get_random_moves_for_pokemon
 from ..functions.battle_functions import calculate_hp
 from ..functions.update_main_pokemon import (
     update_main_pokemon,
-    update_main_pokemon_from_dict,
 )
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..pyobj.attack_dialog import AttackDialog
@@ -44,7 +43,6 @@ from ..resources import (
     addon_dir,
     frontdefault,
     evolve_image_path,
-    mypokemon_path,
 )
 
 

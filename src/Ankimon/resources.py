@@ -57,6 +57,7 @@ csv_file_descriptions = addon_dir / "user_files" / "data_files" / "item_flavor_t
 csv_file_items_cost = addon_dir / "user_files" / "data_files" / "items.csv"
 pokemon_csv = addon_dir / "user_files" / "data_files" / "pokemon.csv"
 pokemon_tm_learnset_path = addon_dir / "user_files" / "data_files" / "pokemon_tm_learnset.json"
+pokeapi_db_path = addon_dir / "user_files" / "ankimon.db"
 
 #effect sounds paths
 hurt_normal_sound_path = addon_dir / "addon_sprites" / "sounds" / "HurtNormal.mp3"

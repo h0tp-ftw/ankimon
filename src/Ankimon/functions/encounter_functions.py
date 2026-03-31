@@ -49,10 +49,6 @@ from ..singletons import (
     translator,
     ankimon_db,
 )
-from ..resources import (
-    mypokemon_path,
-    mainpokemon_path,
-)
 
 
 def modify_percentages(total_reviews, daily_average, player_level):
@@ -615,7 +611,7 @@ def save_main_pokemon_progress(
     return main_pokemon.level
 
 # --- Utility: Sync mainpokemon to mypokemon ---
-def sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path):
+def sync_mainpokemon_to_mypokemon(main_pokemon):
     """
     Update the relevant entry in mypokemon database with the latest values from mainpokemon.
     Uses database instead of JSON files.

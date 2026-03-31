@@ -12,7 +12,6 @@ from .battle_functions import calculate_hp
 from ..resources import (
     pokedex_path,
     next_lvl_file_path,
-    mypokemon_path,
     learnset_path,
 )
 

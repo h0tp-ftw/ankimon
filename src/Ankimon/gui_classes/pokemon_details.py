@@ -1012,7 +1012,7 @@ def tm_attack_details_window(
     # Get owned TMs from database
     db = mw.ankimon_db
     all_items = db.get_all_items()
-    owned_tms = [item["item_name"] for item in all_items if item.get("extra_data", {}).get("type") == "TM"]
+    owned_tms = [item["item_name"] for item in all_items if (item.get("extra_data") or {}).get("type") == "TM"]
     attack_set = [tm for tm in tm_learnset if tm in owned_tms]
 
     # Loop through the list of attacks and add them to the HTML content

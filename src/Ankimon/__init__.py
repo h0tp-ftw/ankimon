@@ -55,6 +55,7 @@ from .resources import (
     addon_dir,
     pkmnimgfolder,
     mypokemon_path,
+    mainpokemon_path,
     itembag_path,
     sound_list_path,
 )
@@ -384,6 +385,7 @@ aqt.gui_hooks.reviewer_did_answer_card.append(answerCard_after)
 
 # get main pokemon details:
 if database_complete:
+    settings_obj.set("trainer.cash", 2000)
     try:
         (
             mainpokemon_name,
@@ -781,7 +783,7 @@ if database_complete:
     if db.get_pokemon_count() == 0:
         starter_window.display_starter_pokemon()
 
-count_items_and_rewrite(itembag_path)
+count_items_and_rewrite()
 
 # buttonlayout
 # Create menu actions
@@ -967,8 +969,8 @@ def defeat_shortcut_function():
         tooltip("Wild pokemon has to be fainted to defeat it!")
 
 
-catch_shortcut = catch_shortcut.lower()
-defeat_shortcut = defeat_shortcut.lower()
+catch_shortcut = str(catch_shortcut).lower()
+defeat_shortcut = str(defeat_shortcut).lower()
 
 
 # // adding shortcuts to _shortcutKeys function in anki

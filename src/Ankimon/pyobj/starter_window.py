@@ -35,7 +35,7 @@ from ..functions.battle_functions import calculate_hp
 from ..functions.pokedex_functions import get_base_experience, get_growth_rate, search_pokedex
 from ..functions.pokemon_functions import get_random_moves_for_pokemon, pick_random_gender
 from ..utils import load_custom_font, close_anki
-from ..resources import addon_dir, frontdefault, mainpokemon_path, mypokemon_path
+from ..resources import addon_dir, frontdefault
 from ..const import total_generations
 from .error_handler import show_warning_with_traceback
 

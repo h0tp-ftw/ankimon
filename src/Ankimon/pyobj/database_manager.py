@@ -11,7 +11,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..resources import user_path
+import csv
+from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpokemon_path, items_path, badges_path, team_pokemon_path as team_path
 
 
 class AnkimonDB:
@@ -110,12 +111,17 @@ class AnkimonDB:
                 cursor.execute("DROP TABLE main_pokemon")
                 self._log("info", "Migrated main_pokemon table to is_main flag")
 
-        # Table for items (replaces items.json)
+        # Table for items (replaces items.json) - using PokeAPI integer ID as PK
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS items (
-                item_name TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY,
+                item_name TEXT UNIQUE,
                 quantity INTEGER DEFAULT 0,
-                data TEXT
+                data TEXT,
+                category_id INTEGER,
+                cost INTEGER,
+                fling_power INTEGER,
+                fling_effect_id INTEGER
             )
         """)
 
@@ -123,7 +129,7 @@ class AnkimonDB:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS badges (
                 badge_id TEXT PRIMARY KEY,
-                data TEXT NOT NULL
+                achieved BOOLEAN DEFAULT 0
             )
         """)
 
@@ -381,42 +387,103 @@ class AnkimonDB:
 
     # --- Item Operations ---
 
-    def save_item(self, item_name: str, quantity: int, extra_data: Optional[Dict] = None):
-        """Saves or updates an item."""
-        obfuscated_data = self._obfuscate(extra_data) if extra_data else None
+    def save_item(self, item_id: Optional[int], item_name: str, quantity: int, extra_data: Optional[Dict] = None,
+                  category_id: int = None, cost: int = None, 
+                  fling_power: int = None, fling_effect_id: int = None):
+        """Saves or updates an item with metadata. item_id is preferred but will be looked up if missing."""
         conn = self._get_connection()
         cursor = conn.cursor()
+
+        # Try to fetch existing metadata from DB if NOT provided in the call
+        if item_name and (item_id is None or cost is None or category_id is None):
+            cursor.execute("SELECT id, category_id, cost, fling_power, fling_effect_id FROM items WHERE item_name = ?", (item_name,))
+            row = cursor.fetchone()
+            if row:
+                if item_id is None: item_id = row["id"]
+                if category_id is None: category_id = row["category_id"]
+                if cost is None: cost = row["cost"]
+                if fling_power is None: fling_power = row["fling_power"]
+                if fling_effect_id is None: fling_effect_id = row["fling_effect_id"]
+
+        # If metadata is STILL missing but name is present, try to find it in items.csv
+        if item_name and (item_id is None or cost is None or category_id is None):
+            if Path(csv_file_items_cost).is_file():
+                try:
+                    self._log("warning", f"Item metadata for '{item_name}' not provided; falling back to items.csv lookup. In future versions, providing an explicit item_id will be required.")
+                    with open(csv_file_items_cost, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        for r in reader:
+                            if r['identifier'] == item_name:
+                                if item_id is None:
+                                    item_id = int(r['id'])
+                                if category_id is None and r.get('category_id'):
+                                    category_id = int(r['category_id'])
+                                if cost is None and r.get('cost'):
+                                    cost = int(r['cost'])
+                                if fling_power is None and r.get('fling_power'):
+                                    fling_power = int(r['fling_power'])
+                                if fling_effect_id is None and r.get('fling_effect_id'):
+                                    fling_effect_id = int(r['fling_effect_id'])
+                                break
+                except Exception as e:
+                    self._log("error", f"Failed to fallback on items.csv: {e}")
+
+        # If it's a TM (category 37), ensure type: "TM" is in extra_data for UI filtering
+        if category_id == 37:
+            if extra_data is None:
+                extra_data = {}
+            if extra_data.get("type") != "TM":
+                extra_data["type"] = "TM"
+
+        obfuscated_data = self._obfuscate(extra_data) if extra_data else None
         cursor.execute(
-            "INSERT OR REPLACE INTO items (item_name, quantity, data) VALUES (?, ?, ?)",
-            (item_name, quantity, obfuscated_data)
+            """INSERT OR REPLACE INTO items 
+               (id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (item_id, item_name, quantity, obfuscated_data, category_id, cost, fling_power, fling_effect_id)
         )
         conn.commit()
         return True
 
-    def get_item(self, item_name: str) -> Optional[Dict[str, Any]]:
-        """Retrieves an item by name."""
+    def get_item(self, identifier: Any) -> Optional[Dict[str, Any]]:
+        """Retrieves an item by name (identifier) or integer ID."""
+        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+            field = "id"
+        else:
+            field = "item_name"
+            
         cursor = self.execute(
-            "SELECT item_name, quantity, data FROM items WHERE item_name = ?",
-            (item_name,)
+            f"SELECT id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id FROM items WHERE {field} = ?",
+            (identifier,)
         )
         row = cursor.fetchone()
         if row:
             return {
+                "id": row["id"],
                 "item_name": row["item_name"],
                 "quantity": row["quantity"],
-                "data": self._deobfuscate(row["data"]) if row["data"] else None
+                "extra_data": self._deobfuscate(row["data"]) if row["data"] else {},
+                "category_id": row["category_id"],
+                "cost": row["cost"],
+                "fling_power": row["fling_power"],
+                "fling_effect_id": row["fling_effect_id"]
             }
         return None
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         """Retrieves all items."""
-        cursor = self.execute("SELECT item_name, quantity, data FROM items")
+        cursor = self.execute("SELECT id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id FROM items")
         results = []
         for row in cursor.fetchall():
             results.append({
+                "id": row["id"],
                 "item_name": row["item_name"],
                 "quantity": row["quantity"],
-                "data": self._deobfuscate(row["data"]) if row["data"] else None
+                "extra_data": self._deobfuscate(row["data"]) if row["data"] else {},
+                "category_id": row["category_id"],
+                "cost": row["cost"],
+                "fling_power": row["fling_power"],
+                "fling_effect_id": row["fling_effect_id"]
             })
         return results
 
@@ -433,8 +500,8 @@ class AnkimonDB:
 
         if new_qty > 0:
             cursor.execute(
-                "INSERT OR REPLACE INTO items (item_name, quantity) VALUES (?, ?)",
-                (item_name, new_qty)
+                "UPDATE items SET quantity = ? WHERE item_name = ?",
+                (new_qty, item_name)
             )
         else:
             cursor.execute("DELETE FROM items WHERE item_name = ?", (item_name,))
@@ -446,33 +513,37 @@ class AnkimonDB:
 
     def save_badge(self, badge_id: str, badge_data: Dict[str, Any]):
         """Saves or updates a badge."""
-        obfuscated_data = self._obfuscate(badge_data)
+        achieved = badge_data.get("achieved", "false")
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT OR REPLACE INTO badges (badge_id, data) VALUES (?, ?)",
-            (badge_id, obfuscated_data)
+            "INSERT OR REPLACE INTO badges (badge_id, achieved) VALUES (?, ?)",
+            (badge_id, achieved)
         )
         conn.commit()
         return True
 
     def get_badge(self, badge_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a badge by ID."""
-        cursor = self.execute("SELECT data FROM badges WHERE badge_id = ?", (badge_id,))
+        cursor = self.execute("SELECT * FROM badges WHERE badge_id = ?", (badge_id,))
         row = cursor.fetchone()
         if row:
-            return self._deobfuscate(row["data"])
+            return {
+                "badge_id": row["badge_id"],
+                "achieved": row["achieved"]
+            }
         return None
 
     def get_all_badges(self) -> List[Dict[str, Any]]:
         """Retrieves all badges."""
-        cursor = self.execute("SELECT badge_id, data FROM badges")
+        cursor = self.execute("SELECT badge_id, achieved FROM badges")
         results = []
         for row in cursor.fetchall():
-            badge = self._deobfuscate(row["data"])
-            if badge:
-                badge["badge_id"] = row["badge_id"]
-                results.append(badge)
+            badge = {
+                "badge_id": row["badge_id"],
+                "achieved": row["achieved"]
+            }
+            results.append(badge)
         return results
 
     # --- Team Operations ---
@@ -644,7 +715,7 @@ class AnkimonDB:
         stats = {}
         
         # Count pokemon
-        cursor.execute("SELECT COUNT(*) as count FROM captured")
+        cursor.execute("SELECT COUNT(*) as count FROM captured_pokemon")
         stats["pokemon"] = cursor.fetchone()["count"]
         
         # Count items
@@ -714,9 +785,25 @@ class AnkimonDB:
                 except Exception as e:
                     self._log("error", f"Failed to migrate mainpokemon.json: {e}")
 
-            # Migrate items.json
+            # Migrate items.json joined with items.csv metadata
             if items_path.is_file():
                 try:
+                    # Load items.csv for metadata (cost, category, etc.)
+                    item_metadata = {}
+                    if Path(csv_file_items_cost).is_file():
+                        with open(csv_file_items_cost, 'r', encoding='utf-8') as f:
+                            reader = csv.DictReader(f)
+                            for row in reader:
+                                item_metadata[row['identifier']] = {
+                                    'id': int(row['id']),
+                                    'category_id': int(row['category_id']) if row.get('category_id') else None,
+                                    'cost': int(row['cost']) if row.get('cost') else None,
+                                    'fling_power': int(row['fling_power']) if row.get('fling_power') else None,
+                                    'fling_effect_id': int(row['fling_effect_id']) if row.get('fling_effect_id') else None
+                                }
+                    else:
+                        self._log("error", "items.csv not found")
+
                     with open(items_path, 'r', encoding='utf-8') as f:
                         items_list = json.load(f)
                     for item in items_list:
@@ -724,9 +811,22 @@ class AnkimonDB:
                         item_name = item.get("item") or item.get("name") or item.get("item_name")
                         quantity = item.get("quantity", item.get("amount", 1))
                         if item_name:
-                            extra_data = {"type": item.get("type")} if item.get("type") else None
-                            self.save_item(item_name, quantity, extra_data)
-                            stats["items"] += 1
+                            # Look up metadata from CSV
+                            meta = item_metadata.get(item_name, {})
+                            if meta is not None:
+                                self.save_item(
+                                    meta.get('id'),
+                                    item_name, 
+                                    quantity, 
+                                    extra_data={"type": item.get("type")} if item.get("type") else None,
+                                    category_id=meta.get('category_id'),
+                                    cost=meta.get('cost'),
+                                    fling_power=meta.get('fling_power'),
+                                    fling_effect_id=meta.get('fling_effect_id')
+                                )
+                                stats["items"] += 1
+                            else:
+                                self._log("error", f"Item {item_name} not found in items.csv")
                     self._log("info", f"Migrated {stats['items']} items from items.json")
                 except Exception as e:
                     self._log("error", f"Failed to migrate items.json: {e}")
@@ -737,13 +837,17 @@ class AnkimonDB:
                     with open(badges_path, 'r', encoding='utf-8') as f:
                         badges_list = json.load(f)
                     for badge in badges_list:
-                        # Handle both integer and dict formats
-                        if isinstance(badge, int):
+                        # Handle both integer, string, and dict formats
+                        if isinstance(badge, (int, str)):
                             badge_id = str(badge)
-                            badge_data = {"id": badge}
+                            badge_data = {"achieved": True}
                         else:
                             badge_id = str(badge.get("id", badge.get("badge_id", "")))
+                            # Ensure we have achieved status preserved
                             badge_data = badge
+                            if "achieved" not in badge_data:
+                                badge_data["achieved"] = True
+                                
                         if badge_id:
                             self.save_badge(badge_id, badge_data)
                             stats["badges"] += 1
@@ -830,7 +934,7 @@ class AnkimonDB:
         
         # Count database entries
         db_counts = {"pokemon": 0, "items": 0, "badges": 0}
-        cursor.execute("SELECT COUNT(*) FROM all_pokemon")
+        cursor.execute("SELECT COUNT(*) FROM captured_pokemon")
         db_counts["pokemon"] = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM items")
         db_counts["items"] = cursor.fetchone()[0]

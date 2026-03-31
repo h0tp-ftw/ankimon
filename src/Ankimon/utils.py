@@ -23,7 +23,6 @@ from .resources import (
     battlescene_path,
     berries_path,
     items_path,
-    itembag_path,
     csv_file_items_cost,
     csv_file_descriptions,
     font_path,
@@ -33,8 +32,6 @@ from .resources import (
     hpheal_sound_path,
     ownhplow_sound_path,
     fainted_sound_path,
-    mypokemon_path,
-    mainpokemon_path,
     addon_dir,
     POKEMON_TIERS,
     pokedex_path,
@@ -405,7 +402,8 @@ def give_item(item_name: str, item_type: Optional[str] = None):
         new_qty = 1
     
     extra_data = {"type": item_type} if item_type else None
-    db.save_item(item_name, new_qty, extra_data)
+    item_id = existing["id"] if existing else None
+    db.save_item(item_id, item_name, new_qty, extra_data)
 
 
 # Function to return a cost of an item
@@ -485,11 +483,10 @@ def random_fossil():
     return fossil_name
 
 
-def count_items_and_rewrite(file_path):
+def count_items_and_rewrite():
     """
     Consolidates item quantities in the database.
     Legacy: Previously read from items.json, now uses database.
-    The file_path parameter is kept for backwards compatibility but ignored.
     """
     try:
         db = mw.ankimon_db
