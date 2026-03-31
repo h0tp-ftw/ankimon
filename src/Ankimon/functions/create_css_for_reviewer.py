@@ -441,7 +441,7 @@ body.dark #ankimon-hud #MyPokeImage,
   left: 50px;
   right: 5px;
   z-index: 9999;
-  width: {int((main_pokemon.xp / int(experience_for_next_lvl)) * 100)}%;
+  width: {int((int(main_pokemon.xp or 0) / int(experience_for_next_lvl)) * 100)}%;
   height: 10px;
   border-radius: 5px;
   background: rgba(0, 191, 255, 0.85);

@@ -1,5 +1,5 @@
 import json
-from ..resources import lang_path_de, lang_path_ch, lang_path_en, lang_path_fr, lang_path_jp, lang_path_sp, lang_path_kr, lang_path_it, lang_path_cz, lang_path_po
+from ..resources import lang_path_de, lang_path_ch, lang_path_en, lang_path_fr, lang_path_jp, lang_path_sp, lang_path_kr, lang_path_it, lang_path_cz, lang_path_po, lang_path_es_latam
 
 LANG_PATHS = {
     "de": lang_path_de,
@@ -11,7 +11,8 @@ LANG_PATHS = {
     "kr": lang_path_kr,
     "it": lang_path_it,
     "cz": lang_path_cz,
-    "po": lang_path_po
+    "po": lang_path_po,
+    "es_latam": lang_path_es_latam
 }
 
 LANG_NUMBERS = {
@@ -28,6 +29,7 @@ LANG_NUMBERS = {
     11: 'jp',
     12: 'ch',
     13: 'po',
+    14: 'es_latam',
 }
 
 class Translator:

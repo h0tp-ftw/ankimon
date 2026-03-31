@@ -1,15 +1,29 @@
 import json
 import os
+from typing import Union
 from aqt.qt import (
-    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton,
-    QRadioButton, QHBoxLayout, QMainWindow, QScrollArea, QButtonGroup, QMessageBox,
-    QPixmap, QPainter, QPainterPath,
-    Qt, QRectF
+    QWidget,
+    QVBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QHBoxLayout,
+    QMainWindow,
+    QScrollArea,
+    QButtonGroup,
+    QMessageBox,
+    QPixmap,
+    QPainter,
+    QPainterPath,
+    Qt,
+    QRectF,
 )
 
 from aqt.utils import showWarning
 from aqt import mw
 from aqt.theme import theme_manager
+
 
 # create_rounded_pixmap function remains the same
 def create_rounded_pixmap(source_pixmap, radius):
@@ -29,7 +43,9 @@ def create_rounded_pixmap(source_pixmap, radius):
 
 
 class SettingsWindow(QMainWindow):
-    def __init__(self, config, set_config_callback, save_config_callback, load_config_callback):
+    def __init__(
+        self, config, set_config_callback, save_config_callback, load_config_callback
+    ):
         super().__init__()
         self.config = config
         self.original_config = config.copy()
@@ -110,7 +126,7 @@ class SettingsWindow(QMainWindow):
                     color: #ADD8E6;
                 }
             """)
-        else: # Light Mode
+        else:  # Light Mode
             self.setStyleSheet("""
                 QMainWindow, QWidget {
                     background-color: #f5f5f5;
@@ -163,22 +179,28 @@ class SettingsWindow(QMainWindow):
             """)
 
     def load_descriptions(self):
-        descriptions_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lang', 'setting_description.json')
+        descriptions_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "lang",
+            "setting_description.json",
+        )
         if os.path.exists(descriptions_file):
             try:
-                with open(descriptions_file, 'r', encoding='utf-8') as f:
+                with open(descriptions_file, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
                 showWarning(f"Error reading descriptions file: {e}")
         return {}
 
     def load_friendly_names(self):
-        names_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'lang', 'setting_name.json')
+        names_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "lang", "setting_name.json"
+        )
         if os.path.exists(names_file):
             try:
                 with open(names_file, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
                 showWarning(f"Error reading friendly names file: {e}")
         return {}
 
@@ -229,20 +251,28 @@ class SettingsWindow(QMainWindow):
         button.setProperty("class", "title-button")
         button.setProperty("level", str(level))
         return button
-        
+
     def setup_ui(self):
         self.setMinimumSize(450, 600)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         self._apply_stylesheet()
-        
+
         layout = QVBoxLayout(central_widget)
-        image_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'user_files', 'web', 'images', 'ankimon_logo.png')
+        image_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "user_files",
+            "web",
+            "images",
+            "ankimon_logo.png",
+        )
         image_label = QLabel()
         if os.path.exists(image_path):
             pixmap = QPixmap(image_path)
-            scaled_pixmap = pixmap.scaledToWidth(250, Qt.TransformationMode.SmoothTransformation)
+            scaled_pixmap = pixmap.scaledToWidth(
+                250, Qt.TransformationMode.SmoothTransformation
+            )
             rounded_pixmap = create_rounded_pixmap(scaled_pixmap, 15)
             image_label.setPixmap(rounded_pixmap)
         else:
@@ -259,12 +289,93 @@ class SettingsWindow(QMainWindow):
         scroll_area_layout = QVBoxLayout(scroll_area_content)
         scroll_area.setWidget(scroll_area_content)
         hierarchical_groups = {
-            "General": { "settings": ["Trainer Name", "Language", "Show Tip of the Day On Startup"], "subgroups": { "Technical Settings": {"settings": ["SSH Access", "Prevent Ankimon News on Startup", "AnkiWeb Sync", "Ankimon Leaderboard", "Developer Mode"]}, "Discord Integration": {"settings": ["Discord Rich Presence - Ankimon", "Discord Rich Presence - Quote Type"]} } },
-            "Battle": { "settings": ["Automatic Battle", "Cards per Round", "Show Main Pokémon in Reviewer", "Show Pokémon Buttons", "Pop-Up on Defeat", "Show Text Message Box in Reviewer", "Message Box Display Time"], "subgroups": { "Fight Hotkeys": {"settings": ["Key for Defeat", "Key for Catching", "Key for Opening/Closing Ankimon", "Allow Choosing Moves"]}, "HP, XP and Level Settings": {"settings": ["HP Bar Configuration", "XP Bar Configuration", "XP Bar Location", "Remove Level Cap"]} } },
-            "Styling": {"settings": ["Styling in Reviewer", "Animate Time", "HP Bar Thickness", "Reviewer Image as GIF", "View Main Pokémon Front", "Show GIFs in Collection"]},
-            "Sound": {"settings": ["Enable Sound Effects", "Enable Sounds", "Enable Battle Sounds", "Volume"]},
+            "General": {
+                "settings": [
+                    "Trainer Name",
+                    "Language",
+                    "Show Tip of the Day On Startup",
+                ],
+                "subgroups": {
+                    "Technical Settings": {
+                        "settings": [
+                            "SSH Access",
+                            "Prevent Ankimon News on Startup",
+                            "AnkiWeb Sync",
+                            "Ankimon Leaderboard",
+                            "Developer Mode",
+                        ]
+                    },
+                    "Discord Integration": {
+                        "settings": [
+                            "Discord Rich Presence - Ankimon",
+                            "Discord Rich Presence - Quote Type",
+                        ]
+                    },
+                },
+            },
+            "Battle": {
+                "settings": [
+                    "Automatic Battle",
+                    "Cards per Round",
+                    "Show Main Pokémon in Reviewer",
+                    "Show Pokémon Buttons",
+                    "Pop-Up on Defeat",
+                    "Show Text Message Box in Reviewer",
+                    "Message Box Display Time",
+                    "Review Based Damage",
+                ],
+                "subgroups": {
+                    "Fight Hotkeys": {
+                        "settings": [
+                            "Key for Defeat",
+                            "Key for Catching",
+                            "Key for Opening/Closing Ankimon",
+                            "Allow Choosing Moves",
+                        ]
+                    },
+                    "HP, XP and Level Settings": {
+                        "settings": [
+                            "HP Bar Configuration",
+                            "XP Bar Configuration",
+                            "XP Bar Location",
+                            "Remove Level Cap",
+                        ]
+                    },
+                },
+            },
+            "Styling": {
+                "settings": [
+                    "Styling in Reviewer",
+                    "Team Overview in Deck Overview",
+                    "Animate Time",
+                    "HP Bar Thickness",
+                    "Reviewer Image as GIF",
+                    "View Main Pokémon Front",
+                    "Show GIFs in Collection",
+                ]
+            },
+            "Sound": {
+                "settings": [
+                    "Enable Sound Effects",
+                    "Enable Sounds",
+                    "Enable Battle Sounds",
+                    "Volume",
+                ]
+            },
             "Study": {"settings": ["Goal of Daily Average Cards", "Card Max Time"]},
-            "Generations": {"settings": ["Generation 1", "Generation 2", "Generation 3", "Generation 4", "Generation 5", "Generation 6", "Generation 7", "Generation 8", "Generation 9"]}
+            "Generations": {
+                "settings": [
+                    "Generation 1",
+                    "Generation 2",
+                    "Generation 3",
+                    "Generation 4",
+                    "Generation 5",
+                    "Generation 6",
+                    "Generation 7",
+                    "Generation 8",
+                    "Generation 9",
+                ]
+            },
         }
         for l1_title, l1_data in hierarchical_groups.items():
             self.group_states[l1_title] = True
@@ -277,7 +388,15 @@ class SettingsWindow(QMainWindow):
                 widgets, name, desc = self._create_setting(key, scroll_area_layout)
                 if widgets:
                     l1_widgets.extend(widgets)
-                    self.searchable_settings.append({ "widgets": widgets, "friendly_name": name, "description": desc, "l1_title": l1_title, "l2_title": None })
+                    self.searchable_settings.append(
+                        {
+                            "widgets": widgets,
+                            "friendly_name": name,
+                            "description": desc,
+                            "l1_title": l1_title,
+                            "l2_title": None,
+                        }
+                    )
             if "subgroups" in l1_data:
                 for l2_title, l2_data in l1_data["subgroups"].items():
                     self.group_states[l2_title] = True
@@ -288,22 +407,38 @@ class SettingsWindow(QMainWindow):
                     l1_widgets.append(l2_button)
                     for friendly_name in l2_data.get("settings", []):
                         key = self.key_map.get(friendly_name)
-                        widgets, name, desc = self._create_setting(key, scroll_area_layout)
+                        widgets, name, desc = self._create_setting(
+                            key, scroll_area_layout
+                        )
                         if widgets:
                             l1_widgets.extend(widgets)
                             l2_widgets.extend(widgets)
-                            self.searchable_settings.append({ "widgets": widgets, "friendly_name": name, "description": desc, "l1_title": l1_title, "l2_title": l2_title })
+                            self.searchable_settings.append(
+                                {
+                                    "widgets": widgets,
+                                    "friendly_name": name,
+                                    "description": desc,
+                                    "l1_title": l1_title,
+                                    "l2_title": l2_title,
+                                }
+                            )
                     self.group_widgets[l2_title] = l2_widgets
-                    l2_button.clicked.connect(lambda _, t=l2_title, b=l2_button: self._toggle_group_visibility(t, b))
+                    l2_button.clicked.connect(
+                        lambda _, t=l2_title, b=l2_button: (
+                            self._toggle_group_visibility(t, b)
+                        )
+                    )
             self.group_widgets[l1_title] = l1_widgets
-            l1_button.clicked.connect(lambda _, t=l1_title, b=l1_button: self._toggle_group_visibility(t, b))
+            l1_button.clicked.connect(
+                lambda _, t=l1_title, b=l1_button: self._toggle_group_visibility(t, b)
+            )
         scroll_area_layout.addStretch()
         layout.addWidget(scroll_area)
         save_button = QPushButton("Save")
         save_button.setToolTip("Click to save your settings.")
         save_button.clicked.connect(self.on_save)
         layout.addWidget(save_button)
-    
+
     def show_window(self):
         self._apply_stylesheet()
         self.config = self.load_config()
@@ -314,13 +449,15 @@ class SettingsWindow(QMainWindow):
         search_term = text.lower().strip()
         if not search_term:
             for setting in self.searchable_settings:
-                for widget in setting["widgets"]: widget.setVisible(True)
+                for widget in setting["widgets"]:
+                    widget.setVisible(True)
             for title, button in self.title_buttons.items():
                 button.setVisible(True)
                 is_expanded = self.group_states.get(title, True)
-                for w in self.group_widgets.get(title, []): w.setVisible(is_expanded)
+                for w in self.group_widgets.get(title, []):
+                    w.setVisible(is_expanded)
             return
-        
+
         for setting in self.searchable_settings:
             for widget in setting["widgets"]:
                 widget.setVisible(False)
@@ -349,15 +486,35 @@ class SettingsWindow(QMainWindow):
             for widget in self.group_widgets[title]:
                 widget.setVisible(is_expanded)
 
-    def on_save(self):
+    def on_save(self) -> Union[int, str]:
         # Update self.config from the current state of all UI widgets
         for key, widget in self.input_widgets.items():
             original_value = self.original_config.get(key)
-            
+
             if isinstance(widget, QLineEdit):
-                new_text = widget.text()
-                # Attempt to cast back to original type (int or str)
-                if isinstance(original_value, int):
+                new_text = widget.text().strip()
+
+                if key == "battle.cards_per_round":
+                    # Single Value
+                    try:
+                        new_value = int(new_text)
+                        self.config[key] = 1 if new_value == 0 else new_value
+                    # Range Value
+                    except ValueError:
+                        if "-" in new_text:
+                            try:
+                                first_val, second_val = map(int, new_text.split("-", 1))
+                                low = min(first_val, second_val)
+                                high = max(first_val, second_val)
+                                self.config[key] = f"{low}-{high}"
+                            except ValueError:
+                                self.config[key] = 2
+                        else:
+                            # Cannot decode input – fallback
+                            self.config[key] = original_value
+
+                # Standard handling for other settings
+                elif isinstance(original_value, int):
                     try:
                         self.config[key] = int(new_text)
                     except ValueError:
@@ -368,22 +525,42 @@ class SettingsWindow(QMainWindow):
                     except ValueError:
                         self.config[key] = original_value
                 else:
-                    self.config[key] = new_text
+                    self.config[key] = str(new_text)
             elif isinstance(widget, QButtonGroup):
-                self.config[key] = (widget.checkedButton().text() == "Enabled")
+                self.config[key] = widget.checkedButton().text() == "Enabled"
 
         # Now that self.config is up-to-date, call the save callback
         self.save_config_callback(self.config)
 
         # The rest is for showing the confirmation message
-        excluded_patterns = { 'mypokemon', 'mainpokemon', 'pokemon_collection', 'trainer.cash', 'misc.last_tip_index', 'trainer.xp_share'}
-        changed_settings = { key: self.config[key] for key in self.config if not any(pattern in key for pattern in excluded_patterns) and self.config[key] != self.original_config.get(key) }
-        
+        excluded_patterns = {
+            "mypokemon",
+            "mainpokemon",
+            "pokemon_collection",
+            "trainer.cash",
+            "misc.last_tip_index",
+            "trainer.xp_share",
+        }
+        changed_settings = {
+            key: self.config[key]
+            for key in self.config
+            if not any(pattern in key for pattern in excluded_patterns)
+            and self.config[key] != self.original_config.get(key)
+        }
+
         if changed_settings:
-            friendly_changed = {self.friendly_names.get(k, k): v for k, v in changed_settings.items()}
-            changed_message = "\n".join([f"{key}: {value}" for key, value in friendly_changed.items()])
-            QMessageBox.information(self, "Settings Saved", "Your settings have been saved successfully.")
-            QMessageBox.information(self, "Config changes", f"Changed settings:\n{changed_message}")
+            friendly_changed = {
+                self.friendly_names.get(k, k): v for k, v in changed_settings.items()
+            }
+            changed_message = "\n".join(
+                [f"{key}: {value}" for key, value in friendly_changed.items()]
+            )
+            QMessageBox.information(
+                self, "Settings Saved", "Your settings have been saved successfully."
+            )
+            QMessageBox.information(
+                self, "Config changes", f"Changed settings:\n{changed_message}"
+            )
             self.original_config = self.config.copy()
         else:
             QMessageBox.information(self, "No Changes", "No settings were changed.")

@@ -453,5 +453,6 @@
   "futuresight_hits": "L'attaque prévue frappe {side} !",
   "futuresight_fails": "Prescience échoue !",
   "weather_raindance_still": "Il pleut encore !",
-  "wish_started": "{pokemon_name} a fait un vœu ! Il récupérera {heal_amount} PV bientôt."
+  "wish_started": "{pokemon_name} a fait un vœu ! Il récupérera {heal_amount} PV bientôt.",
+  "pc_box_label": "Box {current}/{total}"
 }

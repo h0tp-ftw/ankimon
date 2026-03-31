@@ -13,36 +13,36 @@
             "id": 399,
             "ability": "Simple",
             "type": [
-            "Normal"
+                "Normal"
             ],
             "stats": {
-            "hp": 59,
-            "atk": 45,
-            "def": 40,
-            "spa": 35,
-            "spd": 40,
-            "spe": 31,
-            "xp": 0
+                "hp": 59,
+                "atk": 45,
+                "def": 40,
+                "spa": 35,
+                "spd": 40,
+                "spe": 31,
+                "xp": 0
             },
             "ev": {
-            "hp": 0,
-            "atk": 0,
-            "def": 0,
-            "spa": 0,
-            "spd": 0,
-            "spe": 0
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
             },
             "iv": {
-            "hp": 1,
-            "atk": 15,
-            "def": 13,
-            "spa": 15,
-            "spd": 23,
-            "spe": 26
+                "hp": 1,
+                "atk": 15,
+                "def": 13,
+                "spa": 15,
+                "spd": 23,
+                "spe": 26
             },
             "attacks": [
-            "Growl",
-            "Rollout"
+                "Growl",
+                "Rollout"
             ],
             "base_experience": 50,
             "current_hp": 59,
@@ -56,7 +56,7 @@
             "mega": false,
             "special-form": null,
             "evos": []
-                }
+        }
     },
     {
         "code": "MONTHLY-2025-10-GASTLY",
@@ -237,7 +237,7 @@
             "individual_id": "693dda86-93c6-41d0-9b01-f8b0d0f95c17",
             "mega": false,
             "special-form": null,
-        "evos": []
+            "evos": []
         }
     },
     {
@@ -295,6 +295,184 @@
             "shiny": false,
             "captured_date": "2025-12-26 01:12:35",
             "individual_id": "056b53f0-70a7-47e1-9be5-cae4f4b28e3b",
+            "mega": false,
+            "special-form": null,
+            "evos": []
+        }
+    },
+    {
+        "code": "MONTHLY-2026-02-PONYTA",
+        "month": "February 2026",
+        "description": "A fiery challenge for February 2026, featuring Ponyta!",
+        "previous_challenge_individual_id": "056b53f0-70a7-47e1-9be5-cae4f4b28e3b",
+        "defeat_threshold": 200,
+        "pokemon": {
+            "name": "Ponyta",
+            "nickname": "",
+            "level": 1,
+            "gender": "M",
+            "id": 77,
+            "ability": "Run away",
+            "type": [
+                "Fire"
+            ],
+            "stats": {
+                "hp": 50,
+                "atk": 85,
+                "def": 55,
+                "spa": 65,
+                "spd": 65,
+                "spe": 90,
+                "xp": 0
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 20,
+                "atk": 4,
+                "def": 11,
+                "spa": 30,
+                "spd": 29,
+                "spe": 21
+            },
+            "attacks": [
+                "Tackle",
+                "Ember"
+            ],
+            "base_experience": 82,
+            "current_hp": 50,
+            "growth_rate": "medium",
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "shiny": false,
+            "captured_date": "2026-01-29 03:50:12",
+            "individual_id": "66077066-07b1-428c-a7fd-a0a1e7e44ae8",
+            "mega": false,
+            "special-form": null,
+            "evos": []
+        }
+    },
+    {
+        "code": "MONTHLY-2026-03-SABLEYE",
+        "month": "March 2026",
+        "description": "A mysterious challenge for March 2026, featuring Sableye!",
+        "previous_challenge_individual_id": "66077066-07b1-428c-a7fd-a0a1e7e44ae8",
+        "defeat_threshold": 200,
+        "pokemon": {
+            "name": "Sableye",
+            "nickname": "",
+            "level": 1,
+            "gender": "M",
+            "id": 302,
+            "ability": "Keen eye",
+            "type": [
+                "Dark",
+                "Ghost"
+            ],
+            "stats": {
+                "hp": 50,
+                "atk": 75,
+                "def": 75,
+                "spa": 65,
+                "spd": 65,
+                "spe": 50,
+                "xp": 0
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 3,
+                "atk": 12,
+                "def": 10,
+                "spa": 2,
+                "spd": 26,
+                "spe": 27
+            },
+            "attacks": [
+                "Scratch",
+                "Leer"
+            ],
+            "base_experience": 133,
+            "current_hp": 50,
+            "growth_rate": "medium-slow",
+            "friendship": 35,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "shiny": false,
+            "captured_date": "2026-02-27 00:21:33",
+            "individual_id": "1a5e8807-075c-4921-9eab-989e33a52354",
+            "mega": false,
+            "special-form": null,
+            "evos": []
+        }
+    },
+    {
+        "code": "MONTHLY-2026-04-CATERPIE",
+        "month": "April 2026",
+        "description": "A buggy challenge for April 2026, featuring Caterpie!",
+        "previous_challenge_individual_id": "1a5e8807-075c-4921-9eab-989e33a52354",
+        "defeat_threshold": 250,
+        "pokemon": {
+            "name": "Caterpie",
+            "nickname": "",
+            "level": 1,
+            "gender": "M",
+            "id": 10,
+            "ability": "Shield dust",
+            "type": [
+                "Bug"
+            ],
+            "stats": {
+                "hp": 45,
+                "atk": 30,
+                "def": 35,
+                "spa": 20,
+                "spd": 20,
+                "spe": 45,
+                "xp": 0
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 6,
+                "atk": 24,
+                "def": 26,
+                "spa": 16,
+                "spd": 17,
+                "spe": 10
+            },
+            "attacks": [
+                "Tackle",
+                "String shot"
+            ],
+            "base_experience": 39,
+            "current_hp": 45,
+            "growth_rate": "medium",
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "shiny": false,
+            "captured_date": "2026-03-30 16:26:52",
+            "individual_id": "6a4d2898-9ee0-4868-8903-a5d7f073e9cc",
             "mega": false,
             "special-form": null,
             "evos": []

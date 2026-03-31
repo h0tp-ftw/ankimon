@@ -6,11 +6,11 @@ from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
 from aqt import mw, utils
-from ..resources import mainpokemon_path, mypokemon_path, pokeapi_db_path, moves_file_path, pokedex_path, rate_path
+from ..resources import mainpokemon_path, mypokemon_path, moves_file_path, pokedex_path, rate_path
 from ..functions.sprite_functions import get_sprite_path
 from datetime import datetime
 import uuid
-from ..functions.pokedex_functions import search_pokeapi_db_by_id
+from ..functions.pokedex_functions import get_base_experience, get_growth_rate
 from .error_handler import show_warning_with_traceback
 
 # --- Module-level functions for Monthly Challenges ---
@@ -57,6 +57,9 @@ def add_pokemon_to_collection(new_pokemon, refresh_callback=None, parent_window=
             json.dump(pokemon_list, file, indent=2)
         if refresh_callback:
             refresh_callback()
+
+        from ..singletons import pokemon_pc
+        pokemon_pc.refresh_pokemon_grid()
     except Exception as e:
         show_warning_with_traceback(parent=parent_window, exception=e, message="Error adding Pokemon to collection")
 
@@ -147,7 +150,7 @@ def check_and_award_monthly_pokemon(logger):
 
 
 class PokemonTrade:
-    TRADE_VERSION = "01"
+    TRADE_VERSION = "02"
 
     def __init__(self, name, id, level, ability, iv, ev, gender, attacks, individual_id, shiny, logger, refresh_callback, parent_window=None):
         self.name = name
@@ -165,7 +168,6 @@ class PokemonTrade:
         self.parent_window = parent_window
         self.mainpokemon_path = mainpokemon_path
         self.mypokemon_path = mypokemon_path
-        self.pokeapi_db_path = pokeapi_db_path
         self.moves_file_path = moves_file_path
         self.pokedex_path = pokedex_path
         self.check_and_trade()
@@ -275,7 +277,7 @@ class PokemonTrade:
         self.trade_code_layout.addWidget(self.your_code_label)
 
         self.code_display_layout = QHBoxLayout()
-        clipboard_info = f"{self.id},{self.level},{self.format_gender()},{self.ev_string()},{self.iv_string()},{self.attack_ids()}"
+        clipboard_info = f"{self.id},{self.level},{self.format_gender()},{self.format_shiny()},{self.ev_string()},{self.iv_string()},{self.attack_ids()}"
         self.trade_code_display = QLineEdit(clipboard_info)
         self.trade_code_display.setReadOnly(True)
         self.trade_code_display.setFont(QFont("Courier New", 10))
@@ -309,7 +311,7 @@ class PokemonTrade:
     def generate_and_show_passwords(self, window):
         code1 = self.trade_code_display.text().strip()
         code2 = self.trade_code_input.text().strip()
-        if not code1 or not code2 or len(code2) < 15:
+        if not code1 or not code2 or len(code2) < 16:
             showWarning("Please enter a valid trade code from the other user.")
             return
 
@@ -391,7 +393,7 @@ class PokemonTrade:
 
         their_version = their_part_entered[-2:]
         if their_version != self.TRADE_VERSION:
-            showWarning(f"Trade incompatible due to Ankimon trade versions. \n\nYour verison: {self.TRADE_VERSION}, partner's version: {their_version}.\n\nPlease get the latest version of Ankimon for both users!")
+            showWarning(f"Trade incompatible due to Ankimon trade versions. \n\nYour version: {self.TRADE_VERSION}, partner's version: {their_version}.\n\nPlease get the latest version of Ankimon for both users!")
             return
 
         if their_part_entered == self._their_password_part:
@@ -459,7 +461,7 @@ class PokemonTrade:
             with open(self.pokedex_path, 'r', encoding='utf-8') as file:
                 pokedex = json.load(file)
                 for details in pokedex.values():
-                    if details.get('num') == pokemon_id:
+                    if details.get('species_id') == pokemon_id:
                         return details.get('name', str(pokemon_id))
         except Exception as e:
             show_warning_with_traceback(parent=self.parent_window, exception=e, message=f"An error occurred while getting the Pokémon name for ID {pokemon_id}.")
@@ -486,7 +488,7 @@ class PokemonTrade:
         code = number_code.strip()
         try:
             numbers = [int(num) for num in code.split(',')]
-            if len(numbers) < 15:
+            if len(numbers) < 16:
                 showWarning("Code is incomplete.")
                 return
             incoming_id = numbers[0]
@@ -498,19 +500,19 @@ class PokemonTrade:
             showWarning("Please enter a valid Pokémon Code!")
 
     def process_trade(self, numbers):
-        from ..functions.pokedex_functions import search_pokedex, search_pokeapi_db_by_id, get_all_pokemon_moves
+        from ..functions.pokedex_functions import search_pokedex, get_all_pokemon_moves
         import random
         try:
-            pokemon_id, level, gender_id = numbers[0], numbers[1], numbers[2]
-            ev_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[3:9]))
-            iv_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[9:15]))
-            attacks = [self.find_move_by_num(attack_id)['name'] for attack_id in numbers[15:]]
+            pokemon_id, level, gender_id, shiny = numbers[0], numbers[1], numbers[2], numbers[3]
+            ev_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[4:10]))
+            iv_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[10:16]))
+            attacks = [self.find_move_by_num(attack_id)['name'] for attack_id in numbers[16:]]
 
             details = self.find_pokemon_by_id(pokemon_id)
             if not details:
                 raise ValueError(f"Could not find Pokémon details for ID {pokemon_id}")
 
-            base_experience = search_pokeapi_db_by_id(pokemon_id, "base_experience")
+            base_experience = get_base_experience(details["actual_id"])
 
             ability = "No Ability"
             possible_abilities = search_pokedex(details["name"], "abilities")
@@ -538,13 +540,13 @@ class PokemonTrade:
                 "ev": ev_stats,
                 "iv": iv_stats,
                 "attacks": attacks,
-                "growth_rate": self.get_growth_rate(pokemon_id),
+                "growth_rate": get_growth_rate(pokemon_id),
                 "current_hp": self.calculate_max_hp(details["baseStats"]["hp"], level, ev_stats, iv_stats),
                 "base_experience": base_experience,
                 "friendship": 0,
                 "pokemon_defeated": 0,
                 "everstone": False,
-                "shiny": False,
+                "shiny": bool(shiny),
                 "mega": False,
                 "special_form": None,
                 "capture_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -572,14 +574,14 @@ class PokemonTrade:
             if move:
                 return move['num']
             else:
-                return int(33)
+                return 33
 
     def find_pokemon_by_id(self, pokemon_id):
         try:
             with open(self.pokedex_path, 'r', encoding='utf-8') as file:
                 pokedex = json.load(file)
                 for details in pokedex.values():
-                    if details.get('num') == pokemon_id:
+                    if details.get('species_id') == pokemon_id:
                         return details
             self.logger.log_and_showinfo("warning",f"No Pokémon found with ID: {pokemon_id}")
             return None
@@ -589,15 +591,6 @@ class PokemonTrade:
 
     def gender_from_id(self, gender_id):
         return {0: "M", 1: "F", 2: "N"}.get(gender_id, "N/A")
-
-    def get_growth_rate(self, pokemon_id):
-        try:
-            with open(self.pokeapi_db_path, "r", encoding="utf-8") as file:
-                pokemon_data = json.load(file)
-                return next((p["growth_rate"] for p in pokemon_data if p["id"] == pokemon_id), None)
-        except FileNotFoundError as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message="PokeAPI DB file not found.")
-            return None
 
     def replace_pokemon(self, new_pokemon):
         try:
@@ -625,6 +618,9 @@ class PokemonTrade:
     def format_gender(self):
         gender_map = {"M": 0, "F": 1, "N": 2}
         return gender_map.get(self.gender, 3)
+    
+    def format_shiny(self):
+        return 1 if self.shiny else 0
 
     def ev_string(self):
         return ','.join(str(value) for value in self.ev.values())

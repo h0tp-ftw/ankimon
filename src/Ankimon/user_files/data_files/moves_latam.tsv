@@ -1,0 +1,923 @@
+											
+											
+#		Español	Español LATAM	Japonés	Inglés	Francés	Alemán	Italiano	Coreano	Chino simplificado	Chino tradicional
+1		Destructor	Destructor	はたく	Pound	Écras’Face	Klaps	Botta	막치기	拍击	拍擊
+2		Golpe kárate	Golpe karate	からてチョップ	Karate Chop	Poing Karaté	Karateschlag	Colpokarate	태권당수	空手劈	空手劈
+3		Doble bofetón	Doble bofetón	おうふくビンタ	Double Slap	Torgnoles	Duplexhieb	Doppiasberla	연속뺨치기	连环巴掌	連環巴掌
+4		Puño cometa	Puño cometa	れんぞくパンチ	Comet Punch	Poing Comète	Kometenhieb	Cometapugno	연속펀치	连续拳	連續拳
+5		Megapuño	Megapuño	メガトンパンチ	Mega Punch	Ultimapoing	Megahieb	Megapugno	메가톤펀치	百万吨重拳	百萬噸重拳
+6		Día de pago	Día de pago	ネコにこばん	Pay Day	Jackpot	Zahltag	Giornopaga	고양이돈받기	聚宝功	聚寶功
+7		Puño fuego	Puño fuego	ほのおのパンチ	Fire Punch	Poing Feu	Feuerschlag	Fuocopugno	불꽃펀치	火焰拳	火焰拳
+8		Puño hielo	Puño hielo	れいとうパンチ	Ice Punch	Poing Glace	Eishieb	Gelopugno	냉동펀치	冰冻拳	冰凍拳
+9		Puño trueno	Puño trueno	かみなりパンチ	Thunder Punch	Poing Éclair	Donnerschlag	Tuonopugno	번개펀치	雷电拳	雷電拳
+10		Arañazo	Arañazo	ひっかく	Scratch	Griffe	Kratzer	Graffio	할퀴기	抓	抓
+11		Agarre	Fuerza de garra	はさむ	Vise Grip	Force Poigne	Klammer	Presa	찝기	夹住	夾住
+12		Guillotina	Guillotina	ハサミギロチン	Guillotine	Guillotine	Guillotine	Ghigliottina	가위자르기	极落钳	斷頭鉗
+13		Viento cortante	Viento cortante	かまいたち	Razor Wind	Coupe-Vent	Klingensturm	Ventagliente	칼바람	旋风刀	旋風刀
+14		Danza espada	Danza de espadas	つるぎのまい	Swords Dance	Danse Lames	Schwerttanz	Danzaspada	칼춤	剑舞	劍舞
+15		Corte	Corte	いあいぎり	Cut	Coupe	Zerschneider	Taglio	풀베기	居合劈	居合斬
+16		Tornado	Ráfaga de aire	かぜおこし	Gust	Tornade	Windstoß	Raffica	바람일으키기	起风	起風
+17		Ataque ala	Ataque de ala	つばさでうつ	Wing Attack	Cru-Ailes	Flügelschlag	Attacco d’Ala	날개치기	翅膀攻击	翅膀攻擊
+18		Remolino	Torbellino	ふきとばし	Whirlwind	Cyclone	Wirbelwind	Turbine	날려버리기	吹飞	吹飛
+19		Vuelo	Vuelo	そらをとぶ	Fly	Vol	Fliegen	Volo	공중날기	飞翔	飛翔
+20		Atadura	Atadura	しめつける	Bind	Étreinte	Klammergriff	Legatutto	조이기	绑紧	綁緊
+21		Atizar	Golpazo	たたきつける	Slam	Souplesse	Slam	Schianto	힘껏치기	摔打	摔打
+22		Látigo cepa	Látigo cepa	つるのムチ	Vine Whip	Fouet Lianes	Rankenhieb	Frustata	덩굴채찍	藤鞭	藤鞭
+23		Pisotón	Pisotón	ふみつけ	Stomp	Écrasement	Stampfer	Pestone	짓밟기	踩踏	踩踏
+24		Doble patada	Doble patada	にどげり	Double Kick	Double Pied	Doppelkick	Doppiocalcio	두번차기	二连踢	二連踢
+25		Megapatada	Megapatada	メガトンキック	Mega Kick	Ultimawashi	Megakick	Megacalcio	메가톤킥	百万吨重踢	百萬噸重踢
+26		Patada salto	Patada salto	とびげり	Jump Kick	Pied Sauté	Sprungkick	Calciosalto	점프킥	飞踢	飛踢
+27		Patada giro	Patada giro	まわしげり	Rolling Kick	Mawashi Geri	Fegekick	Calciorullo	돌려차기	回旋踢	迴旋踢
+28		Ataque arena	Ataque arena	すなかけ	Sand Attack	Jet de Sable	Sandwirbel	Turbosabbia	모래뿌리기	泼沙	潑沙
+29		Golpe cabeza	Golpe cabeza	ずつき	Headbutt	Coup d’Boule	Kopfnuss	Bottintesta	박치기	头锤	頭錘
+30		Cornada	Ataque cuerno	つのでつく	Horn Attack	Koud’Korne	Hornattacke	Incornata	뿔찌르기	角撞	角撞
+31		Ataque furia	Ataque furia	みだれづき	Fury Attack	Furie	Furienschlag	Furia	마구찌르기	乱击	亂擊
+32		Perforador	Cuerno taladro	つのドリル	Horn Drill	Empal’Korne	Hornbohrer	Perforcorno	뿔드릴	角钻	角鑽
+33		Placaje	Tacleada	たいあたり	Tackle	Charge	Tackle	Azione	몸통박치기	撞击	撞擊
+34		Golpe cuerpo	Golpe de cuerpo	のしかかり	Body Slam	Plaquage	Bodyslam	Corposcontro	누르기	泰山压顶	泰山壓頂
+35		Constricción	Constricción	まきつく	Wrap	Ligotage	Wickel	Avvolgibotta	김밥말이	紧束	緊束
+36		Derribo	Derribo	とっしん	Take Down	Bélier	Bodycheck	Riduttore	돌진	猛撞	猛撞
+37		Saña	Golpiza	あばれる	Thrash	Mania	Fuchtler	Colpo	난동부리기	大闹一番	大鬧一番
+38		Doble filo	Doble filo	すてみタックル	Double-Edge	Damoclès	Risikotackle	Sdoppiatore	이판사판태클	舍身冲撞	捨身衝撞
+39		Agitacola	Látigo de cola	しっぽをふる	Tail Whip	Mimi-Queue	Rutenschlag	Colpocoda	꼬리흔들기	摇尾巴	搖尾巴
+40		Picotazo veneno	Piquete venenoso	どくばり	Poison Sting	Dard-Venin	Giftstachel	Velenospina	독침	毒针	毒針
+41		Doble ataque	Doble aguijón	ダブルニードル	Twineedle	Double Dard	Duonadel	Doppio Ago	더블니들	双针	雙針
+42		Pin misil	Misil aguja	ミサイルばり	Pin Missile	Dard-Nuée	Nadelrakete	Missilspillo	바늘미사일	飞弹针	飛彈針
+43		Malicioso	Malicioso	にらみつける	Leer	Groz’Yeux	Silberblick	Fulmisguardo	째려보기	瞪眼	瞪眼
+44		Mordisco	Mordida	かみつく	Bite	Morsure	Biss	Morso	물기	咬住	咬住
+45		Gruñido	Gruñido	なきごえ	Growl	Rugissement	Heuler	Ruggito	울음소리	叫声	叫聲
+46		Rugido	Rugido	ほえる	Roar	Hurlement	Brüller	Boato	울부짖기	吼叫	吼叫
+47		Canto	Canto	うたう	Sing	Berceuse	Gesang	Canto	노래하기	唱歌	唱歌
+48		Supersónico	Supersónico	ちょうおんぱ	Supersonic	Ultrason	Superschall	Supersuono	초음파	超音波	超音波
+49		Bomba sónica	Explosión sónica	ソニックブーム	Sonic Boom	Sonic Boom	Ultraschall	Sonicboom	소닉붐	音爆	音爆
+50		Anulación	Anulación	かなしばり	Disable	Entrave	Aussetzer	Inibitore	사슬묶기	定身法	定身法
+51		Ácido	Ácido	ようかいえき	Acid	Acide	Säure	Acido	용해액	溶解液	溶解液
+52		Ascuas	Brasas	ひのこ	Ember	Flammèche	Glut	Braciere	불꽃세례	火花	火花
+53		Lanzallamas	Lanzallamas	かえんほうしゃ	Flamethrower	Lance-Flammes	Flammenwurf	Lanciafiamme	화염방사	喷射火焰	噴射火焰
+54		Neblina	Neblina	しろいきり	Mist	Brume	Weißnebel	Nebbia	흰안개	白雾	白霧
+55		Pistola agua	Chorro de agua	みずでっぽう	Water Gun	Pistolet à O	Aquaknarre	Pistolacqua	물대포	水枪	水槍
+56		Hidrobomba	Hidrobomba	ハイドロポンプ	Hydro Pump	Hydrocanon	Hydropumpe	Idropompa	하이드로펌프	水炮	水炮
+57		Surf	Surf	なみのり	Surf	Surf	Surfer	Surf	파도타기	冲浪	衝浪
+58		Rayo hielo	Rayo de hielo	れいとうビーム	Ice Beam	Laser Glace	Eisstrahl	Geloraggio	냉동빔	冰冻光束	冰凍光束
+59		Ventisca	Ventisca	ふぶき	Blizzard	Blizzard	Blizzard	Bora	눈보라	暴风雪	暴風雪
+60		Psicorrayo	Psicorrayo	サイケこうせん	Psybeam	Rafale Psy	Psystrahl	Psicoraggio	환상빔	幻象光线	幻象光線
+61		Rayo burbuja	Rayo burbuja	バブルこうせん	Bubble Beam	Bulles d’O	Blubbstrahl	Bollaraggio	거품광선	泡沫光线	泡沫光線
+62		Rayo aurora	Rayo aurora	オーロラビーム	Aurora Beam	Onde Boréale	Aurorastrahl	Raggiaurora	오로라빔	极光束	極光束
+63		Hiperrayo	Hiperrayo	はかいこうせん	Hyper Beam	Ultralaser	Hyperstrahl	Iper Raggio	파괴광선	破坏光线	破壞光線
+64		Picotazo	Picotazo	つつく	Peck	Picpic	Pikser	Beccata	쪼기	啄	啄
+65		Pico taladro	Pico taladro	ドリルくちばし	Drill Peck	Bec Vrille	Bohrschnabel	Perforbecco	회전부리	啄钻	啄鑽
+66		Sumisión	Sumisión	じごくぐるま	Submission	Sacrifice	Überroller	Sottomissione	지옥의바퀴	深渊翻滚	地獄翻滾
+67		Patada baja	Patada baja	けたぐり	Low Kick	Balayage	Fußkick	Colpo Basso	안다리걸기	踢倒	踢倒
+68		Contraataque	Contraataque	カウンター	Counter	Riposte	Konter	Contrattacco	카운터	双倍奉还	雙倍奉還
+69		Sísmico	Sísmico	ちきゅうなげ	Seismic Toss	Frappe Atlas	Geowurf	Movim. Sismico	지구던지기	地球上投	地球上投
+70		Fuerza	Fuerza	かいりき	Strength	Force	Stärke	Forza	괴력	怪力	怪力
+71		Absorber	Absorción	すいとる	Absorb	Vole-Vie	Absorber	Assorbimento	흡수	吸取	吸取
+72		Megaagotar	Megadrenado	メガドレイン	Mega Drain	Méga-Sangsue	Megasauger	Megassorbimento	메가드레인	超级吸取	超級吸取
+73		Drenadoras	Drenadoras	やどりぎのタネ	Leech Seed	Vampigraine	Egelsamen	Parassiseme	씨뿌리기	寄生种子	寄生種子
+74		Desarrollo	Crecimiento	せいちょう	Growth	Croissance	Wachstum	Crescita	성장	生长	生長
+75		Hoja afilada	Hojas navaja	はっぱカッター	Razor Leaf	Tranch’Herbe	Rasierblatt	Foglielama	잎날가르기	飞叶快刀	飛葉快刀
+76		Rayo solar	Rayo solar	ソーラービーム	Solar Beam	Lance-Soleil	Solarstrahl	Solarraggio	솔라빔	日光束	日光束
+77		Polvo veneno	Polvo venenoso	どくのこな	Poison Powder	Poudre Toxik	Giftpuder	Velenpolvere	독가루	毒粉	毒粉
+78		Paralizador	Paralizador	しびれごな	Stun Spore	Para-Spore	Stachelspore	Paralizzante	저리가루	麻痹粉	麻痺粉
+79		Somnífero	Somnífero	ねむりごな	Sleep Powder	Poudre Dodo	Schlafpuder	Sonnifero	수면가루	催眠粉	催眠粉
+80		Danza pétalo	Danza de pétalos	はなびらのまい	Petal Dance	Danse Fleurs	Blättertanz	Petalodanza	꽃잎댄스	花瓣舞	花瓣舞
+81		Disparo demora	Disparo de seda	いとをはく	String Shot	Sécrétion	Fadenschuss	Millebave	실뿜기	吐丝	吐絲
+82		Furia dragón	Furia dragón	りゅうのいかり	Dragon Rage	Draco-Rage	Drachenwut	Ira di Drago	용의분노	龙之怒	龍之怒
+83		Giro fuego	Giro fuego	ほのおのうず	Fire Spin	Danse Flammes	Feuerwirbel	Turbofuoco	회오리불꽃	火焰旋涡	火焰旋渦
+84		Impactrueno	Impactrueno	でんきショック	Thunder Shock	Éclair	Donnerschock	Tuonoshock	전기쇼크	电击	電擊
+85		Rayo	Atactrueno	１０まんボルト	Thunderbolt	Tonnerre	Donnerblitz	Fulmine	10만볼트	十万伏特	十萬伏特
+86		Onda trueno	Onda trueno	でんじは	Thunder Wave	Cage Éclair	Donnerwelle	Tuononda	전기자석파	电磁波	電磁波
+87		Trueno	Trueno	かみなり	Thunder	Fatal-Foudre	Donner	Tuono	번개	打雷	打雷
+88		Lanzarrocas	Lanzarrocas	いわおとし	Rock Throw	Jet-Pierres	Steinwurf	Sassata	돌떨구기	落石	落石
+89		Terremoto	Terremoto	じしん	Earthquake	Séisme	Erdbeben	Terremoto	지진	地震	地震
+90		Fisura	Fisura	じわれ	Fissure	Abîme	Geofissur	Abisso	땅가르기	地裂	地裂
+91		Excavar	Excavar	あなをほる	Dig	Tunnel	Schaufler	Fossa	구멍파기	挖洞	挖洞
+92		Tóxico	Tóxico	どくどく	Toxic	Toxik	Toxin	Tossina	맹독	剧毒	劇毒
+93		Confusión	Confusión	ねんりき	Confusion	Choc Mental	Konfusion	Confusione	염동력	念力	念力
+94		Psíquico	Fuerza psíquica	サイコキネシス	Psychic	Psyko	Psychokinese	Psichico	사이코키네시스	精神强念	精神強念
+95		Hipnosis	Hipnosis	さいみんじゅつ	Hypnosis	Hypnose	Hypnose	Ipnosi	최면술	催眠术	催眠術
+96		Meditación	Meditación	ヨガのポーズ	Meditate	Yoga	Meditation	Meditazione	요가포즈	瑜伽姿势	瑜伽姿勢
+97		Agilidad	Agilidad	こうそくいどう	Agility	Hâte	Agilität	Agilità	고속이동	高速移动	高速移動
+98		Ataque rápido	Ataque rápido	でんこうせっか	Quick Attack	Vive-Attaque	Ruckzuckhieb	Attacco Rapido	전광석화	电光一闪	電光一閃
+99		Furia	Furia	いかり	Rage	Frénésie	Raserei	Ira	분노	愤怒	憤怒
+100		Teletransporte	Teletransporte	テレポート	Teleport	Téléport	Teleport	Teletrasporto	순간이동	瞬间移动	瞬間移動
+101		Tinieblas	Tinieblas	ナイトヘッド	Night Shade	Ombre Nocturne	Nachtnebel	Ombra Notturna	나이트헤드	黑夜魔影	黑夜魔影
+102		Mimético	Mímica	ものまね	Mimic	Copie	Mimikry	Mimica	흉내내기	模仿	模仿
+103		Chirrido	Chillido	いやなおと	Screech	Grincement	Kreideschrei	Stridio	싫은소리	刺耳声	刺耳聲
+104		Doble equipo	Doble equipo	かげぶんしん	Double Team	Reflet	Doppelteam	Doppioteam	그림자분신	影子分身	影子分身
+105		Recuperación	Recuperación	じこさいせい	Recover	Soin	Genesung	Ripresa	HP회복	自我再生	自我再生
+106		Fortaleza	Fortaleza	かたくなる	Harden	Armure	Härtner	Rafforzatore	단단해지기	变硬	變硬
+107		Reducción	Reducción	ちいさくなる	Minimize	Lilliput	Komprimator	Minimizzato	작아지기	变小	變小
+108		Pantalla de humo	Pantalla de humo	えんまく	Smokescreen	Brouillard	Rauchwolke	Muro di Fumo	연막	烟幕	煙幕
+109		Rayo confuso	Rayo de confusión	あやしいひかり	Confuse Ray	Onde Folie	Konfusstrahl	Stordiraggio	이상한빛	奇异之光	奇異之光
+110		Refugio	Refugio	からにこもる	Withdraw	Repli	Panzerschutz	Ritirata	껍질에숨기	缩入壳中	縮入殼中
+111		Rizo defensa	Hacerse bolita	まるくなる	Defense Curl	Boul’Armure	Einigler	Ricciolscudo	웅크리기	变圆	變圓
+112		Barrera	Barrera	バリアー	Barrier	Bouclier	Barriere	Barriera	배리어	屏障	屏障
+113		Pantalla de luz	Pantalla de luz	ひかりのかべ	Light Screen	Mur Lumière	Lichtschild	Schermoluce	빛의장막	光墙	光牆
+114		Niebla	Niebla	くろいきり	Haze	Buée Noire	Dunkelnebel	Nube	흑안개	黑雾	黑霧
+115		Reflejo	Reflejo	リフレクター	Reflect	Protection	Reflektor	Riflesso	리플렉터	反射壁	反射壁
+116		Foco energía	Centrar energía	きあいだめ	Focus Energy	Puissance	Energiefokus	Focalenergia	기충전	聚气	聚氣
+117		Venganza	Venganza	がまん	Bide	Patience	Geduld	Pazienza	참기	忍耐	忍耐
+118		Metrónomo	Metrónomo	ゆびをふる	Metronome	Métronome	Metronom	Metronomo	손가락흔들기	挥指	揮指
+119		Espejo	Espejo	オウムがえし	Mirror Move	Mimique	Spiegeltrick	Speculmossa	따라하기	鹦鹉学舌	鸚鵡學舌
+120		Autodestrucción	Autodestrucción	じばく	Self-Destruct	Destruction	Finale	Autodistruzione	자폭	玉石俱碎	自爆
+121		Bomba huevo	Bomba huevo	タマゴばくだん	Egg Bomb	Bombe Œuf	Eierbombe	Uovobomba	알폭탄	炸蛋	炸蛋
+122		Lengüetazo	Lengüetazo	したでなめる	Lick	Léchouille	Schlecker	Leccata	핥기	舌舔	舌舔
+123		Polución	Humo	スモッグ	Smog	Purédpois	Smog	Smog	스모그	浊雾	濁霧
+124		Residuos	Residuos	ヘドロこうげき	Sludge	Détritus	Schlammbad	Fango	오물공격	污泥攻击	污泥攻擊
+125		Hueso palo	Maza de hueso	ホネこんぼう	Bone Club	Massd’Os	Knochenkeule	Ossoclava	뼈다귀치기	骨棒	骨棒
+126		Llamarada	Llamarada	だいもんじ	Fire Blast	Déflagration	Feuersturm	Fuocobomba	불대문자	大字爆炎	大字爆炎
+127		Cascada	Cascada	たきのぼり	Waterfall	Cascade	Kaskade	Cascata	폭포오르기	攀瀑	攀瀑
+128		Tenaza	Tenaza	からではさむ	Clamp	Claquoir	Schnapper	Tenaglia	껍질끼우기	贝壳夹击	貝殼夾擊
+129		Meteoros	Meteoros	スピードスター	Swift	Météores	Sternschauer	Comete	스피드스타	高速星星	高速星星
+130		Cabezazo	Cabezazo	ロケットずつき	Skull Bash	Coud’Krâne	Schädelwumme	Capocciata	로켓박치기	火箭头锤	火箭頭錘
+131		Clavo cañón	Cañón de púas	とげキャノン	Spike Cannon	Picanon	Dornkanone	Sparalance	가시대포	尖刺加农炮	尖刺加農炮
+132		Restricción	Restricción	からみつく	Constrict	Constriction	Umklammerung	Limitazione	휘감기	缠绕	纏繞
+133		Amnesia	Amnesia	ドわすれ	Amnesia	Amnésie	Amnesie	Amnesia	망각술	瞬间失忆	瞬間失憶
+134		Kinético	Kinético	スプーンまげ	Kinesis	Télékinésie	Psykraft	Cinèsi	숟가락휘기	折弯汤匙	折彎湯匙
+135		Ovocuración	Ovocuración	タマゴうみ	Soft-Boiled	E-Coque	Weichei	Covauova	알낳기	生蛋	生蛋
+136		Pat. salto alta	Patada salto alto	とびひざげり	High Jump Kick	Pied Voltige	Turmkick	Calcinvolo	무릎차기	飞膝踢	飛膝踢
+137		Deslumbrar	Fulmirada	へびにらみ	Glare	Regard Médusant	Schlangenblick	Sguardo Feroce	뱀눈초리	大蛇瞪眼	大蛇瞪眼
+138		Comesueños	Comesueños	ゆめくい	Dream Eater	Dévorêve	Traumfresser	Mangiasogni	꿈먹기	食梦	食夢
+139		Gas venenoso	Gas venenoso	どくガス	Poison Gas	Gaz Toxik	Giftwolke	Velenogas	독가스	毒瓦斯	毒瓦斯
+140		Bombardeo	Bombardeo	たまなげ	Barrage	Pilonnage	Stakkato	Sferattacco	구슬던지기	投球	投球
+141		Chupavidas	Chupavidas	きゅうけつ	Leech Life	Vampirisme	Blutsauger	Sanguisuga	흡혈	汲取	吸血
+142		Beso amoroso	Beso amoroso	あくまのキッス	Lovely Kiss	Grobisou	Todeskuss	Demonbacio	악마의키스	恶魔之吻	惡魔之吻
+143		Ataque aéreo	Ataque celestial	ゴッドバード	Sky Attack	Piqué	Himmelsfeger	Aeroattacco	불새	神鸟猛击	神鳥猛擊
+144		Transformación	Transformación	へんしん	Transform	Morphing	Wandler	Trasformazione	변신	变身	變身
+145		Burbuja	Burbuja	あわ	Bubble	Écume	Blubber	Bolla	거품	泡沫	泡沫
+146		Puño mareo	Puño mareador	ピヨピヨパンチ	Dizzy Punch	Uppercut	Irrschlag	Stordipugno	잼잼펀치	迷昏拳	迷昏拳
+147		Espora	Esporas	キノコのほうし	Spore	Spore	Pilzspore	Spora	버섯포자	蘑菇孢子	蘑菇孢子
+148		Destello	Destello	フラッシュ	Flash	Flash	Blitz	Flash	플래시	闪光	閃光
+149		Psicoonda	Psicoonda	サイコウェーブ	Psywave	Vague Psy	Psywelle	Psiconda	사이코웨이브	精神波	精神波
+150		Salpicadura	Salpicadura	はねる	Splash	Trempette	Platscher	Splash	튀어오르기	跃起	躍起
+151		Armadura ácida	Armadura ácida	とける	Acid Armor	Acidarmure	Säurepanzer	Scudo Acido	녹기	溶化	溶化
+152		Martillazo	Martillazo	クラブハンマー	Crabhammer	Pince-Masse	Krabbhammer	Martellata	집게해머	蟹钳锤	蟹鉗錘
+153		Explosión	Explosión	だいばくはつ	Explosion	Explosion	Explosion	Esplosione	대폭발	大爆炸	大爆炸
+154		Golpes furia	Garras furiosas	みだれひっかき	Fury Swipes	Combo-Griffe	Kratzfurie	Sfuriate	마구할퀴기	乱抓	亂抓
+155		Huesomerang	Huesomerang	ホネブーメラン	Bonemerang	Osmerang	Knochmerang	Ossomerang	뼈다귀부메랑	骨头回力镖	骨頭回力鏢
+156		Descanso	Descanso	ねむる	Rest	Repos	Erholung	Riposo	잠자기	睡觉	睡覺
+157		Avalancha	Avalancha	いわなだれ	Rock Slide	Éboulement	Steinhagel	Frana	스톤샤워	岩崩	岩崩
+158		Hipercolmillo	Hipercolmillo	ひっさつまえば	Hyper Fang	Croc de Mort	Hyperzahn	Iperzanna	필살앞니	终结门牙	必殺門牙
+159		Afilar	Afilar	かくばる	Sharpen	Affûtage	Schärfer	Affilatore	각지기	棱角化	稜角化
+160		Conversión	Conversión	テクスチャー	Conversion	Conversion	Umwandlung	Conversione	텍스처	纹理	紋理
+161		Triataque	Triataque	トライアタック	Tri Attack	Triplattaque	Triplette	Tripletta	트라이어택	三重攻击	三重攻擊
+162		Superdiente	Supercolmillo	いかりのまえば	Super Fang	Croc Fatal	Superzahn	Superzanna	분노의앞니	愤怒门牙	憤怒門牙
+163		Cuchillada	Cuchillada	きりさく	Slash	Tranche	Schlitzer	Lacerazione	베어가르기	劈开	劈開
+164		Sustituto	Sustituto	みがわり	Substitute	Clonage	Delegator	Sostituto	대타출동	替身	替身
+165		Forcejeo	Forcejeo	わるあがき	Struggle	Lutte	Verzweifler	Scontro	발버둥	挣扎	掙扎
+166		Esquema	Boceto	スケッチ	Sketch	Gribouille	Nachahmer	Schizzo	스케치	写生	寫生
+167		Triple patada	Triple patada	トリプルキック	Triple Kick	Triple Pied	Dreifachkick	Triplocalcio	트리플킥	三连踢	三連踢
+168		Ladrón	Ladrón	どろぼう	Thief	Larcin	Raub	Furto	도둑질	小偷	小偷
+169		Telaraña	Telaraña	クモのす	Spider Web	Toile	Spinnennetz	Ragnatela	거미집	蛛网	蛛網
+170		Telépata	Telépata	こころのめ	Mind Reader	Lire-Esprit	Willensleser	Leggimente	마음의눈	心之眼	心之眼
+171		Pesadilla	Pesadilla	あくむ	Nightmare	Cauchemar	Nachtmahr	Incubo	악몽	恶梦	惡夢
+172		Rueda fuego	Rueda ígnea	かえんぐるま	Flame Wheel	Roue de Feu	Flammenrad	Ruotafuoco	화염바퀴	火焰轮	火焰輪
+173		Ronquido	Ronquido	いびき	Snore	Ronflement	Schnarcher	Russare	코골기	打鼾	打鼾
+174		Maldición	Maldición	のろい	Curse	Malédiction	Fluch	Maledizione	저주	咒术	詛咒
+175		Azote	Azote	じたばた	Flail	Gigotage	Dreschflegel	Flagello	바둥바둥	抓狂	抓狂
+176		Conversión 2	Conversión 2	テクスチャー２	Conversion 2	Conversion 2	Umwandlung 2	Conversione2	텍스처2	纹理２	紋理２
+177		Aerochorro	Aerochorro	エアロブラスト	Aeroblast	Aéroblast	Luftstoß	Aerocolpo	에어로블라스트	气旋攻击	氣旋攻擊
+178		Esporagodón	Esporagodón	わたほうし	Cotton Spore	Spore Coton	Baumwollsaat	Cotonspora	목화포자	棉孢子	棉孢子
+179		Inversión	Inversión	きしかいせい	Reversal	Contre	Gegenschlag	Contropiede	기사회생	绝处逢生	起死回生
+180		Rencor	Rencor	うらみ	Spite	Dépit	Groll	Dispetto	원한	怨恨	怨恨
+181		Nieve polvo	Polvo de nieve	こなゆき	Powder Snow	Poudreuse	Pulverschnee	Polneve	눈싸라기	细雪	細雪
+182		Protección	Protección	まもる	Protect	Abri	Schutzschild	Protezione	방어	守住	守住
+183		Ultrapuño	Superpuño	マッハパンチ	Mach Punch	Mach Punch	Tempohieb	Pugnorapido	마하펀치	音速拳	音速拳
+184		Cara susto	Cara aterradora	こわいかお	Scary Face	Grimace	Grimasse	Visotruce	겁나는얼굴	可怕面孔	鬼面
+185		Finta	Ataque finta	だましうち	Feint Attack	Feinte	Finte	Finta	속여때리기	出奇一击	出奇一擊
+186		Beso dulce	Beso dulce	てんしのキッス	Sweet Kiss	Doux Baiser	Bitterkuss	Dolcebacio	천사의키스	天使之吻	天使之吻
+187		Tambor	Tambor	はらだいこ	Belly Drum	Cognobidon	Bauchtrommel	Panciamburo	배북	腹鼓	腹鼓
+188		Bomba lodo	Bomba lodo	ヘドロばくだん	Sludge Bomb	Bombe Beurk	Matschbombe	Fangobomba	오물폭탄	污泥炸弹	污泥炸彈
+189		Bofetón lodo	Bofetón lodo	どろかけ	Mud-Slap	Coud’Boue	Lehmschelle	Fangosberla	진흙뿌리기	掷泥	擲泥
+190		Pulpocañón	Octazuca	オクタンほう	Octazooka	Octazooka	Octazooka	Octazooka	대포무노포	章鱼桶炮	章魚桶炮
+191		Púas	Púas	まきびし	Spikes	Picots	Stachler	Punte	압정뿌리기	撒菱	撒菱
+192		Electrocañón	Electrocañón	でんじほう	Zap Cannon	Élecanon	Blitzkanone	Elettrocannone	전자포	电磁炮	電磁炮
+193		Profecía	Visión	みやぶる	Foresight	Clairvoyance	Scharfblick	Preveggenza	꿰뚫어보기	识破	識破
+194		Mismo destino	Lazo del destino	みちづれ	Destiny Bond	Lien du Destin	Abgangsbund	Destinobbligato	길동무	同命	同命
+195		Canto mortal	Canto mortal	ほろびのうた	Perish Song	Requiem	Abgesang	Ultimocanto	멸망의노래	终焉之歌	滅亡之歌
+196		Viento hielo	Viento helado	こごえるかぜ	Icy Wind	Vent Glace	Eissturm	Ventogelato	얼어붙은바람	冰冻之风	冰凍之風
+197		Detección	Detección	みきり	Detect	Détection	Scanner	Individua	판별	看穿	看穿
+198		Ataque óseo	Hueso veloz	ボーンラッシュ	Bone Rush	Charge Os	Knochenhatz	Ossoraffica	본러시	骨棒乱打	骨棒亂打
+199		Fijar blanco	Fijar blanco	ロックオン	Lock-On	Verrouillage	Zielschuss	Localizza	록온	锁定	鎖定
+200		Enfado	Enfado	げきりん	Outrage	Colère	Wutanfall	Oltraggio	역린	逆鳞	逆鱗
+201		Tormenta de arena	Tormenta de arena	すなあらし	Sandstorm	Tempête de Sable	Sandsturm	Terrempesta	모래바람	沙暴	沙暴
+202		Gigadrenado	Gigadrenado	ギガドレイン	Giga Drain	Giga-Sangsue	Gigasauger	Gigassorbimento	기가드레인	终极吸取	終極吸取
+203		Aguante	Aguante	こらえる	Endure	Ténacité	Ausdauer	Resistenza	버티기	挺住	挺住
+204		Encanto	Encanto	あまえる	Charm	Charme	Charme	Fascino	애교부리기	撒娇	撒嬌
+205		Rodar	Rodada	ころがる	Rollout	Roulade	Walzer	Rotolamento	구르기	滚动	滾動
+206		Falso tortazo	Falsa bofetada	みねうち	False Swipe	Faux-Chage	Trugschlag	Falsofinale	칼등치기	点到为止	點到為止
+207		Contoneo	Fanfarronear	いばる	Swagger	Vantardise	Angeberei	Bullo	뽐내기	虚张声势	虛張聲勢
+208		Batido	Licuado	ミルクのみ	Milk Drink	Lait à Boire	Milchgetränk	Buonlatte	우유마시기	喝牛奶	喝牛奶
+209		Chispa	Chispa	スパーク	Spark	Étincelle	Funkensprung	Scintilla	스파크	电光	電光
+210		Corte furia	Corte furia	れんぞくぎり	Fury Cutter	Taillade	Zornklinge	Tagliofuria	연속자르기	连斩	連斬
+211		Ala de acero	Ala de acero	はがねのつばさ	Steel Wing	Ailes d’Acier	Stahlflügel	Alacciaio	강철날개	钢翼	鋼翼
+212		Mal de ojo	Mal de ojo	くろいまなざし	Mean Look	Regard Noir	Horrorblick	Malosguardo	검은눈빛	黑色目光	黑色目光
+213		Atracción	Atracción	メロメロ	Attract	Attraction	Anziehung	Attrazione	헤롱헤롱	迷人	迷人
+214		Sonámbulo	Sonámbulo	ねごと	Sleep Talk	Blabla Dodo	Schlafrede	Sonnolalia	잠꼬대	梦话	夢話
+215		Cascabel cura	Cascabel sanador	いやしのすず	Heal Bell	Glas de Soin	Vitalglocke	Rintoccasana	치료방울	治愈铃声	治癒鈴聲
+216		Retribución	Retribución	おんがえし	Return	Retour	Rückkehr	Ritorno	은혜갚기	报恩	報恩
+217		Presente	Obsequio	プレゼント	Present	Cadeau	Geschenk	Regalino	프레젠트	礼物	禮物
+218		Frustración	Frustración	やつあたり	Frustration	Frustration	Frustration	Frustrazione	화풀이	迁怒	遷怒
+219		Velo sagrado	Velo sagrado	しんぴのまもり	Safeguard	Rune Protect	Bodyguard	Salvaguardia	신비의부적	神秘守护	神秘守護
+220		Divide dolor	Dividedolor	いたみわけ	Pain Split	Balance	Leidteiler	Malcomune	아픔나누기	分担痛楚	分擔痛楚
+221		Fuego sagrado	Fuego sagrado	せいなるほのお	Sacred Fire	Feu Sacré	Läuterfeuer	Magifuoco	성스러운불꽃	神圣之火	神聖之火
+222		Magnitud	Magnitud	マグニチュード	Magnitude	Ampleur	Intensität	Magnitudo	매그니튜드	震级	震級
+223		Puño dinámico	Puño dinámico	ばくれつパンチ	Dynamic Punch	Dynamo-Poing	Wuchtschlag	Dinamipugno	폭발펀치	爆裂拳	爆裂拳
+224		Megacuerno	Megacuerno	メガホーン	Megahorn	Mégacorne	Vielender	Megacorno	메가혼	超级角击	超級角擊
+225		Dragoaliento	Aliento dragón	りゅうのいぶき	Dragon Breath	Draco-Souffle	Feuerodem	Dragospiro	용의숨결	龙息	龍息
+226		Relevo	Relevo	バトンタッチ	Baton Pass	Relais	Stafette	Staffetta	배턴터치	接棒	接棒
+227		Otra vez	Otra vez	アンコール	Encore	Encore	Zugabe	Ripeti	앙코르	再来一次	再來一次
+228		Persecución	Persecución	おいうち	Pursuit	Poursuite	Verfolgung	Inseguimento	따라가때리기	追打	追打
+229		Giro rápido	Giro rápido	こうそくスピン	Rapid Spin	Tour Rapide	Turbodreher	Rapigiro	고속스핀	高速旋转	高速旋轉
+230		Dulce aroma	Dulce aroma	あまいかおり	Sweet Scent	Doux Parfum	Lockduft	Profumino	달콤한향기	甜甜香气	甜甜香氣
+231		Cola férrea	Cola de hierro	アイアンテール	Iron Tail	Queue de Fer	Eisenschweif	Codacciaio	아이언테일	铁尾	鐵尾
+232		Garra metal	Garra de metal	メタルクロー	Metal Claw	Griffe Acier	Metallklaue	Ferrartigli	메탈클로	金属爪	金屬爪
+233		Llave vital	Llave vital	あてみなげ	Vital Throw	Corps Perdu	Überwurf	Vitaltiro	받아던지기	借力摔	借力摔
+234		Sol matinal	Sol matutino	あさのひざし	Morning Sun	Aurore	Morgengrauen	Mattindoro	아침햇살	晨光	晨光
+235		Fotosíntesis	Fotosíntesis	こうごうせい	Synthesis	Synthèse	Synthese	Sintesi	광합성	光合作用	光合作用
+236		Luz lunar	Luz lunar	つきのひかり	Moonlight	Rayon Lune	Mondschein	Lucelunare	달빛	月光	月光
+237		Poder oculto	Poder oculto	めざめるパワー	Hidden Power	Puissance Cachée	Kraftreserve	Introforza	잠재파워	觉醒力量	覺醒力量
+238		Tajo cruzado	Golpe cruzado	クロスチョップ	Cross Chop	Coup Croix	Kreuzhieb	Incrocolpo	크로스촙	十字劈	十字劈
+239		Ciclón	Tornado	たつまき	Twister	Ouragan	Windhose	Tornado	회오리	龙卷风	龍捲風
+240		Danza lluvia	Danza de lluvia	あまごい	Rain Dance	Danse Pluie	Regentanz	Pioggiadanza	비바라기	求雨	求雨
+241		Día soleado	Día soleado	にほんばれ	Sunny Day	Zénith	Sonnentag	Giornodisole	쾌청	大晴天	大晴天
+242		Triturar	Triturar	かみくだく	Crunch	Mâchouille	Knirscher	Sgranocchio	깨물어부수기	咬碎	咬碎
+243		Manto espejo	Escudo espejo	ミラーコート	Mirror Coat	Voile Miroir	Spiegelcape	Specchiovelo	미러코트	镜面反射	鏡面反射
+244		Autosugestión	Autosugestión	じこあんじ	Psych Up	Boost	Psycho-Plus	Psicamisù	자기암시	自我暗示	自我暗示
+245		Velocidad extrema	Velocidad extrema	しんそく	Extreme Speed	Vitesse Extrême	Turbotempo	Extrarapido	신속	神速	神速
+246		Poder pasado	Poder antiguo	げんしのちから	Ancient Power	Pouvoir Antique	Antik-Kraft	Forzantica	원시의힘	原始之力	原始之力
+247		Bola sombra	Bola sombra	シャドーボール	Shadow Ball	Ball’Ombre	Spukball	Palla Ombra	섀도볼	暗影球	暗影球
+248		Premonición	Premonición	みらいよち	Future Sight	Prescience	Seher	Divinazione	미래예지	预知未来	預知未來
+249		Golpe roca	Golpe roca	いわくだき	Rock Smash	Éclate-Roc	Zertrümmerer	Spaccaroccia	바위깨기	碎岩	碎岩
+250		Torbellino	Remolino	うずしお	Whirlpool	Siphon	Whirlpool	Mulinello	바다회오리	潮旋	潮旋
+251		Paliza	Paliza	ふくろだたき	Beat Up	Baston	Prügler	Picchiaduro	집단구타	围攻	圍攻
+252		Sorpresa	Sorpresa	ねこだまし	Fake Out	Bluff	Mogelhieb	Bruciapelo	속이기	击掌奇袭	擊掌奇襲
+253		Alboroto	Alboroto	さわぐ	Uproar	Brouhaha	Aufruhr	Baraonda	소란피기	吵闹	吵鬧
+254		Reserva	Reserva	たくわえる	Stockpile	Stockage	Horter	Accumulo	비축하기	蓄力	蓄力
+255		Escupir	Escupida	はきだす	Spit Up	Relâche	Entfessler	Sfoghenergia	토해내기	喷出	噴出
+256		Tragar	Tragar	のみこむ	Swallow	Avale	Verzehrer	Introenergia	꿀꺽	吞下	吞下
+257		Onda ígnea	Onda ígnea	ねっぷう	Heat Wave	Canicule	Hitzewelle	Ondacalda	열풍	热风	熱風
+258		Granizo	Granizo	あられ	Hail	Grêle	Hagelsturm	Grandine	싸라기눈	冰雹	冰雹
+259		Tormento	Tormento	いちゃもん	Torment	Tourmente	Folterknecht	Attaccalite	트집	无理取闹	無理取鬧
+260		Camelo	Halago	おだてる	Flatter	Flatterie	Schmeichler	Adulazione	부추기기	吹捧	吹捧
+261		Fuego fatuo	Fuego fatuo	おにび	Will-O-Wisp	Feu Follet	Irrlicht	Fuocofatuo	도깨비불	磷火	鬼火
+262		Legado	Recuerdo	おきみやげ	Memento	Souvenir	Memento-Mori	Memento	추억의선물	临别礼物	臨別禮物
+263		Imagen	Fachada	からげんき	Facade	Façade	Fassade	Facciata	객기	硬撑	硬撐
+264		Puño certero	Puño centrado	きあいパンチ	Focus Punch	Mitra-Poing	Power-Punch	Centripugno	힘껏펀치	真气拳	真氣拳
+265		Estímulo	Estímulo	きつけ	Smelling Salts	Stimulant	Riechsalz	Maniereforti	정신차리기	清醒	清醒
+266		Señuelo	Señuelo	このゆびとまれ	Follow Me	Par Ici	Spotlight	Sonoqui	날따름	看我嘛	看我嘛
+267		Adaptación	Adaptación	しぜんのちから	Nature Power	Force Nature	Natur-Kraft	Naturforza	자연의힘	自然之力	自然之力
+268		Carga	Carga	じゅうでん	Charge	Chargeur	Ladevorgang	Sottocarica	충전	充电	充電
+269		Mofa	Provocación	ちょうはつ	Taunt	Provoc	Verhöhner	Provocazione	도발	挑衅	挑釁
+270		Refuerzo	Refuerzos	てだすけ	Helping Hand	Coup d’Main	Rechte Hand	Altruismo	도우미	帮助	幫助
+271		Truco	Truco	トリック	Trick	Tour de Magie	Trickbetrug	Raggiro	트릭	戏法	戲法
+272		Imitación	Imitación	なりきり	Role Play	Imitation	Rollenspiel	Giocodiruolo	역할	扮演	扮演
+273		Deseo	Deseo	ねがいごと	Wish	Vœu	Wunschtraum	Desiderio	희망사항	祈愿	祈願
+274		Ayuda	Ayuda	ねこのて	Assist	Assistance	Zuschuss	Assistente	조수	借助	借助
+275		Arraigo	Arraigo	ねをはる	Ingrain	Racines	Verwurzler	Radicamento	뿌리박기	扎根	扎根
+276		Fuerza bruta	Fuerza bruta	ばかぢから	Superpower	Surpuissance	Kraftkoloss	Troppoforte	엄청난힘	蛮力	蠻力
+277		Capa mágica	Capa mágica	マジックコート	Magic Coat	Reflet Magik	Magiemantel	Magivelo	매직코트	魔法反射	魔法反射
+278		Reciclaje	Reciclaje	リサイクル	Recycle	Recyclage	Aufbereitung	Riciclo	리사이클	回收利用	回收利用
+279		Desquite	Desquite	リベンジ	Revenge	Vendetta	Vergeltung	Vendetta	리벤지	报复	報復
+280		Demolición	Karatazo	かわらわり	Brick Break	Casse-Brique	Durchbruch	Breccia	깨트리기	劈瓦	劈瓦
+281		Bostezo	Bostezo	あくび	Yawn	Bâillement	Gähner	Sbadiglio	하품	哈欠	哈欠
+282		Desarme	Desarme	はたきおとす	Knock Off	Sabotage	Abschlag	Privazione	탁쳐서떨구기	拍落	拍落
+283		Esfuerzo	Esfuerzo	がむしゃら	Endeavor	Effort	Notsituation	Rimonta	죽기살기	蛮干	蠻幹
+284		Estallido	Estallido	ふんか	Eruption	Éruption	Eruption	Eruzione	분화	喷火	噴火
+285		Intercambio	Intercambio	スキルスワップ	Skill Swap	Échange	Fähigkeitstausch	Baratto	스킬스왑	特性互换	特性互換
+286		Sellar	Sellar	ふういん	Imprison	Possessif	Begrenzer	Esclusiva	봉인	封印	封印
+287		Alivio	Alivio	リフレッシュ	Refresh	Régénération	Heilung	Rinfrescata	리프레시	焕然一新	煥然一新
+288		Rabia	Rabia	おんねん	Grudge	Rancune	Nachspiel	Rancore	원념	怨念	怨念
+289		Robo	Robo	よこどり	Snatch	Saisie	Übernahme	Scippo	가로채기	化为己用	搶奪
+290		Daño secreto	Poder secreto	ひみつのちから	Secret Power	Force Cachée	Geheimpower	Forzasegreta	비밀의힘	秘密之力	秘密之力
+291		Buceo	Buceo	ダイビング	Dive	Plongée	Taucher	Sub	다이빙	潜水	潛水
+292		Empujón	Empujón	つっぱり	Arm Thrust	Cogne	Armstoß	Sberletese	손바닥치기	猛推	猛推
+293		Camuflaje	Camuflaje	ほごしょく	Camouflage	Camouflage	Tarnung	Camuffamento	보호색	保护色	保護色
+294		Luminicola	Luminicola	ほたるび	Tail Glow	Lumi-Queue	Schweifglanz	Codadiluce	반딧불	萤火	螢火
+295		Resplandor	Resplandor	ラスターパージ	Luster Purge	Lumi-Éclat	Scheinwerfer	Abbagliante	러스터퍼지	洁净光芒	潔淨光芒
+296		Bola neblina	Bola neblina	ミストボール	Mist Ball	Ball’Brume	Nebelball	Foschisfera	미스트볼	薄雾球	薄霧球
+297		Danza pluma	Danza de plumas	フェザーダンス	Feather Dance	Danse Plumes	Daunenreigen	Danzadipiume	깃털댄스	羽毛舞	羽毛舞
+298		Danza caos	Danza del caos	フラフラダンス	Teeter Dance	Danse Folle	Taumeltanz	Strampadanza	흔들흔들댄스	摇晃舞	搖晃舞
+299		Patada ígnea	Patada ígnea	ブレイズキック	Blaze Kick	Pied Brûleur	Feuerfeger	Calciardente	블레이즈킥	火焰踢	火焰踢
+300		Chapoteo lodo	Chapoteo de lodo	どろあそび	Mud Sport	Lance-Boue	Lehmsuhler	Fangata	흙놀이	玩泥巴	玩泥巴
+301		Bola hielo	Bola hielo	アイスボール	Ice Ball	Ball’Glace	Frostbeule	Palla Gelo	아이스볼	冰球	冰球
+302		Brazo pincho	Brazo aguja	ニードルアーム	Needle Arm	Poing Dard	Nietenranke	Pugnospine	바늘팔	尖刺臂	尖刺臂
+303		Relajo	Relajar	なまける	Slack Off	Paresse	Tagedieb	Pigro	게으름피우기	偷懒	偷懶
+304		Vozarrón	Hipervoz	ハイパーボイス	Hyper Voice	Mégaphone	Schallwelle	Granvoce	하이퍼보이스	巨声	巨聲
+305		Colmillo veneno	Colmillo veneno	どくどくのキバ	Poison Fang	Crochet Venin	Giftzahn	Velenodenti	맹독엄니	剧毒牙	劇毒牙
+306		Garra brutal	Garra brutal	ブレイククロー	Crush Claw	Éclate Griffe	Zermalmklaue	Tritartigli	브레이크클로	撕裂爪	撕裂爪
+307		Anillo ígneo	Anillo de fuego	ブラストバーン	Blast Burn	Rafale Feu	Lohekanonade	Incendio	블라스트번	爆炸烈焰	爆炸烈焰
+308		Hidrocañón	Hidrocañón	ハイドロカノン	Hydro Cannon	Hydroblast	Aquahaubitze	Idrocannone	하이드로캐논	加农水炮	加農水炮
+309		Puño meteoro	Puño meteoro	コメットパンチ	Meteor Mash	Poing Météore	Sternenhieb	Meteorpugno	코멧펀치	彗星拳	彗星拳
+310		Impresionar	Impresión	おどろかす	Astonish	Étonnement	Erstauner	Sgomento	놀래키기	惊吓	驚嚇
+311		Meteorobola	Meteorobola	ウェザーボール	Weather Ball	Ball’Météo	Meteorologe	Palla Clima	웨더볼	气象球	氣象球
+312		Aromaterapia	Aromaterapia	アロマセラピー	Aromatherapy	Aromathérapie	Aromakur	Aromaterapia	아로마테라피	芳香治疗	芳香治療
+313		Llanto falso	Llanto falso	うそなき	Fake Tears	Croco Larme	Trugträne	Falselacrime	거짓울음	假哭	假哭
+314		Aire afilado	Aire cortante	エアカッター	Air Cutter	Tranch’Air	Windschnitt	Aerasoio	에어커터	空气利刃	空氣利刃
+315		Sofoco	Supercalor	オーバーヒート	Overheat	Surchauffe	Hitzekoller	Vampata	오버히트	过热	過熱
+316		Rastreo	Rastreo	かぎわける	Odor Sleuth	Flair	Schnüffler	Segugio	냄새구별	气味侦测	氣味偵測
+317		Tumba rocas	Tumba de rocas	がんせきふうじ	Rock Tomb	Tomberoche	Felsgrab	Rocciotomba	암석봉인	岩石封锁	岩石封鎖
+318		Viento plata	Viento plateado	ぎんいろのかぜ	Silver Wind	Vent Argenté	Silberhauch	Ventargenteo	은빛바람	银色旋风	銀色旋風
+319		Eco metálico	Sonido metálico	きんぞくおん	Metal Sound	Strido-Son	Metallsound	Ferrostrido	금속음	金属音	金屬音
+320		Silbato	Silbato de hoja	くさぶえ	Grass Whistle	Siffl’Herbe	Grasflöte	Meloderba	풀피리	草笛	草笛
+321		Cosquillas	Cosquillas	くすぐる	Tickle	Chatouille	Spaßkanone	Solletico	간지르기	挠痒	搔癢
+322		Masa cósmica	Masa cósmica	コスモパワー	Cosmic Power	Force Cosmique	Kosmik-Kraft	Cosmoforza	코스믹파워	宇宙力量	宇宙力量
+323		Salpicar	Columna de agua	しおふき	Water Spout	Giclédo	Fontränen	Zampillo	해수스파우팅	喷水	噴水
+324		Rayo señal	Rayo señal	シグナルビーム	Signal Beam	Rayon Signal	Ampelleuchte	Segnoraggio	시그널빔	信号光束	信號光束
+325		Puño sombra	Puño sombra	シャドーパンチ	Shadow Punch	Poing Ombre	Finsterfaust	Pugnodombra	섀도펀치	暗影拳	暗影拳
+326		Paranormal	Extrasensorial	じんつうりき	Extrasensory	Extrasenseur	Sondersensor	Extrasenso	신통력	神通力	神通力
+327		Gancho alto	Corte elevado	スカイアッパー	Sky Uppercut	Stratopercut	Himmelhieb	Stramontante	스카이어퍼	冲天拳	衝天拳
+328		Bucle arena	Tumba de arena	すなじごく	Sand Tomb	Tourbi-Sable	Sandgrab	Sabbiotomba	모래지옥	流沙深渊	流沙地獄
+329		Frío polar	Frío extremo	ぜったいれいど	Sheer Cold	Glaciation	Eiseskälte	Purogelo	절대영도	绝对零度	絕對零度
+330		Agua lodosa	Agua lodosa	だくりゅう	Muddy Water	Ocroupi	Lehmbrühe	Fanghiglia	탁류	浊流	濁流
+331		Semilladora	Bala semilla	タネマシンガン	Bullet Seed	Balle Graine	Kugelsaat	Semitraglia	씨기관총	种子机关枪	種子機關槍
+332		Golpe aéreo	As aéreo	つばめがえし	Aerial Ace	Aéropique	Aero-Ass	Aeroassalto	제비반환	燕返	燕返
+333		Carámbano	Lanza de hielo	つららばり	Icicle Spear	Stalactite	Eisspeer	Gelolancia	고드름침	冰锥	冰錐
+334		Defensa férrea	Defensa hierro	てっぺき	Iron Defense	Mur de Fer	Eisenabwehr	Ferroscudo	철벽	铁壁	鐵壁
+335		Bloqueo	Bloqueo	とおせんぼう	Block	Barrage	Rückentzug	Blocco	블록	挡路	擋路
+336		Aullido	Aullido	とおぼえ	Howl	Grondement	Jauler	Gridodilotta	멀리짖기	长嚎	長嚎
+337		Garra dragón	Garra dragón	ドラゴンクロー	Dragon Claw	Draco-Griffe	Drachenklaue	Dragartigli	드래곤클로	龙爪	龍爪
+338		Planta feroz	Planta feroz	ハードプラント	Frenzy Plant	Végé-Attaque	Flora-Statue	Radicalbero	하드플랜트	疯狂植物	瘋狂植物
+339		Corpulencia	Corpulencia	ビルドアップ	Bulk Up	Gonflette	Protzer	Granfisico	벌크업	健美	健美
+340		Bote	Rebote	とびはねる	Bounce	Rebond	Sprungfeder	Rimbalzo	뛰어오르기	弹跳	彈跳
+341		Disparo lodo	Disparo de lodo	マッドショット	Mud Shot	Tir de Boue	Lehmschuss	Colpodifango	머드샷	泥巴射击	泥巴射擊
+342		Cola veneno	Cola venenosa	ポイズンテール	Poison Tail	Queue-Poison	Giftschweif	Velenocoda	포이즌테일	毒尾	毒尾
+343		Antojo	Antojo	ほしがる	Covet	Implore	Bezirzer	Supplica	탐내기	渴望	渴望
+344		Placaje eléctrico	Tacleada de voltios	ボルテッカー	Volt Tackle	Électacle	Volttackle	Locomovolt	볼트태클	伏特攻击	伏特攻擊
+345		Hoja mágica	Hojas mágicas	マジカルリーフ	Magical Leaf	Feuille Magik	Zauberblatt	Fogliamagica	매지컬리프	魔法叶	魔法葉
+346		Hidrochorro	Chapoteo de agua	みずあそび	Water Sport	Tourniquet	Nassmacher	Docciascudo	물놀이	玩水	玩水
+347		Paz mental	Paz mental	めいそう	Calm Mind	Plénitude	Gedankengut	Calmamente	명상	冥想	冥想
+348		Hoja aguda	Hoja aguda	リーフブレード	Leaf Blade	Lame Feuille	Laubklinge	Fendifoglia	리프블레이드	叶刃	葉刃
+349		Danza dragón	Danza de dragón	りゅうのまい	Dragon Dance	Danse Draco	Drachentanz	Dragodanza	용의춤	龙之舞	龍之舞
+350		Pedrada	Pedrada	ロックブラスト	Rock Blast	Boule Roc	Felswurf	Cadutamassi	록블라스트	岩石爆击	岩石爆擊
+351		Onda voltio	Onda de choque	でんげきは	Shock Wave	Onde de Choc	Schockwelle	Ondashock	전격파	电击波	電擊波
+352		Hidropulso	Pulso de agua	みずのはどう	Water Pulse	Vibraqua	Aquawelle	Idropulsar	물의파동	水之波动	水之波動
+353		Deseo oculto	Deseo final	はめつのねがい	Doom Desire	Vœu Destructeur	Kismetwunsch	Desiderio Fatale	파멸의소원	破灭之愿	破滅之願
+354		Psicoataque	Psicoimpulso	サイコブースト	Psycho Boost	Psycho-Boost	Psyschub	Psicoslancio	사이코부스트	精神突进	精神突進
+355		Respiro	Respiro	はねやすめ	Roost	Atterrissage	Ruheort	Trespolo	날개쉬기	羽栖	羽棲
+356		Gravedad	Gravedad	じゅうりょく	Gravity	Gravité	Erdanziehung	Gravità	중력	重力	重力
+357		Gran ojo	Gran ojo	ミラクルアイ	Miracle Eye	Œil Miracle	Wunderauge	Miracolvista	미라클아이	奇迹之眼	奇跡之眼
+358		Espabila	Despabilador	めざましビンタ	Wake-Up Slap	Réveil Forcé	Weckruf	Svegliopacca	잠깨움뺨치기	唤醒巴掌	喚醒巴掌
+359		Machada	Brazo martillo	アームハンマー	Hammer Arm	Marto-Poing	Hammerarm	Martelpugno	암해머	臂锤	臂錘
+360		Giro bola	Giro bola	ジャイロボール	Gyro Ball	Gyroballe	Gyroball	Vortexpalla	자이로볼	陀螺球	陀螺球
+361		Deseo cura	Deseo sanador	いやしのねがい	Healing Wish	Vœu Soin	Heilopfer	Curardore	치유소원	治愈之愿	治癒之願
+362		Salmuera	Agua salada	しおみず	Brine	Saumure	Lake	Acquadisale	소금물	盐水	鹽水
+363		Don natural	Don natural	しぜんのめぐみ	Natural Gift	Don Naturel	Beerenkräfte	Dononaturale	자연의은혜	自然之恩	自然之恩
+364		Amago	Amago	フェイント	Feint	Ruse	Offenlegung	Fintoattacco	페인트	佯攻	佯攻
+365		Picoteo	Picoteo	ついばむ	Pluck	Picore	Pflücker	Spennata	쪼아대기	啄食	啄食
+366		Viento afín	Viento afín	おいかぜ	Tailwind	Vent Arrière	Rückenwind	Ventoincoda	순풍	顺风	順風
+367		Acupresión	Acupresión	つぼをつく	Acupressure	Acupression	Akupressur	Acupressione	경혈찌르기	点穴	點穴
+368		Represión metal	Explosión metálica	メタルバースト	Metal Burst	Fulmifer	Metallstoß	Metalscoppio	메탈버스트	金属爆炸	金屬爆炸
+369		Ida y vuelta	Ida y vuelta	とんぼがえり	U-turn	Demi-Tour	Kehrtwende	Retromarcia	유턴	急速折返	急速折返
+370		A bocajarro	Cuerpo a cuerpo	インファイト	Close Combat	Close Combat	Nahkampf	Zuffa	인파이트	近身战	近身戰
+371		Vendetta	Revancha	しっぺがえし	Payback	Représailles	Gegenstoß	Rivincita	보복	以牙还牙	以牙還牙
+372		Buena baza	Garantía	ダメおし	Assurance	Assurance	Gewissheit	Garanzia	승부굳히기	恶意追击	惡意追擊
+373		Embargo	Embargo	さしおさえ	Embargo	Embargo	Itemsperre	Divieto	금제	查封	查封
+374		Lanzamiento	Lanzamiento	なげつける	Fling	Dégommage	Schleuder	Lancio	내던지기	投掷	投擲
+375		Psicocambio	Psicocambio	サイコシフト	Psycho Shift	Échange Psy	Psybann	Psicotransfer	사이코시프트	精神转移	精神轉移
+376		As oculto	As oculto	きりふだ	Trump Card	Atout	Trumpfkarte	Asso	마지막수단	王牌	王牌
+377		Anticura	Anticuración	かいふくふうじ	Heal Block	Anti-Soin	Heilblockade	Anticura	회복봉인	回复封锁	回復封鎖
+378		Estrujón	Apretón	しぼりとる	Wring Out	Essorage	Auswringen	Strizzata	쥐어짜기	绞紧	絞緊
+379		Truco fuerza	Truco fuerza	パワートリック	Power Trick	Astuce Force	Krafttrick	Ingannoforza	파워트릭	力量戏法	力量戲法
+380		Bilis	Ácido gástrico	いえき	Gastro Acid	Suc Digestif	Magensäfte	Gastroacido	위액	胃液	胃液
+381		Conjuro	Cántico suerte	おまじない	Lucky Chant	Air Veinard	Beschwörung	Fortuncanto	주술	幸运咒语	幸運咒語
+382		Yo primero	Yo primero	さきどり	Me First	Moi d’Abord	Egotrip	Precedenza	선취	抢先一步	搶先一步
+383		Copión	Copión	まねっこ	Copycat	Photocopie	Imitator	Copione	흉내쟁이	仿效	仿效
+384		Cambiafuerza	Cambiafuerza	パワースワップ	Power Swap	Permuforce	Krafttausch	Barattoforza	파워스왑	力量互换	力量互換
+385		Cambiadefensa	Cambiadefensa	ガードスワップ	Guard Swap	Permugarde	Schutztausch	Barattoscudo	가드스왑	防守互换	防守互換
+386		Castigo	Castigo	おしおき	Punishment	Punition	Strafattacke	Punizione	혼내기	惩罚	懲罰
+387		Última baza	Último recurso	とっておき	Last Resort	Dernier Recours	Zuflucht	Ultimascelta	비장의무기	珍藏	珍藏
+388		Abatidoras	Abatidoras	なやみのタネ	Worry Seed	Soucigraine	Sorgensamen	Affannoseme	고민씨	烦恼种子	煩惱種子
+389		Golpe bajo	Golpe bajo	ふいうち	Sucker Punch	Coup Bas	Tiefschlag	Sbigoattacco	기습	突袭	突襲
+390		Púas tóxicas	Púas tóxicas	どくびし	Toxic Spikes	Pics Toxik	Giftspitzen	Fielepunte	독압정	毒菱	毒菱
+391		Cambiaalmas	Cambiaalmas	ハートスワップ	Heart Swap	Permucœur	Statustausch	Cuorbaratto	하트스왑	心灵互换	心靈互換
+392		Acua aro	Acuaanillo	アクアリング	Aqua Ring	Anneau Hydro	Wasserring	Acquanello	아쿠아링	水流环	水流環
+393		Levitón	Superimán	でんじふゆう	Magnet Rise	Vol Magnétik	Magnetflug	Magnetascesa	전자부유	电磁飘浮	電磁飄浮
+394		Envite ígneo	Erupción	フレアドライブ	Flare Blitz	Boutefeu	Flammenblitz	Fuococarica	플레어드라이브	闪焰冲锋	閃焰衝鋒
+395		Palmeo	Fuerza de palma	はっけい	Force Palm	Forte-Paume	Kraftwelle	Palmoforza	발경	发劲	發勁
+396		Esfera aural	Aura esfera	はどうだん	Aura Sphere	Aurasphère	Aurasphäre	Sferapulsar	파동탄	波导弹	波導彈
+397		Pulimento	Pulimento	ロックカット	Rock Polish	Poliroche	Steinpolitur	Lucidatura	록커트	岩石打磨	岩石打磨
+398		Puya nociva	Golpe venenoso	どくづき	Poison Jab	Direct Toxik	Gifthieb	Velenpuntura	독찌르기	毒击	毒擊
+399		Pulso umbrío	Pulso oscuro	あくのはどう	Dark Pulse	Vibrobscur	Finsteraura	Neropulsar	악의파동	恶之波动	惡之波動
+400		Tajo umbrío	Corte umbrío	つじぎり	Night Slash	Tranche-Nuit	Nachthieb	Nottesferza	깜짝베기	暗袭要害	暗襲要害
+401		Acua cola	Cola de agua	アクアテール	Aqua Tail	Hydro-Queue	Nassschweif	Idrondata	아쿠아테일	水流尾	水流尾
+402		Bomba germen	Bomba semilla	タネばくだん	Seed Bomb	Canon Graine	Samenbomben	Semebomba	씨폭탄	种子炸弹	種子炸彈
+403		Tajo aéreo	Corte aéreo	エアスラッシュ	Air Slash	Lame d’Air	Luftschnitt	Eterelama	에어슬래시	空气之刃	空氣斬
+404		Tijera X	Tijera X	シザークロス	X-Scissor	Plaie Croix	Kreuzschere	Forbice X	시저크로스	十字剪	十字剪
+405		Zumbido	Zumbido	むしのさざめき	Bug Buzz	Bourdon	Käfergebrumm	Ronzio	벌레의야단법석	虫鸣	蟲鳴
+406		Pulso dragón	Pulso dragón	りゅうのはどう	Dragon Pulse	Draco-Choc	Drachenpuls	Dragopulsar	용의파동	龙之波动	龍之波動
+407		Carga dragón	Carga dragón	ドラゴンダイブ	Dragon Rush	Draco-Charge	Drachenstoß	Dragofuria	드래곤다이브	龙之俯冲	龍之俯衝
+408		Joya de luz	Joya de luz	パワージェム	Power Gem	Rayon Gemme	Juwelenkraft	Gemmoforza	파워젬	力量宝石	力量寶石
+409		Puño drenaje	Puño drenador	ドレインパンチ	Drain Punch	Vampi-Poing	Ableithieb	Assorbipugno	드레인펀치	吸取拳	吸取拳
+410		Onda vacío	Onda de vacío	しんくうは	Vacuum Wave	Onde Vide	Vakuumwelle	Vuotonda	진공파	真空波	真空波
+411		Onda certera	Ataque centrado	きあいだま	Focus Blast	Exploforce	Fokusstoß	Focalcolpo	기합구슬	真气弹	真氣彈
+412		Energibola	Bola de energía	エナジーボール	Energy Ball	Éco-Sphère	Energieball	Energipalla	에너지볼	能量球	能量球
+413		Pájaro osado	Ave brava	ブレイブバード	Brave Bird	Rapace	Sturzflug	Baldeali	브레이브버드	勇鸟猛攻	勇鳥猛攻
+414		Tierra viva	Poder terrestre	だいちのちから	Earth Power	Telluriforce	Erdkräfte	Geoforza	대지의힘	大地之力	大地之力
+415		Trapicheo	Trueque	すりかえ	Switcheroo	Passe-Passe	Wechseldich	Rapidscambio	바꿔치기	掉包	掉包
+416		Gigaimpacto	Gigaimpacto	ギガインパクト	Giga Impact	Giga Impact	Gigastoß	Gigaimpatto	기가임팩트	终极冲击	終極衝擊
+417		Maquinación	Maquinación	わるだくみ	Nasty Plot	Machination	Ränkeschmied	Congiura	나쁜음모	诡计	詭計
+418		Puño bala	Puño bala	バレットパンチ	Bullet Punch	Pisto-Poing	Patronenhieb	Pugnoscarica	불릿펀치	子弹拳	子彈拳
+419		Alud	Alud	ゆきなだれ	Avalanche	Avalanche	Lawine	Slavina	눈사태	雪崩	雪崩
+420		Esquirla helada	Esquirla helada	こおりのつぶて	Ice Shard	Éclats Glace	Eissplitter	Geloscheggia	얼음뭉치	冰砾	冰礫
+421		Garra umbría	Garra de sombra	シャドークロー	Shadow Claw	Griffe Ombre	Dunkelklaue	Ombrartigli	섀도클로	暗影爪	暗影爪
+422		Colmillo rayo	Colmillo trueno	かみなりのキバ	Thunder Fang	Crocs Éclair	Donnerzahn	Fulmindenti	번개엄니	雷电牙	雷電牙
+423		Colmillo hielo	Colmillo hielo	こおりのキバ	Ice Fang	Crocs Givre	Eiszahn	Gelodenti	얼음엄니	冰冻牙	冰凍牙
+424		Colmillo ígneo	Colmillo fuego	ほのおのキバ	Fire Fang	Crocs Feu	Feuerzahn	Rogodenti	불꽃엄니	火焰牙	火焰牙
+425		Sombra vil	Sombra vil	かげうち	Shadow Sneak	Ombre Portée	Schattenstoß	Furtivombra	야습	影子偷袭	影子偷襲
+426		Bomba fango	Bomba fango	どろばくだん	Mud Bomb	Boue-Bombe	Schlammbombe	Pantanobomba	진흙폭탄	泥巴炸弹	泥巴炸彈
+427		Psicocorte	Psicocorte	サイコカッター	Psycho Cut	Coupe Psycho	Psychoklinge	Psicotaglio	사이코커터	精神利刃	精神利刃
+428		Cabezazo zen	Cabezazo zen	しねんのずつき	Zen Headbutt	Psykoud’Boul	Zen-Kopfstoß	Cozzata Zen	사념의박치기	意念头锤	意念頭錘
+429		Disparo espejo	Disparo espejo	ミラーショット	Mirror Shot	Miroi-Tir	Spiegelsalve	Cristalcolpo	미러샷	镜光射击	鏡光射擊
+430		Cañón resplandor	Cañón resplandor	ラスターカノン	Flash Cannon	Luminocanon	Lichtkanone	Cannonflash	러스터캐논	加农光炮	加農光炮
+431		Treparrocas	Treparrocas	ロッククライム	Rock Climb	Escalade	Kraxler	Scalaroccia	록클라임	攀岩	攀岩
+432		Despejar	Desempañar	きりばらい	Defog	Anti-Brume	Auflockern	Scacciabruma	안개제거	清除浓雾	清除濃霧
+433		Espacio raro	Espacio raro	トリックルーム	Trick Room	Distorsion	Bizarroraum	Distortozona	트릭룸	戏法空间	戲法空間
+434		Cometa draco	Meteoro dragón	りゅうせいぐん	Draco Meteor	Draco-Météore	Draco Meteor	Dragobolide	용성군	流星群	流星群
+435		Chispazo	Chispazo	ほうでん	Discharge	Coup d’Jus	Ladungsstoß	Scarica	방전	放电	放電
+436		Humareda	Bomba de lava	ふんえん	Lava Plume	Ébullilave	Flammensturm	Lavasbuffo	분연	喷烟	噴煙
+437		Lluevehojas	Tormenta de hojas	リーフストーム	Leaf Storm	Tempête Verte	Blättersturm	Verdebufera	리프스톰	飞叶风暴	飛葉風暴
+438		Latigazo	Latigazo	パワーウィップ	Power Whip	Mégafouet	Blattgeißel	Vigorcolpo	파워휩	强力鞭打	強力鞭打
+439		Romperrocas	Romperrocas	がんせきほう	Rock Wrecker	Roc-Boulet	Felswerfer	Devastomasso	암석포	岩石炮	岩石炮
+440		Veneno X	Veneno X	クロスポイズン	Cross Poison	Poison Croix	Giftstreich	Velenocroce	크로스포이즌	十字毒刃	十字毒刃
+441		Lanzamugre	Lanzamugre	ダストシュート	Gunk Shot	Détricanon	Mülltreffer	Sporcolancio	더스트슈트	垃圾射击	垃圾射擊
+442		Cabeza de hierro	Cabeza de hierro	アイアンヘッド	Iron Head	Tête de Fer	Eisenschädel	Metaltestata	아이언헤드	铁头	鐵頭
+443		Bomba imán	Magnetobomba	マグネットボム	Magnet Bomb	Bombe Aimant	Magnetbombe	Bombagnete	마그넷봄	磁铁炸弹	磁鐵炸彈
+444		Roca afilada	Roca afilada	ストーンエッジ	Stone Edge	Lame de Roc	Steinkante	Pietrataglio	스톤에지	尖石攻击	尖石攻擊
+445		Seducción	Seducción	ゆうわく	Captivate	Séduction	Liebreiz	Incanto	유혹	诱惑	誘惑
+446		Trampa rocas	Trampa de rocas	ステルスロック	Stealth Rock	Piège de Roc	Tarnsteine	Levitoroccia	스텔스록	隐形岩	隱形岩
+447		Hierba lazo	Nudo de pasto	くさむすび	Grass Knot	Nœud Herbe	Strauchler	Laccioerboso	풀묶기	打草结	打草結
+448		Cháchara	Parloteo	おしゃべり	Chatter	Babil	Geschwätz	Schiamazzo	수다	喋喋不休	喋喋不休
+449		Sentencia	Juicio final	さばきのつぶて	Judgment	Jugement	Urteilskraft	Giudizio	심판의뭉치	制裁光砾	制裁光礫
+450		Picadura	Picadura	むしくい	Bug Bite	Piqûre	Käferbiss	Coleomorso	벌레먹기	虫咬	蟲咬
+451		Rayo carga	Rayo carga	チャージビーム	Charge Beam	Rayon Chargé	Ladestrahl	Raggioscossa	차지빔	充电光束	充電光束
+452		Mazazo	Mazazo	ウッドハンマー	Wood Hammer	Martobois	Holzhammer	Mazzuolegno	우드해머	木槌	木槌
+453		Acua jet	Acuajet	アクアジェット	Aqua Jet	Aqua-Jet	Wasserdüse	Acquagetto	아쿠아제트	水流喷射	水流噴射
+454		Al ataque	Al ataque	こうげきしれい	Attack Order	Appel Attaque	Schlagbefehl	Comandourto	공격지령	攻击指令	攻擊指令
+455		A defender	A defender	ぼうぎょしれい	Defend Order	Appel Défense	Blockbefehl	Comandoscudo	방어지령	防御指令	防禦指令
+456		Auxilio	Auxilio	かいふくしれい	Heal Order	Appel Soins	Heilbefehl	Comandocura	회복지령	回复指令	回復指令
+457		Testarazo	Topetazo	もろはのずつき	Head Smash	Fracass’Tête	Kopfstoß	Zuccata	양날박치기	双刃头锤	雙刃頭錘
+458		Doble golpe	Doble golpe	ダブルアタック	Double Hit	Coup Double	Doppelschlag	Doppiosmash	더블어택	二连击	二連擊
+459		Distorsión	Rugido temporal	ときのほうこう	Roar of Time	Hurle-Temps	Zeitenlärm	Fragortempo	시간의포효	时光咆哮	時光咆哮
+460		Corte vacío	Corte espacial	あくうせつだん	Spacial Rend	Spatio-Rift	Raumschlag	Fendispazio	공간절단	亚空裂斩	亞空裂斬
+461		Danza lunar	Danza de la luna	みかづきのまい	Lunar Dance	Danse Lune	Lunartanz	Lunardanza	초승달춤	新月舞	新月舞
+462		Agarrón	Garra aplastante	にぎりつぶす	Crush Grip	Presse	Quetschgriff	Sbriciolmano	묵사발	捏碎	捏碎
+463		Lluvia ígnea	Lluvia ígnea	マグマストーム	Magma Storm	Vortex Magma	Lavasturm	Magmaclisma	마그마스톰	熔岩风暴	熔岩風暴
+464		Brecha negra	Abismo negro	ダークホール	Dark Void	Trou Noir	Schlummerort	Vuototetro	다크홀	暗黑洞	暗黑洞
+465		Fulgor semilla	Fulgor semilla	シードフレア	Seed Flare	Fulmigraine	Schocksamen	Infuriaseme	시드플레어	种子闪光	種子閃光
+466		Viento aciago	Viento ominoso	あやしいかぜ	Ominous Wind	Vent Mauvais	Unheilböen	Funestovento	괴상한바람	奇异之风	奇異之風
+467		Golpe umbrío	Golpe umbrío	シャドーダイブ	Shadow Force	Revenant	Schemenkraft	Oscurotuffo	섀도다이브	暗影潜袭	暗影潛襲
+468		Afilagarras	Afilagarras	つめとぎ	Hone Claws	Aiguisage	Klauenwetzer	Unghiaguzze	손톱갈기	磨爪	磨爪
+469		Vasta guardia	Guardia amplia	ワイドガード	Wide Guard	Garde Large	Rundumschutz	Bodyguard	와이드가드	广域防守	廣域防守
+470		Isoguardia	Guardia dividida	ガードシェア	Guard Split	Partage Garde	Schutzteiler	Paridifesa	가드셰어	防守平分	防守平分
+471		Isofuerza	Fuerza dividida	パワーシェア	Power Split	Partage Force	Kraftteiler	Pariattacco	파워셰어	力量平分	力量平分
+472		Zona extraña	Zona extraña	ワンダールーム	Wonder Room	Zone Étrange	Wunderraum	Mirabilzona	원더룸	奇妙空间	奇妙空間
+473		Psicocarga	Choque psíquico	サイコショック	Psyshock	Choc Psy	Psychoschock	Psicoshock	사이코쇼크	精神冲击	精神衝擊
+474		Carga tóxica	Carga tóxica	ベノムショック	Venoshock	Choc Venin	Giftschock	Velenoshock	베놈쇼크	毒液冲击	毒液衝擊
+475		Aligerar	Aligerar	ボディパージ	Autotomize	Allègement	Autotomie	Sganciapesi	바디퍼지	身体轻量化	身體輕量化
+476		Polvo ira	Polvo ira	いかりのこな	Rage Powder	Poudre Fureur	Wutpulver	Polverabbia	분노가루	愤怒粉	憤怒粉
+477		Telequinesis	Telequinesis	テレキネシス	Telekinesis	Lévikinésie	Telekinese	Telecinesi	텔레키네시스	意念移物	意念移物
+478		Zona mágica	Zona mágica	マジックルーム	Magic Room	Zone Magique	Magieraum	Magicozona	매직룸	魔法空间	魔法空間
+479		Antiaéreo	Antiaéreo	うちおとす	Smack Down	Anti-Air	Katapult	Abbattimento	떨어뜨리기	击落	擊落
+480		Llave corsé	Llave tempestad	やまあらし	Storm Throw	Yama Arashi	Bergsturm	Tempestretta	업어후리기	山岚摔	山嵐摔
+481		Pirotecnia	Golpe de fuego	はじけるほのお	Flame Burst	Rebondifeu	Funkenflug	Pirolancio	불꽃튀기기	烈焰溅射	烈焰濺射
+482		Onda tóxica	Ola de lodo	ヘドロウェーブ	Sludge Wave	Cradovague	Schlammwoge	Fangonda	오물웨이브	污泥波	污泥波
+483		Danza aleteo	Danza del aleteo	ちょうのまい	Quiver Dance	Papillodanse	Falterreigen	Eledanza	나비춤	蝶舞	蝶舞
+484		Cuerpo pesado	Golpe pesado	ヘビーボンバー	Heavy Slam	Tacle Lourd	Rammboss	Pesobomba	헤비봄버	重磅冲撞	重磅衝撞
+485		Sincrorruido	Sincrorruido	シンクロノイズ	Synchronoise	Synchropeine	Synchrolärm	Sincrumore	싱크로노이즈	同步干扰	同步干擾
+486		Bola voltio	Electrobola	エレキボール	Electro Ball	Boule Élek	Elektroball	Energisfera	일렉트릭볼	电球	電球
+487		Empapar	Empapar	みずびたし	Soak	Détrempage	Überflutung	Inondazione	물붓기	浸水	浸水
+488		Nitrocarga	Carga de fuego	ニトロチャージ	Flame Charge	Nitrocharge	Nitroladung	Nitrocarica	니트로차지	蓄能焰袭	蓄能焰襲
+489		Enrosque	Enrosque	とぐろをまく	Coil	Enroulement	Einrollen	Arrotola	똬리틀기	盘蜷	盤蜷
+490		Puntapié	Barredora	ローキック	Low Sweep	Balayette	Fußtritt	Calciobasso	로킥	下盘踢	下盤踢
+491		Bomba ácida	Bomba ácida	アシッドボム	Acid Spray	Bombe Acide	Säurespeier	Acidobomba	애시드봄	酸液炸弹	酸液炸彈
+492		Juego sucio	Juego sucio	イカサマ	Foul Play	Tricherie	Schmarotzer	Ripicca	속임수	移花接木	欺詐
+493		Onda simple	Onda simple	シンプルビーム	Simple Beam	Rayon Simple	Wankelstrahl	Ondisinvolta	심플빔	单纯光束	單純光束
+494		Danza amiga	Danza amiga	なかまづくり	Entrainment	Ten-Danse	Zwango	Saltamicizia	동료만들기	找伙伴	找夥伴
+495		Cede paso	Ceda el paso	おさきにどうぞ	After You	Après Vous	Galanterie	Cortesia	당신먼저	您先请	您先請
+496		Canon	Canon	りんしょう	Round	Chant Canon	Kanon	Coro	돌림노래	轮唱	輪唱
+497		Eco voz	Eco voz	エコーボイス	Echoed Voice	Écho	Widerhall	Echeggiavoce	에코보이스	回声	回聲
+498		Guardia baja	Guardia baja	なしくずし	Chip Away	Attrition	Zermürben	Insidia	야금야금	逐步击破	逐步擊破
+499		Niebla clara	Humo claro	クリアスモッグ	Clear Smog	Bain de Smog	Klärsmog	Pulifumo	클리어스모그	清除之烟	清除之煙
+500		Poder reserva	Poder acumulado	アシストパワー	Stored Power	Force Ajoutée	Kraftvorrat	Veicolaforza	어시스트파워	辅助力量	輔助力量
+501		Anticipo	Defensa rápida	ファストガード	Quick Guard	Prévention	Rapidschutz	Anticipo	패스트가드	快速防守	快速防守
+502		Cambio de banda	Cambio de lado	サイドチェンジ	Ally Switch	Interversion	Seitentausch	Cambiaposto	사이드체인지	交换场地	交換場地
+503		Escaldar	Escaldar	ねっとう	Scald	Ébullition	Siedewasser	Idrovampata	열탕	热水	熱水
+504		Rompecoraza	Rompecoraza	からをやぶる	Shell Smash	Exuviation	Hausbruch	Gettaguscio	껍질깨기	破壳	破殼
+505		Pulso cura	Pulso sanador	いやしのはどう	Heal Pulse	Vibra Soin	Heilwoge	Curapulsar	치유파동	治愈波动	治癒波動
+506		Infortunio	Infortunio	たたりめ	Hex	Châtiment	Bürde	Sciagura	병상첨병	祸不单行	禍不單行
+507		Caída libre	Caída libre	フリーフォール	Sky Drop	Chute Libre	Freier Fall	Cadutalibera	프리폴	自由落体	自由落體
+508		Cambio de marcha	Cambio de marcha	ギアチェンジ	Shift Gear	Change-Vitesse	Gangwechsel	Cambiomarcia	기어체인지	换档	換檔
+509		Llave giro	Llave giro	ともえなげ	Circle Throw	Projection	Überkopfwurf	Ribaltiro	배대뒤치기	巴投	巴投
+510		Calcinación	Incinerar	やきつくす	Incinerate	Calcination	Einäschern	Bruciatutto	불태우기	烧净	燒盡
+511		Último lugar	Último lugar	さきおくり	Quash	À la Queue	Verzögerung	Spintone	순서미루기	延后	延後
+512		Acróbata	Acrobacia	アクロバット	Acrobatics	Acrobatie	Akrobatik	Acrobazia	애크러뱃	杂技	雜技
+513		Clonatipo	Clonatipo	ミラータイプ	Reflect Type	Copie-Type	Typenspiegel	Riflettipo	미러타입	镜面属性	鏡面屬性
+514		Represalia	Represalia	かたきうち	Retaliate	Vengeance	Heimzahlung	Nemesi	원수갚기	报仇	報仇
+515		Sacrificio	Sacrificio	いのちがけ	Final Gambit	Tout ou Rien	Wagemut	Azzardo	목숨걸기	搏命	搏命
+516		Ofrenda	Ofrenda	ギフトパス	Bestow	Passe-Cadeau	Offerte	Cediregalo	기프트패스	传递礼物	傳遞禮物
+517		Infierno	Infierno	れんごく	Inferno	Feu d’Enfer	Inferno	Marchiatura	연옥	烈火深渊	煉獄
+518		Voto agua	Voto agua	みずのちかい	Water Pledge	Aire d’Eau	Wassersäulen	Acquapatto	물의맹세	水之誓约	水之誓約
+519		Voto fuego	Voto fuego	ほのおのちかい	Fire Pledge	Aire de Feu	Feuersäulen	Fiammapatto	불꽃의맹세	火之誓约	火之誓約
+520		Voto planta	Voto planta	くさのちかい	Grass Pledge	Aire d’Herbe	Pflanzensäulen	Erbapatto	풀의맹세	草之誓约	草之誓約
+521		Voltiocambio	Cambiavoltaje	ボルトチェンジ	Volt Switch	Change-Éclair	Voltwechsel	Invertivolt	볼트체인지	伏特替换	伏特替換
+522		Estoicismo	Lucha insecto	むしのていこう	Struggle Bug	Survinsecte	Käfertrutz	Entomoblocco	벌레의저항	虫之抵抗	蟲之抵抗
+523		Terratemblor	Terratemblor	じならし	Bulldoze	Piétisol	Dampfwalze	Battiterra	땅고르기	重踏	重踏
+524		Vaho gélido	Vaho helado	こおりのいぶき	Frost Breath	Souffle Glacé	Eisesodem	Alitogelido	얼음숨결	冰息	冰息
+525		Cola dragón	Cola de dragón	ドラゴンテール	Dragon Tail	Draco-Queue	Drachenrute	Codadrago	드래곤테일	龙尾	龍尾
+526		Avivar	Avivar	ふるいたてる	Work Up	Rengorgement	Kraftschub	Cuordileone	분발	自我激励	自我激勵
+527		Electrotela	Electrotela	エレキネット	Electroweb	Toile Élek	Elektronetz	Elettrotela	일렉트릭네트	电网	電網
+528		Voltio cruel	Carga salvaje	ワイルドボルト	Wild Charge	Éclair Fou	Stromstoß	Sprizzalampo	와일드볼트	疯狂伏特	瘋狂伏特
+529		Taladradora	Taladradora	ドリルライナー	Drill Run	Tunnelier	Schlagbohrer	Giravvita	드릴라이너	直冲钻	直衝鑽
+530		Golpe bis	Golpe dual	ダブルチョップ	Dual Chop	Double Baffe	Doppelhieb	Doppiocolpo	더블촙	二连劈	二連劈
+531		Arrumaco	Sello de corazón	ハートスタンプ	Heart Stamp	Crève-Cœur	Herzstempel	Cuorestampo	하트스탬프	爱心印章	愛心印章
+532		Asta drenaje	Drenacuerno	ウッドホーン	Horn Leech	Encornebois	Holzgeweih	Legnicorno	우드혼	木角	木角
+533		Espada santa	Espada sagrada	せいなるつるぎ	Sacred Sword	Lame Sainte	Sanctoklinge	Spadasolenne	성스러운칼	圣剑	聖劍
+534		Concha filo	Coraza afilada	シェルブレード	Razor Shell	Coqui-Lame	Kalkklinge	Conchilama	셸블레이드	贝壳刃	貝殼刃
+535		Golpe calor	Golpe de calor	ヒートスタンプ	Heat Crash	Tacle Feu	Brandstempel	Marchiafuoco	히트스탬프	高温重压	高溫重壓
+536		Ciclón de hojas	Ciclón de hojas	グラスミキサー	Leaf Tornado	Phytomixeur	Grasmixer	Vorticerba	그래스믹서	青草搅拌器	青草攪拌器
+537		Rodillo de púas	Aplanadora	ハードローラー	Steamroller	Bulldoboule	Quetschwalze	Rulloduro	하드롤러	疯狂滚压	瘋狂滾壓
+538		Rizo algodón	Guardialgodón	コットンガード	Cotton Guard	Cotogarde	Watteschild	Cotonscudo	코튼가드	棉花防守	棉花防守
+539		Pulso noche	Pulso nocturno	ナイトバースト	Night Daze	Explonuit	Nachtflut	Urtoscuro	나이트버스트	暗黑爆破	暗黑爆破
+540		Onda mental	Onda mental	サイコブレイク	Psystrike	Frappe Psy	Psychostoß	Psicobotta	사이코브레이크	精神击破	精神擊破
+541		Plumerazo	Golpe de cola	スイープビンタ	Tail Slap	Plumo-Queue	Kehrschelle	Spazzasberla	스위프뺨치기	扫尾拍打	掃尾拍打
+542		Vendaval	Huracán	ぼうふう	Hurricane	Vent Violent	Orkan	Tifone	폭풍	暴风	暴風
+543		Ariete	Carga de cabeza	アフロブレイク	Head Charge	Peignée	Steinschädel	Ricciolata	아프로브레이크	爆炸头突击	爆炸頭突擊
+544		Rueda doble	Rueda doble	ギアソーサー	Gear Grind	Lancécrou	Klikkdiskus	Ingracolpo	기어소서	齿轮飞盘	齒輪飛盤
+545		Bomba ígnea	Bomba ígnea	かえんだん	Searing Shot	Incendie	Flammenball	Sparafuoco	화염탄	火焰弹	火焰彈
+546		Tecno shock	Tecno shock	テクノバスター	Techno Blast	Techno-Buster	Techblaster	Tecnobotto	테크노버스터	高科技光炮	高科技光炮
+547		Canto arcaico	Canto arcaico	いにしえのうた	Relic Song	Chant Antique	Urgesang	Cantoantico	옛노래	古老之歌	古老之歌
+548		Sable místico	Espada secreta	しんぴのつるぎ	Secret Sword	Lame Ointe	Mystoschwert	Spadamistica	신비의칼	神秘之剑	神秘之劍
+549		Mundo gélido	Mundo gélido	こごえるせかい	Glaciate	Ère Glaciaire	Eiszeit	Gelamondo	얼어붙은세계	冰封世界	冰封世界
+550		Ataque fulgor	Ataque fulgor	らいげき	Bolt Strike	Charge Foudre	Blitzschlag	Lucesiluro	뇌격	雷击	雷擊
+551		Llama azul	Llama azul	あおいほのお	Blue Flare	Flamme Bleue	Blauflammen	Fuocoblu	푸른불꽃	青焰	青焰
+552		Danza llama	Danza de llamas	ほのおのまい	Fiery Dance	Danse du Feu	Feuerreigen	Voldifuoco	불꽃춤	火之舞	火之舞
+553		Rayo gélido	Rayo gélido	フリーズボルト	Freeze Shock	Éclair Gelé	Frostvolt	Elettrogelo	프리즈볼트	冰冻伏特	冰凍伏特
+554		Llama gélida	Llama gélida	コールドフレア	Ice Burn	Feu Glacé	Frosthauch	Vampagelida	콜드플레어	极寒冷焰	極寒冷焰
+555		Alarido	Alarido	バークアウト	Snarl	Aboiement	Standpauke	Urlorabbia	바크아웃	大声咆哮	大聲咆哮
+556		Chuzos	Carámbano	つららおとし	Icicle Crash	Chute Glace	Eiszapfhagel	Scagliagelo	고드름떨구기	冰柱坠击	冰柱墜擊
+557		V de fuego	V de fuego	Ｖジェネレート	V-create	Coup Victoire	V-Generator	Generatore V	V제너레이트	Ｖ热焰	Ｖ熱焰
+558		Llama fusión	Llama fusión	クロスフレイム	Fusion Flare	Flamme Croix	Kreuzflamme	Incrofiamma	크로스플레임	交错火焰	交錯火焰
+559		Rayo fusión	Rayo fusión	クロスサンダー	Fusion Bolt	Éclair Croix	Kreuzdonner	Incrotuono	크로스썬더	交错闪电	交錯閃電
+560		Plancha voladora	Plancha voladora	フライングプレス	Flying Press	Flying Press	Flying Press	Schiacciatuffo	플라잉프레스	飞身重压	飛身重壓
+561		Escudo tatami	Escudo tatami	たたみがえし	Mat Block	Tatamigaeshi	Tatami-Schild	Ribaltappeto	마룻바닥세워막기	掀榻榻米	掀榻榻米
+562		Eructo	Eructo	ゲップ	Belch	Éructation	Rülpser	Rutto	트림	打嗝	打嗝
+563		Fertilizante	Fertilizante	たがやす	Rototiller	Fertilisation	Pflüger	Aracampo	일구기	耕地	耕地
+564		Red viscosa	Red pegajosa	ねばねばネット	Sticky Web	Toile Gluante	Klebenetz	Rete Vischiosa	끈적끈적네트	黏黏网	黏黏網
+565		Aguijón letal	Aguijón letal	とどめばり	Fell Stinger	Dard Mortel	Stachelfinale	Pungiglione	마지막일침	致命针刺	致命針刺
+566		Golpe fantasma	Golpe fantasma	ゴーストダイブ	Phantom Force	Hantise	Phantomkraft	Spettrotuffo	고스트다이브	潜灵奇袭	潛靈奇襲
+567		Halloween	Halloween	ハロウィン	Trick-or-Treat	Halloween	Halloween	Halloween	핼러윈	万圣夜	萬聖夜
+568		Rugido de guerra	Rugido de guerra	おたけび	Noble Roar	Râle Mâle	Kampfgebrüll	Urlo	부르짖기	战吼	戰吼
+569		Cortina plasma	Cortina plasma	プラズマシャワー	Ion Deluge	Déluge Plasmique	Plasmaschauer	Pioggiaplasma	플라스마샤워	等离子浴	等離子浴
+570		Carga parábola	Carga parabólica	パラボラチャージ	Parabolic Charge	Parabocharge	Parabolladung	Caricaparabola	파라볼라차지	抛物面充电	拋物面充電
+571		Condena silvana	Condena silvana	もりののろい	Forest’s Curse	Maléfice Sylvain	Waldesfluch	Boscomalocchio	숲의저주	森林咒术	森林詛咒
+572		Tormenta floral	Tormenta de pétalos	はなふぶき	Petal Blizzard	Tempête Florale	Blütenwirbel	Fiortempesta	꽃보라	落英缤纷	落英繽紛
+573		Liofilización	Liofilización	フリーズドライ	Freeze-Dry	Lyophilisation	Gefriertrockner	Liofilizzazione	프리즈드라이	冷冻干燥	冷凍乾燥
+574		Voz cautivadora	Voz encantadora	チャームボイス	Disarming Voice	Voix Enjôleuse	Säuselstimme	Incantavoce	차밍보이스	魅惑之声	魅惑之聲
+575		Última palabra	Última palabra	すてゼリフ	Parting Shot	Dernier Mot	Abgangstirade	Monito	막말내뱉기	抛下狠话	拋下狠話
+576		Reversión	Reversión	ひっくりかえす	Topsy-Turvy	Renversement	Invertigo	Sottosopra	뒤집어엎기	颠倒	顛倒
+577		Beso drenaje	Beso drenador	ドレインキッス	Draining Kiss	Vampibaiser	Diebeskuss	Assorbibacio	드레인키스	吸取之吻	吸取之吻
+578		Truco defensa	Truco defensa	トリックガード	Crafty Shield	Vigilance	Trickschutz	Truccodifesa	트릭가드	戏法防守	戲法防守
+579		Defensa floral	Defensa floral	フラワーガード	Flower Shield	Garde Florale	Floraschutz	Fiordifesa	플라워가드	鲜花防守	鮮花防守
+580		Campo de hierba	Campo de césped	グラスフィールド	Grassy Terrain	Champ Herbu	Grasfeld	Campo Erboso	그래스필드	青草场地	青草場地
+581		Campo de niebla	Campo de niebla	ミストフィールド	Misty Terrain	Champ Brumeux	Nebelfeld	Campo Nebbioso	미스트필드	薄雾场地	薄霧場地
+582		Electrificación	Electrificación	そうでん	Electrify	Électrisation	Elektrifizierung	Elettrocontagio	송전	输电	輸電
+583		Carantoña	Juego rudo	じゃれつく	Play Rough	Câlinerie	Knuddler	Carineria	치근거리기	嬉闹	嬉鬧
+584		Viento feérico	Viento feérico	ようせいのかぜ	Fairy Wind	Vent Féérique	Feenbrise	Vento di Fata	요정의바람	妖精之风	妖精之風
+585		Fuerza lunar	Fuerza lunar	ムーンフォース	Moonblast	Pouvoir Lunaire	Mondgewalt	Forza Lunare	문포스	月亮之力	月亮之力
+586		Estruendo	Estruendo	ばくおんぱ	Boomburst	Bang Sonique	Überschallknall	Ondaboato	폭음파	爆音波	爆音波
+587		Cerrojo feérico	Cerrojo feérico	フェアリーロック	Fairy Lock	Verrou Enchanté	Feenschloss	Blocco Fatato	페어리록	妖精之锁	妖精之鎖
+588		Escudo real	Escudo real	キングシールド	King’s Shield	Bouclier Royal	Königsschild	Scudo Reale	킹실드	王者盾牌	王者盾牌
+589		Camaradería	Camaradería	なかよくする	Play Nice	Camaraderie	Kameradschaft	Simpatia	친해지기	和睦相处	和睦相處
+590		Confidencia	Confidencia	ないしょばなし	Confide	Confidence	Vertrauenssache	Confidenza	비밀이야기	密语	密語
+591		Tormenta de diamantes	Tormenta de diamantes	ダイヤストーム	Diamond Storm	Orage Adamantin	Diamantsturm	Diamantempesta	다이아스톰	钻石风暴	鑽石風暴
+592		Chorro de vapor	Chorro de vapor	スチームバースト	Steam Eruption	Jet de Vapeur	Dampfschwall	Vaporscoppio	스팀버스트	蒸汽爆炸	蒸汽爆炸
+593		Paso dimensional	Paso dimensional	いじげんホール	Hyperspace Hole	TrouDimensionnel	Dimensionsloch	Forodimensionale	이차원홀	异次元洞	異次元洞
+594		Shuriken de agua	Shuriken de agua	みずしゅりけん	Water Shuriken	Sheauriken	Wasser-Shuriken	Acqualame	물수리검	飞水手里剑	飛水手裡劍
+595		Llama embrujada	Fuego místico	マジカルフレイム	Mystical Fire	Feu Ensorcelé	Magieflamme	Magifiamma	매지컬플레임	魔法火焰	魔法火焰
+596		Barrera espinosa	Barrera espinosa	ニードルガード	Spiky Shield	Pico-Défense	Schutzstacheln	Agodifesa	니들가드	尖刺防守	尖刺防守
+597		Niebla aromática	Niebla aromática	アロマミスト	Aromatic Mist	Brume Capiteuse	Duftwolke	Nebularoma	아로마미스트	芳香薄雾	芳香薄霧
+598		Onda anómala	Onda anómala	かいでんぱ	Eerie Impulse	Ondes Étranges	Mystowellen	Elettromistero	괴전파	怪异电波	怪異電波
+599		Trampa venenosa	Trampa venenosa	ベノムトラップ	Venom Drench	Piège de Venin	Giftfalle	Velenotrappola	베놈트랩	毒液陷阱	毒液陷阱
+600		Polvo explosivo	Pólvora	ふんじん	Powder	Nuée de Poudre	Pulverschleuder	Pulviscoppio	분진	粉尘	粉塵
+601		Geocontrol	Geocontrol	ジオコントロール	Geomancy	Géo-Contrôle	Geokontrolle	Geocontrollo	지오컨트롤	大地掌控	大地掌控
+602		Aura magnética	Aura magnética	じばそうさ	Magnetic Flux	Magné-Contrôle	Magnetregler	Controllo Polare	자기장조작	磁场操控	磁場操控
+603		Paga extra	Paga extra	ハッピータイム	Happy Hour	Étrennes	Goldene Zeiten	Cuccagna	해피타임	欢乐时光	歡樂時光
+604		Campo eléctrico	Campo eléctrico	エレキフィールド	Electric Terrain	Champ Électrifié	Elektrofeld	Campo Elettrico	일렉트릭필드	电气场地	電氣場地
+605		Brillo mágico	Brillo mágico	マジカルシャイン	Dazzling Gleam	Éclat Magique	Zauberschein	Magibrillio	매지컬샤인	魔法闪耀	魔法閃耀
+606		Celebración	Celebración	おいわい	Celebrate	Célébration	Ehrentag	Auguri	축하	庆祝	慶祝
+607		Manos juntas	Manos juntas	てをつなぐ	Hold Hands	Mains Jointes	Händchenhalten	Mano nella Mano	손에손잡기	牵手	牽手
+608		Ojitos tiernos	Ojitos tiernos	つぶらなひとみ	Baby-Doll Eyes	Regard Touchant	Kulleraugen	Occhioni Teneri	초롱초롱눈동자	圆瞳	圓瞳
+609		Moflete estático	Frote	ほっぺすりすり	Nuzzle	Frotte-Frimousse	Wangenrubbler	Elettrococcola	볼부비부비	蹭蹭脸颊	蹭蹭臉頰
+610		Clemencia	Clemencia	てかげん	Hold Back	Retenue	Zurückhaltung	Riguardo	적당히손봐주기	手下留情	手下留情
+611		Acoso	Infestación	まとわりつく	Infestation	Harcèlement	Plage	Assillo	엉겨붙기	纠缠不休	死纏爛打
+612		Puño incremento	Puño incremento	グロウパンチ	Power-Up Punch	Poing Boost	Steigerungshieb	Crescipugno	그로우펀치	增强拳	增強拳
+613		Ala mortífera	Ala del olvido	デスウイング	Oblivion Wing	Mort’Ailes	Unheilsschwingen	Ali del Fato	데스윙	归天之翼	死亡之翼
+614		Mil flechas	Mil flechas	サウザンアロー	Thousand Arrows	Myria-Flèches	Tausend Pfeile	Mille Frecce	사우전드애로	千箭齐发	千箭齊發
+615		Mil temblores	Mil temblores	サウザンウェーブ	Thousand Waves	Myria-Vagues	Tausend Wellen	Mille Onde	사우전드웨이브	千波激荡	千波激盪
+616		Fuerza telúrica	Fuerza telúrica	グランドフォース	Land’s Wrath	Force Chtonienne	Bodengewalt	Forza Tellurica	그라운드포스	大地神力	大地神力
+617		Luz aniquiladora	Luz aniquiladora	はめつのひかり	Light of Ruin	Lumière du Néant	Lux Calamitatis	Luce Nefasta	파멸의빛	破灭之光	破滅之光
+618		Pulso primigenio	Pulso primigenio	こんげんのはどう	Origin Pulse	Onde Originelle	Ursprungswoge	Primopulsar	근원의파동	根源波动	根源波動
+619		Filo del abismo	Filo del abismo	だんがいのつるぎ	Precipice Blades	Lame Pangéenne	Abgrundsklinge	Spade Telluriche	단애의칼	断崖之剑	斷崖之劍
+620		Ascenso draco	Ascenso dracónico	ガリョウテンセイ	Dragon Ascent	Draco-Ascension	Zenitstürmer	Ascesa del Drago	화룡점정	画龙点睛	畫龍點睛
+621		Cerco dimensión	Cerco dimensión	いじげんラッシュ	Hyperspace Fury	Furie Dimension	Dimensionswahn	Urtodimensionale	이차원러시	异次元猛攻	異次元猛攻
+622		Carrera arrolladora	Carrera arrolladora	ウルトラダッシュアタック	Breakneck Blitz	Turbo-Charge Bulldozer	Hyper-Sprintangriff	Carica Travolgente	울트라대시어택	究极无敌大冲撞	究極無敵大衝撞
+623		Carrera arrolladora	Carrera arrolladora	ウルトラダッシュアタック	Breakneck Blitz	Turbo-Charge Bulldozer	Hyper-Sprintangriff	Carica Travolgente	울트라대시어택	究极无敌大冲撞	究極無敵大衝撞
+624		Ráfaga demoledora	Ráfaga demoledora	ぜんりょくむそうげきれつけん	All-Out Pummeling	Combo Hyper-Furie	Fulminante Faustschläge	Iperscarica Furiosa	전력무쌍격렬권	全力无双激烈拳	全力無雙激烈拳
+625		Ráfaga demoledora	Ráfaga demoledora	ぜんりょくむそうげきれつけん	All-Out Pummeling	Combo Hyper-Furie	Fulminante Faustschläge	Iperscarica Furiosa	전력무쌍격렬권	全力无双激烈拳	全力無雙激烈拳
+626		Picado supersónico	Picada supersónica	ファイナルダイブクラッシュ	Supersonic Skystrike	Piqué Supersonique	Finaler Steilflug	Picchiata Devastante	파이널다이브클래시	极速俯冲轰烈撞	極速俯衝轟烈撞
+627		Picado supersónico	Picada supersónica	ファイナルダイブクラッシュ	Supersonic Skystrike	Piqué Supersonique	Finaler Steilflug	Picchiata Devastante	파이널다이브클래시	极速俯冲轰烈撞	極速俯衝轟烈撞
+628		Diluvio corrosivo	Diluvio corrosivo	アシッドポイズンデリート	Acid Downpour	Déluge Causti-Toxique	Vernichtender Säureregen	Acidiluvio Corrosivo	애시드포이즌딜리트	强酸剧毒灭绝雨	強酸劇毒滅絕雨
+629		Diluvio corrosivo	Diluvio corrosivo	アシッドポイズンデリート	Acid Downpour	Déluge Causti-Toxique	Vernichtender Säureregen	Acidiluvio Corrosivo	애시드포이즌딜리트	强酸剧毒灭绝雨	強酸劇毒滅絕雨
+630		Barrena telúrica	Barrena telúrica	ライジングランドオーバー	Tectonic Rage	Éruption Géo-Sismique	Seismische Eruption	Furore della Terra	라이징랜드오버	地隆啸天大终结	地隆嘯天大終結
+631		Barrena telúrica	Barrena telúrica	ライジングランドオーバー	Tectonic Rage	Éruption Géo-Sismique	Seismische Eruption	Furore della Terra	라이징랜드오버	地隆啸天大终结	地隆嘯天大終結
+632		Aplastamiento gigalítico	Aplastamiento gigalítico	ワールズエンドフォール	Continental Crush	Apocalypse Gigalithique	Apokalyptische Steinpresse	Gigamacigno Polverizzante	월즈엔드폴	毁天灭地巨岩坠	毀天滅地巨岩墜
+633		Aplastamiento gigalítico	Aplastamiento gigalítico	ワールズエンドフォール	Continental Crush	Apocalypse Gigalithique	Apokalyptische Steinpresse	Gigamacigno Polverizzante	월즈엔드폴	毁天灭地巨岩坠	毀天滅地巨岩墜
+634		Guadaña sedosa	Guadaña sedosa	ぜったいほしょくかいてんざん	Savage Spin-Out	Cocon Fatal	Wirbelnder Insektenhieb	Bozzolo Fatale	절대포식회전참	绝对捕食回旋斩	絕對捕食迴旋斬
+635		Guadaña sedosa	Guadaña sedosa	ぜったいほしょくかいてんざん	Savage Spin-Out	Cocon Fatal	Wirbelnder Insektenhieb	Bozzolo Fatale	절대포식회전참	绝对捕食回旋斩	絕對捕食迴旋斬
+636		Presa espectral	Presa espectral	むげんあんやへのいざない	Never-Ending Nightmare	Appel des Ombres Éternelles	Ewige Nacht	Abbraccio Spettrale	무한암야로의유인	无尽暗夜之诱惑	無盡暗夜之誘惑
+637		Presa espectral	Presa espectral	むげんあんやへのいざない	Never-Ending Nightmare	Appel des Ombres Éternelles	Ewige Nacht	Abbraccio Spettrale	무한암야로의유인	无尽暗夜之诱惑	無盡暗夜之誘惑
+638		Hélice trepanadora	Hélice trepanadora	ちょうぜつらせんれんげき	Corkscrew Crash	Vrille Maximum	Turbo-Spiralkombo	Spirale Perforante	초월나선연격	超绝螺旋连击	超絕螺旋連擊
+639		Hélice trepanadora	Hélice trepanadora	ちょうぜつらせんれんげき	Corkscrew Crash	Vrille Maximum	Turbo-Spiralkombo	Spirale Perforante	초월나선연격	超绝螺旋连击	超絕螺旋連擊
+640		Hecatombe pírica	Hecatombe pírica	ダイナミックフルフレイム	Inferno Overdrive	Pyro-Explosion Cataclysmique	Dynamische Maxiflamme	Fiammobomba Detonante	다이내믹풀플레임	超强极限爆焰弹	超強極限爆焰彈
+641		Hecatombe pírica	Hecatombe pírica	ダイナミックフルフレイム	Inferno Overdrive	Pyro-Explosion Cataclysmique	Dynamische Maxiflamme	Fiammobomba Detonante	다이내믹풀플레임	超强极限爆焰弹	超強極限爆焰彈
+642		Hidrovórtice abisal	Hidrovórtice abisal	スーパーアクアトルネード	Hydro Vortex	Super Tourbillon Abyssal	Super-Wassertornado	Idrovortice Abissale	슈퍼아쿠아토네이도	超级水流大漩涡	超級水流大漩渦
+643		Hidrovórtice abisal	Hidrovórtice abisal	スーパーアクアトルネード	Hydro Vortex	Super Tourbillon Abyssal	Super-Wassertornado	Idrovortice Abissale	슈퍼아쿠아토네이도	超级水流大漩涡	超級水流大漩渦
+644		Megatón floral	Megatón floral	ブルームシャインエクストラ	Bloom Doom	Pétalexplosion Éblouissante	Brillante Blütenpracht	Floriscoppio Sfolgorante	블룸샤인엑스트라	绚烂缤纷花怒放	絢爛繽紛花怒放
+645		Megatón floral	Megatón floral	ブルームシャインエクストラ	Bloom Doom	Pétalexplosion Éblouissante	Brillante Blütenpracht	Floriscoppio Sfolgorante	블룸샤인엑스트라	绚烂缤纷花怒放	絢爛繽紛花怒放
+646		Gigavoltio destructor	Gigavoltio destructor	スパーキングギガボルト	Gigavolt Havoc	Fulguro-Lance Gigavolt	Gigavolt-Funkensalve	Gigascarica Folgorante	스파킹기가볼트	终极伏特狂雷闪	終極伏特狂雷閃
+647		Gigavoltio destructor	Gigavoltio destructor	スパーキングギガボルト	Gigavolt Havoc	Fulguro-Lance Gigavolt	Gigavolt-Funkensalve	Gigascarica Folgorante	스파킹기가볼트	终极伏特狂雷闪	終極伏特狂雷閃
+648		Disruptor psíquico	Disruptor psíquico	マキシマムサイブレイカー	Shattered Psyche	Psycho-Pulvérisation EX	Psycho-Schmetterschlag	Impatto Psicocinetico	맥시멈사이브레이커	至高精神破坏波	至高精神破壞波
+649		Disruptor psíquico	Disruptor psíquico	マキシマムサイブレイカー	Shattered Psyche	Psycho-Pulvérisation EX	Psycho-Schmetterschlag	Impatto Psicocinetico	맥시멈사이브레이커	至高精神破坏波	至高精神破壞波
+650		Crioaliento despiadado	Crioaliento despiadado	レイジングジオフリーズ	Subzero Slammer	Laser Cryogénique	Tobender Geofrost	Criodistruzione Polare	레이징지오프리즈	激狂大地万里冰	激狂大地萬里冰
+651		Crioaliento despiadado	Crioaliento despiadado	レイジングジオフリーズ	Subzero Slammer	Laser Cryogénique	Tobender Geofrost	Criodistruzione Polare	레이징지오프리즈	激狂大地万里冰	激狂大地萬里冰
+652		Dracoaliento devastador	Dracoaliento devastador	アルティメットドラゴンバーン	Devastating Drake	Chaos Draconique	Drastisches Drachendröhnen	Dragoschianto Finale	얼티메이트드래곤번	究极巨龙震天地	究極巨龍震天地
+653		Dracoaliento devastador	Dracoaliento devastador	アルティメットドラゴンバーン	Devastating Drake	Chaos Draconique	Drastisches Drachendröhnen	Dragoschianto Finale	얼티메이트드래곤번	究极巨龙震天地	究極巨龍震天地
+654		Agujero negro aniquilador	Agujero negro aniquilador	ブラックホールイクリプス	Black Hole Eclipse	Trou Noir des Ombres	Schwarzes Loch des Grauens	Buco Nero del Non Ritorno	블랙홀이클립스	黑洞吞噬万物灭	黑洞吞噬萬物滅
+655		Agujero negro aniquilador	Agujero negro aniquilador	ブラックホールイクリプス	Black Hole Eclipse	Trou Noir des Ombres	Schwarzes Loch des Grauens	Buco Nero del Non Ritorno	블랙홀이클립스	黑洞吞噬万物灭	黑洞吞噬萬物滅
+656		Arrumaco sideral	Tacleada sideral	ラブリースターインパクト	Twinkle Tackle	Impact Choupinova	Entzückender Sternenstoß	Astroimpatto Fatato	러블리스타임팩트	可爱星星飞天撞	可愛星星飛天撞
+657		Arrumaco sideral	Tacleada sideral	ラブリースターインパクト	Twinkle Tackle	Impact Choupinova	Entzückender Sternenstoß	Astroimpatto Fatato	러블리스타임팩트	可爱星星飞天撞	可愛星星飛天撞
+658		Pikavoltio letal	Pikavoltio letal	ひっさつのピカチュート	Catastropika	Pikachute Foudroyante	Perfektes Pika-Projektil	Super Pikaboom	필살피카슛	皮卡皮卡必杀击	皮卡皮卡必殺擊
+659		Recogearena	Recogearena	すなあつめ	Shore Up	Amass’Sable	Sandsammler	Sabbiaccumulo	모래모으기	集沙	集沙
+660		Escaramuza	Escaramuza	であいがしら	First Impression	Escarmouche	Überrumpler	Schermaglia	만나자마자	迎头一击	迎頭一擊
+661		Búnker	Búnker	トーチカ	Baneful Bunker	Blockhaus	Bunker	Fortino	토치카	碉堡	碉堡
+662		Puntada sombría	Puntada sombría	かげぬい	Spirit Shackle	Tisse Ombre	Schattenfessel	Cucitura d’Ombra	그림자꿰매기	缝影	縫影
+663		Lariat oscuro	Lariat oscuro	ＤＤラリアット	Darkest Lariat	Dark Lariat	Dark Lariat	Braccioteso	DD래리어트	ＤＤ金勾臂	ＤＤ金勾臂
+664		Aria burbuja	Aria burbuja	うたかたのアリア	Sparkling Aria	Aria de l’Écume	Schaumserenade	Canto Effimero	물거품아리아	泡影的咏叹调	泡影的詠歎調
+665		Martillo hielo	Martillo hielo	アイスハンマー	Ice Hammer	Marteau de Glace	Eishammer	Martelgelo	아이스해머	冰锤	冰錘
+666		Cura floral	Flores sanadoras	フラワーヒール	Floral Healing	Soin Floral	Florakur	Cura Floreale	플라워힐	花疗	花療
+667		Fuerza equina	Fuerza equina	１０まんばりき	High Horsepower	Cavalerie Lourde	Pferdestärke	Forza Equina	10만마력	十万马力	十萬馬力
+668		Absorbefuerza	Absorbefuerza	ちからをすいとる	Strength Sap	Vole-Force	Kraftabsorber	Assorbiforza	힘흡수	吸取力量	吸取力量
+669		Cuchilla solar	Cuchillada solar	ソーラーブレード	Solar Blade	Lame Solaire	Solarklinge	Lama Solare	솔라블레이드	日光刃	日光刃
+670		Follaje	Follaje	このは	Leafage	Feuillage	Blattwerk	Fogliame	나뭇잎	树叶	樹葉
+671		Foco	Foco	スポットライト	Spotlight	Projecteur	Rampenlicht	Riflettore	스포트라이트	聚光灯	聚光燈
+672		Hilo venenoso	Hilo venenoso	どくのいと	Toxic Thread	Fil Toxique	Giftfaden	Velenotela	독실	毒丝	毒絲
+673		Aguzar	Agudizar	とぎすます	Laser Focus	Affilage	Konzentration	Concentrazione	예민해지기	磨砺	磨礪
+674		Piñón auxiliar	Engranajes	アシストギア	Gear Up	Engrenage	Hilfsmechanik	Marciainpiù	어시스트기어	辅助齿轮	輔助齒輪
+675		Golpe mordaza	Golpe al cuello	じごくづき	Throat Chop	Exécu-Son	Neck Strike	Colpo Infernale	지옥찌르기	深渊突刺	地獄突刺
+676		Bola de polen	Bola de polen	かふんだんご	Pollen Puff	Boule Pollen	Pollenknödel	Sferapolline	꽃가루경단	花粉团	花粉團
+677		Anclaje	Anclaje	アンカーショット	Anchor Shot	Ancrage	Ankerschuss	Colpo d’Ancora	앵커샷	掷锚	擲錨
+678		Campo psíquico	Campo psíquico	サイコフィールド	Psychic Terrain	Champ Psychique	Psychofeld	Campo Psichico	사이코필드	精神场地	精神場地
+679		Plancha	Plancha	とびかかる	Lunge	Furie-Bond	Anfallen	Assalto	덤벼들기	猛扑	猛撲
+680		Látigo ígneo	Látigo ígneo	ほのおのムチ	Fire Lash	Fouet de Feu	Feuerpeitsche	Frusta di Fuoco	불꽃채찍	火焰鞭	火焰鞭
+681		Chulería	Arrogancia	つけあがる	Power Trip	Arrogance	Überheblichkeit	Tracotanza	기어오르기	嚣张	囂張
+682		Llama final	Llama final	もえつきる	Burn Up	Flamme Ultime	Ausbrennen	Ultima Fiamma	불사르기	燃尽	燃盡
+683		Cambiavelocidad	Cambiavelocidad	スピードスワップ	Speed Swap	Permuvitesse	Initiativetausch	Velociscambio	스피드스왑	速度互换	速度互換
+684		Cuerno certero	Cuerno certero	スマートホーン	Smart Strike	Estocorne	Schmalhorn	Sottilcorno	스마트혼	修长之角	修長之角
+685		Purificación	Purificación	じょうか	Purify	Purification	Läuterung	Purificazione	정화	净化	淨化
+686		Danza despertar	Danza revelación	めざめるダンス	Revelation Dance	Danse Éveil	Wecktanz	Mutadanza	잠재댄스	觉醒之舞	覺醒之舞
+687		Núcleo castigo	Núcleo castigo	コアパニッシャー	Core Enforcer	Sanction Suprême	Sanktionskern	Nucleocastigo	코어퍼니셔	核心惩罚者	核心懲罰者
+688		Patada tropical	Patada tropical	トロピカルキック	Trop Kick	Botte Sucrette	Tropenkick	Tropicalcio	트로피컬킥	热带踢	熱帶踢
+689		Mandato	Mandato	さいはい	Instruct	Sommation	Kommando	Imposizione	지휘	号令	號令
+690		Pico cañón	Pico cañón	くちばしキャノン	Beak Blast	Bec-Canon	Schnabelkanone	Cannonbecco	부리캐논	鸟嘴加农炮	鳥嘴加農炮
+691		Fragor escamas	Fragor escamas	スケイルノイズ	Clanging Scales	Vibrécaille	Schuppenrasseln	Clamorsquame	스케일노이즈	鳞片噪音	鱗片噪音
+692		Martillo dragón	Martillo dragón	ドラゴンハンマー	Dragon Hammer	Draco-Marteau	Drachenhammer	Marteldrago	드래곤해머	龙锤	龍錘
+693		Giro vil	Giro vil	ぶんまわす	Brutal Swing	Centrifugifle	Wirbler	Vorticolpo	세차게휘두르기	狂舞挥打	狂舞揮打
+694		Velo aurora	Velo aurora	オーロラベール	Aurora Veil	Voile Aurore	Auroraschleier	Velaurora	오로라베일	极光幕	極光幕
+695		Aluvión de flechas sombrías	Aluvión de flechas sombrías	シャドーアローズストライク	Sinister Arrow Raid	Fureur des Plumes Spectrales	Schatten-Pfeilregen	Dardoassalto Spettrale	섀도애로우즈스트라이크	遮天蔽日暗影箭	遮天蔽日暗影箭
+696		Hiperplancha oscura	Hiperplancha oscura	ハイパーダーククラッシャー	Malicious Moonsault	Dark Body Press	Hyper Dark Crusher	Iperschianto delle Tenebre	하이퍼다크크러셔	极恶飞跃粉碎击	極惡飛躍粉碎擊
+697		Sinfonía de la diva marina	Sinfonía de la diva marina	わだつみのシンフォニア	Oceanic Operetta	Symphonie des Ondines	Grandiose Meeressymphonie	Sinfonia del Mare	바다의심포니	海神庄严交响乐	海神莊嚴交響樂
+698		Cólera del guardián	Cólera del guardián	ガーディアン・デ・アローラ	Guardian of Alola	Colère du Gardien d’Alola	Alolas Wächter	Collera del Guardiano	알로라의수호자	巨人卫士・阿罗拉	巨人衛士・阿羅拉
+699		Constelación robaalmas	Constelación robaalmas	しちせいだっこんたい	Soul-Stealing 7-Star Strike	Fauche-Âme des Sept Étoiles	Sternbild des Seelenraubes	Colpo Eptastellare Rubanima	칠성탈혼퇴	七星夺魂腿	七星奪魂腿
+700		Surfeo galvánico	Surfeo galvánico	ライトニングサーフライド	Stoked Sparksurfer	Électro-Surf Survolté	Blitz-Wellenritt	Elettrosurf Folgorante	라이트닝서프라이드	驾雷驭电戏冲浪	駕雷馭電戲衝浪
+701		Arrojo intempestivo	Arrojo intempestivo	ほんきをだす　こうげき	Pulverizing Pancake	Gare au Ronflex	Schluss mit lustig	Adesso Faccio sul Serio	진심의공격	认真起来大爆击	認真起來大爆擊
+702		Novena potencia	Novena potencia	ナインエボルブースト	Extreme Evoboost	Neuf pour Un	Macht der Neun	Potenziamento Eevolutivo	나인이볼부스트	九彩升华齐聚顶	九彩昇華齊聚頂
+703		Supernova original	Supernova original	オリジンズスーパーノヴァ	Genesis Supernova	Supernova Originelle	Supernova des Ursprungs	Supernova delle Origini	오리진즈슈퍼노바	起源超新星大爆炸	起源超新星大爆炸
+704		Coraza trampa	Trampa coraza	トラップシェル	Shell Trap	Carapiège	Panzerfalle	Gusciotrappola	트랩셸	陷阱甲壳	陷阱甲殼
+705		Cañón floral	Cañón floral	フルールカノン	Fleur Cannon	Canon Floral	Kanonenbouquet	Cannonfiore	플뢰르캐논	花朵加农炮	花朵加農炮
+706		Psicocolmillo	Psicocolmillo	サイコファング	Psychic Fangs	Psycho-Croc	Psychobeißer	Psicozanna	사이코팽	精神之牙	精神之牙
+707		Pataleta	Pataleta	じだんだ	Stomping Tantrum	Trépignement	Fruststampfer	Battipiedi	분함의발구르기	跺脚	跺腳
+708		Hueso sombrío	Hueso sombrío	シャドーボーン	Shadow Bone	Os Ombre	Schattenknochen	Ossotetro	섀도본	暗影之骨	暗影之骨
+709		Roca veloz	Roca veloz	アクセルロック	Accelerock	Vif Roc	Turbofelsen	Rocciarapida	액셀록	冲岩	衝岩
+710		Hidroariete	Hidroariete	アクアブレイク	Liquidation	Aqua-Brèche	Aquadurchstoß	Idrobreccia	아쿠아브레이크	水流裂破	水流裂破
+711		Láser prisma	Láser prisma	プリズムレーザー	Prismatic Laser	Laser Prisme	Prisma-Laser	Prismalaser	프리즘레이저	棱镜镭射	稜鏡鐳射
+712		Robasombra	Robasombra	シャドースチール	Spectral Thief	Clepto-Mânes	Diebesschatten	Ombrafurto	섀도스틸	暗影偷盗	暗影偷盜
+713		Meteoimpacto	Meteoimpacto	メテオドライブ	Sunsteel Strike	Choc Météore	Stahlgestirn	Astrocarica	메테오드라이브	流星闪冲	流星閃衝
+714		Rayo umbrío	Rayo umbrío	シャドーレイ	Moongeist Beam	Rayon Spectral	Schattenstrahl	Raggio d’Ombra	섀도레이	暗影之光	暗影之光
+715		Ojos llorosos	Ojos llorosos	なみだめ	Tearful Look	Larme à l’Œil	Tränendrüse	Occhionilucidi	눈물그렁그렁	泪眼汪汪	淚眼汪汪
+716		Electropunzada	Electropunzada	びりびりちくちく	Zing Zap	Électrikipik	Elektropikser	Elettropizzico	찌리리따끔따끔	麻麻刺刺	麻麻刺刺
+717		Furia natural	Ira natural	しぜんのいかり	Nature’s Madness	Ire de la Nature	Naturzorn	Ira della Natura	자연의분노	自然之怒	自然之怒
+718		Multiataque	Multiataque	マルチアタック	Multi-Attack	Coup Varia-Type	Multi-Angriff	Multiattacco	멀티어택	多属性攻击	多屬性攻擊
+719		Gigarrayo fulminante	Gigarrayo fulminante	１０００まんボルト	10,000,000 Volt Thunderbolt	Giga-Tonnerre	Tausendfacher Donnerblitz	Iperfulmine	1000만볼트	千万伏特	千萬伏特
+720		Cabeza sorpresa	Cabeza sorpresa	ビックリヘッド	Mind Blown	Caboche-Kaboum	Knallkopf	Sbalorditesta	깜짝헤드	惊爆大头	驚爆大頭
+721		Puños plasma	Puños plasma	プラズマフィスト	Plasma Fists	Plasma Punch	Plasmafäuste	Pugni Plasma	플라스마피스트	等离子闪电拳	等離子閃電拳
+722		Géiser fotónico	Géiser fotónico	フォトンゲイザー	Photon Geyser	Photo-Geyser	Photonen-Geysir	Geyser Fotonico	포톤가이저	光子喷涌	光子噴湧
+723		Fotodestrucción apocalíptica	Fotodestrucción apocalíptica	てんこがすめつぼうのひかり	Light That Burns the Sky	Apocalypsis Luminis	Licht des Erlöschens	Fotodistruzione Apocalittica	하늘을태우는멸망의빛	焚天灭世炽光爆	焚天滅世熾光爆
+724		Embestida solar	Embestida solar	サンシャインスマッシャー	Searing Sunraze Smash	Hélio-Choc Dévastateur	Schmetternde Sonnenwalze	Supercollisione Solare	선샤인스매셔	日光回旋下苍穹	日光迴旋下蒼穹
+725		Deflagración lunar	Deflagración lunar	ムーンライトブラスター	Menacing Moonraze Maelstrom	Rayons Séléno-Explosifs	Geballter Mondlaser	Deflagrazione Lunare	문라이트블래스터	月华飞溅落灵霄	月華飛濺落靈霄
+726		Somanta amistosa	Paliza amistosa	ぽかぼかフレンドタイム	Let’s Snuggle Forever	Patati-Patattrape	Herzliche Knuddelkloppe	Dolcesacco di Botte	투닥투닥프렌드타임	亲密无间大乱揍	親密無間大亂揍
+727		Tempestad rocosa	Tempestad rocosa	ラジアルエッジストーム	Splintered Stormshards	Hurlement des Roches-Lames	Fataler Steinregen	Litotempesta Radiale	레이디얼에지스톰	狼啸石牙飓风暴	狼嘯石牙颶風暴
+728		Estruendo implacable	Estruendo implacable	ブレイジングソウルビート	Clangorous Soulblaze	Dracacophonie Flamboyante	Rasselnder Seelentanz	Dracofonia Divampante	브레이징소울비트	炽魂热舞烈音爆	熾魂熱舞烈音爆
+729		Pikaturbo	Pikaturbo	ばちばちアクセル	Zippy Zap	Pika-Sprint	Britzelturbo	Sprintaboom	파찌파찌액셀	电电加速	電電加速
+730		Salpikasurf	Salpikasurf	ざぶざぶサーフ	Splishy Splash	Pika-Splash	Plätschersurfer	Surfasplash	참방참방서핑	滔滔冲浪	滔滔衝浪
+731		Pikapicado	Pikaída	ふわふわフォール	Floaty Fall	Pika-Piqué	Schwebesturz	Piombaflap	둥실둥실폴	飘飘坠落	飄飄墜落
+732		Pikatormenta	Pikatormenta	ピカピカサンダー	Pika Papow	Pika-Fracas	Pika-Flash	Pikasaetta	피카피카썬더	闪闪雷光	閃閃雷光
+733		Vapodrenaje	Vapodrenaje	いきいきバブル	Bouncy Bubble	Évo-Thalasso	Blubbsauger	Bollaslurp	생생버블	活活气泡	活活氣泡
+734		Joltioparálisis	Joltioparálisis	びりびりエレキ	Buzzy Buzz	Évo-Dynamo	Knisterladung	Elettrozap	찌릿찌릿일렉	麻麻电击	麻麻電擊
+735		Flarembestida	Flarembestida	めらめらバーン	Sizzly Slide	Évo-Flambo	Flackerbrand	Fiammabam	이글이글번	熊熊火爆	熊熊火爆
+736		Espeaura	Espeaura	どばどばオーラ	Glitzy Glow	Évo-Psycho	Pulsieraura	Auraswoosh	콸콸오라	哗哗气场	嘩嘩氣場
+737		Umbreozona	Umbreozona	わるわるゾーン	Baddy Bad	Évo-Ténébro	Quälzone	Zona Buiabuia	아그아그존	坏坏领域	壞壞領域
+738		Leafitobombas	Leafitobombas	すくすくボンバー	Sappy Seed	Évo-Écolo	Sprießbomben	Bombafrush	쑥쑥봄버	茁茁炸弹	茁茁轟炸
+739		Glaceoprisma	Glaceoprisma	こちこちフロスト	Freezy Frost	Évo-Congélo	Klirrfrost	Scricchiagelo	꽁꽁프로스트	冰冰霜冻	冰冰霜凍
+740		Sylveotornado	Sylveotornado	きらきらストーム	Sparkly Swirl	Évo-Fabulo	Glitzersturm	Sbrilluccibufera	반짝반짝스톰	亮亮风暴	亮亮風暴
+741		Eevimpacto	Eevimpacto	ブイブイブレイク	Veevee Volley	Évo-Chardasso	Evo-Crash	Eeveempatto	브이브이브레이크	砰砰击破	砰砰擊破
+742		Ferropuño doble	Ferropuño doble	ダブルパンツァー	Double Iron Bash	Écrous d’Poing	Panzerfäuste	Pugni Corazzati	더블펀처	钢拳双击	鋼拳雙擊
+743		Maxibarrera	Maxibarrera	ダイウォール	Max Guard	Gardomax	Dyna-Wall	Dynabarriera	다이월	极巨防壁	極巨防壁
+744		Cañón dinamax	Cañón dinamax	ダイマックスほう	Dynamax Cannon	Canon Dynamax	Dynamax-Kanone	Cannone Dynamax	다이맥스포	极巨炮	極巨炮
+745		Disparo certero	Disparo certero	ねらいうち	Snipe Shot	Tir de Précision	Präzisionsschuss	Tiromirato	노려맞히기	狙击	狙擊
+746		Presa maxilar	Presa maxilar	くらいつく	Jaw Lock	Croque Fort	Fesselbiss	Morsostretto	물고버티기	紧咬不放	緊咬不放
+747		Atiborramiento	Atiborramiento	ほおばる	Stuff Cheeks	Garde-à-Joues	Backenstopfer	Riempiguance	볼가득넣기	大快朵颐	大快朵頤
+748		Bastión final	Bastión final	はいすいのじん	No Retreat	Ultime Bastion	Finalformation	Spalle al Muro	배수의진	背水一战	背水一戰
+749		Alquitranazo	Alquitranazo	タールショット	Tar Shot	Goudronnage	Teerschuss	Colpocatrame	타르샷	沥青射击	瀝青射擊
+750		Polvo mágico	Polvo magia	まほうのこな	Magic Powder	Poudre Magique	Magiepuder	Magipolvere	마법가루	魔法粉	魔法粉
+751		Dracoflechas	Dracoflechas	ドラゴンアロー	Dragon Darts	Draco-Flèches	Drachenpfeile	Dragofrecce	드래곤애로	龙箭	龍箭
+752		Hora del té	Hora del té	おちゃかい	Teatime	Thérémonie	Teatime	Ora del Tè	다과회	茶会	茶會
+753		Octopresa	Octopresa	たこがため	Octolock	Octoprise	Octoklammer	Tentacolock	문어굳히기	蛸固	蛸固
+754		Electropico	Electropico	でんげきくちばし	Bolt Beak	Prise de Bec	Schockschnabel	Beccoshock	전격부리	电喙	電喙
+755		Branquibocado	Branquibocado	エラがみ	Fishious Rend	Branchicrok	Kiemenbiss	Branchiomorso	아가미물기	鳃咬	鰓咬
+756		Cambio de cancha	Cambio de cancha	コートチェンジ	Court Change	Change-Côté	Seitenwechsel	Cambiocampo	코트체인지	换场	換場
+757		Maxignición	Maxignición	ダイバーン	Max Flare	Pyromax	Dyna-Brand	Dynafiammata	다이번	极巨火爆	極巨火爆
+758		Maxinsecto	Maxinsecto	ダイワーム	Max Flutterby	Insectomax	Dyna-Schwarm	Dynainsetto	다이웜	极巨虫蛊	極巨蟲蠱
+759		Maxitormenta	Maxitormenta	ダイサンダー	Max Lightning	Fulguromax	Dyna-Gewitter	Dynasaetta	다이썬더	极巨闪电	極巨閃電
+760		Maxiataque	Maxiataque	ダイアタック	Max Strike	Normalomax	Dyna-Angriff	Dynattacco	다이어택	极巨攻击	極巨攻擊
+761		Maxipuño	Maxipuño	ダイナックル	Max Knuckle	Pugilomax	Dyna-Faust	Dynapugno	다이너클	极巨拳斗	極巨拳鬥
+762		Maxiespectro	Maxiespectro	ダイホロウ	Max Phantasm	Spectromax	Dyna-Spuk	Dynavuoto	다이할로우	极巨幽魂	極巨幽魂
+763		Maxihelada	Maxihelada	ダイアイス	Max Hailstorm	Cryomax	Dyna-Frost	Dynagelo	다이아이스	极巨寒冰	極巨寒冰
+764		Maxiácido	Maxiácido	ダイアシッド	Max Ooze	Toxinomax	Dyna-Giftschwall	Dynacorrosione	다이애시드	极巨酸毒	極巨酸毒
+765		Maxichorro	Maxichorro	ダイストリーム	Max Geyser	Hydromax	Dyna-Flut	Dynaflusso	다이스트림	极巨水流	極巨水流
+766		Maxiciclón	Maxiciclón	ダイジェット	Max Airstream	Aéromax	Dyna-Düse	Dynajet	다이제트	极巨飞冲	極巨飛衝
+767		Maxiestela	Maxiestela	ダイフェアリー	Max Starfall	Enchantomax	Dyna-Zauber	Dynafata	다이페어리	极巨妖精	極巨妖精
+768		Maxidraco	Maxidraco	ダイドラグーン	Max Wyrmwind	Dracomax	Dyna-Wyrm	Dynadragone	다이드라군	极巨龙骑	極巨龍騎
+769		Maxionda	Maxionda	ダイサイコ	Max Mindstorm	Psychomax	Dyna-Kinese	Dynapsiche	다이사이코	极巨超能	極巨超能
+770		Maxilito	Maxirroca	ダイロック	Max Rockfall	Lithomax	Dyna-Brocken	Dynamacigno	다이록	极巨岩石	極巨岩石
+771		Maxitemblor	Maxitemblor	ダイアース	Max Quake	Sismomax	Dyna-Erdstoß	Dynasisma	다이어스	极巨大地	極巨大地
+772		Maxisombra	Maxisombra	ダイアーク	Max Darkness	Sinistromax	Dyna-Dunkel	Dynatenebre	다이아크	极巨恶霸	極巨惡霸
+773		Maxiflora	Maxiflora	ダイソウゲン	Max Overgrowth	Phytomax	Dyna-Flora	Dynaflora	다이그래스	极巨草原	極巨草原
+774		Maximetal	Maximetal	ダイスチル	Max Steelspike	Métallomax	Dyna-Stahlzacken	Dynametallo	다이스틸	极巨钢铁	極巨鋼鐵
+775		Estruendo escama	Estruendo escama	ソウルビート	Clangorous Soul	Dracacophonie	Seelentanz	Dracofonia	소울비트	魂舞烈音爆	魂舞烈音爆
+776		Plancha corporal	Plancha corporal	ボディプレス	Body Press	Big Splash	Body Press	Schiacciacorpo	바디프레스	扑击	撲擊
+777		Decoración	Decoración	デコレーション	Decorate	Nappage	Verzierung	Decorazione	데코레이션	装饰	裝飾
+778		Batería asalto	Batería asalto	ドラムアタック	Drum Beating	Tambour Battant	Trommelschläge	Tamburattacco	드럼어택	鼓击	鼓擊
+779		Cepo	Trampa presión	トラバサミ	Snap Trap	Troquenard	Fangeisen	Tagliola	집게덫	捕兽夹	捕獸夾
+780		Balón ígneo	Balón ígneo	かえんボール	Pyro Ball	Ballon Brûlant	Feuerball	Palla Infuocata	화염볼	火焰球	火焰球
+781		Tajo supremo	Corte supremo	きょじゅうざん	Behemoth Blade	Gladius Maximus	Gigantenhieb	Taglio Maestoso	거수참	巨兽斩	巨獸斬
+782		Embate supremo	Golpe supremo	きょじゅうだん	Behemoth Bash	Aegis Maxima	Gigantenstoß	Colpo Maestoso	거수탄	巨兽弹	巨獸彈
+783		Rueda aural	Rueda aural	オーラぐるま	Aura Wheel	Roue Libre	Aura-Rad	Ruota d’Aura	오라휠	气场轮	氣場輪
+784		Vasto impacto	Vasto impacto	ワイドブレイカー	Breaking Swipe	Abattage	Breitseite	Vastoimpatto	와이드브레이커	广域破坏	廣域破壞
+785		Punzada rama	Ramazo punzante	えだづき	Branch Poke	Tapotige	Zweigstoß	Ramostoccata	가지찌르기	木枝突刺	木枝突刺
+786		Amplificador	Amplificador	オーバードライブ	Overdrive	Overdrive	Overdrive	Overdrive	오버드라이브	破音	破音
+787		Ácido málico	Ácido málico	りんごさん	Apple Acid	Acide Malique	Apfelsäure	Acido Malico	사과산	苹果酸	蘋果酸
+788		Fuerza G	Fuerza G	Ｇのちから	Grav Apple	Force G	Gravitation	Forza G	G의힘	万有引力	萬有引力
+789		Choque anímico	Choque anímico	ソウルクラッシュ	Spirit Break	Choc Émotionnel	Seelenbruch	Frantumanima	소울크래시	灵魂冲击	靈魂衝擊
+790		Cautivapor	Cautivapor	ワンダースチーム	Strange Steam	Vapeur Féérique	Wunderdampf	Vapore Incantato	원더스팀	神奇蒸汽	神奇蒸汽
+791		Gota vital	Gota vital	いのちのしずく	Life Dew	Fontaine de Vie	Lebenstropfen	Goccia Vitale	생명의물방울	生命水滴	生命水滴
+792		Obstrucción	Obstrucción	ブロッキング	Obstruct	Blocage	Abblocker	Sbarramento	블로킹	拦堵	攔堵
+793		Irreverencia	Irreverencia	どげざつき	False Surrender	Fourbette	Kniefalltrick	Supplicolpo	사죄의찌르기	假跪真撞	假跪真撞
+794		Asalto estelar	Asalto estelar	スターアサルト	Meteor Assault	Joute Astrale	Sternensturm	Sfolgorassalto	스타어설트	流星突击	流星突擊
+795		Rayo infinito	Rayo infinito	ムゲンダイビーム	Eternabeam	Laser Infinimax	Unendynastrahlen	Raggio Infinito	무한다이빔	无极光束	無極光束
+796		Metaláser	Metaláser	てっていこうせん	Steel Beam	Métalaser	Stahlstrahl	Raggio d’Acciaio	철제광선	铁蹄光线	鐵蹄光線
+797		Vasta fuerza	Vasta fuerza	ワイドフォース	Expanding Force	Vaste Pouvoir	Flächenmacht	Vastenergia	와이드포스	广域战力	廣域戰力
+798		Allanador férreo	Ferroaplanadora	アイアンローラー	Steel Roller	Métalliroue	Eisenwalze	Ferrorullo	아이언롤러	铁滚轮	鐵滾輪
+799		Ráfaga escamas	Disparo de escamas	スケイルショット	Scale Shot	Rafale Écailles	Schuppenschuss	Squamacolpo	스케일샷	鳞射	鱗射
+800		Rayo meteórico	Rayo meteórico	メテオビーム	Meteor Beam	Laser Météore	Meteorstrahl	Raggiometeora	메테오빔	流星光束	流星光束
+801		Moluscañón	Moluscañón	シェルアームズ	Shell Side Arm	Kokiyarme	Muschelwaffe	Armaguscio	셸암즈	臂贝武器	臂貝武器
+802		Bruma explosiva	Bruma explosiva	ミストバースト	Misty Explosion	Explo-Brume	Nebelexplosion	Nebbioscoppio	미스트버스트	薄雾炸裂	薄霧炸裂
+803		Fitoimpulso	Fitoimpulso	グラススライダー	Grassy Glide	Gliss’Herbe	Grasrutsche	Erboscivolata	그래스슬라이더	青草滑梯	青草滑梯
+804		Alto voltaje	Alto voltaje	ライジングボルト	Rising Voltage	Monte-Tension	Hochspannung	Elettroimpennata	라이징볼트	电力上升	電力上升
+805		Pulso de campo	Pulso de campo	だいちのはどう	Terrain Pulse	Champlification	Feldimpuls	Campopulsar	대지의파동	大地波动	大地波動
+806		Golpe rastrero	Golpe rastrero	はいよるいちげき	Skitter Smack	Ravage Rampant	Krabbelkracher	Strisciacolpo	엄습하는일격	爬击	爬擊
+807		Envidia ardiente	Envidia ardiente	しっとのほのお	Burning Jealousy	Feu Envieux	Neidflammen	Fiamminvidia	질투의불꽃	妒火	妒火
+808		Desahogo	Desahogo	うっぷんばらし	Lash Out	Cent Rancunes	Frustventil	Sfogarabbia	분풀이	泄愤	洩憤
+809		Poltergeist	Poltergeist	ポルターガイスト	Poltergeist	Esprit Frappeur	Poltergeist	Poltergeist	폴터가이스트	灵骚	靈騷
+810		Gas corrosivo	Gas corrosivo	ふしょくガス	Corrosive Gas	Gaz Corrosif	Korrosionsgas	Gas Corrosivo	부식가스	腐蚀气体	腐蝕氣體
+811		Motivación	Motivación	コーチング	Coaching	Coaching	Coaching	Coaching	코칭	指导	指導
+812		Viraje	Viraje	クイックターン	Flip Turn	Eau Revoir	Rollwende	Virata	퀵턴	快速折返	快速折返
+813		Triple axel	Triple axel	トリプルアクセル	Triple Axel	Triple Axel	Dreifach-Axel	Triplo Axel	트리플악셀	三旋击	三旋擊
+814		Ala bis	Aletazo doble	ダブルウイング	Dual Wingbeat	Double Volée	Doppelflügel	Doppia Ala	더블윙	双翼	雙翼
+815		Arenas ardientes	Arenas ardientes	ねっさのだいち	Scorching Sands	Sable Ardent	Brandsand	Sabbiardente	열사의대지	热沙大地	熱沙大地
+816		Cura selvática	Selva sanadora	ジャングルヒール	Jungle Healing	Selve Salvatrice	Dschungelheilung	Giunglacura	정글힐	丛林治疗	叢林治療
+817		Golpe oscuro	Golpe oscuro	あんこくきょうだ	Wicked Blow	Poing Obscur	Finstertreffer	Pugnotenebra	암흑강타	暗冥强击	暗冥強擊
+818		Azote torrencial	Golpe torrencial	すいりゅうれんだ	Surging Strikes	Torrent de Coups	Trefferschwall	Idroraffica	수류연타	水流连打	水流連打
+819		Electrojaula	Electrojaula	サンダープリズン	Thunder Cage	Voltageôle	Blitzgefängnis	Elettrogabbia	썬더프리즌	雷电囚笼	雷電囚籠
+820		Dracoenergía	Dracoenergía	ドラゴンエナジー	Dragon Energy	Draco-Énergie	Drachenkräfte	Dragoenergia	드래곤에너지	巨龙威能	巨龍威能
+821		Mirada heladora	Mirada glacial	いてつくしせん	Freezing Glare	Regard Glaçant	Eisiger Blick	Sguardo Gelido	얼어붙는시선	冰冷视线	冰冷視線
+822		Furia candente	Furia candente	もえあがるいかり	Fiery Wrath	Fureur Ardente	Brennender Zorn	Furia Ardente	타오르는분노	怒火中烧	怒火中燒
+823		Patada relámpago	Patada relámpago	らいめいげり	Thunderous Kick	Coup Fulgurant	Donnernder Tritt	Calcio Tonante	천둥차기	雷鸣蹴击	雷鳴蹴擊
+824		Lanza glacial	Lanza glacial	ブリザードランス	Glacial Lance	Lance de Glace	Blizzardlanze	Lancia Glaciale	블리자드랜스	雪矛	雪矛
+825		Orbes espectro	Orbes espectro	アストラルビット	Astral Barrage	Éclat Spectral	Astralfragmente	Schegge Astrali	아스트랄비트	星碎	星碎
+826		Conjuro funesto	Conjuro funesto	ぶきみなじゅもん	Eerie Spell	Sort Sinistre	Schauderspruch	Inquietantesimo	섬뜩한주문	诡异咒语	詭異咒語
+827		Garra nociva	Garra nociva	フェイタルクロー	Dire Claw	Griffes Funestes	Unheilsklauen	Artigli Fatali	페이탈클로	克命爪	剋命爪
+828		Asalto barrera	Asalto barrera	バリアーラッシュ	Psyshield Bash	Sprint Bouclier	Barrierenstoß	Barrierassalto	배리어러시	屏障猛攻	屏障猛攻
+829		Cambiapoder	Cambiapoder	パワーシフト	Power Shift	Échange Force	Kraftwechsel	Scambioforza	파워시프트	力量转换	力量轉換
+830		Hachazo pétreo	Hachazo pétreo	がんせきアックス	Stone Axe	Hache de Pierre	Felsaxt	Rocciascure	암석액스	岩斧	岩斧
+831		Ciclón primavera	Ciclón primavera	はるのあらし	Springtide Storm	Typhon Passionné	Frühlingsorkan	Tempesta Zefirea	봄의폭풍	阳春风暴	陽春風暴
+832		Poder místico	Poder místico	しんぴのちから	Mystical Power	Force Mystique	Mythenkraft	Forza Mistica	신비의힘	神秘之力	神秘之力
+833		Erupción de ira	Erupción de ira	だいふんげき	Raging Fury	Grand Courroux	Flammenwut	Ira Furente	대격분	大愤慨	大憤慨
+834		Envite acuático	Acuatacleada	ウェーブタックル	Wave Crash	Aquatacle	Wellentackle	Ondaschianto	웨이브태클	波动冲	波動衝
+835		Clorofiláser	Clorofiláser	クロロブラスト	Chloroblast	Herblast	Chlorostrahl	Clorofillaser	클로로블라스트	叶绿爆震	葉綠爆震
+836		Viento carámbano	Viento carámbano	ひょうざんおろし	Mountain Gale	Bise Glaciaire	Frostfallwind	Soffio d’Iceberg	빙산바람	冰山风	冰山風
+837		Danza triunfal	Danza triunfal	しょうりのまい	Victory Dance	Danse Victoire	Siegestanz	Danzavittoria	승리의춤	胜利之舞	勝利之舞
+838		Arremetida	Asalto frontal	ぶちかまし	Headlong Rush	Assaut Frontal	Schmetterramme	Scontro Frontale	들이받기	突飞猛扑	突飛猛撲
+839		Mil púas tóxicas	Mil púas tóxicas	どくばりセンボン	Barb Barrage	Multitoxik	Giftstachelregen	Mille Fielespine	독침천발	毒千针	毒千針
+840		Ala aural	Ala aural	オーラウイング	Esper Wing	Ailes Psycho	Auraschwingen	Ali d’Aura	오라윙	气场之翼	氣場之翼
+841		Rencor reprimido	Rencor reprimido	うらみつらみ	Bitter Malice	Cœur de Rancœur	Niedertracht	Livore	천추지한	冤冤相报	冤冤相報
+842		Retracción	Retracción	たてこもる	Shelter	Mur Fumigène	Refugium	Barricata	농성	闭关	閉關
+843		Triple flecha	Triple flecha	３ぼんのや	Triple Arrows	Triple Flèche	Drillingspfeile	Triplodardo	3연화살	三连箭	三連箭
+844		Marcha espectral	Marcha espectral	ひゃっきやこう	Infernal Parade	Cortège Funèbre	Phantomparade	Corteo Spettrale	백귀야행	群魔乱舞	群魔亂舞
+845		Tajo metralla	Corte metralla	ひけん・ちえなみ	Ceaseless Edge	Vagues à Lames	Klingenschwall	Lama Milleflutti	비검천중파	秘剑・千重涛	秘劍・千重濤
+846		Vendaval gélido	Vendaval gélido	こがらしあらし	Bleakwind Storm	Typhon Hivernal	Polarorkan	Tempesta Boreale	찬바람폭풍	枯叶风暴	枯葉風暴
+847		Electormenta	Electormenta	かみなりあらし	Wildbolt Storm	Typhon Fulgurant	Donnerorkan	Tempesta Tonante	번개폭풍	鸣雷风暴	鳴雷風暴
+848		Simún de arena	Tifón de arena	ねっさのあらし	Sandsear Storm	Typhon Pyrosable	Wüstenorkan	Tempesta Ardente	열사의폭풍	热沙风暴	熱沙風暴
+849		Plegaria lunar	Plegaria lunar	みかづきのいのり	Lunar Blessing	Prière Lunaire	Lunargebet	Invocaluna	초승달의기도	新月祈祷	新月祈禱
+850		Bálsamo osado	Bálsamo osado	ブレイブチャージ	Take Heart	Extravaillance	Mutschub	Baldimpulso	브레이브차지	勇气填充	勇氣填充
+851		Teraexplosión	Teraexplosión	テラバースト	Tera Blast	Téra Explosion	Tera-Ausbruch	Terascoppio	테라버스트	太晶爆发	太晶爆發
+852		Telatrampa	Telatrampa	スレッドトラップ	Silk Trap	Piège de Fil	Fadenfalle	Telatrappola	스레드트랩	线阱	線阱
+853		Patada hacha	Patada hacha	かかとおとし	Axe Kick	Talon-Marteau	Fersenkick	Calcio ad Ascia	발꿈치찍기	下压踢	下壓踢
+854		Homenaje póstumo	Homenaje póstumo	おはかまいり	Last Respects	Hommage Posthume	Letzte Ehre	Omaggio ai KO	성묘	扫墓	掃墓
+855		Fotocolisión	Fotocolisión	ルミナコリジョン	Lumina Crash	Lumino-Impact	Lichteinschlag	Fotocollisione	루미나콜리전	琉光冲激	琉光衝激
+856		Oído cocina	Emplatar	いっちょうあがり	Order Up	Plat du Jour	Auftischen	Alta Cucina	한판내기	上菜	上菜
+857		Puño jet	Puño jet	ジェットパンチ	Jet Punch	Poing Sonique	Düsenhieb	Pugnojet	제트펀치	喷射拳	噴射拳
+858		Extracto picante	Extracto picante	ハバネロエキス	Spicy Extract	Habanerage	Chili-Essenz	Essenza Piccante	하바네로엑기스	辣椒精华	辣椒精華
+859		Quemarrueda	Quemarrueda	ホイールスピン	Spin Out	Dérapage	Reifendrehung	Slittaruote	휠스핀	疾速转轮	疾速轉輪
+860		Proliferación	Proliferación	ネズミざん	Population Bomb	Prolifération	Mäuseplage	Infestazione	찍찍베기	鼠数儿	鼠數兒
+861		Pirueta helada	Pirueta helada	アイススピナー	Ice Spinner	Cryo-Pirouette	Eiskreisel	Vortighiaccio	아이스스피너	冰旋	冰旋
+862		Asalto espadón	Asalto espadón	きょけんとつげき	Glaive Rush	Charge Glaive	Großklingenstoß	Spadoncarica	대검돌격	巨剑突击	巨劍突擊
+863		Plegaria vital	Plegaria vital	さいきのいのり	Revival Blessing	Second Souffle	Vitalsegen	Preghiera Vitale	회생의기도	复生祈祷	復生祈禱
+864		Salazón	Salación	しおづけ	Salt Cure	Salaison	Pökelsalz	Sotto Sale	소금절이	盐腌	鹽醃
+865		Triple inmersión	Triple inmersión	トリプルダイブ	Triple Dive	Triple Plongeon	Tauchtriade	Triplo Tuffo	트리플다이브	三连钻	三連鑽
+866		Giro mortífero	Giro mortífero	キラースピン	Mortal Spin	Toupie Éclat	Letalwirbler	Glitturbine	킬러스핀	晶光转转	晶光轉轉
+867		Decalcomanía	Plagio	うつしえ	Doodle	Décalquage	Abpausen	Ricalco	베껴그리기	描绘	描繪
+868		Deslome	Fileteo	みをけずる	Fillet Away	Décharnement	Abspaltung	Alleggerimento	제살깎기	甩肉	甩肉
+869		Genufendiente	Genufendiente	ドゲザン	Kowtow Cleave	Génusection	Kniefallspalter	Genufendente	도각참	仆刀	仆斬
+870		Truco floral	Truco floral	トリックフラワー	Flower Trick	Magie Florale	Blumentrick	Prestigiafiore	트릭플라워	千变万花	千變萬花
+871		Canto ardiente	Canto ígneo	フレアソング	Torch Song	Chant Flamboyant	Loderlied	Canzone Ardente	플레어송	闪焰高歌	閃焰高歌
+872		Danza acuática	Danza acuática	アクアステップ	Aqua Step	Danse Aquatique	Wogentanz	Idroballetto	아쿠아스텝	流水旋舞	流水旋舞
+873		Furia taurina	Furia taurina	レイジングブル	Raging Bull	Taurogne	Rasender Stier	Scatenatoro	레이징불	怒牛	怒牛
+874		Fiebre dorada	Fiebre dorada	ゴールドラッシュ	Make It Rain	Ruée d’Or	Goldrausch	Corsa all’Oro	골드러시	淘金潮	淘金潮
+875		Psicohojas	Psicohojas	サイコブレイド	Psyblade	Lame Psychique	Psychoschneide	Psicolama	사이코블레이드	精神剑	精神劍
+876		Hidrovapor	Hidrovapor	ハイドロスチーム	Hydro Steam	Hydrovapeur	Hydrodampf	Idrovapore	하이드로스팀	水蒸气	水蒸氣
+877		Calamidad	Calamidad	カタストロフィ	Ruination	Cataclysme	Verderben	Catastrofe	카타스트로피	大灾难	大災難
+878		Nitrochoque	Nitrochoque	アクセルブレイク	Collision Course	Nitro Crash	Kollisionskurs	Turboschianto	액셀브레이크	全开猛撞	全開猛撞
+879		Electroderrape	Electroderrape	イナズマドライブ	Electro Drift	Turbo Volt	Blitztour	Fulmiscatto	라이트닝드라이브	闪电猛冲	閃電猛衝
+880		Autotomía	Autotomía	しっぽきり	Shed Tail	Queulonage	Schwanzabwurf	Tagliacoda	꼬리자르기	断尾	斷尾
+881		Fría acogida	Respuesta fría	さむいギャグ	Chilly Reception	Neigeux de Mots	Eisige Stimmung	Freddura	썰렁개그	冷笑话	冷笑話
+882		Limpieza general	Limpieza general	おかたづけ	Tidy Up	Grand Nettoyage	Aufräumen	Pulizie	정리정돈	大扫除	大掃除
+883		Paisaje nevado	Paisaje nevado	ゆきげしき	Snowscape	Chute de Neige	Schneelandschaft	Vista Innevata	설경	雪景	雪景
+884		Brinco	Brinco	とびつく	Pounce	Bond	Anspringen	Balzo	달려들기	虫扑	蟲撲
+885		Abrecaminos	Abrecaminos	くさわけ	Trailblaze	Désherbaffe	Wegbereiter	Apripista	개척하기	起草	起草
+886		Agua fría	Agua fría	ひやみず	Chilling Water	Douche Froide	Kalte Dusche	Doccia Fredda	찬물끼얹기	泼冷水	潑冷水
+887		Hipertaladro	Hipertaladro	ハイパードリル	Hyper Drill	Hyperceuse	Hyperbohrer	Ipertrapano	하이퍼드릴	强力钻	強力鑽
+888		Láser doble	Láser doble	ツインビーム	Twin Beam	Double Laser	Doppelstrahl	Doppioraggio	트윈빔	双光束	雙光束
+889		Puño furia	Puño furia	ふんどのこぶし	Rage Fist	Poing de Colère	Zornesfaust	Pugno Furibondo	분노의주먹	愤怒之拳	憤怒之拳
+890		Cañón armadura	Cañón armadura	アーマーキャノン	Armor Cannon	Canon Blindé	Rüstungskanone	Corazza Cannone	아머캐논	铠农炮	鎧農炮
+891		Espada lamento	Espada lamento	むねんのつるぎ	Bitter Blade	Lame en Peine	Reueschwert	Lama del Rimorso	원념의칼	悔念剑	悔念劍
+892		Electropalmas	Electropalmas	でんこうそうげき	Double Shock	Double Décharge	Zweifachladung	Doppiolampo	전광쌍격	电光双击	電光雙擊
+893		Martillo colosal	Martillo colosal	デカハンマー	Gigaton Hammer	Marteau Mastoc	Riesenhammer	Granmartello	거대해머	巨力锤	巨力錘
+894		Resarcimiento	Resarcimiento	ほうふく	Comeuppance	Vindicte	Vendetta	Ritorsione	앙갚음	复仇	復仇
+895		Tajo acuático	Corte acuático	アクアカッター	Aqua Cutter	Tranch’Aqua	Aquaschnitt	Idrotaglio	아쿠아커터	水波刀	水波刀
+896		Pirochoque	Pirochoque	バーンアクセル	Blazing Torque	Crash Brûlant	Hitzeturbo	Turboustione	번액셀	灼热暴冲	灼熱暴衝
+897		Ominochoque	Ominochoque	ダークアクセル	Wicked Torque	Crash Obscur	Finsterturbo	Turbotenebra	다크액셀	黑暗暴冲	黑暗暴衝
+898		Ponzochoque	Ponzochoque	ポイズンアクセル	Noxious Torque	Crash Toxique	Toxiturbo	Turbotossina	포이즌액셀	剧毒暴冲	劇毒暴衝
+899		Pugnachoque	Pugnachoque	ファイトアクセル	Combat Torque	Crash Musclé	Raufturbo	Turborissa	파이트액셀	格斗暴冲	格鬥暴衝
+900		Feerichoque	Feerichoque	マジカルアクセル	Magical Torque	Crash Magique	Zauberturbo	Turboincanto	매지컬액셀	魔法暴冲	魔法暴衝
+901		Luna roja	Luna roja	ブラッドムーン	Blood Moon	Lune Rouge	Blutmond	Luna Rossa	블러드문	血月	血月
+902		Cañón batidor	Cañón batidor	シャカシャカほう	Matcha Gotcha	Mortier Matcha	Quirlschuss	Spruzzatè	휘적휘적포	刷刷茶炮	刷刷茶炮
+903		Bomba caramelo	Bomba caramelo	みずあめボム	Syrup Bomb	Bombe au Sirop	Sirupbombe	Bomba Sciroppata	시럽봄	糖浆炸弹	糖漿炸彈
+904		Garrote liana	Garrote liana	ツタこんぼう	Ivy Cudgel	Massue Liane	Rankenkeule	Clava di Liane	덩굴방망이	棘藤棒	棘藤棒
+905		Electrorrayo	Electrorrayo	エレクトロビーム	Electro Shot	Fulgurayon	Stromstrahl	Elettroraggio	일렉트로빔	电光束	電光束
+906		Teraclúster	Teraclúster	テラクラスター	Tera Starstorm	Pluie Térastrale	Tera-Sternhagel	Teracluster	테라클러스터	晶光星群	晶光星群
+907		Láser veleidoso	Láser caprichoso	きまぐレーザー	Fickle Beam	Laser Hasard	Launenlaser	Irregolaser	변덕레이저	随机光	隨機光
+908		Llama protectora	Llama protectora	かえんのまもり	Burning Bulwark	Rempart Brûlant	Flammenschild	Egida Ignea	화염의수호	火焰守护	火焰守護
+909		Relámpago súbito	Relámpago súbito	じんらい	Thunderclap	Vif Éclair	Sturmblitz	Saetta	질풍신뢰	迅雷	迅雷
+910		Filo potente	Corte potente	パワフルエッジ	Mighty Cleave	Lame Puissante	Wuchtklinge	Taglio Poderoso	파워풀에지	强刃攻击	強刃攻擊
+911		Tajo taquión	Corte taquión	タキオンカッター	Tachyon Cutter	Lame Tachyonique	Tachyon-Schnitt	Tachiontaglio	타키온커터	迅子利刃	迅子利刃
+912		Prensa metálica	Prensa metálica	ハードプレス	Hard Press	Pression Extrême	Stahlpresse	Pressa d’Acciaio	하드프레스	硬压	硬壓
+913		Bramido dragón	Bramido dragón	ドラゴンエール	Dragon Cheer	Cri Draconique	Drachenschrei	Grido del Drago	드래곤옐	龙声鼓舞	龍聲鼓舞
+914		Canto encantador	Canto encantador	みわくのボイス	Alluring Voice	Voix Envoûtante	Lockstimme	Ammaliavoce	매혹의보이스	魅诱之声	魅誘之聲
+915		Cólera ardiente	Furia ardiente	やけっぱち	Temper Flare	Indignition	Frustflamme	Rabbia Bruciante	열불내기	豁出去	豁出去
+916		Plancha voltaica	Golpe voltaico	サンダーダイブ	Supercell Slam	Volt Assaut	Donnerstoß	Elettrotuffo	썬더다이브	闪电强袭	閃電強襲
+917		Psicorruido	Psicorruido	サイコノイズ	Psychic Noise	Dissonance Psy	Psycholärm	Psicorumore	사이코노이즈	精神噪音	精神噪音
+918		Palma rauda	Palma rauda	はやてがえし	Upper Hand	Prio-Parade	Schnellkonter	Colpo di Mano	기선제압	快手还击	快手還擊
+919		Cadena virulenta	Cadena virulenta	じゃどくのくさり	Malignant Chain	Chaîne Malsaine	Giftkettung	Intossicatena	악독사슬	邪毒锁链	邪毒鎖鏈
+920		Luz devastadora	Luz devastadora	無に帰す光	Nihil Light	Lux Nihilum	Tilgungslicht	Tabula Laser	니힐레이저	归无之光	归无之光

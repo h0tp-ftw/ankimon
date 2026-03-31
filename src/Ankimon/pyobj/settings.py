@@ -2,7 +2,14 @@ import json
 import os
 from aqt import mw
 from aqt.utils import showInfo
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QVBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+)
 from PyQt6.QtWidgets import QRadioButton, QHBoxLayout, QMainWindow, QScrollArea
 from pathlib import Path
 from ..resources import user_path
@@ -12,13 +19,12 @@ DEFAULT_CONFIG = {
     "battle.cards_per_round": 2,
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
-
+    "battle.review_based_damage": True,
     "controls.pokemon_buttons": True,
     "controls.defeat_key": "5",
     "controls.catch_key": "6",
     "controls.key_for_opening_closing_ankimon": "Ctrl+Shift+P",
     "controls.allow_to_choose_moves": False,
-
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
     "gui.styling_in_reviewer": True,
@@ -29,15 +35,14 @@ DEFAULT_CONFIG = {
     "gui.reviewer_text_message_box": True,
     "gui.reviewer_text_message_box_time": 3,
     "gui.show_mainpkmn_in_reviewer": 1,
+    "gui.team_deck_view": True,
     "gui.view_main_front": True,
     "gui.xp_bar_config": True,
     "gui.xp_bar_location": 2,
-
     "audio.sound_effects": False,
     "audio.sounds": True,
     "audio.battle_sounds": False,
     "audio.volume": 0.5,
-
     "misc.gen1": True,
     "misc.gen2": True,
     "misc.gen3": True,
@@ -53,18 +58,18 @@ DEFAULT_CONFIG = {
     "misc.leaderboard": False,
     "misc.ankiweb_sync": False,
     "misc.YouShallNotPass_Ankimon_News": False,
-    "misc.show_tip_on_startup": True, # Added default for Tip of the Day
+    "misc.show_tip_on_startup": True,  # Added default for Tip of the Day
     "misc.discord_rich_presence": False,
     "misc.discord_rich_presence_text": 1,
-
     "misc.developer_mode": False,
-
     "trainer.name": "Ash",
     "trainer.sprite": "ash",
     "trainer.id": 0,
     "trainer.cash": 0,
     "trainer.level": 0,
+    "trainer.xp": 0,
 }
+
 
 class Settings:
     def __init__(self):
@@ -77,12 +82,13 @@ class Settings:
     def load_config(self):
         obfuscated_config_path = user_path / "config.obf"
         config = {}
-        from ..pyobj.ankimon_sync import AnkimonDataSync # To reuse deobfuscation logic
-        sync_handler = AnkimonDataSync() # Re-use the deobfuscation logic
+        from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse deobfuscation logic
+
+        sync_handler = AnkimonDataSync()  # Re-use the deobfuscation logic
 
         if obfuscated_config_path.is_file():
             try:
-                with open(obfuscated_config_path, 'r', encoding='utf-8') as f:
+                with open(obfuscated_config_path, "r", encoding="utf-8") as f:
                     obfuscated_str = f.read()
                 config = sync_handler._deobfuscate_data(obfuscated_str)
                 # Migration logic for old keys (items, trainer.team, trainer.xp_share)
@@ -91,10 +97,12 @@ class Settings:
                 if "items" in config and isinstance(config["items"], list):
                     items_path = user_path / "items.json"
                     try:
-                        with open(items_path, 'w', encoding='utf-8') as f:
+                        with open(items_path, "w", encoding="utf-8") as f:
                             json.dump(config["items"], f, indent=4)
                     except Exception as e:
-                        print(f"Ankimon: Error migrating 'items' data during load_config: {e}")
+                        print(
+                            f"Ankimon: Error migrating 'items' data during load_config: {e}"
+                        )
                     del config["items"]
 
                 if "trainer.team" in config:
@@ -106,21 +114,25 @@ class Settings:
                     "battle.daily_average",
                     "gui.reviewer_text_message_box_time",
                     "gui.xp_bar_location",
-                    "misc.discord_rich_presence_text"
+                    "misc.discord_rich_presence_text",
                 ]
                 for key in keys_to_coerce_to_int:
                     if key in config and isinstance(config[key], str):
                         try:
                             config[key] = int(config[key])
                         except ValueError:
-                            print(f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int. Keeping as string.")
+                            print(
+                                f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int. Keeping as string."
+                            )
 
-            except Exception as e:
-                print(f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config.")
-                config = {} # Fallback to default if error occurs
+            except (OSError, json.JSONDecodeError) as e:
+                print(
+                    f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config."
+                )
+                config = {}  # Fallback to default if error occurs
 
         modified = False
-        
+
         # Ensure new settings are present in existing configurations
         for key in DEFAULT_CONFIG:
             if key not in config:
@@ -128,25 +140,26 @@ class Settings:
                 config[key] = DEFAULT_CONFIG[key]
 
         if modified:
-            self.save_config(config) # Save modified config to config.obf
+            self.save_config(config)  # Save modified config to config.obf
 
         return config
 
     def save_config(self, config):
-        from ..pyobj.ankimon_sync import AnkimonDataSync # To reuse obfuscation logic
+        from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse obfuscation logic
+
         obfuscated_config_path = user_path / "config.obf"
-        sync_handler = AnkimonDataSync() # Re-use the obfuscation logic
+        sync_handler = AnkimonDataSync()  # Re-use the obfuscation logic
         try:
             obfuscated_str = sync_handler._obfuscate_data(config)
             warning_message = "WARNING: This file contains important user data. Do not delete or modify this file. Deleting or modifying this file can lead to data loss in the Ankimon addon.\n---"
             file_content = warning_message + obfuscated_str
-            with open(obfuscated_config_path, 'w', encoding='utf-8') as f:
+            with open(obfuscated_config_path, "w", encoding="utf-8") as f:
                 f.write(file_content)
-        except Exception as e:
+        except OSError as e:
             print(f"Ankimon: Could not save obfuscated config: {e}")
 
-    def get(self, key):
-        return self.config.get(key)
+    def get(self, key, default=None):
+        return self.config.get(key, default)
 
     def set(self, key, value):
         self.config[key] = value
@@ -212,9 +225,9 @@ class Settings:
             xp_bar_location = self.config.get("gui.xp_bar_location", 0)
 
             if xp_bar_config:
-                if xp_bar_location == 2: # Bottom
+                if xp_bar_location == 2:  # Bottom
                     return 20
-                elif xp_bar_location == 1: # Top
+                elif xp_bar_location == 1:  # Top
                     return 0
             return 0  # Default spacer
 

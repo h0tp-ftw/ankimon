@@ -453,5 +453,6 @@
   "futuresight_hits": "Der vorausgesehene Angriff trifft {side}!",
   "futuresight_fails": "Seher schlägt fehl!",
   "weather_raindance_still": "Es regnet immer noch!",
-  "wish_started": "{pokemon_name} hat sich etwas gewünscht! Es wird bald {heal_amount} KP heilen."
+  "wish_started": "{pokemon_name} hat sich etwas gewünscht! Es wird bald {heal_amount} KP heilen.",
+  "pc_box_label": "Box {current}/{total}"
 }

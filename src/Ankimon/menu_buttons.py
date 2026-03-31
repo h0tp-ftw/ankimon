@@ -277,7 +277,7 @@ def create_menu_actions(
 
     pokemon_team_action = QAction(mw.translator.translate("choose_pokemon_team_button"), mw)
     pokemon_team_action.setMenuRole(QAction.MenuRole.NoRole)
-    pokemon_team_action.triggered.connect(lambda: PokemonTeamDialog(settings_obj, logger))
+    pokemon_team_action.triggered.connect(lambda: PokemonTeamDialog(settings_obj, logger, trainer_card))
     game_menu.addAction(pokemon_team_action)
 
     file_check_action = QAction(mw.translator.translate("ankimon_file_checker_button"), mw)

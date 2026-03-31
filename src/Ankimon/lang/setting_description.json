@@ -1,8 +1,9 @@
 {
     "battle.automatic_battle": "Set automatic battle mode for wild Pokémon interactions when enemy HP is 0. \n[0: Disabled, 1: Auto-catch, 2: Auto-defeat (to gain XP), 3: Catch if NEW Pokémon (not in collection), otherwise defeat].",
-    "battle.cards_per_round": "Number of cards to review per round until the next battle action.",
+    "battle.cards_per_round": "Number of cards to review per round until the next battle action. (For dynamic values use a-b [e.g. 1-3])",
     "battle.daily_average": "Set the amount of Cards you want to review per day.",
     "battle.card_max_time": "Goal of maximum amount of time needed to answer a card in seconds",
+    "battle.review_based_damage": "If enabled, your Pokémon's damage will be modified depending on how you graded your last few cards.",
 
     "controls.pokemon_buttons": "Enable action buttons for Pokémon commands during reviews.",
     "controls.defeat_key": "Key for defeating Pokémon when its HP is 0. [A-Z]",
@@ -19,6 +20,7 @@
     "gui.reviewer_text_message_box": "Enable colorful pop-up messages in the reviewer.",
     "gui.reviewer_text_message_box_time": "Duration for message box display in seconds [1-5].",
     "gui.show_mainpkmn_in_reviewer": "Show main Pokémon in reviewer. [0: Hide, 1: Same level view, 2: Battle view]",
+    "gui.team_deck_view": "Enable a quick overview of your Pokémon team at the bottom of the deck overview.",
     "gui.view_main_front": "View front of main Pokémon in reviewer when GIFs are enabled. Set Disabled to show from the back.",
     "gui.xp_bar_config": "Enable XP bar in the reviewer to show XP progression for main Pokémon.",
     "gui.xp_bar_location": "Location of the XP bar in the reviewer. [1: Top, 2: Bottom]",
@@ -38,7 +40,7 @@
     "misc.gen8": "Include Pokémon from Generation 8.",
     "misc.gen9": "Include Pokémon from Generation 9.",
     "misc.remove_level_cap": "Allow leveling beyond set level cap.",
-    "misc.language": "Select language ID for Pokémon names and descriptions. [1: Japanese (Hir & Kata), 2: Japanese (Roomaji), 3: Korean, 4: Chinese (Traditional), 5: French, 6: German, 7: Spanish, 8: Italian, 9: English, 10: Czech, 11: Japanese, 12: Chinese (Simplified), 13: Portuguese (Brazil)]",
+  "misc.language": "Select language ID for Pokémon names and descriptions. [1: Japanese (Hir & Kata), 2: Japanese (Roomaji), 3: Korean, 4: Chinese (Traditional), 5: French, 6: German, 7: Spanish, 8: Italian, 9: English, 10: Czech, 11: Japanese, 12: Chinese (Simplified), 13: Portuguese (Brazil), 14: Spanish (Latin America)]",
     "misc.ssh": "Enable SSH if encountering connectivity issues (like Eduroam restrictions).",
     "misc.leaderboard": "Enable synchronization with Ankimon leaderboard (leaderboard.ankimon.com). \nTo set up, check Ankimon -> Game -> Ankimon Leaderboard and Ankimon -> Ankimon Leaderboard Credentials.",
     "misc.ankiweb_sync": "Enable online sync of Ankimon files across devices using the same AnkiWeb email account, through the AnkiWeb sync system. \nFor this to work, please enable AnkiWeb sync, and do not use the 'Delete Unused' function when checking media.",

@@ -1,19 +1,8 @@
 import copy
 import json
 from ..poke_engine import constants
-from ..resources import move_names_file_path
 from ..pyobj.error_handler import show_warning_with_traceback
-
-with open(move_names_file_path, "r", encoding="utf-8") as f:
-    MOVE_NAME_LOOKUP = json.load(f)
-
-def format_move_name(move: str) -> str:
-    """
-    Look up the official move name using the normalized key.
-    Falls back to title-casing with spaces if not found.
-    """
-    key = move.replace(" ", "").replace("-", "").replace("_", "").lower()
-    return MOVE_NAME_LOOKUP.get(key, " ".join(word.capitalize() for word in move.replace("_", " ").split()))
+from ..move_names import format_move_name
 
 def update_pokemon_battle_status(battle_info: dict, enemy_pokemon, main_pokemon):
     """
@@ -537,7 +526,7 @@ def process_battle_data(
     battle_status: str,
     pokemon_encounter: int,
     translator,
-    changes
+    changes,
 ) -> str:
     """
     Generate complete battle message from battle data.

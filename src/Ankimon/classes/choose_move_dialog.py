@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt
 from ..functions.pokedex_functions import find_details_move
+from ..move_names import format_move_name
 import random
 
 class MoveSelectionDialog(QDialog):
@@ -29,7 +30,8 @@ class MoveSelectionDialog(QDialog):
         self.move_labels = []
         for index, move in enumerate(mainpokemon_attacks):
             move_detail = find_details_move(move)
-            move_label = QLabel(f"{index + 1}. {move_detail.get('name', move.capitalize())}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}")
+            move_name = format_move_name(move_detail.get('name', move))
+            move_label = QLabel(f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}")
             move_label.setToolTip(f"{move_detail.get('desc', 'No description available')}")
             move_label.setFont(QFont("Arial", 12))
             move_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)

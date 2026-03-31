@@ -453,5 +453,6 @@
   "futuresight_hits": "Předvídaný útok zasáhl {side}!",
   "futuresight_fails": "Budoucí zrak selhal!",
   "weather_raindance_still": "Stále prší!",
-  "wish_started": "{pokemon_name} si přál! Brzy si obnoví {heal_amount} HP."
+  "wish_started": "{pokemon_name} si přál! Brzy si obnoví {heal_amount} HP.",
+  "pc_box_label": "Box {current}/{total}"
 }

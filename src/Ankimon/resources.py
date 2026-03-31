@@ -20,6 +20,7 @@ frontdefault = addon_dir / "user_files" / "sprites" / "front_default"
 #Assign saved Pokemon Directory
 mypokemon_path = addon_dir / "user_files" / "mypokemon.json"
 mainpokemon_path = addon_dir / "user_files" / "mainpokemon.json"
+pokemon_history_path = addon_dir / "user_files" / "pokemon_history.json"
 battlescene_path = addon_dir / "addon_sprites" / "battle_scenes"
 trainer_sprites_path = addon_dir / "addon_sprites" / "trainers"
 battlescene_path_without_dialog = addon_dir / "addon_sprites" / "battle_scenes_without_dialog"
@@ -28,11 +29,12 @@ type_style_file = addon_dir / "addon_files" / "types.json"
 next_lvl_file_path = addon_dir / "addon_files" / "ExpPokemonAddon.csv"
 berries_path = addon_dir / "user_files" / "sprites" / "berries"
 background_dialog_image_path  = addon_dir / "background_dialog_image.png"
+pokeball_path = addon_dir / "addon_files" / "pokeball.png"
 pokedex_image_path = addon_dir / "addon_sprites" / "pokedex_template.jpg"
 evolve_image_path = addon_dir / "addon_sprites" / "evo_temp.jpg"
 learnset_path = addon_dir / "user_files" / "data_files" / "learnsets.json"
 pokedex_path = addon_dir / "user_files" / "data_files" / "pokedex.json"
-pokemon_names_file_path = addon_dir / "user_files" / "data_files" / "pokemon_names.json"
+stats_csv = addon_dir / "user_files" / "data_files" / "pokemon_stats.csv"
 moves_file_path = addon_dir / "user_files" / "data_files" / "moves.json"
 move_names_file_path = addon_dir / "user_files" / "data_files" / "move_names.json"
 items_path = addon_dir / "user_files" / "sprites" / "items"
@@ -43,8 +45,6 @@ pokenames_lang_path = addon_dir / "user_files" / "data_files" / "pokemon_species
 pokedesc_lang_path = addon_dir / "user_files" / "data_files" / "pokemon_species_flavor_text.csv"
 poke_evo_path = addon_dir / "user_files" / "data_files" / "pokemon_evolution.csv"
 poke_species_path = addon_dir / "user_files" / "data_files" / "pokemon_species.csv"
-pokeapi_db_path = user_path_data / "pokeapi_db.json"
-starters_path = addon_dir / "addon_files" / "starters.json"
 eff_chart_html_path = addon_dir / "addon_files" / "eff_chart_html.html"
 effectiveness_chart_file_path = addon_dir / "addon_files" / "eff_chart.json"
 table_gen_id_html_path = addon_dir / "addon_files" / "table_gen_id.html"
@@ -67,13 +67,6 @@ ownhplow_sound_path = addon_dir / "addon_sprites" / "sounds" / "OwnHpLow.mp3"
 hpheal_sound_path = addon_dir / "addon_sprites" / "sounds" / "HpHeal.mp3"
 fainted_sound_path = addon_dir / "addon_sprites" / "sounds" / "Fainted.mp3"
 
-#pokemon species id files
-pokemon_species_normal_path = addon_dir / "user_files" / "pkmn_data" / "normal.json"
-pokemon_species_legendary_path = addon_dir / "user_files" / "pkmn_data" / "legendary.json"
-pokemon_species_ultra_path = addon_dir / "user_files" / "pkmn_data" / "ultra.json"
-pokemon_species_mythical_path = addon_dir / "user_files" / "pkmn_data" / "mythical.json"
-pokemon_species_baby_path = addon_dir / "user_files" / "pkmn_data" / "baby.json"
-
 #utils
 json_file_structure = addon_dir / "addon_files" / "folder_structure.json"
 
@@ -94,6 +87,7 @@ lang_path_it = addon_dir / "lang" / "it_text.json"
 lang_path_cz = addon_dir / "lang" / "cz_text.json"
 lang_path_po = addon_dir / "lang" / "po_text.json"
 lang_path_kr = addon_dir / "lang" / "kr_text.json"
+lang_path_es_latam = addon_dir / "lang" / "es_latam_text.json"
 
 #backup_routes
 backup_root = addon_dir / "user_files" / "backups"
@@ -113,16 +107,283 @@ IS_EXPERIMENTAL_BUILD = addon_ver.endswith("-E")
 
 
 POKEMON_TIERS = {
-  "Normal": [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
-66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 143, 147, 148, 149, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186,
-187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 237, 241, 242, 246, 247, 248, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280,
-281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 349, 350, 351, 352, 353, 354, 355, 356, 357, 358, 359, 361, 362, 363, 364, 365, 366, 367,
-368, 369, 370, 371, 372, 373, 374, 375, 376, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405, 407, 412, 413, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 434, 435, 436, 437, 441, 442, 443, 444, 445, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 459, 460, 461, 462, 463, 464, 465, 466, 467, 468, 469, 470, 471, 472, 473,
-474, 475, 476, 477, 478, 479, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515, 516, 517, 518, 519, 520, 521, 522, 523, 524, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534, 535, 536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552, 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 568, 569, 570, 571, 572, 573, 574, 575, 576,
-577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 633, 634, 635, 636, 637, 659, 660, 661, 662, 663, 664, 665, 666, 667, 668, 669, 670, 671, 672,
-673, 674, 675, 676, 677, 678, 679, 680, 681, 682, 683, 684, 685, 686, 687, 688, 689, 690, 691, 692, 693, 694, 695, 700, 701, 702, 703, 704, 705, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 731, 732, 733, 734, 735, 736, 737, 738, 739, 740, 741, 742, 743, 744, 745, 746, 747, 748, 749, 750, 751, 752, 753, 754, 755, 756, 757, 758, 759, 760, 761, 762, 763, 764, 765, 766,
-767, 768, 769, 770, 771, 774, 775, 776, 777, 778, 779, 780, 781, 782, 783, 784, 819, 820, 821, 822, 823, 824, 825, 826, 827, 828, 829, 830, 831, 832, 833, 834, 835, 836, 837, 838, 839, 840, 841, 842, 843, 844, 845, 846, 847, 849, 850, 851, 852, 853, 854, 855, 856, 857, 858, 859, 860, 861, 862, 863, 864, 865, 866, 867, 868, 869, 870, 871, 872, 873, 874, 875, 876, 877, 878,
-879, 884, 885, 886, 887],
+  "Normal": [
+    # Generation 1
+    10, 11, 12,	# caterpie, metapod, butterfree
+    13, 14, 15,	# weedle, kakuna, beedrill
+    16, 17, 18,	# pidgey, pidgeotto, pidgeot
+    19, 20, 21,	# rattata, raticate, spearow
+    22, 23, 24,	# fearow, ekans, arbok
+    25, 26, 27,	# pikachu, raichu, sandshrew
+    28, 29, 30,	# sandslash, nidoran-f, nidorina
+    31, 32, 33,	# nidoqueen, nidoran-m, nidorino
+    34, 35, 36,	# nidoking, clefairy, clefable
+    37, 38, 39,	# vulpix, ninetales, jigglypuff
+    40, 41, 42,	# wigglytuff, zubat, golbat
+    43, 44, 45,	# oddish, gloom, vileplume
+    46, 47, 48,	# paras, parasect, venonat
+    49, 50, 51,	# venomoth, diglett, dugtrio
+    52, 53, 54,	# meowth, persian, psyduck
+    55, 56, 57,	# golduck, mankey, primeape
+    58, 59, 60,	# growlithe, arcanine, poliwag
+    61, 62, 63,	# poliwhirl, poliwrath, abra
+    64, 65, 66,	# kadabra, alakazam, machop
+    67, 68, 69,	# machoke, machamp, bellsprout
+    70, 71, 72,	# weepinbell, victreebel, tentacool
+    73, 74, 75,	# tentacruel, geodude, graveler
+    76, 77, 78,	# golem, ponyta, rapidash
+    79, 80, 81,	# slowpoke, slowbro, magnemite
+    82, 83, 84,	# magneton, farfetchd, doduo
+    85, 86, 87,	# dodrio, seel, dewgong
+    88, 89, 90,	# grimer, muk, shellder
+    91, 92, 93,	# cloyster, gastly, haunter
+    94, 95, 96,	# gengar, onix, drowzee
+    97, 98, 99,	# hypno, krabby, kingler
+    100, 101, 102,	# voltorb, electrode, exeggcute
+    103, 104, 105,	# exeggutor, cubone, marowak
+    106, 107, 108,	# hitmonlee, hitmonchan, lickitung
+    109, 110, 111,	# koffing, weezing, rhyhorn
+    112, 113, 114,	# rhydon, chansey, tangela
+    115, 116, 117,	# kangaskhan, horsea, seadra
+    118, 119, 120,	# goldeen, seaking, staryu
+    121, 122, 123,	# starmie, mr-mime, scyther
+    124, 125, 126,	# jynx, electabuzz, magmar
+    127, 128, 129,	# pinsir, tauros, magikarp
+    130, 131, 132,	# gyarados, lapras, ditto
+    133, 134, 135,	# eevee, vaporeon, jolteon
+    136, 137, 143,	# flareon, porygon, snorlax
+    147, 148, 149,	# dratini, dragonair, dragonite
+    # Generation 2
+    161, 162, 163,	# sentret, furret, hoothoot
+    164, 165, 166,	# noctowl, ledyba, ledian
+    167, 168, 169,	# spinarak, ariados, crobat
+    170, 171, 176,	# chinchou, lanturn, togetic
+    177, 178, 179,	# natu, xatu, mareep
+    180, 181, 182,	# flaaffy, ampharos, bellossom
+    183, 184, 185,	# marill, azumarill, sudowoodo
+    186, 187, 188,	# politoed, hoppip, skiploom
+    189, 190, 191,	# jumpluff, aipom, sunkern
+    192, 193, 194,	# sunflora, yanma, wooper
+    195, 196, 197,	# quagsire, espeon, umbreon
+    198, 199, 200,	# murkrow, slowking, misdreavus
+    201, 202, 203,	# unown, wobbuffet, girafarig
+    204, 205, 206,	# pineco, forretress, dunsparce
+    207, 208, 209,	# gligar, steelix, snubbull
+    210, 211, 212,	# granbull, qwilfish, scizor
+    213, 214, 215,	# shuckle, heracross, sneasel
+    216, 217, 218,	# teddiursa, ursaring, slugma
+    219, 220, 221,	# magcargo, swinub, piloswine
+    222, 223, 224,	# corsola, remoraid, octillery
+    225, 226, 227,	# delibird, mantine, skarmory
+    228, 229, 230,	# houndour, houndoom, kingdra
+    231, 232, 233,	# phanpy, donphan, porygon2
+    234, 235, 237,	# stantler, smeargle, hitmontop
+    241, 242, 246,	# miltank, blissey, larvitar
+    247, 248,	# pupitar, tyranitar
+    # Generation 3
+    261, 262, 263,	# poochyena, mightyena, zigzagoon
+    264, 265, 266,	# linoone, wurmple, silcoon
+    267, 268, 269,	# beautifly, cascoon, dustox
+    270, 271, 272,	# lotad, lombre, ludicolo
+    273, 274, 275,	# seedot, nuzleaf, shiftry
+    276, 277, 278,	# taillow, swellow, wingull
+    279, 280, 281,	# pelipper, ralts, kirlia
+    282, 283, 284,	# gardevoir, surskit, masquerain
+    285, 286, 287,	# shroomish, breloom, slakoth
+    288, 289, 290,	# vigoroth, slaking, nincada
+    291, 292, 293,	# ninjask, shedinja, whismur
+    294, 295, 296,	# loudred, exploud, makuhita
+    297, 299, 300,	# hariyama, nosepass, skitty
+    301, 302, 303,	# delcatty, sableye, mawile
+    304, 305, 306,	# aron, lairon, aggron
+    307, 308, 309,	# meditite, medicham, electrike
+    310, 311, 312,	# manectric, plusle, minun
+    313, 314, 315,	# volbeat, illumise, roselia
+    316, 317, 318,	# gulpin, swalot, carvanha
+    319, 320, 321,	# sharpedo, wailmer, wailord
+    322, 323, 324,	# numel, camerupt, torkoal
+    325, 326, 327,	# spoink, grumpig, spinda
+    328, 329, 330,	# trapinch, vibrava, flygon
+    331, 332, 333,	# cacnea, cacturne, swablu
+    334, 335, 336,	# altaria, zangoose, seviper
+    337, 338, 339,	# lunatone, solrock, barboach
+    340, 341, 342,	# whiscash, corphish, crawdaunt
+    343, 344, 349,	# baltoy, claydol, feebas
+    350, 351, 352,	# milotic, castform, kecleon
+    353, 354, 355,	# shuppet, banette, duskull
+    356, 357, 358,	# dusclops, tropius, chimecho
+    359, 361, 362,	# absol, snorunt, glalie
+    363, 364, 365,	# spheal, sealeo, walrein
+    366, 367, 368,	# clamperl, huntail, gorebyss
+    369, 370, 371,	# relicanth, luvdisc, bagon
+    372, 373, 374,	# shelgon, salamence, beldum
+    375, 376,	# metang, metagross
+    # Generation 4
+    396, 397, 398,	# starly, staravia, staraptor
+    399, 400, 401,	# bidoof, bibarel, kricketot
+    402, 403, 404,	# kricketune, shinx, luxio
+    405, 407, 412,	# luxray, roserade, burmy
+    413, 414, 415,	# wormadam-plant, mothim, combee
+    416, 417, 418,	# vespiquen, pachirisu, buizel
+    419, 420, 421,	# floatzel, cherubi, cherrim
+    422, 423, 424,	# shellos, gastrodon, ambipom
+    425, 426, 427,	# drifloon, drifblim, buneary
+    428, 429, 430,	# lopunny, mismagius, honchkrow
+    431, 432, 434,	# glameow, purugly, stunky
+    435, 436, 437,	# skuntank, bronzor, bronzong
+    441, 442, 443,	# chatot, spiritomb, gible
+    444, 445, 448,	# gabite, garchomp, lucario
+    449, 450, 451,	# hippopotas, hippowdon, skorupi
+    452, 453, 454,	# drapion, croagunk, toxicroak
+    455, 456, 457,	# carnivine, finneon, lumineon
+    459, 460, 461,	# snover, abomasnow, weavile
+    462, 463, 464,	# magnezone, lickilicky, rhyperior
+    465, 466, 467,	# tangrowth, electivire, magmortar
+    468, 469, 470,	# togekiss, yanmega, leafeon
+    471, 472, 473,	# glaceon, gliscor, mamoswine
+    474, 475, 476,	# porygon-z, gallade, probopass
+    477, 478, 479,	# dusknoir, froslass, rotom
+    # Generation 5
+    504, 505, 506,	# patrat, watchog, lillipup
+    507, 508, 509,	# herdier, stoutland, purrloin
+    510, 511, 512,	# liepard, pansage, simisage
+    513, 514, 515,	# pansear, simisear, panpour
+    516, 517, 518,	# simipour, munna, musharna
+    519, 520, 521,	# pidove, tranquill, unfezant
+    522, 523, 524,	# blitzle, zebstrika, roggenrola
+    525, 526, 527,	# boldore, gigalith, woobat
+    528, 529, 530,	# swoobat, drilbur, excadrill
+    531, 532, 533,	# audino, timburr, gurdurr
+    534, 535, 536,	# conkeldurr, tympole, palpitoad
+    537, 538, 539,	# seismitoad, throh, sawk
+    540, 541, 542,	# sewaddle, swadloon, leavanny
+    543, 544, 545,	# venipede, whirlipede, scolipede
+    546, 547, 548,	# cottonee, whimsicott, petilil
+    549, 550, 551,	# lilligant, basculin-red-striped, sandile
+    552, 553, 554,	# krokorok, krookodile, darumaka
+    555, 556, 557,	# darmanitan-standard, maractus, dwebble
+    558, 559, 560,	# crustle, scraggy, scrafty
+    561, 562, 563,	# sigilyph, yamask, cofagrigus
+    568, 569, 570,	# trubbish, garbodor, zorua
+    571, 572, 573,	# zoroark, minccino, cinccino
+    574, 575, 576,	# gothita, gothorita, gothitelle
+    577, 578, 579,	# solosis, duosion, reuniclus
+    580, 581, 582,	# ducklett, swanna, vanillite
+    583, 584, 585,	# vanillish, vanilluxe, deerling
+    586, 587, 588,	# sawsbuck, emolga, karrablast
+    589, 590, 591,	# escavalier, foongus, amoonguss
+    592, 593, 594,	# frillish, jellicent, alomomola
+    595, 596, 597,	# joltik, galvantula, ferroseed
+    598, 599, 600,	# ferrothorn, klink, klang
+    601, 602, 603,	# klinklang, tynamo, eelektrik
+    604, 605, 606,	# eelektross, elgyem, beheeyem
+    607, 608, 609,	# litwick, lampent, chandelure
+    610, 611, 612,	# axew, fraxure, haxorus
+    613, 614, 615,	# cubchoo, beartic, cryogonal
+    616, 617, 618,	# shelmet, accelgor, stunfisk
+    619, 620, 621,	# mienfoo, mienshao, druddigon
+    622, 623, 624,	# golett, golurk, pawniard
+    625, 626, 627,	# bisharp, bouffalant, rufflet
+    628, 629, 630,	# braviary, vullaby, mandibuzz
+    631, 632, 633,	# heatmor, durant, deino
+    634, 635, 636,	# zweilous, hydreigon, larvesta
+    637,	# volcarona
+    # Generation 6
+    659, 660, 661,	# bunnelby, diggersby, fletchling
+    662, 663, 664,	# fletchinder, talonflame, scatterbug
+    665, 666, 667,	# spewpa, vivillon, litleo
+    668, 669, 670,	# pyroar, flabebe, floette
+    671, 672, 673,	# florges, skiddo, gogoat
+    674, 675, 676,	# pancham, pangoro, furfrou
+    677, 678, 679,	# espurr, meowstic-male, honedge
+    680, 681, 682,	# doublade, aegislash-shield, spritzee
+    683, 684, 685,	# aromatisse, swirlix, slurpuff
+    686, 687, 688,	# inkay, malamar, binacle
+    689, 690, 691,	# barbaracle, skrelp, dragalge
+    692, 693, 694,	# clauncher, clawitzer, helioptile
+    695, 700, 701,	# heliolisk, sylveon, hawlucha
+    702, 703, 704,	# dedenne, carbink, goomy
+    705, 706, 707,	# sliggoo, goodra, klefki
+    708, 709, 710,	# phantump, trevenant, pumpkaboo-average
+    711, 712, 713,	# gourgeist-average, bergmite, avalugg
+    714, 715,	# noibat, noivern
+    # Generation 7
+    731, 732, 733,	# pikipek, trumbeak, toucannon
+    734, 735, 736,	# yungoos, gumshoos, grubbin
+    737, 738, 739,	# charjabug, vikavolt, crabrawler
+    740, 741, 742,	# crabominable, oricorio-baile, cutiefly
+    743, 744, 745,	# ribombee, rockruff, lycanroc-midday
+    746, 747, 748,	# wishiwashi-solo, mareanie, toxapex
+    749, 750, 751,	# mudbray, mudsdale, dewpider
+    752, 753, 754,	# araquanid, fomantis, lurantis
+    755, 756, 757,	# morelull, shiinotic, salandit
+    758, 759, 760,	# salazzle, stufful, bewear
+    761, 762, 763,	# bounsweet, steenee, tsareena
+    764, 765, 766,	# comfey, oranguru, passimian
+    767, 768, 769,	# wimpod, golisopod, sandygast
+    770, 771, 774,	# palossand, pyukumuku, minior-red-meteor
+    775, 776, 777,	# komala, turtonator, togedemaru
+    778, 779, 780,	# mimikyu-disguised, bruxish, drampa
+    781, 782, 783,	# dhelmise, jangmo-o, hakamo-o
+    784,	# kommo-o
+    # Generation 8
+    819, 820, 821,	# skwovet, greedent, rookidee
+    822, 823, 824,	# corvisquire, corviknight, blipbug
+    825, 826, 827,	# dottler, orbeetle, nickit
+    828, 829, 830,	# thievul, gossifleur, eldegoss
+    831, 832, 833,	# wooloo, dubwool, chewtle
+    834, 835, 836,	# drednaw, yamper, boltund
+    837, 838, 839,	# rolycoly, carkol, coalossal
+    840, 841, 842,	# applin, flapple, appletun
+    843, 844, 845,	# silicobra, sandaconda, cramorant
+    846, 847, 849,	# arrokuda, barraskewda, toxtricity-amped
+    850, 851, 852,	# sizzlipede, centiskorch, clobbopus
+    853, 854, 855,	# grapploct, sinistea, polteageist
+    856, 857, 858,	# hatenna, hattrem, hatterene
+    859, 860, 861,	# impidimp, morgrem, grimmsnarl
+    862, 863, 864,	# obstagoon, perrserker, cursola
+    865, 866, 867,	# sirfetchd, mr-rime, runerigus
+    868, 869, 870,	# milcery, alcremie, falinks
+    871, 872, 873,	# pincurchin, snom, frosmoth
+    874, 875, 876,	# stonjourner, eiscue-ice, indeedee-male
+    877, 878, 879,	# morpeko-full-belly, cufant, copperajah
+    884, 885, 886,	# duraludon, dreepy, drakloak
+    887, 899, 900,	# dragapult, wyrdeer, kleavor
+    901, 902, 903,	# ursaluna, basculegion-male, sneasler
+    904, 905,	# overqwil, enamorus-incarnate
+    # Generation 9
+    915, 916, 917,	# lechonk, oinkologne, tarountula
+    918, 919, 920,	# spidops, nymble, lokix
+    921, 922, 923,	# pawmi, pawmo, pawmot
+    924, 925, 926,	# tandemaus, maushold, fidough
+    927, 928, 929,	# dachsbun, smoliv, dolliv
+    930, 931, 932,	# arboliva, squawkabilly, nacli
+    933, 934, 935,	# naclstack, garganacl, charcadet
+    936, 937, 938,	# armarouge, ceruledge, tadbulb
+    939, 940, 941,	# bellibolt, wattrel, kilowattrel
+    942, 943, 944,	# maschiff, mabosstiff, shroodle
+    945, 946, 947,	# grafaiai, bramblin, brambleghast
+    948, 949, 950,	# toedscool, toedscruel, klawf
+    951, 952, 953,	# capsakid, scovillain, rellor
+    954, 955, 956,	# rabsca, flittle, espathra
+    957, 958, 959,	# tinkatink, tinkatuff, tinkaton
+    960, 961, 962,	# wiglett, wugtrio, bombirdier
+    963, 964, 965,	# finizen, palafin, varoom
+    966, 967, 968,	# revavroom, cyclizar, orthworm
+    969, 970, 971,	# glimmet, glimmora, greavard
+    972, 973, 974,	# houndstone, flamigo, cetoddle
+    975, 976, 977,	# cetitan, veluza, dondozo
+    978, 979, 980,	# tatsugiri, annihilape, clodsire
+    981, 982, 983,	# farigiraf, dudunsparce, kingambit
+    984, 985, 986,	# great-tusk, scream-tail, brute-bonnet
+    987, 988, 989,	# flutter-mane, slither-wing, sandy-shocks
+    990, 991, 992,	# iron-treads, iron-bundle, iron-hands
+    993, 994, 995,	# iron-jugulis, iron-moth, iron-thorns
+    996, 997, 998,	# frigibax, arctibax, baxcalibur
+    999, 1000, 1005,	# gimmighoul, gholdengo, roaring-moon
+    1006, 1011, 1012,	# iron-valiant, dipplin, poltchageist
+    1013, 1018, 1019,	# sinistcha, archaludon, hydrapple
+],
   "Legendary": [
   # Gen 1
   144, 145, 146, 150,
@@ -139,7 +400,26 @@ POKEMON_TIERS = {
   # Gen 7
   772, 773, 785, 786, 787, 788, 789, 790, 791, 792, 800,
   # Gen 8
-  888, 889, 890, 891, 892, 894, 895, 896, 897, 898
+  888, 889, 890, 891, 892, 894, 895, 896, 897, 898,
+  # Gen 9
+  1001,  # wo-chien
+  1002,  # chien-pao
+  1003,  # ting-lu
+  1004,  # chi-yu
+  1007,  # koraidon
+  1008,  # miraidon
+  1009,  # walking-wake
+  1010,  # iron-leaves
+  1014,  # okidogi
+  1015,  # munkidori
+  1016,  # fezandipiti
+  1017,  # ogerpon
+  1020,  # gouging-fire
+  1021,  # raging-bolt
+  1022,  # iron-boulder
+  1023,  # iron-crown
+  1024,  # terapagos
+  1025,  # pecharunt
 ]
 ,
   "Mythical": [
@@ -229,7 +509,12 @@ POKEMON_TIERS = {
   # Gen 8 (Galar)
   810, 811, 812,  # Grookey, Thwackey, Rillaboom
   813, 814, 815,  # Scorbunny, Raboot, Cinderace
-  816, 817, 818   # Sobble, Drizzile, Inteleon
+  816, 817, 818,   # Sobble, Drizzile, Inteleon
+  
+  # Gen 9
+  906, 907, 908, # Sprigatito, Floragato, Meowscarada
+  909, 910, 911, # Fuecoco, Crocalor, Skeledirge
+  912, 913, 914 # Quaxly, Quaxwell, Quaquaval
 ]
 ,
   "Baby": [
