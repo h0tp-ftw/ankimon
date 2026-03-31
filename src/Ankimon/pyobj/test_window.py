@@ -672,7 +672,7 @@ class TestWindow(QWidget):
         self.setWindowTitle(f"{self.translator.translate('catch_or_free', enemy_pokemon_name=lang_name.capitalize())}")
 
         # Display the Pokémon image
-        pkmnimage_file = f"{int(search_pokedex(self.enemy_pokemon.name.lower(),'num'))}.png"
+        pkmnimage_file = f"{int(search_pokedex(self.enemy_pokemon.name.lower(),'species_id'))}.png"
         pkmnimage_path = frontdefault / pkmnimage_file
 
         pkmnimage_label = QLabel()

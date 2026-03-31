@@ -23,16 +23,18 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     )
 
+from ..functions import starters
+
 from ..business import resize_pixmap_img
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.settings import Settings
 from ..pyobj.InfoLogger import ShowInfoLogger
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.battle_functions import calculate_hp
-from ..functions.pokedex_functions import search_pokedex, search_pokeapi_db_by_id
+from ..functions.pokedex_functions import get_base_experience, get_growth_rate, search_pokedex
 from ..functions.pokemon_functions import get_random_moves_for_pokemon, pick_random_gender
 from ..utils import load_custom_font, close_anki
-from ..resources import starters_path, addon_dir, frontdefault, mainpokemon_path, mypokemon_path
+from ..resources import addon_dir, frontdefault, mainpokemon_path, mypokemon_path
 from ..const import total_generations
 from .error_handler import show_warning_with_traceback
 
@@ -87,7 +89,7 @@ class StarterWindow(QWidget):
         # Create a dictionary to store the Pokémon's data
         # add all new values like hp as max_hp, evolution_data, description and growth rate
         name = search_pokedex(starter_name, "name")
-        id = search_pokedex(starter_name, "num")
+        id = search_pokedex(starter_name, "species_id")
         base_stats = search_pokedex(starter_name, "baseStats")
         abilities = search_pokedex(starter_name, "abilities")
         gender = pick_random_gender(name.lower())
@@ -103,10 +105,8 @@ class StarterWindow(QWidget):
             ability = "No Ability"
         type = search_pokedex(starter_name, "types")
         name = search_pokedex(starter_name, "name")
-        generation_file = "pokeapi_db.json"
-        growth_rate = search_pokeapi_db_by_id(id, "growth_rate")
-        base_experience = search_pokeapi_db_by_id(id, "base_experience")
-        description= search_pokeapi_db_by_id(id, "description")
+        growth_rate = get_growth_rate(id)
+        base_experience = get_base_experience(search_pokedex(starter_name, "actual_id"))
         level = 5
         attacks = get_random_moves_for_pokemon(starter_name, level)
         ev = {
@@ -173,31 +173,26 @@ class StarterWindow(QWidget):
         close_anki()
 
     def get_starters_of_gen(self):
-        category = "Starter"
         try:
             # Reload the JSON data from the file
-            with open(str(starters_path), "r", encoding="utf-8") as file:
-                pokemon_in_tier = json.load(file)
-                # Convert the input to lowercase to match the values in our JSON data
-                category_name = category.lower()
-                # Filter the Pokémon data to only include those in the given tier
-                water_starter = []
-                fire_starter = []
-                grass_starter = []
-                for pokemon in pokemon_in_tier:
-                    pokemon = (pokemon).lower()
-                    types = search_pokedex(pokemon, "types")
-                    for type in types:
-                        if type == "Grass":
-                            grass_starter.append(pokemon)
-                        if type == "Fire":
-                            fire_starter.append(pokemon)
-                        if type == "Water":
-                            water_starter.append(pokemon)
-                water_start = f"{water_starter[self.current_gen]}"
-                fire_start = f"{fire_starter[self.current_gen]}"
-                grass_start = f"{grass_starter[self.current_gen]}"
-                return water_start, fire_start, grass_start
+            # Convert the input to lowercase to match the values in our JSON data
+            # Filter the Pokémon data to only include those in the given tier
+            water_starter = []
+            fire_starter = []
+            grass_starter = []
+            for pokemon in starters.STARTER:
+                types = search_pokedex(pokemon, "types")
+                for type in types:
+                    if type == "Grass":
+                        grass_starter.append(pokemon)
+                    elif type == "Fire":
+                        fire_starter.append(pokemon)
+                    elif type == "Water":
+                        water_starter.append(pokemon)
+            water_start = f"{water_starter[self.current_gen]}"
+            fire_start = f"{fire_starter[self.current_gen]}"
+            grass_start = f"{grass_starter[self.current_gen]}"
+            return water_start, fire_start, grass_start
         except Exception as e:
             show_warning_with_traceback(parent=mw, exception=e, message=f"Error in get_starters_of_gen: {e}")
             return None, None, None
@@ -282,9 +277,9 @@ class StarterWindow(QWidget):
 
     def pokemon_display_starter(self, water_start, fire_start, grass_start):
         bckgimage_path = addon_dir / "addon_sprites" / "starter_screen" / "bckg.png"
-        water_id = int(search_pokedex(water_start, "num"))
-        grass_id = int(search_pokedex(grass_start, "num"))
-        fire_id = int(search_pokedex(fire_start, "num"))
+        water_id = int(search_pokedex(water_start, "species_id"))
+        grass_id = int(search_pokedex(grass_start, "species_id"))
+        fire_id = int(search_pokedex(fire_start, "species_id"))
 
         # Load the background image
         pixmap_bckg = QPixmap()
@@ -355,7 +350,7 @@ class StarterWindow(QWidget):
 
     def pokemon_display_chosen_starter(self, starter_name):
         bckgimage_path = addon_dir / "addon_sprites" / "starter_screen" / "bg.png"
-        id = int(search_pokedex(starter_name, "num"))
+        id = int(search_pokedex(starter_name, "species_id"))
 
         # Load the background image
         pixmap_bckg = QPixmap()

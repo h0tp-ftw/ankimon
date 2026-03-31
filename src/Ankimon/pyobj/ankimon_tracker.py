@@ -7,16 +7,15 @@ from ..utils import random_battle_scene
 from aqt import mw
 import re
 
+
 class AnkimonTracker:
     def __init__(self, trainer_card):
         # Object bindings
         self.trainer_card = trainer_card
 
         # Card reviews
-        self.card_ratings_count = {
-            "again": 0, "hard": 0, "good": 0, "easy": 0
-        }
-
+        self.card_ratings_count = {"again": 0, "hard": 0, "good": 0, "easy": 0}
+        self.total_reviews = 0
 
         self.current_mode = "idle"
 
@@ -35,7 +34,10 @@ class AnkimonTracker:
         # Tracking for multiplier
         self.multiplier = 1
         self.multiplier_card_ratings_count = {
-            "again": 0, "hard": 0, "good": 0, "easy": 0
+            "again": 0,
+            "hard": 0,
+            "good": 0,
+            "easy": 0,
         }
         self.cards_until_calc_multiplier = 2
 
@@ -61,9 +63,11 @@ class AnkimonTracker:
         self.owned_pokemon_ids = extract_ids_from_file()
         self.pokemon_in_collection = False
 
-        self.pokemon_encouter = 0 #mode for pokemon encounter
-        self.general_card_count_for_battle = 0 #count for general card count for battle
-        self.caught = 0 #check if pokemon is caught
+        self.pokemon_encounter = 0  # mode for pokemon encounter
+        self.general_card_count_for_battle = (
+            0  # count for general card count for battle
+        )
+        self.caught = 0  # check if pokemon is caught
 
         # Start the session timer when the object is initialized
         self.start_session_timer()
@@ -160,7 +164,7 @@ class AnkimonTracker:
             self.cards_until_calc_multiplier = 2
             self.calc_multiply_card_rating()
 
-    #def update_streak(self, new_day):
+    # def update_streak(self, new_day):
     #    """Update the streak for daily reviews (each position represents a day)."""
     #    if not self.streak_days or self.streak_days[-1] != new_day:
     #        self.streak_days.append(new_day)  # Add a new day to the streak_days array
@@ -211,13 +215,20 @@ class AnkimonTracker:
         """Calculate the multiplier based on recent card rating counts."""
 
         max_points = 20
-        multiply_sum = (self.multiplier_card_ratings_count['easy'] * 20 +
-                        self.multiplier_card_ratings_count['hard'] * 5 +
-                        self.multiplier_card_ratings_count['good'] * 10)
+        multiply_sum = (
+            self.multiplier_card_ratings_count["easy"] * 20
+            + self.multiplier_card_ratings_count["hard"] * 5
+            + self.multiplier_card_ratings_count["good"] * 10
+        )
 
         self.multiplier = multiply_sum / max_points
         # Reset card ratings count for next round
-        self.multiplier_card_ratings_count = {"again": 0, "hard": 0, "good": 0, "easy": 0}
+        self.multiplier_card_ratings_count = {
+            "again": 0,
+            "hard": 0,
+            "good": 0,
+            "easy": 0,
+        }
 
     def reset_timers(self):
         """Reset both the session and card timers."""
@@ -226,7 +237,7 @@ class AnkimonTracker:
     def reset_card_timer(self):
         self.card_time_elapsed = 0
 
-    #def check_pokecoll_in_list(self):
+    # def check_pokecoll_in_list(self):
     #    owned_pokemon_ids = self.owned_pokemon_ids
     #    id = self.enemy_pokemon.id
     #    self.pokemon_in_collection = False
@@ -240,9 +251,13 @@ class AnkimonTracker:
             owned_pokemon_ids = extract_ids_from_file()
             self.owned_pokemon_ids = owned_pokemon_ids
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Error: from AnkimonTracker with function extract_ids_from_file")
+            show_warning_with_traceback(
+                parent=mw,
+                exception=e,
+                message="Error: from AnkimonTracker with function extract_ids_from_file",
+            )
 
-    #def get_badges(self):
+    # def get_badges(self):
     #    pass
 
     def randomize_battle_scene(self):

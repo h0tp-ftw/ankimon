@@ -66,12 +66,12 @@ class Pokedex(QDialog):
             try:
                 with open(mypokemon_path, "r", encoding="utf-8") as file:
                     pokemon_list = json.load(file)
-                    print("POKEDEX_DEBUG: Loaded pokemon_list!")
+                    mw.logger.log("info", "POKEDEX_DEBUG: Loaded pokemon_list!")
 
             except json.JSONDecodeError:
-                print("POKEDEX_DEBUG: Invalid JSON in mypokemon.json at", mypokemon_path)
+                mw.logger.log("error", f"POKEDEX_DEBUG: Invalid JSON in mypokemon.json at {mypokemon_path}")
             except Exception as e:
-                print("POKEDEX_DEBUG: Error reading mypokemon.json at", mypokemon_path, ":", str(e))
+                mw.logger.log("error", f"POKEDEX_DEBUG: Error reading mypokemon.json at {mypokemon_path}: {str(e)}")
 
         # Extract shiny Pokémon IDs
         shiny_pokemon_ids = []
@@ -84,7 +84,7 @@ class Pokedex(QDialog):
                     defeated_count += defeated_num
                     #print(f"POKEDEX_DEBUG: Pokemon ID {pokemon.get('id', 'unknown')}: pokemon_defeated = {defeated_num}")
                 except (TypeError, ValueError):
-                    print(f"POKEDEX_DEBUG: Invalid pokemon_defeated for ID {pokemon.get('id', 'unknown')}: {defeated}")
+                    mw.logger.log(f"POKEDEX_DEBUG: Invalid pokemon_defeated for ID {pokemon.get('id', 'unknown')}: {defeated}")
                 
                 # Check if Pokémon is shiny
                 if pokemon.get("shiny") is True:
@@ -92,7 +92,7 @@ class Pokedex(QDialog):
                     if pokemon_id and pokemon_id not in shiny_pokemon_ids:
                         shiny_pokemon_ids.append(pokemon_id)
         else:
-            print("POKEDEX_DEBUG: No valid mypokemon.json found")
+            mw.logger.log("POKEDEX_DEBUG: No valid mypokemon.json found")
             total_caught_count = 0
 
         # Also count defeated Pokémon from released Pokémon history

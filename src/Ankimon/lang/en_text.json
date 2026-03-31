@@ -12,7 +12,7 @@
   "pokemon_about_to_evolve": "{main_pokemon_name} is about to evolve to {evo_pokemon_name} at level {main_pokemon_level}",
   "mainpokemon_can_learn_new_attack": "Your {main_pokemon_name} can learn a new attack !",
   "mainpokemon_learned_new_attack": "Your {main_pokemon_name} learned {new_attack_name} !",
-  "mainpokemon_gained_xp": "Your {main_pokemon_name} has gained {exp} XP.\n {experience_till_next_level} exp is needed for next level \n Your pokemon currently has {main_pokemon_xp}",
+  "mainpokemon_gained_xp": "Your {main_pokemon_name} has gained {exp} XP.\n {experience_till_next_level} exp is needed for next level \n Your pokemon currently has {main_pokemon_xp} exp",
   "mainpokemon_has_evolved": "Your {prevo_name} has evolved to {evo_name}! \n You can now close this Window.",
   "no_attack_selected": "No attack selected",
   "selected_attack_not_found": "{selected_attack} not found in the list",

@@ -6,11 +6,11 @@ from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
 from aqt import mw, utils
-from ..resources import mainpokemon_path, mypokemon_path, pokeapi_db_path, moves_file_path, pokedex_path, rate_path
+from ..resources import mainpokemon_path, mypokemon_path, moves_file_path, pokedex_path, rate_path
 from ..functions.sprite_functions import get_sprite_path
 from datetime import datetime
 import uuid
-from ..functions.pokedex_functions import search_pokeapi_db_by_id
+from ..functions.pokedex_functions import get_base_experience, get_growth_rate
 from .error_handler import show_warning_with_traceback
 
 # --- Module-level functions for Monthly Challenges ---
@@ -168,7 +168,6 @@ class PokemonTrade:
         self.parent_window = parent_window
         self.mainpokemon_path = mainpokemon_path
         self.mypokemon_path = mypokemon_path
-        self.pokeapi_db_path = pokeapi_db_path
         self.moves_file_path = moves_file_path
         self.pokedex_path = pokedex_path
         self.check_and_trade()
@@ -462,7 +461,7 @@ class PokemonTrade:
             with open(self.pokedex_path, 'r', encoding='utf-8') as file:
                 pokedex = json.load(file)
                 for details in pokedex.values():
-                    if details.get('num') == pokemon_id:
+                    if details.get('species_id') == pokemon_id:
                         return details.get('name', str(pokemon_id))
         except Exception as e:
             show_warning_with_traceback(parent=self.parent_window, exception=e, message=f"An error occurred while getting the Pokémon name for ID {pokemon_id}.")
@@ -501,7 +500,7 @@ class PokemonTrade:
             showWarning("Please enter a valid Pokémon Code!")
 
     def process_trade(self, numbers):
-        from ..functions.pokedex_functions import search_pokedex, search_pokeapi_db_by_id, get_all_pokemon_moves
+        from ..functions.pokedex_functions import search_pokedex, get_all_pokemon_moves
         import random
         try:
             pokemon_id, level, gender_id, shiny = numbers[0], numbers[1], numbers[2], numbers[3]
@@ -513,7 +512,7 @@ class PokemonTrade:
             if not details:
                 raise ValueError(f"Could not find Pokémon details for ID {pokemon_id}")
 
-            base_experience = search_pokeapi_db_by_id(pokemon_id, "base_experience")
+            base_experience = get_base_experience(details["actual_id"])
 
             ability = "No Ability"
             possible_abilities = search_pokedex(details["name"], "abilities")
@@ -541,7 +540,7 @@ class PokemonTrade:
                 "ev": ev_stats,
                 "iv": iv_stats,
                 "attacks": attacks,
-                "growth_rate": self.get_growth_rate(pokemon_id),
+                "growth_rate": get_growth_rate(pokemon_id),
                 "current_hp": self.calculate_max_hp(details["baseStats"]["hp"], level, ev_stats, iv_stats),
                 "base_experience": base_experience,
                 "friendship": 0,
@@ -582,7 +581,7 @@ class PokemonTrade:
             with open(self.pokedex_path, 'r', encoding='utf-8') as file:
                 pokedex = json.load(file)
                 for details in pokedex.values():
-                    if details.get('num') == pokemon_id:
+                    if details.get('species_id') == pokemon_id:
                         return details
             self.logger.log_and_showinfo("warning",f"No Pokémon found with ID: {pokemon_id}")
             return None
@@ -592,15 +591,6 @@ class PokemonTrade:
 
     def gender_from_id(self, gender_id):
         return {0: "M", 1: "F", 2: "N"}.get(gender_id, "N/A")
-
-    def get_growth_rate(self, pokemon_id):
-        try:
-            with open(self.pokeapi_db_path, "r", encoding="utf-8") as file:
-                pokemon_data = json.load(file)
-                return next((p["growth_rate"] for p in pokemon_data if p["id"] == pokemon_id), None)
-        except FileNotFoundError as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message="PokeAPI DB file not found.")
-            return None
 
     def replace_pokemon(self, new_pokemon):
         try:

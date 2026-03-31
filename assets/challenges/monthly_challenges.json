@@ -418,5 +418,64 @@
             "special-form": null,
             "evos": []
         }
+    },
+    {
+        "code": "MONTHLY-2026-04-CATERPIE",
+        "month": "April 2026",
+        "description": "A buggy challenge for April 2026, featuring Caterpie!",
+        "previous_challenge_individual_id": "1a5e8807-075c-4921-9eab-989e33a52354",
+        "defeat_threshold": 250,
+        "pokemon": {
+            "name": "Caterpie",
+            "nickname": "",
+            "level": 1,
+            "gender": "M",
+            "id": 10,
+            "ability": "Shield dust",
+            "type": [
+                "Bug"
+            ],
+            "stats": {
+                "hp": 45,
+                "atk": 30,
+                "def": 35,
+                "spa": 20,
+                "spd": 20,
+                "spe": 45,
+                "xp": 0
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 6,
+                "atk": 24,
+                "def": 26,
+                "spa": 16,
+                "spd": 17,
+                "spe": 10
+            },
+            "attacks": [
+                "Tackle",
+                "String shot"
+            ],
+            "base_experience": 39,
+            "current_hp": 45,
+            "growth_rate": "medium",
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "shiny": false,
+            "captured_date": "2026-03-30 16:26:52",
+            "individual_id": "6a4d2898-9ee0-4868-8903-a5d7f073e9cc",
+            "mega": false,
+            "special-form": null,
+            "evos": []
+        }
     }
 ]
