@@ -8,30 +8,35 @@ on:
 jobs:
   run_integrity_tests:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+        cache-dependency-glob: "requirements.txt"
+    - name: Cache apt packages
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt/archives
+        key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/integrity_tests.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
     - name: Install system dependencies for headless Qt
       run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 x11-utils libegl1 libpulse0 libnss3 libasound2t64
-
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 x11-utils libegl1 libpulse0 libnss3 libasound2t64
     - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install pytest pytest-qt anki aqt PyQt6 orjson requests
-
+        uv pip install --system -r requirements.txt
     - name: Set PYTHONPATH
       run: |
         echo "PYTHONPATH=$GITHUB_WORKSPACE/src" >> $GITHUB_ENV
-
     - name: Run tests with xvfb
       run: |
         xvfb-run -a env QT_QPA_PLATFORM=offscreen pytest tests/
