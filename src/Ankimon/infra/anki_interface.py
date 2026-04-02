@@ -43,19 +43,6 @@ class AnkiInterface:
         else:
             print(f"INFO: {msg}")
 
-    @staticmethod
-    def get_config(key, default=None):
-        """Gets a configuration value."""
-        if mw and mw.addonManager:
-            # Assuming standard Anki addon config retrieval
-            try:
-                addon_id = __name__.split('.')[0] # Hacky way to get addon id, assuming it's the root package
-                # Actually, ankimon uses a custom settings_obj, so this might not be needed or used differently.
-                # Just return a placeholder or implement correctly if needed later.
-                pass
-            except Exception:
-                pass
-        return default
 
     @staticmethod
     def get_profile_folder():
