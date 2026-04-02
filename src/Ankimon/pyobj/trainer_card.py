@@ -115,12 +115,12 @@ class TrainerCard:
             row = cursor.fetchone()
 
             if not row:
-                return int(0)  # Return 0 if the data is empty
+                return 0  # Return 0 if the data is empty
 
             return int(row["level"])
         except Exception as e:
             showInfo(f"Error getting highest level: {e}")
-            return int(0)
+            return 0
 
     def add_achievement(self, achievement):
         """Method to add a new achievement"""
