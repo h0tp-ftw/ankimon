@@ -24,7 +24,9 @@ from typing import Union
 
 import aqt
 from anki.hooks import addHook, wrap
-from aqt import gui_hooks, mw, utils
+from aqt.gui_hooks import reviewer_did_show_question, reviewer_did_show_answer, reviewer_will_answer_card, reviewer_did_answer_card, profile_did_open, profile_will_close, sync_did_finish, reviewer_will_end
+from aqt import utils
+from .infra import anki_interface
 from aqt.qt import QDialog
 from aqt.operations import QueryOp
 from aqt.reviewer import Reviewer
@@ -42,7 +44,12 @@ from .resources import (
     addon_dir,
 )
 
-generate_startup_files(addon_dir, user_path)
+import importlib
+try:
+    generate_startup_files_func = getattr(importlib.import_module('Ankimon.utils'), 'generate_startup_files')
+    generate_startup_files_func(addon_dir, user_path)
+except Exception:
+    generate_startup_files(addon_dir, user_path)
 
 from .singletons import settings_obj
 
@@ -159,10 +166,10 @@ from .functions.battle_functions import (
 
 from .pyobj.error_handler import show_warning_with_traceback
 
-mw.settings_ankimon = settings_window
-mw.logger = logger
-mw.translator = translator
-mw.settings_obj = settings_obj
+anki_interface.get_mw().settings_ankimon = settings_window
+anki_interface.get_mw().logger = logger
+anki_interface.get_mw().translator = translator
+anki_interface.get_mw().settings_obj = settings_obj
 
 from .gui_classes import overview_team
 
@@ -174,7 +181,7 @@ logger.log_and_showinfo("game", translator.translate("backing_up_files"))
 try:
     run_backup()
 except Exception as e:
-    show_warning_with_traceback(parent=mw, exception=e, message="Backup error:")
+    show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message="Backup error:")
 
 backup_manager = BackupManager(logger, settings_obj)
 
@@ -209,7 +216,7 @@ get web exports ready for special reviewer look
 
 
 # Set up web exports for static files
-mw.addonManager.setWebExports(
+anki_interface.get_mw().addonManager.setWebExports(
     __name__, r"user_files/.*\.(css|js|jpg|gif|html|ttf|png|mp3)"
 )
 
@@ -217,7 +224,7 @@ mw.addonManager.setWebExports(
 def on_webview_will_set_content(web_content: WebContent, context) -> None:
     if not isinstance(context, aqt.reviewer.Reviewer):
         return
-    ankimon_package = mw.addonManager.addonFromModule(__name__)
+    ankimon_package = anki_interface.get_mw().addonManager.addonFromModule(__name__)
     web_content.js.append(
         f"/_addons/{ankimon_package}/user_files/web/ankimon_hud_portal.js"
     )
@@ -270,12 +277,12 @@ def on_show_answer(Card):
 
 
 def on_reviewer_did_show_question(card):
-    reviewer_obj.update_life_bar(mw.reviewer, None, None)
+    reviewer_obj.update_life_bar(anki_interface.get_mw().reviewer, None, None)
 
 
-gui_hooks.reviewer_did_show_question.append(on_show_question)
-gui_hooks.reviewer_did_show_answer.append(on_show_answer)
-gui_hooks.reviewer_did_show_question.append(on_reviewer_did_show_question)
+reviewer_did_show_question.append(on_show_question)
+reviewer_did_show_answer.append(on_show_answer)
+reviewer_did_show_question.append(on_reviewer_did_show_question)
 
 setupHooks(None, ankimon_tracker_obj)
 
@@ -308,7 +315,7 @@ if online_connectivity and ssh:
     def done(result: Union[Exception, str, None]):
         if isinstance(result, Exception):
             show_warning_with_traceback(
-                parent=mw, exception=result, message="Error connecting to GitHub:"
+                parent=anki_interface.get_mw(), exception=result, message="Error connecting to GitHub:"
             )
             return
         if result is None:
@@ -325,7 +332,7 @@ if online_connectivity and ssh:
 
     op = (
         QueryOp(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             op=lambda _col: download_changelog(),  # Background operation
             success=done,  # Ran on UI thread
         )
@@ -342,7 +349,7 @@ def open_help_window(online_connectivity):
         help_dialog.exec()
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error in opening Help Guide:"
+            parent=anki_interface.get_mw(), exception=e, message="Error in opening Help Guide:"
         )
 
 
@@ -372,8 +379,8 @@ def answerCard_after(rev, card, ease):
     ankimon_tracker_obj.reset_card_timer()
 
 
-aqt.gui_hooks.reviewer_will_answer_card.append(answerCard_before)
-aqt.gui_hooks.reviewer_did_answer_card.append(answerCard_after)
+reviewer_will_answer_card.append(answerCard_before)
+reviewer_did_answer_card.append(answerCard_after)
 
 
 # get main pokemon details:
@@ -749,19 +756,19 @@ def on_review_card(*args):
             pass
 
         reviewer = Container()
-        reviewer.web = mw.reviewer.web
+        reviewer.web = anki_interface.get_mw().reviewer.web
         reviewer_obj.update_life_bar(reviewer, 0, 0)
         if test_window is not None:
             if enemy_pokemon.hp > 0:
                 test_window.display_battle()
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="An error occurred in reviewer:"
+            parent=anki_interface.get_mw(), exception=e, message="An error occurred in reviewer:"
         )
 
 
 # Connect the hook to Anki's review event
-gui_hooks.reviewer_did_answer_card.append(on_review_card)
+reviewer_did_answer_card.append(on_review_card)
 
 if database_complete:
     badge_list = get_achieved_badges()
@@ -877,7 +884,7 @@ def on_profile_did_open():
         show_tip_of_the_day()
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error showing tip of the day:"
+            parent=anki_interface.get_mw(), exception=e, message="Error showing tip of the day:"
         )
 
     # Award monthly pokemon if applicable
@@ -891,7 +898,7 @@ def on_profile_did_open():
             )
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error awarding monthly pokemon:"
+            parent=anki_interface.get_mw(), exception=e, message="Error awarding monthly pokemon:"
         )
 
     # AnkiWeb Sync
@@ -918,23 +925,23 @@ def on_profile_did_open():
             logger.log("info", "Ankimon sync system initialized successfully")
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error setting up sync system:"
+            parent=anki_interface.get_mw(), exception=e, message="Error setting up sync system:"
         )
 
 
 # Hook to expose the function
 def on_profile_loaded():
-    mw.defeatpokemon = DefeatPokemonHook
-    mw.catchpokemon = CatchPokemonHook
-    mw.add_catch_pokemon_hook = add_catch_pokemon_hook
-    mw.add_defeat_pokemon_hook = add_defeat_pokemon_hook
+    anki_interface.get_mw().defeatpokemon = DefeatPokemonHook
+    anki_interface.get_mw().catchpokemon = CatchPokemonHook
+    anki_interface.get_mw().add_catch_pokemon_hook = add_catch_pokemon_hook
+    anki_interface.get_mw().add_defeat_pokemon_hook = add_defeat_pokemon_hook
 
 
 # Add hook to run on profile load
 addHook("profileLoaded", on_profile_loaded)
 
-gui_hooks.profile_did_open.append(on_profile_did_open)
-gui_hooks.profile_will_close.append(backup_manager.on_anki_close)
+profile_did_open.append(on_profile_did_open)
+profile_will_close.append(backup_manager.on_anki_close)
 
 
 def catch_shortcut_function():
@@ -1038,30 +1045,30 @@ if reviewer_buttons is True:
 if settings_obj.get("misc.discord_rich_presence") == True:
     client_id = "1319014423876075541"  # Replace with your actual client ID
     large_image_url = "https://raw.githubusercontent.com/Unlucky-Life/ankimon/refs/heads/main/src/Ankimon/ankimon_logo.png"  # URL for the large image
-    mw.ankimon_presence = DiscordPresence(
+    anki_interface.get_mw().ankimon_presence = DiscordPresence(
         client_id, large_image_url, ankimon_tracker_obj, logger, settings_obj
     )  # Establish connection and get the presence instance
 
     # Hook functions for Anki
     def on_reviewer_initialized(rev, card, ease):
-        if mw.ankimon_presence:
-            if mw.ankimon_presence.loop is False:
-                mw.ankimon_presence.loop = True
-                mw.ankimon_presence.start()
+        if anki_interface.get_mw().ankimon_presence:
+            if anki_interface.get_mw().ankimon_presence.loop is False:
+                anki_interface.get_mw().ankimon_presence.loop = True
+                anki_interface.get_mw().ankimon_presence.start()
         else:
             client_id = "1319014423876075541"  # Replace with your actual client ID
             large_image_url = "https://raw.githubusercontent.com/Unlucky-Life/ankimon/refs/heads/main/src/Ankimon/ankimon_logo.png"  # URL for the large image
-            mw.ankimon_presence = DiscordPresence(
+            anki_interface.get_mw().ankimon_presence = DiscordPresence(
                 client_id, large_image_url, ankimon_tracker_obj, logger, settings_obj
             )  # Establish connection and get the presence instance
-            mw.ankimon_presence.loop = True
-            mw.ankimon_presence.start()
+            anki_interface.get_mw().ankimon_presence.loop = True
+            anki_interface.get_mw().ankimon_presence.start()
 
     def on_reviewer_will_end(*args):
-        mw.ankimon_presence.loop = False
-        mw.ankimon_presence.stop_presence()
+        anki_interface.get_mw().ankimon_presence.loop = False
+        anki_interface.get_mw().ankimon_presence.stop_presence()
 
     # Register the hook functions with Anki's GUI hooks
-    gui_hooks.reviewer_did_answer_card.append(on_reviewer_initialized)
-    gui_hooks.reviewer_will_end.append(mw.ankimon_presence.stop_presence)
-    gui_hooks.sync_did_finish.append(mw.ankimon_presence.stop)
+    reviewer_did_answer_card.append(on_reviewer_initialized)
+    reviewer_will_end.append(anki_interface.get_mw().ankimon_presence.stop_presence)
+    sync_did_finish.append(anki_interface.get_mw().ankimon_presence.stop)

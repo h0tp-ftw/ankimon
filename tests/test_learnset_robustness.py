@@ -40,6 +40,9 @@ sys.modules["Ankimon.pyobj"] = mock_pyobj
 sys.modules["Ankimon.pyobj.error_handler"] = mock_pyobj.error_handler
 sys.modules["Ankimon.pyobj.QProgressIndicator"] = MagicMock()
 
+sys.modules['Ankimon.infra'] = MagicMock()
+sys.modules['Ankimon.infra.anki_interface'] = MagicMock()
+
 # Now load pokedex_functions from its file
 _spec = importlib.util.spec_from_file_location(
     "Ankimon.functions.pokedex_functions",

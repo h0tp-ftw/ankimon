@@ -5,7 +5,7 @@ from aqt.utils import showInfo
 from ..resources import user_path_credentials, mypokemon_path
 import json
 import requests
-from aqt import mw # import setting values direct from init file
+from ..infra import anki_interface
 
 #ANKIMON_LEADERBOARD_API_URL = "https://ankimon.com/api/leaderboard"  # Replace with the actual API URL
 ANKIMON_LEADERBOARD_API_URL = "https://leaderboard-api.ankimon.com/update_stats"  # Replace with the actual API URL
@@ -68,7 +68,7 @@ class ApiKeyDialog(QDialog):
 def sync_data_to_leaderboard(data):
 
         # First check if leaderboard is enabled in config
-        if not mw.settings_obj.get("misc.leaderboard"):
+        if not anki_interface.get_mw().settings_obj.get("misc.leaderboard"):
             return
 
         try:
@@ -104,11 +104,11 @@ def sync_data_to_leaderboard(data):
 
                 # Check if the request was successful
                 #if response.status_code == 200:
-                #    mw.logger.log("log","Data synced successfully to leaderboard!")
+                #    anki_interface.get_mw().logger.log("log","Data synced successfully to leaderboard!")
                 #else:
-                #    mw.logger.log("log",f"Failed to sync data to leaderboard. Status code: {response.status_code}")
+                #    anki_interface.get_mw().logger.log("log",f"Failed to sync data to leaderboard. Status code: {response.status_code}")
             #else:
-                #mw.logger.log("Credentials are missing (username or api_key)")
+                #anki_interface.get_mw().logger.log("Credentials are missing (username or api_key)")
 
         except requests.exceptions.RequestException as e:
             showInfo(f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}")
@@ -118,7 +118,7 @@ def sync_data_to_leaderboard(data):
 def get_unique_pokemon():
 
     # Check if leaderboard syncing is enabled in config
-    if not mw.settings_obj.get("misc.leaderboard"):
+    if not anki_interface.get_mw().settings_obj.get("misc.leaderboard"):
         return
 
     try:

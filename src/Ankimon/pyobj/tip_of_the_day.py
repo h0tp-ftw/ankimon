@@ -2,7 +2,7 @@ import json
 import random
 from pathlib import Path
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import *
 
 from ..pyobj.settings import Settings
@@ -92,5 +92,5 @@ def show_tip_of_the_day():
     else:
         next_tip_index = (last_tip_index + 1) % len(tips)
 
-    dialog = TipOfTheDayDialog(tips[next_tip_index], next_tip_index, len(tips), mw)
+    dialog = TipOfTheDayDialog(tips[next_tip_index], next_tip_index, len(tips), anki_interface.get_mw())
     dialog.exec()

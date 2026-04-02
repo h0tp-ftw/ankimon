@@ -16,7 +16,7 @@ def list_audio_files(folder_path):
 
     return audio_files
 
-from aqt import mw
+from ..infra import anki_interface
 from .pokemon_functions import find_experience_for_level
 
 def create_html_code(genderTop, genderBottom, nameTop, nameBottom, levelTop, levelBottom, current_health_bottom, max_hp_bottom, max_hp_top, current_health_top, text, general_url, font_url, bottom_pokemon_sprite, top_pokemon_sprite, display, main_attack, enemy_attack, xp_bar_width = 0):
@@ -43,7 +43,7 @@ def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
     enemypokemon_attack = False
     experience_for_next_lvl = int(find_experience_for_level(f"{main_pokemon.growth_rate}", int(main_pokemon.level), settings_obj))
     xp_bar_width = int((int(main_pokemon.xp or 0) / experience_for_next_lvl) * 100)
-    ankimon_package = mw.addonManager.addonFromModule(__name__)
+    ankimon_package = anki_interface.get_mw().addonManager.addonFromModule(__name__)
     general_url = f"""/_addons/{ankimon_package}/user_files/web/"""
     sprites_url = f"""/_addons/{ankimon_package}/user_files/sprites/"""
     if settings_obj.get("gui.reviewer_image_gif") == False:

@@ -1,6 +1,7 @@
 import os
 import json
-from aqt import QDialog, QVBoxLayout, QWebEngineView, mw
+from aqt import QDialog, QVBoxLayout, QWebEngineView
+from ..infra import anki_interface
 from aqt.qt import QPushButton, QCheckBox, QFrame, Qt
 from PyQt6.QtCore import QUrl, QUrlQuery
 from PyQt6.QtGui import QGuiApplication
@@ -48,7 +49,7 @@ class AchievementsDialog(QDialog):
 
         # Create and encode query parameters
         query = QUrlQuery()
-        query.addQueryItem("addon_name", mw.addonManager.addonFromModule(__name__))
+        query.addQueryItem("addon_name", anki_interface.get_mw().addonManager.addonFromModule(__name__))
         query.addQueryItem(
             "unlocked_badges",
             json.dumps(unlocked_badges)

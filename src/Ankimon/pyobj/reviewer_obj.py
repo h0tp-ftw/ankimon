@@ -1,4 +1,6 @@
-from aqt import gui_hooks, mw, utils
+from aqt.gui_hooks import reviewer_will_end, reviewer_did_answer_card
+from aqt import utils
+from ..infra import anki_interface
 from aqt.utils import showInfo
 from ..functions.pokemon_functions import find_experience_for_level
 from ..business import get_image_as_base64
@@ -21,8 +23,8 @@ class Reviewer_Manager:
         self.myseconds = 0
 
         # Register the functions for the hooks
-        gui_hooks.reviewer_will_end.append(self.reviewer_reset_life_bar_inject)
-        gui_hooks.reviewer_did_answer_card.append(self.update_life_bar)
+        reviewer_will_end.append(self.reviewer_reset_life_bar_inject)
+        reviewer_did_answer_card.append(self.update_life_bar)
 
     def reviewer_reset_life_bar_inject(self):
         self.life_bar_injected = False
@@ -67,8 +69,8 @@ class Reviewer_Manager:
         enemy_name_lower = self.enemy_pokemon.name.lower()
         is_pokemon_owned = False
         try:
-            addon_package = mw.addonManager.addonFromModule(__name__)
-            collection_path = os.path.join(mw.addonManager.addonsFolder(), addon_package, "user_files", "mypokemon.json")
+            addon_package = anki_interface.get_mw().addonManager.addonFromModule(__name__)
+            collection_path = os.path.join(anki_interface.get_mw().addonManager.addonsFolder(), addon_package, "user_files", "mypokemon.json")
             if os.path.exists(collection_path):
                 with open(collection_path, 'r', encoding='utf-8') as f:
                     my_pokemon_list = json.load(f)
@@ -125,14 +127,14 @@ class Reviewer_Manager:
         hud_html += f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
 
         try:
-            addon_package = mw.addonManager.addonFromModule(__name__)
+            addon_package = anki_interface.get_mw().addonManager.addonFromModule(__name__)
         except Exception:
             addon_package = None
 
         if not addon_package:
             # Try fallback addon folder names
             for name in ["1908235722", "Ankimon"]:
-                if os.path.exists(os.path.join(mw.addonManager.addonsFolder(), name)):
+                if os.path.exists(os.path.join(anki_interface.get_mw().addonManager.addonsFolder(), name)):
                     addon_package = name
                     break
 

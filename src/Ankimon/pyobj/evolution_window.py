@@ -1,7 +1,7 @@
 import json
 import random
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import (
     QFont,
     QLabel,
@@ -448,7 +448,7 @@ class EvoWindow(QWidget):
                         pass
 
                     reviewer = Container()
-                    reviewer.web = mw.reviewer.web
+                    reviewer.web = anki_interface.get_mw().reviewer.web
                     self.reviewer_obj.update_life_bar(reviewer, 0, 0)
                     if self.test_window.isVisible() is True:
                         self.test_window.display_first_encounter()
@@ -460,7 +460,7 @@ class EvoWindow(QWidget):
 
         except Exception as e:
             show_warning_with_traceback(
-                parent=mw, exception=e, message=f"Error occured in evolving pokemon"
+                parent=anki_interface.get_mw(), exception=e, message=f"Error occured in evolving pokemon"
             )
             self.logger.log(f"{e}")
 
@@ -474,13 +474,13 @@ class EvoWindow(QWidget):
                     pass
 
                 reviewer = Container()
-                reviewer.web = mw.reviewer.web
+                reviewer.web = anki_interface.get_mw().reviewer.web
                 self.reviewer_obj.update_life_bar(reviewer, 0, 0)
                 if self.test_window.isVisible() is True:
                     self.test_window.display_first_encounter()
         except Exception as e:
             show_warning_with_traceback(
-                parent=mw,
+                parent=anki_interface.get_mw(),
                 exception=e,
                 message=f"Error occured in updating main_pokemon obj",
             )
@@ -573,7 +573,7 @@ class EvoWindow(QWidget):
 
         except Exception as e:
             show_warning_with_traceback(
-                parent=mw,
+                parent=anki_interface.get_mw(),
                 exception=e,
                 message="Error occurred while canceling evolution",
             )

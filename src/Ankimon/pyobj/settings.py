@@ -1,6 +1,6 @@
 import json
 import os
-from aqt import mw
+from ..infra import anki_interface
 from aqt.utils import showInfo
 from PyQt6.QtWidgets import (
     QApplication,

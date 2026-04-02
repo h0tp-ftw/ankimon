@@ -1,6 +1,6 @@
 import json
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import QDialog, QLabel,Qt, QVBoxLayout
 from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout, QLineEdit
 
@@ -13,7 +13,7 @@ from ..pyobj.error_handler import show_warning_with_traceback
 
 def export_to_pkmn_showdown():
     # Create a main window
-    window = QDialog(mw)
+    window = QDialog(anki_interface.get_mw())
     window.setWindowTitle("Export Pokemon to Pkmn Showdown")
     for stat, value in main_pokemon.ev.items():
         if value == 0:
@@ -60,7 +60,7 @@ def export_to_pkmn_showdown():
     window.setLayout(layout)
 
     # Copy text to clipboard in Anki
-    mw.app.clipboard().setText(pokemon_info)
+    anki_interface.get_mw().app.clipboard().setText(pokemon_info)
 
     # Show the window
     window.show()
@@ -161,7 +161,7 @@ def export_all_pkmn_showdown():
                     layout.addWidget(save_button)
 
                     # Copy text to clipboard in Anki
-                    mw.app.clipboard().setText(pokemon_info_complete_text)
+                    anki_interface.get_mw().app.clipboard().setText(pokemon_info_complete_text)
 
         save_button.clicked.connect(lambda: save_error_code(error_code_input.text(), logger=logger))
 
@@ -251,7 +251,7 @@ def flex_pokemon_collection():
                     #layout.addWidget(label)
 
                     # Copy text to clipboard in Anki
-                    mw.app.clipboard().setText(pokemon_info_complete_text)
+                    anki_interface.get_mw().app.clipboard().setText(pokemon_info_complete_text)
         #save_button.clicked.connect(lambda: save_error_code(error_code_input.text()))
         # Set the layout for the main window
         open_browser_for_pokepaste = QPushButton("Open Pokepaste")

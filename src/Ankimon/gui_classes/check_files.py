@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QPushButton, QLabel, QTextEdit, QWidget
 )
 from  ..resources import addon_dir, json_file_structure
-from aqt import mw
+from ..infra import anki_interface
 from aqt.utils import showWarning
 
 def check_files_in_json(json_file=json_file_structure, root_directory=addon_dir):

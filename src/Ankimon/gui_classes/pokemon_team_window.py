@@ -4,12 +4,12 @@ from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QPushBut
 from PyQt6.QtGui import QPixmap
 import json
 import os
-from aqt import mw
+from ..infra import anki_interface
 from aqt.utils import showInfo, showWarning
 from ..resources import mypokemon_path, frontdefault, team_pokemon_path
 
 class PokemonTeamDialog(QDialog):
-    def __init__(self, settings_obj, logger, trainer_card=None, parent=mw):
+    def __init__(self, settings_obj, logger, trainer_card=None, parent=anki_interface.get_mw()):
         super().__init__(parent)
 
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)

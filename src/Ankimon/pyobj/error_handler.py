@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtCore import Qt
-from aqt import mw
+from ..infra import anki_interface
 from anki.buildinfo import version as anki_version
 
 # Path configurations
@@ -73,7 +73,7 @@ def load_error_images(json_path: Path) -> Dict[str, str]:
             error_images = json.load(f)
         return random.choice(error_images)
     except Exception as e:
-        mw.logger.log("error", f"Failed to load error images: {str(e)}")
+        anki_interface.get_mw().logger.log("error", f"Failed to load error images: {str(e)}")
         return default_image
 
 def create_error_label(message: str, exception: Exception) -> QLabel:
@@ -208,7 +208,7 @@ def setup_dialog_style(dialog: QDialog) -> None:
     """)
 
 def show_warning_with_traceback(
-    parent: QDialog = mw,
+    parent: QDialog = anki_interface.get_mw(),
     exception: Optional[Exception] = None,
     message: str = "An error occurred during execution."
 ) -> None:
@@ -219,7 +219,7 @@ def show_warning_with_traceback(
     # Generate and sanitize traceback
     tb_text = scrub_traceback(traceback.format_exc())
     env_info = get_environment_info()
-    mw.logger.log("error", f"{message}: {exception}\n{env_info}\n{tb_text}")
+    anki_interface.get_mw().logger.log("error", f"{message}: {exception}\n{env_info}\n{tb_text}")
 
     # Load error images
     error_json_path = pyobj_path / 'error_images.json'
@@ -241,7 +241,7 @@ def show_warning_with_traceback(
     def copy_debug_info():
         # Wrap in triple backticks for markdown code block formatting
         full_debug = f"```python\n{env_info}\n\n{tb_text}\n```"
-        mw.app.clipboard().setText(full_debug)
+        anki_interface.get_mw().app.clipboard().setText(full_debug)
 
         # Update dialog to show copy confirmation (without env_info)
         dialog.findChild(QLabel).setText(

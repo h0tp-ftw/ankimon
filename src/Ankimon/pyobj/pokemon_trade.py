@@ -5,7 +5,8 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton
 from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
-from aqt import mw, utils
+from aqt import utils
+from ..infra import anki_interface
 from ..resources import mainpokemon_path, mypokemon_path, moves_file_path, pokedex_path, rate_path
 from ..functions.sprite_functions import get_sprite_path
 from datetime import datetime
@@ -196,7 +197,7 @@ class PokemonTrade:
         )
 
     def open_trade_window(self):
-        parent = self.parent_window if self.parent_window is not None else mw
+        parent = self.parent_window if self.parent_window is not None else anki_interface.get_mw()
         window = QDialog(parent)
         window.setWindowTitle(f"Trade Pokémon: {self.name}")
         window.setWindowModality(Qt.WindowModality.ApplicationModal)
@@ -409,7 +410,7 @@ class PokemonTrade:
             showWarning("Incorrect password part. Please check with the other user.")
 
     def copy_to_clipboard(self, text):
-        clipboard = mw.app.clipboard()
+        clipboard = anki_interface.get_mw().app.clipboard()
         clipboard.setText(text)
         showInfo("Trade code copied to clipboard!")
 

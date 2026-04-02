@@ -7,7 +7,8 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Any
 
-from aqt import mw, gui_hooks
+from aqt.gui_hooks import sync_will_start, sync_did_finish
+from ..infra import anki_interface
 from aqt.utils import showInfo, tooltip
 from ..pyobj.error_handler import show_warning_with_traceback
 
@@ -24,7 +25,7 @@ class ImprovedPokemonDataSync(QDialog):
     """
 
     def __init__(self, settings_obj, logger):
-        super().__init__(mw)
+        super().__init__(anki_interface.get_mw())
         self.config = settings_obj
         self.logger = logger
         self.sync_handler = AnkimonDataSync()
@@ -628,7 +629,7 @@ class AnkimonDataSync:
     def _ensure_paths_initialized(self):
         """Ensure media paths are initialized. Call this before using any media path."""
         if self._media_path is None:
-            profile_folder = mw.pm.profileFolder()
+            profile_folder = anki_interface.get_mw().pm.profileFolder()
             if profile_folder is None:
                 raise RuntimeError("No Anki profile loaded. Cannot initialize sync paths.")
 
@@ -678,7 +679,7 @@ class AnkimonDataSync:
             self.media_sync_path.mkdir(parents=True, exist_ok=True)
             return True
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to create sync folder")
+            show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message="Failed to create sync folder")
             return False
 
     def _migrate_legacy_files(self) -> List[str]:
@@ -697,7 +698,7 @@ class AnkimonDataSync:
                         os.remove(legacy_path)  # Remove old file
                         migrated_files.append(filename)
                 except Exception as e:
-                    show_warning_with_traceback(parent=mw, exception=e, message=f"Failed to migrate {filename}")
+                    show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message=f"Failed to migrate {filename}")
 
         return migrated_files
 
@@ -772,7 +773,7 @@ class AnkimonDataSync:
                         synced_files.append(filename)
 
                 except Exception as e:
-                    show_warning_with_traceback(parent=mw, exception=e, message=f"Failed to sync {filename}")
+                    show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message=f"Failed to sync {filename}")
                     continue
 
             return synced_files
@@ -812,7 +813,7 @@ class AnkimonDataSync:
                         updated_files.append(filename)
 
                 except Exception as e:
-                    show_warning_with_traceback(parent=mw, exception=e, message=f"Failed to read {filename}")
+                    show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message=f"Failed to read {filename}")
                     continue
 
             return updated_files
@@ -930,7 +931,7 @@ class AnkimonDataSync:
             showInfo(f"Exported {len(synced_files)} files to AnkiWeb: {', '.join(synced_files)}")
             return True
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to export to AnkiWeb")
+            show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message="Failed to export to AnkiWeb")
             return False
 
     def force_sync_from_media(self) -> bool:
@@ -952,7 +953,7 @@ class AnkimonDataSync:
             showInfo(f"Imported {len(updated_files)} files from AnkiWeb: {', '.join(updated_files)}\n\nAnki will now close. Please reopen Anki to apply changes!")
             return True
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to import from AnkiWeb")
+            show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message="Failed to import from AnkiWeb")
             return False
 
     def get_sync_folder_info(self) -> Dict[str, str]:
@@ -1089,8 +1090,8 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
             logger.log("error", f"Failed to read files after sync: {str(e)}")
 
     # Register hooks (but they won't auto-sync until enabled)
-    gui_hooks.sync_will_start.append(on_sync_will_start)
-    gui_hooks.sync_did_finish.append(on_sync_did_finish)
+    sync_will_start.append(on_sync_will_start)
+    sync_did_finish.append(on_sync_did_finish)
 
     logger.log("info", "Ankimon sync hooks registered (automatic sync disabled until manual sync)")
 

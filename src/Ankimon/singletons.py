@@ -16,7 +16,7 @@ Created: 2025-06-03 (YYY-MM-DD)
 import json
 import uuid
 
-from aqt import mw
+from .infra import anki_interface
 
 from .pyobj.collection_dialog import PokemonCollectionDialog
 from .pyobj.ankimon_tracker import AnkimonTracker
@@ -68,10 +68,10 @@ settings_window = SettingsWindow(
 translator = Translator(language=int(settings_obj.get("misc.language")))
 
 # Not sure what this does, but from afar it looks like a bad idea
-mw.settings_ankimon = settings_window
-mw.logger = logger
-mw.translator = translator
-mw.settings_obj = settings_obj
+anki_interface.get_mw().settings_ankimon = settings_window
+anki_interface.get_mw().logger = logger
+anki_interface.get_mw().translator = translator
+anki_interface.get_mw().settings_obj = settings_obj
 
 main_pokemon, mainpokemon_empty = update_main_pokemon()
 
@@ -145,7 +145,7 @@ test_window = TestWindow(
     settings_obj=settings_obj,
     ankimon_tracker_obj=ankimon_tracker_obj,
     translator=translator,
-    parent=mw,
+    parent=anki_interface.get_mw(),
     logger=logger,
 )
 

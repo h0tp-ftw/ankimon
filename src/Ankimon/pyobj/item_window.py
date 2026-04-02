@@ -4,7 +4,7 @@ import json
 import csv
 from typing import Any, Optional
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import (
     QGridLayout,
     QPixmap,
@@ -575,7 +575,7 @@ class ItemWindow(QWidget):
 
     def show_window(self):
         # Get the geometry of the main screen
-        main_screen_geometry = mw.geometry()
+        main_screen_geometry = anki_interface.get_mw().geometry()
 
         # Calculate the position to center the ItemWindow on the main screen
         x = int(main_screen_geometry.center().x() - self.width() // 2)

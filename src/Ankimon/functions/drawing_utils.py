@@ -1,6 +1,6 @@
 from typing import Optional
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import QPainter, QLabel, Qt, sip
 from PyQt6.QtGui import QColor, QFont, QColor, QPalette
 from PyQt6.QtCore import Qt, QRect, QPoint, QSize, QPoint, QTimer
@@ -12,9 +12,9 @@ from ..pyobj.pokemon_obj import PokemonObject
 def tooltipWithColour(
     msg, color, x=0, y=20, xref=1, parent=None, width=0, height=0, centered=False
 ):
-    reviewer_text_message_box = mw.settings_obj.get("gui.reviewer_text_message_box")
+    reviewer_text_message_box = anki_interface.get_mw().settings_obj.get("gui.reviewer_text_message_box")
     period = int(
-        mw.settings_obj.get("gui.reviewer_text_message_box_time") * 1000
+        anki_interface.get_mw().settings_obj.get("gui.reviewer_text_message_box_time") * 1000
     )  # time for pop up message
 
     class CustomLabel(QLabel):
@@ -66,7 +66,7 @@ def tooltipWithColour(
             QTimer.singleShot(
                 3000, lambda: lab.hide() if lab and not sip.isdeleted(lab) else None
             )
-        mw.logger.log_and_showinfo("game", msg)
+        anki_interface.get_mw().logger.log_and_showinfo("game", msg)
 
 
 def draw_gender_symbols(

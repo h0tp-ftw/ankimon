@@ -40,8 +40,8 @@ status_colors_html = {
 }
 
 # Get the profile folder
-from aqt import mw
+from .infra import anki_interface
 from pathlib import Path
-profilename = mw.pm.name
-#profilefolder = Path(mw.pm.profileFolder())
-#mediafolder = Path(mw.col.media.dir())
+profilename = anki_interface.get_mw().pm.name
+#profilefolder = Path(anki_interface.get_mw().pm.profileFolder())
+#mediafolder = Path(anki_interface.get_mw().col.media.dir())

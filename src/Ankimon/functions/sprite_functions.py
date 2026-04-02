@@ -1,6 +1,6 @@
 import os
 
-from aqt import mw
+from ..infra import anki_interface
 
 from ..resources import pkmnimgfolder
 
@@ -27,14 +27,14 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):
     path = _path_format(back, id, gif, shiny, female)
     if os.path.exists(path):
-        mw.logger.log("debug", f"Sprite found: {path}")
+        anki_interface.get_mw().logger.log("debug", f"Sprite found: {path}")
         return path
 
     if female:
         # requested gendered gif but not found, try non-gendered
         path = _path_format(back, id, gif, shiny, False)
         if os.path.exists(path):
-            mw.logger.log("debug", f"Sprite found (gender fallback): {path}")
+            anki_interface.get_mw().logger.log("debug", f"Sprite found (gender fallback): {path}")
             return path
 
 
@@ -50,7 +50,7 @@ def _try_back(back: bool, id: int, gif: bool, shiny: bool, female: bool):
         if not gif:
             path = f"sprites/missing_back/{id}.png"
             if os.path.exists(path):
-                mw.logger.log("debug", f"Sprite found (back fallback): {path}")
+                anki_interface.get_mw().logger.log("debug", f"Sprite found (back fallback): {path}")
                 return path
 
         path = _try_gendered(False, id, gif, shiny, False)
@@ -76,7 +76,7 @@ def get_sprite_path(side: str, sprite_type: str, id: int, shiny: bool, gender: s
             return path
 
     # Fallback to the generic substitute image
-    mw.logger.log(
+    anki_interface.get_mw().logger.log(
         "warning",
         f"Unable to find sprite for ID {id} (Side: {side} Sprite: {sprite_type} Shiny: {shiny}, Gender: {gender}). Returning substitute.",
     )

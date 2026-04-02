@@ -1,12 +1,12 @@
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QSpacerItem, QSizePolicy, QGroupBox
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
-from aqt import mw
+from ..infra import anki_interface
 
 class AnkimonTrackerWindow:
     def __init__(self, tracker):
         self.tracker = tracker
-        self.mw = mw
+        self.mw = anki_interface.get_mw()
         self.window = None
         self.layout = None
         self.stats_labels = {}

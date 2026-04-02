@@ -7,7 +7,7 @@ from ..pyobj.error_handler import show_warning_with_traceback
 from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
-from aqt import mw
+from ..infra import anki_interface
 import re
 
 from ..pyobj.InfoLogger import ShowInfoLogger
@@ -38,7 +38,7 @@ class PokemonCollectionDialog(QDialog):
         test_window: TestWindow,
         settings_obj: Settings,
         main_pokemon: PokemonObject,
-        parent=mw,
+        parent=anki_interface.get_mw(),
     ):
         super().__init__(parent)
 
@@ -635,7 +635,7 @@ def PokemonTrade(name, id, level, ability, iv, ev, gender, attacks, position):
         window.setLayout(layout)
 
         # Copy text to clipboard in Anki
-        mw.app.clipboard().setText(f"{info}")
+        anki_interface.get_mw().app.clipboard().setText(f"{info}")
 
         window.exec()
     else:
@@ -741,7 +741,7 @@ def trade_pokemon(old_pokemon_name, pokemon_trade, position):
         showWarning(f"{old_pokemon_name} has been traded successfully!")
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=e,
             message=f"An error occurred while writing to the file: {e}",
         )
@@ -862,7 +862,7 @@ def MainPokemon(
         pass
 
     reviewer = Container()
-    reviewer.web = mw.reviewer.web
+    reviewer.web = anki_interface.get_mw().reviewer.web
     reviewer_obj.update_life_bar(reviewer, 0, 0)
 
     if test_window.isVisible():

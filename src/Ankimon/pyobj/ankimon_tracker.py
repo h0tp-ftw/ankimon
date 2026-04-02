@@ -4,7 +4,7 @@ from datetime import datetime
 from .error_handler import show_warning_with_traceback
 from ..functions.pokedex_functions import extract_ids_from_file
 from ..utils import random_battle_scene
-from aqt import mw
+from ..infra import anki_interface
 import re
 
 
@@ -73,7 +73,8 @@ class AnkimonTracker:
         self.start_session_timer()
 
     def get_total_reviews(self):
-        if mw.col is None:
+        mw = anki_interface.get_mw()
+        if mw is None or mw.col is None:
             return 0
         else:
             studied_today_num = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
@@ -251,6 +252,7 @@ class AnkimonTracker:
             owned_pokemon_ids = extract_ids_from_file()
             self.owned_pokemon_ids = owned_pokemon_ids
         except Exception as e:
+            mw = anki_interface.get_mw()
             show_warning_with_traceback(
                 parent=mw,
                 exception=e,

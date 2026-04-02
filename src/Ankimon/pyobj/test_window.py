@@ -1,6 +1,6 @@
 import json
 
-from aqt import mw
+from ..infra import anki_interface
 
 from aqt.qt import (
     QDialog,
@@ -64,7 +64,7 @@ class TestWindow(QWidget):
         main_pokemon,
         enemy_pokemon,
         settings_obj,
-        parent=mw,
+        parent=anki_interface.get_mw(),
         ankimon_tracker_obj: AnkimonTracker=None,
         translator: Translator=None,
         logger: ShowInfoLogger=None,
@@ -148,7 +148,7 @@ class TestWindow(QWidget):
     def display_first_start_up(self):
         if self.first_start == False:
             # Get the geometry of the main screen
-            main_screen_geometry = mw.geometry()
+            main_screen_geometry = anki_interface.get_mw().geometry()
 
             # Calculate the position to center the ItemWindow on the main screen
             x = int(main_screen_geometry.center().x() - self.width() / 2)
@@ -176,7 +176,7 @@ class TestWindow(QWidget):
         lang_name = get_pokemon_diff_lang_name(int(self.enemy_pokemon.id), int(self.settings_obj.get('misc.language')))
 
         # calculate wild pokemon max hp
-        message_box_text = f"{mw.translator.translate('wild_pokemon_appeared', enemy_pokemon_name=lang_name.capitalize())}"
+        message_box_text = f"{anki_interface.get_mw().translator.translate('wild_pokemon_appeared', enemy_pokemon_name=lang_name.capitalize())}"
 
         bckgimage_path = battlescene_path / self.ankimon_tracker_obj.battlescene_file
 
@@ -741,14 +741,14 @@ class TestWindow(QWidget):
         catch_button.setFont(QFont("Arial", 12))  # Adjust the font size and style as needed
         catch_button.setStyleSheet("background-color: rgb(44,44,44);")
         #catch_button.setFixedWidth(150)
-        qconnect(catch_button.clicked, lambda: self._reset_window_title(mw.catchpokemon))
+        qconnect(catch_button.clicked, lambda: self._reset_window_title(anki_interface.get_mw().catchpokemon))
 
         kill_button = QPushButton(self.translator.translate("defeat_button"))
         kill_button.setFixedSize(175, 30)  # Adjust the size as needed
         kill_button.setFont(QFont("Arial", 12))  # Adjust the font size and style as needed
         kill_button.setStyleSheet("background-color: rgb(44,44,44);")
         #kill_button.setFixedWidth(150)
-        qconnect(kill_button.clicked, lambda: self._reset_window_title(mw.defeatpokemon))
+        qconnect(kill_button.clicked, lambda: self._reset_window_title(anki_interface.get_mw().defeatpokemon))
 
         # Set the merged image as the pixmap for the QLabel
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
@@ -797,7 +797,7 @@ class TestWindow(QWidget):
         self.setMaximumHeight(300)
 
     def rate_display_item(self, item):
-        Receive_Window = QDialog(mw)
+        Receive_Window = QDialog(anki_interface.get_mw())
         layout = QHBoxLayout()
 
         item_widget = self.pokemon_display_item(item)
@@ -812,7 +812,7 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_item(self):
-        Receive_Window = QDialog(mw)
+        Receive_Window = QDialog(anki_interface.get_mw())
         layout = QHBoxLayout()
 
         item_widget = self.pokemon_display_item(random_item())

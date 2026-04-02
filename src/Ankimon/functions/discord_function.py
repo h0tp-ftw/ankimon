@@ -5,12 +5,12 @@ import time
 from ..pyobj.ankimon_tracker import AnkimonTracker
 from ..addon_files.lib.pypresence import Presence
 from aqt.utils import showWarning, tooltip
-from aqt import mw
+from ..infra import anki_interface
 from ..pyobj.error_handler import show_warning_with_traceback
-logger = mw.logger
+logger = anki_interface.get_mw().logger
 
 class DiscordPresence:
-    def __init__(self, client_id, large_image_url, ankimon_tracker, logger, settings_obj, parent=mw):
+    def __init__(self, client_id, large_image_url, ankimon_tracker, logger, settings_obj, parent=anki_interface.get_mw()):
         try:
             self.RPC = Presence(client_id)
             self.RPC.connect()
@@ -131,7 +131,8 @@ def check_conflicting_discord_addons():
     Returns a list of conflicting addon names if found.
     """
     try:
-        from aqt import mw
+        from ..infra import anki_interface
+        mw = anki_interface.get_mw()
 
         # Get list of all installed addons
         addon_manager = mw.addonManager

@@ -4,7 +4,7 @@ from datetime import datetime
 import json
 from typing import Union
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import (
     Qt,
     QDialog,
@@ -117,7 +117,7 @@ class PokemonShopManager:
 
     def create_gui(self):
         """Create the retro Pokemon-style shop GUI with theme support."""
-        self.window = QDialog(parent=mw)
+        self.window = QDialog(parent=anki_interface.get_mw())
         self.window.setWindowTitle("Ankimon Mart")
         self.window.setGeometry(100, 100, 750, 450)
 
@@ -475,7 +475,7 @@ class PokemonShopManager:
 
         try:
             if self.settings_obj.get("trainer.cash") < item["price"]:
-                msg = QMessageBox(mw)
+                msg = QMessageBox(anki_interface.get_mw())
                 msg.setWindowTitle("Ankimon Mart")
                 msg.setText("You don't have enough money!")
                 msg.setIcon(QMessageBox.Icon.Warning)
@@ -503,7 +503,7 @@ class PokemonShopManager:
                 f"MONEY: {self.settings_obj.get('trainer.cash')}¥"
             )
 
-            msg = QMessageBox(mw)
+            msg = QMessageBox(anki_interface.get_mw())
             msg.setWindowTitle("Ankimon Mart")
             msg.setText(
                 f"Thank you!\nYou bought {item.get('UI_NAME', 'Unknown')} for {item['price']}¥!"
@@ -534,7 +534,7 @@ class PokemonShopManager:
         colors = self._get_theme_colors()
 
         if self.settings_obj.get("trainer.cash") < cost:
-            msg = QMessageBox(mw)
+            msg = QMessageBox(anki_interface.get_mw())
             msg.setWindowTitle("Ankimon Mart")
             msg.setText("You don't have enough money to reroll!")
             msg.setIcon(QMessageBox.Icon.Warning)

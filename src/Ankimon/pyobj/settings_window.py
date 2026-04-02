@@ -21,7 +21,7 @@ from aqt.qt import (
 )
 
 from aqt.utils import showWarning
-from aqt import mw
+from ..infra import anki_interface
 from aqt.theme import theme_manager
 
 
@@ -54,7 +54,7 @@ class SettingsWindow(QMainWindow):
         self.setWindowTitle("Settings")
         self.setMaximumWidth(600)
         self.setMaximumHeight(900)
-        self.parent = mw
+        self.parent = anki_interface.get_mw()
 
         self.descriptions = self.load_descriptions()
         self.friendly_names = self.load_friendly_names()

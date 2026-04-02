@@ -4,7 +4,8 @@ import json
 from typing import Any
 import re
 
-from aqt import mw, qconnect
+from aqt import qconnect
+from ..infra import anki_interface
 from aqt.utils import showWarning
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor, QPolygonF, QPen, QBrush
 from PyQt6.QtCore import Qt, QPointF, QRectF
@@ -1150,7 +1151,7 @@ def rename_pkmn(
                 showWarning("Pokémon not found.")
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message=f"An error occurred: {e}"
+            parent=anki_interface.get_mw(), exception=e, message=f"An error occurred: {e}"
         )
 
 

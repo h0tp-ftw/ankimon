@@ -2,7 +2,8 @@ import json
 import uuid
 from typing import Any, Callable
 
-from aqt import mw, gui_hooks
+from aqt.gui_hooks import theme_did_change
+from ..infra import anki_interface
 from aqt.qt import (
     Qt,
     QDialog,
@@ -111,7 +112,7 @@ class PokemonPC(QDialog):
         test_window: TestWindow,
         settings: Settings,
         main_pokemon: PokemonObject,
-        parent=mw,
+        parent=anki_interface.get_mw(),
     ):
         super().__init__(parent)
 
@@ -160,7 +161,7 @@ class PokemonPC(QDialog):
         self.current_stats_tab_index = 0  # Remember selected tab (Stats/IV/EV)
 
         # Subscribe to theme change hook to update UI dynamically
-        gui_hooks.theme_did_change.append(self.on_theme_change)
+        theme_did_change.append(self.on_theme_change)
 
         self.ensure_data_integrity()  # Necessary for legacy reasons
 

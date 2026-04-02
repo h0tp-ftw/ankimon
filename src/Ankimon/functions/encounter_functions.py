@@ -5,7 +5,7 @@ from typing import Union
 from datetime import datetime
 import uuid
 
-from aqt import mw
+from ..infra import anki_interface
 from aqt.qt import QDialog
 from aqt.utils import showWarning
 
@@ -170,10 +170,14 @@ def choose_random_pkmn_from_tier():
     try:
         tier = get_tier(total_reviews, trainer_level)
         id = get_random_pokemon_in_tier(tier)
-        mw.logger.game_log(f"Selected tier: {tier}, Resulting Pokemon ID: {id}")
+        mw = anki_interface.get_mw()
+        if mw:
+            mw.logger.game_log(f"Selected tier: {tier}, Resulting Pokemon ID: {id}")
         return id, tier
     except Exception as e:
-        mw.logger.log("error", f"Error in choose_random_pkmn_from_tier: {str(e)}")
+        mw = anki_interface.get_mw()
+        if mw:
+            mw.logger.log("error", f"Error in choose_random_pkmn_from_tier: {str(e)}")
         show_warning_with_traceback(parent=mw, exception=e, message="Error occurred")
 
 
@@ -421,8 +425,10 @@ def new_pokemon(
         pass
 
     reviewer = Container()
-    reviewer.web = mw.reviewer.web
-    reviewer_obj.update_life_bar(reviewer, 0, 0)
+    mw = anki_interface.get_mw()
+    if mw and hasattr(mw, 'reviewer'):
+        reviewer.web = mw.reviewer.web
+        reviewer_obj.update_life_bar(reviewer, 0, 0)
 
     return pokemon
 
@@ -453,12 +459,16 @@ def save_main_pokemon_progress(
             with open(mainpokemon_path, "r", encoding="utf-8") as json_file:
                 main_pokemon_data = json.load(json_file)
         else:
-            mw.logger.log(
-                "warning", f"Main pokemon data file not found at {mainpokemon_path}"
-            )
+            mw = anki_interface.get_mw()
+            if mw:
+                mw.logger.log(
+                    "warning", f"Main pokemon data file not found at {mainpokemon_path}"
+                )
             showWarning(translator.translate("missing_mainpokemon_data"))
     except Exception as e:
-        mw.logger.log("error", f"Error loading main pokemon data: {str(e)}")
+        mw = anki_interface.get_mw()
+        if mw:
+            mw.logger.log("error", f"Error loading main pokemon data: {str(e)}")
         show_warning_with_traceback(
             parent=mw, exception=e, message="Error loading main pokemon data."
         )
@@ -478,7 +488,9 @@ def save_main_pokemon_progress(
         if check is False:
             achievements = receive_badge(5, achievements)
         try:
-            mw.logger.game_log(f"Level Up: {msg}")
+            mw = anki_interface.get_mw()
+            if mw:
+                mw.logger.game_log(f"Level Up: {msg}")
             tooltipWithColour(msg, color)
         except:
             pass
@@ -617,9 +629,13 @@ def save_main_pokemon_progress(
                 json.dump(mypokemondata, output_file, indent=2)
 
         sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path)
-        mw.logger.log("info", f"Successfully saved progress for {main_pokemon.name}")
+        mw = anki_interface.get_mw()
+        if mw:
+            mw.logger.log("info", f"Successfully saved progress for {main_pokemon.name}")
     except Exception as e:
-        mw.logger.log("error", f"Failed to save pokemon progress: {str(e)}")
+        mw = anki_interface.get_mw()
+        if mw:
+            mw.logger.log("error", f"Failed to save pokemon progress: {str(e)}")
 
     return main_pokemon.level
 
@@ -785,6 +801,7 @@ def catch_pokemon(
         tooltipWithColour(msg, color)
     except Exception as e:
         if logger is not None:
+            mw = anki_interface.get_mw()
             show_warning_with_traceback(
                 parent=mw, exception=e, message="Error while catching Pokemon:"
             )  # Display a message when the Pokémon is caught

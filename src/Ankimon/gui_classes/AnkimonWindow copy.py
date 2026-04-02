@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QApplication
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtCore import Qt
 from aqt.utils import showWarning, showInfo
-from aqt import mw
+from ..infra import anki_interface
 import os
 from ..resources import addon_dir, icon_path
 from ..functions.pokedex_functions import search_pokedex
@@ -56,7 +56,7 @@ class TestWindow(QWidget):
     def display_first_start_up(self):
         if self.first_start == False:
             # Get the geometry of the main screen
-            main_screen_geometry = mw.geometry()
+            main_screen_geometry = anki_interface.get_mw().geometry()
             # Calculate the position to center the ItemWindow on the main screen
             x = int(main_screen_geometry.center().x() - self.width() / 2)
             y = int(main_screen_geometry.center().y() - self.height() / 2)
@@ -551,7 +551,7 @@ class TestWindow(QWidget):
         self.setMaximumHeight(300)
 
     def rate_display_item(self, item):
-        Receive_Window = QDialog(mw)
+        Receive_Window = QDialog(anki_interface.get_mw())
         layout = QHBoxLayout()
         item_name = item
         item_widget = self.pokemon_display_item(item_name)
@@ -563,7 +563,7 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_item(self):
-        Receive_Window = QDialog(mw)
+        Receive_Window = QDialog(anki_interface.get_mw())
         layout = QHBoxLayout()
         item_name = random_item()
         item_widget = self.pokemon_display_item(item_name)
@@ -575,7 +575,7 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_badge(self, badge_num):
-        Receive_Window = QDialog(mw)
+        Receive_Window = QDialog(anki_interface.get_mw())
         Receive_Window.setWindowTitle("You have received a Badge!")
         layout = QHBoxLayout()
         badge_widget = self.pokemon_display_badge(badge_num)

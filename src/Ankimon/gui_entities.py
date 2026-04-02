@@ -2,7 +2,7 @@ import markdown
 import json
 from PyQt6.QtGui import QMovie, QIcon
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QTextEdit, QCheckBox, QPushButton, QMessageBox, QWidget, QScrollArea, QGridLayout, QTextBrowser
-from aqt import mw
+from .infra import anki_interface
 from aqt.qt import QDialog, qconnect
 from aqt.utils import showWarning, showInfo, tooltip
 from PyQt6.QtCore import Qt
@@ -231,7 +231,7 @@ class HelpWindow(QDialog):
                 local_content = read_local_file(help_local_file_path)
                 html_content = local_content
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to retrieve Ankimon HelpGuide from GitHub.")
+            show_warning_with_traceback(parent=anki_interface.get_mw(), exception=e, message="Failed to retrieve Ankimon HelpGuide from GitHub.")
             local_content = read_local_file(help_local_file_path)
             html_content = local_content
         self.setWindowTitle("Ankimon HelpGuide")

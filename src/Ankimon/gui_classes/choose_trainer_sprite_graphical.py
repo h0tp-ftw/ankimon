@@ -1,13 +1,13 @@
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QGridLayout, QWidget, QScrollArea, QPushButton
 from PyQt6.QtGui import QIcon
-from aqt import mw
+from ..infra import anki_interface
 from ..utils import get_all_sprites
 from ..resources import trainer_sprites_path
 import os
 
 class TrainerSpriteGraphicalDialog(QDialog):
-    def __init__(self, settings_obj, parent=mw):
+    def __init__(self, settings_obj, parent=anki_interface.get_mw()):
         super().__init__(parent)
         self.setWindowTitle("Choose Your Trainer Sprite")
         self.settings = settings_obj

@@ -13,7 +13,7 @@ from ..resources import (
     pokemon_csv,
 )
 from aqt.utils import showWarning
-from aqt import mw
+from ..infra import anki_interface
 import json
 import random
 import csv
@@ -133,7 +133,7 @@ def search_pokedex(pokemon_name, variable):
 
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=e,
             message=f"Error searching for pokemon '{pokemon_name}'",
         )
@@ -244,7 +244,7 @@ def extract_ids_from_file():
             return owned_pokemon_ids
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error extracting IDs from file"
+            parent=anki_interface.get_mw(), exception=e, message="Error extracting IDs from file"
         )
         return []
 
@@ -343,7 +343,7 @@ def find_details_move(move_name: str) -> dict:
                 
     except FileNotFoundError as f:
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=f,
             message="The is an issue finding moves.json."
         )
@@ -351,7 +351,7 @@ def find_details_move(move_name: str) -> dict:
         
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=e,
             message=f"There is an issue in find_details_move for move: {move_name}. Returning to default move 'tackle'."
         )
@@ -502,7 +502,7 @@ def check_evolution_for_pokemon(
             return None
         except Exception as e:
             show_warning_with_traceback(
-                parent=mw,
+                parent=anki_interface.get_mw(),
                 exception=e,
                 message=f"Error checking evolution for Pokémon ID {pokemon_id}",
             )
@@ -586,11 +586,11 @@ def get_pokemon_evolution_data(pokemon_id):
             pass
     except FileNotFoundError as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message=f"The evolution data file was not found."
+            parent=anki_interface.get_mw(), exception=e, message=f"The evolution data file was not found."
         )
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=e,
             message=f"Error retrieving evolution data for Pokémon ID {pokemon_id}",
         )
@@ -653,7 +653,7 @@ def return_name_for_id(pokemon_id):
     except Exception as e:
         # Log any unexpected errors
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=e,
             message=f"No evolution data found for Pokémon ID '{pokemon_id}'",
         )(f"Error retrieving name for Pokémon ID '{pokemon_id}': {e}")
@@ -688,7 +688,7 @@ def return_id_for_item_name(item_name):
         return None
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw,
+            parent=anki_interface.get_mw(),
             exception=e,
             message=f"Error retrieving ID for item '{item_name}'",
         )

@@ -3,7 +3,7 @@ import shutil
 from datetime import datetime
 import json
 from aqt.utils import showInfo
-from aqt import mw
+from ..infra import anki_interface
 from ..resources import mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, backup_root
 # Define backup directory and files to back up
 backup_folders = [os.path.join(backup_root, f"backup_{i}") for i in range(1, 4)]
@@ -49,6 +49,6 @@ def run_backup():
     if is_backup_needed():
         rotate_backups()
         create_backup_folder(backup_folders[0])
-        mw.logger.log("game","New backup created successfully.")
+        anki_interface.get_mw().logger.log("game","New backup created successfully.")
     else:
-        mw.logger.log("game","No backup needed yet.")
+        anki_interface.get_mw().logger.log("game","No backup needed yet.")

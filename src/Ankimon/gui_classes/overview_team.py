@@ -28,7 +28,8 @@ import json
 import os
 from typing import Any
 
-from aqt import gui_hooks, mw
+from aqt.gui_hooks import deck_browser_will_render_content, overview_will_render_content
+from ..infra import anki_interface
 
 from ..functions.sprite_functions import get_sprite_path
 from ..resources import mypokemon_path, icon_path as pokeball_path, team_pokemon_path
@@ -312,8 +313,8 @@ def load_pokemon_team() -> list[dict[str, Any]]:
         return []
     except Exception as e:
         # Unexpected errors are logged but not allowed to crash Anki's UI.
-        if mw:
-            mw.progress.chrome_logger.log(f"Ankimon Team Overview Error: {e}")
+        if anki_interface.get_mw():
+            anki_interface.get_mw().progress.chrome_logger.log(f"Ankimon Team Overview Error: {e}")
         return []
 
 
@@ -381,6 +382,6 @@ def on_overview_will_render_content(overview: Any, content: Any) -> None:
 # Hook registration (runs at import time, gated by user setting)
 # ---------------------------------------------------------------------------
 
-if mw.settings_obj.get("gui.team_deck_view") is True:
-    gui_hooks.deck_browser_will_render_content.append(deck_browser_will_render)
-    gui_hooks.overview_will_render_content.append(on_overview_will_render_content)
+if anki_interface.get_mw().settings_obj.get("gui.team_deck_view") is True:
+    deck_browser_will_render_content.append(deck_browser_will_render)
+    overview_will_render_content.append(on_overview_will_render_content)

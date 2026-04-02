@@ -7,7 +7,7 @@ import csv
 import base64
 from typing import Any, Optional
 
-from aqt import mw
+from .infra import anki_interface
 from aqt.utils import showWarning, showInfo
 
 from aqt.qt import QFontDatabase, QFont, QUrl
@@ -107,7 +107,7 @@ def addon_config_editor_will_display_json(text: str) -> str:
             showInfo(
                 "This Configuration is old and wont be used anymore. \n Please use the Settings Window in the Ankimon Menu => Settings"
             )
-            # mw.settings_ankimon.show_window()
+            # anki_interface.get_mw().settings_ankimon.show_window()
             # dont show all mainpokemon and mypokemon information in config
             if "pokemon_collection" in config:
                 del config["pokemon_collection"]
@@ -467,12 +467,12 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
                     return int(id)
     except (OSError, KeyError) as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error reading item data:"
+            parent=anki_interface.get_mw(), exception=e, message="Error reading item data:"
         )
         return 4
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message=f"Unexpected error: {e}"
+            parent=anki_interface.get_mw(), exception=e, message=f"Unexpected error: {e}"
         )
         return 4
 
@@ -1005,7 +1005,7 @@ def substract_item_from_itembag(item: str, quantity: int = 1) -> None:
 
     # First, we check if the item is in the item bag
     if item not in [item_data["item"] for item_data in items_list]:
-        mw.logger.log_and_showinfo("error", f"Could not find {item} in the item bag.")
+        anki_interface.get_mw().logger.log_and_showinfo("error", f"Could not find {item} in the item bag.")
         return
 
     # Now that we know the item is in the item bag, we retrieve its index
@@ -1017,13 +1017,13 @@ def substract_item_from_itembag(item: str, quantity: int = 1) -> None:
 
     # Now we check whether we can actually substract the chosen amount
     if items_list[index].get("quantity") is None:
-        mw.logger.log_and_showinfo(
+        anki_interface.get_mw().logger.log_and_showinfo(
             "error",
             f"{item} does not seem to have a 'quantity' attribute in the item bag.",
         )
         return
     if items_list[index].get("quantity") < quantity:
-        mw.logger.log_and_showinfo(
+        anki_interface.get_mw().logger.log_and_showinfo(
             "error",
             f"There are {items_list[index].get('quantity')} instances of {item} in the item bag, but you are trying to remove {quantity}.",
         )
@@ -1059,4 +1059,4 @@ def png_to_base64(path: str) -> str:
 
 
 def close_anki():
-    mw.close()
+    anki_interface.get_mw().close()

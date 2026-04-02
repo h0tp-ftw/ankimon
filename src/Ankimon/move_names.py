@@ -1,13 +1,13 @@
 import json
 from functools import lru_cache
-from aqt import mw
+from .infra import anki_interface
 from .pyobj.translator import LANG_NUMBERS
 from .resources import move_names_file_path
 
 
 def _current_lang_code() -> str:
     try:
-        lang_id = int(mw.settings_obj.get("misc.language"))
+        lang_id = int(anki_interface.get_mw().settings_obj.get("misc.language"))
     except Exception:
         lang_id = 9  # Default to English on failure
     return LANG_NUMBERS.get(lang_id, "en")
