@@ -1,4 +1,5 @@
-from aqt.gui_hooks import addon_config_editor_will_save_json, sync_did_finish, addon_config_editor_will_display_json
+from aqt.gui_hooks import addon_config_editor_will_save_json, sync_did_finish
+from aqt.gui_hooks import addon_config_editor_will_display_json as hook_addon_config_editor_will_display_json
 from .utils import addon_config_editor_will_display_json
 
 def setupHooks(check_data, ankimon_tracker_obj):
@@ -13,4 +14,4 @@ def setupHooks(check_data, ankimon_tracker_obj):
             sync_did_finish.append(check_data.sync_on_anki_close)
 
     # Always set up these hooks regardless of check_data
-    addon_config_editor_will_display_json.append(addon_config_editor_will_display_json)
+    hook_addon_config_editor_will_display_json.append(addon_config_editor_will_display_json)
