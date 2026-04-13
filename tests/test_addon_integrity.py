@@ -48,6 +48,7 @@ def test_ankimon_initialization(qapp):
             pass
 
     aqt.mw = MockMainWindow()
+    sys.modules['aqt'].mw = aqt.mw
 
     # Mocking QThreadPool and query execution because we don't want background threads to actually run in the test
     aqt.mw.taskman = MagicMock()
