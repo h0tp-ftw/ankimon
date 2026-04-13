@@ -94,8 +94,26 @@ def special_pokemon_names_for_min_level(name):
         return "celebi"
     elif name == "magearna[e]":
         return "magearna"
-    elif name == "type: null":
+    elif name == "type: null" or name == "type-null":
         return "typenull"
+    elif name == "ho-oh":
+        return "hooh"
+    elif name == "tapu-koko":
+        return "tapukoko"
+    elif name == "tapu-lele":
+        return "tapulele"
+    elif name == "tapu-bulu":
+        return "tapubulu"
+    elif name == "tapu-fini":
+        return "tapufini"
+    elif name == "ting-lu":
+        return "tinglu"
+    elif name == "chien-pao":
+        return "chienpao"
+    elif name == "wo-chien":
+        return "wochien"
+    elif name == "chi-yu":
+        return "chiyu"
     else:
         return name
 
