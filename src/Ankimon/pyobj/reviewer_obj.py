@@ -64,7 +64,6 @@ class Reviewer_Manager:
             return
 
         # Check if the enemy pokemon is in the user's collection
-        enemy_name_lower = self.enemy_pokemon.name.lower()
         is_pokemon_owned = False
         try:
             addon_package = mw.addonManager.addonFromModule(__name__)
@@ -73,7 +72,7 @@ class Reviewer_Manager:
                 with open(collection_path, 'r', encoding='utf-8') as f:
                     my_pokemon_list = json.load(f)
                 for p in my_pokemon_list:
-                    if p.get('name', '').lower() == enemy_name_lower:
+                    if str(p.get('id')) == str(self.enemy_pokemon.id):
                         is_pokemon_owned = True
                         break
         except Exception:
