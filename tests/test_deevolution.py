@@ -58,7 +58,7 @@ sys.modules['markdown'] = MagicMock()
 sys.modules['requests'] = MagicMock()
 
 # Mock out complex singletons before they load
-sys.modules['src.Ankimon.singletons'] = MagicMock()
+sys.modules['Ankimon.singletons'] = MagicMock()
 
 # Now we can safely import Ankimon objects
 import importlib.util
@@ -72,10 +72,10 @@ import sys
 mock_pkg = MockPackage()
 mock_pkg.__path__ = ['src/Ankimon']
 mock_pkg.__spec__ = MagicMock()
-sys.modules['src.Ankimon'] = mock_pkg
+sys.modules['Ankimon'] = mock_pkg
 
-import src.Ankimon
-from src.Ankimon.pyobj.pokemon_obj import PokemonObject
+import Ankimon
+from Ankimon.pyobj.pokemon_obj import PokemonObject
 
 
 @pytest.fixture
@@ -83,12 +83,12 @@ def mock_paths(tmp_path):
     main_path = tmp_path / "mainpokemon.json"
     my_path = tmp_path / "mypokemon.json"
 
-    with patch('src.Ankimon.pyobj.collection_dialog.mainpokemon_path', main_path), \
-         patch('src.Ankimon.pyobj.collection_dialog.mypokemon_path', my_path), \
-         patch('src.Ankimon.pyobj.pokemon_obj.mypokemon_path', my_path), \
-         patch('src.Ankimon.pyobj.pokemon_obj.mainpokemon_path', main_path), \
-         patch('src.Ankimon.resources.mypokemon_path', my_path), \
-         patch('src.Ankimon.resources.mainpokemon_path', main_path):
+    with patch('Ankimon.pyobj.collection_dialog.mainpokemon_path', main_path), \
+         patch('Ankimon.pyobj.collection_dialog.mypokemon_path', my_path), \
+         patch('Ankimon.pyobj.pokemon_obj.mypokemon_path', my_path), \
+         patch('Ankimon.pyobj.pokemon_obj.mainpokemon_path', main_path), \
+         patch('Ankimon.resources.mypokemon_path', my_path), \
+         patch('Ankimon.resources.mainpokemon_path', main_path):
         yield main_path, my_path
 
 def test_pick_main_pokemon_does_not_deevolve(mock_paths):
@@ -158,14 +158,14 @@ def test_pick_main_pokemon_does_not_deevolve(mock_paths):
     test_window = MagicMock()
 
     # Patch external calls inside MainPokemon
-    with patch('src.Ankimon.pyobj.collection_dialog.search_pokedex_by_id', return_value="Bulbasaur"), \
-         patch('src.Ankimon.pyobj.collection_dialog.search_pokedex', return_value={"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45}), \
-         patch('src.Ankimon.pyobj.collection_dialog.PokemonObject.calc_stat', return_value=20), \
-         patch('src.Ankimon.pyobj.collection_dialog.uuid.uuid4', return_value=uuid.uuid4()), \
-         patch('src.Ankimon.functions.migration.migrate_starter_individual_id'), \
-         patch('src.Ankimon.singletons.pokemon_pc'):
+    with patch('Ankimon.pyobj.collection_dialog.search_pokedex_by_id', return_value="Bulbasaur"), \
+         patch('Ankimon.pyobj.collection_dialog.search_pokedex', return_value={"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45}), \
+         patch('Ankimon.pyobj.collection_dialog.PokemonObject.calc_stat', return_value=20), \
+         patch('Ankimon.pyobj.collection_dialog.uuid.uuid4', return_value=uuid.uuid4()), \
+         patch('Ankimon.functions.migration.migrate_starter_individual_id'), \
+         patch('Ankimon.singletons.pokemon_pc'):
 
-        from src.Ankimon.pyobj.collection_dialog import MainPokemon
+        from Ankimon.pyobj.collection_dialog import MainPokemon
 
         # Execute the function
         MainPokemon(
