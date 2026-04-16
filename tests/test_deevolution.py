@@ -10,16 +10,10 @@ from unittest.mock import patch, MagicMock
 
 _src = Path(__file__).parent.parent / "src"
 
-@pytest.fixture(autouse=True)
-def patch_sys_modules():
-    original_modules = dict(sys.modules)
-
-    # Mock necessary modules
-    sys.modules["aqt"] = mock.MagicMock()
-    sys.modules["aqt.qt"] = mock.MagicMock()
-    sys.modules["aqt.utils"] = mock.MagicMock()
-
-    for module in [
+def setup_mock_modules():
+    mocks = {}
+    modules_to_mock = [
+        "aqt", "aqt.qt", "aqt.utils",
         "Ankimon.pyobj",
         "Ankimon.pyobj.settings",
         "Ankimon.pyobj.pokemon_obj",
@@ -44,8 +38,11 @@ def patch_sys_modules():
         "Ankimon.resources",
         "Ankimon.gui_classes.pokemon_details",
         "Ankimon.gui_entities"
-    ]:
-        sys.modules[module] = mock.MagicMock()
+    ]
+    for module in modules_to_mock:
+        if module not in sys.modules:
+            mocks[module] = mock.MagicMock()
+            sys.modules[module] = mocks[module]
 
     class MockQDialog:
         pass
@@ -86,13 +83,22 @@ def patch_sys_modules():
         "Ankimon.poke_engine.objects",
         "Ankimon.poke_engine.helpers"
     ]:
-        sys.modules[module] = mock.MagicMock()
+        if module not in sys.modules:
+            mocks[module] = mock.MagicMock()
+            sys.modules[module] = mocks[module]
 
+    return mocks
+
+def teardown_mock_modules(mocks):
+    for module in mocks:
+        if module in sys.modules:
+            del sys.modules[module]
+
+@pytest.fixture(autouse=True)
+def patch_sys_modules():
+    mocks = setup_mock_modules()
     yield
-
-    sys.modules.clear()
-    sys.modules.update(original_modules)
-
+    teardown_mock_modules(mocks)
 
 def load_pokemon_obj():
     spec_pokemon_obj = importlib.util.spec_from_file_location(
