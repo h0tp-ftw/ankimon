@@ -1,81 +1,108 @@
 import pytest
 import json
 import uuid
-import os
 import sys
+from pathlib import Path
+import importlib.util
 
+import unittest.mock as mock
 from unittest.mock import patch, MagicMock
 
-# Create a mock for Anki/AQT to avoid complex imports
-class MockPackage(MagicMock):
-    __path__ = []
+_src = Path(__file__).parent.parent / "src"
 
-mock_aqt = MockPackage()
-mock_aqt.__spec__ = MagicMock()
-mock_anki = MockPackage()
-mock_anki.__spec__ = MagicMock()
-sys.modules['aqt'] = mock_aqt
-sys.modules['aqt.operations'] = MagicMock()
-sys.modules['aqt.operations.QueryOp'] = MagicMock()
-sys.modules['aqt.reviewer'] = MagicMock()
-sys.modules['aqt.main'] = MagicMock()
-sys.modules['aqt.theme'] = MagicMock()
-sys.modules['aqt.webview'] = MagicMock()
-sys.modules['aqt.editor'] = MagicMock()
-sys.modules['aqt.gui_hooks'] = MagicMock()
-sys.modules['anki'] = mock_anki
-sys.modules['anki.hooks'] = MagicMock()
-sys.modules['anki.cards'] = MagicMock()
-sys.modules['anki.collection'] = MagicMock()
-sys.modules['anki.utils'] = MagicMock()
-sys.modules['anki.decks'] = MagicMock()
-sys.modules['anki.buildinfo'] = MagicMock()
-sys.modules['anki.buildinfo.version'] = "24.04"
-sys.modules['aqt.qt'] = MagicMock()
-sys.modules['aqt.utils'] = MagicMock()
-sys.modules['PyQt6'] = MockPackage()
-sys.modules['PyQt6'].__spec__ = MagicMock()
-sys.modules['PyQt6.QtCore'] = MagicMock()
-class MockQDialog:
-    pass
+@pytest.fixture(autouse=True)
+def patch_sys_modules():
+    original_modules = dict(sys.modules)
 
-class MockQtWidgets(MagicMock):
-    QDialog = MockQDialog
-    QWidget = MockQDialog
-    QMainWindow = MockQDialog
+    # Mock necessary modules
+    sys.modules["aqt"] = mock.MagicMock()
+    sys.modules["aqt.qt"] = mock.MagicMock()
+    sys.modules["aqt.utils"] = mock.MagicMock()
 
-# To make 'from PyQt6.QtWidgets import QDialog' work
-mock_qtwidgets = MockQtWidgets()
-mock_qtwidgets.QDialog = MockQDialog
-sys.modules['PyQt6.QtWidgets'] = mock_qtwidgets
-sys.modules['PyQt6.QtGui'] = MagicMock()
-sys.modules['PyQt6.QtMultimedia'] = MagicMock()
-sys.modules['PyQt6.QtWebEngineCore'] = MagicMock()
-sys.modules['PyQt6.QtWebEngineWidgets'] = MagicMock()
-sys.modules['PyQt6.QtWebChannel'] = MagicMock()
-sys.modules['PyQt6.QtNetwork'] = MagicMock()
-sys.modules['markdown'] = MagicMock()
-sys.modules['requests'] = MagicMock()
+    for module in [
+        "Ankimon.pyobj",
+        "Ankimon.pyobj.settings",
+        "Ankimon.pyobj.pokemon_obj",
+        "Ankimon.pyobj.reviewer_obj",
+        "Ankimon.pyobj.test_window",
+        "Ankimon.pyobj.trainer_card",
+        "Ankimon.pyobj.InfoLogger",
+        "Ankimon.pyobj.evolution_window",
+        "Ankimon.pyobj.attack_dialog",
+        "Ankimon.pyobj.translator",
+        "Ankimon.pyobj.error_handler",
+        "Ankimon.functions.pokemon_functions",
+        "Ankimon.functions.pokedex_functions",
+        "Ankimon.functions.trainer_functions",
+        "Ankimon.functions.badges_functions",
+        "Ankimon.functions.drawing_utils",
+        "Ankimon.functions.migration",
+        "Ankimon.utils",
+        "Ankimon.business",
+        "Ankimon.const",
+        "Ankimon.singletons",
+        "Ankimon.resources",
+        "Ankimon.gui_classes.pokemon_details",
+        "Ankimon.gui_entities"
+    ]:
+        sys.modules[module] = mock.MagicMock()
 
-# Mock out complex singletons before they load
-sys.modules['Ankimon.singletons'] = MagicMock()
+    class MockQDialog:
+        pass
 
-# Now we can safely import Ankimon objects
-import importlib.util
+    class MockQtWidgets(mock.MagicMock):
+        QDialog = MockQDialog
+        QWidget = MockQDialog
+        QMainWindow = MockQDialog
 
-# Stop triggering complex __init__.py stuff from src/Ankimon/__init__.py
-# We can bypass __init__.py by directly importing from the file.
-import importlib.util
+    mock_qtwidgets = MockQtWidgets()
+    mock_qtwidgets.QDialog = MockQDialog
+    mock_qtwidgets.QWidget = MockQDialog
+    mock_qtwidgets.QMainWindow = MockQDialog
 
-# Use normal import, but mock the __init__ correctly.
-import sys
-mock_pkg = MockPackage()
-mock_pkg.__path__ = ['src/Ankimon']
-mock_pkg.__spec__ = MagicMock()
-sys.modules['Ankimon'] = mock_pkg
+    class MockPackage(mock.MagicMock):
+        __path__ = []
 
-import Ankimon
-from Ankimon.pyobj.pokemon_obj import PokemonObject
+    sys.modules['PyQt6'] = MockPackage()
+    sys.modules['PyQt6'].__spec__ = mock.MagicMock()
+    sys.modules['PyQt6.QtWidgets'] = mock_qtwidgets
+    sys.modules['PyQt6.QtCore'] = mock.MagicMock()
+    sys.modules['PyQt6.QtGui'] = mock.MagicMock()
+    sys.modules['PyQt6.QtMultimedia'] = mock.MagicMock()
+    sys.modules['PyQt6.QtWebEngineCore'] = mock.MagicMock()
+    sys.modules['PyQt6.QtWebEngineWidgets'] = mock.MagicMock()
+    sys.modules['PyQt6.QtWebChannel'] = mock.MagicMock()
+    sys.modules['PyQt6.QtNetwork'] = mock.MagicMock()
+
+    import PyQt6
+    import PyQt6.QtWidgets
+    PyQt6.QtWidgets.QDialog = MockQDialog
+    PyQt6.QtWidgets.QWidget = MockQDialog
+    PyQt6.QtWidgets.QMainWindow = MockQDialog
+
+    for module in [
+        "requests",
+        "Ankimon.poke_engine",
+        "Ankimon.poke_engine.objects",
+        "Ankimon.poke_engine.helpers"
+    ]:
+        sys.modules[module] = mock.MagicMock()
+
+    yield
+
+    sys.modules.clear()
+    sys.modules.update(original_modules)
+
+
+def load_pokemon_obj():
+    spec_pokemon_obj = importlib.util.spec_from_file_location(
+        "Ankimon.pyobj.pokemon_obj",
+        _src / "Ankimon" / "pyobj" / "pokemon_obj.py",
+    )
+    pokemon_obj = importlib.util.module_from_spec(spec_pokemon_obj)
+    sys.modules["Ankimon.pyobj.pokemon_obj"] = pokemon_obj
+    spec_pokemon_obj.loader.exec_module(pokemon_obj)
+    return pokemon_obj.PokemonObject
 
 
 @pytest.fixture
@@ -129,6 +156,7 @@ def test_pick_main_pokemon_does_not_deevolve(mock_paths):
     with open(my_path, "w") as f:
         json.dump(mypokemon_data, f)
 
+        PokemonObject = load_pokemon_obj()
     # stale main_pokemon in memory (still Psyduck)
     stale_main_pokemon = PokemonObject(
         id=54,
@@ -157,18 +185,27 @@ def test_pick_main_pokemon_does_not_deevolve(mock_paths):
     reviewer_obj = MagicMock()
     test_window = MagicMock()
 
-    # Patch external calls inside MainPokemon
-    with patch('Ankimon.pyobj.collection_dialog.search_pokedex_by_id', return_value="Bulbasaur"), \
-         patch('Ankimon.pyobj.collection_dialog.search_pokedex', return_value={"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45}), \
-         patch('Ankimon.pyobj.collection_dialog.PokemonObject.calc_stat', return_value=20), \
-         patch('Ankimon.pyobj.collection_dialog.uuid.uuid4', return_value=uuid.uuid4()), \
-         patch('Ankimon.functions.migration.migrate_starter_individual_id'), \
-         patch('Ankimon.singletons.pokemon_pc'):
+    # Load collection_dialog isolated FIRST before patching it
+    spec_collection_dialog = importlib.util.spec_from_file_location(
+        "Ankimon.pyobj.collection_dialog",
+        _src / "Ankimon" / "pyobj" / "collection_dialog.py",
+    )
+    collection_dialog = importlib.util.module_from_spec(spec_collection_dialog)
+    sys.modules["Ankimon.pyobj.collection_dialog"] = collection_dialog
+    spec_collection_dialog.loader.exec_module(collection_dialog)
 
-        from Ankimon.pyobj.collection_dialog import MainPokemon
+    # Patch external calls inside MainPokemon using patch.object to avoid JSON serialization issues with mock modules
+    with patch.object(collection_dialog, 'search_pokedex_by_id', return_value="Bulbasaur"), \
+         patch.object(collection_dialog, 'search_pokedex', return_value={"hp": 45, "atk": 49, "def": 49, "spa": 65, "spd": 65, "spe": 45}), \
+         patch.object(collection_dialog.PokemonObject, 'calc_stat', return_value=20), \
+         patch.object(collection_dialog.uuid, 'uuid4', return_value=uuid.uuid4()), \
+         patch('Ankimon.functions.migration.migrate_starter_individual_id'), \
+             patch('Ankimon.singletons.pokemon_pc'), \
+             patch.object(collection_dialog, 'mainpokemon_path', main_path), \
+             patch.object(collection_dialog, 'mypokemon_path', my_path):
 
         # Execute the function
-        MainPokemon(
+        collection_dialog.MainPokemon(
             pokemon_data=new_pokemon_data,
             main_pokemon=stale_main_pokemon,
             logger=logger,
