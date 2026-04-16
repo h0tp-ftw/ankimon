@@ -760,27 +760,41 @@ def MainPokemon(
     migrate_starter_individual_id()
     # --- Save the existing mainpokemon to mypokemon before replacing ---
     try:
-        # Load the current mainpokemon
-        with open(mainpokemon_path, "r", encoding="utf-8") as f:
-            current_main_list = json.load(f)
-        if current_main_list:
-            current_main = current_main_list[0]
-            # Load mypokemon
-            with open(mypokemon_path, "r", encoding="utf-8") as f:
-                mypokemondata = json.load(f)
-            # Update or append the current mainpokemon in mypokemon
-            found = False
-            for idx, pkmn in enumerate(mypokemondata):
-                if pkmn.get("individual_id") == current_main.get("individual_id"):
-                    mypokemondata[idx] = current_main
-                    found = True
-                    break
-            if not found:
-                mypokemondata.append(current_main)
-            with open(mypokemon_path, "w", encoding="utf-8") as f:
-                json.dump(mypokemondata, f, indent=2)
-    except Exception:
-        pass  # If files don't exist, just continue
+        # Load mypokemon
+        with open(mypokemon_path, "r", encoding="utf-8") as f:
+            mypokemondata = json.load(f)
+
+        # The outgoing active Pokémon is currently in memory as `main_pokemon`.
+        # We update its dynamic progress in mypokemon.json without overwriting
+        # static attributes (like name and id) which might be stale in mainpokemon.json.
+        outgoing_id = main_pokemon.individual_id
+
+        found = False
+        for idx, pkmn in enumerate(mypokemondata):
+            if pkmn.get("individual_id") == outgoing_id:
+                # Update only the dynamic attributes to preserve any evolutions
+                # that were saved to mypokemon.json but not properly synced to main_pokemon.
+                pkmn["level"] = main_pokemon.level
+                pkmn["xp"] = main_pokemon.xp
+                pkmn["current_hp"] = main_pokemon.hp
+                pkmn["ev"] = main_pokemon.ev
+                pkmn["iv"] = main_pokemon.iv
+                pkmn["attacks"] = main_pokemon.attacks
+                pkmn["friendship"] = main_pokemon.friendship
+                pkmn["pokemon_defeated"] = main_pokemon.pokemon_defeated
+                pkmn["held_item"] = main_pokemon.held_item
+
+                found = True
+                break
+
+        if not found:
+            # If it wasn't in mypokemon.json for some reason, append it entirely
+            mypokemondata.append(main_pokemon.to_dict() if hasattr(main_pokemon, "to_dict") else main_pokemon.__dict__)
+
+        with open(mypokemon_path, "w", encoding="utf-8") as f:
+            json.dump(mypokemondata, f, indent=2)
+    except Exception as e:
+        logger.log("error", f"Error saving outgoing main pokemon: {e}")
 
     # --- Now proceed to set the new mainpokemon as before ---
     pokemon_id = pokemon_data.get("id")
