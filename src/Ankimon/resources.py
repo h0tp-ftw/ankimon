@@ -95,6 +95,10 @@ backup_folder_1 = backup_root / "backup_1"
 backup_folder_2 = backup_root / "backup_2"
 backup_folders = [os.path.join(backup_root, f"backup_{i}") for i in range(1, 4)]
 
+#update routes
+pre_update_backup_path = addon_dir.parent / "Ankimon_PreUpdate_Backup"
+update_temp_path = addon_dir.parent / "Ankimon_Update_Temp"
+
 #detect add-on version
 try:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -574,7 +578,10 @@ def generate_startup_files(base_path, base_user_path):  # Add base_user_path par
 
         if not os.path.exists(file_path):
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump([], f, indent=2)
+                if file == 'data.json':
+                    json.dump({}, f, indent=2)
+                else:
+                    json.dump([], f, indent=2)
 
     # Default data for the file
     default_rating_data = {"rate_this": False}
