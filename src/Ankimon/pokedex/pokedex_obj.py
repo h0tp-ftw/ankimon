@@ -84,7 +84,7 @@ class Pokedex(QDialog):
                     defeated_count += defeated_num
                     #print(f"POKEDEX_DEBUG: Pokemon ID {pokemon.get('id', 'unknown')}: pokemon_defeated = {defeated_num}")
                 except (TypeError, ValueError):
-                    mw.logger.log(f"POKEDEX_DEBUG: Invalid pokemon_defeated for ID {pokemon.get('id', 'unknown')}: {defeated}")
+                    mw.logger.log("warning", f"POKEDEX_DEBUG: Invalid pokemon_defeated for ID {pokemon.get('id', 'unknown')}: {defeated}")
                 
                 # Check if Pokémon is shiny
                 if pokemon.get("shiny") is True:
@@ -92,7 +92,7 @@ class Pokedex(QDialog):
                     if pokemon_id and pokemon_id not in shiny_pokemon_ids:
                         shiny_pokemon_ids.append(pokemon_id)
         else:
-            mw.logger.log("POKEDEX_DEBUG: No valid mypokemon.json found")
+            mw.logger.log("info", "POKEDEX_DEBUG: No valid mypokemon.json found")
             total_caught_count = 0
 
         # Also count defeated Pokémon from released Pokémon history
