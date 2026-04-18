@@ -52,9 +52,11 @@ from .resources import addon_dir, itembag_path
 
 # start loggerobject for Ankimon
 logger = ShowInfoLogger()
+mw.logger = logger
 
 # Create the Settings object
 settings_obj = Settings()
+mw.settings_obj = settings_obj
 
 # Pass the correct attributes to SettingsWindow
 settings_window = SettingsWindow(
@@ -69,9 +71,7 @@ translator = Translator(language=int(settings_obj.get("misc.language")))
 
 # Not sure what this does, but from afar it looks like a bad idea
 mw.settings_ankimon = settings_window
-mw.logger = logger
 mw.translator = translator
-mw.settings_obj = settings_obj
 
 main_pokemon, mainpokemon_empty = update_main_pokemon()
 

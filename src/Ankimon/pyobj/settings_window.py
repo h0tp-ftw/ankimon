@@ -18,11 +18,13 @@ from aqt.qt import (
     QPainterPath,
     Qt,
     QRectF,
+    QComboBox,
 )
 
 from aqt.utils import showWarning
 from aqt import mw
 from aqt.theme import theme_manager
+from .update_manager import UpdateManager
 
 
 # create_rounded_pixmap function remains the same
@@ -432,6 +434,74 @@ class SettingsWindow(QMainWindow):
             l1_button.clicked.connect(
                 lambda _, t=l1_title, b=l1_button: self._toggle_group_visibility(t, b)
             )
+            
+        # ---- Update Ankimon Widget ----
+        self.update_manager = UpdateManager(mw.logger)
+        update_group = QWidget()
+        update_layout = QVBoxLayout(update_group)
+        
+        update_title = QLabel("Update Ankimon")
+        update_title.setProperty("class", "setting-label")
+        update_title.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 10px;")
+        update_layout.addWidget(update_title)
+        
+        curr_version_info = self.update_manager.get_current_version_info()
+        self.version_label = QLabel(f"Current: {curr_version_info}")
+        update_layout.addWidget(self.version_label)
+        
+        self.check_latest_btn = QPushButton("Check for Updates")
+        self.check_latest_btn.clicked.connect(self._do_check_latest)
+        update_layout.addWidget(self.check_latest_btn)
+        
+        self.update_btn = QPushButton("Update to Latest Experimental")
+        self.update_btn.clicked.connect(self._do_update_standard)
+        update_layout.addWidget(self.update_btn)
+        
+        self.show_dev_opts_btn = QPushButton("Show Developer Update Options")
+        self.show_dev_opts_btn.clicked.connect(self._toggle_dev_update_opts)
+        self.show_dev_opts_btn.setVisible(self.config.get("misc.developer_mode", False))
+        update_layout.addWidget(self.show_dev_opts_btn)
+        
+        self.dev_update_group = QWidget()
+        dev_layout = QVBoxLayout(self.dev_update_group)
+        dev_layout.setContentsMargins(0,0,0,0)
+        
+        dev_label = QLabel("Developer Git Update")
+        dev_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        dev_layout.addWidget(dev_label)
+        
+        source_hlayout = QHBoxLayout()
+        source_hlayout.setContentsMargins(0,0,0,0)
+        self.source_type_cb = QComboBox()
+        self.source_type_cb.addItems(["Current Main", "Pull Request", "Past Versions (Tags)", "Branch", "Hash"])
+        self.source_type_cb.currentTextChanged.connect(self._on_source_type_change)
+        source_hlayout.addWidget(self.source_type_cb)
+        
+        self.source_value_cb = QComboBox()
+        self.source_value_cb.setEditable(True)
+        source_hlayout.addWidget(self.source_value_cb)
+        self.source_value_cb.hide()
+        
+        self.source_value_input = QLineEdit()
+        self.source_value_input.setPlaceholderText("Enter Git Hash...")
+        self.source_value_input.hide()
+        source_hlayout.addWidget(self.source_value_input)
+        
+        dev_layout.addLayout(source_hlayout)
+        
+        self.dev_update_btn = QPushButton("Update via Git")
+        self.dev_update_btn.clicked.connect(self._do_update_git)
+        dev_layout.addWidget(self.dev_update_btn)
+        
+        update_layout.addWidget(self.dev_update_group)
+        self.dev_update_group.setVisible(False)
+        
+        scroll_area_layout.addWidget(update_group)
+        
+        # We need to refresh the Github refs if Dev Mode is open, but do it asynchronously or on click usually.
+        # For simplicity, we can load it on demand or leave it empty so the user can just type the branch name as editable.
+        # But we'll try to populate MAIN immediately.
+
         scroll_area_layout.addStretch()
         layout.addWidget(scroll_area)
         save_button = QPushButton("Save")
@@ -564,3 +634,119 @@ class SettingsWindow(QMainWindow):
             self.original_config = self.config.copy()
         else:
             QMessageBox.information(self, "No Changes", "No settings were changed.")
+
+    def _on_source_type_change(self, text):
+        from aqt.operations import QueryOp
+        self.source_value_input.hide()
+        self.source_value_cb.hide()
+        
+        if text == "Current Main":
+            pass # No input needed
+        elif text == "Hash":
+            self.source_value_input.show()
+        elif text in ["Past Versions (Tags)", "Branch", "Pull Request"]:
+            self.source_value_cb.clear()
+            self.source_value_cb.show()
+            self.source_value_cb.addItem("Loading...")
+            
+            def fetch_items():
+                if text == "Past Versions (Tags)": return self.update_manager.fetch_github_tags()
+                elif text == "Branch": return self.update_manager.fetch_github_branches()
+                elif text == "Pull Request": return self.update_manager.fetch_github_prs()
+                return []
+                
+            def on_done(items):
+                self.source_value_cb.clear()
+                self.source_value_cb.addItems(items)
+                
+            QueryOp(parent=self, op=lambda _: fetch_items(), success=on_done).without_collection().run_in_background()
+
+    def _toggle_dev_update_opts(self):
+        if self.dev_update_group.isVisible():
+            self.dev_update_group.setVisible(False)
+            self.show_dev_opts_btn.setText("Show Developer Update Options")
+        else:
+            if not self.update_manager.check_for_git():
+                QMessageBox.warning(self, "Git Required", "Git is not installed or not available in your system path.\n\nDeveloper update options require Git.")
+                return
+            self.dev_update_group.setVisible(True)
+            self.show_dev_opts_btn.setText("Hide Developer Update Options")
+
+    def _do_check_latest(self):
+        from aqt.operations import QueryOp
+        self.check_latest_btn.setText("Checking...")
+        self.check_latest_btn.setEnabled(False)
+        def fetch():
+            return self.update_manager.get_latest_experimental_tag()
+        def on_done(tag):
+            self.check_latest_btn.setEnabled(True)
+            self.check_latest_btn.setText("Check for Updates")
+            if tag:
+                QMessageBox.information(self, "Update Check", f"Latest experimental release: {tag}\n\nClick 'Update to Latest...' to install it.")
+                self.update_btn.setText(f"Update to {tag}")
+            else:
+                QMessageBox.warning(self, "Update Check", "Failed to fetch latest release from GitHub.")
+                
+        QueryOp(parent=self, op=lambda _: fetch(), success=on_done).without_collection().run_in_background()
+
+    def _do_update_standard(self):
+        reply = QMessageBox.question(self, 'Confirm Update', 'Would you like to fetch and install the latest experimental version?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self._execute_update(is_git=False)
+
+    def _do_update_git(self):
+        reply = QMessageBox.question(self, 'Confirm Update', 'Would you like to perform a git fetch and override the current installation?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self._execute_update(is_git=True)
+            
+    def _execute_update(self, is_git):
+        from aqt.operations import QueryOp
+        mw.progress.start(label="Updating Ankimon...", immediate=True)
+        
+        def run_update():
+            # 1. create backup
+            if not self.update_manager.create_pre_update_backup():
+                return False, "Failed to create pre-update backup."
+                
+            # 2. fetch new source
+            if is_git:
+                if not self.update_manager.check_for_git():
+                    return False, "Git is not installed or accessible on your system."
+                source_type = self.source_type_cb.currentText()
+                
+                type_map = {
+                    "Current Main": "MAIN",
+                    "Past Versions (Tags)": "TAG",
+                    "Branch": "BRANCH",
+                    "Pull Request": "PR",
+                    "Hash": "HASH"
+                }
+                backend_type = type_map.get(source_type, "MAIN")
+                
+                if backend_type in ["TAG", "BRANCH", "PR"]:
+                    source_value = self.source_value_cb.currentText()
+                elif backend_type == "HASH":
+                    source_value = self.source_value_input.text()
+                else: 
+                    source_value = "main"
+                success, result = self.update_manager.fetch_git_update(backend_type, source_value)
+            else:
+                success, result = self.update_manager.fetch_standard_update()
+                
+            if not success:
+                return False, result
+                
+            # 3. Apply update
+            extracted_folder = result
+            return self.update_manager.apply_update(extracted_folder)
+
+        def on_done(res):
+            mw.progress.finish()
+            success, msg = res
+            if success:
+                QMessageBox.information(self, "Update Successful", msg)
+                mw.close()
+            else:
+                QMessageBox.critical(self, "Update Failed", msg)
+
+        QueryOp(parent=self, op=lambda _: run_update(), success=on_done).without_collection().run_in_background()
