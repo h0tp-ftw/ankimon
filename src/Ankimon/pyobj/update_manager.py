@@ -16,7 +16,7 @@ class UpdateManager:
         self.api_base = f"https://api.github.com/repos/{self.github_repo}"
         
         # Files/folders to explicitly not overwrite during update!
-        self.preserve_paths = ["user_files", "addon_sprites/trainers/h0tp.png"]
+        self.preserve_paths = ["user_files"]
         # .gitignore handles others but we want to ensure we don't accidentally nuke local user data
 
     def check_for_git(self):
