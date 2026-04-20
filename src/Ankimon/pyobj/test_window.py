@@ -231,7 +231,7 @@ class TestWindow(QWidget):
 
         bckgimage_path = battlescene_path / self.ankimon_tracker_obj.battlescene_file
 
-        if self.ankimon_tracker_obj.pokemon_encouter > 0:
+        if self.ankimon_tracker_obj.pokemon_encounter > 0:
             bckgimage_path = battlescene_path_without_dialog / self.ankimon_tracker_obj.battlescene_file
 
         msg_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))
@@ -407,11 +407,11 @@ class TestWindow(QWidget):
         return painter
 
     def pokemon_display_battle(self):
-        self.ankimon_tracker_obj.pokemon_encouter += 1
+        self.ankimon_tracker_obj.pokemon_encounter += 1
 
         bckgimage_path = battlescene_path / self.ankimon_tracker_obj.battlescene_file
 
-        if self.ankimon_tracker_obj.pokemon_encouter > 1:
+        if self.ankimon_tracker_obj.pokemon_encounter > 1:
             bckgimage_path = battlescene_path_without_dialog / self.ankimon_tracker_obj.battlescene_file
 
         ui_path = battle_ui_path
