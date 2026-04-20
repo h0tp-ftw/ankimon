@@ -201,7 +201,7 @@ if not _collection_loaded:  # If the collection hasn't already been loaded
 with open(sound_list_path, "r", encoding="utf-8") as json_file:
     sound_list = json.load(json_file)
 
-ankimon_tracker_obj.pokemon_encouter = 0
+ankimon_tracker_obj.pokemon_encounter = 0
 
 """
 get web exports ready for special reviewer look
@@ -526,11 +526,11 @@ def on_review_card(*args):
             ankimon_tracker_obj.cards_battle_round = 0
             ankimon_tracker_obj.attack_counter = 0
             slp_counter = 0
-            ankimon_tracker_obj.pokemon_encouter += 1
+            ankimon_tracker_obj.pokemon_encounter += 1
             multiplier = ankimon_tracker_obj.multiplier
 
             if (
-                ankimon_tracker_obj.pokemon_encouter > 0
+                ankimon_tracker_obj.pokemon_encounter > 0
                 and enemy_pokemon.hp > 0
                 and multiplier < 1
             ):
@@ -551,7 +551,7 @@ def on_review_card(*args):
             category = move.get("category")
 
             if (
-                ankimon_tracker_obj.pokemon_encouter > 0
+                ankimon_tracker_obj.pokemon_encounter > 0
                 and main_pokemon.hp > 0
                 and enemy_pokemon.hp > 0
             ):
@@ -669,7 +669,7 @@ def on_review_card(*args):
                 user_hp_after=main_pokemon.hp,  # Use the already updated HP
                 opponent_hp_after=enemy_pokemon.hp,  # Use the already updated HP
                 battle_status=main_pokemon.battle_status,
-                pokemon_encounter=ankimon_tracker_obj.pokemon_encouter,
+                pokemon_encounter=ankimon_tracker_obj.pokemon_encounter,
                 translator=translator,
                 changes=current_battle_info_changes,
             )

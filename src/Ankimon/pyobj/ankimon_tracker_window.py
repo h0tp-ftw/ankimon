@@ -100,7 +100,9 @@ class AnkimonTrackerWindow:
             self.layout.addItem(QSpacerItem(20, 40, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
             self.window.setLayout(self.layout)
             self.window.setWindowTitle("Ankimon Tracker Stats")
-            self.window.show()
+            # Don't show() here — toggle_window() is the sole caller and
+            # shows the window after create_gui() returns; the extra
+            # show() made the first open a show-then-show no-op.
 
     def update_stats(self):
         """Forcefully updates all displayed stats, regardless of change."""

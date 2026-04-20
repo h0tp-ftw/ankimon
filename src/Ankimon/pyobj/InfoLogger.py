@@ -51,8 +51,10 @@ class ShowInfoLogger:
             self.game_log(message)  # Use the game-specific logging
 
         if level in ['info', 'warning', 'error']:
-            # Show the message in a QMessageBox dialog
-            msg_box = QMessageBox()
+            # Parent to the main window so the dialog appears ON TOP on
+            # macOS/Linux. Unparented QMessageBox often lands behind mw.
+            from aqt import mw as _mw
+            msg_box = QMessageBox(_mw if _mw is not None else None)
             msg_box.setWindowTitle("Log Message")
             msg_box.setText(message)
             msg_box.setIcon(QMessageBox.Icon.Information)

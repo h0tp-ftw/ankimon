@@ -30,6 +30,7 @@ from typing import Any
 
 from aqt import gui_hooks, mw
 
+from ..business import calculate_cp_from_dict
 from ..functions.sprite_functions import get_sprite_path
 from ..resources import mypokemon_path, icon_path as pokeball_path, team_pokemon_path
 from ..utils import png_to_base64
@@ -136,6 +137,7 @@ _GRID_CSS = """\
 }
 .poke-level { font-weight: 700; color: #0066cc; }
 .poke-hp    { color: #cc0000; }
+.poke-cp    { font-weight: 700; color: #6a4dac; }
 .poke-types { font-style: italic; color: #006600; }
 
 @media (max-width: 800px) {
@@ -237,6 +239,8 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
     style_attr = f' style="{bg_style}"' if bg_style else ""
     pokeball_style = _build_pokeball_style()
 
+    cp_value = pokemon.get("cp") or calculate_cp_from_dict(pokemon)
+
     return (
         f'<div id="{safe_id}" class="poke-item"{style_attr}>'
         f'  <div class="poke-sprite-wrap"{pokeball_style}>'
@@ -245,6 +249,7 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
         f'  <div class="poke-desc">'
         f"    <h3>{display_name}</h3>"
         f'    <p class="poke-level">Level {level}</p>'
+        f'    <p class="poke-cp">CP {cp_value:,}</p>'
         f'    <p class="poke-hp">HP: {current_hp}</p>'
         f'    <p class="poke-types">{type_str}</p>'
         f"  </div>"
@@ -312,8 +317,18 @@ def load_pokemon_team() -> list[dict[str, Any]]:
         return []
     except Exception as e:
         # Unexpected errors are logged but not allowed to crash Anki's UI.
-        if mw:
-            mw.progress.chrome_logger.log(f"Ankimon Team Overview Error: {e}")
+        # Previous code called mw.progress.chrome_logger.log(...), which
+        # doesn't exist and would mask the real error with AttributeError.
+        import traceback as _tb
+        _msg = f"Ankimon Team Overview Error: {e}\n{_tb.format_exc()}"
+        try:
+            if mw and getattr(mw, "logger", None) is not None:
+                mw.logger.log("error", _msg)
+            else:
+                print(_msg)
+        except Exception:
+            # Last-resort: never let the logging path swallow a raise.
+            print(_msg)
         return []
 
 

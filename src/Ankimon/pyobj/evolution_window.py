@@ -384,8 +384,22 @@ class EvoWindow(QWidget):
                         pokemon["attacks"] = attacks
                         base_stats = search_pokedex(evo_name.lower(), "baseStats")
                         pokemon["base_stats"] = base_stats
-                        pokemon["stats"] = base_stats
+                        # Refresh level-scaled "stats" against new species
+                        # bases; previously we wrote base_stats here, which
+                        # collided with to_dict semantics (stats = scaled).
+                        _iv = pokemon.get("iv") or {}
+                        _ev = pokemon.get("ev") or {}
+                        _level = pokemon.get("level", 1)
+                        _nature = pokemon.get("nature", "serious")
+                        from ..pyobj.pokemon_obj import PokemonObject as _PO
+                        pokemon["stats"] = {
+                            k: _PO.calc_stat(k, base_stats[k], _level, _iv.get(k, 0), _ev.get(k, 0), _nature)
+                            for k in ("hp", "atk", "def", "spa", "spd", "spe")
+                        }
                         pokemon["xp"] = 0
+                        # Refresh CP against the new species' base stats.
+                        from ..business import calculate_cp_from_dict as _recalc_cp
+                        pokemon["cp"] = _recalc_cp(pokemon)
                         hp_stat = int(base_stats["hp"])
                         iv = pokemon["iv"]
                         ev = pokemon["ev"]

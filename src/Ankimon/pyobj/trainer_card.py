@@ -1,7 +1,7 @@
 from ..resources import trainer_sprites_path, mypokemon_path, team_pokemon_path
 from ..functions.trainer_functions import find_trainer_rank
 from ..functions.badges_functions import get_achieved_badges
-from aqt.utils import showWarning, showInfo
+from aqt.utils import showWarning
 import math
 import json
 from .ankimon_leaderboard import (
@@ -105,11 +105,12 @@ class TrainerCard:
             # Find the Pokémon with the highest level and return its name
             highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
             return f"{highest_pokemon.get('name', 'None')} (Level {highest_pokemon.get('level', 0)})"
-        except FileNotFoundError:
-            showInfo(f"File not found: {mypokemon_path}")
-            return "None"
-        except json.JSONDecodeError:
-            showInfo(f"Error decoding JSON from file: {mypokemon_path}")
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Missing / malformed mypokemon.json is expected on first run and
+            # also in integrity tests. Surface it via the logger instead of a
+            # modal so the constructor stays importable without an Anki UI.
+            if getattr(self, "logger", None) is not None:
+                self.logger.log("debug", f"Could not read {mypokemon_path}")
             return "None"
 
     def highest_pokemon_level(self):
@@ -125,11 +126,9 @@ class TrainerCard:
             # Find the Pokémon with the highest level and return its name
             highest_pokemon = max(pokemon_data, key=lambda p: p.get("level", 0))
             return int(highest_pokemon.get("level", 0))
-        except FileNotFoundError:
-            showInfo(f"File not found: {mypokemon_path}")
-            return 0
-        except json.JSONDecodeError:
-            showInfo(f"Error decoding JSON from file: {mypokemon_path}")
+        except (FileNotFoundError, json.JSONDecodeError):
+            if getattr(self, "logger", None) is not None:
+                self.logger.log("debug", f"Could not read {mypokemon_path}")
             return 0
 
     def add_achievement(self, achievement):

@@ -170,7 +170,10 @@ class StarterWindow(QWidget):
         from ..singletons import pokemon_pc
         pokemon_pc.refresh_pokemon_grid()
 
-        close_anki()
+        # Do NOT close Anki here. The previous behaviour killed the app
+        # immediately after starter selection and then asked the user to
+        # restart — the confirmation dialog was unreadable because the
+        # app was already shutting down. Let the user keep playing.
 
     def get_starters_of_gen(self):
         try:
@@ -228,7 +231,7 @@ class StarterWindow(QWidget):
         self.setMaximumHeight(340)
         self.show()
         self.starter = True
-        self.logger.log_and_showinfo("info","You have chosen your Starter Pokemon ! \n You can now close this window ! \n Please restart your Anki to restart your Pokemon Journey!")
+        self.logger.log_and_showinfo("info","You have chosen your Starter Pokemon ! \n You can close this window and begin your Pokemon journey!")
         #global achievments
         #check = check_for_badge(achievements, 7)
         #if check is False:

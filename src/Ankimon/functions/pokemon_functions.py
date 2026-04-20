@@ -71,6 +71,9 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
     if level < 100:
         # Open the CSV file
         csv_file_path = str(next_lvl_file_path)  # Replace 'your_file_path.csv' with the actual path to your CSV file
+        # Default if no row matches or the growth_rate column is unknown —
+        # prevents UnboundLocalError from breaking the level-up path.
+        experience = 0
         with open(csv_file_path, 'r', encoding='utf-8') as file:
             # Create a CSV reader
             csv_reader = csv.DictReader(file, delimiter=';')
@@ -81,10 +84,10 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
             # Iterate through rows and find the experience for the specified growth rate and level
             for row in csv_reader:
                 if row[fieldnames[0]] == str(level):  # Use the first fieldname to access the 'Level' column
-                    experience = row[growth_rate]
+                    experience = row.get(growth_rate, 0)
                     break
 
-            return experience
+        return experience
     elif level > 99:
         if group_growth_rate == "erratic":
             if level + 1 < 50: # +1 was added to prevent -ve amounts of xp to come up (even though it wouldn't since the loop only takes in levels above 99)
@@ -209,7 +212,10 @@ def save_fossil_pokemon(pokemon_id):
         "id": id,
         "ability": ability,
         "type": type,
+        # Keep legacy "stats" key AND add canonical "base_stats" so both
+        # dict-shape readers (caught vs to_dict) work.
         "stats": stats,
+        "base_stats": stats,
         "ev": ev,
         "iv": iv,
         "attacks": attacks,
@@ -218,6 +224,7 @@ def save_fossil_pokemon(pokemon_id):
         "growth_rate": growth_rate,
         "friendship": 0,
         "pokemon_defeated": 0,
+        "xp": 0,
         "everstone": False,
         "shiny": shiny_chance(),
         "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -225,7 +232,14 @@ def save_fossil_pokemon(pokemon_id):
         "mega": False,
         "special_form": None,
         "tier": "Fossil",
+        "nature": "serious",
+        "held_item": None,
+        "is_favorite": False,
     }
+    # Refresh CP after dict is fully assembled so the record matches
+    # the shape produced by save_caught_pokemon.
+    from ..business import calculate_cp_from_dict as _calc_cp
+    caught_pokemon["cp"] = _calc_cp(caught_pokemon)
     # Load existing Pokémon data if it exists
     if mypokemon_path.is_file():
         with open(mypokemon_path, "r", encoding="utf-8") as json_file:

@@ -1,7 +1,11 @@
 import base64
 import csv
+import functools
+import json
+import math
+from typing import Optional
 
-from .resources import csv_file_items, csv_file_descriptions
+from .resources import csv_file_items, csv_file_descriptions, effectiveness_chart_file_path
 
 def get_image_as_base64(path):
     with open(path, 'rb') as image_file:
@@ -75,6 +79,219 @@ def get_multiplier_acc_eva(stage):
 
     # Return the corresponding factor or a default value if the stage is out of range
     return stage_to_factor_new.get(stage, "Invalid stage")
+
+def calculate_cpm(level: int) -> float:
+    """CP Multiplier — exponential (saturating) function of level.
+
+    Models the Pokemon GO idea of a level-scaling multiplier that grows
+    quickly at low levels and tapers off as the Pokemon approaches its
+    level ceiling. Asymptotes just below ``0.84`` — the approximate max
+    CPM in Pokemon GO — but is smooth and defined for any Anki level.
+    """
+    return 0.84 * (1 - math.exp(-max(level, 1) / 20))
+
+
+def pokemon_go_raw_stats(base_stats: dict, iv: dict, ev: dict):
+    """Derive Pokemon GO-style Attack/Defense/Stamina from main-series stats.
+
+    Uses *raw* stat values (base + IV + floor(EV/4)) — **not** the
+    level-scaled values from ``calc_stat`` — so that ``CPM`` is the sole
+    level multiplier in the CP formula.  Physical and special variants are
+    averaged to adapt the 6-stat model to Pokemon GO's 3-stat model.
+
+    Returns ``(attack, defense, stamina)`` as floats.
+    """
+    def _raw(key):
+        return max(1, int(base_stats.get(key, 1)) + max(0, int(iv.get(key, 0))) + max(0, int(ev.get(key, 0))) // 4)
+
+    attack = (_raw("atk") + _raw("spa")) / 2
+    defense = (_raw("def") + _raw("spd")) / 2
+    stamina = _raw("hp")
+    return attack, defense, stamina
+
+
+def calculate_pokemon_go_cp(
+    attack: float, defense: float, stamina: float, level: int
+) -> int:
+    """Pokemon GO style Combat Power.
+
+    ``CP = floor(Attack × √Defense × √Stamina × CPM² / 10)``
+
+    ``Attack``, ``Defense``, and ``Stamina`` should be *raw* values
+    (base + IV + EV/4, **not** level-scaled ``calc_stat`` output).
+    ``CPM`` provides all level scaling.  CP is clamped to a minimum of 10
+    so sort keys remain well-defined for under-leveled or stub Pokemon.
+    """
+    cpm = calculate_cpm(level)
+    cp = math.floor(
+        attack * math.sqrt(max(defense, 1)) * math.sqrt(max(stamina, 1)) * (cpm ** 2) / 10
+    )
+    return max(10, int(cp))
+
+
+@functools.lru_cache(maxsize=1)
+def _load_type_chart() -> dict:
+    """Load ``eff_chart.json`` once and cache the result.
+
+    Returns a nested dict ``{AttackingType: {DefendingType: multiplier}}``
+    where keys are capitalised type names (e.g. ``"Fire"``, ``"Water"``).
+    Returns an empty dict if the file cannot be read so callers fall back
+    to a neutral multiplier.
+    """
+    try:
+        with open(effectiveness_chart_file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def type_compatibility_multiplier(attacker_types, defender_types) -> float:
+    """Return a simplified Present Power multiplier for a matchup.
+
+    Uses the maximum per-pair effectiveness from ``eff_chart.json``:
+
+    - ``== 0`` → immune → ``0.2``
+    - ``> 1``  → super-effective → ``1.5``
+    - ``< 1``  → not-very-effective → ``0.8``
+    - otherwise → ``1.0``
+
+    Type arguments may be either strings or iterables of strings. Unknown
+    types are silently ignored; if no valid pairings exist, a neutral
+    ``1.0`` is returned.
+    """
+    chart = _load_type_chart()
+    if not chart or not attacker_types or not defender_types:
+        return 1.0
+
+    if isinstance(attacker_types, str):
+        attacker_types = [attacker_types]
+    if isinstance(defender_types, str):
+        defender_types = [defender_types]
+
+    best: Optional[float] = None
+    for atk in attacker_types:
+        atk_row = chart.get(str(atk).capitalize())
+        if not atk_row:
+            continue
+        for dfn in defender_types:
+            mult = atk_row.get(str(dfn).capitalize())
+            if mult is None:
+                continue
+            if best is None or mult > best:
+                best = mult
+
+    if best is None:
+        return 1.0
+    if best == 0:
+        return 0.2
+    elif best > 1:
+        return 1.5
+    elif best < 1:
+        return 0.8
+    return 1.0
+
+
+def calculate_present_power(
+    cp: int,
+    current_hp: int,
+    compatibility_multiplier: float = 1.0,
+    atk_stage: int = 0,
+    spa_stage: int = 0,
+) -> int:
+    """Present Power = CP × current HP × type multiplier × avg(atk, spa) stage.
+
+    A live threat indicator: baseline power (CP), durability remaining
+    (current HP), type matchup, and in-battle attack-stage changes
+    (Swords Dance, Intimidate, etc.). Atk and Spa stages are averaged
+    to match the CP formula's averaging of physical and special. Drops
+    below neutral shrink BP; boosts grow it. Rounded down to an int.
+    """
+    cp = max(int(cp if cp is not None else 0), 0)
+    current_hp = max(int(current_hp if current_hp is not None else 0), 0)
+    compat = float(compatibility_multiplier if compatibility_multiplier is not None else 1.0)
+
+    def _stage_mult(stage) -> float:
+        if stage is None:
+            return 1.0
+        try:
+            val = get_multiplier_stats(int(stage))
+        except (TypeError, ValueError):
+            return 1.0
+        return float(val) if isinstance(val, (int, float)) else 1.0
+
+    stage_factor = (_stage_mult(atk_stage) + _stage_mult(spa_stage)) / 2
+    return int(math.floor(cp * current_hp * compat * stage_factor))
+
+
+_POKEMON_TYPES_LOWER = frozenset({
+    "normal", "fire", "water", "electric", "grass", "ice", "fighting",
+    "poison", "ground", "flying", "psychic", "bug", "rock", "ghost",
+    "dragon", "dark", "steel", "fairy",
+})
+
+
+def compute_type_bias(tags, deck_name: str = "") -> list:
+    """Pure helper: derive a Pokemon-type bias from raw tag list and
+    optional deck name.
+
+    Returns a sorted list of capitalized type names whose lowercase form
+    appears among the tags or the ``::``/whitespace-separated components
+    of the deck name. Unknown tokens are ignored, so a tag like
+    ``#leech`` or ``biology`` has no effect.
+
+    Keeping this function pure (no ``mw``/``settings`` dependency) makes
+    the bias logic unit-testable without the Anki runtime. The
+    encounter-side wrapper handles the opt-in check and the actual
+    ``mw.reviewer.card`` lookup.
+    """
+    tokens = [str(t).lower() for t in (tags or [])]
+    for piece in (deck_name or "").lower().replace("::", " ").split():
+        tokens.append(piece)
+    return sorted({t.capitalize() for t in tokens if t in _POKEMON_TYPES_LOWER})
+
+
+def cp_breakdown_tooltip(pokemon_dict: dict) -> str:
+    """Human-readable CP breakdown for Qt tooltips.
+
+    Shows the formula, this Pokemon's substituted values, and the CP
+    projected at level 100 (useful for planning evolutions/training).
+    Accepts either the caught-Pokemon dict shape ("stats" = base_stats)
+    or the to_dict shape ("base_stats" = bases).
+    """
+    base_stats = pokemon_dict.get("base_stats") or pokemon_dict.get("stats") or {}
+    iv = pokemon_dict.get("iv") or {}
+    ev = pokemon_dict.get("ev") or {}
+    level = int(pokemon_dict.get("level", 1) or 1)
+    attack, defense, stamina = pokemon_go_raw_stats(base_stats, iv, ev)
+    cpm = calculate_cpm(level)
+    cp_at_100 = calculate_pokemon_go_cp(attack, defense, stamina, 100)
+    return (
+        "CP = floor(Atk × √Def × √Sta × CPM² ÷ 10)\n"
+        f"    = floor({attack:.0f} × √{defense:.0f} × √{stamina:.0f}"
+        f" × {cpm:.4f}² ÷ 10)\n"
+        f"CP at Level 100: {cp_at_100:,}"
+    )
+
+
+def calculate_cp_from_dict(pokemon_dict):
+    """Calculate Combat Power from a raw Pokemon dict using the
+    Pokemon GO style formula.
+
+    Handles both data formats:
+    - Caught Pokemon: "stats" field contains base_stats
+    - to_dict() Pokemon: "base_stats" field contains base_stats
+    """
+    if "base_stats" in pokemon_dict:
+        base_stats = pokemon_dict["base_stats"]
+    else:
+        base_stats = pokemon_dict.get("stats", {})
+
+    level = pokemon_dict.get("level", 1)
+    iv = pokemon_dict.get("iv") or {}
+    ev = pokemon_dict.get("ev") or {}
+
+    attack, defense, stamina = pokemon_go_raw_stats(base_stats, iv, ev)
+    return calculate_pokemon_go_cp(attack, defense, stamina, level)
 
 def bP_none_moves(move):
     target =  move.get("target", None)

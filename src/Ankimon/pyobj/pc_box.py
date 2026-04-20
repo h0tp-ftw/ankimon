@@ -42,6 +42,8 @@ from ..pyobj.settings import Settings
 from ..functions.sprite_functions import get_sprite_path
 from ..utils import load_custom_font, get_tier_by_id
 from ..resources import mypokemon_path, itembag_path
+from ..business import calculate_cp_from_dict
+from ..const import gen_ids
 
 
 def format_item_name(item_name: str) -> str:
@@ -350,12 +352,14 @@ class PokemonPC(QDialog):
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setStyleSheet("background: transparent; border: none;")
         self.scroll_area.setMinimumSize(200, 200)  # Minimum size required for shrinking
-        # Enforce pagination by turning off scrollbars
+        # Show scrollbars only when needed; previously forced-off, which
+        # meant overflow Pokemon were unreachable if calculate_grid_dimensions
+        # slightly under-reported the number of fittable slots.
         self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
 
         self.grid_container = QWidget()
@@ -477,6 +481,7 @@ class PokemonPC(QDialog):
         self.sort_by_id = QRadioButton("ID")
         self.sort_by_name = QRadioButton("Name")
         self.sort_by_level = QRadioButton("Level")
+        self.sort_by_cp = QRadioButton("CP")
         self.sort_by_iv = QRadioButton("IV")
         self.sort_by_ev = QRadioButton("EV")
         self.sort_by_date = QRadioButton("Date")
@@ -484,6 +489,7 @@ class PokemonPC(QDialog):
         self.sort_group.addButton(self.sort_by_id)
         self.sort_group.addButton(self.sort_by_name)
         self.sort_group.addButton(self.sort_by_level)
+        self.sort_group.addButton(self.sort_by_cp)
         self.sort_group.addButton(self.sort_by_iv)
         self.sort_group.addButton(self.sort_by_ev)
         self.sort_group.addButton(self.sort_by_date)
@@ -494,6 +500,8 @@ class PokemonPC(QDialog):
             self.sort_by_name.setChecked(True)
         elif self.selected_sort_key == "Level":
             self.sort_by_level.setChecked(True)
+        elif self.selected_sort_key == "CP":
+            self.sort_by_cp.setChecked(True)
         elif self.selected_sort_key == "IV":
             self.sort_by_iv.setChecked(True)
         elif self.selected_sort_key == "EV":
@@ -509,6 +517,7 @@ class PokemonPC(QDialog):
         sort_radio_layout.addWidget(self.sort_by_id)
         sort_radio_layout.addWidget(self.sort_by_name)
         sort_radio_layout.addWidget(self.sort_by_level)
+        sort_radio_layout.addWidget(self.sort_by_cp)
         sort_radio_layout.addWidget(self.sort_by_iv)
         sort_radio_layout.addWidget(self.sort_by_ev)
         sort_radio_layout.addWidget(self.sort_by_date)
@@ -850,17 +859,11 @@ class PokemonPC(QDialog):
 
             if self.generation_combo is not None:
                 gen_idx = self.generation_combo.currentIndex()
-                if gen_idx != 0 and (
-                    (1 <= pokemon["id"] <= 151 and gen_idx != 1)
-                    or (152 <= pokemon["id"] <= 251 and gen_idx != 2)
-                    or (252 <= pokemon["id"] <= 386 and gen_idx != 3)
-                    or (387 <= pokemon["id"] <= 493 and gen_idx != 4)
-                    or (494 <= pokemon["id"] <= 649 and gen_idx != 5)
-                    or (650 <= pokemon["id"] <= 721 and gen_idx != 6)
-                    or (722 <= pokemon["id"] <= 809 and gen_idx != 7)
-                    or (810 <= pokemon["id"] <= 898 and gen_idx != 8)
-                ):
-                    return False
+                if gen_idx != 0 and 1 <= gen_idx <= len(gen_ids):
+                    low = 1 if gen_idx == 1 else gen_ids[f"gen_{gen_idx - 1}"] + 1
+                    high = gen_ids[f"gen_{gen_idx}"]
+                    if not (low <= pokemon["id"] <= high):
+                        return False
 
             return True
 
@@ -882,6 +885,8 @@ class PokemonPC(QDialog):
                 # Sum all IV values for total IV score
                 iv_dict = p.get("iv", {})
                 return sum(iv_dict.values()) if iv_dict else 0
+            elif sort_key_str == "cp":
+                return p.get("cp") or calculate_cp_from_dict(p)
             elif sort_key_str == "ev":
                 # Sum all EV values for total EV score
                 ev_dict = p.get("ev", {})
@@ -1018,6 +1023,8 @@ class PokemonPC(QDialog):
             refresh_callback=self.refresh_gui,
             initial_tab_index=self.current_stats_tab_index,
             tab_changed_callback=self.on_stats_tab_changed,
+            nature=pokemon.get("nature", "serious"),
+            base_stats=pokemon.get("base_stats"),
         )
         self.refresh_gui()
 
@@ -1167,6 +1174,7 @@ class PokemonPC(QDialog):
             "tier",
             "is_favorite",
             "held_item",
+            "cp",
         }
 
         is_migration_needed = any(
@@ -1201,6 +1209,7 @@ class PokemonPC(QDialog):
             "tier": lambda p: get_tier_by_id(p.get("id", 0)) or "Normal",
             "is_favorite": False,
             "held_item": None,
+            "cp": lambda p: calculate_cp_from_dict(p),
         }
 
         for i, pokemon in enumerate(pokemon_list):

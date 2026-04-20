@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
     "battle.review_based_damage": True,
+    "battle.tag_biased_encounters": False,
     "controls.pokemon_buttons": True,
     "controls.defeat_key": "5",
     "controls.catch_key": "6",
@@ -104,9 +105,6 @@ class Settings:
                             f"Ankimon: Error migrating 'items' data during load_config: {e}"
                         )
                     del config["items"]
-
-                if "trainer.team" in config:
-                    del config["trainer.team"]
 
                 # Type Coercion (from ankimon_sync.py)
                 keys_to_coerce_to_int = [

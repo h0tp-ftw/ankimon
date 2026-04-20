@@ -27,6 +27,8 @@ from ..functions.pokedex_functions import (
 from ..gui_classes.pokemon_details import PokemonCollectionDetails
 from ..gui_entities import MovieSplashLabel
 from ..resources import mypokemon_path, frontdefault, frontdefault, mainpokemon_path
+from ..business import calculate_cp_from_dict, cp_breakdown_tooltip
+from ..const import gen_ids
 
 
 class PokemonCollectionDialog(QDialog):
@@ -71,51 +73,37 @@ class PokemonCollectionDialog(QDialog):
         self.setMinimumHeight(400)
         self.layout = QVBoxLayout(self)
 
-        # add Widget to sort by ID
-        self.sort_checkbox = QCheckBox("Sort by ID")
-        self.sort_checkbox.stateChanged.connect(
-            lambda: (
-                self.sort_pokemon()
-                if self.sort_checkbox.isChecked()
-                else self.filter_pokemon()
-            )
+        # Sort dropdown. Stable internal keys drive the sort logic; the
+        # visible strings route through the translator so non-English
+        # users see localized labels.
+        self._sort_keys = ["capture_order", "id", "cp", "level", "name"]
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(
+            [self.translator.translate(f"sort_{k}") for k in self._sort_keys]
         )
+        self.sort_combo.currentIndexChanged.connect(self.apply_sort_and_filter)
+
+        # Descending toggle — matches PC Box convention. Default ON so
+        # the common "strongest/highest first" CP and Level sorts keep
+        # their pre-existing behaviour.
+        self.desc_sort = QCheckBox(self.translator.translate("sort_descending"))
+        self.desc_sort.setChecked(True)
+        self.desc_sort.stateChanged.connect(self.apply_sort_and_filter)
 
         # Search Filter
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Search Pokémon (by nickname, name)")
         # self.search_edit.textChanged.connect(self.filter_pokemon)
         self.search_button = QPushButton("Search")
-        self.search_button.clicked.connect(
-            lambda: (
-                self.sort_pokemon()
-                if self.sort_checkbox.isChecked()
-                else self.filter_pokemon()
-            )
-        )
+        self.search_button.clicked.connect(self.apply_sort_and_filter)
 
         # Add dropdown menu for generation filtering
         self.generation_combo = QComboBox()
         self.generation_combo.addItem("All")
         self.generation_combo.addItems(
-            [
-                "Generation 1",
-                "Generation 2",
-                "Generation 3",
-                "Generation 4",
-                "Generation 5",
-                "Generation 6",
-                "Generation 7",
-                "Generation 8",
-            ]
+            [f"Generation {i}" for i in range(1, len(gen_ids) + 1)]
         )
-        self.generation_combo.currentIndexChanged.connect(
-            lambda: (
-                self.sort_pokemon()
-                if self.sort_checkbox.isChecked()
-                else self.filter_pokemon()
-            )
-        )
+        self.generation_combo.currentIndexChanged.connect(self.apply_sort_and_filter)
 
         # Add dropdown menu for generation filtering
         self.type_combo = QComboBox()
@@ -142,13 +130,7 @@ class PokemonCollectionDialog(QDialog):
                 "Fairy",
             ]
         )
-        self.type_combo.currentIndexChanged.connect(
-            lambda: (
-                self.sort_pokemon()
-                if self.sort_checkbox.isChecked()
-                else self.filter_pokemon()
-            )
-        )
+        self.type_combo.currentIndexChanged.connect(self.apply_sort_and_filter)
 
         # Add widgets to layout
         filter_layout = QHBoxLayout()
@@ -156,7 +138,9 @@ class PokemonCollectionDialog(QDialog):
         filter_layout.addWidget(self.search_button)
         filter_layout.addWidget(self.generation_combo)
         filter_layout.addWidget(self.type_combo)
-        filter_layout.addWidget(self.sort_checkbox)
+        filter_layout.addWidget(QLabel(self.translator.translate("sort_label")))
+        filter_layout.addWidget(self.sort_combo)
+        filter_layout.addWidget(self.desc_sort)
         self.layout.addLayout(filter_layout)
 
         self.scroll_area = QScrollArea()
@@ -227,10 +211,15 @@ class PokemonCollectionDialog(QDialog):
         # Add the paginator layout at the bottom
         self.layout.addLayout(self.paginator_layout)
 
-    def refresh_collection(self, pokemon_list=[]):
-        if not pokemon_list:  # If pokemon_list is empty or None
+    def refresh_collection(self, pokemon_list=None):
+        """Refresh the Pokémon collection and pagination layout.
+
+        ``pokemon_list`` may be an empty list to explicitly render an empty
+        collection (e.g. a filter returning no matches). Only fall back to
+        the full collection when the caller passes ``None``.
+        """
+        if pokemon_list is None:
             pokemon_list = self.pokemon_list
-        """Refresh the Pokémon collection and pagination layout."""
         # Clear existing Pokémon and paginator
         self.refresh_pokemon_collection()
         self.refresh_paginator_layout()
@@ -290,6 +279,9 @@ class PokemonCollectionDialog(QDialog):
                 ability_label = self.create_label(
                     f"Ability: {pokemon_ability.capitalize()}", 8
                 )
+                cp_value = pokemon.get("cp") or calculate_cp_from_dict(pokemon)
+                cp_label = self.create_label(f"CP {cp_value:,}", 8)
+                cp_label.setToolTip(cp_breakdown_tooltip(pokemon))
 
                 image_label = QLabel()
                 image_label.setPixmap(pixmap)
@@ -311,6 +303,7 @@ class PokemonCollectionDialog(QDialog):
 
                 container_layout.addWidget(name_label)
                 container_layout.addWidget(level_label)
+                container_layout.addWidget(cp_label)
                 container_layout.addWidget(type_label)
                 container_layout.addWidget(ability_label)
                 container_layout.addWidget(pokemon_button)
@@ -329,11 +322,14 @@ class PokemonCollectionDialog(QDialog):
             self.scroll_area.setWidget(self.container)
             # Add pagination controls (at the bottom)
             self.add_pagination_controls(pokemon_list)
-            # Add Pokémon grid to the main layout
-            self.layout.addWidget(self.scroll_area)
-            self.layout.addWidget(self.paginator)
-
-            self.setLayout(self.layout)
+            # Add scroll area + paginator to the main layout ONCE. Re-adding
+            # on every showEvent/refresh_collection stacked N scroll areas
+            # after N reopens — content repopulation happens above this line.
+            if not getattr(self, "_ui_assembled", False):
+                self.layout.addWidget(self.scroll_area)
+                self.layout.addWidget(self.paginator)
+                self.setLayout(self.layout)
+                self._ui_assembled = True
         except FileNotFoundError:
             self.layout.addWidget(
                 QLabel(f"Can't open the Saving File. {mypokemon_path}")
@@ -393,7 +389,7 @@ class PokemonCollectionDialog(QDialog):
             shiny=pokemon.get("shiny", False),
             ability=pokemon["ability"],
             type=pokemon["type"],
-            detail_stats={**pokemon["stats"], "xp": pokemon.get("xp", 0)},
+            detail_stats={**(pokemon.get("base_stats") or pokemon["stats"]), "xp": pokemon.get("xp", 0)},
             attacks=pokemon["attacks"],
             base_experience=pokemon["base_experience"],
             growth_rate=pokemon["growth_rate"],
@@ -410,6 +406,8 @@ class PokemonCollectionDialog(QDialog):
             remove_levelcap=self.remove_levelcap,
             logger=self.logger,
             refresh_callback=self.refresh_collection,
+            nature=pokemon.get("nature", "serious"),
+            base_stats=pokemon.get("base_stats"),
         )
 
     def get_gender_symbol(self, gender):
@@ -420,113 +418,62 @@ class PokemonCollectionDialog(QDialog):
         else:
             return ""
 
-    def filter_pokemon(self):
-        filtered_pokemon = []
-        pokemon_list = self.pokemon_list
-        if not self.sort_checkbox.isChecked():
-            type_index = self.type_combo.currentIndex()
-            type_text = self.type_combo.currentText()
-            search_text = self.search_edit.text().lower()
-            generation_index = self.generation_combo.currentIndex()
-
-            try:
-                if pokemon_list:
-                    for position, pokemon in enumerate(pokemon_list):
-                        pokemon_id = pokemon["id"]
-                        pokemon_name = pokemon["name"].lower()
-                        if pokemon.get("shiny", False):
-                            pokemon_name += " (shiny) "
-                        pokemon_nickname = pokemon.get("nickname") or ""
-                        if pokemon.get("shiny", False):
-                            pokemon_nickname += " (shiny) "
-                        pokemon_type = pokemon.get("type", " ")
-
-                        # Check if the Pokémon matches the search text and generation filter
-                        if (
-                            (
-                                search_text.lower() in pokemon_name.lower()
-                                or (
-                                    pokemon_nickname is not None
-                                    and search_text.lower() in pokemon_nickname.lower()
-                                )
-                            )
-                            and 0 <= generation_index <= 8
-                            and (
-                                generation_index == 0
-                                or (1 <= pokemon_id <= 151 and generation_index == 1)
-                                or (152 <= pokemon_id <= 251 and generation_index == 2)
-                                or (252 <= pokemon_id <= 386 and generation_index == 3)
-                                or (387 <= pokemon_id <= 493 and generation_index == 4)
-                                or (494 <= pokemon_id <= 649 and generation_index == 5)
-                                or (650 <= pokemon_id <= 721 and generation_index == 6)
-                                or (722 <= pokemon_id <= 809 and generation_index == 7)
-                                or (810 <= pokemon_id <= 898 and generation_index == 8)
-                            )
-                            and (type_index == 0 or type_text in pokemon_type)
-                        ):
-                            filtered_pokemon.append(pokemon)
-                    self.refresh_collection(filtered_pokemon)
-                    if not filtered_pokemon:
-                        showInfo("No Pokemon for the desired filter options!")
-                    self.current_page = 0
-            except FileNotFoundError:
-                self.layout.addWidget(
-                    QLabel(f"Can't open the Saving File. {mypokemon_path}")
-                )
-        else:
-            self.sort_pokemon()
-
-    def sort_pokemon(self):
-        filtered_pokemon = []
+    def apply_sort_and_filter(self):
         pokemon_list = self.pokemon_list
         search_text = self.search_edit.text().lower()
         generation_index = self.generation_combo.currentIndex()
         type_index = self.type_combo.currentIndex()
         type_text = self.type_combo.currentText()
-        sorted_pokemon_list = sorted(pokemon_list, key=lambda x: x["id"])
-        for i in reversed(range(self.scroll_layout.count())):
-            widget = self.scroll_layout.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
+        # Use the stable internal key, not the (possibly translated) label.
+        sort_key = self._sort_keys[self.sort_combo.currentIndex()]
+
         try:
-            if sorted_pokemon_list:
-                for position, pokemon in enumerate(sorted_pokemon_list):
-                    pokemon_id = pokemon["id"]
-                    pokemon_name = pokemon["name"].lower()
-                    if pokemon.get("shiny", False):
-                        pokemon_name += " (shiny) "
-                    pokemon_nickname = pokemon.get("nickname") or ""
-                    if pokemon.get("shiny", False):
-                        pokemon_nickname += " (shiny) "
-                    pokemon_type = pokemon.get("type", " ")
-                    # Check if the Pokémon matches the search text and generation filter
-                    if (
-                        (
-                            search_text.lower() in pokemon_name.lower()
-                            or (
-                                pokemon_nickname is not None
-                                and search_text.lower() in pokemon_nickname.lower()
-                            )
-                        )
-                        and 0 <= generation_index <= 8
-                        and (
-                            generation_index == 0
-                            or (1 <= pokemon_id <= 151 and generation_index == 1)
-                            or (152 <= pokemon_id <= 251 and generation_index == 2)
-                            or (252 <= pokemon_id <= 386 and generation_index == 3)
-                            or (387 <= pokemon_id <= 493 and generation_index == 4)
-                            or (494 <= pokemon_id <= 649 and generation_index == 5)
-                            or (650 <= pokemon_id <= 721 and generation_index == 6)
-                            or (722 <= pokemon_id <= 809 and generation_index == 7)
-                            or (810 <= pokemon_id <= 898 and generation_index == 8)
-                        )
-                        and (type_index == 0 or type_text in pokemon_type)
-                    ):
-                        filtered_pokemon.append(pokemon)
-                self.refresh_collection(filtered_pokemon)
-                if not filtered_pokemon:
-                    showInfo("No Pokemon for the desired filter options!")
-                self.current_page = 0
+            if not pokemon_list:
+                return
+
+            # Filter
+            filtered_pokemon = []
+            for pokemon in pokemon_list:
+                pokemon_id = pokemon["id"]
+                pokemon_name = pokemon["name"].lower()
+                if pokemon.get("shiny", False):
+                    pokemon_name += " (shiny) "
+                pokemon_nickname = pokemon.get("nickname") or ""
+                if pokemon.get("shiny", False):
+                    pokemon_nickname += " (shiny) "
+                pokemon_type = pokemon.get("type", " ")
+
+                # Generation index 0 = "All"; 1..N match gen_ids order.
+                gen_match = generation_index == 0
+                if not gen_match and 1 <= generation_index <= len(gen_ids):
+                    low = 1 if generation_index == 1 else gen_ids[f"gen_{generation_index - 1}"] + 1
+                    high = gen_ids[f"gen_{generation_index}"]
+                    gen_match = low <= pokemon_id <= high
+                if (
+                    (
+                        search_text in pokemon_name.lower()
+                        or search_text in pokemon_nickname.lower()
+                    )
+                    and gen_match
+                    and (type_index == 0 or type_text in pokemon_type)
+                ):
+                    filtered_pokemon.append(pokemon)
+
+            # Sort — direction controlled by the Descending checkbox
+            reverse = self.desc_sort.isChecked()
+            if sort_key == "id":
+                filtered_pokemon.sort(key=lambda x: x["id"], reverse=reverse)
+            elif sort_key == "cp":
+                filtered_pokemon.sort(key=lambda x: x.get("cp") or calculate_cp_from_dict(x), reverse=reverse)
+            elif sort_key == "level":
+                filtered_pokemon.sort(key=lambda x: x.get("level", 0), reverse=reverse)
+            elif sort_key == "name":
+                filtered_pokemon.sort(key=lambda x: x.get("name", "").lower(), reverse=reverse)
+
+            self.current_page = 0
+            self.refresh_collection(filtered_pokemon)
+            if not filtered_pokemon:
+                showInfo("No Pokemon for the desired filter options!")
         except FileNotFoundError:
             self.layout.addWidget(
                 QLabel(f"Can't open the Saving File. {mypokemon_path}")
@@ -539,19 +486,18 @@ class PokemonCollectionDialog(QDialog):
             len(pokemon_list) + self.items_per_page - 1
         ) // self.items_per_page
 
-        if self.current_page > 0:
-            prev_button = QPushButton("Previous")
-            prev_button.clicked.connect(
-                lambda: self.previous_page(pokemon_list)
-            )  # Passing pokemon_list to previous_page
-            self.pagination_layout.addWidget(prev_button)
+        # Render both buttons always and disable at edges so neighbouring
+        # controls don't shift position when the user lands on page 0 or
+        # the final page.
+        prev_button = QPushButton("Previous")
+        prev_button.clicked.connect(lambda: self.previous_page(pokemon_list))
+        prev_button.setEnabled(self.current_page > 0)
+        self.pagination_layout.addWidget(prev_button)
 
-        if self.current_page < total_pages - 1:
-            next_button = QPushButton("Next")
-            next_button.clicked.connect(
-                lambda: self.next_page(pokemon_list)
-            )  # Passing pokemon_list to next_page
-            self.pagination_layout.addWidget(next_button)
+        next_button = QPushButton("Next")
+        next_button.clicked.connect(lambda: self.next_page(pokemon_list))
+        next_button.setEnabled(self.current_page < total_pages - 1)
+        self.pagination_layout.addWidget(next_button)
 
     def next_page(self, pokemon_list):
         self.current_page += 1

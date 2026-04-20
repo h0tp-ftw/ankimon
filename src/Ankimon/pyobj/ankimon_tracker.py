@@ -75,9 +75,12 @@ class AnkimonTracker:
     def get_total_reviews(self):
         if mw.col is None:
             return 0
-        else:
-            studied_today_num = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
-            return int(studied_today_num.group(1))
+        match = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
+        if match is None:
+            # Empty-study session or localized Anki whose "Studied N cards"
+            # text doesn't match the English regex.
+            return 0
+        return int(match.group(1))
 
     def set_main_pokemon(self, pokemon):
         """Set the main Pokémon being used."""

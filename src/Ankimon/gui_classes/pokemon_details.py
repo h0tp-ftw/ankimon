@@ -23,6 +23,12 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 
+from ..business import (
+    calculate_pokemon_go_cp,
+    pokemon_go_raw_stats,
+    calculate_cpm,
+    cp_breakdown_tooltip,
+)
 from ..pyobj.attack_dialog import AttackDialog
 from ..pyobj.pokemon_trade import PokemonTrade
 from ..pyobj.error_handler import show_warning_with_traceback
@@ -96,6 +102,8 @@ def PokemonCollectionDetails(
     refresh_callback,
     initial_tab_index: int = 0,
     tab_changed_callback=None,
+    nature: str = "serious",
+    base_stats: dict = None,
 ):
     # Create a layout for the details panel
     try:
@@ -190,7 +198,7 @@ def PokemonCollectionDetails(
         for key, val in detail_stats.items():
             if key not in ("hp", "atk", "def", "spa", "spd", "spe"):
                 continue
-            stat = PokemonObject.calc_stat(key, val, level, iv[key], ev[key], "serious")
+            stat = PokemonObject.calc_stat(key, val, level, iv[key], ev[key], nature)
             stats_list.append(stat)
         stats_list.append(detail_stats.get("xp", 0))
         stats_txt = f"Stats:\n Hp: {stats_list[0]}\n Attack: {stats_list[1]}\n Defense: {stats_list[2]}\n Special-attack: {stats_list[3]}\n Special-defense: {stats_list[4]}\n Speed: {stats_list[5]}\n XP: {stats_list[6]}"
@@ -220,10 +228,20 @@ def PokemonCollectionDetails(
         else:
             gender_symbol = ""
 
+        _cp_stats = base_stats if base_stats is not None else detail_stats
+        _attack, _defense, _stamina = pokemon_go_raw_stats(_cp_stats, iv, ev)
+        cp_value = calculate_pokemon_go_cp(_attack, _defense, _stamina, level)
+        cp_txt = f"CP {cp_value:,}"
+        cp_tooltip = cp_breakdown_tooltip(
+            {"base_stats": _cp_stats, "iv": iv, "ev": ev, "level": level}
+        )
+
         name_label = QLabel(f"{capitalized_name} - {gender_symbol}")
         name_label.setFont(namefont)
         description_label = QLabel(description_txt)
         level_label = QLabel(lvl)
+        cp_label = QLabel(cp_txt)
+        cp_label.setToolTip(cp_tooltip)
         ability_label = QLabel(ability_txt)
         attacks_label = QLabel(attacks_txt)
         pokemon_defeated_label = QLabel(f"Pokemon Defeated: {pokemon_defeated}")
@@ -233,6 +251,7 @@ def PokemonCollectionDetails(
             captured_date_label = QLabel(f"Captured: N/A")
 
         level_label.setFont(custom_font)
+        cp_label.setFont(custom_font)
         type_label = QLabel("Type:")
         type_label.setFont(custom_font)
         ability_label.setFont(custom_font)
@@ -248,6 +267,7 @@ def PokemonCollectionDetails(
         pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cp_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         type_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignCenter
         )
@@ -267,6 +287,7 @@ def PokemonCollectionDetails(
         TopR_layout_Box = QVBoxLayout()
         typelayout_widget = QWidget()
         TopL_layout_Box.addWidget(level_label)
+        TopL_layout_Box.addWidget(cp_label)
         TopL_layout_Box.addWidget(pkmnimage_label)
 
         typelayout.addWidget(type_label)

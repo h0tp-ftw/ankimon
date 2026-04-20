@@ -28,8 +28,19 @@ def test_ankimon_initialization(qapp):
     `qapp` is a pytest-qt fixture that provides a QApplication instance, allowing
     real PyQt6 widgets to be instantiated without crashing.
     """
-    import aqt
     from PyQt6.QtWidgets import QMainWindow
+
+    # Other tests (e.g. test_encounter_functions) may install MagicMock stubs
+    # for aqt and Ankimon packages in sys.modules.  conftest.py also installs
+    # lightweight stubs for Ankimon and Ankimon.functions.
+    # This test needs the *real* packages, so purge all stubs first.
+    for _stub in [k for k in list(sys.modules) if k.startswith("Ankimon")]:
+        del sys.modules[_stub]
+    for _aqt_key in [k for k in list(sys.modules) if k.startswith("aqt")]:
+        if isinstance(sys.modules[_aqt_key], MagicMock):
+            del sys.modules[_aqt_key]
+    import aqt
+    import aqt.qt
 
     # Instead of a MagicMock which Qt rejects for parent classes, use a real QWidget
     # as the mock main window.
@@ -40,6 +51,15 @@ def test_ankimon_initialization(qapp):
             self.pm.name = "test_profile"
             self.form = MagicMock()
             self.addonManager = MagicMock()
+            # settings_obj is accessed at import time by modules like
+            # gui_classes/overview_team.py. Return False for all settings
+            # so hook-registration code paths short-circuit.
+            self.settings_obj = MagicMock()
+            self.settings_obj.get = MagicMock(return_value=False)
+            # col is accessed by ankimon_tracker.get_total_reviews() which
+            # calls re.search on mw.col.studied_today() — needs a string.
+            self.col = MagicMock()
+            self.col.studied_today.return_value = "Studied 0 cards today"
 
         def _increase_background_ops(self):
             pass
@@ -88,14 +108,6 @@ def test_ankimon_initialization(qapp):
             except Exception as e:
                 error_msg = f"Failed to dynamically import module {modname}:\n{traceback.format_exc()}"
                 errors.append(error_msg)
-
-    # Ignore the known bug in __init__.py until it is fixed in a separate PR
-    errors = [
-        e
-        for e in errors
-        if "module 'Ankimon.gui_classes.overview_team' has no attribute 'init_hooks'"
-        not in e
-    ]
 
     if errors:
         error_text = "\n".join(errors)

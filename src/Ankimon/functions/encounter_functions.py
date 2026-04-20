@@ -39,7 +39,7 @@ from ..functions.trainer_functions import xp_share_gain_exp
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.drawing_utils import tooltipWithColour
 from ..utils import limit_ev_yield, play_effect_sound, get_ev_spread
-from ..business import calc_experience
+from ..business import calc_experience, calculate_cp_from_dict
 from ..const import gen_ids
 from ..singletons import (
     main_pokemon,
@@ -211,6 +211,38 @@ def check_id_ok(id_num: Union[int, list[int]]):
     return False
 
 
+def _get_card_type_bias() -> list:
+    """Return Pokemon types matching the current Anki card's tags or
+    deck name, if the user has opted into tag-biased encounters.
+
+    Thin wrapper around :func:`business.compute_type_bias`; handles the
+    opt-in flag and the ``mw.reviewer.card`` lookup. Never raises — on
+    any error the caller falls through to unbiased generation.
+    """
+    try:
+        if not settings_obj.get("battle.tag_biased_encounters"):
+            return []
+        card = getattr(getattr(mw, "reviewer", None), "card", None)
+        if card is None:
+            return []
+        tags = card.note().tags or []
+        deck_name = mw.col.decks.name(card.did) or ""
+        from ..business import compute_type_bias
+        return compute_type_bias(tags, deck_name)
+    except Exception:
+        return []
+
+
+def _pokemon_matches_bias(name: str, bias: list) -> bool:
+    """True when the Pokemon's type list intersects the bias. Unknown
+    Pokemon are treated as matching so the draw doesn't block."""
+    try:
+        types = search_pokedex(name, "types") or []
+        return any(t in bias for t in types)
+    except Exception:
+        return True
+
+
 def generate_random_pokemon(
     main_pokemon_level: int, ankimon_tracker_obj: AnkimonTracker
 ):
@@ -264,14 +296,24 @@ def generate_random_pokemon(
         wild_pokemon_lvl = 100
 
     # First, we draw a random, valid pokemon id.
+    type_bias = _get_card_type_bias()
+    max_bias_attempts = 25  # Bias is a soft preference — fall through if it can't be satisfied quickly.
+    bias_attempts = 0
     pokemon_id, tier = choose_random_pkmn_from_tier()
     name = search_pokedex_by_id(pokemon_id)
     min_allowed_pokemon_lvl = check_min_generate_level(
         str(name.lower())
     )  # Gets the minimum allowed level for that pokemon given its stage of evolution
-    while (not check_id_ok(pokemon_id)) or (
-        wild_pokemon_lvl < min_allowed_pokemon_lvl
+    while (
+        (not check_id_ok(pokemon_id))
+        or (wild_pokemon_lvl < min_allowed_pokemon_lvl)
+        or (
+            type_bias
+            and bias_attempts < max_bias_attempts
+            and not _pokemon_matches_bias(name, type_bias)
+        )
     ):  # We keep drawing a random pokemon until we find a valid one
+        bias_attempts += 1
         pokemon_id, tier = choose_random_pkmn_from_tier()
         name = search_pokedex_by_id(pokemon_id)
         min_allowed_pokemon_lvl = check_min_generate_level(
@@ -571,9 +613,11 @@ def save_main_pokemon_progress(
     if settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True:
         logger.log_and_showinfo("info", f"{msg}")
 
-    # Load existing Pokémon data if it exists
+    # Update in-place, then persist both main and mypokemon files. Base
+    # stats intentionally not overwritten here — "stats" in the legacy main
+    # record was level-scaled and confused downstream readers that expect
+    # "stats" to mean base stats.
     for mainpkmndata in main_pokemon_data:
-        mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["xp"] = int(main_pokemon.xp)
         mainpkmndata["level"] = int(main_pokemon.level)
         ev_yield = limit_ev_yield(mainpkmndata["ev"], enemy_pokemon.ev_yield)
@@ -583,7 +627,18 @@ def save_main_pokemon_progress(
         mainpkmndata["ev"]["spa"] += ev_yield["special-attack"]
         mainpkmndata["ev"]["spd"] += ev_yield["special-defense"]
         mainpkmndata["ev"]["spe"] += ev_yield["speed"]
-        mainpkmndata["current_hp"] = int(main_pokemon.current_hp)
+        # Mirror EV gain onto the in-memory object so CP/stats reads
+        # stay consistent with the persisted dict until next restart.
+        # Dict-item mutation doesn't fire __setattr__, so invalidate
+        # the CP cache explicitly.
+        main_pokemon.ev["hp"] += ev_yield["hp"]
+        main_pokemon.ev["atk"] += ev_yield["attack"]
+        main_pokemon.ev["def"] += ev_yield["defense"]
+        main_pokemon.ev["spa"] += ev_yield["special-attack"]
+        main_pokemon.ev["spd"] += ev_yield["special-defense"]
+        main_pokemon.ev["spe"] += ev_yield["speed"]
+        main_pokemon.invalidate_cp_cache()
+        mainpkmndata["current_hp"] = int(main_pokemon.hp)
         main_pokemon.friendship += random.randint(5, 9)
         if main_pokemon.friendship > 255:
             main_pokemon.friendship = 255
@@ -595,6 +650,9 @@ def save_main_pokemon_progress(
         if hasattr(main_pokemon, "is_favorite"):
             mainpkmndata["is_favorite"] = main_pokemon.is_favorite
     mainpkmndata = [mainpkmndata]
+    # Refresh cached CP so Collection Dialog / PC Box readers don't
+    # short-circuit to a stale pre-level-up value on the next render.
+    mainpkmndata[0]["cp"] = calculate_cp_from_dict(mainpkmndata[0])
     # Save the caught Pokémon's data to a JSON file
     try:
         with open(str(mainpokemon_path), "w") as json_file:
@@ -609,14 +667,13 @@ def save_main_pokemon_progress(
                 if (
                     pokemon_data.get("individual_id") == main_pokemon.individual_id
                 ):  # Match by individual_id
-                    mypokemondata[index] = mypkmndata  # Replace with new data
+                    mypokemondata[index] = mainpkmndata[0]
                     break
 
             # Save the modified data to the output JSON file
             with open(str(mypokemon_path), "w") as output_file:
                 json.dump(mypokemondata, output_file, indent=2)
 
-        sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path)
         mw.logger.log("info", f"Successfully saved progress for {main_pokemon.name}")
     except Exception as e:
         mw.logger.log("error", f"Failed to save pokemon progress: {str(e)}")
@@ -702,34 +759,30 @@ def save_caught_pokemon(
 
     # enemy_pokemon.stats["xp"] = 0
     enemy_pokemon.xp = 0
-    caught_pokemon = {
+    # Use to_dict() so the caught record shares the canonical shape with
+    # saved main Pokemon (includes base_stats, level-scaled stats, cp,
+    # nature). Then override caught-only fields.
+    _max_hp = enemy_pokemon.calculate_max_hp()
+    caught_pokemon = enemy_pokemon.to_dict()
+    caught_pokemon.update({
         "name": enemy_pokemon.name.capitalize(),
         "nickname": "",
-        "level": enemy_pokemon.level,
-        "gender": enemy_pokemon.gender,
-        "id": enemy_pokemon.id,
-        "ability": enemy_pokemon.ability,
-        "type": enemy_pokemon.type,
-        "stats": enemy_pokemon.base_stats,
         "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-        "iv": enemy_pokemon.iv,
-        "attacks": enemy_pokemon.attacks,
-        "base_experience": enemy_pokemon.base_experience,
-        "current_hp": enemy_pokemon.calculate_max_hp(),
-        "growth_rate": enemy_pokemon.growth_rate,
         "friendship": 0,
         "pokemon_defeated": 0,
         "xp": 0,
         "everstone": False,
-        "shiny": enemy_pokemon.shiny,
         "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "individual_id": str(uuid.uuid4()),
         "mega": False,
         "special_form": None,
-        "tier": enemy_pokemon.tier,
         "is_favorite": False,
         "held_item": None,
-    }
+        "hp": _max_hp,
+        "current_hp": _max_hp,
+    })
+    # Recompute CP against the overridden (zeroed) EVs.
+    caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 
     # Load existing Pokémon data if it exists
     caught_pokemon_data = []
