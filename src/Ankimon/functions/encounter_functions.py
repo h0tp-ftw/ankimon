@@ -211,6 +211,47 @@ def check_id_ok(id_num: Union[int, list[int]]):
     return False
 
 
+_POKEMON_TYPES_LOWER = {
+    "normal", "fire", "water", "electric", "grass", "ice", "fighting",
+    "poison", "ground", "flying", "psychic", "bug", "rock", "ghost",
+    "dragon", "dark", "steel", "fairy",
+}
+
+
+def _get_card_type_bias() -> list:
+    """Return Pokemon types matching the current Anki card's tags or
+    deck name, if the user has opted into tag-biased encounters.
+
+    Tag or deck-name component ``electric`` biases toward Electric-type
+    Pokemon. Returns an empty list when the feature is disabled, mw is
+    unavailable, or no match is found. Never raises — on any error the
+    caller falls through to unbiased generation.
+    """
+    try:
+        if not settings_obj.get("battle.tag_biased_encounters"):
+            return []
+        card = getattr(getattr(mw, "reviewer", None), "card", None)
+        if card is None:
+            return []
+        tags = [str(t).lower() for t in (card.note().tags or [])]
+        deck_name = (mw.col.decks.name(card.did) or "").lower()
+        for piece in deck_name.replace("::", " ").split():
+            tags.append(piece)
+        return sorted({t.capitalize() for t in tags if t in _POKEMON_TYPES_LOWER})
+    except Exception:
+        return []
+
+
+def _pokemon_matches_bias(name: str, bias: list) -> bool:
+    """True when the Pokemon's type list intersects the bias. Unknown
+    Pokemon are treated as matching so the draw doesn't block."""
+    try:
+        types = search_pokedex(name, "types") or []
+        return any(t in bias for t in types)
+    except Exception:
+        return True
+
+
 def generate_random_pokemon(
     main_pokemon_level: int, ankimon_tracker_obj: AnkimonTracker
 ):
@@ -264,14 +305,24 @@ def generate_random_pokemon(
         wild_pokemon_lvl = 100
 
     # First, we draw a random, valid pokemon id.
+    type_bias = _get_card_type_bias()
+    max_bias_attempts = 25  # Bias is a soft preference — fall through if it can't be satisfied quickly.
+    bias_attempts = 0
     pokemon_id, tier = choose_random_pkmn_from_tier()
     name = search_pokedex_by_id(pokemon_id)
     min_allowed_pokemon_lvl = check_min_generate_level(
         str(name.lower())
     )  # Gets the minimum allowed level for that pokemon given its stage of evolution
-    while (not check_id_ok(pokemon_id)) or (
-        wild_pokemon_lvl < min_allowed_pokemon_lvl
+    while (
+        (not check_id_ok(pokemon_id))
+        or (wild_pokemon_lvl < min_allowed_pokemon_lvl)
+        or (
+            type_bias
+            and bias_attempts < max_bias_attempts
+            and not _pokemon_matches_bias(name, type_bias)
+        )
     ):  # We keep drawing a random pokemon until we find a valid one
+        bias_attempts += 1
         pokemon_id, tier = choose_random_pkmn_from_tier()
         name = search_pokedex_by_id(pokemon_id)
         min_allowed_pokemon_lvl = check_min_generate_level(

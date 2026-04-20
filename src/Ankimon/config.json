@@ -3,6 +3,7 @@
     "battle.cards_per_round": 2,
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
+    "battle.tag_biased_encounters": false,
 
     "controls.pokemon_buttons": true,
     "controls.defeat_key": "5",

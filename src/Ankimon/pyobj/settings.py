@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
     "battle.review_based_damage": True,
+    "battle.tag_biased_encounters": False,
     "controls.pokemon_buttons": True,
     "controls.defeat_key": "5",
     "controls.catch_key": "6",
