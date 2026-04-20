@@ -246,9 +246,18 @@ class PokemonObject:
         """Return the stats of the Pokémon."""
         return vars(self)
 
+    # Read-only @property getters. setattr() on any of these raises
+    # AttributeError (silently, when wrapped in update_stats's caller's
+    # bare `except Exception`). Skip them in update_stats so callers
+    # can safely splat a saved dict that may include cached/derived
+    # values like "cp".
+    _READONLY_ATTRS = frozenset({"cp", "stats", "max_hp"})
+
     def update_stats(self, **kwargs):
         """Update the attributes of the Pokémon object with keyword arguments."""
         for key, value in kwargs.items():
+            if key in self._READONLY_ATTRS:
+                continue
             if hasattr(self, key):
                 setattr(self, key, value)
         self._update_battle_stats()  # Update battle stats

@@ -317,8 +317,9 @@ def load_pokemon_team() -> list[dict[str, Any]]:
         return []
     except Exception as e:
         # Unexpected errors are logged but not allowed to crash Anki's UI.
-        if mw:
-            mw.progress.chrome_logger.log(f"Ankimon Team Overview Error: {e}")
+        # mw.progress has no chrome_logger attribute — the previous call
+        # would raise AttributeError and mask the original exception.
+        print(f"Ankimon Team Overview Error: {e}")
         return []
 
 

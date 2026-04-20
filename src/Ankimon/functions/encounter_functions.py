@@ -585,6 +585,17 @@ def save_main_pokemon_progress(
         mainpkmndata["ev"]["spa"] += ev_yield["special-attack"]
         mainpkmndata["ev"]["spd"] += ev_yield["special-defense"]
         mainpkmndata["ev"]["spe"] += ev_yield["speed"]
+        # Mirror EV gain onto the in-memory object so CP/stats reads
+        # stay consistent with the persisted dict until next restart.
+        # Dict-item mutation doesn't fire __setattr__, so invalidate
+        # the CP cache explicitly.
+        main_pokemon.ev["hp"] += ev_yield["hp"]
+        main_pokemon.ev["atk"] += ev_yield["attack"]
+        main_pokemon.ev["def"] += ev_yield["defense"]
+        main_pokemon.ev["spa"] += ev_yield["special-attack"]
+        main_pokemon.ev["spd"] += ev_yield["special-defense"]
+        main_pokemon.ev["spe"] += ev_yield["speed"]
+        main_pokemon.invalidate_cp_cache()
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
         main_pokemon.friendship += random.randint(5, 9)
         if main_pokemon.friendship > 255:

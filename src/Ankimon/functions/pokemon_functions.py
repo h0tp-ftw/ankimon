@@ -212,7 +212,10 @@ def save_fossil_pokemon(pokemon_id):
         "id": id,
         "ability": ability,
         "type": type,
+        # Keep legacy "stats" key AND add canonical "base_stats" so both
+        # dict-shape readers (caught vs to_dict) work.
         "stats": stats,
+        "base_stats": stats,
         "ev": ev,
         "iv": iv,
         "attacks": attacks,
@@ -221,6 +224,7 @@ def save_fossil_pokemon(pokemon_id):
         "growth_rate": growth_rate,
         "friendship": 0,
         "pokemon_defeated": 0,
+        "xp": 0,
         "everstone": False,
         "shiny": shiny_chance(),
         "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -228,7 +232,14 @@ def save_fossil_pokemon(pokemon_id):
         "mega": False,
         "special_form": None,
         "tier": "Fossil",
+        "nature": "serious",
+        "held_item": None,
+        "is_favorite": False,
     }
+    # Refresh CP after dict is fully assembled so the record matches
+    # the shape produced by save_caught_pokemon.
+    from ..business import calculate_cp_from_dict as _calc_cp
+    caught_pokemon["cp"] = _calc_cp(caught_pokemon)
     # Load existing Pokémon data if it exists
     if mypokemon_path.is_file():
         with open(mypokemon_path, "r", encoding="utf-8") as json_file:
