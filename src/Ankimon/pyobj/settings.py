@@ -105,9 +105,6 @@ class Settings:
                         )
                     del config["items"]
 
-                if "trainer.team" in config:
-                    del config["trainer.team"]
-
                 # Type Coercion (from ankimon_sync.py)
                 keys_to_coerce_to_int = [
                     "battle.automatic_battle",

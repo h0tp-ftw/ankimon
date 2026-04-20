@@ -28,6 +28,7 @@ from ..gui_classes.pokemon_details import PokemonCollectionDetails
 from ..gui_entities import MovieSplashLabel
 from ..resources import mypokemon_path, frontdefault, frontdefault, mainpokemon_path
 from ..business import calculate_cp_from_dict, cp_breakdown_tooltip
+from ..const import gen_ids
 
 
 class PokemonCollectionDialog(QDialog):
@@ -95,16 +96,7 @@ class PokemonCollectionDialog(QDialog):
         self.generation_combo = QComboBox()
         self.generation_combo.addItem("All")
         self.generation_combo.addItems(
-            [
-                "Generation 1",
-                "Generation 2",
-                "Generation 3",
-                "Generation 4",
-                "Generation 5",
-                "Generation 6",
-                "Generation 7",
-                "Generation 8",
-            ]
+            [f"Generation {i}" for i in range(1, len(gen_ids) + 1)]
         )
         self.generation_combo.currentIndexChanged.connect(self.apply_sort_and_filter)
 
@@ -325,11 +317,14 @@ class PokemonCollectionDialog(QDialog):
             self.scroll_area.setWidget(self.container)
             # Add pagination controls (at the bottom)
             self.add_pagination_controls(pokemon_list)
-            # Add Pokémon grid to the main layout
-            self.layout.addWidget(self.scroll_area)
-            self.layout.addWidget(self.paginator)
-
-            self.setLayout(self.layout)
+            # Add scroll area + paginator to the main layout ONCE. Re-adding
+            # on every showEvent/refresh_collection stacked N scroll areas
+            # after N reopens — content repopulation happens above this line.
+            if not getattr(self, "_ui_assembled", False):
+                self.layout.addWidget(self.scroll_area)
+                self.layout.addWidget(self.paginator)
+                self.setLayout(self.layout)
+                self._ui_assembled = True
         except FileNotFoundError:
             self.layout.addWidget(
                 QLabel(f"Can't open the Saving File. {mypokemon_path}")
@@ -442,23 +437,18 @@ class PokemonCollectionDialog(QDialog):
                     pokemon_nickname += " (shiny) "
                 pokemon_type = pokemon.get("type", " ")
 
+                # Generation index 0 = "All"; 1..N match gen_ids order.
+                gen_match = generation_index == 0
+                if not gen_match and 1 <= generation_index <= len(gen_ids):
+                    low = 1 if generation_index == 1 else gen_ids[f"gen_{generation_index - 1}"] + 1
+                    high = gen_ids[f"gen_{generation_index}"]
+                    gen_match = low <= pokemon_id <= high
                 if (
                     (
                         search_text in pokemon_name.lower()
                         or search_text in pokemon_nickname.lower()
                     )
-                    and 0 <= generation_index <= 8
-                    and (
-                        generation_index == 0
-                        or (1 <= pokemon_id <= 151 and generation_index == 1)
-                        or (152 <= pokemon_id <= 251 and generation_index == 2)
-                        or (252 <= pokemon_id <= 386 and generation_index == 3)
-                        or (387 <= pokemon_id <= 493 and generation_index == 4)
-                        or (494 <= pokemon_id <= 649 and generation_index == 5)
-                        or (650 <= pokemon_id <= 721 and generation_index == 6)
-                        or (722 <= pokemon_id <= 809 and generation_index == 7)
-                        or (810 <= pokemon_id <= 898 and generation_index == 8)
-                    )
+                    and gen_match
                     and (type_index == 0 or type_text in pokemon_type)
                 ):
                     filtered_pokemon.append(pokemon)

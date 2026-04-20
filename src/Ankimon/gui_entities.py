@@ -308,8 +308,12 @@ class Pokedex_Widget(QWidget):
         # Extract the IDs of the Pokémon listed in the JSON file
         self.available_pokedex_ids = {pokemon['id'] for pokemon in self.captured_pokemon_data}
 
-        # Now we generate the HTML rows for each Pokémon in the range 1-898, graying out those not in the JSON file
-        table_rows = [self.generate_table_row(i, i not in self.available_pokedex_ids) for i in range(1, 899)]
+        # Generate HTML rows for every Pokémon up through the latest
+        # supported generation (see const.gen_ids); grey out those not in
+        # the JSON file.
+        from .const import gen_ids as _gen_ids
+        _max_id = max(_gen_ids.values())
+        table_rows = [self.generate_table_row(i, i not in self.available_pokedex_ids) for i in range(1, _max_id + 1)]
 
         # Combine the HTML template with the generated rows
         html_content = pokedex_html_template.replace('<!-- Table Rows Will Go Here -->', ''.join(table_rows))

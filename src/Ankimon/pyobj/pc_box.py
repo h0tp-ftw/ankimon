@@ -43,6 +43,7 @@ from ..functions.sprite_functions import get_sprite_path
 from ..utils import load_custom_font, get_tier_by_id
 from ..resources import mypokemon_path, itembag_path
 from ..business import calculate_cp_from_dict
+from ..const import gen_ids
 
 
 def format_item_name(item_name: str) -> str:
@@ -856,17 +857,11 @@ class PokemonPC(QDialog):
 
             if self.generation_combo is not None:
                 gen_idx = self.generation_combo.currentIndex()
-                if gen_idx != 0 and (
-                    (1 <= pokemon["id"] <= 151 and gen_idx != 1)
-                    or (152 <= pokemon["id"] <= 251 and gen_idx != 2)
-                    or (252 <= pokemon["id"] <= 386 and gen_idx != 3)
-                    or (387 <= pokemon["id"] <= 493 and gen_idx != 4)
-                    or (494 <= pokemon["id"] <= 649 and gen_idx != 5)
-                    or (650 <= pokemon["id"] <= 721 and gen_idx != 6)
-                    or (722 <= pokemon["id"] <= 809 and gen_idx != 7)
-                    or (810 <= pokemon["id"] <= 898 and gen_idx != 8)
-                ):
-                    return False
+                if gen_idx != 0 and 1 <= gen_idx <= len(gen_ids):
+                    low = 1 if gen_idx == 1 else gen_ids[f"gen_{gen_idx - 1}"] + 1
+                    high = gen_ids[f"gen_{gen_idx}"]
+                    if not (low <= pokemon["id"] <= high):
+                        return False
 
             return True
 
