@@ -184,9 +184,9 @@ def type_compatibility_multiplier(attacker_types, defender_types) -> float:
         return 1.0
     if best == 0:
         return 0.2
-    if best > 1:
+    elif best > 1:
         return 1.5
-    if best < 1:
+    elif best < 1:
         return 0.8
     return 1.0
 
