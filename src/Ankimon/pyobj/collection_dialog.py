@@ -480,19 +480,18 @@ class PokemonCollectionDialog(QDialog):
             len(pokemon_list) + self.items_per_page - 1
         ) // self.items_per_page
 
-        if self.current_page > 0:
-            prev_button = QPushButton("Previous")
-            prev_button.clicked.connect(
-                lambda: self.previous_page(pokemon_list)
-            )  # Passing pokemon_list to previous_page
-            self.pagination_layout.addWidget(prev_button)
+        # Render both buttons always and disable at edges so neighbouring
+        # controls don't shift position when the user lands on page 0 or
+        # the final page.
+        prev_button = QPushButton("Previous")
+        prev_button.clicked.connect(lambda: self.previous_page(pokemon_list))
+        prev_button.setEnabled(self.current_page > 0)
+        self.pagination_layout.addWidget(prev_button)
 
-        if self.current_page < total_pages - 1:
-            next_button = QPushButton("Next")
-            next_button.clicked.connect(
-                lambda: self.next_page(pokemon_list)
-            )  # Passing pokemon_list to next_page
-            self.pagination_layout.addWidget(next_button)
+        next_button = QPushButton("Next")
+        next_button.clicked.connect(lambda: self.next_page(pokemon_list))
+        next_button.setEnabled(self.current_page < total_pages - 1)
+        self.pagination_layout.addWidget(next_button)
 
     def next_page(self, pokemon_list):
         self.current_page += 1

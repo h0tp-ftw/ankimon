@@ -352,12 +352,14 @@ class PokemonPC(QDialog):
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setStyleSheet("background: transparent; border: none;")
         self.scroll_area.setMinimumSize(200, 200)  # Minimum size required for shrinking
-        # Enforce pagination by turning off scrollbars
+        # Show scrollbars only when needed; previously forced-off, which
+        # meant overflow Pokemon were unreachable if calculate_grid_dimensions
+        # slightly under-reported the number of fittable slots.
         self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
         self.scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
 
         self.grid_container = QWidget()

@@ -164,7 +164,7 @@ class Credits(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle("AnkiMon License")
+        self.setWindowTitle("AnkiMon Credits")
 
         # Create a label and set HTML content
         label = QLabel()
