@@ -247,11 +247,13 @@ class PokemonObject:
         """Return the stats of the Pokémon."""
         return vars(self)
 
-    # Read-only @property getters. setattr() on any of these raises
-    # AttributeError (silently, when wrapped in update_stats's caller's
-    # bare `except Exception`). Skip them in update_stats so callers
-    # can safely splat a saved dict that may include cached/derived
-    # values like "cp".
+    # Derived/read-only attributes to skip in update_stats. ``cp`` and
+    # ``stats`` are @property getters whose setattr raises
+    # AttributeError (silently swallowed by the caller's bare
+    # `except Exception`). ``max_hp`` is a plain cache field — setattr
+    # would succeed, but the splatted value is almost certainly stale
+    # relative to the new ``level``/``base_stats``, so we skip it and
+    # recompute it ourselves below.
     _READONLY_ATTRS = frozenset({"cp", "stats", "max_hp"})
 
     def update_stats(self, **kwargs):
@@ -261,6 +263,9 @@ class PokemonObject:
                 continue
             if hasattr(self, key):
                 setattr(self, key, value)
+        # Derived caches — recompute from the (possibly updated)
+        # base_stats/level/iv/ev so they don't go stale.
+        self.max_hp = self.calculate_max_hp()
         self._update_battle_stats()  # Update battle stats
 
     def reset_stats(self):
