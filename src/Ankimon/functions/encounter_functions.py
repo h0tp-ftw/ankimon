@@ -211,21 +211,13 @@ def check_id_ok(id_num: Union[int, list[int]]):
     return False
 
 
-_POKEMON_TYPES_LOWER = {
-    "normal", "fire", "water", "electric", "grass", "ice", "fighting",
-    "poison", "ground", "flying", "psychic", "bug", "rock", "ghost",
-    "dragon", "dark", "steel", "fairy",
-}
-
-
 def _get_card_type_bias() -> list:
     """Return Pokemon types matching the current Anki card's tags or
     deck name, if the user has opted into tag-biased encounters.
 
-    Tag or deck-name component ``electric`` biases toward Electric-type
-    Pokemon. Returns an empty list when the feature is disabled, mw is
-    unavailable, or no match is found. Never raises — on any error the
-    caller falls through to unbiased generation.
+    Thin wrapper around :func:`business.compute_type_bias`; handles the
+    opt-in flag and the ``mw.reviewer.card`` lookup. Never raises — on
+    any error the caller falls through to unbiased generation.
     """
     try:
         if not settings_obj.get("battle.tag_biased_encounters"):
@@ -233,11 +225,10 @@ def _get_card_type_bias() -> list:
         card = getattr(getattr(mw, "reviewer", None), "card", None)
         if card is None:
             return []
-        tags = [str(t).lower() for t in (card.note().tags or [])]
-        deck_name = (mw.col.decks.name(card.did) or "").lower()
-        for piece in deck_name.replace("::", " ").split():
-            tags.append(piece)
-        return sorted({t.capitalize() for t in tags if t in _POKEMON_TYPES_LOWER})
+        tags = card.note().tags or []
+        deck_name = mw.col.decks.name(card.did) or ""
+        from ..business import compute_type_bias
+        return compute_type_bias(tags, deck_name)
     except Exception:
         return []
 

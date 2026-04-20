@@ -35,6 +35,7 @@ from Ankimon.business import (
     type_compatibility_multiplier,
     calculate_cp_from_dict,
     cp_breakdown_tooltip,
+    compute_type_bias,
     _load_type_chart,
 )
 
@@ -302,3 +303,62 @@ class TestCPBreakdownTooltip:
     def test_handles_missing_level(self):
         tip = cp_breakdown_tooltip({"base_stats": self.BASE})
         assert "CP at Level 100" in tip
+
+
+class TestComputeTypeBias:
+    """Pure-helper tests for the tag-biased-encounter logic. The wrapper
+    _get_card_type_bias() in encounter_functions.py delegates here once
+    it has read settings and mw state."""
+
+    def test_empty_inputs(self):
+        assert compute_type_bias([], "") == []
+        assert compute_type_bias(None, None) == []
+
+    def test_single_type_tag(self):
+        assert compute_type_bias(["electric"], "") == ["Electric"]
+
+    def test_case_insensitive_match(self):
+        assert compute_type_bias(["ELECTRIC"], "") == ["Electric"]
+        assert compute_type_bias(["Electric"], "") == ["Electric"]
+        assert compute_type_bias(["electRIC"], "") == ["Electric"]
+
+    def test_multiple_types_sorted(self):
+        # Output is sorted alphabetically for stability.
+        assert compute_type_bias(["water", "fire", "grass"], "") == [
+            "Fire", "Grass", "Water"
+        ]
+
+    def test_deck_name_nested_components(self):
+        # Anki uses :: as its nested-deck separator.
+        assert compute_type_bias([], "Biology::Psychic") == ["Psychic"]
+        assert compute_type_bias([], "Academic::Electric::Circuits") == ["Electric"]
+
+    def test_deck_name_whitespace_separated(self):
+        assert compute_type_bias([], "Water and fire tactics") == ["Fire", "Water"]
+
+    def test_tags_and_deck_name_combined(self):
+        result = compute_type_bias(["dragon"], "Studies::Psychic")
+        assert result == ["Dragon", "Psychic"]
+
+    def test_non_type_tokens_ignored(self):
+        # Tags that aren't Pokemon types are discarded.
+        assert compute_type_bias(["leech", "biology", "important"], "") == []
+
+    def test_deduplication(self):
+        # Same type appearing via tag AND deck name appears once.
+        assert compute_type_bias(["fire"], "Cooking::fire") == ["Fire"]
+        assert compute_type_bias(["fire", "fire", "FIRE"], "") == ["Fire"]
+
+    def test_all_eighteen_types_recognized(self):
+        all_types = [
+            "normal", "fire", "water", "electric", "grass", "ice",
+            "fighting", "poison", "ground", "flying", "psychic", "bug",
+            "rock", "ghost", "dragon", "dark", "steel", "fairy",
+        ]
+        result = compute_type_bias(all_types, "")
+        assert len(result) == 18
+        assert all(t.capitalize() in result for t in all_types)
+
+    def test_numeric_and_weird_tokens_safe(self):
+        # Non-string tags should coerce via str() without raising.
+        assert compute_type_bias([42, None, "fire"], "") == ["Fire"]

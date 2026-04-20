@@ -223,6 +223,33 @@ def calculate_present_power(
     return int(math.floor(cp * current_hp * compat * stage_factor))
 
 
+_POKEMON_TYPES_LOWER = frozenset({
+    "normal", "fire", "water", "electric", "grass", "ice", "fighting",
+    "poison", "ground", "flying", "psychic", "bug", "rock", "ghost",
+    "dragon", "dark", "steel", "fairy",
+})
+
+
+def compute_type_bias(tags, deck_name: str = "") -> list:
+    """Pure helper: derive a Pokemon-type bias from raw tag list and
+    optional deck name.
+
+    Returns a sorted list of capitalized type names whose lowercase form
+    appears among the tags or the ``::``/whitespace-separated components
+    of the deck name. Unknown tokens are ignored, so a tag like
+    ``#leech`` or ``biology`` has no effect.
+
+    Keeping this function pure (no ``mw``/``settings`` dependency) makes
+    the bias logic unit-testable without the Anki runtime. The
+    encounter-side wrapper handles the opt-in check and the actual
+    ``mw.reviewer.card`` lookup.
+    """
+    tokens = [str(t).lower() for t in (tags or [])]
+    for piece in (deck_name or "").lower().replace("::", " ").split():
+        tokens.append(piece)
+    return sorted({t.capitalize() for t in tokens if t in _POKEMON_TYPES_LOWER})
+
+
 def cp_breakdown_tooltip(pokemon_dict: dict) -> str:
     """Human-readable CP breakdown for Qt tooltips.
 
