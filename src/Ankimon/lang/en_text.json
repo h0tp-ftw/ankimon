@@ -457,5 +457,12 @@
   "cp_label": "CP",
   "bp_label": "BP",
   "combat_power": "Combat Power",
-  "battle_power": "Battle Power"
+  "battle_power": "Battle Power",
+  "sort_label": "Sort:",
+  "sort_descending": "Descending",
+  "sort_capture_order": "Capture Order",
+  "sort_id": "ID",
+  "sort_cp": "CP",
+  "sort_level": "Level",
+  "sort_name": "Name"
 }

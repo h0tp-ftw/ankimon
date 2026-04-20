@@ -73,15 +73,20 @@ class PokemonCollectionDialog(QDialog):
         self.setMinimumHeight(400)
         self.layout = QVBoxLayout(self)
 
-        # Sort dropdown
+        # Sort dropdown. Stable internal keys drive the sort logic; the
+        # visible strings route through the translator so non-English
+        # users see localized labels.
+        self._sort_keys = ["capture_order", "id", "cp", "level", "name"]
         self.sort_combo = QComboBox()
-        self.sort_combo.addItems(["Capture Order", "ID", "CP", "Level", "Name"])
+        self.sort_combo.addItems(
+            [self.translator.translate(f"sort_{k}") for k in self._sort_keys]
+        )
         self.sort_combo.currentIndexChanged.connect(self.apply_sort_and_filter)
 
         # Descending toggle — matches PC Box convention. Default ON so
         # the common "strongest/highest first" CP and Level sorts keep
         # their pre-existing behaviour.
-        self.desc_sort = QCheckBox("Descending")
+        self.desc_sort = QCheckBox(self.translator.translate("sort_descending"))
         self.desc_sort.setChecked(True)
         self.desc_sort.stateChanged.connect(self.apply_sort_and_filter)
 
@@ -133,7 +138,7 @@ class PokemonCollectionDialog(QDialog):
         filter_layout.addWidget(self.search_button)
         filter_layout.addWidget(self.generation_combo)
         filter_layout.addWidget(self.type_combo)
-        filter_layout.addWidget(QLabel("Sort:"))
+        filter_layout.addWidget(QLabel(self.translator.translate("sort_label")))
         filter_layout.addWidget(self.sort_combo)
         filter_layout.addWidget(self.desc_sort)
         self.layout.addLayout(filter_layout)
@@ -419,7 +424,8 @@ class PokemonCollectionDialog(QDialog):
         generation_index = self.generation_combo.currentIndex()
         type_index = self.type_combo.currentIndex()
         type_text = self.type_combo.currentText()
-        sort_key = self.sort_combo.currentText()
+        # Use the stable internal key, not the (possibly translated) label.
+        sort_key = self._sort_keys[self.sort_combo.currentIndex()]
 
         try:
             if not pokemon_list:
@@ -455,13 +461,13 @@ class PokemonCollectionDialog(QDialog):
 
             # Sort — direction controlled by the Descending checkbox
             reverse = self.desc_sort.isChecked()
-            if sort_key == "ID":
+            if sort_key == "id":
                 filtered_pokemon.sort(key=lambda x: x["id"], reverse=reverse)
-            elif sort_key == "CP":
+            elif sort_key == "cp":
                 filtered_pokemon.sort(key=lambda x: x.get("cp") or calculate_cp_from_dict(x), reverse=reverse)
-            elif sort_key == "Level":
+            elif sort_key == "level":
                 filtered_pokemon.sort(key=lambda x: x.get("level", 0), reverse=reverse)
-            elif sort_key == "Name":
+            elif sort_key == "name":
                 filtered_pokemon.sort(key=lambda x: x.get("name", "").lower(), reverse=reverse)
 
             self.current_page = 0

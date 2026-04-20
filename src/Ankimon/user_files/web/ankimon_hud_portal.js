@@ -32,7 +32,11 @@
       "pointer-events": "none", // HUD outer lets clicks pass; inner can enable if needed
       display: "block",
       isolation: "isolate",
-      filter: "invert(1) hue-rotate(180deg) saturate(0.555) contrast(0.833)" // Counter-filter
+      // Counter-filter only when Anki's reviewer is in night mode; in
+      // light mode this inversion actively corrupts sprite colours.
+      filter: document.documentElement.classList.contains("night_mode")
+        ? "invert(1) hue-rotate(180deg) saturate(0.555) contrast(0.833)"
+        : "none"
     });
 
     // Append outside card flow to avoid scroll/overflow containers
