@@ -226,7 +226,7 @@ def PokemonCollectionDetails(
         _cp_stats = base_stats if base_stats is not None else detail_stats
         _attack, _defense, _stamina = pokemon_go_raw_stats(_cp_stats, iv, ev)
         cp_value = calculate_pokemon_go_cp(_attack, _defense, _stamina, level)
-        cp_txt = f" CP: {cp_value}"
+        cp_txt = f"CP {cp_value:,}"
 
         name_label = QLabel(f"{capitalized_name} - {gender_symbol}")
         name_label.setFont(namefont)

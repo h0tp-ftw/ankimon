@@ -169,7 +169,7 @@ class TestWindow(QWidget):
 
         Battle Power = CP * current_HP * type-matchup multiplier.
         """
-        cp_font = load_custom_font(14, int(self.settings_obj.get("misc.language")))
+        cp_font = load_custom_font(18, int(self.settings_obj.get("misc.language")))
         painter.setFont(cp_font)
         painter.setPen(QColor(31, 31, 39))
         try:

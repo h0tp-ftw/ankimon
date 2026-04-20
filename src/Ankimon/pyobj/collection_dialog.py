@@ -77,6 +77,13 @@ class PokemonCollectionDialog(QDialog):
         self.sort_combo.addItems(["Capture Order", "ID", "CP", "Level", "Name"])
         self.sort_combo.currentIndexChanged.connect(self.apply_sort_and_filter)
 
+        # Descending toggle — matches PC Box convention. Default ON so
+        # the common "strongest/highest first" CP and Level sorts keep
+        # their pre-existing behaviour.
+        self.desc_sort = QCheckBox("Descending")
+        self.desc_sort.setChecked(True)
+        self.desc_sort.stateChanged.connect(self.apply_sort_and_filter)
+
         # Search Filter
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Search Pokémon (by nickname, name)")
@@ -136,6 +143,7 @@ class PokemonCollectionDialog(QDialog):
         filter_layout.addWidget(self.type_combo)
         filter_layout.addWidget(QLabel("Sort:"))
         filter_layout.addWidget(self.sort_combo)
+        filter_layout.addWidget(self.desc_sort)
         self.layout.addLayout(filter_layout)
 
         self.scroll_area = QScrollArea()
@@ -274,9 +282,8 @@ class PokemonCollectionDialog(QDialog):
                 ability_label = self.create_label(
                     f"Ability: {pokemon_ability.capitalize()}", 8
                 )
-                cp_label = self.create_label(
-                    f"CP: {pokemon.get('cp') or calculate_cp_from_dict(pokemon)}", 8
-                )
+                cp_value = pokemon.get("cp") or calculate_cp_from_dict(pokemon)
+                cp_label = self.create_label(f"CP {cp_value:,}", 8)
 
                 image_label = QLabel()
                 image_label.setPixmap(pixmap)
@@ -455,15 +462,16 @@ class PokemonCollectionDialog(QDialog):
                 ):
                     filtered_pokemon.append(pokemon)
 
-            # Sort
+            # Sort — direction controlled by the Descending checkbox
+            reverse = self.desc_sort.isChecked()
             if sort_key == "ID":
-                filtered_pokemon.sort(key=lambda x: x["id"])
+                filtered_pokemon.sort(key=lambda x: x["id"], reverse=reverse)
             elif sort_key == "CP":
-                filtered_pokemon.sort(key=lambda x: x.get("cp") or calculate_cp_from_dict(x), reverse=True)
+                filtered_pokemon.sort(key=lambda x: x.get("cp") or calculate_cp_from_dict(x), reverse=reverse)
             elif sort_key == "Level":
-                filtered_pokemon.sort(key=lambda x: x.get("level", 0), reverse=True)
+                filtered_pokemon.sort(key=lambda x: x.get("level", 0), reverse=reverse)
             elif sort_key == "Name":
-                filtered_pokemon.sort(key=lambda x: x.get("name", "").lower())
+                filtered_pokemon.sort(key=lambda x: x.get("name", "").lower(), reverse=reverse)
 
             self.current_page = 0
             self.refresh_collection(filtered_pokemon)
