@@ -555,12 +555,15 @@ class SettingsWindow(QMainWindow):
             changed_message = "\n".join(
                 [f"{key}: {value}" for key, value in friendly_changed.items()]
             )
-            QMessageBox.information(
-                self, "Settings Saved", "Your settings have been saved successfully."
-            )
-            QMessageBox.information(
-                self, "Config changes", f"Changed settings:\n{changed_message}"
-            )
+            # One dialog, not two — previous flow forced users to dismiss
+            # "saved" then "changed" back-to-back. Put the change list in
+            # informativeText so it appears inline, expandable via detail.
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Settings Saved")
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setText("Your settings have been saved successfully.")
+            msg_box.setInformativeText(f"Changed settings:\n{changed_message}")
+            msg_box.exec()
             self.original_config = self.config.copy()
         else:
             QMessageBox.information(self, "No Changes", "No settings were changed.")

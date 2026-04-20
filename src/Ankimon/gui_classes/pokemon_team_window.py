@@ -18,8 +18,9 @@ class PokemonTeamDialog(QDialog):
         self.logger = logger
         self.trainer_card = trainer_card
 
-        # Set the minimum size of the dialog
-        self.setMinimumSize(900, 500)  # Minimum size of 900x500 pixels
+        # Minimum fits a 3×2 sprite grid; previous 900×500 overflowed
+        # the main window on 13" laptops where Anki defaults to ~1200px.
+        self.setMinimumSize(650, 450)
 
         # Load the Pokémon team data
         self.my_pokemon = self.load_my_pokemon()

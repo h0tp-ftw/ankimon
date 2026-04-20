@@ -165,7 +165,11 @@ class Reviewer_Manager:
 
             main_lang_name = (get_pokemon_diff_lang_name(int(self.main_pokemon.id), int(self.settings.get('misc.language'))).capitalize())
             if str(main_lang_name) == 'No translation in this language':
-                main_lang_name = 'RESTART ANKI NOW' 
+                # Silent fallback to the species name; the old "RESTART
+                # ANKI NOW" leak was a developer placeholder that surfaced
+                # mid-review for any language/id pair without a localized
+                # entry.
+                main_lang_name = self.main_pokemon.name.capitalize()
             if self.main_pokemon.shiny:
                 main_lang_name += " ⭐ "
             main_name_display_text = f"{main_lang_name} LvL: {self.main_pokemon.level}"
