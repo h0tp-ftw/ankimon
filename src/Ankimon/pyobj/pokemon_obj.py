@@ -53,13 +53,14 @@ class PokemonObject:
         self.shiny = shiny
         self.id = id
         self.level = level
-        self.ability = ability
         self.type = type
         self.gender = gender
         self.tier = tier
         self.everstone = everstone
         self.pokemon_defeated = pokemon_defeated
 
+        # Normalise ability once; previously self.ability was assigned
+        # twice (the raw `ability` value, then the normalised value).
         if not ability or str(ability).strip().lower() in ("none", "no ability", ""):
             self.ability = "Run Away"
         else:
@@ -522,9 +523,11 @@ class PokemonEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, PokemonObject):
             data = obj.__dict__.copy()
-            # Convert complex types to serializable formats
-            data['volatile_status'] = list(data['volatile_status'])
-            data['stat_stages'] = data.get('stat_stages', {})
-            data['moves'] = data.get('attacks', [])
+            # Convert complex types to serializable formats. Use .get()
+            # everywhere because a Pokemon constructed via from_engine_format
+            # / update_stats may not have every attribute set.
+            data['volatile_status'] = list(data.get('volatile_status', []) or [])
+            data['stat_stages'] = data.get('stat_stages', {}) or {}
+            data['moves'] = data.get('attacks', []) or []
             return data
         return super().default(obj)

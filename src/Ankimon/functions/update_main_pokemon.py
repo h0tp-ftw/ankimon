@@ -91,7 +91,13 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
                     main_pokemon.hp = main_pokemon_data[0].get("current_hp", max_hp)
                 return main_pokemon, mainpokemon_empty
 
-            except Exception:
+            except Exception as _exc:
+                # Previously a bare `except Exception:` swallowed
+                # everything silently, which masked a CP-related
+                # AttributeError that would reset main_pokemon to
+                # Ditto every launch. Log before falling back so
+                # future regressions surface.
+                print(f"Ankimon update_main_pokemon fallback: {_exc}")
                 main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
                 return main_pokemon, mainpokemon_empty
     else:
