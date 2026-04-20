@@ -189,17 +189,29 @@ class TestWindow(QWidget):
             getattr(self.main_pokemon, "type", None),
             getattr(self.enemy_pokemon, "type", None),
         )
+        enemy_stages = getattr(self.enemy_pokemon, "stat_stages", None) or {}
+        main_stages = getattr(self.main_pokemon, "stat_stages", None) or {}
         enemy_bp = calculate_present_power(
-            enemy_cp, getattr(self.enemy_pokemon, "hp", 0), enemy_vs_main
+            enemy_cp,
+            getattr(self.enemy_pokemon, "hp", 0),
+            enemy_vs_main,
+            enemy_stages.get("atk", 0),
+            enemy_stages.get("spa", 0),
         )
         main_bp = calculate_present_power(
-            main_cp, getattr(self.main_pokemon, "hp", 0), main_vs_enemy
+            main_cp,
+            getattr(self.main_pokemon, "hp", 0),
+            main_vs_enemy,
+            main_stages.get("atk", 0),
+            main_stages.get("spa", 0),
         )
 
-        painter.drawText(48, 104, f"CP {enemy_cp:,}")
-        painter.drawText(48, 118, f"BP {enemy_bp:,}")
-        painter.drawText(326, 216, f"CP {main_cp:,}")
-        painter.drawText(326, 230, f"BP {main_bp:,}")
+        cp_lbl = self.translator.translate("cp_label")
+        bp_lbl = self.translator.translate("bp_label")
+        painter.drawText(48, 104, f"{cp_lbl} {enemy_cp:,}")
+        painter.drawText(48, 118, f"{bp_lbl} {enemy_bp:,}")
+        painter.drawText(326, 216, f"{cp_lbl} {main_cp:,}")
+        painter.drawText(326, 230, f"{bp_lbl} {main_bp:,}")
 
     def pokemon_display_first_encounter(self):
         # Main window layout

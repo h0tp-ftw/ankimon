@@ -160,6 +160,25 @@ class TestCalculatePresentPower:
         pp = calculate_present_power(None, None, None)
         assert pp == 0
 
+    def test_atk_boost_increases_bp(self):
+        # +2 stage = 5/3, BP = 100 × 50 × 1 × 5/3 = 8333.33 → floor 8333
+        assert calculate_present_power(100, 50, 1.0, atk_stage=2, spa_stage=2) == 8333
+
+    def test_atk_drop_decreases_bp(self):
+        # -2 stage = 3/5 = 0.6, BP = 100 × 50 × 1 × 0.6 = 3000
+        assert calculate_present_power(100, 50, 1.0, atk_stage=-2, spa_stage=-2) == 3000
+
+    def test_mixed_atk_spa_stages_averaged(self):
+        # atk +2 (5/3), spa -2 (3/5), avg = 17/15, BP = 5000 × 17/15 = 5666.66 → floor 5666
+        assert calculate_present_power(100, 50, 1.0, atk_stage=2, spa_stage=-2) == 5666
+
+    def test_out_of_range_stage_neutral(self):
+        # Stage 7 is invalid per get_multiplier_stats — should fall back to 1.0
+        assert calculate_present_power(100, 50, 1.0, atk_stage=7, spa_stage=7) == 5000
+
+    def test_none_stage_neutral(self):
+        assert calculate_present_power(100, 50, 1.0, atk_stage=None, spa_stage=None) == 5000
+
 
 class TestCalculateCPFromDict:
     """Tests for the dict-based CP entry point used by collection/PC box."""

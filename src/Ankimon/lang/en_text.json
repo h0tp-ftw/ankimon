@@ -453,5 +453,9 @@
   "futuresight_hits": "The foreseen attack strikes {side}!",
   "futuresight_fails": "Future Sight failed!",
   "wish_started": "{pokemon_name} made a wish! It will heal {heal_amount} HP soon.",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "CP",
+  "bp_label": "BP",
+  "combat_power": "Combat Power",
+  "battle_power": "Battle Power"
 }
