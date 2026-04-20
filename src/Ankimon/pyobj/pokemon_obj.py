@@ -141,14 +141,38 @@ class PokemonObject:
 
         Uses raw stats (base + IV + EV/4) so CPM is the sole level
         multiplier.  See :func:`business.calculate_pokemon_go_cp`.
+
+        Memoized: attribute assignment to ``level``, ``ev``, ``iv``, or
+        ``base_stats`` invalidates the cache via ``__setattr__``. Mutating
+        those containers in-place (e.g. ``self.ev["atk"] += 1``) does not,
+        so call :meth:`invalidate_cp_cache` explicitly at those sites.
         """
+        cached = getattr(self, "_cached_cp", None)
+        if cached is not None:
+            return cached
         # Local import to avoid a circular dependency with ``business``.
         from ..business import calculate_pokemon_go_cp, pokemon_go_raw_stats
 
         attack, defense, stamina = pokemon_go_raw_stats(
             self.base_stats, self.iv, self.ev
         )
-        return calculate_pokemon_go_cp(attack, defense, stamina, self.level)
+        cp_val = calculate_pokemon_go_cp(attack, defense, stamina, self.level)
+        object.__setattr__(self, "_cached_cp", cp_val)
+        return cp_val
+
+    def invalidate_cp_cache(self) -> None:
+        """Drop memoized CP so the next ``cp`` access recomputes.
+
+        Call after mutating ``ev``/``iv``/``base_stats`` dict contents
+        in place (attribute reassignment is caught automatically by
+        ``__setattr__``).
+        """
+        object.__setattr__(self, "_cached_cp", None)
+
+    def __setattr__(self, name, value):
+        super().__setattr__(name, value)
+        if name in ("level", "ev", "iv", "base_stats"):
+            object.__setattr__(self, "_cached_cp", None)
 
     @classmethod
     def get_nature_stat_mult(cls, stat_name: str, nature: str) -> float:

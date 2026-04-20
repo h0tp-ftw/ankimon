@@ -597,6 +597,9 @@ def save_main_pokemon_progress(
         if hasattr(main_pokemon, "is_favorite"):
             mainpkmndata["is_favorite"] = main_pokemon.is_favorite
     mainpkmndata = [mainpkmndata]
+    # Refresh cached CP so Collection Dialog / PC Box readers don't
+    # short-circuit to a stale pre-level-up value on the next render.
+    mainpkmndata[0]["cp"] = calculate_cp_from_dict(mainpkmndata[0])
     # Save the caught Pokémon's data to a JSON file
     try:
         with open(str(mainpokemon_path), "w") as json_file:

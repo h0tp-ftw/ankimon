@@ -18,6 +18,9 @@ def export_to_pkmn_showdown():
     for stat, value in main_pokemon.ev.items():
         if value == 0:
             main_pokemon.ev[stat] += 1
+    # EV dict was mutated in place; __setattr__ doesn't catch dict-item
+    # changes, so drop the cached CP manually.
+    main_pokemon.invalidate_cp_cache()
     # Format the Pokemon info
     pokemon_info = "{} ({})\nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\n IVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe ".format(
         main_pokemon.name,

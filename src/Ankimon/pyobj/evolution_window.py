@@ -386,6 +386,9 @@ class EvoWindow(QWidget):
                         pokemon["base_stats"] = base_stats
                         pokemon["stats"] = base_stats
                         pokemon["xp"] = 0
+                        # Refresh CP against the new species' base stats.
+                        from ..business import calculate_cp_from_dict as _recalc_cp
+                        pokemon["cp"] = _recalc_cp(pokemon)
                         hp_stat = int(base_stats["hp"])
                         iv = pokemon["iv"]
                         ev = pokemon["ev"]

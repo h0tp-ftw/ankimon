@@ -1177,6 +1177,7 @@ class PokemonPC(QDialog):
             "tier",
             "is_favorite",
             "held_item",
+            "cp",
         }
 
         is_migration_needed = any(
@@ -1211,6 +1212,7 @@ class PokemonPC(QDialog):
             "tier": lambda p: get_tier_by_id(p.get("id", 0)) or "Normal",
             "is_favorite": False,
             "held_item": None,
+            "cp": lambda p: calculate_cp_from_dict(p),
         }
 
         for i, pokemon in enumerate(pokemon_list):
