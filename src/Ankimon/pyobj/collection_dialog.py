@@ -27,7 +27,7 @@ from ..functions.pokedex_functions import (
 from ..gui_classes.pokemon_details import PokemonCollectionDetails
 from ..gui_entities import MovieSplashLabel
 from ..resources import mypokemon_path, frontdefault, frontdefault, mainpokemon_path
-from ..business import calculate_cp_from_dict
+from ..business import calculate_cp_from_dict, cp_breakdown_tooltip
 
 
 class PokemonCollectionDialog(QDialog):
@@ -284,6 +284,7 @@ class PokemonCollectionDialog(QDialog):
                 )
                 cp_value = pokemon.get("cp") or calculate_cp_from_dict(pokemon)
                 cp_label = self.create_label(f"CP {cp_value:,}", 8)
+                cp_label.setToolTip(cp_breakdown_tooltip(pokemon))
 
                 image_label = QLabel()
                 image_label.setPixmap(pixmap)

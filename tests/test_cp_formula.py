@@ -34,6 +34,7 @@ from Ankimon.business import (
     pokemon_go_raw_stats,
     type_compatibility_multiplier,
     calculate_cp_from_dict,
+    cp_breakdown_tooltip,
     _load_type_chart,
 )
 
@@ -270,3 +271,34 @@ class TestDictShapeEquivalence:
             *pokemon_go_raw_stats(self.BASE, self.IV, self.EV), self.LEVEL
         )
         assert calculate_cp_from_dict(self._to_dict_shape()) == direct
+
+
+class TestCPBreakdownTooltip:
+    BASE = {"hp": 100, "atk": 80, "def": 90, "spa": 70, "spd": 85, "spe": 95}
+
+    def test_contains_formula(self):
+        tip = cp_breakdown_tooltip(
+            {"base_stats": self.BASE, "iv": {}, "ev": {}, "level": 50}
+        )
+        assert "CP = floor(" in tip
+        assert "CPM²" in tip or "CPM^2" in tip or "CPM" in tip
+
+    def test_contains_level_100_projection(self):
+        tip = cp_breakdown_tooltip(
+            {"base_stats": self.BASE, "iv": {}, "ev": {}, "level": 50}
+        )
+        expected_max = calculate_pokemon_go_cp(
+            *pokemon_go_raw_stats(self.BASE, {}, {}), 100
+        )
+        assert f"{expected_max:,}" in tip
+
+    def test_handles_caught_shape(self):
+        # caught dicts have "stats"=base_stats, no "base_stats"
+        tip = cp_breakdown_tooltip(
+            {"stats": self.BASE, "iv": {}, "ev": {}, "level": 25}
+        )
+        assert "CP at Level 100" in tip
+
+    def test_handles_missing_level(self):
+        tip = cp_breakdown_tooltip({"base_stats": self.BASE})
+        assert "CP at Level 100" in tip

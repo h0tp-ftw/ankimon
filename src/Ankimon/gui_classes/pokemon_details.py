@@ -23,7 +23,12 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 
-from ..business import calculate_pokemon_go_cp, pokemon_go_raw_stats
+from ..business import (
+    calculate_pokemon_go_cp,
+    pokemon_go_raw_stats,
+    calculate_cpm,
+    cp_breakdown_tooltip,
+)
 from ..pyobj.attack_dialog import AttackDialog
 from ..pyobj.pokemon_trade import PokemonTrade
 from ..pyobj.error_handler import show_warning_with_traceback
@@ -227,12 +232,16 @@ def PokemonCollectionDetails(
         _attack, _defense, _stamina = pokemon_go_raw_stats(_cp_stats, iv, ev)
         cp_value = calculate_pokemon_go_cp(_attack, _defense, _stamina, level)
         cp_txt = f"CP {cp_value:,}"
+        cp_tooltip = cp_breakdown_tooltip(
+            {"base_stats": _cp_stats, "iv": iv, "ev": ev, "level": level}
+        )
 
         name_label = QLabel(f"{capitalized_name} - {gender_symbol}")
         name_label.setFont(namefont)
         description_label = QLabel(description_txt)
         level_label = QLabel(lvl)
         cp_label = QLabel(cp_txt)
+        cp_label.setToolTip(cp_tooltip)
         ability_label = QLabel(ability_txt)
         attacks_label = QLabel(attacks_txt)
         pokemon_defeated_label = QLabel(f"Pokemon Defeated: {pokemon_defeated}")

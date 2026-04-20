@@ -223,6 +223,29 @@ def calculate_present_power(
     return int(math.floor(cp * current_hp * compat * stage_factor))
 
 
+def cp_breakdown_tooltip(pokemon_dict: dict) -> str:
+    """Human-readable CP breakdown for Qt tooltips.
+
+    Shows the formula, this Pokemon's substituted values, and the CP
+    projected at level 100 (useful for planning evolutions/training).
+    Accepts either the caught-Pokemon dict shape ("stats" = base_stats)
+    or the to_dict shape ("base_stats" = bases).
+    """
+    base_stats = pokemon_dict.get("base_stats") or pokemon_dict.get("stats") or {}
+    iv = pokemon_dict.get("iv") or {}
+    ev = pokemon_dict.get("ev") or {}
+    level = int(pokemon_dict.get("level", 1) or 1)
+    attack, defense, stamina = pokemon_go_raw_stats(base_stats, iv, ev)
+    cpm = calculate_cpm(level)
+    cp_at_100 = calculate_pokemon_go_cp(attack, defense, stamina, 100)
+    return (
+        "CP = floor(Atk × √Def × √Sta × CPM² ÷ 10)\n"
+        f"    = floor({attack:.0f} × √{defense:.0f} × √{stamina:.0f}"
+        f" × {cpm:.4f}² ÷ 10)\n"
+        f"CP at Level 100: {cp_at_100:,}"
+    )
+
+
 def calculate_cp_from_dict(pokemon_dict):
     """Calculate Combat Power from a raw Pokemon dict using the
     Pokemon GO style formula.
