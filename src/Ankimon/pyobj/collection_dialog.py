@@ -381,7 +381,7 @@ class PokemonCollectionDialog(QDialog):
             shiny=pokemon.get("shiny", False),
             ability=pokemon["ability"],
             type=pokemon["type"],
-            detail_stats={**pokemon["stats"], "xp": pokemon.get("xp", 0)},
+            detail_stats={**(pokemon.get("base_stats") or pokemon["stats"]), "xp": pokemon.get("xp", 0)},
             attacks=pokemon["attacks"],
             base_experience=pokemon["base_experience"],
             growth_rate=pokemon["growth_rate"],

@@ -39,7 +39,7 @@ from ..functions.trainer_functions import xp_share_gain_exp
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.drawing_utils import tooltipWithColour
 from ..utils import limit_ev_yield, play_effect_sound, get_ev_spread
-from ..business import calc_experience
+from ..business import calc_experience, calculate_cp_from_dict
 from ..const import gen_ids
 from ..singletons import (
     main_pokemon,
@@ -571,9 +571,11 @@ def save_main_pokemon_progress(
     if settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True:
         logger.log_and_showinfo("info", f"{msg}")
 
-    # Load existing Pokémon data if it exists
+    # Update in-place, then persist both main and mypokemon files. Base
+    # stats intentionally not overwritten here — "stats" in the legacy main
+    # record was level-scaled and confused downstream readers that expect
+    # "stats" to mean base stats.
     for mainpkmndata in main_pokemon_data:
-        mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["xp"] = int(main_pokemon.xp)
         mainpkmndata["level"] = int(main_pokemon.level)
         ev_yield = limit_ev_yield(mainpkmndata["ev"], enemy_pokemon.ev_yield)
@@ -583,7 +585,7 @@ def save_main_pokemon_progress(
         mainpkmndata["ev"]["spa"] += ev_yield["special-attack"]
         mainpkmndata["ev"]["spd"] += ev_yield["special-defense"]
         mainpkmndata["ev"]["spe"] += ev_yield["speed"]
-        mainpkmndata["current_hp"] = int(main_pokemon.current_hp)
+        mainpkmndata["current_hp"] = int(main_pokemon.hp)
         main_pokemon.friendship += random.randint(5, 9)
         if main_pokemon.friendship > 255:
             main_pokemon.friendship = 255
@@ -609,14 +611,13 @@ def save_main_pokemon_progress(
                 if (
                     pokemon_data.get("individual_id") == main_pokemon.individual_id
                 ):  # Match by individual_id
-                    mypokemondata[index] = mypkmndata  # Replace with new data
+                    mypokemondata[index] = mainpkmndata[0]
                     break
 
             # Save the modified data to the output JSON file
             with open(str(mypokemon_path), "w") as output_file:
                 json.dump(mypokemondata, output_file, indent=2)
 
-        sync_mainpokemon_to_mypokemon(main_pokemon, mainpokemon_path, mypokemon_path)
         mw.logger.log("info", f"Successfully saved progress for {main_pokemon.name}")
     except Exception as e:
         mw.logger.log("error", f"Failed to save pokemon progress: {str(e)}")
@@ -702,34 +703,30 @@ def save_caught_pokemon(
 
     # enemy_pokemon.stats["xp"] = 0
     enemy_pokemon.xp = 0
-    caught_pokemon = {
+    # Use to_dict() so the caught record shares the canonical shape with
+    # saved main Pokemon (includes base_stats, level-scaled stats, cp,
+    # nature). Then override caught-only fields.
+    _max_hp = enemy_pokemon.calculate_max_hp()
+    caught_pokemon = enemy_pokemon.to_dict()
+    caught_pokemon.update({
         "name": enemy_pokemon.name.capitalize(),
         "nickname": "",
-        "level": enemy_pokemon.level,
-        "gender": enemy_pokemon.gender,
-        "id": enemy_pokemon.id,
-        "ability": enemy_pokemon.ability,
-        "type": enemy_pokemon.type,
-        "stats": enemy_pokemon.base_stats,
         "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-        "iv": enemy_pokemon.iv,
-        "attacks": enemy_pokemon.attacks,
-        "base_experience": enemy_pokemon.base_experience,
-        "current_hp": enemy_pokemon.calculate_max_hp(),
-        "growth_rate": enemy_pokemon.growth_rate,
         "friendship": 0,
         "pokemon_defeated": 0,
         "xp": 0,
         "everstone": False,
-        "shiny": enemy_pokemon.shiny,
         "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "individual_id": str(uuid.uuid4()),
         "mega": False,
         "special_form": None,
-        "tier": enemy_pokemon.tier,
         "is_favorite": False,
         "held_item": None,
-    }
+        "hp": _max_hp,
+        "current_hp": _max_hp,
+    })
+    # Recompute CP against the overridden (zeroed) EVs.
+    caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 
     # Load existing Pokémon data if it exists
     caught_pokemon_data = []

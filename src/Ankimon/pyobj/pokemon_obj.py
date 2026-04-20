@@ -210,7 +210,7 @@ class PokemonObject:
             "tier": self.tier,  # Added tier
             "is_favorite": getattr(self, "is_favorite", False),  # Added with default
             # Additional fields from your example
-            "current_hp": getattr(self, "current_hp", "hp"),  # For backward compatibility
+            "current_hp": getattr(self, "current_hp", self.hp),
             "held_item": self.held_item,
         }
 

@@ -290,7 +290,7 @@ class TestWindow(QWidget):
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
 
-        painter = self.draw_hp_bar(118, 76, 8, 116, self.enemy_pokemon.current_hp, self.enemy_pokemon.max_hp, painter)  # enemy pokemon hp_bar
+        painter = self.draw_hp_bar(118, 76, 8, 116, self.enemy_pokemon.hp, self.enemy_pokemon.max_hp, painter)  # enemy pokemon hp_bar
 
         painter = self.draw_hp_bar(401, 208, 8, 116, self.main_pokemon.hp, self.main_pokemon.max_hp, painter)  # main pokemon hp_bar
 

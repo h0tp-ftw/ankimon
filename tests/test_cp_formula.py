@@ -208,3 +208,46 @@ class TestCalculateCPFromDict:
         pokemon = {"stats": {}, "level": 1}
         cp = calculate_cp_from_dict(pokemon)
         assert cp == 10  # minimum clamp with all defaults
+
+
+class TestDictShapeEquivalence:
+    """Sentinel: caught-Pokemon dicts ('stats' = base_stats, no 'base_stats')
+    and to_dict dicts ('base_stats' = bases, 'stats' = level-scaled) must
+    produce the same CP. Regression guard for the pokemon-persistence fix
+    that routed save_caught_pokemon through PokemonObject.to_dict().
+    """
+
+    BASE = {"hp": 100, "atk": 80, "def": 90, "spa": 70, "spd": 85, "spe": 95}
+    LEVEL = 50
+    IV = {"hp": 20, "atk": 25, "def": 30, "spa": 15, "spd": 28, "spe": 31}
+    EV = {"hp": 100, "atk": 200, "def": 150, "spa": 80, "spd": 100, "spe": 80}
+
+    def _caught_shape(self):
+        return {
+            "level": self.LEVEL,
+            "stats": self.BASE,
+            "iv": self.IV,
+            "ev": self.EV,
+        }
+
+    def _to_dict_shape(self):
+        return {
+            "level": self.LEVEL,
+            "base_stats": self.BASE,
+            "stats": {k: 999 for k in self.BASE},
+            "iv": self.IV,
+            "ev": self.EV,
+            "cp": 42,
+            "nature": "adamant",
+        }
+
+    def test_both_shapes_give_same_cp(self):
+        assert calculate_cp_from_dict(self._caught_shape()) == calculate_cp_from_dict(
+            self._to_dict_shape()
+        )
+
+    def test_to_dict_shape_ignores_level_scaled_stats(self):
+        direct = calculate_pokemon_go_cp(
+            *pokemon_go_raw_stats(self.BASE, self.IV, self.EV), self.LEVEL
+        )
+        assert calculate_cp_from_dict(self._to_dict_shape()) == direct
