@@ -7,15 +7,7 @@ from ..resources import learnset_path
 def _get_learnset_moves(pokemon_name, pokemon_level, generation=9):
     """
     Return all moves a Pokémon can know at *pokemon_level* in a single *generation*.
-
-    Args:
-        pokemon_name: Pokémon name (case-insensitive).
-        pokemon_level: Current level of the Pokémon.
-        generation: Generation to filter learn_codes by (default 9).
-
-    Returns:
-        dict mapping move_name -> learn_level for every move learnable
-        at or below *pokemon_level* within the specified generation.
+    Falls back to earlier generations if no moves are found.
     """
     with open(learnset_path, "r", encoding="utf-8") as file:
         learnsets = json.load(file)
@@ -24,23 +16,30 @@ def _get_learnset_moves(pokemon_name, pokemon_level, generation=9):
     pokemon_learnset = learnsets.get(pokemon_name, {}).get("learnset", {})
 
     moves = {}
-
-    target_generation = str(generation)
-
-    for move, learn_codes in pokemon_learnset.items():
-        best = -1
-        for learn_code in learn_codes:
-            move_generation, _, move_level = learn_code.partition("L")
-            if move_generation != target_generation:
-                continue
-
-            learn_level = int(move_level)
-            if pokemon_level >= learn_level > best:
-                best = learn_level
-
-        if best >= 0:
-            moves[move] = best
-
+    
+    # Try the requested generation first, then fallback to 8, then 7
+    for gen in [generation, 8, 7]:
+        moves = {}
+        target_generation = str(gen)
+        
+        for move, learn_codes in pokemon_learnset.items():
+            best = -1
+            for learn_code in learn_codes:
+                move_generation, _, move_level = learn_code.partition("L")
+                if move_generation != target_generation:
+                    continue
+                
+                learn_level = int(move_level)
+                if pokemon_level >= learn_level > best:
+                    best = learn_level
+            
+            if best >= 0:
+                moves[move] = best
+        
+        # If we found moves, return them
+        if moves:
+            break
+    
     return moves
 
 
