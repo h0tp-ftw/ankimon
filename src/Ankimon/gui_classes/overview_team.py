@@ -232,6 +232,7 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
         pokemon.get("id", 132),
         pokemon.get("shiny", False),
         gender,
+        pokemon.get("name")
     )
     sprite_src = png_to_base64(sprite_path)
 

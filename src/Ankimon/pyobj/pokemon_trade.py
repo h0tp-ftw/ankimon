@@ -209,7 +209,7 @@ class PokemonTrade:
         sprite_size = QSize(64, 64)
         your_pokemon_sprite_label.setMaximumSize(sprite_size)
         your_pokemon_sprite_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        your_pokemon_gif_path = get_sprite_path(side="front", sprite_type="gif", id=self.id, shiny=getattr(self, "shiny", False), gender=self.gender)
+        your_pokemon_gif_path = get_sprite_path(side="front", sprite_type="gif", id=self.id, shiny=getattr(self, "shiny", False), gender=self.gender, pokemon_name=self.name)
         
         your_pokemon_movie = QMovie(your_pokemon_gif_path)
         def set_bw_frame():
@@ -417,7 +417,8 @@ class PokemonTrade:
                     gender_map = {"0": "M", "1": "F", "2": "N"}
                     other_gender = gender_map.get(parts[2], "M")
                 
-                sprite_path = get_sprite_path(side="front", sprite_type="gif", id=pokemon_id, shiny=other_shiny, gender=other_gender)
+                other_name = self.get_pokemon_name_by_id(pokemon_id)
+                sprite_path = get_sprite_path(side="front", sprite_type="gif", id=pokemon_id, shiny=other_shiny, gender=other_gender, pokemon_name=other_name)
                 
                 if hasattr(self, '_other_pokemon_movie') and self._other_pokemon_movie is not None:
                     self._other_pokemon_movie.stop()
@@ -435,8 +436,6 @@ class PokemonTrade:
                 self.other_pokemon_sprite_label.setMovie(other_pokemon_movie)
                 other_pokemon_movie.start()
                 set_other_frame()
-                name = self.get_pokemon_name_by_id(pokemon_id)
-                self.other_pokemon_name_label.setText(name if name else "Unknown Pokémon")
             else:
                 self.other_pokemon_sprite_label.setPixmap(QPixmap(":/icons/pokeball.png").scaled(QSize(64, 64), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
                 self.other_pokemon_name_label.setText("")

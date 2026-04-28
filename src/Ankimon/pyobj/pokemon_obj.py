@@ -289,7 +289,7 @@ class PokemonObject:
         return hp
 
     def get_sprite_path(self, side, sprite_type):
-        return get_sprite_path(side, sprite_type, self.id, self.shiny, self.gender)
+        return get_sprite_path(side, sprite_type, self.id, self.shiny, self.gender, self.name)
 
     def to_engine_format(self):
         from ..poke_engine.helpers import normalize_name

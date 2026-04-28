@@ -612,6 +612,7 @@ class PokemonPC(QDialog):
                     pokemon["id"],
                     pokemon.get("shiny", False),
                     pokemon["gender"],
+                    pokemon.get("name"),
                 )
                 pokemon_button = PokemonSlotButton("")
                 pokemon_button.setFixedSize(self.slot_size, self.slot_size)
@@ -858,9 +859,12 @@ class PokemonPC(QDialog):
             order_clause = f"ORDER BY level {direction}"
         elif sort_key_str == "id":
             order_clause = f"ORDER BY pokedex_id {direction}"
+        elif sort_key_str == "cp":
+            order_clause = f"ORDER BY CAST(json_extract(data, '$.cp') AS REAL) {direction}"    
         else:
             # For IV/EV or default, sort by original_index first, then override in Python if needed
             order_clause = f"ORDER BY original_index {direction}"
+            
 
         query = " ".join(query_parts) + " " + order_clause
 
@@ -885,8 +889,7 @@ class PokemonPC(QDialog):
                 if sort_key_str in ["iv", "ev"]:
                     stats_json = row[f"{sort_key_str}_json"]
                     stats_dict = json.loads(stats_json) if stats_json else {}
-                    p["_sort_value"] = sum(stats_dict.values()) if isinstance(stats_dict, dict) else 0
-                
+                    p["_sort_value"] = sum(stats_dict.values()) if isinstance(stats_dict, dict) else sum(stats_dict) if isinstance(stats_dict, list) else 0                
                 results.append(p)
                 
             # Perform Python sorting for IV/EV

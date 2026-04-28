@@ -117,7 +117,7 @@ def PokemonCollectionDetails(
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
         pkmnimage_path = get_sprite_path(
-            "front", "gif" if gif_in_collection else "png", id, shiny, gender
+            "front", "gif" if gif_in_collection else "png", id, shiny, gender, name
         )
 
         if gif_in_collection:
