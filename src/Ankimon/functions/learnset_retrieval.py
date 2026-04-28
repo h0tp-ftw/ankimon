@@ -3,44 +3,61 @@ import random
 
 from ..resources import learnset_path
 
+# === Cache learnset data ===
+_learnset_cache = None
+
+def _load_learnset_cache():
+    """Load learnset JSON once and cache it in memory"""
+    global _learnset_cache
+    if _learnset_cache is None:
+        try:
+            with open(learnset_path, "r", encoding="utf-8") as file:
+                _learnset_cache = json.load(file)
+        except Exception as e:
+            print(f"Error loading learnset cache: {e}")
+            _learnset_cache = {}
+    return _learnset_cache
+
+def clear_learnset_cache():
+    """Clear the learnset cache if data is updated"""
+    global _learnset_cache
+    _learnset_cache = None
 
 def _get_learnset_moves(pokemon_name, pokemon_level, generation=9):
     """
     Return all moves a Pokémon can know at *pokemon_level* in a single *generation*.
-
-    Args:
-        pokemon_name: Pokémon name (case-insensitive).
-        pokemon_level: Current level of the Pokémon.
-        generation: Generation to filter learn_codes by (default 9).
-
-    Returns:
-        dict mapping move_name -> learn_level for every move learnable
-        at or below *pokemon_level* within the specified generation.
+    Falls back to earlier generations if no moves are found.
     """
-    with open(learnset_path, "r", encoding="utf-8") as file:
-        learnsets = json.load(file)
+    learnsets = _load_learnset_cache()  # Use cache instead of file I/O
 
     pokemon_name = pokemon_name.lower()
     pokemon_learnset = learnsets.get(pokemon_name, {}).get("learnset", {})
 
     moves = {}
-
-    target_generation = str(generation)
-
-    for move, learn_codes in pokemon_learnset.items():
-        best = -1
-        for learn_code in learn_codes:
-            move_generation, _, move_level = learn_code.partition("L")
-            if move_generation != target_generation:
-                continue
-
-            learn_level = int(move_level)
-            if pokemon_level >= learn_level > best:
-                best = learn_level
-
-        if best >= 0:
-            moves[move] = best
-
+    
+    # Try the requested generation first, then fallback to all earlier generations
+    for gen in range(generation, 0, -1):  # Try from requested gen down to gen 1
+        moves = {}
+        target_generation = str(gen)
+        
+        for move, learn_codes in pokemon_learnset.items():
+            best = -1
+            for learn_code in learn_codes:
+                move_generation, _, move_level = learn_code.partition("L")
+                if move_generation != target_generation:
+                    continue
+                
+                learn_level = int(move_level)
+                if pokemon_level >= learn_level > best:
+                    best = learn_level
+            
+            if best >= 0:
+                moves[move] = best
+        
+        # If we found moves, return them
+        if moves:
+            break
+    
     return moves
 
 

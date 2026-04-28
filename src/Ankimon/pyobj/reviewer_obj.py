@@ -20,14 +20,38 @@ class Reviewer_Manager:
         self.seconds = 0
         self.myseconds = 0
         self.hud_hidden = False 
-        self.hud_data = None    
+        self.hud_data = None
+        
+        # === MINIMAL FIX: Simple image cache only ===
+        self._image_cache = {}  # {file_path: base64_string}
 
         # Register the functions for the hooks
         gui_hooks.reviewer_will_end.append(self.reviewer_reset_life_bar_inject)
         gui_hooks.reviewer_did_answer_card.append(self.update_life_bar)
 
     def reviewer_reset_life_bar_inject(self):
+        """Clear cache when the battle/review session ends"""
         self.life_bar_injected = False
+        self._image_cache.clear()
+
+    def _get_cached_image(self, file_path):
+        """
+        Get base64 image from cache, or encode and cache it.
+        Cached images persist across pokemon encounters within a session.
+        
+        Args:
+            file_path (str): Path to the image file
+            
+        Returns:
+            str: Base64 encoded image
+        """
+        if file_path not in self._image_cache:
+            try:
+                self._image_cache[file_path] = get_image_as_base64(file_path)
+            except Exception as e:
+                print(f"Error caching image {file_path}: {e}")
+                return ""
+        return self._image_cache[file_path]
 
     def get_boost_values_string(self, pokemon: PokemonObject, display_neutral_boost: bool=False) -> str:
         """Generates a formatted string representing the stat boost multipliers of a Pokémon."""
@@ -61,6 +85,13 @@ class Reviewer_Manager:
         return web_content
 
     def update_life_bar(self, reviewer, card, ease):
+        # GUARD: Block hook calls (ease != 0 or card != 0)
+        # Only allow direct calls from battle_loop (ease=0, card=0)
+        if isinstance(ease, int) and ease != 0:
+            return  # Hook from reviewer_did_answer_card
+        if card is not None and not isinstance(card, int):
+            return  # Hook received a Card object
+ 
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 3:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
             return
@@ -97,7 +128,7 @@ class Reviewer_Manager:
         if int(self.settings.get('gui.show_mainpkmn_in_reviewer')) > 0:
             pokemon_hp_percent = int((self.enemy_pokemon.hp / self.enemy_pokemon.max_hp) * 50) if self.enemy_pokemon.max_hp > 0 else 0
             mainpkmn_hp_percent = int((self.main_pokemon.hp / self.main_pokemon.max_hp) * 50) if self.main_pokemon.max_hp > 0 else 0
-            image_base64_mainpkmn = get_image_as_base64(main_pkmn_imagefile_path)
+            image_base64_mainpkmn = self._get_cached_image(main_pkmn_imagefile_path)
         else:
             pokemon_hp_percent = int((self.enemy_pokemon.hp / self.enemy_pokemon.max_hp) * 100) if self.enemy_pokemon.max_hp > 0 else 0
             mainpkmn_hp_percent = 0 # Not used in this mode
@@ -105,7 +136,7 @@ class Reviewer_Manager:
         enemy_hp_true_percent = (self.enemy_pokemon.hp / self.enemy_pokemon.max_hp) * 100 if self.enemy_pokemon.max_hp > 0 else 0
         main_hp_true_percent = (self.main_pokemon.hp / self.main_pokemon.max_hp) * 100 if self.main_pokemon.max_hp > 0 else 0
 
-        image_base64 = get_image_as_base64(pokemon_image_file)
+        image_base64 = self._get_cached_image(pokemon_image_file)
 
         # Build hud_html
         hud_html = '<div id="ankimon-hud">'
@@ -140,7 +171,6 @@ class Reviewer_Manager:
             hud_html += create_status_html("fainted", self.settings, is_pokemon_owned, addon_package)
 
         hud_html += f'<div id="hp-display" class="Ankimon">HP: {int(self.enemy_pokemon.hp)}/{int(self.enemy_pokemon.max_hp)}</div>'
-
 
         enemy_poke_animation_style = f"animation: ankimon-shake-normal {self.seconds}s ease;"
         hud_html += f'<div id="PokeImage" class="Ankimon"><img src="data:{mime_type};base64,{image_base64}" alt="PokeImage" style="{enemy_poke_animation_style}"></div>'

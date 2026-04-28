@@ -6,6 +6,9 @@ from .pyobj.ankimon_sync import setup_ankimon_sync_hooks, check_and_sync_pokemon
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
+from .functions.pokedex_functions import clear_pokedex_caches
+from .functions.learnset_retrieval import clear_learnset_cache
+from .functions.encounter_functions import clear_encounter_cache
 
 sync_dialog = None
 
@@ -58,6 +61,14 @@ def _on_profile_did_open(online_connectivity):
 
     return handler
 
+def _on_profile_close():
+    """Clear all performance caches when Anki session ends"""
+    try:
+        clear_pokedex_caches()
+        clear_learnset_cache()
+        clear_encounter_cache()
+    except Exception as e:
+        print(f"Error clearing caches on profile close: {e}")
 
 def register_profile_hooks(
     online_connectivity,
@@ -77,3 +88,4 @@ def register_profile_hooks(
     addHook("profileLoaded", on_profile_loaded)
     gui_hooks.profile_did_open.append(_on_profile_did_open(online_connectivity))
     gui_hooks.profile_will_close.append(backup_manager.on_anki_close)
+    gui_hooks.profile_will_close.append(_on_profile_close)

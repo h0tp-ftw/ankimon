@@ -52,10 +52,26 @@ from ..singletons import (
 )
 
 
+# === PERFORMANCE FIX: Cache percentage calculations ===
+_percentages_cache = {
+    'percentages': None,
+    'total_reviews': None,
+    'trainer_level': None,
+    'main_pokemon_level': None,
+}
+
 def modify_percentages(total_reviews, daily_average, trainer_level):
     """
     Modify Pokémon encounter percentages based on total reviews, trainer level, and main Pokémon level.
+    CACHED: Only recalculates when inputs change.
     """
+    # Check if cache is valid
+    if (_percentages_cache['percentages'] is not None and
+        _percentages_cache['total_reviews'] == total_reviews and
+        _percentages_cache['trainer_level'] == trainer_level and
+        _percentages_cache['main_pokemon_level'] == main_pokemon.level):
+        return _percentages_cache['percentages']
+    
     # Start with the base percentages
     percentages = {"Baby": 2, "Legendary": 0.5, "Mythical": 0.2, "Normal": 92.3, "Ultra": 5}
 
@@ -81,18 +97,18 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     if main_pokemon.level:
         # Define level thresholds for each tier
         level_thresholds = {
-            "Ultra": 30,  # Example threshold for Ultra Pokémon
-            "Legendary": 50,  # Example threshold for Legendary Pokémon
-            "Mythical": 75  # Example threshold for Mythical Pokémon
+            "Ultra": 30,
+            "Legendary": 50,
+            "Mythical": 75
         }
 
         for tier in ["Ultra", "Legendary", "Mythical"]:
             if main_pokemon.level < level_thresholds.get(tier, float("inf")):
-                percentages[tier] = 0  # Set percentage to 0 if the level requirement isn't met
+                percentages[tier] = 0
 
     # Example modification based on trainer level
     if trainer_level:
-        adjustment = 5  # Adjustment value for the example
+        adjustment = 5
         if trainer_level > 10:
             for tier in percentages:
                 if tier == "Normal":
@@ -104,10 +120,24 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     total = sum(percentages.values())
     for tier in percentages:
         percentages[tier] = (percentages[tier] / total) * 100 if total > 0 else 0
-    # this function gets called maybe 10 times per battle round, which is concerning.
-    # it could be rewritten to run ONLY when the change in review ratio is detected.
+    
+    # Cache the result
+    _percentages_cache['percentages'] = percentages
+    _percentages_cache['total_reviews'] = total_reviews
+    _percentages_cache['trainer_level'] = trainer_level
+    _percentages_cache['main_pokemon_level'] = main_pokemon.level
+    
     return percentages
 
+def clear_encounter_cache():
+    """Clear cache when needed"""
+    global _percentages_cache
+    _percentages_cache = {
+        'percentages': None,
+        'total_reviews': None,
+        'trainer_level': None,
+        'main_pokemon_level': None,
+    }
 
 def get_random_pokemon_in_tier(tier):
     from . import encounter_data
@@ -257,7 +287,7 @@ def generate_random_pokemon(
     wild_pokemon_lvl = max(
         1, wild_pokemon_lvl
     )  # Ensures that the wild pokemon's level is at least 1
-    if main_pokemon_level == 100:
+    if main_pokemon.level == 100:
         wild_pokemon_lvl = 100
 
     # First, we draw a random, valid pokemon id.
@@ -805,8 +835,22 @@ def handle_enemy_faint(
 
     if auto_battle_setting == 3:  # Catch if uncollected
         enemy_id = enemy_pokemon.id
-        # Check cache instead of file
-        if enemy_id not in collected_pokemon_ids or enemy_pokemon.shiny:
+        
+        # Check if the pokemon is "special" (Ultra, Legendary, Mythical, Mega, Gmax)
+        name_lower = enemy_pokemon.name.lower()
+        forme = search_pokedex(name_lower, "forme")
+        is_mega = (forme and "mega" in str(forme).lower()) or "mega" in name_lower
+        is_gmax = (forme and "gmax" in str(forme).lower()) or "gmax" in name_lower or "gigantamax" in name_lower
+        
+        is_special = (
+            enemy_pokemon.tier in ["Ultra", "Legendary", "Mythical"] or
+            is_mega or
+            is_gmax
+        )
+        
+        should_catch_always = settings_obj.get("battle.automatic_catch_special", True) and is_special
+
+        if enemy_id not in collected_pokemon_ids or enemy_pokemon.shiny or should_catch_always:
             catch_pokemon(
                 enemy_pokemon,
                 ankimon_tracker_obj,
