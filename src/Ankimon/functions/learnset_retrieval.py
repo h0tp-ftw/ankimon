@@ -17,8 +17,8 @@ def _get_learnset_moves(pokemon_name, pokemon_level, generation=9):
 
     moves = {}
     
-    # Try the requested generation first, then fallback to 8, then 7
-    for gen in [generation, 8, 7]:
+    # Try the requested generation first, then fallback to all earlier generations
+    for gen in range(generation, 0, -1):  # Try from requested gen down to gen 1
         moves = {}
         target_generation = str(gen)
         
