@@ -28,6 +28,7 @@ from ..functions.pokemon_functions import get_random_moves_for_pokemon
 from ..functions.battle_functions import calculate_hp
 from ..functions.update_main_pokemon import (
     update_main_pokemon,
+    save_main_pokemon,
 )
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..pyobj.attack_dialog import AttackDialog
@@ -355,7 +356,27 @@ class EvoWindow(QWidget):
 
         try:  # Update Main Pokemon Object and sync with file
             if main_pokemon is not None and main_pokemon.individual_id == individual_id:
-                # Update the in-memory main_pokemon object with the evolved data                # Call update_main_pokemon to ensure file and object are in sync (this will also save to disk)
+                # Update the in-memory main_pokemon object with the evolved data
+                main_pokemon.id = pokemon["id"]
+                main_pokemon.name = pokemon["name"]
+                main_pokemon.type = pokemon["type"]
+                main_pokemon.base_stats = pokemon["base_stats"]
+                main_pokemon.stats = pokemon["stats"]
+                main_pokemon.ability = pokemon["ability"]
+                main_pokemon.xp = pokemon["xp"]
+                main_pokemon.hp = pokemon["current_hp"]
+                main_pokemon.growth_rate = pokemon["growth_rate"]
+                main_pokemon.base_experience = pokemon["base_experience"]
+                main_pokemon.attacks = pokemon["attacks"]
+
+                # Update stats caching in main_pokemon
+                main_pokemon.max_hp = main_pokemon.calculate_max_hp()
+                main_pokemon._update_battle_stats()
+
+                # Save the explicitly updated main_pokemon to disk so it won't overwrite with old data
+                save_main_pokemon(main_pokemon)
+
+                # Call update_main_pokemon to ensure file and object are in sync
                 main_pokemon, _ = update_main_pokemon(main_pokemon)
 
                 # Update UI as before
