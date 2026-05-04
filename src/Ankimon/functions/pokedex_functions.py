@@ -392,14 +392,15 @@ def check_evolution_by_item(pokemon_id, item_id, file_path=poke_evo_path):
 
     # Iterate through the possible evolutions
     for evos in possible_evos:
-        evo_data = get_pokemon_evolution_data(int(evos))
-        if evo_data:
-            if int(evo_data["evolution_trigger_id"]) == 3 and int(
-                evo_data["trigger_item_id"]
-            ) == int(item_id):
-                return int(
-                    evo_data["evolved_species_id"]
-                )  # Return True as soon as a matching evolution is found
+        evo_data_list = get_pokemon_evolution_data(int(evos))
+        for evo_data in evo_data_list:
+            if evo_data:
+                if int(evo_data["evolution_trigger_id"]) == 3 and int(
+                    evo_data["trigger_item_id"]
+                ) == int(item_id):
+                    return int(
+                        evo_data["evolved_species_id"]
+                    )  # Return True as soon as a matching evolution is found
 
     # If no evolution matches the criteria, return False
     return None
@@ -439,19 +440,38 @@ def check_evolution_for_pokemon(
 
             # Check each possible evolution
             for evos in possible_evos:
-                evo_data = get_pokemon_evolution_data(int(evos))
-                # Only handle level-up evolutions (trigger_id == 1)
-                if evo_data and int(evo_data.get("evolution_trigger_id", 0)) == 1:
-                    min_level_str = evo_data.get("minimum_level", "")
-                    # Only proceed if min_level_str represents a valid integer
-                    if not min_level_str or not str(min_level_str).isdigit():
-                        continue  # Skip this evolution if minimum_level is missing or not a number
-                    min_level = int(min_level_str)
-                    if min_level <= level:
-                        evo_window.ask_pokemon_evo(
-                            individual_id, pokemon_id, int(evos)
-                        )
-                        return int(evos)  # Return the evolution ID
+                evo_data_list = get_pokemon_evolution_data(int(evos))
+                for evo_data in evo_data_list:
+                    # Only handle level-up evolutions (trigger_id == 1)
+                    if evo_data and int(evo_data.get("evolution_trigger_id", 0)) == 1:
+                        # Check time of day requirements
+                        time_of_day = evo_data.get("time_of_day", "")
+                        is_night = mw.pm.night_mode()
+
+                        if time_of_day == "day" and is_night:
+                            continue
+                        if time_of_day == "night" and not is_night:
+                            continue
+
+                        min_level_str = evo_data.get("minimum_level", "")
+                        min_happiness_str = evo_data.get("minimum_happiness", "")
+
+                        # Proceed if evolution is based on level OR happiness
+                        can_evolve = False
+
+                        if min_level_str and str(min_level_str).isdigit():
+                            min_level = int(min_level_str)
+                            if min_level <= level:
+                                can_evolve = True
+                        elif min_happiness_str and str(min_happiness_str).isdigit():
+                            # Evolve on any level up if conditions (like time_of_day) are met
+                            can_evolve = True
+
+                        if can_evolve:
+                            evo_window.ask_pokemon_evo(
+                                individual_id, pokemon_id, int(evos)
+                            )
+                            return int(evos)  # Return the evolution ID
 
             # If no evolutions fit the criteria
             # showWarning("No fitting evolution found for the given level")
@@ -516,8 +536,8 @@ def pokemon_evolves_from_id(pokemon_id):
 
 
 def get_pokemon_evolution_data(pokemon_id):
-    """Returns the evolution data for a given Pokémon ID by matching evolved_species_id."""
-    evolution_data = None  # Initialize variable to hold evolution data
+    """Returns a list of evolution data for a given Pokémon ID by matching evolved_species_id."""
+    evolution_data_list = []  # Initialize variable to hold evolution data
 
     try:
         # Open the CSV file
@@ -530,15 +550,14 @@ def get_pokemon_evolution_data(pokemon_id):
                     # Compare the evolved_species_id with the given pokemon_id (as an integer)
                     if int(row["evolved_species_id"]) == int(pokemon_id):
                         # If a match is found, store the evolution data
-                        evolution_data = row
-                        break  # No need to continue once we find a match
+                        evolution_data_list.append(row)
                 except ValueError:
                     # Handle case where evolved_species_id is not a valid integer
                     continue
 
         # Check if evolution data was found, log a message if not
-        if not evolution_data:
-            showWarning(f"No evolution data found for Pokémon ID '{pokemon_id}'")
+        if not evolution_data_list:
+            # showWarning(f"No evolution data found for Pokémon ID '{pokemon_id}'")
             pass
     except FileNotFoundError as e:
         show_warning_with_traceback(
@@ -550,7 +569,7 @@ def get_pokemon_evolution_data(pokemon_id):
             exception=e,
             message=f"Error retrieving evolution data for Pokémon ID {pokemon_id}",
         )
-    return evolution_data
+    return evolution_data_list
 
 
 def check_key_in_table(column_name, value, file_path):
