@@ -432,18 +432,13 @@ def save_main_pokemon_progress(
     logger: ShowInfoLogger,
     evo_window: EvoWindow,
 ):
-    experience = int(
-        find_experience_for_level(
-            main_pokemon.growth_rate,
-            main_pokemon.level,
-            settings_obj.get("misc.remove_level_cap"),
-        )
-    )
     if settings_obj.get("misc.remove_level_cap") is True:
         main_pokemon.xp += exp
         level_cap = None
     elif main_pokemon.level != 100:
         main_pokemon.xp += exp
+        level_cap = 100
+    else:
         level_cap = 100
     try:
         db = mw.ankimon_db
@@ -456,13 +451,16 @@ def save_main_pokemon_progress(
             parent=mw, exception=e, message="Error loading main pokemon data."
         )
         return
-    while int(
-        find_experience_for_level(
-            main_pokemon.growth_rate,
-            main_pokemon.level,
-            settings_obj.get("misc.remove_level_cap"),
+    while True:
+        experience = int(
+            find_experience_for_level(
+                main_pokemon.growth_rate,
+                main_pokemon.level,
+                settings_obj.get("misc.remove_level_cap"),
+            )
         )
-    ) < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap):
+        if not (experience < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap)):
+            break
         main_pokemon.level += 1
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
