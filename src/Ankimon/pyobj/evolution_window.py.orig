@@ -28,7 +28,6 @@ from ..functions.pokemon_functions import get_random_moves_for_pokemon
 from ..functions.battle_functions import calculate_hp
 from ..functions.update_main_pokemon import (
     update_main_pokemon,
-    save_main_pokemon,
 )
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..pyobj.attack_dialog import AttackDialog
@@ -292,7 +291,7 @@ class EvoWindow(QWidget):
     def evolve_pokemon(self, individual_id, prevo_id, prevo_name, evo_id, evo_name, main_pokemon):
         """Evolve a pokemon and save to database."""
         db = mw.ankimon_db
-        
+
         try:
             pokemon = db.get_pokemon(individual_id)
             if not pokemon:
@@ -344,7 +343,7 @@ class EvoWindow(QWidget):
                 pokemon["ability"] = random.choice(abilities_list)
             else:
                 pokemon["ability"] = self.translator.translate("no_ability")
-            
+
             # Save to database
             db.save_pokemon(pokemon)
             self.logger.log_and_showinfo("info", self.translator.translate("mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name))
@@ -356,10 +355,7 @@ class EvoWindow(QWidget):
 
         try:  # Update Main Pokemon Object and sync with file
             if main_pokemon is not None and main_pokemon.individual_id == individual_id:
-                # Update the in-memory main_pokemon object with the evolved data
-                main_pokemon.update_stats(**pokemon)
-                # Save the updated main_pokemon to the database before calling update_main_pokemon
-                save_main_pokemon(main_pokemon)
+                # Update the in-memory main_pokemon object with the evolved data                # Call update_main_pokemon to ensure file and object are in sync (this will also save to disk)
                 main_pokemon, _ = update_main_pokemon(main_pokemon)
 
                 # Update UI as before
@@ -389,7 +385,7 @@ class EvoWindow(QWidget):
     def cancel_evolution(self, individual_id, prevo_name):
         """Cancel evolution and save changes to database."""
         db = mw.ankimon_db
-        
+
         try:
             pokemon_to_update = db.get_pokemon(individual_id)
             if not pokemon_to_update:
@@ -398,9 +394,9 @@ class EvoWindow(QWidget):
 
             # Add logic to learn new moves
             attacks = pokemon_to_update.get("attacks", [])
-            level = pokemon_to_update.get("level", 1) 
+            level = pokemon_to_update.get("level", 1)
             new_attacks = get_random_moves_for_pokemon(prevo_name.lower(), int(level))
-            
+
             for new_attack in new_attacks:
                 if new_attack not in attacks:
                     if len(attacks) < 4:
@@ -417,18 +413,15 @@ class EvoWindow(QWidget):
                                 self.logger.log_and_showinfo("info", self.translator.translate("selected_attack_not_found", selected_attack=selected_attack))
                         else:
                             self.logger.log_and_showinfo("info", self.translator.translate("no_attack_selected"))
-            
+
             pokemon_to_update["attacks"] = attacks
             pokemon_to_update["everstone"] = True
-            
+
             # Save to database
             db.save_pokemon(pokemon_to_update)
 
             # If the main pokemon was the one, update its object in memory
             if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
-                self.main_pokemon.attacks = attacks
-                self.main_pokemon.everstone = True
-                save_main_pokemon(self.main_pokemon)
                 self.main_pokemon, _ = update_main_pokemon(self.main_pokemon)
 
             self.logger.log_and_showinfo("info", f"Canceled evolution for {prevo_name}.")
