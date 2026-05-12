@@ -32,10 +32,11 @@ def MainPokemon(
     
     # --- Save the existing mainpokemon to mypokemon before replacing ---
     try:
-        current_main = db.get_main_pokemon()
-        if current_main:
+        # Only save if there's already an active main pokemon
+        if db.get_main_pokemon():
             # Update or save the current main pokemon to captured_pokemon
-            db.save_pokemon(current_main)
+            # Use main_pokemon.to_dict() to capture in-memory stats like xp
+            db.save_pokemon(main_pokemon.to_dict())
     except Exception:
         pass  # If no main pokemon exists, just continue
 
