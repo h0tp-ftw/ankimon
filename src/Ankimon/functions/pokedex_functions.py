@@ -394,12 +394,15 @@ def check_evolution_by_item(pokemon_id, item_id, file_path=poke_evo_path):
     for evos in possible_evos:
         evo_data = get_pokemon_evolution_data(int(evos))
         if evo_data:
-            if int(evo_data["evolution_trigger_id"]) == 3 and int(
-                evo_data["trigger_item_id"]
-            ) == int(item_id):
+            trigger_id = int(evo_data.get("evolution_trigger_id", 0))
+            if trigger_id == 3 and str(evo_data.get("trigger_item_id", "")) == str(item_id):
                 return int(
                     evo_data["evolved_species_id"]
                 )  # Return True as soon as a matching evolution is found
+            elif trigger_id == 2 and str(evo_data.get("held_item_id", "")) == str(item_id):
+                return int(
+                    evo_data["evolved_species_id"]
+                )  # Support trade evolutions with held item like Clamperl
 
     # If no evolution matches the criteria, return False
     return None

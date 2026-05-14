@@ -540,6 +540,10 @@ class ItemWindow(QWidget):
                         item_id = row['trigger_item_id']
                         if item_id:
                             evolution_item_ids.add(item_id)
+                    elif row['evolution_trigger_id'] == '2':
+                        item_id = row['held_item_id']
+                        if item_id:
+                            evolution_item_ids.add(item_id)
 
             with open(csv_file_items_cost, mode='r', newline='', encoding='utf-8') as items_file:
                 reader = csv.DictReader(items_file)
