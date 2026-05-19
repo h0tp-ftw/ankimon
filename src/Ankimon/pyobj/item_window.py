@@ -293,6 +293,11 @@ class ItemWindow(QWidget):
             if target_pokemon_data:
                 pokemon_obj = PokemonObject.from_dict(target_pokemon_data)
                 pokemon_obj.give_held_item(item_name)
+                                
+                # Sync the main_pokemon singleton if it's the target
+                if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
+                    self.main_pokemon.held_item = item_name
+                   
                 self.logger.log_and_showinfo("info", f"{item_name} was given to {target_pokemon_data.get('name')}.")
                 self.renewWidgets()
             else:

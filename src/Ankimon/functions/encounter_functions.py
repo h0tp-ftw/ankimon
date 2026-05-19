@@ -570,7 +570,34 @@ def save_main_pokemon_progress(
         mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["xp"] = int(main_pokemon.xp)
         mainpkmndata["level"] = int(main_pokemon.level)
-        ev_yield = limit_ev_yield(mainpkmndata["ev"], enemy_pokemon.ev_yield)
+        # Clone raw EV yield to avoid mutating the in-memory enemy template
+        raw_ev_yield = enemy_pokemon.ev_yield.copy()
+        held_item = mainpkmndata.get("held_item", main_pokemon.held_item)
+        # Apply EV-boosting held items
+        if held_item == "macho-brace":
+            for stat in raw_ev_yield:
+                raw_ev_yield[stat] *= 2
+        else:
+            # Map Power items to both full and short key forms for maximum compatibility
+            power_item_mapping = {
+                "power-weight": ["hp"],
+                "power-bracer": ["attack", "atk"],
+                "power-belt": ["defense", "def"],
+                "power-lens": ["special-attack", "spa"],
+                "power-band": ["special-defense", "spd"],
+                "power-anklet": ["speed", "spe"],
+            }
+            if held_item in power_item_mapping:
+                target_keys = power_item_mapping[held_item]
+                # Find which key style is used in the raw_ev_yield dictionary
+                for key in target_keys:
+                    if key in raw_ev_yield:
+                        raw_ev_yield[key] += 8
+                        break
+                else:
+                    # Fallback: if neither key style exists, add the long style (used by limit_ev_yield)
+                    raw_ev_yield[target_keys[0]] = 8
+        ev_yield = limit_ev_yield(mainpkmndata["ev"], raw_ev_yield)
         mainpkmndata["ev"]["hp"] += ev_yield["hp"]
         mainpkmndata["ev"]["atk"] += ev_yield["attack"]
         mainpkmndata["ev"]["def"] += ev_yield["defense"]
