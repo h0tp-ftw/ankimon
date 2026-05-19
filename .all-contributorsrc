@@ -156,6 +156,72 @@
       ],
       "nickname": "Unlucky",
       "discord_id": ""
+    },
+    {
+      "login": "hakimh2",
+      "name": "hakimh2",
+      "avatar_url": "https://github.com/hakimh2.png",
+      "profile": "https://github.com/hakimh2",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "",
+      "discord_id": ""
+    },
+    {
+      "login": "AIbrahimv2",
+      "name": "AIbrahimv2",
+      "avatar_url": "https://github.com/AIbrahimv2.png",
+      "profile": "https://github.com/AIbrahimv2",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "",
+      "discord_id": ""
+    },
+    {
+      "login": "scotej",
+      "name": "scotej",
+      "avatar_url": "https://github.com/scotej.png",
+      "profile": "https://github.com/scotej",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "",
+      "discord_id": ""
+    },
+    {
+      "login": "maciej-baruch",
+      "name": "maciej-baruch",
+      "avatar_url": "https://github.com/maciej-baruch.png",
+      "profile": "https://github.com/maciej-baruch",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "",
+      "discord_id": ""
+    },
+    {
+      "login": "mathieulabs",
+      "name": "mathieulabs",
+      "avatar_url": "https://github.com/mathieulabs.png",
+      "profile": "https://github.com/mathieulabs",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "",
+      "discord_id": ""
+    },
+    {
+      "login": "abr-Projects",
+      "name": "abr-Projects",
+      "avatar_url": "https://github.com/abr-Projects.png",
+      "profile": "https://github.com/abr-Projects",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "",
+      "discord_id": ""
     }
   ],
   "contributorsPerLine": 5

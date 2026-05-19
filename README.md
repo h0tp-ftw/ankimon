@@ -30,6 +30,17 @@
       <td align="center" valign="top" width="20%"><a href="https://github.com/Koconnor03"><img src="https://github.com/Koconnor03.png?s=80" width="80px;" alt="Koconnor03"/><br /><sub><b>Koconnor03</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Koconnor03" title="Code">💻</a></td>
       <td align="center" valign="top" width="20%"><a href="https://github.com/MORGANlTE"><img src="https://github.com/MORGANlTE.png?s=80" width="80px;" alt="MORGANlTE"/><br /><sub><b>MORGANlTE</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=MORGANlTE" title="Code">💻</a></td>
       <td align="center" valign="top" width="20%"><a href="https://github.com/OuraN2O"><img src="https://github.com/OuraN2O.png?s=80" width="80px;" alt="OuraN2O"/><br /><sub><b>OuraN2O</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=OuraN2O" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/Unlucky-Life"><img src="https://github.com/Unlucky-Life.png?s=80" width="80px;" alt="Unlucky-Life"/><br /><sub><b>Unlucky-Life</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Unlucky-Life" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/hakimh2"><img src="https://github.com/hakimh2.png?s=80" width="80px;" alt="hakimh2"/><br /><sub><b>hakimh2</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=hakimh2" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/AIbrahimv2"><img src="https://github.com/AIbrahimv2.png?s=80" width="80px;" alt="AIbrahimv2"/><br /><sub><b>AIbrahimv2</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=AIbrahimv2" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/scotej"><img src="https://github.com/scotej.png?s=80" width="80px;" alt="scotej"/><br /><sub><b>scotej</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=scotej" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/maciej-baruch"><img src="https://github.com/maciej-baruch.png?s=80" width="80px;" alt="maciej-baruch"/><br /><sub><b>maciej-baruch</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=maciej-baruch" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/mathieulabs"><img src="https://github.com/mathieulabs.png?s=80" width="80px;" alt="mathieulabs"/><br /><sub><b>mathieulabs</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=mathieulabs" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/abr-Projects"><img src="https://github.com/abr-Projects.png?s=80" width="80px;" alt="abr-Projects"/><br /><sub><b>abr-Projects</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=abr-Projects" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
