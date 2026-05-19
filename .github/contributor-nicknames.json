@@ -1,62 +1,8 @@
 {
-  "h0tp-ftw": {
-    "nickname": "h0tp",
-    "discord_id": ""
-  },
-  "Someon1e": {
-    "nickname": "aaaaankier",
-    "discord_id": ""
-  },
-  "ArdentRoe": {
-    "nickname": "TyGuy",
-    "discord_id": ""
-  },
-  "thepeacemonk": {
-    "nickname": "Peace",
-    "discord_id": ""
-  },
-  "Axil12": {
-    "nickname": "Axil",
-    "discord_id": ""
-  },
-  "Unlucky-Life": {
-    "nickname": "Unlucky",
-    "discord_id": ""
-  },
-  "abr-projects": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "Zuukiny": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "marbaret": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "gjgress": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "richy431": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "MrElektronz": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "Koconnor03": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "MORGANlTE": {
-    "nickname": "",
-    "discord_id": ""
-  },
-  "OuraN2O": {
-    "nickname": "",
-    "discord_id": ""
-  }
+  "h0tp-ftw": { "nickname": "h0tp", "discord_id": "" },
+  "Someon1e": { "nickname": "aaaaankier", "discord_id": "" },
+  "ArdentRoe": { "nickname": "TyGuy", "discord_id": "" },
+  "thepeacemonk": { "nickname": "Peace", "discord_id": "" },
+  "Axil12": { "nickname": "Axil", "discord_id": "" },
+  "Unlucky-Life": { "nickname": "Unlucky", "discord_id": "" }
 }
