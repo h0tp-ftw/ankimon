@@ -110,7 +110,8 @@ def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_id, exp, xp
         pokemon['id'],
         pokemon['level'],
         evo_window,
-        pokemon['everstone']
+        pokemon['everstone'],
+        pokemon.get('friendship', 0)
     )
 
     if evo_id is not None:

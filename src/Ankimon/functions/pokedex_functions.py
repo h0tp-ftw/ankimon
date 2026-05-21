@@ -411,7 +411,7 @@ def check_evolution_by_item(pokemon_id, item_id, file_path=poke_evo_path):
 
 
 def check_evolution_for_pokemon(
-    individual_id, pokemon_id, level, evo_window, everstone=False
+    individual_id, pokemon_id, level, evo_window, everstone=False, friendship=0
 ):
     """
     Check if a Pokémon evolves using a specific item or level condition.
@@ -442,11 +442,40 @@ def check_evolution_for_pokemon(
                 evo_data = get_pokemon_evolution_data(int(evos))
                 # Only handle level-up evolutions (trigger_id == 1)
                 if evo_data and int(evo_data.get("evolution_trigger_id", 0)) == 1:
+
+                    # 1. Check Friendship (minimum_happiness)
+                    min_happiness_str = evo_data.get("minimum_happiness", "")
+                    if min_happiness_str and str(min_happiness_str).isdigit():
+                        min_happiness = int(min_happiness_str)
+                        if friendship < min_happiness:
+                            continue
+
+                    # 2. Check Time of Day (time_of_day)
+                    time_of_day = evo_data.get("time_of_day", "")
+                    if time_of_day:
+                        is_night = False
+                        try:
+                            # Try to get night mode from Anki's theme manager if mw is available
+                            is_night = mw.pm.night_mode()
+                        except Exception:
+                            # Fallback to datetime if mw fails
+                            from datetime import datetime
+                            hour = datetime.now().hour
+                            is_night = hour < 6 or hour >= 18
+
+                        if time_of_day == 'day' and is_night:
+                            continue
+                        elif time_of_day == 'night' and not is_night:
+                            continue
+
+                    # 3. Check Level (minimum_level)
                     min_level_str = evo_data.get("minimum_level", "")
-                    # Only proceed if min_level_str represents a valid integer
-                    if not min_level_str or not str(min_level_str).isdigit():
-                        continue  # Skip this evolution if minimum_level is missing or not a number
-                    min_level = int(min_level_str)
+
+                    # If there's no min_level but we passed friendship or time checks, it's valid to evolve upon level up
+                    min_level = 1
+                    if min_level_str and str(min_level_str).isdigit():
+                        min_level = int(min_level_str)
+
                     if min_level <= level:
                         evo_window.ask_pokemon_evo(
                             individual_id, pokemon_id, int(evos)
