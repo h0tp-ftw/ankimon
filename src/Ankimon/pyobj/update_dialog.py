@@ -291,6 +291,16 @@ class UpdateDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
 
+        warning = QLabel(
+            "⚠ Do not use this if you installed Ankimon by cloning the git "
+            "repository. The updater overwrites files in place and would clobber "
+            "your checkout — update with 'git pull' instead. (Your Pokémon "
+            "data and sprites are always preserved.)"
+        )
+        warning.setStyleSheet(f"color: {c['warning']}; font-size: 11px; font-weight: bold;")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
         group = QGroupBox("Install from Source")
         group_layout = QVBoxLayout(group)
         group_layout.setSpacing(10)

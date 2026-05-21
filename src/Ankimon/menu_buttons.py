@@ -209,16 +209,19 @@ def create_menu_actions(
     rate_action.triggered.connect(rate_addon_url)
     mw.pokemenu.addAction(rate_action)
 
-    # Update Ankimon
-    def _open_update_dialog():
-        from .pyobj.update_dialog import UpdateDialog
-        dialog = UpdateDialog(parent=mw)
-        dialog.exec()
+    # Update Ankimon — hidden on git checkouts: the updater overwrites files in
+    # place and would clobber a dev's working tree, so devs should use `git pull`.
+    from .pyobj.update_manager import is_git_clone
+    if not is_git_clone():
+        def _open_update_dialog():
+            from .pyobj.update_dialog import UpdateDialog
+            dialog = UpdateDialog(parent=mw)
+            dialog.exec()
 
-    update_action = QAction(mw.translator.translate("ankimon_update_button"), mw)
-    update_action.setMenuRole(QAction.MenuRole.NoRole)
-    update_action.triggered.connect(_open_update_dialog)
-    help_menu.addAction(update_action)
+        update_action = QAction(mw.translator.translate("ankimon_update_button"), mw)
+        update_action.setMenuRole(QAction.MenuRole.NoRole)
+        update_action.triggered.connect(_open_update_dialog)
+        help_menu.addAction(update_action)
 
     # Version
     version_action = QAction(mw.translator.translate("ankimon_version_button"), mw)

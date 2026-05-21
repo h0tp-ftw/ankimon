@@ -22,6 +22,32 @@ USER_AGENT = "Ankimon-Updater (https://github.com/h0tp-ftw/ankimon)"
 DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
 
 
+def is_git_clone() -> bool:
+    """True if Ankimon lives inside a git working tree (i.e. a dev clone).
+
+    For a GitHub clone the addon is ``src/Ankimon`` nested in the repo, so the
+    ``.git`` directory sits two levels *above* ``addon_dir`` at the repo root —
+    hence the upward parent walk. ``resolve()`` first follows the dev symlink
+    from ``addons21/`` into the repo so those parents land on the real repo
+    root; the walk is kept shallow to avoid false positives from an unrelated
+    repo higher up. The in-place updater would overwrite every file under
+    ``addon_dir`` with the downloaded copy, trashing the working tree and any
+    uncommitted/untracked changes (``.git`` is above ``addon_dir`` so it
+    survives, but the checkout is clobbered), so the updater is hidden and
+    refuses to run when this returns True.
+    """
+    try:
+        base = Path(addon_dir).resolve()
+    except Exception:
+        base = Path(addon_dir)
+    for d in [base, *list(base.parents)[:3]]:
+        # .exists() rather than .is_dir(): in git worktrees and some submodule
+        # layouts ".git" is a *file* (containing "gitdir: ..."), not a directory.
+        if (d / ".git").exists():
+            return True
+    return False
+
+
 def _make_request(url: str, accept: str = "application/vnd.github.v3+json") -> urllib.request.Request:
     req = urllib.request.Request(url)
     req.add_header("Accept", accept)
@@ -278,6 +304,19 @@ def apply_update(zip_path: str, status_cb=None) -> tuple[bool, str]:
                 os.unlink(zip_path)
             except Exception:
                 pass
+
+    # Safety guard: this overwrites every file under addon_dir (the addon =
+    # src/Ankimon) with the downloaded copy. On a git clone that trashes the
+    # working tree and any uncommitted/untracked changes, so refuse. (.git lives
+    # above addon_dir and is untouched, but the checkout is still clobbered.)
+    if is_git_clone():
+        cleanup()
+        return False, (
+            "Detected a git checkout of Ankimon. The in-app updater overwrites "
+            "the addon's files in place and would clobber your working tree "
+            "(you'd lose uncommitted changes). Update your clone with 'git pull' "
+            "instead."
+        )
 
     log("Fetching latest .gitignore from main...")
     gitignore_patterns = _get_gitignore_patterns()
