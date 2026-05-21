@@ -78,6 +78,10 @@ def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_id, exp, xp
     evolution_triggered = False
 
     pokemon = db.get_pokemon(xp_share_individual_id)
+    if pokemon is None:
+        settings_obj.set("trainer.xp_share", "")
+        return original_exp
+
     current_level = int(pokemon['level'])  # MODIFIED: Use local variable for level
     if pokemon.get('held_item') == "lucky-egg":
         exp = int(exp * 1.5) # Multiply by 1.5 if pokemon holds lucky egg

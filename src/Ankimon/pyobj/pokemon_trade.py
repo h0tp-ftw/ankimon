@@ -587,6 +587,9 @@ class PokemonTrade:
             
             try:
                 db.replace_pokemon(new_pokemon, self.individual_id)
+
+                if mw.settings_obj.get("trainer.xp_share") == self.individual_id:
+                    mw.settings_obj.set("trainer.xp_share", "")
             except Exception as e:
                 show_warning_with_traceback(parent=self.parent_window, exception=e, message=f"An error occurred during trade: {e}")
 

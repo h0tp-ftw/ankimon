@@ -1166,6 +1166,10 @@ def PokemonFree(
     else:
         logger.log_and_showinfo("error", f"Failed to add {name} to history.")
     
+    # Check if released pokemon was XP share target
+    if mw.settings_obj.get("trainer.xp_share") == individual_id:
+        mw.settings_obj.set("trainer.xp_share", "")
+
     # Delete from database
     mw.ankimon_db.delete_pokemon(individual_id)
     logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")
