@@ -201,7 +201,8 @@ def PokemonCollectionDetails(
             stat = PokemonObject.calc_stat(key, val, level, iv[key], ev[key], nature)
             stats_list.append(stat)
         stats_list.append(detail_stats.get("xp", 0))
-        stats_txt = f"Stats:\n Hp: {stats_list[0]}\n Attack: {stats_list[1]}\n Defense: {stats_list[2]}\n Special-attack: {stats_list[3]}\n Special-defense: {stats_list[4]}\n Speed: {stats_list[5]}\n XP: {stats_list[6]}"
+        stats_list.append(detail_stats.get("friendship", 0))
+        stats_txt = f"Stats:\n Hp: {stats_list[0]}\n Attack: {stats_list[1]}\n Defense: {stats_list[2]}\n Special-attack: {stats_list[3]}\n Special-defense: {stats_list[4]}\n Speed: {stats_list[5]}\n XP: {stats_list[6]}\n Friendship: {stats_list[7]}"
         attacks_txt = "MOVES:"
         for attack in attacks:
             attacks_txt += f"\n{attack.capitalize()}"
@@ -214,6 +215,7 @@ def PokemonCollectionDetails(
             "spd": stats_list[4],
             "spe": stats_list[5],
             "xp": stats_list[6],
+            "friendship": stats_list[7],
         }
         CompleteTable_layout = PokemonDetailsStats(
             _stats_dict, growth_rate, level, remove_levelcap, language
@@ -442,6 +444,7 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         "spe": QColor(255, 192, 203),  # Pink
         "total": QColor(168, 168, 167),  # Beige
         "xp": QColor(58, 155, 220),  # lightblue
+        "friendship": QColor(255, 105, 180),  # Hot Pink
         # Add any other stats that might appear
         "current_hp": QColor(200, 0, 0),  # Darker red
         "max_hp": QColor(255, 0, 0),  # Red
@@ -460,6 +463,7 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         "spd": "Sp. Def",
         "spe": "Speed",
         "xp": "XP",
+        "friendship": "Friendship",
     }
 
     for row, (stat, value) in enumerate(detail_stats.items()):
@@ -487,6 +491,8 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         if stat == "xp":
             experience = int(find_experience_for_level(growth_rate, level, True))
             value = int((int(value) / int(experience)) * max_width_stat_item)
+        elif stat == "friendship":
+            value = int((int(value) / 255) * max_width_stat_item)
         else:
             value = int(max_width_stat_item * (1 - exp(-value / max_width_stat_item)))
         pixmap2 = createStatBar(stat_colors.get(stat), value)

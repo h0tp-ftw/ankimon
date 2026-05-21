@@ -163,10 +163,11 @@ class PokemonTeamDialog(QDialog):
                 pokemon = self.team_pokemon[i]
                 pokemon_name = pokemon['name']
                 pokemon_level = pokemon['level']
+                friendship = pokemon.get('friendship', 0)
                 sprite_path = os.path.join(frontdefault, f"{pokemon['id']}.png")
 
                 # Update label with name and level
-                frame_data['label'].setText(f"{pokemon_name} (Level {pokemon_level})")
+                frame_data['label'].setText(f"{pokemon_name} (Level {pokemon_level}) - Friendship: {friendship}")
 
                 # Display the sprite image
                 if os.path.exists(sprite_path):

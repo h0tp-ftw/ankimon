@@ -984,9 +984,9 @@ class PokemonPC(QDialog):
             return
 
         if pokemon.get('base_stats'):
-            detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0)}
+            detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0), "friendship": pokemon.get("friendship", 0)}
         elif pokemon.get('stats'):
-            detail_stats = {**pokemon['stats'], "xp": pokemon.get("xp", 0)}
+            detail_stats = {**pokemon['stats'], "xp": pokemon.get("xp", 0), "friendship": pokemon.get("friendship", 0)}
         else:
             raise ValueError("Could not get the stats information of the Pokémon")
 
