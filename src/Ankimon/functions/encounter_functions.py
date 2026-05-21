@@ -486,6 +486,7 @@ def save_main_pokemon_progress(
             main_pokemon.level,
             evo_window,
             main_pokemon.everstone,
+            main_pokemon.friendship,
         )
         if evo_id is not None:
             logger.log_and_showinfo(

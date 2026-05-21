@@ -19,6 +19,8 @@ with open(actual_learnset_path, "r", encoding="utf-8") as file:
 mock_aqt = MagicMock()
 sys.modules["aqt"] = mock_aqt
 sys.modules["aqt.utils"] = mock_aqt.utils
+sys.modules["aqt.theme"] = MagicMock()
+
 sys.modules["Anki"] = MagicMock()
 sys.modules["aqt.qt"] = MagicMock()
 

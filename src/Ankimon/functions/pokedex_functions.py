@@ -16,6 +16,8 @@ from aqt import mw
 import json
 import random
 import csv
+from datetime import datetime
+from aqt.theme import theme_manager
 from ..pyobj.error_handler import show_warning_with_traceback
 
 GROWTH_RATES = {
@@ -411,7 +413,7 @@ def check_evolution_by_item(pokemon_id, item_id, file_path=poke_evo_path):
 
 
 def check_evolution_for_pokemon(
-    individual_id, pokemon_id, level, evo_window, everstone=False
+    individual_id, pokemon_id, level, evo_window, everstone=False, friendship=0
 ):
     """
     Check if a Pokémon evolves using a specific item or level condition.
@@ -442,19 +444,43 @@ def check_evolution_for_pokemon(
                 evo_data = get_pokemon_evolution_data(int(evos))
                 # Only handle level-up evolutions (trigger_id == 1)
                 if evo_data and int(evo_data.get("evolution_trigger_id", 0)) == 1:
+
+                    # 1. Check Level requirement
                     min_level_str = evo_data.get("minimum_level", "")
-                    # Only proceed if min_level_str represents a valid integer
-                    if not min_level_str or not str(min_level_str).isdigit():
-                        continue  # Skip this evolution if minimum_level is missing or not a number
-                    min_level = int(min_level_str)
-                    if min_level <= level:
-                        evo_window.ask_pokemon_evo(
-                            individual_id, pokemon_id, int(evos)
-                        )
-                        return int(evos)  # Return the evolution ID
+                    has_level_req = bool(min_level_str and str(min_level_str).isdigit())
+                    if has_level_req:
+                        if level < int(min_level_str):
+                            continue # Doesn't meet level requirement
+
+                    # 2. Check Happiness requirement
+                    min_happiness_str = evo_data.get("minimum_happiness", "")
+                    has_happiness_req = bool(min_happiness_str and str(min_happiness_str).isdigit())
+                    if has_happiness_req:
+                        if friendship < int(min_happiness_str):
+                            continue # Doesn't meet happiness requirement
+
+                    # 3. Check Time of Day requirement
+                    time_of_day = evo_data.get("time_of_day", "")
+                    if time_of_day:
+                        is_night = False
+                        current_hour = datetime.now().hour
+                        if current_hour >= 18 or current_hour < 6:
+                            is_night = True
+                        if theme_manager.night_mode:
+                            is_night = True
+
+                        if time_of_day == "day" and is_night:
+                            continue # Needs day, but it's night
+                        if time_of_day == "night" and not is_night:
+                            continue # Needs night, but it's day
+
+
+                    evo_window.ask_pokemon_evo(
+                        individual_id, pokemon_id, int(evos)
+                    )
+                    return int(evos)  # Return the evolution ID
 
             # If no evolutions fit the criteria
-            # showWarning("No fitting evolution found for the given level")
             return None
         except Exception as e:
             show_warning_with_traceback(
