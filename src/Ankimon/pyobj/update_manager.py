@@ -1,7 +1,9 @@
 import io
 import json
 import os
+import re
 import shutil
+import subprocess
 import tempfile
 import urllib.request
 import urllib.error
@@ -20,21 +22,21 @@ GITHUB_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 DOWNLOAD_TIMEOUT = 30
 USER_AGENT = "Ankimon-Updater (https://github.com/h0tp-ftw/ankimon)"
 DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
+# The in-app updater shipped in v2.0. Installing an older release would strip the
+# updater out (older versions predate it), so pre-2.0 versions are filtered from
+# the release/tag pickers — going back would break the update feature itself.
+MIN_UPDATER_VERSION = (2, 0)
 
 
-def is_git_clone() -> bool:
-    """True if Ankimon lives inside a git working tree (i.e. a dev clone).
+def _git_repo_root() -> Optional[Path]:
+    """Return the git repo root that contains the addon, else None.
 
     For a GitHub clone the addon is ``src/Ankimon`` nested in the repo, so the
     ``.git`` directory sits two levels *above* ``addon_dir`` at the repo root —
     hence the upward parent walk. ``resolve()`` first follows the dev symlink
-    from ``addons21/`` into the repo so those parents land on the real repo
-    root; the walk is kept shallow to avoid false positives from an unrelated
-    repo higher up. The in-place updater would overwrite every file under
-    ``addon_dir`` with the downloaded copy, trashing the working tree and any
-    uncommitted/untracked changes (``.git`` is above ``addon_dir`` so it
-    survives, but the checkout is clobbered), so the updater is hidden and
-    refuses to run when this returns True.
+    from ``addons21/`` into the repo so those parents land on the real repo root;
+    the walk is kept shallow to avoid false positives from an unrelated repo
+    higher up.
     """
     try:
         base = Path(addon_dir).resolve()
@@ -44,8 +46,91 @@ def is_git_clone() -> bool:
         # .exists() rather than .is_dir(): in git worktrees and some submodule
         # layouts ".git" is a *file* (containing "gitdir: ..."), not a directory.
         if (d / ".git").exists():
-            return True
-    return False
+            return d
+    return None
+
+
+def is_git_clone() -> bool:
+    """True if Ankimon runs from a git working tree (a dev clone).
+
+    The in-place updater would overwrite every file under ``addon_dir`` with the
+    downloaded copy, trashing the working tree and any uncommitted/untracked
+    changes (``.git`` is above ``addon_dir`` so it survives, but the checkout is
+    clobbered). So the destructive updater is hidden for clones; a safe
+    ``git pull --ff-only`` is offered instead (see ``git_pull_ff_only``).
+    """
+    return _git_repo_root() is not None
+
+
+def git_pull_ff_only(status_cb=None) -> tuple[bool, str]:
+    """Update a dev clone via ``git pull --ff-only`` (+ submodule update).
+
+    Safe by construction: ``--ff-only`` refuses, without changing anything, when
+    the tree is dirty or the branch has diverged — so it never creates merge
+    conflicts. Returns ``(success, message)``.
+    """
+    def log(msg):
+        if status_cb:
+            status_cb(msg)
+
+    root = _git_repo_root()
+    if root is None:
+        return False, "Ankimon is not running from a git checkout."
+
+    if shutil.which("git") is None:
+        return False, (
+            "git wasn't found on Anki's PATH. This is common when Anki is "
+            "launched from the dock/Finder, which doesn't inherit your shell "
+            "PATH. Restart Anki from a terminal, or run 'git pull' in your "
+            "clone yourself."
+        )
+
+    def _git(*args, timeout=180):
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True, text=True, timeout=timeout,
+        )
+
+    try:
+        branch = (_git("rev-parse", "--abbrev-ref", "HEAD", timeout=30).stdout or "").strip() or "HEAD"
+        log(f"Fast-forwarding '{branch}' (git pull --ff-only)...")
+        pull = _git("pull", "--ff-only")
+        if pull.returncode != 0:
+            err = (pull.stderr or pull.stdout or "").strip()
+            return False, (
+                f"Could not fast-forward '{branch}'. This is expected if you "
+                "have local changes/commits or no upstream — resolve it manually "
+                "with git.\n\n" + err
+            )
+        log("Updating submodules...")
+        sub = _git("submodule", "update", "--init", "--recursive")
+        out = (pull.stdout or "").strip()
+        if sub.returncode != 0:
+            return True, (
+                f"Updated '{branch}', but the submodule update failed — run "
+                "'git submodule update --init --recursive' manually.\n\n"
+                + (sub.stderr or "").strip()
+            )
+        return True, f"Updated '{branch}' via git pull --ff-only.\n\n{out}"
+    except subprocess.TimeoutExpired:
+        return False, "git timed out. Update manually with 'git pull'."
+    except Exception as e:
+        return False, f"git update failed: {e}. Update manually with 'git pull'."
+
+
+def _parse_version(name: str) -> Optional[tuple]:
+    m = re.match(r"v?(\d+)(?:\.(\d+))?", name.strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2) or 0))
+
+
+def _is_supported_version(name: str) -> bool:
+    """True for parseable version names >= MIN_UPDATER_VERSION. Non-version names
+    (the 'sprites' asset release, 'nightly-release', 'archive/*', …) return False
+    and are excluded from the pickers."""
+    v = _parse_version(name)
+    return v is not None and v >= MIN_UPDATER_VERSION
 
 
 def _make_request(url: str, accept: str = "application/vnd.github.v3+json") -> urllib.request.Request:
@@ -105,14 +190,22 @@ def fetch_tags() -> list[dict]:
     data = _api_get("tags")
     if not data:
         return []
-    return [{"name": t["name"], "zipball_url": t["zipball_url"]} for t in data]
+    return [
+        {"name": t["name"], "zipball_url": t["zipball_url"]}
+        for t in data
+        if _is_supported_version(t["name"])
+    ]
 
 
 def fetch_releases() -> list[dict]:
     data = _api_get("releases")
     if not data:
         return []
-    return [{"name": r["tag_name"], "body": r.get("body", ""), "zipball_url": r["zipball_url"]} for r in data]
+    return [
+        {"name": r["tag_name"], "body": r.get("body", ""), "zipball_url": r["zipball_url"]}
+        for r in data
+        if _is_supported_version(r["tag_name"])
+    ]
 
 
 def fetch_branches() -> list[dict]:

@@ -209,10 +209,37 @@ def create_menu_actions(
     rate_action.triggered.connect(rate_addon_url)
     mw.pokemenu.addAction(rate_action)
 
-    # Update Ankimon — hidden on git checkouts: the updater overwrites files in
-    # place and would clobber a dev's working tree, so devs should use `git pull`.
-    from .pyobj.update_manager import is_git_clone
-    if not is_git_clone():
+    # Update Ankimon. On a git checkout the file-overwrite updater is unsafe (it
+    # would clobber the working tree), so offer a safe `git pull --ff-only`
+    # instead; otherwise the normal download-based updater dialog.
+    from .pyobj.update_manager import is_git_clone, git_pull_ff_only
+    if is_git_clone():
+        def _git_update():
+            if not askUser(
+                "Update Ankimon by fast-forwarding your git clone "
+                "(git pull --ff-only)?\n\nThis stops safely without making any "
+                "changes if you have local edits or commits.",
+                title="Update Ankimon (git)",
+            ):
+                return
+
+            from aqt.operations import QueryOp
+
+            def on_done(result):
+                ok, msg = result
+                (showInfo if ok else showWarning)(msg)
+
+            QueryOp(
+                parent=mw, op=lambda col: git_pull_ff_only(), success=on_done
+            ).without_collection().run_in_background()
+
+        update_action = QAction(
+            mw.translator.translate("ankimon_update_button") + " (git pull)", mw
+        )
+        update_action.setMenuRole(QAction.MenuRole.NoRole)
+        update_action.triggered.connect(_git_update)
+        help_menu.addAction(update_action)
+    else:
         def _open_update_dialog():
             from .pyobj.update_dialog import UpdateDialog
             dialog = UpdateDialog(parent=mw)
