@@ -1,67 +1,58 @@
-import math
-from math import exp
 import json
-from typing import Any
+import math
 import re
+from math import exp
+from typing import Any
 
 from aqt import mw, qconnect
 from aqt.utils import showWarning
-from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor, QPolygonF, QPen, QBrush
-from PyQt6.QtCore import Qt, QPointF, QRectF
-from PyQt6.QtWidgets import QScrollArea
+from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtGui import QBrush, QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PyQt6.QtWidgets import (
     QDialog,
-    QHBoxLayout,
-    QVBoxLayout,
-    QLabel,
-    QPushButton,
-    QLineEdit,
-    QWidget,
-    QMessageBox,
-    QTabWidget,
     QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
     QSizePolicy,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..business import (
     calculate_pokemon_go_cp,
-    pokemon_go_raw_stats,
-    calculate_cpm,
     cp_breakdown_tooltip,
+    pokemon_go_raw_stats,
+    split_string_by_length,
 )
-from ..pyobj.attack_dialog import AttackDialog
-from ..pyobj.pokemon_trade import PokemonTrade
-from ..pyobj.error_handler import show_warning_with_traceback
-from ..pyobj.pokemon_obj import PokemonObject
-from ..pyobj.InfoLogger import ShowInfoLogger
+from ..functions.gui_functions import move_category_path, type_icon_path
 from ..functions.pokedex_functions import (
-    get_pokemon_diff_lang_name,
-    get_pokemon_descriptions,
-    get_all_pokemon_moves,
     find_details_move,
+    get_all_pokemon_moves,
+    get_pokemon_descriptions,
+    get_pokemon_diff_lang_name,
     search_pokedex_by_id,
 )
 from ..functions.pokemon_functions import find_experience_for_level
-from ..functions.gui_functions import type_icon_path, move_category_path
 from ..functions.sprite_functions import get_sprite_path
 from ..gui_entities import MovieSplashLabel
-from ..business import split_string_by_length
-from ..utils import format_move_name, load_custom_font
-from ..resources import (
-    icon_path,
-    addon_dir,
-    mainpokemon_path,
-    mypokemon_path,
-    pokemon_history_path,
-    pokemon_tm_learnset_path,
-    itembag_path,
-)
+from ..pyobj.attack_dialog import AttackDialog
+from ..pyobj.error_handler import show_warning_with_traceback
+from ..pyobj.InfoLogger import ShowInfoLogger
+from ..pyobj.pokemon_obj import PokemonObject
+from ..pyobj.pokemon_trade import PokemonTrade
+from ..resources import addon_dir, icon_path, pokemon_tm_learnset_path
 from ..texts import (
     attack_details_window_template,
     attack_details_window_template_end,
     remember_attack_details_window_template,
     remember_attack_details_window_template_end,
 )
+from ..utils import format_move_name, load_custom_font
 
 
 def _lookup_move_data(attack: str):
@@ -112,7 +103,7 @@ def PokemonCollectionDetails(
         description = lang_desc
         layout = QVBoxLayout()
         typelayout = QHBoxLayout()
-        attackslayout = QVBoxLayout()
+        QVBoxLayout()
         # Display the Pokémon image
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
@@ -491,7 +482,7 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
             value = int(max_width_stat_item * (1 - exp(-value / max_width_stat_item)))
         pixmap2 = createStatBar(stat_colors.get(stat), value)
         # Convert the QPixmap to an QIcon
-        icon = QIcon(pixmap2)
+        QIcon(pixmap2)
         # Set the QIcon as the background for the QLabel
         bar_item2.setPixmap(pixmap2)
         layout_row = QHBoxLayout()
@@ -683,7 +674,7 @@ class RadarChart(QWidget):
         label_font.setBold(True)
         painter.setFont(label_font)
 
-        font_metrics = painter.fontMetrics()
+        painter.fontMetrics()
 
         for i, key in enumerate(self.stat_keys):
             angle_deg = -90 + (i * 60)
@@ -908,7 +899,7 @@ def remember_attack(
 ):
     """Learn a new attack using database."""
     db = mw.ankimon_db
-    
+
     if new_attack in attacks:
         logger.log_and_showinfo("warning", "Your pokemon already knows this move!")
         return
@@ -932,12 +923,14 @@ def remember_attack(
                 try:
                     index_to_replace = attacks.index(selected_attack)
                     attacks[index_to_replace] = new_attack
-                    logger.log_and_showinfo("info", f"Replaced '{selected_attack}' with '{new_attack}'")
+                    logger.log_and_showinfo(
+                        "info", f"Replaced '{selected_attack}' with '{new_attack}'"
+                    )
                 except ValueError:
                     logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
             else:
                 logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
-    
+
     pokemon_data["attacks"] = attacks
     db.save_pokemon(pokemon_data)
 
@@ -974,7 +967,7 @@ def forget_attack(
     else:
         msg = f"Your {pokemon_data['name'].capitalize()} does not know {attack_to_forget}."
         logger.log_and_showinfo("info", f"{msg}")
-    
+
     pokemon_data["attacks"] = attacks
     db.save_pokemon(pokemon_data)
 
@@ -1020,7 +1013,6 @@ def tm_attack_details_window(
 
     # HTML content
     html_content = remember_attack_details_window_template
-    from pathlib import Path
 
     with open(pokemon_tm_learnset_path, "r") as f:
         pokemon_tm_learnset = json.load(f)
@@ -1029,11 +1021,15 @@ def tm_attack_details_window(
     tm_learnset = pokemon_tm_learnset.get(
         pokemon_name, []
     )  # TMs that can be learnt by the Pokemon
-    
+
     # Get owned TMs from database
     db = mw.ankimon_db
     all_items = db.get_all_items()
-    owned_tms = [item["item_name"] for item in all_items if (item.get("extra_data") or {}).get("type") == "TM"]
+    owned_tms = [
+        item["item_name"]
+        for item in all_items
+        if (item.get("extra_data") or {}).get("type") == "TM"
+    ]
     attack_set = [tm for tm in tm_learnset if tm in owned_tms]
 
     # Loop through the list of attacks and add them to the HTML content
@@ -1099,7 +1095,7 @@ def rename_pkmn(
 ):
     """Rename a pokemon using database."""
     db = mw.ankimon_db
-    
+
     try:
         pokemon = db.get_pokemon(individual_id)
         if pokemon is not None:
@@ -1122,7 +1118,7 @@ def PokemonFree(
     individual_id: str, name: str, logger: ShowInfoLogger, refresh_callback
 ):
     """Release a pokemon using database."""
-    
+
     # Confirmation dialog
     reply = QMessageBox.question(
         None,
@@ -1151,21 +1147,22 @@ def PokemonFree(
 
     # Save important stats to history before release
     from datetime import datetime
+
     history_data = {
         "id": pokemon_to_release.get("id"),
         "name": pokemon_to_release.get("name"),
         "shiny": pokemon_to_release.get("shiny", False),
         "pokemon_defeated": pokemon_to_release.get("pokemon_defeated", 0),
         "individual_id": pokemon_to_release.get("individual_id"),
-        "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    
+
     # Add to history via database
     if mw.ankimon_db.add_to_history(history_data):
         pass  # Success
     else:
         logger.log_and_showinfo("error", f"Failed to add {name} to history.")
-    
+
     # Delete from database
     mw.ankimon_db.delete_pokemon(individual_id)
     logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")

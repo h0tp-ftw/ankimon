@@ -1,15 +1,12 @@
-from ..resources import trainer_sprites_path, mypokemon_path, team_pokemon_path
-from ..functions.trainer_functions import find_trainer_rank
-from ..functions.badges_functions import get_achieved_badges
-from aqt import mw
-from aqt.utils import showWarning, showInfo
 import math
-import json
-from .ankimon_leaderboard import (
-    sync_data_to_leaderboard,
-    show_api_key_dialog
-)
 
+from aqt import mw
+from aqt.utils import showInfo
+
+from ..functions.badges_functions import get_achieved_badges
+from ..functions.trainer_functions import find_trainer_rank
+from ..resources import trainer_sprites_path
+from .ankimon_leaderboard import sync_data_to_leaderboard
 
 # Constants for leveling
 BASE_XP = 50  # Base XP required for level 1
@@ -47,11 +44,15 @@ class TrainerCard:
         self.trainer_id = trainer_id  # Unique ID for the trainer
         self.level = int(settings_obj.get("trainer.level"))  # Trainer's level
         self.xp = int(settings_obj.get("trainer.xp"))  # Experience points
-        self.total_xp = int(settings_obj.get("trainer.total_xp", 0)) # Total Experience points
+        self.total_xp = int(
+            settings_obj.get("trainer.total_xp", 0)
+        )  # Total Experience points
         self.achievements = (
             achievements if achievements else []
         )  # List of achievements (if any)
-        self.team = team if team is not None else self.get_team()  # Team as a simple string
+        self.team = (
+            team if team is not None else self.get_team()
+        )  # Team as a simple string
         highest_level = self.get_highest_level_pokemon()
         self.highest_level = highest_level  # Highest level Pokémon
         highest_pokemon_level = int(self.highest_pokemon_level())
@@ -73,7 +74,9 @@ class TrainerCard:
             "trainerRank": f"{league}",  # Example rank
             "trainerName": trainer_name,  # Example trainer name
             "level": max(1, int(settings_obj.get("trainer.level"))),
-            "pokedex": mw.ankimon_db.execute("SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon WHERE pokedex_id IS NOT NULL").fetchone()[0],
+            "pokedex": mw.ankimon_db.execute(
+                "SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon WHERE pokedex_id IS NOT NULL"
+            ).fetchone()[0],
             "caughtPokemon": mw.ankimon_db.get_pokemon_count(),
             "trainerLevel": self.level,  # Add a logic for trainer's level if applicable
             "highestLevel": highest_pokemon_level,  # Example highest level
@@ -100,7 +103,9 @@ class TrainerCard:
         """Method to find the name of the highest-level Pokémon from the database."""
         try:
             db = mw.ankimon_db
-            cursor = db.execute("SELECT name, level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1")
+            cursor = db.execute(
+                "SELECT name, level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1"
+            )
             row = cursor.fetchone()
 
             if not row:
@@ -115,7 +120,9 @@ class TrainerCard:
         """Method to find the highest level from all Pokémon in the database."""
         try:
             db = mw.ankimon_db
-            cursor = db.execute("SELECT level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1")
+            cursor = db.execute(
+                "SELECT level FROM captured_pokemon WHERE level IS NOT NULL ORDER BY level DESC LIMIT 1"
+            )
             row = cursor.fetchone()
 
             if not row:
@@ -134,12 +141,14 @@ class TrainerCard:
         """Method to get the trainer's active team (team as a string)"""
         try:
             team_data = mw.ankimon_db.get_team()
-            
+
             if not team_data:
                 return "No Team Set"
 
             # Use new DB method for targeted fetch
-            ids_to_fetch = [str(t.get("individual_id")) for t in team_data if t.get("individual_id")]
+            ids_to_fetch = [
+                str(t.get("individual_id")) for t in team_data if t.get("individual_id")
+            ]
             my_pokemon_data = mw.ankimon_db.get_pokemons_by_individual_ids(ids_to_fetch)
 
             # Create lookup dict
@@ -206,7 +215,8 @@ class TrainerCard:
             "trainer.xp", int(self.settings_obj.get("trainer.xp") + xp_gained)
         )
         self.settings_obj.set(
-            "trainer.total_xp", int(self.settings_obj.get("trainer.total_xp", 0) + xp_gained)
+            "trainer.total_xp",
+            int(self.settings_obj.get("trainer.total_xp", 0) + xp_gained),
         )
         self.xp = self.settings_obj.get("trainer.xp")
         self.total_xp = self.settings_obj.get("trainer.total_xp")

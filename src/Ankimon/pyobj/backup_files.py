@@ -1,13 +1,30 @@
 import os
 import shutil
 from datetime import datetime
-import json
-from aqt.utils import showInfo
+
 from aqt import mw
-from ..resources import mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, backup_root, user_path
+
+from ..resources import (
+    backup_root,
+    badgebag_path,
+    itembag_path,
+    mainpokemon_path,
+    mypokemon_path,
+    user_path,
+    user_path_credentials,
+)
+
 # Define backup directory and files to back up
 backup_folders = [os.path.join(backup_root, f"backup_{i}") for i in range(1, 4)]
-files_to_backup = [mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, user_path_credentials, user_path / "ankimon.db"]  # Adjust as needed
+files_to_backup = [
+    mypokemon_path,
+    mainpokemon_path,
+    itembag_path,
+    badgebag_path,
+    user_path_credentials,
+    user_path / "ankimon.db",
+]  # Adjust as needed
+
 
 def create_backup_folder(folder_path):
     """Creates a backup folder and places a timestamped text file inside."""
@@ -23,6 +40,7 @@ def create_backup_folder(folder_path):
         if os.path.exists(file):
             shutil.copy(file, folder_path)
 
+
 def rotate_backups():
     """Manages the rolling backup system (backup_3 is deleted, 2 becomes 3, etc.)."""
     if os.path.exists(backup_folders[-1]):
@@ -33,6 +51,7 @@ def rotate_backups():
         if os.path.exists(backup_folders[i - 1]):
             shutil.move(backup_folders[i - 1], backup_folders[i])
 
+
 def is_backup_needed():
     """Checks if a new backup is required (every two weeks)."""
     if not os.path.exists(backup_folders[0]):
@@ -42,13 +61,16 @@ def is_backup_needed():
         date_str = f.readline().replace("Backup created on: ", "").strip()
         last_backup_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
 
-    return (datetime.now() - last_backup_date).days >= 14  # Check if 2 weeks have passed
+    return (
+        datetime.now() - last_backup_date
+    ).days >= 14  # Check if 2 weeks have passed
+
 
 def run_backup():
     """Main function to run the backup process."""
     if is_backup_needed():
         rotate_backups()
         create_backup_folder(backup_folders[0])
-        mw.logger.log("game","New backup created successfully.")
+        mw.logger.log("game", "New backup created successfully.")
     else:
-        mw.logger.log("game","No backup needed yet.")
+        mw.logger.log("game", "No backup needed yet.")

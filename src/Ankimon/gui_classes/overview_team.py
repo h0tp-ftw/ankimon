@@ -32,7 +32,8 @@ from aqt import gui_hooks, mw
 
 from ..business import calculate_cp_from_dict
 from ..functions.sprite_functions import get_sprite_path
-from ..resources import mypokemon_path, icon_path as pokeball_path, team_pokemon_path
+from ..resources import icon_path as pokeball_path
+from ..resources import mypokemon_path, team_pokemon_path
 from ..utils import png_to_base64
 
 # ---------------------------------------------------------------------------

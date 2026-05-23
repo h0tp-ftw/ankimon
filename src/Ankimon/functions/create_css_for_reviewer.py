@@ -12,7 +12,7 @@ def create_css_for_reviewer(
     experience_for_next_lvl,
     xp_bar_location,
     enemy_hp_true_percent,
-    main_hp_true_percent
+    main_hp_true_percent,
 ):
     css = ""
 
@@ -30,7 +30,6 @@ def create_css_for_reviewer(
         main_hp_color = "rgba(255, 255, 0, 0.85)"  # Yellow
     else:
         main_hp_color = "rgba(114, 230, 96, 0.85)"  # Green
-
 
     # IMPORTANT: Provide clean, closed @media blocks and explicitly cancel any dark-mode inversion.
     # Many Anki themes/extensions use filter: invert(...) for dark mode. We neutralize that for the HUD,

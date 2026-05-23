@@ -7,13 +7,13 @@ gen_ids = {
     "gen_6": 721,
     "gen_7": 809,
     "gen_8": 905,
-    "gen_9": 1025
+    "gen_9": 1025,
 }
 
 # total generations implemented by Ankimon
 total_generations = 9
 
-#to create status symbols
+# to create status symbols
 # Define the background and outline colors for each status
 status_colors_label = {
     "burned": {"background": "#FF4500", "outline": "#C13500"},
@@ -35,13 +35,22 @@ status_colors_html = {
     "slp": {"background": "#FFC0CB", "outline": "#D895A1", "name": "Asleep"},
     "confusion": {"background": "#FFA500", "outline": "#CC8400", "name": "Confusion"},
     "flinching": {"background": "#808080", "outline": "#666666", "name": "Flinching"},
-    "fainted": {"background": "#000000", "outline": "#000000", "text_color": "#FFFFFF", "name": "Fainted"},
-    "fighting": {"background": "#C03028", "outline": "#7D1F1A", "name": "Fighting"},  # Example colors for Fighting
+    "fainted": {
+        "background": "#000000",
+        "outline": "#000000",
+        "text_color": "#FFFFFF",
+        "name": "Fainted",
+    },
+    "fighting": {
+        "background": "#C03028",
+        "outline": "#7D1F1A",
+        "name": "Fighting",
+    },  # Example colors for Fighting
 }
 
 # Get the profile folder
 from aqt import mw
-from pathlib import Path
+
 profilename = mw.pm.name
-#profilefolder = Path(mw.pm.profileFolder())
-#mediafolder = Path(mw.col.media.dir())
+# profilefolder = Path(mw.pm.profileFolder())
+# mediafolder = Path(mw.col.media.dir())

@@ -1,7 +1,10 @@
 import json
+
 from aqt import mw
 from aqt.utils import showWarning
+
 from ..resources import mainpokemon_path, mypokemon_path
+
 
 def get_starter_evolution_ids(starter_id: int) -> list[int]:
     """
@@ -9,6 +12,7 @@ def get_starter_evolution_ids(starter_id: int) -> list[int]:
     Assumes a linear evolution path of n, n+1, n+2.
     """
     return [starter_id, starter_id + 1, starter_id + 2]
+
 
 affected_starters = [
     1,  # bulbasaur
@@ -36,6 +40,7 @@ affected_starters = [
     813,  # scorbunny
     816,  # sobble
 ]
+
 
 def migrate_starter_individual_id():
     """
@@ -84,7 +89,10 @@ def migrate_starter_individual_id():
         all_starter_evolution_ids.extend(get_starter_evolution_ids(starter_id))
 
     if main_pokemon_id not in all_starter_evolution_ids:
-        mw.logger.log("info", f"Migration skipped: Main Pokemon (ID: {main_pokemon_id}) is not a starter or evolution.")
+        mw.logger.log(
+            "info",
+            f"Migration skipped: Main Pokemon (ID: {main_pokemon_id}) is not a starter or evolution.",
+        )
         # The main Pokemon is not a starter or its evolution, so we don't apply the fix.
         return
 
@@ -92,17 +100,22 @@ def migrate_starter_individual_id():
     potential_match = None
     for pokemon in my_pokemon_data:
         # A starter in mypokemon.json affected by the bug might not have an individual_id
-        if pokemon.get("id") == main_pokemon.get("id") and \
-           pokemon.get("iv") == main_pokemon.get("iv") and \
-           pokemon.get("gender") == main_pokemon.get("gender") and \
-           pokemon.get("ability") == main_pokemon.get("ability") and \
-           pokemon.get("shiny") == main_pokemon.get("shiny"):
+        if (
+            pokemon.get("id") == main_pokemon.get("id")
+            and pokemon.get("iv") == main_pokemon.get("iv")
+            and pokemon.get("gender") == main_pokemon.get("gender")
+            and pokemon.get("ability") == main_pokemon.get("ability")
+            and pokemon.get("shiny") == main_pokemon.get("shiny")
+        ):
             potential_match = pokemon
-            break # Found a match
+            break  # Found a match
 
     if potential_match:
         # We found the starter. Now, update its individual_id.
-        mw.logger.log("info", f"Starter match found in mypokemon.json. Syncing individual_id: {main_individual_id}")
+        mw.logger.log(
+            "info",
+            f"Starter match found in mypokemon.json. Syncing individual_id: {main_individual_id}",
+        )
         showWarning(
             "Ankimon has detected and fixed an issue with your starter Pokémon's data. "
             "Your starter's unique ID has been synchronized. No action is needed from you."
@@ -112,12 +125,20 @@ def migrate_starter_individual_id():
         try:
             with open(mypokemon_path, "w", encoding="utf-8") as f:
                 json.dump(my_pokemon_data, f, indent=4)
-            mw.logger.log("info", "Starter migration successful: mypokemon.json updated.")
+            mw.logger.log(
+                "info", "Starter migration successful: mypokemon.json updated."
+            )
         except IOError as e:
-            mw.logger.log("error", f"Starter migration failed: Could not write mypokemon.json: {str(e)}")
+            mw.logger.log(
+                "error",
+                f"Starter migration failed: Could not write mypokemon.json: {str(e)}",
+            )
             showWarning(
                 "Ankimon could not save the fix for your starter Pokémon. "
                 "Please check file permissions for the Ankimon addon folder."
             )
     else:
-        mw.logger.log("warning", "Migration failed: No matching starter found in mypokemon.json despite ID check.")
+        mw.logger.log(
+            "warning",
+            "Migration failed: No matching starter found in mypokemon.json despite ID check.",
+        )

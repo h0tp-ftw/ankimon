@@ -1,11 +1,13 @@
-from PyQt6.QtCore import QTimer
-from .pokemon_obj import PokemonObject
+import re
 from datetime import datetime
-from .error_handler import show_warning_with_traceback
+
+from aqt import mw
+from PyQt6.QtCore import QTimer
+
 from ..functions.pokedex_functions import extract_ids_from_file
 from ..utils import random_battle_scene
-from aqt import mw
-import re
+from .error_handler import show_warning_with_traceback
+from .pokemon_obj import PokemonObject
 
 
 class AnkimonTracker:
@@ -75,7 +77,9 @@ class AnkimonTracker:
     def get_total_reviews(self):
         if mw.col is None:
             return 0
-        match = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
+        match = re.search(
+            r"Studied\s+[^\d]*(\d+)(?=[^\n]*card)", mw.col.studied_today()
+        )
         if match is None:
             # Empty-study session or localized Anki whose "Studied N cards"
             # text doesn't match the English regex.

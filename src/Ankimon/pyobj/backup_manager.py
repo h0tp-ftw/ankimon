@@ -1,17 +1,17 @@
-
 import base64
+import datetime
 import json
 import os
 import shutil
-import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from aqt import mw
-from aqt.utils import showInfo, showWarning, askUser
+from aqt.utils import askUser, showInfo, showWarning
 
+from ..resources import addon_dir, user_path
 from ..utils import close_anki
-from ..resources import user_path, addon_dir
+
 
 class BackupManager:
     """Handles creating, managing, and restoring Ankimon backups."""
@@ -37,7 +37,7 @@ class BackupManager:
         try:
             new_separator = "---DATA_START---"
             old_separator = "\n---"
-            
+
             if new_separator in obfuscated_str:
                 parts = obfuscated_str.split(new_separator)
                 obfuscated_data = parts[1]
@@ -49,10 +49,10 @@ class BackupManager:
 
             obfuscated_bytes = base64.b64decode(obfuscated_data)
             deobfuscated_bytes = bytearray()
-            key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
+            key_bytes = self._OBFUSCATION_KEY.encode("utf-8")
             for i, byte in enumerate(obfuscated_bytes):
                 deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-            return json.loads(deobfuscated_bytes.decode('utf-8'))
+            return json.loads(deobfuscated_bytes.decode("utf-8"))
         except Exception as e:
             self.logger.log("error", f"Failed to deobfuscate data: {e}")
             return None
@@ -64,33 +64,36 @@ class BackupManager:
             if backup_dir.is_dir():
                 summary_path = backup_dir / "summary.json"
                 if summary_path.exists():
-                    with open(summary_path, 'r', encoding='utf-8') as f:
+                    with open(summary_path, "r", encoding="utf-8") as f:
                         try:
                             summary = json.load(f)
-                            summary['path'] = str(backup_dir)
+                            summary["path"] = str(backup_dir)
                             backups.append(summary)
                         except json.JSONDecodeError:
-                            self.logger.log("error", f"Could not read summary for backup: {backup_dir.name}")
+                            self.logger.log(
+                                "error",
+                                f"Could not read summary for backup: {backup_dir.name}",
+                            )
         return backups
 
     def create_backup(self, manual=False):
         """Creates a new backup."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         backup_dir = self.backups_path / f"backup_{timestamp}"
-        
+
         try:
             backup_dir.mkdir()
-            
+
             for filename in self.FILES_TO_BACKUP:
                 source_path = self.user_files_path / filename
                 if source_path.exists():
                     shutil.copy2(source_path, backup_dir / filename)
 
             summary = self._generate_summary(backup_dir)
-            summary['manual'] = manual
-            with open(backup_dir / "summary.json", 'w', encoding='utf-8') as f:
+            summary["manual"] = manual
+            with open(backup_dir / "summary.json", "w", encoding="utf-8") as f:
                 json.dump(summary, f, indent=4)
-            
+
             if manual:
                 showInfo("Manual backup created successfully.")
             self.logger.log("info", f"Created backup: {backup_dir.name}")
@@ -99,7 +102,7 @@ class BackupManager:
             self.logger.log("error", f"Failed to create backup: {e}")
             if manual:
                 showWarning(f"Failed to create backup: {e}")
-        
+
         self.cleanup_backups()
 
     def _generate_summary(self, backup_dir: Path) -> Dict[str, Any]:
@@ -122,40 +125,46 @@ class BackupManager:
                 stats = db.get_stats()
                 summary["pokemon_count"] = stats.get("pokemon", 0)
                 summary["item_count"] = stats.get("items", 0)
-                
+
                 main_pokemon = db.get_main_pokemon()
                 if main_pokemon:
                     summary["main_pokemon_name"] = main_pokemon.get("name", "N/A")
                     summary["main_pokemon_level"] = main_pokemon.get("level", "N/A")
-                
+
                 # Trainer info from user_data
                 summary["trainer_name"] = db.get_user_data("trainer.name", "N/A")
                 summary["trainer_cash"] = db.get_user_data("trainer.cash", 0)
                 summary["trainer_level"] = db.get_user_data("trainer.level", 1)
-                
+
                 return summary
             except Exception as e:
-                self.logger.log("error", f"Failed to get DB stats for backup summary: {e}")
+                self.logger.log(
+                    "error", f"Failed to get DB stats for backup summary: {e}"
+                )
 
         # Fallback to legacy JSON for older backups or migration period
         # (Remaining legacy code omitted for brevity but I will keep it in the replacement)
-        
+
         # Read mainpokemon.json for main Pokémon info
         mainpokemon_path = backup_dir / "mainpokemon.json"
         if mainpokemon_path.exists():
-            with open(mainpokemon_path, 'r', encoding='utf-8') as f:
+            with open(mainpokemon_path, "r", encoding="utf-8") as f:
                 try:
                     mainpokemon_data = json.load(f)
                     if mainpokemon_data:
-                        summary["main_pokemon_name"] = mainpokemon_data[0].get("name", "N/A")
-                        summary["main_pokemon_level"] = mainpokemon_data[0].get("level", "N/A")
+                        summary["main_pokemon_name"] = mainpokemon_data[0].get(
+                            "name", "N/A"
+                        )
+                        summary["main_pokemon_level"] = mainpokemon_data[0].get(
+                            "level", "N/A"
+                        )
                 except (json.JSONDecodeError, IndexError):
                     pass
 
         # Read mypokemon.json for total Pokémon count
         mypokemon_path = backup_dir / "mypokemon.json"
         if mypokemon_path.exists():
-            with open(mypokemon_path, 'r', encoding='utf-8') as f:
+            with open(mypokemon_path, "r", encoding="utf-8") as f:
                 try:
                     mypokemon_data = json.load(f)
                     summary["pokemon_count"] = len(mypokemon_data)
@@ -165,24 +174,26 @@ class BackupManager:
         # Read items.json for total item count
         items_path = backup_dir / "items.json"
         if items_path.exists():
-            with open(items_path, 'r', encoding='utf-8') as f:
+            with open(items_path, "r", encoding="utf-8") as f:
                 try:
                     items_data = json.load(f)
-                    summary["item_count"] = sum(item.get('quantity', 0) for item in items_data)
+                    summary["item_count"] = sum(
+                        item.get("quantity", 0) for item in items_data
+                    )
                 except json.JSONDecodeError:
                     pass
 
         # Read config.obf for trainer info
         config_path = backup_dir / "config.obf"
         if config_path.exists():
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, "r", encoding="utf-8") as f:
                 obfuscated_data = f.read()
             config_data = self._deobfuscate_data(obfuscated_data)
             if config_data:
                 summary["trainer_name"] = config_data.get("trainer.name", "N/A")
                 summary["trainer_cash"] = config_data.get("trainer.cash", 0)
                 summary["trainer_level"] = config_data.get("trainer.level", 1)
-        
+
         return summary
 
     def restore_backup(self, backup_path_str: str):
@@ -208,7 +219,9 @@ class BackupManager:
                     if user_file.exists():
                         os.remove(user_file)
 
-            showInfo("Backup restored successfully. Anki will now close. Please restart Anki to see the changes.")
+            showInfo(
+                "Backup restored successfully. Anki will now close. Please restart Anki to see the changes."
+            )
             close_anki()
 
         except Exception as e:
@@ -232,8 +245,10 @@ class BackupManager:
     def cleanup_backups(self):
         """Deletes old backups based on retention policy."""
         # Get only directories and sort them by modification time
-        backups = sorted([p for p in self.backups_path.iterdir() if p.is_dir()], key=os.path.getmtime)
-        
+        backups = sorted(
+            [p for p in self.backups_path.iterdir() if p.is_dir()], key=os.path.getmtime
+        )
+
         backups_to_keep = []
         for backup_dir in backups:
             backup_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup_dir))
@@ -248,7 +263,10 @@ class BackupManager:
             while len(backups_to_keep) > self.MAX_BACKUPS:
                 oldest_backup = backups_to_keep.pop(0)
                 shutil.rmtree(oldest_backup)
-                self.logger.log("info", f"Deleted oldest backup to maintain max count: {oldest_backup.name}")
+                self.logger.log(
+                    "info",
+                    f"Deleted oldest backup to maintain max count: {oldest_backup.name}",
+                )
 
     def on_anki_close(self):
         """Creates a backup when Anki is about to close."""

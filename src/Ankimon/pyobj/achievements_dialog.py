@@ -1,10 +1,9 @@
-import os
 import json
+
 from aqt import QDialog, QVBoxLayout, QWebEngineView, mw
-from aqt.qt import QPushButton, QCheckBox, QFrame, Qt
 from PyQt6.QtCore import QUrl, QUrlQuery
 from PyQt6.QtGui import QGuiApplication
-from pathlib import Path
+
 
 class AchievementsDialog(QDialog):
     def __init__(self, addon_dir, data_handler):
@@ -49,14 +48,8 @@ class AchievementsDialog(QDialog):
         # Create and encode query parameters
         query = QUrlQuery()
         query.addQueryItem("addon_name", mw.addonManager.addonFromModule(__name__))
-        query.addQueryItem(
-            "unlocked_badges",
-            json.dumps(unlocked_badges)
-        )
-        query.addQueryItem(
-            "badge_definitions",
-            json.dumps(badge_definitions)
-        )
+        query.addQueryItem("unlocked_badges", json.dumps(unlocked_badges))
+        query.addQueryItem("badge_definitions", json.dumps(badge_definitions))
 
         url.setQuery(query.query(QUrl.ComponentFormattingOption.FullyEncoded))
 

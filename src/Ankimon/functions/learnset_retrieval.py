@@ -61,4 +61,6 @@ def get_levelup_move_for_pokemon(pokemon_name, pokemon_level, generation=9):
     """Return a list of moves learned at exactly *pokemon_level* (never None)."""
     all_moves = _get_learnset_moves(pokemon_name, pokemon_level, generation)
 
-    return [move for move, learn_level in all_moves.items() if learn_level == pokemon_level]
+    return [
+        move for move, learn_level in all_moves.items() if learn_level == pokemon_level
+    ]

@@ -1,18 +1,7 @@
-import json
-import os
 import shutil
+
 from aqt import mw
-from aqt.utils import showInfo
-from PyQt6.QtWidgets import (
-    QApplication,
-    QWidget,
-    QVBoxLayout,
-    QLabel,
-    QLineEdit,
-    QPushButton,
-)
-from PyQt6.QtWidgets import QRadioButton, QHBoxLayout, QMainWindow, QScrollArea
-from pathlib import Path
+
 from ..resources import user_path
 
 DEFAULT_CONFIG = {
@@ -36,7 +25,7 @@ DEFAULT_CONFIG = {
     "gui.reviewer_text_message_box": True,
     "gui.reviewer_text_message_box_time": 3,
     "gui.show_mainpkmn_in_reviewer": 1,
-    "gui.hud_hidden_on_startup": False,    
+    "gui.hud_hidden_on_startup": False,
     "gui.team_deck_view": True,
     "gui.view_main_front": True,
     "gui.xp_bar_config": True,
@@ -83,44 +72,47 @@ class Settings:
 
     def load_config(self):
         from aqt import mw
-        
+
         config = {}
-        
+
         # First, try to load from database
-        if hasattr(mw, 'ankimon_db') and mw.ankimon_db is not None:
+        if hasattr(mw, "ankimon_db") and mw.ankimon_db is not None:
             try:
                 if mw.ankimon_db.has_config():
                     config = mw.ankimon_db.get_all_config()
                     self._apply_type_coercion(config)
             except Exception as e:
                 print(f"Ankimon: Error loading config from database: {e}")
-        
+
         # If no config in database, fall back to config.obf for migration
         if not config:
             obfuscated_config_path = user_path / "config.obf"
             if obfuscated_config_path.is_file():
                 try:
                     from ..pyobj.ankimon_sync import AnkimonDataSync
+
                     sync_handler = AnkimonDataSync()
-                    
+
                     with open(obfuscated_config_path, "r", encoding="utf-8") as f:
                         obfuscated_str = f.read()
                     config = sync_handler._deobfuscate_data(obfuscated_str)
-                    
+
                     # Migration: remove legacy keys
                     if "items" in config and isinstance(config["items"], list):
                         del config["items"]
                     if "trainer.team" in config:
                         del config["trainer.team"]
-                    
+
                     self._apply_type_coercion(config)
-                    
+
                     # Migrate config to database
-                    if hasattr(mw, 'ankimon_db') and mw.ankimon_db is not None:
+                    if hasattr(mw, "ankimon_db") and mw.ankimon_db is not None:
                         try:
                             mw.ankimon_db.save_all_config(config)
-                            print("Ankimon: Migrated config from config.obf to database")
-                            
+                            print(
+                                "Ankimon: Migrated config from config.obf to database"
+                            )
+
                             # Archive config.obf after successful migration
                             try:
                                 backup_dir = user_path / "json"
@@ -130,12 +122,14 @@ class Settings:
                                 print(f"Ankimon: Archived config.obf to {backup_dir}")
                             except Exception as e:
                                 print(f"Ankimon: Failed to archive config.obf: {e}")
-                                
+
                         except Exception as e:
                             print(f"Ankimon: Failed to migrate config to database: {e}")
-                            
+
                 except Exception as e:
-                    print(f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config.")
+                    print(
+                        f"Ankimon: Error loading config from config.obf: {e}. Falling back to default config."
+                    )
                     config = {}
 
         # Ensure all default settings are present
@@ -149,7 +143,7 @@ class Settings:
             self.save_config(config)
 
         return config
-    
+
     def _apply_type_coercion(self, config):
         """Apply type coercion to config values that need to be integers."""
         keys_to_coerce_to_int = [
@@ -164,14 +158,15 @@ class Settings:
                 try:
                     config[key] = int(config[key])
                 except ValueError:
-                    print(f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int.")
+                    print(
+                        f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int."
+                    )
 
     def save_config(self, config):
         from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse obfuscation logic
-        from ..pyobj.ankimon_sync import AnkimonDataSync  # To reuse obfuscation logic
 
         # 1. Always save to database if available
-        if hasattr(mw, 'ankimon_db') and mw.ankimon_db is not None:
+        if hasattr(mw, "ankimon_db") and mw.ankimon_db is not None:
             try:
                 mw.ankimon_db.save_all_config(config)
                 print("Ankimon: Saved config to database")
@@ -205,7 +200,7 @@ class Settings:
     def compute_gui_config(self):
         # Manage conditional GUI settings
         config = self.config
-        sound_effects = config.get("audio.sound_effects", False)
+        config.get("audio.sound_effects", False)
 
         view_main_front = config.get("gui.view_main_front", True)
         reviewer_image_gif = config.get("gui.reviewer_image_gif", False)

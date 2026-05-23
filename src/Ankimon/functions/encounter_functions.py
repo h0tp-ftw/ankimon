@@ -1,29 +1,17 @@
-import json
-import random
 import math
-from typing import Union
-from datetime import datetime
+import random
 import uuid
+from datetime import datetime
+from typing import Union
 
 from aqt import mw
 from aqt.qt import QDialog
 from aqt.utils import showWarning
 
-from ..pyobj.ankimon_tracker import AnkimonTracker
-from ..pyobj.pokemon_obj import PokemonObject
-from ..pyobj.reviewer_obj import Reviewer_Manager
-from ..pyobj.test_window import TestWindow
-from ..pyobj.trainer_card import TrainerCard
-from ..pyobj.InfoLogger import ShowInfoLogger
-from ..pyobj.evolution_window import EvoWindow
-from ..pyobj.attack_dialog import AttackDialog
-from ..pyobj.translator import Translator
-from ..functions.pokemon_functions import (
-    find_experience_for_level,
-    get_levelup_move_for_pokemon,
-    pick_random_gender,
-    shiny_chance,
-)
+from ..business import calc_experience, calculate_cp_from_dict
+from ..const import gen_ids
+from ..functions.badges_functions import check_for_badge, receive_badge
+from ..functions.drawing_utils import tooltipWithColour
 from ..functions.pokedex_functions import (
     check_evolution_for_pokemon,
     get_all_pokemon_moves,
@@ -34,22 +22,33 @@ from ..functions.pokedex_functions import (
     search_pokedex,
     search_pokedex_by_id,
 )
-from ..pyobj.error_handler import show_warning_with_traceback
-from ..functions.trainer_functions import xp_share_gain_exp
-from ..functions.badges_functions import check_for_badge, receive_badge
-from ..functions.drawing_utils import tooltipWithColour
-from ..utils import limit_ev_yield, play_effect_sound, get_ev_spread
-from ..business import calc_experience, calculate_cp_from_dict
-from ..const import gen_ids
-from ..singletons import (
-    main_pokemon,
-    ankimon_tracker_obj,
-    trainer_card,
-    settings_obj,
-    translator,
-    ankimon_db,
-    pokemon_pc,
+from ..functions.pokemon_functions import (
+    find_experience_for_level,
+    get_levelup_move_for_pokemon,
+    pick_random_gender,
+    shiny_chance,
 )
+from ..functions.trainer_functions import xp_share_gain_exp
+from ..pyobj.ankimon_tracker import AnkimonTracker
+from ..pyobj.attack_dialog import AttackDialog
+from ..pyobj.error_handler import show_warning_with_traceback
+from ..pyobj.evolution_window import EvoWindow
+from ..pyobj.InfoLogger import ShowInfoLogger
+from ..pyobj.pokemon_obj import PokemonObject
+from ..pyobj.reviewer_obj import Reviewer_Manager
+from ..pyobj.test_window import TestWindow
+from ..pyobj.trainer_card import TrainerCard
+from ..pyobj.translator import Translator
+from ..singletons import (
+    ankimon_db,
+    ankimon_tracker_obj,
+    main_pokemon,
+    pokemon_pc,
+    settings_obj,
+    trainer_card,
+    translator,
+)
+from ..utils import get_ev_spread, limit_ev_yield, play_effect_sound
 
 
 def modify_percentages(total_reviews, daily_average, trainer_level):
@@ -57,15 +56,25 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     Modify Pokémon encounter percentages based on total reviews, trainer level, and main Pokémon level.
     """
     # Start with the base percentages
-    percentages = {"Baby": 2, "Legendary": 0.5, "Mythical": 0.2, "Normal": 92.3, "Ultra": 5}
+    percentages = {
+        "Baby": 2,
+        "Legendary": 0.5,
+        "Mythical": 0.2,
+        "Normal": 92.3,
+        "Ultra": 5,
+    }
 
     # Adjust percentages based on total reviews relative to the daily average
     review_ratio = total_reviews / daily_average if daily_average > 0 else 0
 
     # Adjust for review progress
     if review_ratio < 0.4:
-        percentages["Normal"] += percentages.pop("Baby", 0) + percentages.pop("Legendary", 0) + \
-                                 percentages.pop("Mythical", 0) + percentages.pop("Ultra", 0)
+        percentages["Normal"] += (
+            percentages.pop("Baby", 0)
+            + percentages.pop("Legendary", 0)
+            + percentages.pop("Mythical", 0)
+            + percentages.pop("Ultra", 0)
+        )
     elif review_ratio < 0.6:
         percentages["Baby"] += 2
         percentages["Normal"] -= 2
@@ -83,12 +92,14 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
         level_thresholds = {
             "Ultra": 30,  # Example threshold for Ultra Pokémon
             "Legendary": 50,  # Example threshold for Legendary Pokémon
-            "Mythical": 75  # Example threshold for Mythical Pokémon
+            "Mythical": 75,  # Example threshold for Mythical Pokémon
         }
 
         for tier in ["Ultra", "Legendary", "Mythical"]:
             if main_pokemon.level < level_thresholds.get(tier, float("inf")):
-                percentages[tier] = 0  # Set percentage to 0 if the level requirement isn't met
+                percentages[tier] = (
+                    0  # Set percentage to 0 if the level requirement isn't met
+                )
 
     # Example modification based on trainer level
     if trainer_level:
@@ -602,9 +613,12 @@ def save_main_pokemon_progress(
 
         # Save to database (replaces JSON file I/O for performance)
         ankimon_db.save_main_pokemon(mainpkmndata)
-        ankimon_db.save_pokemon(mainpkmndata)  # Also update the captured pokemon collection
+        ankimon_db.save_pokemon(
+            mainpkmndata
+        )  # Also update the captured pokemon collection
 
     return main_pokemon.level
+
 
 # --- Utility: Sync mainpokemon to mypokemon ---
 def sync_mainpokemon_to_mypokemon(main_pokemon):
@@ -613,21 +627,22 @@ def sync_mainpokemon_to_mypokemon(main_pokemon):
     Uses database instead of JSON files.
     """
     db = mw.ankimon_db
-    
+
     # Get main pokemon from database
     main_entry = db.get_main_pokemon()
     if not main_entry:
         return
-    
+
     main_id = main_entry.get("individual_id", None)
     if not main_id:
         main_id = getattr(main_pokemon, "individual_id", None)
     if not main_id:
         return
-    
+
     # Save/update in captured_pokemon table
     db.save_pokemon(main_entry)
     return
+
 
 def kill_pokemon(
     main_pokemon: PokemonObject,
@@ -653,8 +668,15 @@ def kill_pokemon(
     # Handle XP share logic
     xp_share_individual_id = settings_obj.get("trainer.xp_share")
     if xp_share_individual_id:
-        exp = xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon.id, exp, xp_share_individual_id)
-    
+        exp = xp_share_gain_exp(
+            logger,
+            settings_obj,
+            evo_window,
+            main_pokemon.id,
+            exp,
+            xp_share_individual_id,
+        )
+
     msg = ""
 
     if main_pokemon.held_item == "lucky-egg":
@@ -712,23 +734,25 @@ def save_caught_pokemon(
     # nature). Then override caught-only fields.
     _max_hp = enemy_pokemon.calculate_max_hp()
     caught_pokemon = enemy_pokemon.to_dict()
-    caught_pokemon.update({
-        "name": enemy_pokemon.name.capitalize(),
-        "nickname": nickname or "",
-        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-        "friendship": 0,
-        "pokemon_defeated": 0,
-        "xp": 0,
-        "everstone": False,
-        "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "individual_id": str(uuid.uuid4()),
-        "mega": False,
-        "special_form": None,
-        "is_favorite": False,
-        "held_item": None,
-        "hp": _max_hp,
-        "current_hp": _max_hp,
-    })
+    caught_pokemon.update(
+        {
+            "name": enemy_pokemon.name.capitalize(),
+            "nickname": nickname or "",
+            "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+            "friendship": 0,
+            "pokemon_defeated": 0,
+            "xp": 0,
+            "everstone": False,
+            "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "individual_id": str(uuid.uuid4()),
+            "mega": False,
+            "special_form": None,
+            "is_favorite": False,
+            "held_item": None,
+            "hp": _max_hp,
+            "current_hp": _max_hp,
+        }
+    )
     # Recompute CP against the overridden (zeroed) EVs.
     caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 

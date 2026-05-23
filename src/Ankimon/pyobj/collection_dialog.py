@@ -1,22 +1,15 @@
-import json
-from collections import defaultdict
 import uuid
+from collections import defaultdict
 
-from aqt.utils import showInfo, showWarning
-from ..pyobj.error_handler import show_warning_with_traceback
-from PyQt6.QtWidgets import *
-from PyQt6.QtGui import *
-from PyQt6.QtCore import *
 from aqt import mw
-import re
 
+from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..pyobj.InfoLogger import ShowInfoLogger
 from ..pyobj.pokemon_obj import PokemonObject
-from ..pyobj.InfoLogger import ShowInfoLogger
-from ..pyobj.translator import Translator
-from ..pyobj.test_window import TestWindow
 from ..pyobj.reviewer_obj import Reviewer_Manager
-from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
+from ..pyobj.test_window import TestWindow
+from ..pyobj.translator import Translator
+
 
 def MainPokemon(
     pokemon_data: dict,
@@ -26,10 +19,10 @@ def MainPokemon(
     reviewer_obj: Reviewer_Manager,
     test_window: TestWindow,
 ):
-    from ..functions.migration import migrate_starter_individual_id
+    pass
 
     db = mw.ankimon_db
-    
+
     # --- Save the existing mainpokemon to mypokemon before replacing ---
     try:
         current_main = db.get_main_pokemon()

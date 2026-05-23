@@ -1,18 +1,14 @@
+from .functions.encounter_functions import catch_pokemon, kill_pokemon, new_pokemon
 from .singletons import (
-    enemy_pokemon,
-    main_pokemon,
+    achievements,
     ankimon_tracker_obj,
-    test_window,
+    enemy_pokemon,
     evo_window,
     logger,
-    achievements,
-    trainer_card,
+    main_pokemon,
     reviewer_obj,
-)
-from .functions.encounter_functions import (
-    catch_pokemon,
-    kill_pokemon,
-    new_pokemon,
+    test_window,
+    trainer_card,
 )
 
 catch_pokemon_hooks = []
@@ -37,9 +33,7 @@ def CatchPokemonHook(collected_pokemon_ids):
             collected_pokemon_ids,
             achievements,
         )
-        new_pokemon(
-            enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj
-        )
+        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
     for hook in catch_pokemon_hooks:
         hook()
 
@@ -49,8 +43,6 @@ def DefeatPokemonHook():
         kill_pokemon(
             main_pokemon, enemy_pokemon, evo_window, logger, achievements, trainer_card
         )
-        new_pokemon(
-            enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj
-        )
+        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
     for hook in defeat_pokemon_hooks:
         hook()

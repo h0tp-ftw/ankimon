@@ -1,6 +1,8 @@
 import json
 from functools import lru_cache
+
 from aqt import mw
+
 from .pyobj.translator import LANG_NUMBERS
 from .resources import move_names_file_path
 

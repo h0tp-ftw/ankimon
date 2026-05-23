@@ -2,47 +2,42 @@ import json
 import uuid
 from typing import Any, Callable
 
-from aqt import mw, gui_hooks
+from aqt import gui_hooks, mw
 from aqt.qt import (
-    Qt,
     QDialog,
+    QGridLayout,
     QHBoxLayout,
-    QVBoxLayout,
     QLabel,
     QPushButton,
-    QGridLayout,
-    QPixmap,
+    Qt,
+    QVBoxLayout,
 )
-
 from aqt.theme import theme_manager  # Check if light / dark mode in Anki
-
+from PyQt6.QtCore import QSize, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QCloseEvent, QFont, QIcon, QMovie, QResizeEvent
 from PyQt6.QtWidgets import (
-    QLineEdit,
-    QComboBox,
-    QCheckBox,
-    QMenu,
-    QWidget,
-    QScrollArea,
-    QFrame,
-    QRadioButton,
     QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QFrame,
+    QLineEdit,
+    QMenu,
+    QRadioButton,
+    QScrollArea,
+    QWidget,
 )
-from PyQt6.QtCore import QSize, pyqtSignal, QTimer
-from PyQt6.QtGui import QIcon, QFont, QAction, QMovie, QCloseEvent, QResizeEvent
 
+from ..business import calculate_cp_from_dict
+from ..functions.sprite_functions import get_sprite_path
+from ..gui_classes.pokemon_details import PokemonCollectionDetails
+from ..pyobj.collection_dialog import MainPokemon
+from ..pyobj.InfoLogger import ShowInfoLogger
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.reviewer_obj import Reviewer_Manager
+from ..pyobj.settings import Settings
 from ..pyobj.test_window import TestWindow
 from ..pyobj.translator import Translator
-from ..pyobj.collection_dialog import MainPokemon
-from ..gui_classes.pokemon_details import PokemonCollectionDetails
-from ..pyobj.InfoLogger import ShowInfoLogger
-
-from ..pyobj.settings import Settings
-from ..functions.sprite_functions import get_sprite_path
-from ..utils import load_custom_font, get_tier_by_id
-from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
-from ..business import calculate_cp_from_dict
+from ..utils import get_tier_by_id, load_custom_font
 
 
 def format_item_name(item_name: str) -> str:
@@ -308,7 +303,7 @@ class PokemonPC(QDialog):
         else:
             self.setLayout(self.main_layout)
         pokemon_list = self.fetch_filtered_pokemon()
-        max_box_idx = (len(pokemon_list) - 1) // (self.n_rows * self.n_cols)
+        (len(pokemon_list) - 1) // (self.n_rows * self.n_cols)
 
         # Collection panel
         collection_layout = QVBoxLayout()
@@ -799,7 +794,9 @@ class PokemonPC(QDialog):
         # Name / Nickname filtering
         if self.search_edit is not None and self.search_edit.text():
             search_text = f"%{self.search_edit.text()}%"
-            query_parts.append("AND (name LIKE ? OR json_extract(data, '$.nickname') LIKE ?)")
+            query_parts.append(
+                "AND (name LIKE ? OR json_extract(data, '$.nickname') LIKE ?)"
+            )
             params.extend([search_text, search_text])
 
         # Type filtering
@@ -818,7 +815,10 @@ class PokemonPC(QDialog):
             query_parts.append("AND json_extract(data, '$.is_favorite') = 1")
 
         # Held item filtering
-        if self.filter_is_holding_item is not None and self.filter_is_holding_item.isChecked():
+        if (
+            self.filter_is_holding_item is not None
+            and self.filter_is_holding_item.isChecked()
+        ):
             query_parts.append("AND json_extract(data, '$.held_item') IS NOT NULL")
 
         # Shiny filtering
@@ -838,7 +838,7 @@ class PokemonPC(QDialog):
                     6: (650, 721),
                     7: (722, 809),
                     8: (810, 905),
-                    9: (906, 1025)
+                    9: (906, 1025),
                 }
                 if gen_idx in gen_ranges:
                     start_id, end_id = gen_ranges[gen_idx]
@@ -846,7 +846,11 @@ class PokemonPC(QDialog):
                     params.extend([start_id, end_id])
 
         # Sorting
-        sort_key_str = self.selected_sort_key.lower() if hasattr(self, 'selected_sort_key') else "date"
+        sort_key_str = (
+            self.selected_sort_key.lower()
+            if hasattr(self, "selected_sort_key")
+            else "date"
+        )
         reverse = self.desc_sort is not None and self.desc_sort.isChecked()
         direction = "DESC" if reverse else "ASC"
 
@@ -859,7 +863,9 @@ class PokemonPC(QDialog):
         elif sort_key_str == "id":
             order_clause = f"ORDER BY pokedex_id {direction}"
         elif sort_key_str == "cp":
-            order_clause = f"ORDER BY CAST(json_extract(data, '$.cp') AS REAL) {direction}"
+            order_clause = (
+                f"ORDER BY CAST(json_extract(data, '$.cp') AS REAL) {direction}"
+            )
         else:
             # For IV/EV or default, sort by original_index first, then override in Python if needed
             order_clause = f"ORDER BY original_index {direction}"
@@ -882,19 +888,23 @@ class PokemonPC(QDialog):
                     "is_favorite": bool(row["is_favorite"]),
                     "held_item": row["held_item"],
                 }
-                
+
                 # Pre-calculate sums for sorting if needed
                 if sort_key_str in ["iv", "ev"]:
                     stats_json = row[f"{sort_key_str}_json"]
                     stats_dict = json.loads(stats_json) if stats_json else {}
-                    p["_sort_value"] = sum(stats_dict.values()) if isinstance(stats_dict, dict) else sum(stats_dict) if isinstance(stats_dict, list) else 0
-                
+                    p["_sort_value"] = (
+                        sum(stats_dict.values())
+                        if isinstance(stats_dict, dict)
+                        else sum(stats_dict) if isinstance(stats_dict, list) else 0
+                    )
+
                 results.append(p)
-                
+
             # Perform Python sorting for IV/EV
             if sort_key_str in ["iv", "ev"]:
                 results.sort(key=lambda x: x.get("_sort_value", 0), reverse=reverse)
-            
+
             return results
         except Exception as e:
             if self.logger:
@@ -950,8 +960,14 @@ class PokemonPC(QDialog):
         give_held_item = QAction("Give a held item", self)
 
         # Connect actions to methods or lambda functions
-        pokemon_details_action.triggered.connect(lambda: self.show_pokemon_details(pokemon))
-        main_pokemon_action.triggered.connect(lambda: self.main_pokemon_function_callback(mw.ankimon_db.get_pokemon(pokemon['individual_id'])))
+        pokemon_details_action.triggered.connect(
+            lambda: self.show_pokemon_details(pokemon)
+        )
+        main_pokemon_action.triggered.connect(
+            lambda: self.main_pokemon_function_callback(
+                mw.ankimon_db.get_pokemon(pokemon["individual_id"])
+            )
+        )
         make_favorite_action.triggered.connect(lambda: self.toggle_favorite(pokemon))
         give_held_item.triggered.connect(lambda: self.give_held_item(pokemon))
 
@@ -979,14 +995,14 @@ class PokemonPC(QDialog):
         Args:
             pokemon_stub (dict): A lightweight dictionary containing the pokemon's `individual_id`.
         """
-        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub['individual_id'])
+        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub["individual_id"])
         if not pokemon:
             return
 
-        if pokemon.get('base_stats'):
-            detail_stats = {**pokemon['base_stats'], "xp": pokemon.get("xp", 0)}
-        elif pokemon.get('stats'):
-            detail_stats = {**pokemon['stats'], "xp": pokemon.get("xp", 0)}
+        if pokemon.get("base_stats"):
+            detail_stats = {**pokemon["base_stats"], "xp": pokemon.get("xp", 0)}
+        elif pokemon.get("stats"):
+            detail_stats = {**pokemon["stats"], "xp": pokemon.get("xp", 0)}
         else:
             raise ValueError("Could not get the stats information of the Pokémon")
 
@@ -1072,7 +1088,7 @@ class PokemonPC(QDialog):
             - Logs and displays an info message using `ShowInfoLogger`.
             - Refreshes the GUI via `self.refresh_gui()`.
         """
-        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub['individual_id'])
+        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub["individual_id"])
         if not pokemon:
             return
 
@@ -1123,10 +1139,10 @@ class PokemonPC(QDialog):
             - Logs and displays an info message using `ShowInfoLogger`.
             - Refreshes the GUI via `self.refresh_gui()`.
         """
-        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub['individual_id'])
+        pokemon = mw.ankimon_db.get_pokemon(pokemon_stub["individual_id"])
         if not pokemon:
             return
-            
+
         pokemon_obj = PokemonObject.from_dict(pokemon)
         if pokemon.get("held_item") is None:
             raise ValueError("The pokemon does not hold an item.")

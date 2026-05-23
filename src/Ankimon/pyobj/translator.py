@@ -1,5 +1,18 @@
 import json
-from ..resources import lang_path_de, lang_path_ch, lang_path_en, lang_path_fr, lang_path_jp, lang_path_sp, lang_path_kr, lang_path_it, lang_path_cz, lang_path_po, lang_path_es_latam
+
+from ..resources import (
+    lang_path_ch,
+    lang_path_cz,
+    lang_path_de,
+    lang_path_en,
+    lang_path_es_latam,
+    lang_path_fr,
+    lang_path_it,
+    lang_path_jp,
+    lang_path_kr,
+    lang_path_po,
+    lang_path_sp,
+)
 
 LANG_PATHS = {
     "de": lang_path_de,
@@ -12,32 +25,33 @@ LANG_PATHS = {
     "it": lang_path_it,
     "cz": lang_path_cz,
     "po": lang_path_po,
-    "es_latam": lang_path_es_latam
+    "es_latam": lang_path_es_latam,
 }
 
 LANG_NUMBERS = {
-    1: 'jp',
-    2: 'jp',
-    3: 'kr',
-    4: 'ch',
-    5: 'fr',
-    6: 'de',
-    7: 'sp',
-    8: 'it',
-    9: 'en',
-    10: 'cz',
-    11: 'jp',
-    12: 'ch',
-    13: 'po',
-    14: 'es_latam',
+    1: "jp",
+    2: "jp",
+    3: "kr",
+    4: "ch",
+    5: "fr",
+    6: "de",
+    7: "sp",
+    8: "it",
+    9: "en",
+    10: "cz",
+    11: "jp",
+    12: "ch",
+    13: "po",
+    14: "es_latam",
 }
+
 
 class Translator:
     def __init__(self, language):
-        short_language = LANG_NUMBERS.get(int(language), 'en')
+        short_language = LANG_NUMBERS.get(int(language), "en")
         self.filepath = LANG_PATHS.get(short_language, lang_path_en)
         try:
-            with open(self.filepath, 'r', encoding='utf-8') as f:
+            with open(self.filepath, "r", encoding="utf-8") as f:
                 self.translations = json.load(f)
         except FileNotFoundError:
             raise Exception(f"Translation file not found: {self.filepath}")
@@ -52,7 +66,7 @@ class Translator:
         # Fallback to English if key not found
         if template is None:
             try:
-                with open(lang_path_en, 'r', encoding='utf-8') as f:
+                with open(lang_path_en, "r", encoding="utf-8") as f:
                     fallback_translations = json.load(f)
                 template = fallback_translations.get(key, key)
                 source_file = lang_path_en  # Now using fallback file
@@ -70,4 +84,3 @@ class Translator:
                 f"• Translation file: {source_file}\n"
                 f"• Available arguments: {available}"
             )
-

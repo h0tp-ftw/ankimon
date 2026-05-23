@@ -5,17 +5,25 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
-from aqt import mw, gui_hooks
+from aqt import gui_hooks, mw
 from aqt.utils import showInfo, tooltip
-from ..pyobj.error_handler import show_warning_with_traceback
+from PyQt6.QtGui import QTextOption
+from PyQt6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-from ..resources import user_path, addon_dir
+from ..pyobj.error_handler import show_warning_with_traceback
+from ..resources import addon_dir, user_path
 from ..utils import close_anki
 
-from PyQt6.QtGui import QTextOption
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QTextEdit, QPushButton, QDialog, QHBoxLayout, QScrollArea, QWidget
 
 class ImprovedPokemonDataSync(QDialog):
     """
@@ -122,12 +130,13 @@ class ImprovedPokemonDataSync(QDialog):
 
         except Exception as e:
             self.logger.log("error", f"Failed to check for differences: {str(e)}")
-            show_warning_with_traceback(parent=self, exception=e, message="Error checking for differences")
+            show_warning_with_traceback(
+                parent=self, exception=e, message="Error checking for differences"
+            )
 
     def _display_differences(self, differences: Dict[str, Dict]):
         """Display improved JSON differences, showing only what changed per file with specific key differences."""
-        import json
-        from typing import Any, Dict, List, Tuple, Set
+        from typing import Any, List, Tuple
 
         def format_value(value: Any) -> str:
             """Format a value for display."""
@@ -149,7 +158,9 @@ class ImprovedPokemonDataSync(QDialog):
                 else:
                     items = list(value.items())[:2]
                     formatted = [f"{k}: {format_value(v)}" for k, v in items]
-                    return "{" + ", ".join(formatted) + f", ... +{len(value)-2} more" + "}"
+                    return (
+                        "{" + ", ".join(formatted) + f", ... +{len(value)-2} more" + "}"
+                    )
             else:
                 return str(value)[:50] + ("..." if len(str(value)) > 50 else "")
 
@@ -157,27 +168,29 @@ class ImprovedPokemonDataSync(QDialog):
             """Returns stats-based comparison for the database."""
             local_lines = []
             remote_lines = []
-            
+
             # Since it's a binary DB, we show stats
             db = mw.ankimon_db
             local_stats = db.get_stats()
-            
+
             # We don't have an easy way to 'query' the remote DB without loading it
             # For now, we show local stats and acknowledge the file difference
             local_lines.append(f"Pokemon: {local_stats.get('pokemon', 0)}")
             local_lines.append(f"Items: {local_stats.get('items', 0)}")
             local_lines.append(f"History: {local_stats.get('history', 0)}")
-            
+
             remote_lines.append("(Database stats comparisons require sync)")
             remote_lines.append("(File size or hash difference detected)")
-            
+
             return local_lines, remote_lines
 
-        def detect_structure_and_compare(local_data: Any, remote_data: Any, filename: str) -> Tuple[List[str], List[str]]:
+        def detect_structure_and_compare(
+            local_data: Any, remote_data: Any, filename: str
+        ) -> Tuple[List[str], List[str]]:
             """Detect the data structure and apply appropriate comparison."""
-            if filename == 'ankimon.db':
+            if filename == "ankimon.db":
                 return compare_databases(filename)
-            
+
             return ["(Settings file)"], ["(Settings file)"]
 
         # Main display logic
@@ -188,7 +201,7 @@ class ImprovedPokemonDataSync(QDialog):
             local_content.append(f"=== {filename} ===")
             web_content.append(f"=== {filename} ===")
 
-            if diff_info.get('error'):
+            if diff_info.get("error"):
                 error_msg = f"❌ Error: {diff_info['error']}"
                 local_content.append(error_msg)
                 web_content.append(error_msg)
@@ -196,19 +209,21 @@ class ImprovedPokemonDataSync(QDialog):
                 web_content.append("")
                 continue
 
-            local_exists = diff_info.get('local_exists', False)
-            media_exists = diff_info.get('media_exists', False)
+            local_exists = diff_info.get("local_exists", False)
+            media_exists = diff_info.get("media_exists", False)
 
             # Show file existence status
             local_content.append(f"Local file exists: {local_exists}")
             web_content.append(f"AnkiWeb file exists: {media_exists}")
 
-            if filename.endswith(('.json', '.obf')):
-                local_data = diff_info.get('local_data')
-                media_data = diff_info.get('media_data')
+            if filename.endswith((".json", ".obf")):
+                local_data = diff_info.get("local_data")
+                media_data = diff_info.get("media_data")
 
                 # Use smart comparison
-                local_lines, remote_lines = detect_structure_and_compare(local_data, media_data, filename)
+                local_lines, remote_lines = detect_structure_and_compare(
+                    local_data, media_data, filename
+                )
 
                 if local_lines or remote_lines:
                     local_content.append("Differences:")
@@ -216,8 +231,8 @@ class ImprovedPokemonDataSync(QDialog):
 
                     # Pad the shorter list to align output
                     max_lines = max(len(local_lines), len(remote_lines))
-                    local_lines.extend(["" ] * (max_lines - len(local_lines)))
-                    remote_lines.extend(["" ] * (max_lines - len(remote_lines)))
+                    local_lines.extend([""] * (max_lines - len(local_lines)))
+                    remote_lines.extend([""] * (max_lines - len(remote_lines)))
 
                     local_content.extend(local_lines)
                     web_content.extend(remote_lines)
@@ -225,7 +240,9 @@ class ImprovedPokemonDataSync(QDialog):
                     local_content.append("No differences detected")
                     web_content.append("No differences detected")
             else:
-                local_content.append("(Binary/Non-JSON file - cannot show detailed diff)")
+                local_content.append(
+                    "(Binary/Non-JSON file - cannot show detailed diff)"
+                )
                 web_content.append("(Binary/Non-JSON file - cannot show detailed diff)")
 
             local_content.append("")
@@ -238,7 +255,7 @@ class ImprovedPokemonDataSync(QDialog):
         """Format JSON data for display, showing key differences."""
         lines = []
 
-        if filename in ['mypokemon.json', 'mainpokemon.json']:
+        if filename in ["mypokemon.json", "mainpokemon.json"]:
             # Special handling for Pokemon data
             if isinstance(data, list):
                 lines.append(f"Pokemon count: {len(data)}")
@@ -264,7 +281,9 @@ class ImprovedPokemonDataSync(QDialog):
                     for i, item in enumerate(data[:3]):
                         lines.append(f"  [{i}]: {type(item).__name__}")
                 else:
-                    lines.append(str(data)[:100] + "..." if len(str(data)) > 100 else str(data))
+                    lines.append(
+                        str(data)[:100] + "..." if len(str(data)) > 100 else str(data)
+                    )
             except Exception as e:
                 lines.append(f"Error formatting data: {str(e)}")
 
@@ -275,37 +294,50 @@ class ImprovedPokemonDataSync(QDialog):
         lines = [f"Pokemon {index + 1}:"]
 
         # Core identification
-        if 'name' in pokemon:
+        if "name" in pokemon:
             lines.append(f"  Name: {pokemon['name']}")
-        if 'individual_id' in pokemon:
+        if "individual_id" in pokemon:
             lines.append(f"  ID: {pokemon['individual_id'][:8]}...")
-        if 'level' in pokemon:
+        if "level" in pokemon:
             lines.append(f"  Level: {pokemon['level']}")
 
         # Stats and characteristics
         important_fields = [
-            'gender', 'ability', 'type', 'current_hp', 'xp', 'friendship',
-            'pokemon_defeated', 'shiny', 'tier', 'everstone', 'captured_date'
+            "gender",
+            "ability",
+            "type",
+            "current_hp",
+            "xp",
+            "friendship",
+            "pokemon_defeated",
+            "shiny",
+            "tier",
+            "everstone",
+            "captured_date",
         ]
 
         for field in important_fields:
             if field in pokemon:
                 value = pokemon[field]
                 if isinstance(value, list):
-                    lines.append(f"  {field.capitalize()}: {', '.join(map(str, value))}")
+                    lines.append(
+                        f"  {field.capitalize()}: {', '.join(map(str, value))}"
+                    )
                 else:
                     lines.append(f"  {field.capitalize()}: {value}")
 
         # Complex fields summary
-        if 'stats' in pokemon and isinstance(pokemon['stats'], dict):
+        if "stats" in pokemon and isinstance(pokemon["stats"], dict):
             lines.append(f"  Stats: {len(pokemon['stats'])} stat values")
-        if 'ev' in pokemon and isinstance(pokemon['ev'], dict):
-            ev_total = sum(pokemon['ev'].values()) if pokemon['ev'] else 0
+        if "ev" in pokemon and isinstance(pokemon["ev"], dict):
+            ev_total = sum(pokemon["ev"].values()) if pokemon["ev"] else 0
             lines.append(f"  EVs: {ev_total} total")
-        if 'iv' in pokemon and isinstance(pokemon['iv'], dict):
-            iv_avg = sum(pokemon['iv'].values()) / len(pokemon['iv']) if pokemon['iv'] else 0
+        if "iv" in pokemon and isinstance(pokemon["iv"], dict):
+            iv_avg = (
+                sum(pokemon["iv"].values()) / len(pokemon["iv"]) if pokemon["iv"] else 0
+            )
             lines.append(f"  IVs: {iv_avg:.1f} average")
-        if 'attacks' in pokemon and isinstance(pokemon['attacks'], list):
+        if "attacks" in pokemon and isinstance(pokemon["attacks"], list):
             lines.append(f"  Moves: {len(pokemon['attacks'])} moves")
 
         return lines
@@ -317,15 +349,20 @@ class ImprovedPokemonDataSync(QDialog):
             if success:
                 # Enable automatic sync after successful manual sync
                 from .ankimon_sync import enable_automatic_sync
+
                 enable_automatic_sync()
 
-                tooltip("Data exported to AnkiWeb successfully! Automatic sync is now enabled.")
+                tooltip(
+                    "Data exported to AnkiWeb successfully! Automatic sync is now enabled."
+                )
                 self.close()
             else:
                 raise Exception("Failed to export data to AnkiWeb.")
         except Exception as e:
             self.logger.log("error", f"Failed to export to AnkiWeb: {str(e)}")
-            show_warning_with_traceback(parent=self, exception=e, message="Error exporting to AnkiWeb")
+            show_warning_with_traceback(
+                parent=self, exception=e, message="Error exporting to AnkiWeb"
+            )
 
     def import_from_ankiweb(self):
         """Import data from AnkiWeb to local storage."""
@@ -334,16 +371,21 @@ class ImprovedPokemonDataSync(QDialog):
             if success:
                 # Enable automatic sync after successful manual sync
                 from .ankimon_sync import enable_automatic_sync
+
                 enable_automatic_sync()
 
-                tooltip("Data imported from AnkiWeb successfully! Automatic sync is now enabled.")
+                tooltip(
+                    "Data imported from AnkiWeb successfully! Automatic sync is now enabled."
+                )
                 self.close()
                 close_anki()
             else:
                 raise Exception("Failed to import data from AnkiWeb.")
         except Exception as e:
             self.logger.log("error", f"Failed to import from AnkiWeb: {str(e)}")
-            show_warning_with_traceback(parent=self, exception=e, message="Error importing from AnkiWeb")
+            show_warning_with_traceback(
+                parent=self, exception=e, message="Error importing from AnkiWeb"
+            )
 
     def auto_sync_on_close(self):
         """Automatically sync data when Anki closes."""
@@ -353,6 +395,7 @@ class ImprovedPokemonDataSync(QDialog):
                 tooltip(f"Synced {len(synced_files)} Ankimon files to AnkiWeb")
         except Exception as e:
             self.logger.log("error", f"Auto-sync failed: {str(e)}")
+
 
 class AnkimonDataSync:
     """
@@ -393,7 +436,9 @@ class AnkimonDataSync:
         if self._media_path is None:
             profile_folder = mw.pm.profileFolder()
             if profile_folder is None:
-                raise RuntimeError("No Anki profile loaded. Cannot initialize sync paths.")
+                raise RuntimeError(
+                    "No Anki profile loaded. Cannot initialize sync paths."
+                )
 
             self._media_path = Path(profile_folder) / "collection.media"
             self._sync_folder_name = "Ankimon"
@@ -441,7 +486,9 @@ class AnkimonDataSync:
             self.media_sync_path.mkdir(parents=True, exist_ok=True)
             return True
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to create sync folder")
+            show_warning_with_traceback(
+                parent=mw, exception=e, message="Failed to create sync folder"
+            )
             return False
 
     def _migrate_legacy_files(self) -> List[str]:
@@ -460,7 +507,9 @@ class AnkimonDataSync:
                         os.remove(legacy_path)  # Remove old file
                         migrated_files.append(filename)
                 except Exception as e:
-                    show_warning_with_traceback(parent=mw, exception=e, message=f"Failed to migrate {filename}")
+                    show_warning_with_traceback(
+                        parent=mw, exception=e, message=f"Failed to migrate {filename}"
+                    )
 
         return migrated_files
 
@@ -468,16 +517,16 @@ class AnkimonDataSync:
         """Obfuscates dictionary data into a string."""
         json_str = json.dumps(data)
         obfuscated_bytes = bytearray()
-        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
-        for i, byte in enumerate(json_str.encode('utf-8')):
+        key_bytes = self._OBFUSCATION_KEY.encode("utf-8")
+        for i, byte in enumerate(json_str.encode("utf-8")):
             obfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-        return base64.b64encode(obfuscated_bytes).decode('utf-8')
+        return base64.b64encode(obfuscated_bytes).decode("utf-8")
 
     def _deobfuscate_data(self, obfuscated_str: str) -> dict:
         """De-obfuscates string back into a dictionary."""
         new_separator = "---DATA_START---"
         old_separator = "\n---"
-        
+
         if new_separator in obfuscated_str:
             parts = obfuscated_str.split(new_separator)
             obfuscated_data = parts[1]
@@ -485,18 +534,14 @@ class AnkimonDataSync:
             parts = obfuscated_str.split(old_separator)
             obfuscated_data = parts[1]
         else:
-            obfuscated_data = obfuscated_str # Fallback for old format
+            obfuscated_data = obfuscated_str  # Fallback for old format
 
         obfuscated_bytes = base64.b64decode(obfuscated_data)
         deobfuscated_bytes = bytearray()
-        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
+        key_bytes = self._OBFUSCATION_KEY.encode("utf-8")
         for i, byte in enumerate(obfuscated_bytes):
             deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-        return json.loads(deobfuscated_bytes.decode('utf-8'))
-
-    
-
-    
+        return json.loads(deobfuscated_bytes.decode("utf-8"))
 
     def save_configs(self) -> List[str]:
         """
@@ -507,7 +552,9 @@ class AnkimonDataSync:
             # First, migrate any legacy files
             migrated_files = self._migrate_legacy_files()
             if migrated_files:
-                showInfo(f"Migrated {len(migrated_files)} files to new subfolder structure")
+                showInfo(
+                    f"Migrated {len(migrated_files)} files to new subfolder structure"
+                )
 
             # Ensure sync folder exists
             if not self._ensure_sync_folder_exists():
@@ -535,11 +582,13 @@ class AnkimonDataSync:
                         synced_files.append(filename)
 
                 except Exception as e:
-                    show_warning_with_traceback(parent=mw, exception=e, message=f"Failed to sync {filename}")
+                    show_warning_with_traceback(
+                        parent=mw, exception=e, message=f"Failed to sync {filename}"
+                    )
                     continue
 
             return synced_files
-        except RuntimeError as e:
+        except RuntimeError:
             # Profile not loaded yet
             return []
 
@@ -553,7 +602,7 @@ class AnkimonDataSync:
 
         try:
             # Check for legacy files first
-            migrated_files = self._migrate_legacy_files()
+            self._migrate_legacy_files()
 
             updated_files = []
 
@@ -570,16 +619,20 @@ class AnkimonDataSync:
                     source_file.parent.mkdir(parents=True, exist_ok=True)
 
                     # Copy if source doesn't exist or files differ
-                    if not source_file.is_file() or not filecmp.cmp(source_file, media_file, shallow=False):
+                    if not source_file.is_file() or not filecmp.cmp(
+                        source_file, media_file, shallow=False
+                    ):
                         shutil.copy2(media_file, source_file)
                         updated_files.append(filename)
 
                 except Exception as e:
-                    show_warning_with_traceback(parent=mw, exception=e, message=f"Failed to read {filename}")
+                    show_warning_with_traceback(
+                        parent=mw, exception=e, message=f"Failed to read {filename}"
+                    )
                     continue
 
             return updated_files
-        except RuntimeError as e:
+        except RuntimeError:
             # Profile not loaded yet
             return []
 
@@ -603,25 +656,27 @@ class AnkimonDataSync:
                     continue
 
                 file_diff = {
-                    'local_exists': source_file.is_file(),
-                    'media_exists': media_file.is_file(),
-                    'files_differ': False,
-                    'local_data': None,
-                    'media_data': None
+                    "local_exists": source_file.is_file(),
+                    "media_exists": media_file.is_file(),
+                    "files_differ": False,
+                    "local_data": None,
+                    "media_data": None,
                 }
 
                 # Legacy: Load and compare JSON data if both exist
                 # Now we only do binary comparison for the DB and OBF files
-                if file_diff['local_exists'] and file_diff['media_exists']:
-                    file_diff['files_differ'] = not filecmp.cmp(source_file, media_file, shallow=False)
-                elif file_diff['local_exists'] or file_diff['media_exists']:
-                    file_diff['files_differ'] = True
+                if file_diff["local_exists"] and file_diff["media_exists"]:
+                    file_diff["files_differ"] = not filecmp.cmp(
+                        source_file, media_file, shallow=False
+                    )
+                elif file_diff["local_exists"] or file_diff["media_exists"]:
+                    file_diff["files_differ"] = True
 
-                if file_diff['files_differ'] or file_diff.get('error'):
+                if file_diff["files_differ"] or file_diff.get("error"):
                     differences[filename] = file_diff
 
             return differences
-        except RuntimeError as e:
+        except RuntimeError:
             # Profile not loaded yet
             return {}
 
@@ -634,7 +689,7 @@ class AnkimonDataSync:
             synced_files = []
             for filename in self.SYNC_FILES.keys():
                 source_file = self._get_source_path(filename)  # LOCAL file
-                dest_file = self._get_media_path(filename)     # MEDIA file
+                dest_file = self._get_media_path(filename)  # MEDIA file
 
                 if source_file.is_file():
                     # Remove existing media file if it exists
@@ -645,10 +700,14 @@ class AnkimonDataSync:
                     shutil.copy2(source_file, dest_file)
                     synced_files.append(filename)
 
-            showInfo(f"Exported {len(synced_files)} files to AnkiWeb: {', '.join(synced_files)}")
+            showInfo(
+                f"Exported {len(synced_files)} files to AnkiWeb: {', '.join(synced_files)}"
+            )
             return True
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to export to AnkiWeb")
+            show_warning_with_traceback(
+                parent=mw, exception=e, message="Failed to export to AnkiWeb"
+            )
             return False
 
     def force_sync_from_media(self) -> bool:
@@ -656,7 +715,7 @@ class AnkimonDataSync:
         try:
             updated_files = []
             for filename in self.SYNC_FILES.keys():
-                media_file = self._get_media_path(filename)    # MEDIA file
+                media_file = self._get_media_path(filename)  # MEDIA file
                 source_file = self._get_source_path(filename)  # LOCAL file
 
                 if media_file.is_file():
@@ -667,32 +726,41 @@ class AnkimonDataSync:
                     shutil.copy2(media_file, source_file)
                     updated_files.append(filename)
 
-            showInfo(f"Imported {len(updated_files)} files from AnkiWeb: {', '.join(updated_files)}\n\nAnki will now close. Please reopen Anki to apply changes!")
+            showInfo(
+                f"Imported {len(updated_files)} files from AnkiWeb: {', '.join(updated_files)}\n\nAnki will now close. Please reopen Anki to apply changes!"
+            )
             return True
         except Exception as e:
-            show_warning_with_traceback(parent=mw, exception=e, message="Failed to import from AnkiWeb")
+            show_warning_with_traceback(
+                parent=mw, exception=e, message="Failed to import from AnkiWeb"
+            )
             return False
 
     def get_sync_folder_info(self) -> Dict[str, str]:
         """Get information about the sync folder for debugging."""
         try:
             return {
-                'sync_folder_path': str(self.media_sync_path),
-                'sync_folder_exists': self.media_sync_path.exists(),
-                'files_in_sync_folder': [f.name for f in self.media_sync_path.iterdir()] if self.media_sync_path.exists() else [],
-                'addon_name': self.addon_name,
-                'media_path': str(self.media_path)
+                "sync_folder_path": str(self.media_sync_path),
+                "sync_folder_exists": self.media_sync_path.exists(),
+                "files_in_sync_folder": (
+                    [f.name for f in self.media_sync_path.iterdir()]
+                    if self.media_sync_path.exists()
+                    else []
+                ),
+                "addon_name": self.addon_name,
+                "media_path": str(self.media_path),
             }
         except RuntimeError as e:
             return {
-                'error': str(e),
-                'addon_name': self.addon_name,
-                'media_path': 'Not initialized (no profile loaded)'
+                "error": str(e),
+                "addon_name": self.addon_name,
+                "media_path": "Not initialized (no profile loaded)",
             }
 
 
 # Global instance for easy access - but will be lazy initialized
 _ankimon_sync_instance = None
+
 
 def get_ankimon_sync() -> AnkimonDataSync:
     """Get the global AnkimonDataSync instance, creating it if needed."""
@@ -701,12 +769,14 @@ def get_ankimon_sync() -> AnkimonDataSync:
         _ankimon_sync_instance = AnkimonDataSync()
     return _ankimon_sync_instance
 
+
 def get_sync_info():
     """Get sync folder information for debugging."""
     try:
         return get_ankimon_sync().get_sync_folder_info()
     except Exception as e:
-        return {'error': str(e)}
+        return {"error": str(e)}
+
 
 def check_and_sync_pokemon_data(settings_obj, logger):
     """
@@ -727,7 +797,7 @@ def check_and_sync_pokemon_data(settings_obj, logger):
         if differences:
             # Show the sync dialog only if there are differences
             dialog = ImprovedPokemonDataSync(settings_obj, logger)
-            dialog.show() # Show immediately
+            dialog.show()  # Show immediately
             return dialog
         else:
             # No differences found - enable automatic sync
@@ -739,6 +809,7 @@ def check_and_sync_pokemon_data(settings_obj, logger):
         logger.log("error", f"Failed to check Pokemon data sync: {str(e)}")
         return None
 
+
 def save_ankimon_configs(settings_obj):
     """Convenience function to save configs - called before media sync."""
     ankiweb_sync = settings_obj.get("misc.ankiweb_sync")
@@ -749,9 +820,10 @@ def save_ankimon_configs(settings_obj):
     try:
         sync_handler = get_ankimon_sync()
         return sync_handler.save_configs()
-    except Exception as e:
+    except Exception:
         # Gracefully handle errors during startup
         return []
+
 
 def read_ankimon_configs(settings_obj, media_sync_status: bool = False):
     """Convenience function to read configs - called after media sync."""
@@ -763,12 +835,14 @@ def read_ankimon_configs(settings_obj, media_sync_status: bool = False):
     try:
         sync_handler = get_ankimon_sync()
         return sync_handler.read_configs(media_sync_status)
-    except Exception as e:
+    except Exception:
         # Gracefully handle errors during startup
         return []
 
+
 # Global flag to track if automatic sync is enabled
 _automatic_sync_enabled = False
+
 
 def setup_ankimon_sync_hooks(settings_obj, logger):
     """Set up hooks for automatic Ankimon data syncing - but disabled by default."""
@@ -782,7 +856,10 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
     def on_sync_will_start():
         """Called before sync starts - only auto-sync if enabled."""
         if not _automatic_sync_enabled:
-            logger.log("info", "Anki sync starting - automatic Ankimon sync disabled (awaiting manual sync)")
+            logger.log(
+                "info",
+                "Anki sync starting - automatic Ankimon sync disabled (awaiting manual sync)",
+            )
             return
 
         try:
@@ -795,7 +872,10 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
     def on_sync_did_finish():
         """Called after sync finishes - only auto-read if enabled."""
         if not _automatic_sync_enabled:
-            logger.log("info", "Anki sync finished - automatic Ankimon sync disabled (awaiting manual sync)")
+            logger.log(
+                "info",
+                "Anki sync finished - automatic Ankimon sync disabled (awaiting manual sync)",
+            )
             return
 
         try:
@@ -810,13 +890,17 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
     gui_hooks.sync_will_start.append(on_sync_will_start)
     gui_hooks.sync_did_finish.append(on_sync_did_finish)
 
-    logger.log("info", "Ankimon sync hooks registered (automatic sync disabled until manual sync)")
+    logger.log(
+        "info",
+        "Ankimon sync hooks registered (automatic sync disabled until manual sync)",
+    )
 
 
 def enable_automatic_sync():
     """Enable automatic sync after user has made their first manual sync decision."""
     global _automatic_sync_enabled
     _automatic_sync_enabled = True
+
 
 def is_automatic_sync_enabled():
     """Check if automatic sync is enabled."""

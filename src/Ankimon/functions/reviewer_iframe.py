@@ -1,9 +1,19 @@
-import os
 import fnmatch
+import os
+
 
 def list_audio_files(folder_path):
     # Define common audio file extensions
-    audio_extensions = ['*.mp3', '*.wav', '*.flac', '*.aac', '*.ogg', '*.wma', '*.m4a', '*.aiff']
+    audio_extensions = [
+        "*.mp3",
+        "*.wav",
+        "*.flac",
+        "*.aac",
+        "*.ogg",
+        "*.wma",
+        "*.m4a",
+        "*.aiff",
+    ]
 
     # List to store audio files
     audio_files = []
@@ -16,14 +26,38 @@ def list_audio_files(folder_path):
 
     return audio_files
 
+
 from aqt import mw
+
 from .pokemon_functions import find_experience_for_level
 
-def create_html_code(genderTop, genderBottom, nameTop, nameBottom, levelTop, levelBottom, current_health_bottom, max_hp_bottom, max_hp_top, current_health_top, text, general_url, font_url, bottom_pokemon_sprite, top_pokemon_sprite, display, main_attack, enemy_attack, xp_bar_width = 0):
+
+def create_html_code(
+    genderTop,
+    genderBottom,
+    nameTop,
+    nameBottom,
+    levelTop,
+    levelBottom,
+    current_health_bottom,
+    max_hp_bottom,
+    max_hp_top,
+    current_health_top,
+    text,
+    general_url,
+    font_url,
+    bottom_pokemon_sprite,
+    top_pokemon_sprite,
+    display,
+    main_attack,
+    enemy_attack,
+    xp_bar_width=0,
+):
     html_code = """<div id="spacer">&nbsp;</div>"""
     html_code += """<div id="AnkimonWindow"></div>"""
     html_code += f"""<iframe id="myIframe" class="Ankimon" src='{general_url}index.html?bottomPokemonSprite={bottom_pokemon_sprite}&topPokemonSprite={top_pokemon_sprite}&text={text}&levelTop={levelTop}&levelBottom={levelBottom}&nameTop={nameTop}&nameBottom={nameBottom}&genderTop={genderTop}&genderBottom={genderBottom}&current_health_bottom={current_health_bottom}&max_hp_bottom={max_hp_bottom}&max_hp_top={max_hp_top}&fontUrl={font_url}&current_health_top={current_health_top}&main_attack={main_attack}&enemy_attack={enemy_attack}' width=100% style="display:{display};"></iframe>"""
     return html_code
+
 
 def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
     text = str(textmsg)
@@ -38,10 +72,14 @@ def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
     genderBottom = main_pokemon.gender
     max_hp_bottom = main_pokemon.max_hp
     max_hp_top = enemy_pokemon.max_hp
-    display = "block" #fallback
+    display = "block"  # fallback
     mainpokemon_attack = False
     enemypokemon_attack = False
-    experience_for_next_lvl = int(find_experience_for_level(f"{main_pokemon.growth_rate}", int(main_pokemon.level), settings_obj))
+    experience_for_next_lvl = int(
+        find_experience_for_level(
+            f"{main_pokemon.growth_rate}", int(main_pokemon.level), settings_obj
+        )
+    )
     xp_bar_width = int((int(main_pokemon.xp or 0) / experience_for_next_lvl) * 100)
     ankimon_package = mw.addonManager.addonFromModule(__name__)
     general_url = f"""/_addons/{ankimon_package}/web/"""
@@ -50,15 +88,43 @@ def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
         top_pokemon_sprite = f"""{sprites_url}front_default/{enemy_pokemon.id}.png"""
         bottom_pokemon_sprite = f"""{sprites_url}back_default/{main_pokemon.id}.png"""
     else:
-        top_pokemon_sprite = f"""{sprites_url}front_default_gif/{enemy_pokemon.id}.gif"""
-        bottom_pokemon_sprite = f"""{sprites_url}back_default_gif/{main_pokemon.id}.gif"""
+        top_pokemon_sprite = (
+            f"""{sprites_url}front_default_gif/{enemy_pokemon.id}.gif"""
+        )
+        bottom_pokemon_sprite = (
+            f"""{sprites_url}back_default_gif/{main_pokemon.id}.gif"""
+        )
     font_url = f"""/_addons/{ankimon_package}/web/assetts/PokemonGB.ttf"""
-    html_code = create_html_code(genderTop, genderBottom, nameTop, nameBottom, levelTop, levelBottom, current_health_bottom, max_hp_bottom, max_hp_top, current_health_top, text, general_url, font_url, bottom_pokemon_sprite, top_pokemon_sprite, display, mainpokemon_attack, enemypokemon_attack, xp_bar_width)
+    html_code = create_html_code(
+        genderTop,
+        genderBottom,
+        nameTop,
+        nameBottom,
+        levelTop,
+        levelBottom,
+        current_health_bottom,
+        max_hp_bottom,
+        max_hp_top,
+        current_health_top,
+        text,
+        general_url,
+        font_url,
+        bottom_pokemon_sprite,
+        top_pokemon_sprite,
+        display,
+        mainpokemon_attack,
+        enemypokemon_attack,
+        xp_bar_width,
+    )
     return html_code
 
+
 def prepare(html, content, context):
-    html_code = create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg="")
+    html_code = create_iframe_html(
+        main_pokemon, enemy_pokemon, settings_obj, textmsg=""
+    )
     return html + html_code
+
 
 def create_head_code(generalurl):
     css_code = f"""

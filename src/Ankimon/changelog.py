@@ -1,15 +1,15 @@
 from typing import Union
 
+import markdown
 from aqt import mw
 from aqt.operations import QueryOp
 from aqt.utils import showWarning
-import markdown
 
-from .resources import addon_ver, addon_dir
-from .utils import read_github_file, read_local_file, compare_files, write_local_file
 from .gui_entities import UpdateNotificationWindow
 from .pyobj.error_handler import show_warning_with_traceback
 from .pyobj.help_window import HelpWindow
+from .resources import addon_dir, addon_ver
+from .utils import compare_files, read_github_file, read_local_file, write_local_file
 
 update_infos_md = addon_dir / "updateinfos.md"
 

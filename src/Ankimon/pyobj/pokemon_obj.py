@@ -1,20 +1,16 @@
-from typing import Union
-import uuid
 import json
-import os
-from typing import Optional
+from typing import Optional, Union
+
 from aqt import mw
 
 from ..functions.sprite_functions import get_sprite_path
-
 from ..poke_engine.objects import Pokemon
-from ..resources import pkmnimgfolder, mainpokemon_path, mypokemon_path
 from ..utils import give_item
+
 
 class PokemonObject:
     def __init__(
         self,
-
         type,
         name: str,
         id: int,
@@ -26,7 +22,6 @@ class PokemonObject:
         captured_date: Optional[str],
         tier: str,
         individual_id: str,
-
         current_hp=15,
         base_stats=None,
         attacks=None,
@@ -44,8 +39,8 @@ class PokemonObject:
         everstone=False,
         pokemon_defeated=0,
         is_favorite=False,
-        held_item: Union[str, None]=None,
-        **kwargs
+        held_item: Union[str, None] = None,
+        **kwargs,
     ):
         # Unique identifier
         self.individual_id = individual_id
@@ -67,10 +62,32 @@ class PokemonObject:
             self.ability = ability
 
         # Stats
-        self.base_stats = base_stats or {"hp": 1, "atk": 1, "def": 1, "spa": 1, "spd": 1, "spe": 1}
-        self.ev = {k: int(v) for k, v in (ev or {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}).items()}
-        self.iv = {k: int(v) for k, v in (iv or {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}).items()}
-        self.ev_yield = {k: int(v) for k, v in (ev_yield or {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}).items()}
+        self.base_stats = base_stats or {
+            "hp": 1,
+            "atk": 1,
+            "def": 1,
+            "spa": 1,
+            "spd": 1,
+            "spe": 1,
+        }
+        self.ev = {
+            k: int(v)
+            for k, v in (
+                ev or {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+            ).items()
+        }
+        self.iv = {
+            k: int(v)
+            for k, v in (
+                iv or {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+            ).items()
+        }
+        self.ev_yield = {
+            k: int(v)
+            for k, v in (
+                ev_yield or {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+            ).items()
+        }
 
         # Attacks and moves
         self.attacks = list(attacks) if attacks else ["Struggle"]
@@ -84,17 +101,28 @@ class PokemonObject:
 
         # Battle and status
         self.battle_status = str(battle_status)
-        self.position = tuple(position) if isinstance(position, (list, tuple)) else (0, 0)
-        self.stat_stages = kwargs.get('stat_stages', {
-            'atk': 0, 'def': 0, 'spa': 0, 'spd': 0, 'spe': 0, 'accuracy': 0, 'evasion': 0
-        })
-        self.volatile_status = set(kwargs.get('volatile_status', []))
-        self.nature = kwargs.get('nature', 'serious')
+        self.position = (
+            tuple(position) if isinstance(position, (list, tuple)) else (0, 0)
+        )
+        self.stat_stages = kwargs.get(
+            "stat_stages",
+            {
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0,
+                "accuracy": 0,
+                "evasion": 0,
+            },
+        )
+        self.volatile_status = set(kwargs.get("volatile_status", []))
+        self.nature = kwargs.get("nature", "serious")
         self.held_item = held_item
 
         # HP calculation
         self.max_hp = self.calculate_max_hp()
-        self.hp = int(kwargs.get('hp', self.max_hp))
+        self.hp = int(kwargs.get("hp", self.max_hp))
         self.current_hp = current_hp or 15
 
         self.is_favorite = is_favorite
@@ -108,14 +136,20 @@ class PokemonObject:
         level: int,
         iv: int,
         ev: int,
-        nature: str
-        ) -> int:
+        nature: str,
+    ) -> int:
         if stat_name == "hp":
-            hp = 10 + level + int((2 * base_stat_val + iv + int(ev / 4)) * level / 100)  # Formula found on bulbapedia
+            hp = (
+                10 + level + int((2 * base_stat_val + iv + int(ev / 4)) * level / 100)
+            )  # Formula found on bulbapedia
             return int(hp)
         elif stat_name in ("atk", "def", "spa", "spd", "spe"):
-            nature_mult = PokemonObject.get_nature_stat_mult(stat_name, nature)  # Formula found on bulbapedia
-            stat = (5 + int((2 * base_stat_val + iv + int(ev / 4)) * level / 100)) * nature_mult
+            nature_mult = PokemonObject.get_nature_stat_mult(
+                stat_name, nature
+            )  # Formula found on bulbapedia
+            stat = (
+                5 + int((2 * base_stat_val + iv + int(ev / 4)) * level / 100)
+            ) * nature_mult
             return int(stat)
         raise ValueError(f"Received an unknown stat_name : {stat_name}")
 
@@ -127,12 +161,14 @@ class PokemonObject:
                 continue
             _dict[key] = PokemonObject.calc_stat(
                 key, val, self.level, self.iv[key], self.ev[key], self.nature
-                )
+            )
         return _dict
 
     @stats.setter
     def stats(self, value):
-        raise AttributeError("Setting the value of the stats of a Pokemon is forbidden as they are automatically calculated using their base stats. You can instead set the base_stats of the Pokemon.")
+        raise AttributeError(
+            "Setting the value of the stats of a Pokemon is forbidden as they are automatically calculated using their base stats. You can instead set the base_stats of the Pokemon."
+        )
 
     @property
     def cp(self) -> int:
@@ -284,7 +320,11 @@ class PokemonObject:
 
     def calculate_max_hp(self):
         ev, iv = self.ev["hp"], self.iv["hp"]
-        hp = 10 + self.level + int((2 * self.base_stats["hp"] + iv + int(ev / 4)) * self.level / 100)
+        hp = (
+            10
+            + self.level
+            + int((2 * self.base_stats["hp"] + iv + int(ev / 4)) * self.level / 100)
+        )
         hp = int(hp)
         return hp
 
@@ -293,109 +333,120 @@ class PokemonObject:
 
     def to_engine_format(self):
         from ..poke_engine.helpers import normalize_name
+
         return {
-            'identifier': normalize_name(self.name),
-            'level': self.level,
-            'nature': getattr(self, 'nature', 'serious'),
-            'evs': (
-                self.ev.get('hp', 0),
-                self.ev.get('atk', 0),
-                self.ev.get('def', 0),
-                self.ev.get('spa', 0),
-                self.ev.get('spd', 0),
-                self.ev.get('spe', 0)
+            "identifier": normalize_name(self.name),
+            "level": self.level,
+            "nature": getattr(self, "nature", "serious"),
+            "evs": (
+                self.ev.get("hp", 0),
+                self.ev.get("atk", 0),
+                self.ev.get("def", 0),
+                self.ev.get("spa", 0),
+                self.ev.get("spd", 0),
+                self.ev.get("spe", 0),
             ),
-            'types': [normalize_name(t) for t in self.type],
-            'hp': self.hp,
-            'maxhp': self.max_hp,
-            'ability': normalize_name(self.ability) if self.ability else 'none',
-            'item': normalize_name(self.held_item) if self.held_item else None,
-            'attack': self.stats.get('atk', 0),
-            'defense': self.stats.get('def', 0),
-            'special_attack': self.stats.get('spa', 0),
-            'special_defense': self.stats.get('spd', 0),
-            'speed': self.stats.get('spe', 0),
-            'ivs': (
-                self.iv.get('hp', 0),
-                self.iv.get('atk', 0),
-                self.iv.get('def', 0),
-                self.iv.get('spa', 0),
-                self.iv.get('spd', 0),
-                self.iv.get('spe', 0)
+            "types": [normalize_name(t) for t in self.type],
+            "hp": self.hp,
+            "maxhp": self.max_hp,
+            "ability": normalize_name(self.ability) if self.ability else "none",
+            "item": normalize_name(self.held_item) if self.held_item else None,
+            "attack": self.stats.get("atk", 0),
+            "defense": self.stats.get("def", 0),
+            "special_attack": self.stats.get("spa", 0),
+            "special_defense": self.stats.get("spd", 0),
+            "speed": self.stats.get("spe", 0),
+            "ivs": (
+                self.iv.get("hp", 0),
+                self.iv.get("atk", 0),
+                self.iv.get("def", 0),
+                self.iv.get("spa", 0),
+                self.iv.get("spd", 0),
+                self.iv.get("spe", 0),
             ),
-            'attack_boost': self.stat_stages.get('atk', 0),
-            'defense_boost': self.stat_stages.get('def', 0),
-            'special_attack_boost': self.stat_stages.get('spa', 0),
-            'special_defense_boost': self.stat_stages.get('spd', 0),
-            'speed_boost': self.stat_stages.get('spe', 0),
-            'accuracy_boost': self.stat_stages.get('accuracy', 0),
-            'evasion_boost': self.stat_stages.get('evasion', 0),
-            'status': self.battle_status if self.battle_status != "fighting" else None,
-            'volatile_status': set(normalize_name(vs) for vs in self.volatile_status),
-            'moves': [{'id': normalize_name(move)} for move in self.attacks]
+            "attack_boost": self.stat_stages.get("atk", 0),
+            "defense_boost": self.stat_stages.get("def", 0),
+            "special_attack_boost": self.stat_stages.get("spa", 0),
+            "special_defense_boost": self.stat_stages.get("spd", 0),
+            "speed_boost": self.stat_stages.get("spe", 0),
+            "accuracy_boost": self.stat_stages.get("accuracy", 0),
+            "evasion_boost": self.stat_stages.get("evasion", 0),
+            "status": self.battle_status if self.battle_status != "fighting" else None,
+            "volatile_status": set(normalize_name(vs) for vs in self.volatile_status),
+            "moves": [{"id": normalize_name(move)} for move in self.attacks],
         }
 
     @classmethod
     def from_engine_format(cls, engine_data):
         """Create PokemonObject from poke-engine data"""
         return cls(
-            name=engine_data['identifier'].capitalize(),
-            level=engine_data['level'],
-            hp=engine_data['hp'],
+            name=engine_data["identifier"].capitalize(),
+            level=engine_data["level"],
+            hp=engine_data["hp"],
             base_stats={
-                'hp': engine_data.get('maxhp', 0),
-                'atk': engine_data['attack'],
-                'def': engine_data['defense'],
-                'spa': engine_data['special_attack'],
-                'spd': engine_data['special_defense'],
-                'spe': engine_data['speed']
+                "hp": engine_data.get("maxhp", 0),
+                "atk": engine_data["attack"],
+                "def": engine_data["defense"],
+                "spa": engine_data["special_attack"],
+                "spd": engine_data["special_defense"],
+                "spe": engine_data["speed"],
             },
-            ev={k: v for k, v in zip(['hp','atk','def','spa','spd','spe'], engine_data['evs'])},
-            iv={k: v for k, v in zip(['hp','atk','def','spa','spd','spe'], engine_data['ivs'])},
-            battlestatus=engine_data.get('status', 'fighting'),
-            moves=engine_data['moves'],
+            ev={
+                k: v
+                for k, v in zip(
+                    ["hp", "atk", "def", "spa", "spd", "spe"], engine_data["evs"]
+                )
+            },
+            iv={
+                k: v
+                for k, v in zip(
+                    ["hp", "atk", "def", "spa", "spd", "spe"], engine_data["ivs"]
+                )
+            },
+            battlestatus=engine_data.get("status", "fighting"),
+            moves=engine_data["moves"],
             stat_stages={
-                'atk': engine_data['stat_stages']['attack'],
-                'def': engine_data['stat_stages']['defense'],
-                'spa': engine_data['stat_stages']['special_attack'],
-                'spd': engine_data['stat_stages']['special_defense'],
-                'spe': engine_data['stat_stages']['speed'],
-                'accuracy': engine_data['stat_stages']['accuracy'],
-                'evasion': engine_data['stat_stages']['evasion']
+                "atk": engine_data["stat_stages"]["attack"],
+                "def": engine_data["stat_stages"]["defense"],
+                "spa": engine_data["stat_stages"]["special_attack"],
+                "spd": engine_data["stat_stages"]["special_defense"],
+                "spe": engine_data["stat_stages"]["speed"],
+                "accuracy": engine_data["stat_stages"]["accuracy"],
+                "evasion": engine_data["stat_stages"]["evasion"],
             },
-            volatile_status=set(engine_data.get('volatile_status', [])),
-            nature=engine_data.get('nature', 'serious'),
-            held_item=engine_data.get('item', '')
+            volatile_status=set(engine_data.get("volatile_status", [])),
+            nature=engine_data.get("nature", "serious"),
+            held_item=engine_data.get("item", ""),
         )
 
     def to_poke_engine_Pokemon(self) -> Pokemon:
         _dict = self.to_engine_format()
         pokemon = Pokemon(
-            identifier=_dict['identifier'],
-            level=_dict['level'],
-            types=_dict['types'],
-            hp=_dict['hp'],
-            maxhp=_dict['maxhp'],
-            ability=_dict['ability'],
-            item=_dict['item'],
-            attack=_dict['attack'],
-            defense=_dict['defense'],
-            special_attack=_dict['special_attack'],
-            special_defense=_dict['special_defense'],
-            speed=_dict['speed'],
-            nature=_dict.get('nature', 'serious'),
-            evs=_dict.get('evs', (85,) * 6),
-            attack_boost=_dict.get('attack_boost', 0),
-            defense_boost=_dict.get('defense_boost', 0),
-            special_attack_boost=_dict.get('special_attack_boost', 0),
-            special_defense_boost=_dict.get('special_defense_boost', 0),
-            speed_boost=_dict.get('speed_boost', 0),
-            accuracy_boost=_dict.get('accuracy_boost', 0),
-            evasion_boost=_dict.get('evasion_boost', 0),
-            status=_dict.get('status', None),
-            terastallized=_dict.get('terastallized', False),
-            volatile_status=_dict.get('volatile_status', set()),
-            moves=_dict.get('moves', [])
+            identifier=_dict["identifier"],
+            level=_dict["level"],
+            types=_dict["types"],
+            hp=_dict["hp"],
+            maxhp=_dict["maxhp"],
+            ability=_dict["ability"],
+            item=_dict["item"],
+            attack=_dict["attack"],
+            defense=_dict["defense"],
+            special_attack=_dict["special_attack"],
+            special_defense=_dict["special_defense"],
+            speed=_dict["speed"],
+            nature=_dict.get("nature", "serious"),
+            evs=_dict.get("evs", (85,) * 6),
+            attack_boost=_dict.get("attack_boost", 0),
+            defense_boost=_dict.get("defense_boost", 0),
+            special_attack_boost=_dict.get("special_attack_boost", 0),
+            special_defense_boost=_dict.get("special_defense_boost", 0),
+            speed_boost=_dict.get("speed_boost", 0),
+            accuracy_boost=_dict.get("accuracy_boost", 0),
+            evasion_boost=_dict.get("evasion_boost", 0),
+            status=_dict.get("status", None),
+            terastallized=_dict.get("terastallized", False),
+            volatile_status=_dict.get("volatile_status", set()),
+            moves=_dict.get("moves", []),
         )
         return pokemon
 
@@ -416,14 +467,14 @@ class PokemonObject:
             None
         """
         self.stat_stages = {
-            'atk': 0,
-            'def': 0,
-            'spa': 0,
-            'spd': 0,
-            'spe': 0,
-            'accuracy': 0,
-            'evasion': 0
-            }
+            "atk": 0,
+            "def": 0,
+            "spa": 0,
+            "spd": 0,
+            "spe": 0,
+            "accuracy": 0,
+            "evasion": 0,
+        }
 
     def give_held_item(self, held_item: str) -> None:
         """
@@ -432,7 +483,7 @@ class PokemonObject:
         If the Pokémon is already holding an item, it is removed first.
         """
         db = mw.ankimon_db
-        
+
         # If the pokemon already holds an object, we remove it to make room for the new one.
         if self.held_item:
             self.remove_held_item()
@@ -482,8 +533,8 @@ class PokemonEncoder(json.JSONEncoder):
         if isinstance(obj, PokemonObject):
             data = obj.__dict__.copy()
             # Convert complex types to serializable formats
-            data['volatile_status'] = list(data['volatile_status'])
-            data['stat_stages'] = data.get('stat_stages', {})
-            data['moves'] = data.get('attacks', [])
+            data["volatile_status"] = list(data["volatile_status"])
+            data["stat_stages"] = data.get("stat_stages", {})
+            data["moves"] = data.get("attacks", [])
             return data
         return super().default(obj)

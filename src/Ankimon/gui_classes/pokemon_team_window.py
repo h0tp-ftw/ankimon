@@ -1,12 +1,24 @@
-from ..functions.sprite_functions import get_sprite_path
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QGroupBox, QFrame, QGridLayout, QComboBox, QDialogButtonBox
-from PyQt6.QtGui import QPixmap
-import json
 import os
+
 from aqt import mw
-from aqt.utils import showInfo, showWarning
-from ..resources import mypokemon_path, frontdefault, team_pokemon_path
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+)
+
+from ..functions.sprite_functions import get_sprite_path
+from ..resources import frontdefault
+
 
 class PokemonTeamDialog(QDialog):
     def __init__(self, settings_obj, logger, trainer_card=None, parent=mw):
@@ -71,8 +83,18 @@ class PokemonTeamDialog(QDialog):
             pokemon_layout.addWidget(remove_button)
 
             frame.setLayout(pokemon_layout)
-            team_layout.addWidget(frame, row, col)  # Add frame to grid layout at specific row and column
-            self.pokemon_frames.append({'frame': frame, 'label': pokemon_label, 'sprite': sprite_label, 'switch_button': switch_button, 'remove_button': remove_button})
+            team_layout.addWidget(
+                frame, row, col
+            )  # Add frame to grid layout at specific row and column
+            self.pokemon_frames.append(
+                {
+                    "frame": frame,
+                    "label": pokemon_label,
+                    "sprite": sprite_label,
+                    "switch_button": switch_button,
+                    "remove_button": remove_button,
+                }
+            )
 
         team_widget.setLayout(team_layout)
         scroll_area.setWidget(team_widget)
@@ -82,17 +104,34 @@ class PokemonTeamDialog(QDialog):
         self.xp_share_combo = QComboBox()
         self.xp_share_combo.addItem("No XP Share")
         for pokemon in self.my_pokemon:
-            self.xp_share_combo.addItem(f"{pokemon['name']} (Level {pokemon['level']})", pokemon['individual_id'])
+            self.xp_share_combo.addItem(
+                f"{pokemon['name']} (Level {pokemon['level']})",
+                pokemon["individual_id"],
+            )
 
             # Set a preview image as item data
-            sprite_path = get_sprite_path("front", "png", pokemon['id'], pokemon["shiny"], pokemon["gender"])
+            sprite_path = get_sprite_path(
+                "front", "png", pokemon["id"], pokemon["shiny"], pokemon["gender"]
+            )
             pixmap = QPixmap(sprite_path)
-            self.xp_share_combo.setItemData(self.xp_share_combo.count() - 1, pixmap, Qt.ItemDataRole.DecorationRole)
+            self.xp_share_combo.setItemData(
+                self.xp_share_combo.count() - 1, pixmap, Qt.ItemDataRole.DecorationRole
+            )
 
         # Set the initial XP Share Pokémon (based on settings)
         xp_share_pokemon_individual_id = self.settings.get("trainer.xp_share")
         if xp_share_pokemon_individual_id:
-            xp_share_index = next((i for i, p in enumerate(self.my_pokemon) if p['individual_id'] == xp_share_pokemon_individual_id), 0) + 1
+            xp_share_index = (
+                next(
+                    (
+                        i
+                        for i, p in enumerate(self.my_pokemon)
+                        if p["individual_id"] == xp_share_pokemon_individual_id
+                    ),
+                    0,
+                )
+                + 1
+            )
             self.xp_share_combo.setCurrentIndex(xp_share_index)
 
         layout.addWidget(QLabel("Choose Pokémon with XP Share:"))
@@ -123,17 +162,19 @@ class PokemonTeamDialog(QDialog):
             FROM captured_pokemon
             ORDER BY individual_id ASC
         """)
-        
+
         my_pokemon = []
         for row in cursor.fetchall():
-            my_pokemon.append({
-                "individual_id": row[0],
-                "name": row[1],
-                "level": row[2],
-                "id": row[3],
-                "shiny": bool(row[4]),
-                "gender": row[5]
-            })
+            my_pokemon.append(
+                {
+                    "individual_id": row[0],
+                    "name": row[1],
+                    "level": row[2],
+                    "id": row[3],
+                    "shiny": bool(row[4]),
+                    "gender": row[5],
+                }
+            )
         return my_pokemon
 
     def load_pokemon_team(self):
@@ -142,7 +183,7 @@ class PokemonTeamDialog(QDialog):
         matching_pokemon = []
 
         for pokemon_in_team in team_data:
-            individual_id = pokemon_in_team.get('individual_id')
+            individual_id = pokemon_in_team.get("individual_id")
             if individual_id:
                 pokemon = mw.ankimon_db.get_pokemon(individual_id)
                 if pokemon:
@@ -154,30 +195,36 @@ class PokemonTeamDialog(QDialog):
         """Update the display with the player's current team"""
         # Ensure team_pokemon has 6 slots (pad with None if less than 6)
         max_pokemon_slots = 6
-        self.team_pokemon = self.team_pokemon[:max_pokemon_slots]  # Trim to a max of 6 Pokémon
-        self.team_pokemon.extend([None] * (max_pokemon_slots - len(self.team_pokemon)))  # Pad with None if less than 6
+        self.team_pokemon = self.team_pokemon[
+            :max_pokemon_slots
+        ]  # Trim to a max of 6 Pokémon
+        self.team_pokemon.extend(
+            [None] * (max_pokemon_slots - len(self.team_pokemon))
+        )  # Pad with None if less than 6
 
         for i, frame_data in enumerate(self.pokemon_frames):
             # Check if a Pokémon is selected for this slot (i.e., it's not None)
             if self.team_pokemon[i] is not None:
                 pokemon = self.team_pokemon[i]
-                pokemon_name = pokemon['name']
-                pokemon_level = pokemon['level']
+                pokemon_name = pokemon["name"]
+                pokemon_level = pokemon["level"]
                 sprite_path = os.path.join(frontdefault, f"{pokemon['id']}.png")
 
                 # Update label with name and level
-                frame_data['label'].setText(f"{pokemon_name} (Level {pokemon_level})")
+                frame_data["label"].setText(f"{pokemon_name} (Level {pokemon_level})")
 
                 # Display the sprite image
                 if os.path.exists(sprite_path):
                     pixmap = QPixmap(sprite_path)
-                    frame_data['sprite'].setPixmap(pixmap.scaled(50, 50))  # Resize sprite for preview
-                    frame_data['sprite'].setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    frame_data["sprite"].setPixmap(
+                        pixmap.scaled(50, 50)
+                    )  # Resize sprite for preview
+                    frame_data["sprite"].setAlignment(Qt.AlignmentFlag.AlignCenter)
                 else:
-                    frame_data['sprite'].clear()
+                    frame_data["sprite"].clear()
             else:
-                frame_data['label'].setText("Pokémon Not Selected")
-                frame_data['sprite'].clear()  # Clear the sprite if not selected
+                frame_data["label"].setText("Pokémon Not Selected")
+                frame_data["sprite"].clear()  # Clear the sprite if not selected
 
     def switch_out_pokemon(self, slot):
         """Allow the player to switch out a Pokémon for the selected slot"""
@@ -199,20 +246,32 @@ class PokemonTeamDialog(QDialog):
         used_pokemon_ids = []
         for i, pokemon in enumerate(self.team_pokemon):
             if pokemon is not None and i != slot:
-                used_pokemon_ids.append(pokemon['individual_id'])
+                used_pokemon_ids.append(pokemon["individual_id"])
         # Check if there are Pokémon left to choose from (those whose individual_id is not in used_pokemon_ids)
-        available_pokemon = [pokemon for pokemon in self.my_pokemon if pokemon and pokemon['individual_id'] not in used_pokemon_ids]
+        available_pokemon = [
+            pokemon
+            for pokemon in self.my_pokemon
+            if pokemon and pokemon["individual_id"] not in used_pokemon_ids
+        ]
 
         if available_pokemon:
             for pokemon in available_pokemon:
-                combo_box.addItem(f"{pokemon['name']} (Level {pokemon['level']})", pokemon)
+                combo_box.addItem(
+                    f"{pokemon['name']} (Level {pokemon['level']})", pokemon
+                )
 
                 # Set a preview image as item data
-                sprite_path = get_sprite_path("front", "png", pokemon['id'], pokemon["shiny"], pokemon["gender"])
+                sprite_path = get_sprite_path(
+                    "front", "png", pokemon["id"], pokemon["shiny"], pokemon["gender"]
+                )
                 pixmap = QPixmap(sprite_path)
-                combo_box.setItemData(combo_box.count() - 1, pixmap, Qt.ItemDataRole.DecorationRole)
+                combo_box.setItemData(
+                    combo_box.count() - 1, pixmap, Qt.ItemDataRole.DecorationRole
+                )
         else:
-            combo_box.addItem("No available Pokémon", None)  # Display a message if no Pokémon are available
+            combo_box.addItem(
+                "No available Pokémon", None
+            )  # Display a message if no Pokémon are available
 
         layout.addWidget(combo_box)
 
@@ -226,17 +285,27 @@ class PokemonTeamDialog(QDialog):
         def update_preview(index):
             pokemon = combo_box.itemData(index)
             if pokemon:
-                sprite_path = get_sprite_path("front", "png", pokemon['id'], pokemon["shiny"], pokemon["gender"])
+                sprite_path = get_sprite_path(
+                    "front", "png", pokemon["id"], pokemon["shiny"], pokemon["gender"]
+                )
                 pixmap = QPixmap(sprite_path)
-                image_label.setPixmap(pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio))
+                image_label.setPixmap(
+                    pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio)
+                )
                 image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Connect the selection change to the preview update
-        combo_box.currentIndexChanged.connect(lambda: update_preview(combo_box.currentIndex()))
+        combo_box.currentIndexChanged.connect(
+            lambda: update_preview(combo_box.currentIndex())
+        )
 
         # Button to confirm the selection
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        button_box.accepted.connect(lambda: self.confirm_switch(combo_box.currentIndex(), slot, dialog))
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(
+            lambda: self.confirm_switch(combo_box.currentIndex(), slot, dialog)
+        )
         button_box.rejected.connect(dialog.reject)
 
         layout.addWidget(button_box)
@@ -250,7 +319,9 @@ class PokemonTeamDialog(QDialog):
         selected_pokemon = dialog.findChild(QComboBox).itemData(selected_index)
 
         if selected_pokemon:
-            self.team_pokemon[slot] = selected_pokemon  # Replace the Pokémon in the team slot
+            self.team_pokemon[slot] = (
+                selected_pokemon  # Replace the Pokémon in the team slot
+            )
 
             # Update the team display
             self.update_team_display()
@@ -262,7 +333,7 @@ class PokemonTeamDialog(QDialog):
         # Check if there's a Pokémon in the selected slot
         if self.team_pokemon[slot] is not None:
             # Check if the Pokémon in this slot is the one with XP Share
-            pokemon_individual_id = self.team_pokemon[slot]['individual_id']
+            pokemon_individual_id = self.team_pokemon[slot]["individual_id"]
             xp_share_pokemon_individual_id = self.settings.get("trainer.xp_share")
 
             if xp_share_pokemon_individual_id == pokemon_individual_id:
@@ -277,16 +348,14 @@ class PokemonTeamDialog(QDialog):
 
     def on_ok(self):
         """Store the selected Pokémon team and XP Share setting, then close the dialog"""
-        #team = [frame_data['label'].text() for frame_data in self.pokemon_frames if frame_data['label'].text() != "Pokémon Not Selected"]
+        # team = [frame_data['label'].text() for frame_data in self.pokemon_frames if frame_data['label'].text() != "Pokémon Not Selected"]
         team_data = []  # Initialize the list to store selected Pokémon
 
         # Process each Pokémon frame to construct the team
         for frame_data in self.team_pokemon:
             if frame_data:  # Ensure the Pokémon has a name
                 # Restructure Pokémon data to the desired format
-                pokemon_data = {
-                    "individual_id": frame_data['individual_id']
-                }
+                pokemon_data = {"individual_id": frame_data["individual_id"]}
                 team_data.append(pokemon_data)
 
         pokemon_names = []
@@ -294,9 +363,7 @@ class PokemonTeamDialog(QDialog):
         for frame_data in self.team_pokemon:
             if frame_data:
                 # Restructure Pokémon data to the desired format
-                pokemon_name = {
-                    "name": frame_data['name']
-                }
+                pokemon_name = {"name": frame_data["name"]}
                 pokemon_names.append(pokemon_name)
 
         # Get the selected Pokémon for XP Share
@@ -310,15 +377,22 @@ class PokemonTeamDialog(QDialog):
 
         # Update settings with the selected team and XP Share setting
         self.settings.set("trainer.team", team_data)
-        self.settings.set("trainer.xp_share", xp_share_individual_id)  # Save XP Share Pokémon
+        self.settings.set(
+            "trainer.xp_share", xp_share_individual_id
+        )  # Save XP Share Pokémon
 
         try:
             mw.ankimon_db.save_team(team_data)
 
             self.logger.log_and_showinfo("info", "Trainer settings saved to database.")
-            self.logger.log_and_showinfo("info", f"You chose the following team: [{', '.join([pokemon['name'] for pokemon in pokemon_names])}]\nXP Share: {xp_share_pokemon}")
+            self.logger.log_and_showinfo(
+                "info",
+                f"You chose the following team: [{', '.join([pokemon['name'] for pokemon in pokemon_names])}]\nXP Share: {xp_share_pokemon}",
+            )
         except Exception as e:
-            self.logger.log_and_showinfo("error", f"Failed to save trainer settings: {e}")
+            self.logger.log_and_showinfo(
+                "error", f"Failed to save trainer settings: {e}"
+            )
 
         # Reload trainer card team data when confirmed new team
         if self.trainer_card is not None:

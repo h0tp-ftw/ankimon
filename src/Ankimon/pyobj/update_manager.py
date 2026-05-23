@@ -1,16 +1,12 @@
-import io
 import json
 import os
 import shutil
 import tempfile
-import urllib.request
 import urllib.error
+import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Optional
-
-from aqt import mw
-from aqt.operations import QueryOp
 
 from ..resources import addon_dir
 
@@ -22,7 +18,9 @@ USER_AGENT = "Ankimon-Updater (https://github.com/h0tp-ftw/ankimon)"
 DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
 
 
-def _make_request(url: str, accept: str = "application/vnd.github.v3+json") -> urllib.request.Request:
+def _make_request(
+    url: str, accept: str = "application/vnd.github.v3+json"
+) -> urllib.request.Request:
     req = urllib.request.Request(url)
     req.add_header("Accept", accept)
     req.add_header("User-Agent", USER_AGENT)
@@ -64,7 +62,10 @@ def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
             return True
         elif "*" in pattern:
             import fnmatch
-            if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(os.path.basename(rel_path), pattern):
+
+            if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(
+                os.path.basename(rel_path), pattern
+            ):
                 return True
 
     always_preserve = ["user_files/sprites/", "user_files/ankimon.db"]
@@ -86,7 +87,14 @@ def fetch_releases() -> list[dict]:
     data = _api_get("releases")
     if not data:
         return []
-    return [{"name": r["tag_name"], "body": r.get("body", ""), "zipball_url": r["zipball_url"]} for r in data]
+    return [
+        {
+            "name": r["tag_name"],
+            "body": r.get("body", ""),
+            "zipball_url": r["zipball_url"],
+        }
+        for r in data
+    ]
 
 
 def fetch_branches() -> list[dict]:
@@ -100,7 +108,15 @@ def fetch_open_prs() -> list[dict]:
     data = _api_get("pulls?state=open&per_page=50")
     if not data:
         return []
-    return [{"number": pr["number"], "title": pr["title"], "head_ref": pr["head"]["ref"], "head_sha": pr["head"]["sha"]} for pr in data]
+    return [
+        {
+            "number": pr["number"],
+            "title": pr["title"],
+            "head_ref": pr["head"]["ref"],
+            "head_sha": pr["head"]["sha"],
+        }
+        for pr in data
+    ]
 
 
 def _download_zip_to_temp(url: str, progress_cb=None) -> Optional[str]:
@@ -108,12 +124,12 @@ def _download_zip_to_temp(url: str, progress_cb=None) -> Optional[str]:
     try:
         with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
             total = int(resp.headers.get("Content-Length", 0))
-            
+
             # Create a named temporary file that persists after closing the object
             # but is cleaned up by our manual logic later.
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
             tmp_path = tmp.name
-            
+
             try:
                 downloaded = 0
                 chunk_size = 128 * 1024  # 128KB chunks
@@ -150,15 +166,25 @@ def _get_gitignore_patterns() -> list[str]:
     patterns = _fetch_gitignore_patterns()
     if not patterns:
         patterns = [
-            "user_files/mypokemon.json", "user_files/mainpokemon.json",
-            "user_files/badges.json", "user_files/items.json",
-            "user_files/data.json", "user_files/team.json",
-            "user_files/config.obf", "user_files/pokemon_history.json",
-            "user_files/rate_this.json", "user_files/backups",
-            "user_files/todays_shop.json", "user_files/meta.json",
-            "user_files/download_complete.flag", "user_files/ankimon.db",
-            "user_files/json/*", "user_files/sprites/",
-            "meta.json", "*.pyc", "*.log",
+            "user_files/mypokemon.json",
+            "user_files/mainpokemon.json",
+            "user_files/badges.json",
+            "user_files/items.json",
+            "user_files/data.json",
+            "user_files/team.json",
+            "user_files/config.obf",
+            "user_files/pokemon_history.json",
+            "user_files/rate_this.json",
+            "user_files/backups",
+            "user_files/todays_shop.json",
+            "user_files/meta.json",
+            "user_files/download_complete.flag",
+            "user_files/ankimon.db",
+            "user_files/json/*",
+            "user_files/sprites/",
+            "meta.json",
+            "*.pyc",
+            "*.log",
         ]
     return patterns
 
@@ -192,7 +218,7 @@ def _extract_ref_from_prefix(src_prefix: str) -> str:
     root_dir = parts[0]
     # Remove repo name prefix if present
     if root_dir.startswith("ankimon-"):
-        ref = root_dir[len("ankimon-"):]
+        ref = root_dir[len("ankimon-") :]
         return ref if ref else "main"
     elif "ankimon-" in root_dir:
         # e.g. h0tp-ftw-ankimon-a1b2c3d -> a1b2c3d
@@ -221,7 +247,7 @@ def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None):
 
     url = f"https://github.com/ArdentRoe/poke-engine/archive/{sha}.zip"
     log("Downloading poke_engine submodule package...")
-    
+
     zip_path = _download_zip_to_temp(url)
     if not zip_path:
         raise Exception("Failed to download poke_engine submodule zip archive.")
@@ -235,19 +261,19 @@ def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None):
                 raise Exception("poke_engine submodule archive is empty.")
             # The root directory in zip is e.g. "poke-engine-{sha}"
             root_prefix = names[0].split("/")[0] + "/"
-            
+
             for name in names:
                 if not name.startswith(root_prefix) or name == root_prefix:
                     continue
-                rel_path = name[len(root_prefix):]
+                rel_path = name[len(root_prefix) :]
                 if not rel_path or rel_path.endswith("/"):
                     continue
-                
+
                 dest_file = temp_extract_dir / rel_path
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(name) as source, dest_file.open("wb") as target:
                     shutil.copyfileobj(source, target)
-        
+
         # Atomic swap: Delete old dest_dir if it exists, rename temp_extract_dir to dest_dir
         if dest_dir.exists():
             shutil.rmtree(dest_dir)
@@ -297,7 +323,7 @@ def apply_update(zip_path: str, status_cb=None) -> tuple[bool, str]:
             for name in names:
                 if not name.startswith(src_prefix) or name == src_prefix:
                     continue
-                rel_path = name[len(src_prefix):]
+                rel_path = name[len(src_prefix) :]
                 if not rel_path or rel_path.endswith("/"):
                     continue
                 if _should_preserve(rel_path, gitignore_patterns):
@@ -356,8 +382,10 @@ def apply_update(zip_path: str, status_cb=None) -> tuple[bool, str]:
             ref = _extract_ref_from_prefix(src_prefix)
             log(f"Resolving poke_engine submodule for ref '{ref}'...")
             sub_sha = _fetch_submodule_sha(ref) or DEFAULT_SUBMODULE_SHA
-            
-            _download_and_extract_submodule(sub_sha, addon_dir / "poke_engine", status_cb)
+
+            _download_and_extract_submodule(
+                sub_sha, addon_dir / "poke_engine", status_cb
+            )
 
             cleanup()
             log(f"Update complete. Installed {installed} files.")

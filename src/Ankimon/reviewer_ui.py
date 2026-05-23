@@ -2,23 +2,19 @@ from anki.hooks import wrap
 from aqt.reviewer import Reviewer
 from aqt.utils import downArrow, tooltip, tr
 
+from .functions.encounter_functions import catch_pokemon, kill_pokemon, new_pokemon
 from .singletons import (
-    enemy_pokemon,
-    main_pokemon,
+    achievements,
     ankimon_tracker_obj,
-    test_window,
+    enemy_pokemon,
     evo_window,
     logger,
-    achievements,
-    trainer_card,
+    main_pokemon,
     reviewer_obj,
+    test_window,
+    trainer_card,
 )
-from .functions.encounter_functions import (
-    catch_pokemon,
-    kill_pokemon,
-    new_pokemon,
-)
-from .texts import _bottomHTML_template, button_style
+from .texts import _bottomHTML_template
 
 _collected_pokemon_ids = set()
 
@@ -53,7 +49,9 @@ def defeat_shortcut_function():
         tooltip("Wild pokemon has to be fainted to defeat it!")
 
 
-def setup_reviewer_ui(catch_shortcut: str, defeat_shortcut: str, reviewer_buttons: bool):
+def setup_reviewer_ui(
+    catch_shortcut: str, defeat_shortcut: str, reviewer_buttons: bool
+):
     catch_key = str(catch_shortcut).lower()
     defeat_key = str(defeat_shortcut).lower()
 

@@ -1,13 +1,20 @@
-from PyQt6.QtGui import QIcon, QDesktopServices
-from PyQt6.QtWidgets import QVBoxLayout, QTextEdit
-from PyQt6.QtCore import Qt, QUrl, QObject, pyqtSlot
 from aqt.qt import QDialog
-from aqt.utils import showWarning, QWebEngineSettings, QWebEnginePage, QWebEngineView
+from aqt.utils import QWebEnginePage, QWebEngineSettings
+from PyQt6.QtCore import QObject, Qt, QUrl, pyqtSlot
+from PyQt6.QtGui import QDesktopServices, QIcon
 from PyQt6.QtWebChannel import QWebChannel  # Add this import
+from PyQt6.QtWidgets import QTextEdit, QVBoxLayout
 
-from ..resources import icon_path, addon_dir
-from ..utils import read_local_file, read_github_file, compare_files, write_local_file, test_online_connectivity
 from ..pyobj.error_handler import show_warning_with_traceback
+from ..resources import addon_dir, icon_path
+from ..utils import (
+    compare_files,
+    read_github_file,
+    read_local_file,
+    test_online_connectivity,
+    write_local_file,
+)
+
 
 class ExternalLinkWebEnginePage(QWebEnginePage):
     def acceptNavigationRequest(self, url, nav_type, isMainFrame):
@@ -22,7 +29,9 @@ class ExternalLinkWebEnginePage(QWebEnginePage):
             def acceptNavigationRequest(self, url, nav_type, isMainFrame):
                 QDesktopServices.openUrl(url)
                 return False
+
         return DummyPage(self.parent())
+
 
 class Bridge(QObject):
     def __init__(self, dialog, parent=None):
@@ -33,6 +42,7 @@ class Bridge(QObject):
     def closeDialog(self):
         if self.dialog:
             self.dialog.close()
+
 
 class HelpWindow(QDialog):
     """
@@ -45,6 +55,7 @@ class HelpWindow(QDialog):
     - Interactive page navigation within the HTML
     - All links (including target="_blank" and JS window.open) open in external browser
     """
+
     def __init__(self, online_connectivity=test_online_connectivity):
         super().__init__()
         self.setWindowTitle("Ankimon Guide")
@@ -53,7 +64,6 @@ class HelpWindow(QDialog):
 
         # Check for QWebEngineView availability
         try:
-            from PyQt6.QtWebEngineWidgets import QWebEngineView
             self.use_web_engine = True
         except ImportError:
             self.use_web_engine = False
@@ -80,18 +90,27 @@ class HelpWindow(QDialog):
 
         settings = self.web_view.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
+        settings.setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
+        )
         settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
 
         # Set up QWebChannel for JavaScript to Python communication
         self.channel = QWebChannel(self.web_view)
         self.bridge = Bridge(self)
-        self.channel.registerObject('bridge', self.bridge)
+        self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)
 
         html_content = self._get_html_content(online_connectivity)
-        self.web_view.setHtml(html_content, QUrl("https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/HelpInfos/HelpInfos.html"))
+        self.web_view.setHtml(
+            html_content,
+            QUrl(
+                "https://raw.githubusercontent.com/h0tp-ftw/ankimon/refs/heads/main/assets/HelpInfos/HelpInfos.html"
+            ),
+        )
         layout.addWidget(self.web_view)
 
     def _setup_text_edit_view(self, layout, online_connectivity):
@@ -99,7 +118,9 @@ class HelpWindow(QDialog):
         self.text_edit = QTextEdit()
         self.text_edit.setReadOnly(True)
         self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.text_edit.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
 
         # Fetch HTML content
         html_content = self._get_html_content(online_connectivity)
@@ -130,7 +151,9 @@ class HelpWindow(QDialog):
                 # Read content from GitHub
                 github_content, github_html_content = read_github_file(help_github_url)
 
-                if local_content is not None and compare_files(local_content, github_content):
+                if local_content is not None and compare_files(
+                    local_content, github_content
+                ):
                     # If local file matches GitHub, use cached content
                     html_content = github_html_content
                 else:
@@ -143,7 +166,11 @@ class HelpWindow(QDialog):
                 local_content = read_local_file(help_local_file_path)
                 html_content = local_content
         except Exception as e:
-            show_warning_with_traceback(parent=self, exception=e, message=f"Failed to retrieve Ankimon HelpGuide: {str(e)}")
+            show_warning_with_traceback(
+                parent=self,
+                exception=e,
+                message=f"Failed to retrieve Ankimon HelpGuide: {str(e)}",
+            )
             local_content = read_local_file(help_local_file_path)
             html_content = local_content
 

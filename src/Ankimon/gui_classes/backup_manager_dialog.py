@@ -1,16 +1,22 @@
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, 
-    QLabel, QMessageBox, QListWidgetItem, QWidget
-)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFontDatabase, QFont, QIcon
-from pathlib import Path
+from PyQt6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from ..pyobj.backup_manager import BackupManager
-from ..resources import addon_dir
+
 
 class BackupItemWidget(QWidget):
     """Custom widget for displaying a single backup's information."""
+
     def __init__(self, backup_data: dict, parent=None):
         super().__init__(parent)
         self.main_layout = QHBoxLayout(self)
@@ -19,7 +25,7 @@ class BackupItemWidget(QWidget):
 
         # Date Info
         date_layout = QVBoxLayout()
-        date_str, time_str = backup_data.get('date', ' ').split(' ', 1)
+        date_str, time_str = backup_data.get("date", " ").split(" ", 1)
         date_label = QLabel(date_str)
         time_label = QLabel(time_str)
         date_label.setObjectName("DateLabel")
@@ -30,9 +36,9 @@ class BackupItemWidget(QWidget):
 
         # Trainer Info
         trainer_layout = QVBoxLayout()
-        trainer_name = backup_data.get('trainer_name', 'N/A')
-        main_pokemon_name = backup_data.get('main_pokemon_name', 'N/A')
-        main_pokemon_level = backup_data.get('main_pokemon_level', 'N/A')
+        trainer_name = backup_data.get("trainer_name", "N/A")
+        main_pokemon_name = backup_data.get("main_pokemon_name", "N/A")
+        main_pokemon_level = backup_data.get("main_pokemon_level", "N/A")
         trainer_name_label = QLabel(f"{trainer_name}")
         main_pokemon_label = QLabel(f"{main_pokemon_name} (Lv. {main_pokemon_level})")
         trainer_name_label.setObjectName("TrainerName")
@@ -41,13 +47,15 @@ class BackupItemWidget(QWidget):
 
         # Game Stats
         stats_layout = QVBoxLayout()
-        poke_count = backup_data.get('pokemon_count', 0)
-        item_count = backup_data.get('item_count', 0)
-        cash = backup_data.get('trainer_cash', 0)
+        poke_count = backup_data.get("pokemon_count", 0)
+        item_count = backup_data.get("item_count", 0)
+        cash = backup_data.get("trainer_cash", 0)
         poke_count_label = QLabel(f"{poke_count} Pokémon")
         item_count_label = QLabel(f"{item_count} Items")
         cash_label = QLabel(f"${cash}")
-        cash_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        cash_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
 
         stats_layout.addWidget(poke_count_label)
         stats_layout.addWidget(item_count_label)
@@ -58,6 +66,7 @@ class BackupItemWidget(QWidget):
         self.main_layout.addLayout(stats_layout)
         self.main_layout.addWidget(cash_label)
         self.setLayout(self.main_layout)
+
 
 class BackupManagerDialog(QDialog):
     def __init__(self, backup_manager: BackupManager, parent=None):
@@ -83,10 +92,10 @@ class BackupManagerDialog(QDialog):
         self.restore_button.clicked.connect(self.restore_selected_backup)
         self.restore_button.setEnabled(False)
         self.restore_button.setObjectName("RestoreButton")
-        
+
         self.manual_backup_button = QPushButton("Create New Backup")
         self.manual_backup_button.clicked.connect(self.create_manual_backup)
-        
+
         self.delete_button = QPushButton("Delete Backup")
         self.delete_button.clicked.connect(self.delete_selected_backup)
         self.delete_button.setEnabled(False)
@@ -104,7 +113,9 @@ class BackupManagerDialog(QDialog):
         main_layout.addLayout(button_layout)
 
         # Add backup path label
-        backup_path_label = QLabel(f"Backups are stored in: {self.backup_manager.backups_path}")
+        backup_path_label = QLabel(
+            f"Backups are stored in: {self.backup_manager.backups_path}"
+        )
         backup_path_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         backup_path_label.setObjectName("BackupPathLabel")
         main_layout.addWidget(backup_path_label)
@@ -208,29 +219,36 @@ class BackupManagerDialog(QDialog):
         if not selected_items:
             return
 
-        reply = QMessageBox.question(self, "Delete Backup",
-                                     "Are you sure you want to permanently delete this backup?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                     QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self,
+            "Delete Backup",
+            "Are you sure you want to permanently delete this backup?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
 
         if reply == QMessageBox.StandardButton.Yes:
             selected_backup = selected_items[0].data(Qt.ItemDataRole.UserRole)
-            backup_path = selected_backup.get('path')
+            backup_path = selected_backup.get("path")
             if backup_path:
                 self.backup_manager.delete_backup(backup_path)
                 self.refresh_backup_list()
             else:
-                QMessageBox.warning(self, "Error", "Could not find path for the selected backup.")
+                QMessageBox.warning(
+                    self, "Error", "Could not find path for the selected backup."
+                )
 
     def restore_selected_backup(self):
         selected_items = self.backup_list_widget.selectedItems()
         if not selected_items:
             return
-        
+
         selected_backup = selected_items[0].data(Qt.ItemDataRole.UserRole)
-        backup_path = selected_backup.get('path')
-        
+        backup_path = selected_backup.get("path")
+
         if backup_path:
             self.backup_manager.restore_backup(backup_path)
         else:
-            QMessageBox.warning(self, "Error", "Could not find path for the selected backup.")
+            QMessageBox.warning(
+                self, "Error", "Could not find path for the selected backup."
+            )

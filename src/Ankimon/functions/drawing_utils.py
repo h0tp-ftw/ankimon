@@ -1,10 +1,10 @@
 from typing import Optional
 
 from aqt import mw
-from aqt.qt import QPainter, QLabel, Qt, sip
-from PyQt6.QtGui import QColor, QFont, QColor, QPalette
-from PyQt6.QtCore import Qt, QRect, QPoint, QSize, QPoint, QTimer
-from PyQt6.QtWidgets import QApplication, QLabel, QFrame
+from aqt.qt import QLabel, QPainter, Qt, sip
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
+from PyQt6.QtGui import QColor, QFont, QPalette
+from PyQt6.QtWidgets import QApplication, QFrame, QLabel
 
 from ..pyobj.pokemon_obj import PokemonObject
 

@@ -2,10 +2,11 @@ import json
 import uuid
 from typing import Optional
 
-from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
-from ..resources import mainpokemon_path
-from ..pyobj.pokemon_obj import PokemonObject
 from aqt import mw
+
+from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
+from ..pyobj.pokemon_obj import PokemonObject
+from ..resources import mainpokemon_path
 
 # default values to fall back in case of load error
 MAIN_POKEMON_DEFAULT = {
@@ -46,7 +47,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
         main_pokemon.xp = 0
 
     mainpokemon_empty = True
-    
+
     # Try database first
     if db.is_migrated():
         main_pokemon_data = db.get_main_pokemon()
@@ -57,7 +58,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
             if "stats" in main_pokemon_data:
                 del main_pokemon_data["stats"]
             main_pokemon.update_stats(**main_pokemon_data)
-            
+
             max_hp = main_pokemon.calculate_max_hp()
             main_pokemon.max_hp = max_hp
             if main_pokemon_data.get("current_hp", max_hp) > max_hp:
@@ -66,7 +67,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
             return main_pokemon, mainpokemon_empty
         else:
             return PokemonObject(**MAIN_POKEMON_DEFAULT), mainpokemon_empty
-    
+
     # Fallback to JSON for backwards compatibility
     if mainpokemon_path.is_file():
         with open(mainpokemon_path, "r", encoding="utf-8") as mainpokemon_json:
@@ -78,9 +79,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
                     main_pokemon_data[0]["base_stats"] = search_pokedex(
                         pokemon_name, "baseStats"
                     )
-                    del main_pokemon_data[
-                        0
-                    ][
+                    del main_pokemon_data[0][
                         "stats"
                     ]  # For legacy code, i.e. for when "stats" in the JSON actually meant "base_stat"
                     main_pokemon.update_stats(**main_pokemon_data[0])
@@ -105,14 +104,13 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
         return main_pokemon, mainpokemon_empty
 
 
-
 def save_main_pokemon(main_pokemon: PokemonObject):
     """Saves the main Pokémon object to the database."""
     db = mw.ankimon_db
-    
-    if hasattr(main_pokemon, 'to_dict'):
+
+    if hasattr(main_pokemon, "to_dict"):
         data = main_pokemon.to_dict()
     else:
         data = main_pokemon.__dict__
-    
+
     db.save_main_pokemon(data)

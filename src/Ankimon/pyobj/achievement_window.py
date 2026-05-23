@@ -1,27 +1,13 @@
 import json
 
 from aqt import mw
-from aqt.qt import (
-    QGridLayout,
-    QLabel,
-    QPixmap,
-    Qt,
-    QVBoxLayout,
-    QWidget,
-    QPainter,
-    )
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import (
-    QLabel,
-    QVBoxLayout,
-    QWidget,
-    QScrollArea,
-    )
-from PyQt6.QtGui import QIcon, QColor
+from aqt.qt import QGridLayout, QLabel, QPainter, QPixmap, Qt, QVBoxLayout, QWidget
+from PyQt6.QtGui import QColor, QIcon
+from PyQt6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ..functions.badges_functions import get_achieved_badges
+from ..resources import badges_list_path, badges_path, icon_path
 
-from ..resources import icon_path, badges_path, badges_list_path
 
 class AchievementWindow(QWidget):
     def __init__(self):
@@ -73,7 +59,7 @@ class AchievementWindow(QWidget):
 
     def BadgesLabel(self, badge_num):
         badge_path = badges_path / f"{str(badge_num)}.png"
-        frame = QVBoxLayout() #itemframe
+        frame = QVBoxLayout()  # itemframe
         with open(badges_list_path, "r", encoding="utf-8") as json_file:
             badges = json.load(json_file)
         achievement_description = f"{(badges[str(badge_num)])}"
@@ -82,18 +68,18 @@ class AchievementWindow(QWidget):
         if badge_num < 15:
             border_width = 93  # Example width
             border_height = 93  # Example height
-            border_color = QColor('black')
+            border_color = QColor("black")
             border_pixmap = QPixmap(border_width, border_height)
             border_pixmap.fill(border_color)
             desired_width = 89  # Example width
             desired_height = 89  # Example height
-            background_color = QColor('white')
+            background_color = QColor("white")
             background_pixmap = QPixmap(desired_width, desired_height)
             background_pixmap.fill(background_color)
             picture_pixmap = QPixmap(str(badge_path))
             painter = QPainter(border_pixmap)
             painter.drawPixmap(2, 2, background_pixmap)
-            painter.drawPixmap(5,5, picture_pixmap)
+            painter.drawPixmap(5, 5, picture_pixmap)
             painter.end()  # Finish drawing
             picture_label = QLabel()
             picture_label.setPixmap(border_pixmap)
@@ -101,10 +87,17 @@ class AchievementWindow(QWidget):
             picture_pixmap = QPixmap(str(badge_path))
             # Scale the QPixmap to fit within a maximum size while maintaining the aspect ratio
             max_width, max_height = 100, 100  # Example maximum sizes
-            scaled_pixmap = picture_pixmap.scaled(max_width, max_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            scaled_pixmap = picture_pixmap.scaled(
+                max_width,
+                max_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
             picture_label = QLabel()
             picture_label.setPixmap(scaled_pixmap)
-        picture_label.setStyleSheet("border: 2px solid #3498db; border-radius: 5px; padding: 5px;")
+        picture_label.setStyleSheet(
+            "border: 2px solid #3498db; border-radius: 5px; padding: 5px;"
+        )
         picture_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         frame.addWidget(picture_label)
         frame.addWidget(badges_name_label)

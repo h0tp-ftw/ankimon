@@ -11,5 +11,5 @@ def effectiveness_text(effect_value):
         effective_txt = "was super effective !"
     else:
         effective_txt = "was effective."
-        #return None
+        # return None
     return effective_txt

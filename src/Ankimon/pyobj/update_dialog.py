@@ -1,35 +1,32 @@
 from aqt import mw
 from aqt.operations import QueryOp
 from aqt.qt import (
-    Qt,
-    QDialog,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
     QComboBox,
-    QProgressBar,
-    QTabWidget,
-    QWidget,
-    QMessageBox,
-    QGroupBox,
+    QDialog,
     QFrame,
-    QSizePolicy,
+    QGroupBox,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
     QSpacerItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 from aqt.theme import theme_manager
 
+from ..resources import addon_ver
 from .update_manager import (
-    fetch_releases,
-    fetch_tags,
-    fetch_branches,
-    fetch_open_prs,
-    apply_update,
-    _download_zip_to_temp,
     _download_branch_zip,
     _download_pr_zip,
+    _download_zip_to_temp,
+    apply_update,
+    fetch_branches,
+    fetch_open_prs,
+    fetch_releases,
+    fetch_tags,
 )
-from ..resources import addon_ver
 
 
 class UpdateDialog(QDialog):
@@ -207,11 +204,15 @@ class UpdateDialog(QDialog):
         frame_layout.setSpacing(4)
 
         title = QLabel("Update Ankimon")
-        title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {c['text']}; background: transparent; border: none;")
+        title.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {c['text']}; background: transparent; border: none;"
+        )
         frame_layout.addWidget(title)
 
         ver = QLabel(f"Installed: {addon_ver}")
-        ver.setStyleSheet(f"font-size: 12px; color: {c['muted']}; background: transparent; border: none;")
+        ver.setStyleSheet(
+            f"font-size: 12px; color: {c['muted']}; background: transparent; border: none;"
+        )
         frame_layout.addWidget(ver)
 
         return frame
@@ -230,11 +231,15 @@ class UpdateDialog(QDialog):
 
         desc = QLabel("One click to get the latest experimental release.")
         desc.setWordWrap(True)
-        desc.setStyleSheet(f"color: {c['muted']}; font-size: 11px; font-weight: normal;")
+        desc.setStyleSheet(
+            f"color: {c['muted']}; font-size: 11px; font-weight: normal;"
+        )
         latest_layout.addWidget(desc)
 
         self.latest_tag_label = QLabel("Checking...")
-        self.latest_tag_label.setStyleSheet(f"font-weight: bold; font-size: 13px; color: {c['muted']};")
+        self.latest_tag_label.setStyleSheet(
+            f"font-weight: bold; font-size: 13px; color: {c['muted']};"
+        )
         latest_layout.addWidget(self.latest_tag_label)
 
         self.update_latest_btn = QPushButton("Update to Latest Release")
@@ -262,7 +267,9 @@ class UpdateDialog(QDialog):
         specific_layout.setSpacing(8)
 
         pick_label = QLabel("Choose a version:")
-        pick_label.setStyleSheet(f"color: {c['muted']}; font-size: 11px; font-weight: normal;")
+        pick_label.setStyleSheet(
+            f"color: {c['muted']}; font-size: 11px; font-weight: normal;"
+        )
         specific_layout.addWidget(pick_label)
 
         self.release_combo = QComboBox()
@@ -381,7 +388,9 @@ class UpdateDialog(QDialog):
             self._releases, self._tags, self._branches, self._prs = result
             self._populate_ui()
 
-        QueryOp(parent=self, op=bg, success=on_done).without_collection().run_in_background()
+        QueryOp(
+            parent=self, op=bg, success=on_done
+        ).without_collection().run_in_background()
 
     def _populate_ui(self):
         c = self._colors
@@ -389,15 +398,21 @@ class UpdateDialog(QDialog):
             latest = self._releases[0]["name"]
             if latest == addon_ver:
                 self.latest_tag_label.setText(f"You're up to date  ({latest})")
-                self.latest_tag_label.setStyleSheet(f"font-weight: bold; font-size: 13px; color: {c['success']};")
+                self.latest_tag_label.setStyleSheet(
+                    f"font-weight: bold; font-size: 13px; color: {c['success']};"
+                )
                 self.update_latest_btn.setText("Already Up to Date")
             else:
                 self.latest_tag_label.setText(f"New version available: {latest}")
-                self.latest_tag_label.setStyleSheet(f"font-weight: bold; font-size: 13px; color: {c['warning']};")
+                self.latest_tag_label.setStyleSheet(
+                    f"font-weight: bold; font-size: 13px; color: {c['warning']};"
+                )
                 self.update_latest_btn.setEnabled(True)
         else:
             self.latest_tag_label.setText("Could not check for updates.")
-            self.latest_tag_label.setStyleSheet(f"font-weight: bold; font-size: 13px; color: {c['error']};")
+            self.latest_tag_label.setStyleSheet(
+                f"font-weight: bold; font-size: 13px; color: {c['error']};"
+            )
 
         self.release_combo.clear()
         if self._releases:
@@ -429,7 +444,8 @@ class UpdateDialog(QDialog):
 
     def _run_update(self, download_fn, label: str):
         confirm = QMessageBox.question(
-            self, "Confirm Update",
+            self,
+            "Confirm Update",
             f"Update Ankimon to {label}?\n\nYour Pokemon data, settings, and sprites will be preserved.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -444,6 +460,7 @@ class UpdateDialog(QDialog):
             if not zip_path:
                 return False, "Download failed. Check your internet connection.", []
             messages = []
+
             def status_update(m):
                 messages.append(m)
                 mw.taskman.run_on_main(lambda: self.status_label.setText(m))
@@ -457,36 +474,64 @@ class UpdateDialog(QDialog):
             self.status_label.setText(messages[-1] if messages else msg)
             self.progress_bar.setValue(100 if success else 0)
             if success:
-                QMessageBox.information(self, "Update Complete", f"{msg}\n\nPlease restart Anki for changes to take effect.")
+                QMessageBox.information(
+                    self,
+                    "Update Complete",
+                    f"{msg}\n\nPlease restart Anki for changes to take effect.",
+                )
             else:
                 QMessageBox.warning(self, "Update Failed", msg)
 
-        QueryOp(parent=self, op=bg, success=on_done).without_collection().run_in_background()
+        QueryOp(
+            parent=self, op=bg, success=on_done
+        ).without_collection().run_in_background()
 
     def _on_latest_release_update(self):
         if not self._releases:
             return
         r = self._releases[0]
-        self._run_update(lambda progress_cb: _download_zip_to_temp(r["zipball_url"], progress_cb), f"latest release ({r['name']})")
+        self._run_update(
+            lambda progress_cb: _download_zip_to_temp(r["zipball_url"], progress_cb),
+            f"latest release ({r['name']})",
+        )
 
     def _on_release_update(self):
         data = self.release_combo.currentData()
         if data:
-            self._run_update(lambda progress_cb: _download_zip_to_temp(data["zipball_url"], progress_cb), f"release {data['name']}")
+            self._run_update(
+                lambda progress_cb: _download_zip_to_temp(
+                    data["zipball_url"], progress_cb
+                ),
+                f"release {data['name']}",
+            )
 
     def _on_dev_install(self):
         source = self.source_combo.currentData()
         if source == "main":
-            self._run_update(lambda progress_cb: _download_branch_zip("main", progress_cb), "latest main")
+            self._run_update(
+                lambda progress_cb: _download_branch_zip("main", progress_cb),
+                "latest main",
+            )
         elif source == "pr":
             data = self.target_combo.currentData()
             if data:
-                self._run_update(lambda progress_cb: _download_pr_zip(data["head_sha"], progress_cb), f"PR #{data['number']} ({data['title']})")
+                self._run_update(
+                    lambda progress_cb: _download_pr_zip(data["head_sha"], progress_cb),
+                    f"PR #{data['number']} ({data['title']})",
+                )
         elif source == "branch":
             data = self.target_combo.currentData()
             if data:
-                self._run_update(lambda progress_cb: _download_branch_zip(data["name"], progress_cb), f"branch {data['name']}")
+                self._run_update(
+                    lambda progress_cb: _download_branch_zip(data["name"], progress_cb),
+                    f"branch {data['name']}",
+                )
         elif source == "tag":
             data = self.target_combo.currentData()
             if data:
-                self._run_update(lambda progress_cb: _download_zip_to_temp(data["zipball_url"], progress_cb), f"tag {data['name']}")
+                self._run_update(
+                    lambda progress_cb: _download_zip_to_temp(
+                        data["zipball_url"], progress_cb
+                    ),
+                    f"tag {data['name']}",
+                )

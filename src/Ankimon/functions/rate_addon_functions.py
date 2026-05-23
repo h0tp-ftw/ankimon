@@ -1,22 +1,21 @@
+from aqt import mw
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtWidgets import (
-    QDialog,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    )
-    
-from ..texts import rate_addon_text_label, thankyou_message_text, dont_show_this_button_text
-from ..utils import give_item
-from ..singletons import logger, test_window
+from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout
 
-from aqt import mw
+from ..singletons import logger, test_window
+from ..texts import (
+    dont_show_this_button_text,
+    rate_addon_text_label,
+    thankyou_message_text,
+)
+from ..utils import give_item
+
 
 def rate_this_addon():
     # Only check database
     db_rate_this = mw.ankimon_db.get_user_data("rate_this")
-    
+
     if db_rate_this is True:
         return
 
@@ -54,21 +53,21 @@ def rate_this_addon():
         rate_window.close()
         # Save to DB
         mw.ankimon_db.set_user_data("rate_this", True)
-        logger.log_and_showinfo("info",dont_show_this_button_text)
+        logger.log_and_showinfo("info", dont_show_this_button_text)
 
     def rate_this_button():
         rate_window.close()
         rate_url = "https://ankiweb.net/shared/review/1908235722"
         QDesktopServices.openUrl(QUrl(rate_url))
         thankyou_message()
-        
+
         # Save to DB
         mw.ankimon_db.set_user_data("rate_this", True)
-        
+
         test_window.rate_display_item("potion")
         # add item to item list
         give_item("potion")
-            
+
     rate_button.clicked.connect(rate_this_button)
     layout.addWidget(rate_button)
 

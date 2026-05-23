@@ -1,22 +1,22 @@
-from typing import Literal
+import csv
+import json
+import random
+
+from aqt import mw
+from aqt.utils import showWarning
+
+from ..pyobj.error_handler import show_warning_with_traceback
 from ..resources import (
-    pokedex_path,
-    pokedesc_lang_path,
-    pokenames_lang_path,
-    learnset_path,
+    csv_file_items_cost,
     moves_file_path,
     poke_evo_path,
     poke_species_path,
-    csv_file_items_cost,
-    stats_csv,
+    pokedesc_lang_path,
+    pokedex_path,
     pokemon_csv,
+    pokenames_lang_path,
+    stats_csv,
 )
-from aqt.utils import showWarning
-from aqt import mw
-import json
-import random
-import csv
-from ..pyobj.error_handler import show_warning_with_traceback
 
 GROWTH_RATES = {
     1: "slow",
@@ -24,7 +24,7 @@ GROWTH_RATES = {
     3: "fast",
     4: "medium-slow",
     5: "slow-then-very-fast",
-    6: "fast-then-very-slow"
+    6: "fast-then-very-slow",
 }
 
 STATS = {
@@ -35,6 +35,7 @@ STATS = {
     5: "special-defense",
     6: "speed",
 }
+
 
 def _normalize_language_id(language):
     """Map unsupported language IDs to a fallback that exists in data files."""
@@ -156,6 +157,7 @@ def search_pokedex(pokemon_name, variable):
         )
         return []
 
+
 def search_pokedex_by_id(species_id):
     with open(str(pokedex_path), "r", encoding="utf-8") as json_file:
         pokedex_data = json.load(json_file)
@@ -174,6 +176,7 @@ def get_mainpokemon_evo(pokemon_name):
         evolutions = pokemon_info.get("evos", [])
         return evolutions
 
+
 def get_growth_rate(species_id: int) -> str:
     with open(poke_species_path, mode="r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
@@ -184,6 +187,7 @@ def get_growth_rate(species_id: int) -> str:
 
     raise ValueError(species_id)
 
+
 def get_base_experience(actual_id: int) -> int:
     with open(pokemon_csv, mode="r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
@@ -193,6 +197,7 @@ def get_base_experience(actual_id: int) -> int:
                 return int(row["base_experience"])
 
     raise ValueError(actual_id)
+
 
 def get_effort_values(actual_id: int) -> dict[str, int]:
     evs = {}
@@ -211,6 +216,7 @@ def get_effort_values(actual_id: int) -> dict[str, int]:
         "special-defense": evs["special-defense"],
         "speed": evs["speed"],
     }
+
 
 def get_pokemon_descriptions(species_id, language):
     descriptions = []  # Initialize an empty list to store matching descriptions
@@ -261,7 +267,9 @@ def extract_ids_from_file():
         return []
 
 
-from .learnset_retrieval import get_all_pokemon_moves  # noqa: F401 — re-export for backwards compat
+from .learnset_retrieval import (
+    get_all_pokemon_moves,
+)  # noqa: F401 — re-export for backwards compat
 
 
 def find_details_move(move_name: str) -> dict:
@@ -273,7 +281,7 @@ def find_details_move(move_name: str) -> dict:
         move_name (str): The name of the move to search for.
 
     Returns:
-        dict: A dictionary containing information about the given move if found. If not it tries falling back to 
+        dict: A dictionary containing information about the given move if found. If not it tries falling back to
         either tackle (preferred) or None.
     """
     try:
@@ -294,22 +302,22 @@ def find_details_move(move_name: str) -> dict:
                 return move
             else:
                 move = moves_data.get("tackle")
-                showWarning(f"Move '{move_name}' not found. Returning default move 'tackle'.")
+                showWarning(
+                    f"Move '{move_name}' not found. Returning default move 'tackle'."
+                )
                 return move
-                
+
     except FileNotFoundError as f:
         show_warning_with_traceback(
-            parent=mw,
-            exception=f,
-            message="The is an issue finding moves.json."
+            parent=mw, exception=f, message="The is an issue finding moves.json."
         )
         return None
-        
+
     except Exception as e:
         show_warning_with_traceback(
             parent=mw,
             exception=e,
-            message=f"There is an issue in find_details_move for move: {move_name}. Returning to default move 'tackle'."
+            message=f"There is an issue in find_details_move for move: {move_name}. Returning to default move 'tackle'.",
         )
         return moves_data.get("tackle")
 
@@ -448,9 +456,7 @@ def check_evolution_for_pokemon(
                         continue  # Skip this evolution if minimum_level is missing or not a number
                     min_level = int(min_level_str)
                     if min_level <= level:
-                        evo_window.ask_pokemon_evo(
-                            individual_id, pokemon_id, int(evos)
-                        )
+                        evo_window.ask_pokemon_evo(individual_id, pokemon_id, int(evos))
                         return int(evos)  # Return the evolution ID
 
             # If no evolutions fit the criteria
@@ -482,7 +488,9 @@ def pokemon_evolves_from_id(pokemon_id):
     """Get the list of Pokémon IDs that evolve into the given Pokémon ID
     from the pokemon_species.csv file.
     """
-    evolves_from_ids = []  # List to hold the ids of Pokémon that evolve into the given ID
+    evolves_from_ids = (
+        []
+    )  # List to hold the ids of Pokémon that evolve into the given ID
     try:
         # Open the CSV file
         with open(poke_species_path, mode="r", encoding="utf-8") as file:
@@ -539,7 +547,6 @@ def get_pokemon_evolution_data(pokemon_id):
         # Check if evolution data was found, log a message if not
         if not evolution_data:
             showWarning(f"No evolution data found for Pokémon ID '{pokemon_id}'")
-            pass
     except FileNotFoundError as e:
         show_warning_with_traceback(
             parent=mw, exception=e, message=f"The evolution data file was not found."

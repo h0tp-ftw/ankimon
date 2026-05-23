@@ -1,7 +1,9 @@
-from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
-from ..const import status_colors_label, status_colors_html
+from PyQt6.QtWidgets import *
+
+from ..const import status_colors_html, status_colors_label
+
 
 def create_status_label(status_name):
 
@@ -23,14 +25,15 @@ def create_status_label(status_name):
     else:
         label = QLabel("Unknown Status")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet(
-            "padding: 5px 10px;"
-        )
+        label.setStyleSheet("padding: 5px 10px;")
 
     return label
 
-def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_package=""):
-    xp_bar_spacer = settings_obj.compute_special_variable('xp_bar_spacer')
+
+def create_status_html(
+    status_name, settings_obj, is_pokemon_owned=False, addon_package=""
+):
+    xp_bar_spacer = settings_obj.compute_special_variable("xp_bar_spacer")
     hp_bar_thickness = settings_obj.get("gui.review_hp_bar_thickness") * 4
     show_mainpkmn_in_reviewer = int(settings_obj.get("gui.show_mainpkmn_in_reviewer"))
     # Get the colors for the given status name
@@ -38,7 +41,7 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
 
     # If the status name is valid, create the HTML with inline CSS
     if colors:
-        badge_html = ''
+        badge_html = ""
         if is_pokemon_owned:
             pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
             badge_html = f'<img id="owned-indicator-badge" src="{pokeball_url}" style="margin-right: 8px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'

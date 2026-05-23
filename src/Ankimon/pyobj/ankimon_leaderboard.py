@@ -1,14 +1,11 @@
-import sys
-import json
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton
-from aqt.utils import showInfo
-from ..resources import user_path_credentials, mypokemon_path
-import json
 import requests
-from aqt import mw # import setting values direct from init file
+from aqt import mw  # import setting values direct from init file
+from aqt.utils import showInfo
+from PyQt6.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout
 
-#ANKIMON_LEADERBOARD_API_URL = "https://ankimon.com/api/leaderboard"  # Replace with the actual API URL
+# ANKIMON_LEADERBOARD_API_URL = "https://ankimon.com/api/leaderboard"  # Replace with the actual API URL
 ANKIMON_LEADERBOARD_API_URL = "https://leaderboard-api.ankimon.com/update_stats"  # Replace with the actual API URL
+
 
 class ApiKeyDialog(QDialog):
     def __init__(self):
@@ -47,10 +44,7 @@ class ApiKeyDialog(QDialog):
         api_key = self.api_key_input.text()
 
         if username and api_key:
-            credentials = {
-                "username": username,
-                "api_key": api_key
-            }
+            credentials = {"username": username, "api_key": api_key}
             self.save_credentials(credentials)
             self.accept()  # Close the dialog if everything is entered
         else:
@@ -65,55 +59,52 @@ class ApiKeyDialog(QDialog):
         except Exception as e:
             showInfo(f"Error saving credentials: {e}")
 
+
 def sync_data_to_leaderboard(data):
 
-        # First check if leaderboard is enabled in config
-        if not mw.settings_obj.get("misc.leaderboard"):
+    # First check if leaderboard is enabled in config
+    if not mw.settings_obj.get("misc.leaderboard"):
+        return
+
+    try:
+        # Load credentials from the database
+        username = mw.ankimon_db.get_user_data("username")
+        api_key = mw.ankimon_db.get_user_data("api_key")
+
+        # Validate credentials
+        if (not username or not api_key) and mw.ankimon_db.is_migrated():
+            showInfo(
+                "Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings."
+            )
             return
 
-        try:
-            # Load credentials from the database
-            username = mw.ankimon_db.get_user_data("username")
-            api_key = mw.ankimon_db.get_user_data("api_key")
+        # Check if both username and api_key are available
+        if username and api_key:
+            request_data = {"username": username, "api_key": api_key, "stats": data}
 
-            # Validate credentials
-            if (not username or not api_key) and mw.ankimon_db.is_migrated():
-                showInfo("Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.")
-                return
+            # Send a POST request to the leaderboard API
+            response = requests.post(ANKIMON_LEADERBOARD_API_URL, json=request_data)
 
+            # showInfo(response.text)  # Show the response text for debugging
 
-            # Check if both username and api_key are available
-            if username and api_key:
-                request_data = {
-                    "username": username,
-                    "api_key": api_key,
-                    "stats": data
-                }
+            # Check if the request was successful
+            # if response.status_code == 200:
+            #    mw.logger.log("log","Data synced successfully to leaderboard!")
+            # else:
+            #    mw.logger.log("log",f"Failed to sync data to leaderboard. Status code: {response.status_code}")
+        # else:
+        # mw.logger.log("Credentials are missing (username or api_key)")
 
-                # Send a POST request to the leaderboard API
-                response = requests.post(
-                    ANKIMON_LEADERBOARD_API_URL,
-                    json=request_data
-                )
-
-                #showInfo(response.text)  # Show the response text for debugging
-
-                # Check if the request was successful
-                #if response.status_code == 200:
-                #    mw.logger.log("log","Data synced successfully to leaderboard!")
-                #else:
-                #    mw.logger.log("log",f"Failed to sync data to leaderboard. Status code: {response.status_code}")
-            #else:
-                #mw.logger.log("Credentials are missing (username or api_key)")
-
-        except requests.exceptions.RequestException as e:
-            showInfo(f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}")
-        except Exception as e:
-            showInfo(f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}")
-
+    except requests.exceptions.RequestException as e:
+        showInfo(
+            f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}"
+        )
+    except Exception as e:
+        showInfo(
+            f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}"
+        )
 
 
 def show_api_key_dialog():
     dialog = ApiKeyDialog()  # Create the dialog instance
     dialog.exec()  # Show the dialog
-

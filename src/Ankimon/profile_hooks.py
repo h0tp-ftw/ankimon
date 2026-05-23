@@ -1,11 +1,11 @@
 from anki.hooks import addHook
 from aqt import gui_hooks, mw
 
-from .singletons import settings_obj, logger
-from .pyobj.ankimon_sync import setup_ankimon_sync_hooks, check_and_sync_pokemon_data
-from .pyobj.tip_of_the_day import show_tip_of_the_day
-from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+from .pyobj.ankimon_sync import check_and_sync_pokemon_data, setup_ankimon_sync_hooks
 from .pyobj.error_handler import show_warning_with_traceback
+from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+from .pyobj.tip_of_the_day import show_tip_of_the_day
+from .singletons import logger, settings_obj
 
 sync_dialog = None
 

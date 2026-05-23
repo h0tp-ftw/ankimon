@@ -1,44 +1,39 @@
-import os
-from pathlib import Path
-import requests
-import json
-import random
-import csv
 import base64
-from typing import Any, Optional
+import csv
+import json
+import os
+import random
+from pathlib import Path
+from typing import Optional
 
+import requests
 from aqt import mw
-from aqt.utils import showWarning, showInfo
-
-from aqt.qt import QFontDatabase, QFont, QUrl
+from aqt.qt import QFont, QFontDatabase, QUrl
+from aqt.utils import showInfo, showWarning
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from .pyobj.settings import Settings
-from .pyobj.InfoLogger import ShowInfoLogger
-
-from .functions.battle_functions import calculate_hp
-from .functions.pokedex_functions import find_details_move, search_pokedex
-
+from .functions.pokedex_functions import find_details_move
+from .move_names import format_move_name
 from .pyobj.error_handler import show_warning_with_traceback
+from .pyobj.InfoLogger import ShowInfoLogger
+from .pyobj.settings import Settings
 from .resources import (
+    POKEMON_TIERS,
+    addon_dir,
     battlescene_path,
     berries_path,
-    items_path,
-    csv_file_items_cost,
     csv_file_descriptions,
+    csv_file_items_cost,
+    fainted_sound_path,
     font_path,
+    hpheal_sound_path,
     hurt_normal_sound_path,
     hurt_noteff_sound_path,
     hurt_supereff_sound_path,
-    hpheal_sound_path,
+    items_path,
     ownhplow_sound_path,
-    fainted_sound_path,
-    addon_dir,
-    POKEMON_TIERS,
     pokedex_path,
 )
-from .move_names import format_move_name
-
 
 audio_output = QAudioOutput()
 media_player = QMediaPlayer()
@@ -395,13 +390,13 @@ def daily_item_list():
 def give_item(item_name: str, item_type: Optional[str] = None):
     """Gives an item to the user."""
     db = mw.ankimon_db
-    
+
     # Get current item or create new
     existing = db.get_item(item_name)
     if existing:
         db.update_item_quantity(item_name, 1)
         return
-    
+
     extra_data = {"type": item_type} if item_type else None
     db.add_item(item_name, 1, extra_data)
 
@@ -490,11 +485,11 @@ def count_items_and_rewrite():
     """
     try:
         db = mw.ankimon_db
-        
+
         # Get all items from database - they're already unique by item_name
         # so no need to aggregate, the database handles this automatically
         items = db.get_all_items()
-        
+
         if items:
             print(f"Database contains {len(items)} unique items.")
         else:
@@ -656,15 +651,18 @@ def save_error_code(error_code, logger=None):
 
 def get_main_pokemon_data():
     main_pokemon_data = mw.ankimon_db.get_main_pokemon()
-    
+
     if not main_pokemon_data:
         return None
 
     _name = main_pokemon_data["name"]
-    if not main_pokemon_data.get('nickname') or main_pokemon_data.get('nickname') is None:
+    if (
+        not main_pokemon_data.get("nickname")
+        or main_pokemon_data.get("nickname") is None
+    ):
         _nickname = None
     else:
-        _nickname = main_pokemon_data['nickname']
+        _nickname = main_pokemon_data["nickname"]
     _id = main_pokemon_data["id"]
     _ability = main_pokemon_data["ability"]
     _type = main_pokemon_data["type"]
@@ -690,14 +688,31 @@ def get_main_pokemon_data():
     _status = main_pokemon_data.get("status")
 
     return {
-        "name": _name, "nickname": _nickname, "id": _id, "ability": _ability,
-        "type": _type, "stats": _stats, "attacks": _attacks,
-        "level": _level, "hp": _hp_base_stat, "growth_rate": _growth_rate,
-        "base_experience": _base_experience, "ev": _ev, "iv": _iv,
-        "gender": _gender, "shiny": _shiny, "individual_id": _individual_id,
-        "pokemon_defeated": _pokemon_defeated, "current_hp": _current_hp, "xp": _xp,
-        "max_moves": _max_moves, "mega": _mega, "everstone": _everstone,
-        "friendship": _friendship, "held_item": _held_item, "status": _status
+        "name": _name,
+        "nickname": _nickname,
+        "id": _id,
+        "ability": _ability,
+        "type": _type,
+        "stats": _stats,
+        "attacks": _attacks,
+        "level": _level,
+        "hp": _hp_base_stat,
+        "growth_rate": _growth_rate,
+        "base_experience": _base_experience,
+        "ev": _ev,
+        "iv": _iv,
+        "gender": _gender,
+        "shiny": _shiny,
+        "individual_id": _individual_id,
+        "pokemon_defeated": _pokemon_defeated,
+        "current_hp": _current_hp,
+        "xp": _xp,
+        "max_moves": _max_moves,
+        "mega": _mega,
+        "everstone": _everstone,
+        "friendship": _friendship,
+        "held_item": _held_item,
+        "status": _status,
     }
 
 
@@ -917,6 +932,7 @@ def safe_get_random_move(
             f"Could not parse a single move in the following moveset : {str(pokemon_moves)}",
         )
     return find_details_move(format_move_name("splash"))
+
 
 def png_to_base64(path: str) -> str:
     """Convert a PNG file to a base64 data URI for embedding into HTML.

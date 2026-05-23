@@ -1,10 +1,21 @@
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QGridLayout, QWidget, QScrollArea, QPushButton
-from PyQt6.QtGui import QIcon
-from aqt import mw
-from ..utils import get_all_sprites
-from ..resources import trainer_sprites_path
 import os
+
+from aqt import mw
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import (
+    QDialog,
+    QGridLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
+
+from ..resources import trainer_sprites_path
+from ..utils import get_all_sprites
+
 
 class TrainerSpriteGraphicalDialog(QDialog):
     def __init__(self, settings_obj, parent=mw):
@@ -41,13 +52,13 @@ class TrainerSpriteGraphicalDialog(QDialog):
     def populate_grid(self):
         col = 0
         row = 0
-        last_letter = ''
+        last_letter = ""
         for sprite_name in self.trainer_sprites:
             if sprite_name[0].lower() != last_letter:
                 last_letter = sprite_name[0].lower()
                 col = 0
                 row += 1
-            
+
             sprite_path = os.path.join(trainer_sprites_path, sprite_name + ".png")
             if os.path.exists(sprite_path):
                 # Create a widget to hold the button and label
@@ -60,7 +71,9 @@ class TrainerSpriteGraphicalDialog(QDialog):
                 button.setIcon(QIcon(sprite_path))
                 button.setIconSize(QSize(100, 100))
                 button.setFixedSize(QSize(110, 110))
-                button.clicked.connect(lambda _, s=sprite_name: self.on_sprite_clicked(s))
+                button.clicked.connect(
+                    lambda _, s=sprite_name: self.on_sprite_clicked(s)
+                )
                 item_layout.addWidget(button)
 
                 formatted_name = self.format_sprite_name(sprite_name)
@@ -75,7 +88,7 @@ class TrainerSpriteGraphicalDialog(QDialog):
                     row += 1
 
     def format_sprite_name(self, name):
-        return ' '.join(word.capitalize() for word in name.split('-'))
+        return " ".join(word.capitalize() for word in name.split("-"))
 
     def on_sprite_clicked(self, sprite_name):
         self.settings.set("trainer.sprite", sprite_name)

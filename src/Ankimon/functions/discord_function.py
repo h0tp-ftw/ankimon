@@ -1,16 +1,26 @@
-import threading
 import random
+import threading
 import time
 
-from ..pyobj.ankimon_tracker import AnkimonTracker
-from ..addon_files.lib.pypresence import Presence
-from aqt.utils import showWarning, tooltip
 from aqt import mw
-from ..pyobj.error_handler import show_warning_with_traceback
+from aqt.utils import tooltip
+
+from ..addon_files.lib.pypresence import Presence
+from ..pyobj.ankimon_tracker import AnkimonTracker
+
 logger = mw.logger
 
+
 class DiscordPresence:
-    def __init__(self, client_id, large_image_url, ankimon_tracker, logger, settings_obj, parent=mw):
+    def __init__(
+        self,
+        client_id,
+        large_image_url,
+        ankimon_tracker,
+        logger,
+        settings_obj,
+        parent=mw,
+    ):
         try:
             self.RPC = Presence(client_id)
             self.RPC.connect()
@@ -31,17 +41,20 @@ class DiscordPresence:
                 "It’s dangerous to go alone—take your Ankimon deck!",
                 "A wild Flashcard appeared! What will you do?",
                 "Evolve your knowledge—level up with every session!",
-                "Gotta review ‘em all, Ankimon style!"
+                "Gotta review ‘em all, Ankimon style!",
             ]
             self.state = random.choice(self.quotes)
-                    # Check for conflicting addons
+            # Check for conflicting addons
             conflicting_addons = check_conflicting_discord_addons()
             if conflicting_addons:
-                conflict_list = ', '.join(conflicting_addons)
-                logger.log_and_showinfo("warning", f"⚠️ Conflicting Discord Rich Presence addons detected: \n{conflict_list}\n\nPlease remove them to avoid issues with Ankimon's Discord status, or turn off Discord Rich Presence in Ankimon settings :) ")
+                conflict_list = ", ".join(conflicting_addons)
+                logger.log_and_showinfo(
+                    "warning",
+                    f"⚠️ Conflicting Discord Rich Presence addons detected: \n{conflict_list}\n\nPlease remove them to avoid issues with Ankimon's Discord status, or turn off Discord Rich Presence in Ankimon settings :) ",
+                )
 
         except Exception as e:
-            logger.log("error",f"Error with Discord setup: {e}")
+            logger.log("error", f"Error with Discord setup: {e}")
             tooltip("Error with Discord setup. Is Discord running?")
 
     def _get_special_quotes(self):
@@ -53,13 +66,11 @@ class DiscordPresence:
             f"The stakes are high! {self.ankimon_tracker.main_pokemon.name.capitalize()} needs your help to win this fight!",
             f"Victory is within reach for {self.ankimon_tracker.main_pokemon.nickname or self.ankimon_tracker.main_pokemon.name.capitalize()}!",
             f"{self.ankimon_tracker.main_pokemon.name.capitalize()} is determined to show its strength!",
-
             f"Keep your guard up! {self.ankimon_tracker.enemy_pokemon.name.capitalize()} is no pushover.",
             f"Strategy is key! Plan your moves wisely against {self.ankimon_tracker.enemy_pokemon.name.capitalize()}!",
             f"Currently battling {self.ankimon_tracker.enemy_pokemon.name.capitalize()} Lvl {self.ankimon_tracker.enemy_pokemon.level}",
             f"The opponent {self.ankimon_tracker.enemy_pokemon.name.capitalize()} seems tough—stay sharp!",
             f"Level up and take down {self.ankimon_tracker.enemy_pokemon.name.capitalize()}!",
-
             f"Total reviews completed: {self.ankimon_tracker.get_total_reviews()}",
             f"{self.ankimon_tracker.card_ratings_count['good']} good reviews so far—keep it up!",
             f"You've marked {self.ankimon_tracker.card_ratings_count['again']} cards as Again—let's focus and improve!",
@@ -74,13 +85,18 @@ class DiscordPresence:
         try:
             while self.loop:
                 self.RPC.update(
-                    state = random.choice(self.quotes) if int(self.settings.get("misc.discord_rich_presence_text")) == 1 else random.choice(self._get_special_quotes()),
+                    state=(
+                        random.choice(self.quotes)
+                        if int(self.settings.get("misc.discord_rich_presence_text"))
+                        == 1
+                        else random.choice(self._get_special_quotes())
+                    ),
                     large_image=self.large_image_url,
-                    start=self.start_time
+                    start=self.start_time,
                 )
                 time.sleep(30)  # Sleep for 30 seconds before updating again
         except Exception as e:
-            logger.log("error",f"Error with Discord Rich Presence: {e}")
+            logger.log("error", f"Error with Discord Rich Presence: {e}")
             tooltip("Error with Discord Rich Presence. Is Discord running?")
 
     def start(self):
@@ -88,12 +104,16 @@ class DiscordPresence:
         Start updating the Discord Rich Presence in a separate thread.
         """
         try:
-            if not hasattr(self, 'thread') or self.thread is None or not self.thread.is_alive():
+            if (
+                not hasattr(self, "thread")
+                or self.thread is None
+                or not self.thread.is_alive()
+            ):
                 self.loop = True
                 self.thread = threading.Thread(target=self.update_presence, daemon=True)
                 self.thread.start()
         except Exception as e:
-            logger.log("error",f"Error starting Discord Rich Presence: {e}")
+            logger.log("error", f"Error starting Discord Rich Presence: {e}")
             tooltip("Error starting Discord Rich Presence. Is Discord running?")
 
     def stop(self):
@@ -102,13 +122,15 @@ class DiscordPresence:
         """
         try:
             self.loop = False
-            if hasattr(self, 'thread') and self.thread and self.thread.is_alive():
+            if hasattr(self, "thread") and self.thread and self.thread.is_alive():
                 # self.thread.join() # Removed to prevent blocking
                 self.thread = None  # Reset the thread
             self.RPC.clear()
         except Exception as e:
-            logger.log("error",f"Error clearing Discord Rich Presence: {e}")
-            tooltip("Error clearing Discord Rich Presence. Please check Logger for info.")
+            logger.log("error", f"Error clearing Discord Rich Presence: {e}")
+            tooltip(
+                "Error clearing Discord Rich Presence. Please check Logger for info."
+            )
 
     def stop_presence(self):
         """
@@ -119,11 +141,14 @@ class DiscordPresence:
             if not self.loop:
                 self.RPC.update(
                     state="Break time! You’ve earned it.",
-                    large_image=self.large_image_url
+                    large_image=self.large_image_url,
                 )
         except Exception as e:
-            logger.log("error",f"Error stopping Discord Rich Presence: {e}")
-            tooltip("Error stopping Discord Rich Presence. Please check Logger for info.")
+            logger.log("error", f"Error stopping Discord Rich Presence: {e}")
+            tooltip(
+                "Error stopping Discord Rich Presence. Please check Logger for info."
+            )
+
 
 def check_conflicting_discord_addons():
     """
@@ -140,9 +165,9 @@ def check_conflicting_discord_addons():
         # Known conflicting addon identifiers and names
         conflicting_addons = {
             # Known AnkiCord and Discord addon IDs
-            '933207442': 'AnkiCord - Discord Rich Presence (Customized by Shigeඞ)',
-            '1133851639': 'AnkiDiscord - Discord integration for Anki',
-            '1828536813': 'Ankicord - Discord Rich Presence',
+            "933207442": "AnkiCord - Discord Rich Presence (Customized by Shigeඞ)",
+            "1133851639": "AnkiDiscord - Discord integration for Anki",
+            "1828536813": "Ankicord - Discord Rich Presence",
             # Add more known conflicting addon IDs as discovered
         }
 
@@ -163,24 +188,32 @@ def check_conflicting_discord_addons():
                 # Check addon metadata for potential Discord-related conflicts
                 addon_meta = addon_manager.addonMeta(addon_id)
                 if addon_meta:
-                    addon_name = addon_meta.get('name', '').lower()
-                    addon_description = addon_meta.get('description', '').lower()
+                    addon_name = addon_meta.get("name", "").lower()
+                    addon_description = addon_meta.get("description", "").lower()
 
                     # Keywords that indicate Discord Rich Presence functionality
                     discord_keywords = [
-                        'discord', 'ankicord', 'rich presence', 'discord rpc',
-                        'discord status'
+                        "discord",
+                        "ankicord",
+                        "rich presence",
+                        "discord rpc",
+                        "discord status",
                     ]
 
                     # Check if addon name or description contains Discord-related keywords
-                    if any(keyword in addon_name for keyword in discord_keywords) or \
-                    any(keyword in addon_description for keyword in discord_keywords):
-                        display_name = addon_meta.get('name', f'Unknown addon ({addon_id})')
+                    if any(
+                        keyword in addon_name for keyword in discord_keywords
+                    ) or any(
+                        keyword in addon_description for keyword in discord_keywords
+                    ):
+                        display_name = addon_meta.get(
+                            "name", f"Unknown addon ({addon_id})"
+                        )
                         found_conflicts.append(display_name)
 
             except Exception as e:
                 # Log but don't fail on individual addon checks
-                if hasattr(mw, 'logger') and mw.logger:
+                if hasattr(mw, "logger") and mw.logger:
                     mw.logger.log("debug", f"Error checking addon {addon_id}: {e}")
                 continue
 
@@ -188,6 +221,8 @@ def check_conflicting_discord_addons():
 
     except Exception as e:
         # Return empty list if checking fails entirely
-        if hasattr(mw, 'logger') and mw.logger:
-            mw.logger.log("error", f"Error checking for conflicting Discord addons: {e}")
+        if hasattr(mw, "logger") and mw.logger:
+            mw.logger.log(
+                "error", f"Error checking for conflicting Discord addons: {e}"
+            )
         return []

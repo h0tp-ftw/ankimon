@@ -1,40 +1,40 @@
 import copy
 import random
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from aqt import mw
 from aqt.qt import QDialog
 
-from .singletons import (
-    main_pokemon,
-    enemy_pokemon,
-    settings_obj,
-    reviewer_obj,
-    ankimon_tracker_obj,
-    test_window,
-    evo_window,
-    logger,
-    achievements,
-    trainer_card,
-    translator,
-)
-from .functions.encounter_functions import handle_enemy_faint, handle_main_pokemon_faint
+from .classes.choose_move_dialog import MoveSelectionDialog
+from .functions.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
 from .functions.badges_functions import (
-    handle_review_count_achievement,
     check_for_badge,
+    handle_review_count_achievement,
     receive_badge,
 )
 from .functions.battle_functions import (
+    process_battle_data,
     update_pokemon_battle_status,
     validate_pokemon_status,
-    process_battle_data,
 )
 from .functions.drawing_utils import tooltipWithColour
-from .utils import safe_get_random_move, play_effect_sound, play_sound
-from .functions.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
-from .classes.choose_move_dialog import MoveSelectionDialog
+from .functions.encounter_functions import handle_enemy_faint, handle_main_pokemon_faint
 from .pyobj.error_handler import show_warning_with_traceback
+from .singletons import (
+    achievements,
+    ankimon_tracker_obj,
+    enemy_pokemon,
+    evo_window,
+    logger,
+    main_pokemon,
+    reviewer_obj,
+    settings_obj,
+    test_window,
+    trainer_card,
+    translator,
+)
+from .utils import play_effect_sound, play_sound, safe_get_random_move
 
 
 @dataclass
@@ -76,8 +76,12 @@ def on_review_card(*args):
 
     try:
         multiplier = ankimon_tracker_obj.multiplier
-        user_attack = random.choice(main_pokemon.attacks) if main_pokemon.attacks else "splash"
-        enemy_attack = random.choice(enemy_pokemon.attacks) if enemy_pokemon.attacks else "splash"
+        user_attack = (
+            random.choice(main_pokemon.attacks) if main_pokemon.attacks else "splash"
+        )
+        enemy_attack = (
+            random.choice(enemy_pokemon.attacks) if enemy_pokemon.attacks else "splash"
+        )
 
         battle_sounds = settings_obj.get("audio.battle_sounds")
 
@@ -104,7 +108,10 @@ def on_review_card(*args):
             settings_obj.set("trainer.cash", settings_obj.get("trainer.cash") + 200)
             trainer_card.cash = settings_obj.get("trainer.cash")
 
-        if battle_sounds == True and ankimon_tracker_obj.general_card_count_for_battle == 1:
+        if (
+            battle_sounds == True
+            and ankimon_tracker_obj.general_card_count_for_battle == 1
+        ):
             play_sound(enemy_pokemon.id, settings_obj)
 
         if ankimon_tracker_obj.cards_battle_round >= _get_cards_per_round():
@@ -217,12 +224,18 @@ def on_review_card(*args):
             tooltipWithColour(formatted_battle_log, color)
 
             if true_dmg_from_enemy_move > 0 and multiplier < 1:
-                reviewer_obj.myseconds = settings_obj.compute_special_variable("animate_time")
-                tooltipWithColour(f" -{true_dmg_from_enemy_move} HP ", "#F06060", x=-200)
+                reviewer_obj.myseconds = settings_obj.compute_special_variable(
+                    "animate_time"
+                )
+                tooltipWithColour(
+                    f" -{true_dmg_from_enemy_move} HP ", "#F06060", x=-200
+                )
                 play_effect_sound(settings_obj, "HurtNormal")
 
             if true_dmg_from_user_move > 0:
-                reviewer_obj.seconds = settings_obj.compute_special_variable("animate_time")
+                reviewer_obj.seconds = settings_obj.compute_special_variable(
+                    "animate_time"
+                )
                 tooltipWithColour(f" -{true_dmg_from_user_move} HP ", "#F06060", x=200)
                 if multiplier == 1:
                     play_effect_sound(settings_obj, "HurtNormal")
@@ -236,12 +249,16 @@ def on_review_card(*args):
             if int(heals_to_user) != 0:
                 heal_color = "#68FA94" if heals_to_user > 0 else "#F06060"
                 sign = "+" if heals_to_user > 0 else ""
-                tooltipWithColour(f" {sign}{int(heals_to_user)} HP ", heal_color, x=-250)
+                tooltipWithColour(
+                    f" {sign}{int(heals_to_user)} HP ", heal_color, x=-250
+                )
 
             if int(heals_to_opponent) != 0:
                 heal_color = "#68FA94" if heals_to_opponent > 0 else "#F06060"
                 sign = "+" if heals_to_opponent > 0 else ""
-                tooltipWithColour(f" {sign}{int(heals_to_opponent)} HP ", heal_color, x=250)
+                tooltipWithColour(
+                    f" {sign}{int(heals_to_opponent)} HP ", heal_color, x=250
+                )
 
             if enemy_pokemon.hp < 1:
                 enemy_pokemon.hp = 0

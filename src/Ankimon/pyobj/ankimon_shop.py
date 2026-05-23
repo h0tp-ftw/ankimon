@@ -1,32 +1,26 @@
-import os
+import json
 import random
 from datetime import datetime
-import json
 from typing import Union
 
 from aqt import mw
 from aqt.qt import (
-    Qt,
     QDialog,
-    QHBoxLayout,
-    QVBoxLayout,
-    QLabel,
-    QPushButton,
-    QGridLayout,
-    QFrame,
-    QPixmap,
-    QMessageBox,
-    QSizePolicy,
     QFont,
-    QFontDatabase,
-    QToolTip,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPixmap,
+    QPushButton,
+    Qt,
+    QVBoxLayout,
 )
 from aqt.theme import theme_manager
 
 from ..functions.pokedex_functions import find_details_move
-
-from ..utils import give_item, daily_item_list, get_item_price, get_item_description
-from ..resources import items_path, user_path, pokemon_tm_learnset_path
+from ..resources import items_path, pokemon_tm_learnset_path
+from ..utils import daily_item_list, get_item_description, get_item_price, give_item
 
 # Daily Rotating Items Pool
 DAILY_ITEMS_POOL = daily_item_list()
@@ -399,7 +393,9 @@ class PokemonShopManager:
         buy_font.setPointSize(8)
         buy_button.setFont(buy_font)
         buy_button.setFixedHeight(35)
-        buy_button.setFixedWidth(buy_button.fontMetrics().boundingRect(button_text).width() + 20)
+        buy_button.setFixedWidth(
+            buy_button.fontMetrics().boundingRect(button_text).width() + 20
+        )
 
         if is_tm and owned_quantity > 0:
             buy_button.setEnabled(False)
@@ -447,7 +443,9 @@ class PokemonShopManager:
         db = mw.ankimon_db
         shop_data = db.get_user_data("todays_shop")
         if shop_data:
-            if shop_data.get("items") and shop_data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+            if shop_data.get("items") and shop_data.get(
+                "date"
+            ) == datetime.now().strftime("%Y-%m-%d"):
                 return shop_data.get("items")
 
         seed = datetime.now().strftime("%Y-%m-%d")
@@ -459,7 +457,9 @@ class PokemonShopManager:
         db = mw.ankimon_db
         shop_data = db.get_user_data("todays_shop")
         if shop_data:
-            if shop_data.get("technical_machines") and shop_data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+            if shop_data.get("technical_machines") and shop_data.get(
+                "date"
+            ) == datetime.now().strftime("%Y-%m-%d"):
                 return shop_data.get("technical_machines")
 
         tm_pool = self.get_tm_pool()

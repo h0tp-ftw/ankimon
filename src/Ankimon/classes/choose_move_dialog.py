@@ -1,10 +1,12 @@
-import sys
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
-from PyQt6.QtGui import QFont
+import random
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QDialog, QLabel, QVBoxLayout
+
 from ..functions.pokedex_functions import find_details_move
 from ..move_names import format_move_name
-import random
+
 
 class MoveSelectionDialog(QDialog):
     def __init__(self, mainpokemon_attacks):
@@ -30,21 +32,29 @@ class MoveSelectionDialog(QDialog):
         self.move_labels = []
         for index, move in enumerate(mainpokemon_attacks):
             move_detail = find_details_move(move)
-            move_name = format_move_name(move_detail.get('name', move))
-            move_label = QLabel(f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}")
-            move_label.setToolTip(f"{move_detail.get('desc', 'No description available')}")
+            move_name = format_move_name(move_detail.get("name", move))
+            move_label = QLabel(
+                f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}"
+            )
+            move_label.setToolTip(
+                f"{move_detail.get('desc', 'No description available')}"
+            )
             move_label.setFont(QFont("Arial", 12))
-            move_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            move_label.setStyleSheet("border: 1px solid #ccc; border-radius: 0px;")  # Removed padding, reduced border-radius
+            move_label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            move_label.setStyleSheet(
+                "border: 1px solid #ccc; border-radius: 0px;"
+            )  # Removed padding, reduced border-radius
             move_label.mousePressEvent = self.create_mouse_press_handler(index)
             move_label.setFixedHeight(20)  # Example fixed height for thinner labels
             layout.addWidget(move_label)
             self.move_labels.append(move_label)
 
-
     def create_mouse_press_handler(self, index):
         def handle_mouse_press(event):
             self.select_move(index)
+
         return handle_mouse_press
 
     def select_move(self, index):

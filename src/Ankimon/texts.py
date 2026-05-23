@@ -35,7 +35,7 @@ button_style = """
         }
     """
 
-pokedex_html_template = '''
+pokedex_html_template = """
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -62,7 +62,7 @@ pokedex_html_template = '''
         </table>
         </body>
         </html>
-        '''
+        """
 
 attack_details_window_template = """
     <style>

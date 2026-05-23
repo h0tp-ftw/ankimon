@@ -1,16 +1,10 @@
-import sys
-import os
 import json
-from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QLabel, QPushButton,
-    QLineEdit, QFileDialog, QTextEdit, QWidget, QDialog
-)
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QPushButton, QLabel, QTextEdit, QWidget
-)
-from  ..resources import addon_dir, json_file_structure
-from aqt import mw
-from aqt.utils import showWarning
+import os
+
+from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QTextEdit, QVBoxLayout
+
+from ..resources import addon_dir, json_file_structure
+
 
 def check_files_in_json(json_file=json_file_structure, root_directory=addon_dir):
     """
@@ -23,27 +17,29 @@ def check_files_in_json(json_file=json_file_structure, root_directory=addon_dir)
     Returns:
         list: A list of missing files.
     """
+
     def verify_files(folder_dict, current_path, missing_files):
-        for child in folder_dict.get('children', []):
-            if child['type'] == 'file':
-                file_path = os.path.join(current_path, child['name'])
+        for child in folder_dict.get("children", []):
+            if child["type"] == "file":
+                file_path = os.path.join(current_path, child["name"])
                 if not os.path.exists(file_path):
                     missing_files.append(file_path)
-            elif child['type'] == 'folder':
-                folder_path = os.path.join(current_path, child['name'])
+            elif child["type"] == "folder":
+                folder_path = os.path.join(current_path, child["name"])
                 if os.path.exists(folder_path):
                     verify_files(child, folder_path, missing_files)
                 else:
                     missing_files.append(folder_path)
 
     # Load the JSON file
-    with open(json_file, 'r', encoding='utf-8') as f:
+    with open(json_file, "r", encoding="utf-8") as f:
         folder_structure = json.load(f)
 
     missing_files = []
     verify_files(folder_structure, root_directory, missing_files)
 
     return missing_files
+
 
 class FileCheckerApp(QDialog):
     def __init__(self):
@@ -76,7 +72,9 @@ class FileCheckerApp(QDialog):
         root_directory = self.directory
 
         if not json_file or not root_directory:
-            self.output_display.setText("Please select both a JSON file and a root directory.")
+            self.output_display.setText(
+                "Please select both a JSON file and a root directory."
+            )
             return
 
         if not os.path.exists(json_file):
@@ -84,13 +82,17 @@ class FileCheckerApp(QDialog):
             return
 
         if not os.path.exists(root_directory):
-            self.output_display.setText(f"Root directory '{root_directory}' does not exist.")
+            self.output_display.setText(
+                f"Root directory '{root_directory}' does not exist."
+            )
             return
 
         try:
             missing_files = check_files_in_json(json_file, root_directory)
             if missing_files:
-                self.output_display.setText("Missing files/folders:\n" + "\n".join(missing_files))
+                self.output_display.setText(
+                    "Missing files/folders:\n" + "\n".join(missing_files)
+                )
             else:
                 self.output_display.setText("All files and folders are present.")
         except Exception as e:

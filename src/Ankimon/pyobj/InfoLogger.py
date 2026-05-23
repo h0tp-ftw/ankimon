@@ -1,7 +1,9 @@
 import logging
-from PyQt6.QtWidgets import QMessageBox, QTextEdit, QVBoxLayout, QDialog, QPushButton, QApplication
-from PyQt6.QtCore import Qt
 import os
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QDialog, QMessageBox, QPushButton, QTextEdit, QVBoxLayout
+
 
 class ShowInfoLogger:
     def __init__(self, name="ShowInfoLogger", log_filename="app.log"):
@@ -11,25 +13,29 @@ class ShowInfoLogger:
 
         # Check if log file exists, and create it if it doesn't
         if not os.path.exists(self.log_file):
-            with open(self.log_file, 'w') as f:
-                f.write('')  # Create an empty file
+            with open(self.log_file, "w") as f:
+                f.write("")  # Create an empty file
 
         # Set up logging
         self.logger = logging.getLogger(name)
         if not self.logger.handlers:
             self.logger.setLevel(logging.DEBUG)
-            file_handler = logging.FileHandler(self.log_file, encoding='utf-8')  # Explicit UTF-8 encoding
+            file_handler = logging.FileHandler(
+                self.log_file, encoding="utf-8"
+            )  # Explicit UTF-8 encoding
             file_handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
 
         # Create a separate handler for the game log messages
         self.game_logger = logging.getLogger("GameLogger")
         if not self.game_logger.handlers:
-            game_file_handler = logging.FileHandler(self.log_file,encoding="utf-8")
+            game_file_handler = logging.FileHandler(self.log_file, encoding="utf-8")
             game_file_handler.setLevel(logging.DEBUG)
-            game_formatter = logging.Formatter('%(asctime)s - GAME - %(message)s')  # Custom format for game messages
+            game_formatter = logging.Formatter(
+                "%(asctime)s - GAME - %(message)s"
+            )  # Custom format for game messages
             game_file_handler.setFormatter(game_formatter)
             self.game_logger.addHandler(game_file_handler)
 
@@ -41,16 +47,16 @@ class ShowInfoLogger:
 
     def log_and_showinfo(self, level, message):
         # Log the message
-        if level == 'info':
+        if level == "info":
             self.logger.info(message)
-        elif level == 'warning':
+        elif level == "warning":
             self.logger.warning(message)
-        elif level == 'error':
+        elif level == "error":
             self.logger.error(message)
-        elif level == 'game':
+        elif level == "game":
             self.game_log(message)  # Use the game-specific logging
 
-        if level in ['info', 'warning', 'error']:
+        if level in ["info", "warning", "error"]:
             # Show the message in a QMessageBox dialog
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Log Message")
@@ -60,13 +66,13 @@ class ShowInfoLogger:
 
     def log(self, level, message):
         # Log the message
-        if level == 'info':
+        if level == "info":
             self.logger.info(message)
-        elif level == 'warning':
+        elif level == "warning":
             self.logger.warning(message)
-        elif level == 'error':
+        elif level == "error":
             self.logger.error(message)
-        elif level == 'game':
+        elif level == "game":
             self.game_log(message)  # Use the game-specific logging
 
     def game_log(self, message):
@@ -98,7 +104,9 @@ class ShowInfoLogger:
 
             # Add a refresh button to reload the log content
             refresh_button = QPushButton("Refresh")
-            refresh_button.clicked.connect(lambda: text_edit.setPlainText(open(self.log_file).read()))
+            refresh_button.clicked.connect(
+                lambda: text_edit.setPlainText(open(self.log_file).read())
+            )
 
             # Add a clear button to clear the log file content
             clear_button = QPushButton("Clear")
@@ -116,11 +124,11 @@ class ShowInfoLogger:
 
     def clear_log_file(self):
         # Clear the log file
-        with open(self.log_file, 'w') as f:
-            f.write('')  # Empty the log file
+        with open(self.log_file, "w") as f:
+            f.write("")  # Empty the log file
 
         # Update the log viewer with the cleared content
         if self.log_dialog:
             text_edit = self.log_dialog.findChild(QTextEdit)
             if text_edit:
-                text_edit.setPlainText('')  # Clear the displayed content in the viewer
+                text_edit.setPlainText("")  # Clear the displayed content in the viewer

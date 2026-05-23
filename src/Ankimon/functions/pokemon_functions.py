@@ -4,16 +4,12 @@ import random
 import uuid
 from datetime import datetime
 
-from aqt.utils import showWarning
 from aqt import mw
 
-from .pokedex_functions import get_base_experience, get_growth_rate, search_pokedex, search_pokedex_by_id
+from ..resources import next_lvl_file_path, pokedex_path
 from .battle_functions import calculate_hp
-from ..resources import (
-    pokedex_path,
-    next_lvl_file_path,
-    learnset_path,
-)
+from .pokedex_functions import get_growth_rate, search_pokedex, search_pokedex_by_id
+
 
 def pick_random_gender(pokemon_name):
     """
@@ -26,7 +22,7 @@ def pick_random_gender(pokemon_name):
     Returns:
         str: "M" for male, "F" for female, or "Genderless" for genderless Pokémon.
     """
-    with open(pokedex_path, 'r', encoding="utf-8") as file:
+    with open(pokedex_path, "r", encoding="utf-8") as file:
         pokedex_data = json.load(file)
     pokemon_name = pokemon_name.lower()  # Normalize Pokémon name to lowercase
     pokemon = pokedex_data.get(pokemon_name)
@@ -45,14 +41,16 @@ def pick_random_gender(pokemon_name):
         return genders
 
     genders = ["M", "F"]
-    #genders = ["M", "♀"]
+    # genders = ["M", "♀"]
     gender = random.choice(genders)
     return gender
     # Randomly choose between "M" and "F"
 
+
 def calculate_max_hp_wildpokemon(enemy_pokemon):
     wild_pk_max_hp = enemy_pokemon.calculate_max_hp()
     return wild_pk_max_hp
+
 
 def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
     """
@@ -68,55 +66,81 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
     elif group_growth_rate == "fast-then-very-slow":
         group_growth_rate = "fluctuating"
     # Specify the growth rate and level you're interested in
-    growth_rate = f'{group_growth_rate}'
+    growth_rate = f"{group_growth_rate}"
     if level < 100:
         # Open the CSV file
-        csv_file_path = str(next_lvl_file_path)  # Replace 'your_file_path.csv' with the actual path to your CSV file
+        csv_file_path = str(
+            next_lvl_file_path
+        )  # Replace 'your_file_path.csv' with the actual path to your CSV file
         # Default if no row matches or the growth_rate column is unknown —
         # prevents UnboundLocalError from breaking the level-up path.
         experience = 0
-        with open(csv_file_path, 'r', encoding='utf-8') as file:
+        with open(csv_file_path, "r", encoding="utf-8") as file:
             # Create a CSV reader
-            csv_reader = csv.DictReader(file, delimiter=';')
+            csv_reader = csv.DictReader(file, delimiter=";")
 
             # Get the fieldnames from the CSV file
             fieldnames = [field.strip() for field in csv_reader.fieldnames]
 
             # Iterate through rows and find the experience for the specified growth rate and level
             for row in csv_reader:
-                if row[fieldnames[0]] == str(level):  # Use the first fieldname to access the 'Level' column
+                if row[fieldnames[0]] == str(
+                    level
+                ):  # Use the first fieldname to access the 'Level' column
                     experience = row.get(growth_rate, 0)
                     break
 
         return experience
     elif level > 99:
         if group_growth_rate == "erratic":
-            if level + 1 < 50: # +1 was added to prevent -ve amounts of xp to come up (even though it wouldn't since the loop only takes in levels above 99)
-                experience = ((((level+1) ** 3) * (100 - (level+1))) // 50 - ((level ** 3) * (100 - level) // 50))
+            if (
+                level + 1 < 50
+            ):  # +1 was added to prevent -ve amounts of xp to come up (even though it wouldn't since the loop only takes in levels above 99)
+                experience = (((level + 1) ** 3) * (100 - (level + 1))) // 50 - (
+                    (level**3) * (100 - level) // 50
+                )
             elif 50 <= level < 68:
-                experience = (((level+1) ** 3) * (150 - (level+1)) // 100) - ((level ** 3) * (150 - level) // 100)
+                experience = (((level + 1) ** 3) * (150 - (level + 1)) // 100) - (
+                    (level**3) * (150 - level) // 100
+                )
             elif 68 <= level:
-                experience = (((level+1) ** 3) * (1911 - 10 * (level+1)) // 500) - ((level ** 3) * (1911 - 10 * level) // 500)
+                experience = (((level + 1) ** 3) * (1911 - 10 * (level + 1)) // 500) - (
+                    (level**3) * (1911 - 10 * level) // 500
+                )
             else:
-                experience = (((level+1) ** 3) * (160 - (level+1)) // 100) - ((level ** 3) * (160 - level) // 100)
+                experience = (((level + 1) ** 3) * (160 - (level + 1)) // 100) - (
+                    (level**3) * (160 - level) // 100
+                )
         elif group_growth_rate == "fluctuating":
             if level < 15:
-                experience = (((level+1) ** 3) * ((level+1) // 3 + 24) // 50) - ((level ** 3) * (level // 3 + 24) // 50)
+                experience = (((level + 1) ** 3) * ((level + 1) // 3 + 24) // 50) - (
+                    (level**3) * (level // 3 + 24) // 50
+                )
             elif 15 <= level < 36:
-                experience = (((level+1) ** 3) * ((level+1) + 14) // 50) - ((level ** 3) * (level + 14) // 50)
+                experience = (((level + 1) ** 3) * ((level + 1) + 14) // 50) - (
+                    (level**3) * (level + 14) // 50
+                )
             elif 36 <= level:
-                experience = (((level+1) ** 3) * ((level+1) // 2 + 32) // 50) - ((level ** 3) * (level // 2 + 32) // 50)
+                experience = (((level + 1) ** 3) * ((level + 1) // 2 + 32) // 50) - (
+                    (level**3) * (level // 2 + 32) // 50
+                )
         elif group_growth_rate == "fast":
-            experience = ((4 * ((level+1) ** 3)) // 5) - ((4 * (level ** 3)) // 5)
+            experience = ((4 * ((level + 1) ** 3)) // 5) - ((4 * (level**3)) // 5)
         elif group_growth_rate == "medium-fast":
-            experience = ((level+1) ** 3) - (level ** 3)
+            experience = ((level + 1) ** 3) - (level**3)
         elif group_growth_rate == "medium":
-            experience = ((level+1) ** 3) - (level ** 3)
+            experience = ((level + 1) ** 3) - (level**3)
         elif group_growth_rate == "medium-slow":
-            experience = ((6 * ((level+1) ** 3)) // 5 - 15 * ((level+1) ** 2) + 100 * (level+1) - 140) - ((6 * (level ** 3)) // 5 - 15 * (level ** 2) + 100 * level - 140)
+            experience = (
+                (6 * ((level + 1) ** 3)) // 5
+                - 15 * ((level + 1) ** 2)
+                + 100 * (level + 1)
+                - 140
+            ) - ((6 * (level**3)) // 5 - 15 * (level**2) + 100 * level - 140)
         elif group_growth_rate == "slow":
-            experience = ((5 * ((level+1) ** 3)) // 4) - ((5 * (level ** 3)) // 4)
+            experience = ((5 * ((level + 1) ** 3)) // 4) - ((5 * (level**3)) // 4)
         return experience
+
 
 def shiny_chance():
     # Shiny Pokémon probability (1 in 4096 chance)
@@ -124,9 +148,10 @@ def shiny_chance():
     shiny = random.randint(1, SHINY_PROBABILITY) == 1
     return shiny
 
+
 # unused, archived
 # must fix missing fields if used
-#def create_caught_pokemon(enemy_pokemon, nickname):
+# def create_caught_pokemon(enemy_pokemon, nickname):
 #    enemy_pokemon.stats["xp"] = 0
 #    ev = {
 #        "hp": 0,
@@ -162,7 +187,10 @@ def shiny_chance():
 #    }
 #    return caught_pokemon
 
-from .learnset_retrieval import get_random_moves_for_pokemon  # noqa: F401,E303 — re-export for backwards compat
+from .learnset_retrieval import (
+    get_random_moves_for_pokemon,
+)  # noqa: F401,E303 — re-export for backwards compat
+
 
 def save_fossil_pokemon(pokemon_id):
     # Create a dictionary to store the Pokémon's data
@@ -195,22 +223,15 @@ def save_fossil_pokemon(pokemon_id):
     base_experience = search_pokedex(name.lower(), "actual_id")
     level = 5
     attacks = get_random_moves_for_pokemon(name, level)
-    #stats["xp"] = 0
-    ev = {
-        "hp": 0,
-        "atk": 0,
-        "def": 0,
-        "spa": 0,
-        "spd": 0,
-        "spe": 0
-    }
+    # stats["xp"] = 0
+    ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
     iv = {
         "hp": random.randint(0, 31),
         "atk": random.randint(0, 31),
         "def": random.randint(0, 31),
         "spa": random.randint(0, 31),
         "spd": random.randint(0, 31),
-        "spe": random.randint(0, 31)
+        "spe": random.randint(0, 31),
     }
     stats["xp"] = 0
     caught_pokemon = {
@@ -249,4 +270,7 @@ def save_fossil_pokemon(pokemon_id):
     db = mw.ankimon_db
     db.save_pokemon(caught_pokemon)
 
-from .learnset_retrieval import get_levelup_move_for_pokemon  # noqa: F401,E303 — re-export for backwards compat
+
+from .learnset_retrieval import (
+    get_levelup_move_for_pokemon,
+)  # noqa: F401,E303 — re-export for backwards compat
