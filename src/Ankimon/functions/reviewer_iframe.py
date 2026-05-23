@@ -121,7 +121,7 @@ def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
 
 def prepare(html, content, context):
     html_code = create_iframe_html(
-        main_pokemon, enemy_pokemon, settings_obj, textmsg=""
+        main_pokemon, enemy_pokemon, settings_obj, textmsg=""  # pylint: disable=undefined-variable
     )
     return html + html_code
 

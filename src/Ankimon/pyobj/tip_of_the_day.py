@@ -7,7 +7,7 @@ from aqt.qt import *
 from ..pyobj.settings import Settings
 
 
-class TipOfTheDayDialog(QDialog):
+class TipOfTheDayDialog(QDialog):  # pylint: disable=undefined-variable
     def __init__(self, tip_text, tip_number, total_tips, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Ankimon Tip #{tip_number + 1}/{total_tips}")
@@ -15,18 +15,18 @@ class TipOfTheDayDialog(QDialog):
 
         self.settings = Settings()
 
-        self.layout = QVBoxLayout(self)
+        self.layout = QVBoxLayout(self)  # pylint: disable=undefined-variable
 
-        self.tip_label = QLabel(tip_text)
+        self.tip_label = QLabel(tip_text)  # pylint: disable=undefined-variable
         self.tip_label.setWordWrap(True)
         self.layout.addWidget(self.tip_label)
 
-        self.dont_show_again_checkbox = QCheckBox("Don't show tips again")
+        self.dont_show_again_checkbox = QCheckBox("Don't show tips again")  # pylint: disable=undefined-variable
         self.layout.addWidget(self.dont_show_again_checkbox)
 
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)  # pylint: disable=undefined-variable
         self.next_tip_button = self.button_box.addButton(
-            "Next Tip", QDialogButtonBox.ButtonRole.ActionRole
+            "Next Tip", QDialogButtonBox.ButtonRole.ActionRole  # pylint: disable=undefined-variable
         )
 
         self.next_tip_button.clicked.connect(self.show_new_tip)

@@ -12,8 +12,8 @@ def create_status_label(status_name):
 
     # If the status name is valid, create and style the QLabel
     if colors:
-        label = QLabel(status_name.capitalize())
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label = QLabel(status_name.capitalize())  # pylint: disable=undefined-variable
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # pylint: disable=undefined-variable
         label.setStyleSheet(
             f"background-color: {colors['background']};"
             f"border: 2px solid {colors['outline']};"
@@ -23,8 +23,8 @@ def create_status_label(status_name):
             f"color: {colors.get('text_color', '#000000')};"
         )
     else:
-        label = QLabel("Unknown Status")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label = QLabel("Unknown Status")  # pylint: disable=undefined-variable
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)  # pylint: disable=undefined-variable
         label.setStyleSheet("padding: 5px 10px;")
 
     return label

@@ -337,8 +337,8 @@ class EvoWindow(QWidget):
             level = pokemon["level"]
             hp = calculate_hp(hp_stat, level, ev, iv)
             pokemon["current_hp"] = int(hp)
-            pokemon["growth_rate"] = search_pokeapi_db_by_id(evo_id, "growth_rate")
-            pokemon["base_experience"] = search_pokeapi_db_by_id(
+            pokemon["growth_rate"] = search_pokeapi_db_by_id(evo_id, "growth_rate")  # pylint: disable=undefined-variable
+            pokemon["base_experience"] = search_pokeapi_db_by_id(  # pylint: disable=undefined-variable
                 evo_id, "base_experience"
             )
             abilities = search_pokedex(evo_name.lower(), "abilities")

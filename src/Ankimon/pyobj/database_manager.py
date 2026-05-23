@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..resources import csv_file_items_cost, user_path, items_path, badges_path
+from ..resources import csv_file_items_cost, user_path
 
 
 class AnkimonDB:

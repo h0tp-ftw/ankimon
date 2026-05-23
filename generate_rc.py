@@ -1,4 +1,5 @@
-
+with open('.pylintrc', 'w') as f:
+    f.write('''
 [MAIN]
 disable=
     missing-function-docstring,
@@ -34,3 +35,4 @@ disable=
     no-else-return,
     inconsistent-return-statements,
     global-variable-not-assigned
+''')

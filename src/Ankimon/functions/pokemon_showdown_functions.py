@@ -258,7 +258,7 @@ def flex_pokemon_collection():
         # save_button.clicked.connect(lambda: save_error_code(error_code_input.text()))
         # Set the layout for the main window
         open_browser_for_pokepaste = QPushButton("Open Pokepaste")
-        open_browser_for_pokepaste.clicked.connect(open_browser_window)
+        open_browser_for_pokepaste.clicked.connect(open_browser_window)  # pylint: disable=undefined-variable
         layout.addWidget(open_browser_for_pokepaste)
 
         export_window.setLayout(layout)

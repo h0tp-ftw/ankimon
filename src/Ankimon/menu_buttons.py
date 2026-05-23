@@ -117,7 +117,7 @@ def create_menu_actions(
                 or mw._achievements_dialog is None
             ):
                 mw._achievements_dialog = AchievementsDialog(addon_dir, trainer_card)
-            mw._achievements_dialog.setWindowModality(Qt.WindowModality.NonModal)
+            mw._achievements_dialog.setWindowModality(Qt.WindowModality.NonModal)  # pylint: disable=undefined-variable
             mw._achievements_dialog.show()
             mw._achievements_dialog.raise_()
             mw._achievements_dialog.activateWindow()

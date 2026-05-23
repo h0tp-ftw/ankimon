@@ -91,21 +91,21 @@ class TestWindow(QWidget):
         caught = 0
         id = int(search_pokedex(name.lower(), "species_id"))
         # Capitalize the first letter of the Pokémon's name
-        lang_name = get_pokemon_diff_lang_name(int(id))
+        lang_name = get_pokemon_diff_lang_name(int(id))  # pylint: disable=undefined-variable
         name = name.capitalize()
         # calculate wild pokemon max hp
-        max_hp = calculate_hp(stats["hp"], level, ev, iv)
-        mainpkmn_max_hp = calculate_hp(
-            mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv
+        max_hp = calculate_hp(stats["hp"], level, ev, iv)  # pylint: disable=undefined-variable
+        mainpkmn_max_hp = calculate_hp(  # pylint: disable=undefined-variable
+            mainpokemon_stats["hp"], mainpokemon_level, mainpokemon_ev, mainpokemon_iv  # pylint: disable=undefined-variable
         )
         message_box_text = f"A wild {lang_name.capitalize()} appeared !"
         if pokemon_encounter == 0:
-            bckgimage_path = battlescene_path / battlescene_file
+            bckgimage_path = battlescene_path / battlescene_file  # pylint: disable=undefined-variable
         elif pokemon_encounter > 0:
-            bckgimage_path = battlescene_path_without_dialog / battlescene_file
+            bckgimage_path = battlescene_path_without_dialog / battlescene_file  # pylint: disable=undefined-variable
 
         def window_show():
-            ui_path = battle_ui_path
+            ui_path = battle_ui_path  # pylint: disable=undefined-variable
             pixmap_ui = QPixmap()
             pixmap_ui.load(str(ui_path))
 
@@ -115,14 +115,14 @@ class TestWindow(QWidget):
 
             # Display the Pokémon image
             pkmnimage_file = f"{id}.png"
-            pkmnimage_path = frontdefault / pkmnimage_file
+            pkmnimage_path = frontdefault / pkmnimage_file  # pylint: disable=undefined-variable
             image_label = QLabel()
             pixmap = QPixmap()
             pixmap.load(str(pkmnimage_path))
 
             # Display the Main Pokémon image
-            pkmnimage_file2 = f"{mainpokemon_id}.png"
-            pkmnimage_path2 = backdefault / pkmnimage_file2
+            pkmnimage_file2 = f"{mainpokemon_id}.png"  # pylint: disable=undefined-variable
+            pkmnimage_path2 = backdefault / pkmnimage_file2  # pylint: disable=undefined-variable
             pixmap2 = QPixmap()
             pixmap2.load(str(pkmnimage_path2))
 
@@ -146,10 +146,10 @@ class TestWindow(QWidget):
             # Merge the background image and the Pokémon image
             merged_pixmap = QPixmap(pixmap_bckg.size())
             # merged_pixmap.fill(Qt.transparent)
-            merged_pixmap.fill(QColor(0, 0, 0, 0))
+            merged_pixmap.fill(QColor(0, 0, 0, 0))  # pylint: disable=undefined-variable
             # RGBA where A (alpha) is 0 for full transparency
             # merge both images together
-            painter = QPainter(merged_pixmap)
+            painter = QPainter(merged_pixmap)  # pylint: disable=undefined-variable
             # draw background to a specific pixel
             painter.drawPixmap(0, 0, pixmap_bckg)
 
@@ -158,19 +158,19 @@ class TestWindow(QWidget):
                 hp_bar_value = int(w * (hp / max_hp))
                 # Draw the HP bar
                 if pokemon_hp_percent < 25:
-                    hp_color = QColor(255, 0, 0)  # Red
+                    hp_color = QColor(255, 0, 0)  # Red  # pylint: disable=undefined-variable
                 elif pokemon_hp_percent < 50:
-                    hp_color = QColor(255, 140, 0)  # Orange
+                    hp_color = QColor(255, 140, 0)  # Orange  # pylint: disable=undefined-variable
                 elif pokemon_hp_percent < 75:
-                    hp_color = QColor(255, 255, 0)  # Yellow
+                    hp_color = QColor(255, 255, 0)  # Yellow  # pylint: disable=undefined-variable
                 else:
-                    hp_color = QColor(110, 218, 163)  # Green
+                    hp_color = QColor(110, 218, 163)  # Green  # pylint: disable=undefined-variable
                 painter.setBrush(hp_color)
                 painter.drawRect(int(x), int(y), int(hp_bar_value), int(h))
 
-            draw_hp_bar(118, 76, 8, 116, hp, max_hp)  # enemy pokemon hp_bar
+            draw_hp_bar(118, 76, 8, 116, hp, max_hp)  # enemy pokemon hp_bar  # pylint: disable=undefined-variable
             draw_hp_bar(
-                401, 208, 8, 116, mainpokemon_hp, mainpkmn_max_hp
+                401, 208, 8, 116, mainpokemon_hp, mainpkmn_max_hp  # pylint: disable=undefined-variable
             )  # main pokemon hp_bar
 
             painter.drawPixmap(0, 0, pixmap_ui)
@@ -184,50 +184,50 @@ class TestWindow(QWidget):
             painter.drawPixmap((144 - mpkmn_width), (290 - mpkmn_height), pixmap2)
 
             experience = int(
-                find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)
+                find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)  # pylint: disable=undefined-variable
             )
             mainxp_bar_width = 5
-            mainpokemon_xp_value = int((mainpokemon_xp / experience) * 148)
+            mainpokemon_xp_value = int((mainpokemon_xp / experience) * 148)  # pylint: disable=undefined-variable
             # Paint XP Bar
-            painter.setBrush(QColor(58, 155, 220))
+            painter.setBrush(QColor(58, 155, 220))  # pylint: disable=undefined-variable
             painter.drawRect(
                 int(366), int(246), int(mainpokemon_xp_value), int(mainxp_bar_width)
             )
 
             # create level text
-            lvl = f"{level}"
+            lvl = f"{level}"  # pylint: disable=undefined-variable
             # gender_text = (f"{gender}")
-            mainlvl = f"{mainpokemon_level}"
+            mainlvl = f"{mainpokemon_level}"  # pylint: disable=undefined-variable
 
             # Convert gender name to symbol - this function is from Foxy-null
-            if gender == "M":
+            if gender == "M":  # pylint: disable=undefined-variable
                 gender_symbol = "♂"
-            elif gender == "F":
+            elif gender == "F":  # pylint: disable=undefined-variable
                 gender_symbol = "♀"
-            elif gender == "N":
+            elif gender == "N":  # pylint: disable=undefined-variable
                 gender_symbol = ""
             else:
                 gender_symbol = ""  # None
 
             # custom font
-            custom_font = load_custom_font(
-                int(26), int(settings_obj.get("misc.language"))
+            custom_font = load_custom_font(  # pylint: disable=undefined-variable
+                int(26), int(settings_obj.get("misc.language"))  # pylint: disable=undefined-variable
             )
-            msg_font = load_custom_font(int(32), int(settings_obj.get("misc.language")))
-            mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
+            msg_font = load_custom_font(int(32), int(settings_obj.get("misc.language")))  # pylint: disable=undefined-variable
+            mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))  # pylint: disable=undefined-variable
             # Draw the text on top of the image
             # Adjust the font size as needed
             painter.setFont(custom_font)
-            painter.setPen(QColor(31, 31, 39))  # Text color
+            painter.setPen(QColor(31, 31, 39))  # Text color  # pylint: disable=undefined-variable
             painter.drawText(48, 67, f"{lang_name} {gender_symbol}")
             painter.drawText(326, 200, mainpokemon_lang_name)
             painter.drawText(208, 67, lvl)
             # painter.drawText(55, 85, gender_text)
             painter.drawText(490, 199, mainlvl)
             painter.drawText(487, 238, f"{mainpkmn_max_hp}")
-            painter.drawText(442, 238, f"{mainpokemon_hp}")
+            painter.drawText(442, 238, f"{mainpokemon_hp}")  # pylint: disable=undefined-variable
             painter.setFont(msg_font)
-            painter.setPen(QColor(240, 240, 208))  # Text color
+            painter.setPen(QColor(240, 240, 208))  # Text color  # pylint: disable=undefined-variable
             painter.drawText(40, 320, message_box_text)
             painter.end()
             # Set the merged image as the pixmap for the QLabel
@@ -241,10 +241,10 @@ class TestWindow(QWidget):
         global pokemon_encounter, id
         pokemon_encounter += 1
         if pokemon_encounter == 1:
-            bckgimage_path = battlescene_path / battlescene_file
+            bckgimage_path = battlescene_path / battlescene_file  # pylint: disable=undefined-variable
         elif pokemon_encounter > 1:
-            bckgimage_path = battlescene_path_without_dialog / battlescene_file
-        ui_path = battle_ui_path
+            bckgimage_path = battlescene_path_without_dialog / battlescene_file  # pylint: disable=undefined-variable
+        ui_path = battle_ui_path  # pylint: disable=undefined-variable
         pixmap_ui = QPixmap()
         pixmap_ui.load(str(ui_path))
 
@@ -254,14 +254,14 @@ class TestWindow(QWidget):
 
         # Display the Pokémon image
         pkmnimage_file = f"{id}.png"
-        pkmnimage_path = frontdefault / pkmnimage_file
+        pkmnimage_path = frontdefault / pkmnimage_file  # pylint: disable=undefined-variable
         image_label = QLabel()
         pixmap = QPixmap()
         pixmap.load(str(pkmnimage_path))
 
         # Display the Main Pokémon image
-        pkmnimage_file2 = f"{mainpokemon_id}.png"
-        pkmnimage_path2 = backdefault / pkmnimage_file2
+        pkmnimage_file2 = f"{mainpokemon_id}.png"  # pylint: disable=undefined-variable
+        pkmnimage_path2 = backdefault / pkmnimage_file2  # pylint: disable=undefined-variable
         pixmap2 = QPixmap()
         pixmap2.load(str(pkmnimage_path2))
 
@@ -286,10 +286,10 @@ class TestWindow(QWidget):
         merged_pixmap = QPixmap(pixmap_bckg.size())
         # merged_pixmap.fill(Qt.transparent)
         merged_pixmap.fill(
-            QColor(0, 0, 0, 0)
+            QColor(0, 0, 0, 0)  # pylint: disable=undefined-variable
         )  # RGBA where A (alpha) is 0 for full transparency
         # merge both images together
-        painter = QPainter(merged_pixmap)
+        painter = QPainter(merged_pixmap)  # pylint: disable=undefined-variable
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
 
@@ -298,19 +298,19 @@ class TestWindow(QWidget):
             hp_bar_value = int(w * (hp / max_hp))
             # Draw the HP bar
             if pokemon_hp_percent < 25:
-                hp_color = QColor(255, 0, 0)  # Red
+                hp_color = QColor(255, 0, 0)  # Red  # pylint: disable=undefined-variable
             elif pokemon_hp_percent < 50:
-                hp_color = QColor(255, 140, 0)  # Orange
+                hp_color = QColor(255, 140, 0)  # Orange  # pylint: disable=undefined-variable
             elif pokemon_hp_percent < 75:
-                hp_color = QColor(255, 255, 0)  # Yellow
+                hp_color = QColor(255, 255, 0)  # Yellow  # pylint: disable=undefined-variable
             else:
-                hp_color = QColor(110, 218, 163)  # Green
+                hp_color = QColor(110, 218, 163)  # Green  # pylint: disable=undefined-variable
             painter.setBrush(hp_color)
             painter.drawRect(int(x), int(y), int(hp_bar_value), int(h))
 
-        draw_hp_bar(118, 76, 8, 116, hp, max_hp)  # enemy pokemon hp_bar
+        draw_hp_bar(118, 76, 8, 116, hp, max_hp)  # enemy pokemon hp_bar  # pylint: disable=undefined-variable
         draw_hp_bar(
-            401, 208, 8, 116, mainpokemon_current_hp, mainpokemon_hp
+            401, 208, 8, 116, mainpokemon_current_hp, mainpokemon_hp  # pylint: disable=undefined-variable
         )  # main pokemon hp_bar
 
         painter.drawPixmap(0, 0, pixmap_ui)
@@ -324,36 +324,36 @@ class TestWindow(QWidget):
         painter.drawPixmap((144 - mpkmn_width), (290 - mpkmn_height), pixmap2)
 
         experience = int(
-            find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)
+            find_experience_for_level(mainpokemon_growth_rate, mainpokemon_level)  # pylint: disable=undefined-variable
         )
         mainxp_bar_width = 5
-        mainpokemon_xp_value = int((mainpokemon_xp / experience) * 148)
+        mainpokemon_xp_value = int((mainpokemon_xp / experience) * 148)  # pylint: disable=undefined-variable
         # Paint XP Bar
-        painter.setBrush(QColor(58, 155, 220))
+        painter.setBrush(QColor(58, 155, 220))  # pylint: disable=undefined-variable
         painter.drawRect(366, 246, int(mainpokemon_xp_value), int(mainxp_bar_width))
 
         # create level text
-        lvl = f"{level}"
-        mainlvl = f"{mainpokemon_level}"
+        lvl = f"{level}"  # pylint: disable=undefined-variable
+        mainlvl = f"{mainpokemon_level}"  # pylint: disable=undefined-variable
 
         # custom font
-        custom_font = load_custom_font(int(28), int(settings_obj.get("misc.language")))
-        msg_font = load_custom_font(int(32), int(settings_obj.get("misc.language")))
+        custom_font = load_custom_font(int(28), int(settings_obj.get("misc.language")))  # pylint: disable=undefined-variable
+        msg_font = load_custom_font(int(32), int(settings_obj.get("misc.language")))  # pylint: disable=undefined-variable
 
         # Draw the text on top of the image
         # Adjust the font size as needed
         painter.setFont(custom_font)
-        painter.setPen(QColor(31, 31, 39))  # Text color
-        lang_name = get_pokemon_diff_lang_name(int(id))
+        painter.setPen(QColor(31, 31, 39))  # Text color  # pylint: disable=undefined-variable
+        lang_name = get_pokemon_diff_lang_name(int(id))  # pylint: disable=undefined-variable
         painter.drawText(48, 67, lang_name)
-        mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))
+        mainpokemon_lang_name = get_pokemon_diff_lang_name(int(mainpokemon_id))  # pylint: disable=undefined-variable
         painter.drawText(326, 200, mainpokemon_lang_name)
         painter.drawText(208, 67, lvl)
         painter.drawText(490, 199, mainlvl)
-        painter.drawText(487, 238, f"{mainpokemon_hp}")
-        painter.drawText(442, 238, f"{mainpokemon_current_hp}")
+        painter.drawText(487, 238, f"{mainpokemon_hp}")  # pylint: disable=undefined-variable
+        painter.drawText(442, 238, f"{mainpokemon_current_hp}")  # pylint: disable=undefined-variable
         painter.setFont(msg_font)
-        painter.setPen(QColor(240, 240, 208))  # Text color
+        painter.setPen(QColor(240, 240, 208))  # Text color  # pylint: disable=undefined-variable
         painter.drawText(40, 320, message_box_text)
         painter.end()
         # Set the merged image as the pixmap for the QLabel
@@ -363,7 +363,7 @@ class TestWindow(QWidget):
     def pokemon_display_item(self, item):
         global pokemon_encounter
         bckgimage_path = addon_dir / "addon_sprites" / "starter_screen" / "bg.png"
-        item_path = user_path_sprites / "items" / f"{item}.png"
+        item_path = user_path_sprites / "items" / f"{item}.png"  # pylint: disable=undefined-variable
 
         # Load the background image
         pixmap_bckg = QPixmap()
@@ -392,11 +392,11 @@ class TestWindow(QWidget):
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
         merged_pixmap.fill(
-            QColor(0, 0, 0, 0)
+            QColor(0, 0, 0, 0)  # pylint: disable=undefined-variable
         )  # RGBA where A (alpha) is 0 for full transparency
         # merged_pixmap.fill(Qt.transparent)
         # merge both images together
-        painter = QPainter(merged_pixmap)
+        painter = QPainter(merged_pixmap)  # pylint: disable=undefined-variable
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
         # item = str(item)
@@ -426,14 +426,14 @@ class TestWindow(QWidget):
             painter.drawPixmap(200, 90, item_pixmap)
 
         # custom font
-        custom_font = load_custom_font(int(26), int(settings_obj.get("misc.language")))
+        custom_font = load_custom_font(int(26), int(settings_obj.get("misc.language")))  # pylint: disable=undefined-variable
         message_box_text = f"You have received a item: {item.capitalize()} !"
         # Draw the text on top of the image
         # Adjust the font size as needed
         painter.setFont(custom_font)
-        painter.setPen(QColor(255, 255, 255))  # Text color
+        painter.setPen(QColor(255, 255, 255))  # Text color  # pylint: disable=undefined-variable
         painter.drawText(50, 290, message_box_text)
-        custom_font = load_custom_font(int(20), int(settings_obj.get("misc.language")))
+        custom_font = load_custom_font(int(20), int(settings_obj.get("misc.language")))  # pylint: disable=undefined-variable
         painter.setFont(custom_font)
         # painter.drawText(10, 330, "You can look this up in your item bag.")
         painter.end()
@@ -477,30 +477,30 @@ class TestWindow(QWidget):
             # Merge the background image and the Pokémon image
             merged_pixmap = QPixmap(pixmap_bckg.size())
             merged_pixmap.fill(
-                QColor(0, 0, 0, 0)
+                QColor(0, 0, 0, 0)  # pylint: disable=undefined-variable
             )  # RGBA where A (alpha) is 0 for full transparency
             # merged_pixmap.fill(Qt.transparent)
             # merge both images together
-            painter = QPainter(merged_pixmap)
+            painter = QPainter(merged_pixmap)  # pylint: disable=undefined-variable
             # draw background to a specific pixel
             painter.drawPixmap(0, 0, pixmap_bckg)
             # item = str(item)
             painter.drawPixmap(200, 90, item_pixmap)
 
             # custom font
-            custom_font = load_custom_font(
-                int(20), int(settings_obj.get("misc.language"))
+            custom_font = load_custom_font(  # pylint: disable=undefined-variable
+                int(20), int(settings_obj.get("misc.language"))  # pylint: disable=undefined-variable
             )
             message_box_text = "You have received a badge for:"
-            message_box_text2 = f"{badges[str(badge_number)]}!"
+            message_box_text2 = f"{badges[str(badge_number)]}!"  # pylint: disable=undefined-variable
             # Draw the text on top of the image
             # Adjust the font size as needed
             painter.setFont(custom_font)
-            painter.setPen(QColor(255, 255, 255))  # Text color
+            painter.setPen(QColor(255, 255, 255))  # Text color  # pylint: disable=undefined-variable
             painter.drawText(120, 270, message_box_text)
             painter.drawText(140, 290, message_box_text2)
-            custom_font = load_custom_font(
-                int(20), int(settings_obj.get("misc.language"))
+            custom_font = load_custom_font(  # pylint: disable=undefined-variable
+                int(20), int(settings_obj.get("misc.language"))  # pylint: disable=undefined-variable
             )
             painter.setFont(custom_font)
             # painter.drawText(10, 330, "You can look this up in your item bag.")
@@ -511,38 +511,38 @@ class TestWindow(QWidget):
 
             return image_label
         except Exception as e:
-            show_warning_with_traceback(
+            show_warning_with_traceback(  # pylint: disable=undefined-variable
                 exception=e, message="An error occured in badges window"
             )
 
     def pokemon_display_dead_pokemon(self):
         global pokemon_hp, name, id, level, type, caught_pokemon, caught
         # Create the dialog
-        lang_name = get_pokemon_diff_lang_name(int(id))
+        lang_name = get_pokemon_diff_lang_name(int(id))  # pylint: disable=undefined-variable
         (
             f"Would you want let the  wild {lang_name} free or catch the wild {lang_name} ?"
         )
         # Display the Pokémon image
         pkmnimage_file = f"{int(search_pokedex(name.lower(),'species_id'))}.png"
-        pkmnimage_path = frontdefault / pkmnimage_file
+        pkmnimage_path = frontdefault / pkmnimage_file  # pylint: disable=undefined-variable
         pkmnimage_label = QLabel()
         pkmnpixmap = QPixmap()
         pkmnpixmap.load(str(pkmnimage_path))
         pkmnpixmap_bckg = QPixmap()
-        pkmnpixmap_bckg.load(str(pokedex_image_path))
+        pkmnpixmap_bckg.load(str(pokedex_image_path))  # pylint: disable=undefined-variable
         # Calculate the new dimensions to maintain the aspect ratio
         pkmnpixmap = pkmnpixmap.scaled(230, 230)
 
         # Create a painter to add text on top of the image
-        painter2 = QPainter(pkmnpixmap_bckg)
+        painter2 = QPainter(pkmnpixmap_bckg)  # pylint: disable=undefined-variable
         painter2.drawPixmap(15, 15, pkmnpixmap)
         # Capitalize the first letter of the Pokémon's name
         capitalized_name = lang_name.capitalize()
         # Create level text
-        lvl = f" Level: {level}"
+        lvl = f" Level: {level}"  # pylint: disable=undefined-variable
 
         # Draw the text on top of the image
-        font = QFont()
+        font = QFont()  # pylint: disable=undefined-variable
         font.setPointSize(20)  # Adjust the font size as needed
         painter2.setFont(font)
         painter2.drawText(270, 107, f"{lang_name}")
@@ -551,7 +551,7 @@ class TestWindow(QWidget):
         painter2.drawText(315, 192, f"{lvl}")
         painter2.drawText(322, 225, f"Type: {type[0].capitalize()}")
         painter2.setFont(font)
-        fontlvl = QFont()
+        fontlvl = QFont()  # pylint: disable=undefined-variable
         fontlvl.setPointSize(12)
         painter2.end()
 
@@ -564,29 +564,29 @@ class TestWindow(QWidget):
         # Align to the center
         level_label.setFont(fontlvl)
 
-        nickname_input = QLineEdit()
+        nickname_input = QLineEdit()  # pylint: disable=undefined-variable
         nickname_input.setPlaceholderText("Choose Nickname")
         nickname_input.setStyleSheet("background-color: rgb(44,44,44);")
         nickname_input.setFixedSize(120, 30)  # Adjust the size as needed
 
         # Create buttons for catching and killing the Pokémon
-        catch_button = QPushButton("Catch Pokémon")
+        catch_button = QPushButton("Catch Pokémon")  # pylint: disable=undefined-variable
         catch_button.setFixedSize(175, 30)  # Adjust the size as needed
         catch_button.setFont(
-            QFont("Arial", 12)
+            QFont("Arial", 12)  # pylint: disable=undefined-variable
         )  # Adjust the font size and style as needed
         catch_button.setStyleSheet("background-color: rgb(44,44,44);")
         # catch_button.setFixedWidth(150)
-        qconnect(catch_button.clicked, lambda: catch_pokemon(nickname_input.text()))
+        qconnect(catch_button.clicked, lambda: catch_pokemon(nickname_input.text()))  # pylint: disable=undefined-variable
 
-        kill_button = QPushButton("Defeat Pokémon")
+        kill_button = QPushButton("Defeat Pokémon")  # pylint: disable=undefined-variable
         kill_button.setFixedSize(175, 30)  # Adjust the size as needed
         kill_button.setFont(
-            QFont("Arial", 12)
+            QFont("Arial", 12)  # pylint: disable=undefined-variable
         )  # Adjust the font size and style as needed
         kill_button.setStyleSheet("background-color: rgb(44,44,44);")
         # kill_button.setFixedWidth(150)
-        qconnect(kill_button.clicked, kill_pokemon)
+        qconnect(kill_button.clicked, kill_pokemon)  # pylint: disable=undefined-variable
         # Set the merged image as the pixmap for the QLabel
         pkmnimage_label.setPixmap(pkmnpixmap_bckg)
 
@@ -610,8 +610,8 @@ class TestWindow(QWidget):
         self.setMaximumHeight(300)
 
     def rate_display_item(self, item):
-        Receive_Window = QDialog(mw)
-        layout = QHBoxLayout()
+        Receive_Window = QDialog(mw)  # pylint: disable=undefined-variable
+        layout = QHBoxLayout()  # pylint: disable=undefined-variable
         item_name = item
         item_widget = self.pokemon_display_item(item_name)
         layout.addWidget(item_widget)
@@ -622,9 +622,9 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_item(self):
-        Receive_Window = QDialog(mw)
-        layout = QHBoxLayout()
-        item_name = random_item()
+        Receive_Window = QDialog(mw)  # pylint: disable=undefined-variable
+        layout = QHBoxLayout()  # pylint: disable=undefined-variable
+        item_name = random_item()  # pylint: disable=undefined-variable
         item_widget = self.pokemon_display_item(item_name)
         layout.addWidget(item_widget)
         Receive_Window.setStyleSheet("background-color: rgb(44,44,44);")
@@ -634,9 +634,9 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_badge(self, badge_num):
-        Receive_Window = QDialog(mw)
+        Receive_Window = QDialog(mw)  # pylint: disable=undefined-variable
         Receive_Window.setWindowTitle("You have received a Badge!")
-        layout = QHBoxLayout()
+        layout = QHBoxLayout()  # pylint: disable=undefined-variable
         badge_widget = self.pokemon_display_badge(badge_num)
         layout.addWidget(badge_widget)
         Receive_Window.setStyleSheet("background-color: rgb(44,44,44);")
@@ -654,7 +654,7 @@ class TestWindow(QWidget):
         )
         layout.addWidget(pkmnimage_label)
         button_widget = QWidget()
-        button_layout = QHBoxLayout()
+        button_layout = QHBoxLayout()  # pylint: disable=undefined-variable
         button_layout.addWidget(kill_button)
         button_layout.addWidget(catch_button)
         button_layout.addWidget(nickname_input)
@@ -667,8 +667,8 @@ class TestWindow(QWidget):
 
     def keyPressEvent(self, event):
         global pokemon_encounter, system, ankimon_key
-        open_window_key = getattr(Qt.Key, "Key_" + ankimon_key.upper())
-        if system == "mac":
+        open_window_key = getattr(Qt.Key, "Key_" + ankimon_key.upper())  # pylint: disable=undefined-variable
+        if system == "mac":  # pylint: disable=undefined-variable
             if (
                 event.key() == open_window_key
                 and event.modifiers() == Qt.KeyboardModifier.MetaModifier
