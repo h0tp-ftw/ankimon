@@ -33,4 +33,5 @@ disable=
     redefined-builtin,
     no-else-return,
     inconsistent-return-statements,
-    global-variable-not-assigned
+    global-variable-not-assigned,
+    no-name-in-module
