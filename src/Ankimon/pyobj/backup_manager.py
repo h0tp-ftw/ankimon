@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import shutil
+import sqlite3
 import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -115,27 +116,58 @@ class BackupManager:
             "item_count": 0,
         }
 
-        # Prefer database stats if available
-        db = mw.ankimon_db
-        if db:
+        # Prefer THIS backup's own database snapshot if it has one. The old
+        # code read mw.ankimon_db -- the *live* database -- for every backup,
+        # so every row showed identical, current stats (e.g. the same Pokemon
+        # count and trainer name) instead of that backup's actual contents.
+        backup_db_path = backup_dir / "ankimon.db"
+        if backup_db_path.exists():
+            conn = None
             try:
-                stats = db.get_stats()
-                summary["pokemon_count"] = stats.get("pokemon", 0)
-                summary["item_count"] = stats.get("items", 0)
-                
-                main_pokemon = db.get_main_pokemon()
-                if main_pokemon:
-                    summary["main_pokemon_name"] = main_pokemon.get("name", "N/A")
-                    summary["main_pokemon_level"] = main_pokemon.get("level", "N/A")
-                
-                # Trainer info from user_data
-                summary["trainer_name"] = db.get_user_data("trainer.name", "N/A")
-                summary["trainer_cash"] = db.get_user_data("trainer.cash", 0)
-                summary["trainer_level"] = db.get_user_data("trainer.level", 1)
-                
+                # Read-only connection so we never mutate the backup snapshot.
+                conn = sqlite3.connect(backup_db_path.as_uri() + "?mode=ro", uri=True)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+
+                def _config(key, default):
+                    cur.execute("SELECT value FROM config WHERE key = ?", (key,))
+                    row = cur.fetchone()
+                    if row is None:
+                        return default
+                    try:
+                        return json.loads(row["value"])
+                    except Exception:
+                        return row["value"]
+
+                cur.execute("SELECT COUNT(*) AS c FROM captured_pokemon")
+                summary["pokemon_count"] = cur.fetchone()["c"]
+
+                cur.execute("SELECT COALESCE(SUM(quantity), 0) AS c FROM items")
+                summary["item_count"] = cur.fetchone()["c"]
+
+                cur.execute("SELECT data FROM captured_pokemon WHERE is_main = 1 LIMIT 1")
+                main_row = cur.fetchone()
+                if main_row:
+                    try:
+                        main_pokemon = json.loads(main_row["data"])
+                        summary["main_pokemon_name"] = main_pokemon.get("name", "N/A")
+                        summary["main_pokemon_level"] = main_pokemon.get("level", "N/A")
+                    except Exception:
+                        pass
+
+                # Trainer info lives in the `config` table (the Settings store),
+                # NOT in `user_data` -- reading user_data is why the trainer name
+                # showed up as "N/A".
+                summary["trainer_name"] = _config("trainer.name", "N/A")
+                summary["trainer_cash"] = _config("trainer.cash", 0)
+                summary["trainer_level"] = _config("trainer.level", 0)
+
                 return summary
             except Exception as e:
-                self.logger.log("error", f"Failed to get DB stats for backup summary: {e}")
+                self.logger.log("error", f"Failed to read backup database {backup_db_path}: {e}")
+            finally:
+                if conn is not None:
+                    conn.close()
 
         # Fallback to legacy JSON for older backups or migration period
         # (Remaining legacy code omitted for brevity but I will keep it in the replacement)
