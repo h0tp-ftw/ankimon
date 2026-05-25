@@ -57,6 +57,12 @@ class FakeDB:
     def set_config_value(self, key, value):
         self.config[key] = value
 
+    def save_all_config(self, config_dict):
+        # Mirrors AnkimonDB.save_all_config: bulk write in a single transaction.
+        for key, value in config_dict.items():
+            self.config[key] = value
+        return True
+
 
 class FakeSettings:
     def __init__(self, config):
@@ -113,6 +119,22 @@ def test_never_touches_healthy_profile(tmp_path):
     assert pr.recover_wiped_trainer_data(db, FakeSettings({}), uf) is False
     assert db.config["trainer.cash"] == 5000
     assert not list(uf.glob("ankimon.db.bak-*"))
+    # A healthy profile must stay unflagged so a *later* wipe is still recoverable.
+    assert db.get_metadata("trainer_cash_repair_v1") is None
+
+
+def test_recovers_after_healthy_startup_then_wipe(tmp_path):
+    # Regression: a healthy startup must not arm-down recovery. If the DB is later
+    # clobbered by a sync conflict, the next startup must still restore it.
+    uf = _profile(tmp_path, [("json/config.obf", SNAPSHOT)])
+    db = FakeDB({"trainer.cash": 5000, "trainer.level": 10, "trainer.xp": 50})
+    st = FakeSettings({})
+    assert pr.recover_wiped_trainer_data(db, st, uf) is False  # healthy -> no-op
+    assert db.get_metadata("trainer_cash_repair_v1") is None   # but still armed
+
+    db.config.update(WIPED)  # the DB gets wiped later by a synced second device
+    assert pr.recover_wiped_trainer_data(db, st, uf) is True
+    assert db.config["trainer.cash"] == SNAPSHOT["trainer.cash"]
 
 
 def test_does_not_restore_legitimately_spent_down_profile(tmp_path):
@@ -139,3 +161,50 @@ def test_sync_conflict_detection(tmp_path):
 
     clean = _profile(tmp_path / "clean", [("json/config.obf", SNAPSHOT)])
     assert pr._has_sync_conflicts(clean) is False
+
+
+def _fake_aqt(monkeypatch, show):
+    """Install a stub aqt/aqt.utils so warn_if_synced_folder runs headless."""
+    import sys
+    import types
+    aqt = types.ModuleType("aqt")
+    aqt.mw = object()
+    utils = types.ModuleType("aqt.utils")
+    utils.showWarning = show
+    aqt.utils = utils
+    monkeypatch.setitem(sys.modules, "aqt", aqt)
+    monkeypatch.setitem(sys.modules, "aqt.utils", utils)
+
+
+def test_sync_warning_shown_and_flagged_once(tmp_path, monkeypatch):
+    uf = _profile(tmp_path, [
+        ("config.sync-conflict-20260512-205742-ZZUGTKE.obf", SNAPSHOT),
+        ("json/config.obf", SNAPSHOT),
+    ])
+    db = FakeDB({})
+    calls = []
+    _fake_aqt(monkeypatch, lambda *a, **k: calls.append(1))
+
+    assert pr.warn_if_synced_folder(db, uf) is True
+    assert calls == [1]
+    assert db.get_metadata("sync_conflict_warning_v1") == "true"
+    # Flag now set -> second call is a no-op (no second dialog).
+    assert pr.warn_if_synced_folder(db, uf) is False
+    assert calls == [1]
+
+
+def test_sync_warning_not_flagged_when_dialog_fails(tmp_path, monkeypatch):
+    # Regression: if showWarning raises, the flag must stay unset so the warning
+    # is retried next startup instead of being suppressed forever.
+    uf = _profile(tmp_path, [
+        ("config.sync-conflict-20260512-205742-ZZUGTKE.obf", SNAPSHOT),
+        ("json/config.obf", SNAPSHOT),
+    ])
+    db = FakeDB({})
+
+    def _boom(*a, **k):
+        raise RuntimeError("no UI available")
+    _fake_aqt(monkeypatch, _boom)
+
+    assert pr.warn_if_synced_folder(db, uf) is False
+    assert db.get_metadata("sync_conflict_warning_v1") is None

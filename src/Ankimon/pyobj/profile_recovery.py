@@ -104,12 +104,13 @@ def recover_wiped_trainer_data(db, settings_obj, user_path, logger=None) -> bool
     """Restore the trainer block once if the DB looks wiped and a snapshot exists.
 
     Guardrails:
-      * runs at most once per profile (metadata flag);
+      * runs at most once per actual repair -- the metadata flag is set after a
+        restore, or when a wipe is seen but no usable snapshot exists; a healthy
+        profile is left unflagged so a *later* wipe is still recoverable;
       * only acts when the DB shows a *full reset* (cash, level and xp all 0) --
         this distinguishes a wipe from a player who merely spent down to 0;
       * only when a surviving snapshot has cash > 0;
-      * backs up ankimon.db before writing;
-      * never lowers an existing non-zero value.
+      * backs up ankimon.db before writing.
 
     Returns True if a restore was performed.
     """
@@ -123,8 +124,8 @@ def recover_wiped_trainer_data(db, settings_obj, user_path, logger=None) -> bool
         level = _to_int(db.get_config_value("trainer.level", 0))
         xp = _to_int(db.get_config_value("trainer.xp", 0))
         if not (cash == 0 and level == 0 and xp == 0):
-            # Healthy or legitimately-spent profile -- never touch it again.
-            db.set_metadata(_REPAIR_FLAG, "true")
+            # Healthy or legitimately-spent profile -- leave it alone, but do NOT
+            # set the repair flag: a *later* sync wipe must still be recoverable.
             return False
 
         user_path = Path(user_path)
@@ -141,12 +142,10 @@ def recover_wiped_trainer_data(db, settings_obj, user_path, logger=None) -> bool
             stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             shutil.copy2(db_path, db_path.with_name(f"{db.DB_FILENAME}.bak-{stamp}"))
 
-        restored = {}
-        for key in _TRAINER_KEYS:
-            if key in data:
-                db.set_config_value(key, data[key])
-                settings_obj.config[key] = data[key]
-                restored[key] = data[key]
+        restored = {k: data[k] for k in _TRAINER_KEYS if k in data}
+        db.save_all_config(restored)  # one transaction -> never a partial restore
+        for k, v in restored.items():
+            settings_obj.config[k] = v
         try:
             settings_obj.compute_gui_config()
         except Exception:
@@ -201,7 +200,6 @@ def warn_if_synced_folder(db, user_path, logger=None) -> bool:
             # Don't set the flag -- we want to warn later if conflicts appear.
             return False
 
-        db.set_metadata(_SYNC_WARN_FLAG, "true")
         from aqt import mw
         from aqt.utils import showWarning
         showWarning(
@@ -216,6 +214,9 @@ def warn_if_synced_folder(db, user_path, logger=None) -> bool:
             title="Ankimon: data-sync risk detected",
             parent=mw,
         )
+        # Only suppress future warnings once the dialog has actually shown -- if the
+        # import or showWarning above raises, we fall through and retry next start.
+        db.set_metadata(_SYNC_WARN_FLAG, "true")
         return True
     except Exception as e:
         if logger is not None:

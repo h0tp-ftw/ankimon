@@ -49,7 +49,7 @@ def diagnose(uf: Path) -> None:
     for p in sorted(uf.rglob("ankimon.db")):
         found_any = True
         try:
-            c = sqlite3.connect(p.as_uri() + "?mode=ro", uri=True)
+            c = sqlite3.connect(p.resolve().as_uri() + "?mode=ro", uri=True)
             c.row_factory = sqlite3.Row
             rows = {r["key"]: r["value"] for r in
                     c.execute("SELECT key, value FROM config WHERE key LIKE 'trainer.%'")}
