@@ -727,6 +727,23 @@ class AnkimonDB:
         cursor = self.execute("SELECT COUNT(*) FROM config")
         return cursor.fetchone()[0] > 0
 
+    def get_metadata(self, key: str, default: Any = None) -> Any:
+        """Reads a value from the metadata table (migration/repair flags, etc.)."""
+        cursor = self.execute("SELECT value FROM metadata WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        return row["value"] if row else default
+
+    def set_metadata(self, key: str, value: str) -> bool:
+        """Writes a value to the metadata table."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            (key, str(value)),
+        )
+        conn.commit()
+        return True
+
     def get_stats(self) -> Dict[str, int]:
         """Returns a summary of database contents for synchronization/backup comparison."""
         conn = self._get_connection()

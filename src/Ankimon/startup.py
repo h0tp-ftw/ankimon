@@ -6,6 +6,7 @@ from aqt import mw
 from .resources import (
     pkmnimgfolder,
     sound_list_path,
+    user_path,
 )
 from .utils import (
     check_folders_exist,
@@ -20,6 +21,7 @@ from .gui_entities import CheckFiles
 from .pyobj.download_sprites import show_agreement_and_download_dialog
 from .pyobj.backup_files import run_backup
 from .pyobj.backup_manager import BackupManager
+from .pyobj.profile_recovery import recover_wiped_trainer_data, warn_if_synced_folder
 from .pyobj.error_handler import show_warning_with_traceback
 from .singletons import (
     logger,
@@ -55,6 +57,12 @@ def run_startup_sequence():
             ankimon_db, mypokemon_path, mainpokemon_path, itembag_path, badgebag_path, mw,
             team_pokemon_path, pokemon_history_path, user_path_credentials, rate_path
         )
+
+    # If the DB was wiped (commonly by a file-sync conflict on the binary DB),
+    # restore trainer cash/level/xp from a surviving config.obf snapshot, and
+    # warn the user if their data folder is being synced across devices.
+    recover_wiped_trainer_data(ankimon_db, settings_obj, user_path, logger)
+    warn_if_synced_folder(ankimon_db, user_path, logger)
 
     if settings_obj.get("misc.developer_mode"):
         backup_manager.create_backup(manual=False)
