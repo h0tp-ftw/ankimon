@@ -132,7 +132,7 @@ class BackupManager:
                 def _config(key, default):
                     cur.execute("SELECT value FROM config WHERE key = ?", (key,))
                     row = cur.fetchone()
-                    if row is None:
+                    if row is None or row["value"] is None:
                         return default
                     try:
                         return json.loads(row["value"])
@@ -160,7 +160,7 @@ class BackupManager:
                 # showed up as "N/A".
                 summary["trainer_name"] = _config("trainer.name", "N/A")
                 summary["trainer_cash"] = _config("trainer.cash", 0)
-                summary["trainer_level"] = _config("trainer.level", 0)
+                summary["trainer_level"] = _config("trainer.level", 1)
 
                 return summary
             except Exception as e:

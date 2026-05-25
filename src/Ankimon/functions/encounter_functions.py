@@ -375,7 +375,7 @@ def new_pokemon(
     # this line it climbs without bound, so after the first catch of a session
     # the `caught > 1` branch in catch_pokemon can skip saving later catches
     # (silently, when gui.pop_up_dialog_message_on_defeat is enabled).
-    ankimon_tracker_obj.caught = 0
+    ankimon_tracker.caught = 0
     (
         name,
         pkmn_id,
