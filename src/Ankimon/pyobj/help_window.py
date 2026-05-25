@@ -127,8 +127,13 @@ class HelpWindow(QDialog):
                 # Read local content
                 local_content = read_local_file(help_local_file_path)
 
-                # Read content from GitHub
-                github_content, github_html_content = read_github_file(help_github_url)
+                # Read content from GitHub. read_github_file() returns a single
+                # value (the raw text, or None); the help file is already HTML,
+                # so the raw content and the display content are the same thing.
+                # Unpacking into two names raised "ValueError: too many values
+                # to unpack (expected 2)" every time the window opened online.
+                github_content = read_github_file(help_github_url)
+                github_html_content = github_content
 
                 if local_content is not None and compare_files(local_content, github_content):
                     # If local file matches GitHub, use cached content
