@@ -369,6 +369,13 @@ def new_pokemon(
     Returns:
         PokemonObject: The updated `pokemon` object representing the newly generated wild Pokémon ready for battle.
     """
+    # A fresh wild Pokémon is appearing, so reset the per-encounter catch guard.
+    # `caught` is set to 0 once in AnkimonTracker.__init__ and only ever
+    # incremented in catch_pokemon -- it is never reset anywhere else. Without
+    # this line it climbs without bound, so after the first catch of a session
+    # the `caught > 1` branch in catch_pokemon can skip saving later catches
+    # (silently, when gui.pop_up_dialog_message_on_defeat is enabled).
+    ankimon_tracker_obj.caught = 0
     (
         name,
         pkmn_id,
