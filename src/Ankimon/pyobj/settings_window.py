@@ -666,13 +666,16 @@ class SettingsWindow(QMainWindow):
                 # Hard bounds
                 new_amount = max(10, min(2000, orig_amount))
                 
-                # Cheat Threshold: Max 100¥ per card
+                # Cheat Threshold
                 interval = self.config.get("trainer.cash_reward_interval", 10)
-                max_allowed = interval * 100
+                daily_average = int(self.config.get("battle.daily_average", 100))
+                max_per_card = 400.0 / daily_average
+                max_allowed = max(1, int(interval * max_per_card))
+
                 if new_amount > max_allowed:
                     new_amount = max_allowed
                     has_adjustments = True
-                    adjustment_msg += f"- Reward Amount: Capped at {new_amount}¥ to maintain the 100:1 ratio limit.\n"
+                    adjustment_msg += f"- Reward Amount: Capped at {new_amount}¥ to maintain the maximum daily economy limit.\n"
                 elif new_amount != orig_amount:
                     has_adjustments = True
                     adjustment_msg += f"- Reward Amount: Adjusted to {new_amount}¥ (Range: 10-2,000)\n"
