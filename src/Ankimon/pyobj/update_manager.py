@@ -169,6 +169,11 @@ def _fetch_gitignore_patterns() -> list[str]:
 
 
 def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
+    # Holy Ground: NEVER touch anything in user_files/ during an update,
+    # regardless of gitignore patterns.
+    if rel_path == "user_files" or rel_path.startswith("user_files/"):
+        return True
+
     for pattern in gitignore_patterns:
         pattern = pattern.rstrip("/")
         if rel_path == pattern or rel_path.startswith(pattern + "/"):
