@@ -193,9 +193,10 @@ except Exception as e:
         dlg = UpdateDialog(mw)
         dlg.exec()
 
+    error_msg = traceback.format_exc()
+
     def show_error_details():
-        error_msg = traceback.format_exc()
-        aqt.utils.showWarning(f"Ankimon failed to load. Please report this error:\n\n{error_msg}")
+        aqt.utils.showWarning(f'Ankimon failed to load. Please report this error:\n\n{error_msg}')
 
     update_action = QAction("Launch Recovery Updater", mw)
     update_action.triggered.connect(launch_recovery_updater)
