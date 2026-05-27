@@ -189,8 +189,8 @@ except Exception as e:
     mw.form.menuTools.addMenu(recovery_menu)
 
     def launch_recovery_updater():
-        from src.Ankimon.pyobj.update_dialog import AnkimonUpdateDialog
-        dlg = AnkimonUpdateDialog()
+        from .pyobj.update_dialog import UpdateDialog
+        dlg = UpdateDialog(mw)
         dlg.exec()
 
     def show_error_details():
