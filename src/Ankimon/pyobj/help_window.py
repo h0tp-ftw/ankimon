@@ -128,16 +128,16 @@ class HelpWindow(QDialog):
                 local_content = read_local_file(help_local_file_path)
 
                 # Read content from GitHub
-                github_content, github_html_content = read_github_file(help_github_url)
+                github_content = read_github_file(help_github_url)
 
                 if local_content is not None and compare_files(local_content, github_content):
                     # If local file matches GitHub, use cached content
-                    html_content = github_html_content
+                    html_content = github_content
                 else:
                     # Otherwise, save and use GitHub content
                     if github_content is not None:
                         write_local_file(help_local_file_path, github_content)
-                        html_content = github_html_content
+                        html_content = github_content
             else:
                 # Use local file when offline
                 local_content = read_local_file(help_local_file_path)
