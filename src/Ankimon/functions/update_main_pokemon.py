@@ -1,5 +1,6 @@
 import json
 import uuid
+from collections import defaultdict
 from typing import Optional
 
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
@@ -116,3 +117,87 @@ def save_main_pokemon(main_pokemon: PokemonObject):
         data = main_pokemon.__dict__
     
     db.save_main_pokemon(data)
+
+
+def set_main_from_record(pokemon_data: dict, main_pokemon: PokemonObject) -> PokemonObject:
+    """Switch the active/main Pokémon to ``pokemon_data`` (a collection record).
+
+    Single source of truth shared by the collection picker (``collection_dialog``)
+    and the in-review team-cycle hotkey. It:
+      1. Persists the OUTGOING main's in-memory state (xp/HP/status) back to the
+         collection, so switching never silently drops progress.
+      2. Rebuilds ``main_pokemon`` in place from the record.
+      3. Preserves the new main's stored current HP (clamped to max) on the
+         authoritative ``hp`` field and its ``current_hp`` mirror -- so switching
+         is NOT a free heal.
+    Returns the same ``main_pokemon`` object, mutated in place.
+    """
+    db = mw.ankimon_db
+
+    # 1. Persist the outgoing main before replacing it.
+    try:
+        if (
+            main_pokemon is not None
+            and getattr(main_pokemon, "individual_id", None)
+            and db.get_main_pokemon()
+        ):
+            db.save_pokemon(main_pokemon.to_dict())
+    except Exception:
+        pass  # No active main yet -- nothing to preserve.
+
+    # 2. Build the new main from the record.
+    pokemon_id = pokemon_data.get("id")
+    pokemon_name = search_pokedex_by_id(pokemon_id)
+    base_stats = search_pokedex(pokemon_name, "baseStats")
+    new_main = PokemonObject(
+        name=pokemon_name,
+        level=pokemon_data.get("level", 5),
+        ability=pokemon_data.get("ability", ["none"]),
+        type=pokemon_data.get("type", ["Normal"]),
+        base_stats=base_stats,
+        ev=pokemon_data.get("ev", defaultdict(int)),
+        iv=pokemon_data.get("iv", defaultdict(int)),
+        attacks=pokemon_data.get("attacks", ["Struggle"]),
+        base_experience=pokemon_data.get("base_experience", 0),
+        growth_rate=pokemon_data.get("growth_rate", "medium"),
+        gender=pokemon_data.get("gender", "N"),
+        shiny=pokemon_data.get("shiny", False),
+        individual_id=pokemon_data.get("individual_id", str(uuid.uuid4())),
+        id=pokemon_data.get("id", 133),
+        status=pokemon_data.get("status", None),
+        volatile_status=set(pokemon_data.get("volatile_status", [])),
+        xp=pokemon_data.get("xp", 0),
+        nickname=pokemon_data.get("nickname", ""),
+        friendship=pokemon_data.get("friendship", 0),
+        pokemon_defeated=pokemon_data.get("pokemon_defeated", 0),
+        everstone=pokemon_data.get("everstone", False),
+        mega=pokemon_data.get("mega", False),
+        special_form=pokemon_data.get("special_form", None),
+        tier=pokemon_data.get("tier", None),
+        captured_date=pokemon_data.get("captured_date", None),
+        is_favorite=pokemon_data.get("is_favorite", False),
+        held_item=pokemon_data.get("held_item"),
+    )
+    for attr in (
+        "captured_date", "tier", "friendship", "pokemon_defeated",
+        "everstone", "mega", "special_form", "base_experience",
+    ):
+        if attr in pokemon_data:
+            setattr(new_main, attr, pokemon_data[attr])
+
+    # 3. Preserve stored current HP (no free heal). ``hp`` is authoritative;
+    #    ``current_hp`` mirrors it. Both clamped to max.
+    max_hp = new_main.calculate_max_hp()
+    new_main.max_hp = max_hp
+    stored_hp = pokemon_data.get("current_hp", pokemon_data.get("hp", max_hp))
+    try:
+        stored_hp = int(stored_hp)
+    except (TypeError, ValueError):
+        stored_hp = max_hp
+    new_main.hp = max(0, min(stored_hp, max_hp))
+    new_main.current_hp = new_main.hp
+
+    # 4. Mutate the existing reference in place and persist as the main pokemon.
+    main_pokemon.__dict__.update(new_main.__dict__)
+    db.save_main_pokemon(main_pokemon.to_dict())
+    return main_pokemon

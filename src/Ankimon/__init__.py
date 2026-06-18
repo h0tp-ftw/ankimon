@@ -169,6 +169,7 @@ setup_reviewer_ui(
     settings_obj.get("controls.catch_key"),
     settings_obj.get("controls.defeat_key"),
     settings_obj.get("controls.pokemon_buttons"),
+    settings_obj.get("controls.team_cycle_key", "9"),
 )
 
 from .discord_integration import setup_discord_hooks
