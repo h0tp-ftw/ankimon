@@ -54,18 +54,27 @@ def defeat_shortcut_function():
         tooltip("Wild pokemon has to be fainted to defeat it!")
 
 
-_team_cycle_index = 0
+_last_team_cycle = 0.0
 
 
 def cycle_team_pokemon():
-    """Cycle the active/main Pokémon to the next of the first 3 team slots.
+    """Switch the active/main Pokémon to the next non-fainted of the first 3 team
+    slots, relative to whoever is currently active.
 
-    Reuses ``set_main_from_record`` -- the same routine the collection picker
-    uses -- so the outgoing main's progress is saved and the incoming Pokémon
-    keeps its stored HP (cycling is never a free heal).
+    Reuses ``set_main_from_record`` (the same routine the collection picker uses)
+    so the outgoing main's progress is saved and the incoming Pokémon keeps its
+    stored HP -- cycling is never a free heal. Fainted (0-HP) members are skipped
+    on purpose: switching a 0-HP Pokémon in would just be auto-revived + trigger
+    an enemy reroll by the next card's faint handler, i.e. a free heal/escape.
     """
-    global _team_cycle_index
+    global _last_team_cycle
+    import time
     from .functions.update_main_pokemon import set_main_from_record
+
+    now = time.time()
+    if now - _last_team_cycle < 0.3:  # debounce: each switch writes the DB
+        return
+    _last_team_cycle = now
 
     db = mw.ankimon_db
     team = db.get_team() or []
@@ -74,24 +83,43 @@ def cycle_team_pokemon():
         tooltip("Need at least 2 team members to cycle.")
         return
 
-    _team_cycle_index = (_team_cycle_index + 1) % len(team_ids)
-    record = db.get_pokemon(team_ids[_team_cycle_index])
-    if not record or not record.get("id"):
-        tooltip("Could not load that team member.")
+    # Start from the current main's slot so "next" is relative to who's active.
+    current_id = getattr(main_pokemon, "individual_id", None)
+    try:
+        start = team_ids.index(current_id)
+    except ValueError:
+        start = -1  # current main isn't in the first 3 -> first step lands on slot 0
+
+    n = len(team_ids)
+    for step in range(1, n + 1):
+        cand_id = team_ids[(start + step) % n]
+        if cand_id == current_id:
+            continue
+        record = db.get_pokemon(cand_id)
+        if not record or not record.get("id"):
+            continue
+        stored_hp = record.get("current_hp", record.get("hp", 1))
+        try:
+            stored_hp = int(stored_hp)
+        except (TypeError, ValueError):
+            stored_hp = 1
+        if stored_hp < 1:
+            continue  # skip fainted members (see docstring)
+
+        set_main_from_record(record, main_pokemon)
+
+        try:
+            reviewer = mw.reviewer
+            if reviewer and reviewer.web:
+                reviewer_obj.update_life_bar(reviewer, 0, 0)
+        except Exception as e:
+            logger.log("error", f"Team cycle HUD refresh failed: {e}")
+
+        name = main_pokemon.nickname or main_pokemon.name
+        tooltip(f"Switched to {name} (Lvl {main_pokemon.level}, HP {main_pokemon.hp}/{main_pokemon.max_hp})")
         return
 
-    set_main_from_record(record, main_pokemon)
-
-    # Refresh the in-review HUD (life bar / sprite).
-    try:
-        reviewer = mw.reviewer
-        if reviewer and reviewer.web:
-            reviewer_obj.update_life_bar(reviewer, 0, 0)
-    except Exception as e:
-        logger.log("error", f"Team cycle HUD refresh failed: {e}")
-
-    name = main_pokemon.nickname or main_pokemon.name
-    tooltip(f"Switched to {name} (Lvl {main_pokemon.level}, HP {main_pokemon.hp}/{main_pokemon.max_hp})")
+    tooltip("No other healthy team member to switch to.")
 
 
 def setup_reviewer_ui(catch_shortcut: str, defeat_shortcut: str, reviewer_buttons: bool, team_cycle_shortcut: str = "9"):

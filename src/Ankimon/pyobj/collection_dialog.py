@@ -28,7 +28,7 @@ def MainPokemon(
     # Switch the active/main Pokémon. Shared with the in-review team-cycle hotkey
     # via set_main_from_record: it saves the outgoing main's progress and
     # preserves the incoming Pokémon's stored HP (no free heal).
-    set_main_from_record(pokemon_data, main_pokemon)
+    set_main_from_record(pokemon_data, main_pokemon, heal_to_full=True)
 
     logger.log_and_showinfo(
         "info",

@@ -119,7 +119,7 @@ def save_main_pokemon(main_pokemon: PokemonObject):
     db.save_main_pokemon(data)
 
 
-def set_main_from_record(pokemon_data: dict, main_pokemon: PokemonObject) -> PokemonObject:
+def set_main_from_record(pokemon_data: dict, main_pokemon: PokemonObject, heal_to_full: bool = False) -> PokemonObject:
     """Switch the active/main Pokémon to ``pokemon_data`` (a collection record).
 
     Single source of truth shared by the collection picker (``collection_dialog``)
@@ -160,6 +160,7 @@ def set_main_from_record(pokemon_data: dict, main_pokemon: PokemonObject) -> Pok
         attacks=pokemon_data.get("attacks", ["Struggle"]),
         base_experience=pokemon_data.get("base_experience", 0),
         growth_rate=pokemon_data.get("growth_rate", "medium"),
+        nature=pokemon_data.get("nature", "serious"),
         gender=pokemon_data.get("gender", "N"),
         shiny=pokemon_data.get("shiny", False),
         individual_id=pokemon_data.get("individual_id", str(uuid.uuid4())),
@@ -189,12 +190,18 @@ def set_main_from_record(pokemon_data: dict, main_pokemon: PokemonObject) -> Pok
     #    ``current_hp`` mirrors it. Both clamped to max.
     max_hp = new_main.calculate_max_hp()
     new_main.max_hp = max_hp
-    stored_hp = pokemon_data.get("current_hp", pokemon_data.get("hp", max_hp))
-    try:
-        stored_hp = int(stored_hp)
-    except (TypeError, ValueError):
-        stored_hp = max_hp
-    new_main.hp = max(0, min(stored_hp, max_hp))
+    if heal_to_full:
+        # Collection picker: keep its long-standing heal-on-pick behaviour.
+        new_main.hp = max_hp
+    else:
+        # Team-cycle hotkey: preserve the incoming Pokémon's stored HP (no free
+        # heal). hp is authoritative; current_hp mirrors it.
+        stored_hp = pokemon_data.get("current_hp", pokemon_data.get("hp", max_hp))
+        try:
+            stored_hp = int(stored_hp)
+        except (TypeError, ValueError):
+            stored_hp = max_hp
+        new_main.hp = max(0, min(stored_hp, max_hp))
     new_main.current_hp = new_main.hp
 
     # 4. Mutate the existing reference in place and persist as the main pokemon.
