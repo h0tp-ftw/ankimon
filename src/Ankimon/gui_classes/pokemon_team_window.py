@@ -144,11 +144,6 @@ class PokemonTeamDialog(QDialog):
             if not pokemon_data:
                 return 0
             
-            # Debug: print available keys
-            print(f"Pokemon data keys: {pokemon_data.keys()}")
-            print(f"Base stats: {pokemon_data.get('base_stats', 'NOT FOUND')}")
-            print(f"Detail stats: {pokemon_data.get('detail_stats', 'NOT FOUND')}")
-            
             base_stats = pokemon_data.get('base_stats', {})
             if not base_stats:
                 base_stats = pokemon_data.get('detail_stats', {})
@@ -163,14 +158,10 @@ class PokemonTeamDialog(QDialog):
                 ev = {stat: 0 for stat in ['hp', 'atk', 'def', 'spa', 'spd', 'spe']}
             
             attack, defense, stamina = pokemon_go_raw_stats(base_stats, iv, ev)
-            print(f"Attack: {attack}, Defense: {defense}, Stamina: {stamina}, Level: {level}")
-            
             cp = calculate_pokemon_go_cp(attack, defense, stamina, level)
             return cp
         except Exception as e:
-            print(f"Error calculating CP for {individual_id}: {e}")
-            import traceback
-            traceback.print_exc()
+            self.logger.log("error", f"Error calculating CP for {individual_id}: {e}")
             return 0
 
     def load_pokemon_team(self):
