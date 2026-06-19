@@ -138,6 +138,9 @@ class HelpWindow(QDialog):
                     if github_content is not None:
                         write_local_file(help_local_file_path, github_content)
                         html_content = github_content
+                    elif local_content is not None:
+                        # GitHub unreachable — fall back to the cached local copy
+                        html_content = local_content
             else:
                 # Use local file when offline
                 local_content = read_local_file(help_local_file_path)
