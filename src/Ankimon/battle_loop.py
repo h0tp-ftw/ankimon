@@ -98,7 +98,7 @@ def on_review_card(*args):
         s.item_receive_value -= 1
         if s.item_receive_value <= 0:
             s.item_receive_value = random.randint(3, 385)
-            win = getattr(mw, "test_window", None)
+            win = services.test_window
             if is_alive(win):
                 try:
                     win.display_item()
@@ -285,13 +285,12 @@ def on_review_card(*args):
 
             if enemy_pokemon.hp < 1:
                 enemy_pokemon.hp = 0
-                win = getattr(mw, "test_window", None)
                 handle_enemy_faint(
                     main_pokemon,
                     enemy_pokemon,
                     s.collected_pokemon_ids,
-                    win if is_alive(win) else None,
-                    getattr(mw, "evo_window", None),
+                    services.test_window if is_alive(services.test_window) else None,
+                    services.evo_window,
                     reviewer_obj,
                     logger,
                     achievements,
@@ -302,7 +301,7 @@ def on_review_card(*args):
             play_sound(enemy_pokemon.id, settings_obj)
 
         if main_pokemon.hp < 1:
-            win = getattr(mw, "test_window", None)
+            win = services.test_window
             handle_main_pokemon_faint(
                 main_pokemon, 
                 enemy_pokemon, 

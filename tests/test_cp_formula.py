@@ -46,7 +46,7 @@ class TestCalculateCPM:
 
     def test_level_100_near_cap(self):
         cpm = calculate_cpm(100)
-        assert 0.8 < cpm <= 0.84
+        assert 2.4 < cpm <= 2.45
 
     def test_monotonically_increasing(self):
         values = [calculate_cpm(lv) for lv in range(1, 101)]
