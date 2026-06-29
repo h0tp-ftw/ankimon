@@ -537,5 +537,66 @@
             "special-form": null,
             "evos": []
         }
+    },
+    {
+        "code": "MONTHLY-2026-06-COMFEY",
+        "month": "June 2026",
+        "description": "A floral challenge for June 2026, featuring Comfey!",
+        "previous_challenge_individual_id": "86586a4b-1147-4bd6-9d01-ac61b18967da",
+        "defeat_threshold": 250,
+        "pokemon": {
+            "name": "Comfey",
+            "nickname": "",
+            "level": 30,
+            "gender": "M",
+            "id": 764,
+            "ability": "Flower Veil",
+            "type": [
+                "Fairy"
+            ],
+            "stats": {
+                "hp": 51,
+                "atk": 52,
+                "def": 90,
+                "spa": 82,
+                "spd": 110,
+                "spe": 100,
+                "xp": 0
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 25,
+                "atk": 9,
+                "def": 31,
+                "spa": 26,
+                "spd": 1,
+                "spe": 25
+            },
+            "attacks": [
+                "Floral healing",
+                "Sweet kiss",
+                "Petal blizzard",
+                "Grass knot"
+            ],
+            "base_experience": 170,
+            "current_hp": 51,
+            "growth_rate": "fast",
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "shiny": false,
+            "captured_date": "2026-05-31 09:07:49",
+            "individual_id": "1f8abeaf-3962-4f35-a404-bd0d22c3fc8c",
+            "mega": false,
+            "special-form": null,
+            "evos": []
+        }
     }
 ]

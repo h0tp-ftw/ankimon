@@ -10,6 +10,7 @@
   "error_occured": "Došlo k chybě u {function}. Prosím, pošlete tuto chybovou zprávu na Report Bug Issue.",
   "missing_mainpokemon_data": "Chybí data o pokémonovi",
   "pokemon_about_to_evolve": "{main_pokemon_name} se chystá vyvinout na {evo_pokemon_name} na úrovni {main_pokemon_level}",
+  "pokemon_about_to_evolve_friendship": "{main_pokemon_name} je připraven se vyvinout na {evo_pokemon_name}!",
   "mainpokemon_can_learn_new_attack": "Váš {main_pokemon_name} se může naučit nový útok!",
   "mainpokemon_learned_new_attack": "Váš {main_pokemon_name} se naučil {new_attack_name}!",
   "mainpokemon_gained_xp": "Váš {main_pokemon_name} získal {exp} XP.\n {experience_till_next_level} exp zbývá do další úrovně.\n Váš pokémon má aktuálně {main_pokemon_xp}",
@@ -454,5 +455,9 @@
   "futuresight_fails": "Budoucí zrak selhal!",
   "weather_raindance_still": "Stále prší!",
   "wish_started": "{pokemon_name} si přál! Brzy si obnoví {heal_amount} HP.",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "CP",
+  "bp_label": "BP",
+  "combat_power": "Bojová síla",
+  "battle_power": "Bojová síla"
 }

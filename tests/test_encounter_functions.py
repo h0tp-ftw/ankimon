@@ -38,6 +38,14 @@ ef.trainer_card = mock.MagicMock()
 # Execute the module
 spec.loader.exec_module(ef)
 
+# exec_module runs `main_pokemon = None` / `settings_obj = None` at module top (the
+# bind_runtime_globals targets), which OVERWRITES the pre-patch above. modify_percentages
+# / get_tier read those bare globals, so (re)set the mocks AFTER exec.
+ef.main_pokemon = mock.MagicMock()
+ef.settings_obj = mock.MagicMock()
+ef.ankimon_tracker_obj = mock.MagicMock()
+ef.trainer_card = mock.MagicMock()
+
 def test_modify_percentages_does_not_raise_nameerror():
     # Setup mocks
     ef.main_pokemon.level = 50

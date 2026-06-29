@@ -1,10 +1,8 @@
 import os
 import json
 
-from aqt import mw
-
-from ..resources import pkmnimgfolder, pokedex_path
-
+from ..services import services
+from ..resources import pkmnimgfolder
 from .pokedex_functions import _load_pokedex_cache, safe_int
 
 SUBSTITUTE_PATH = f"{pkmnimgfolder}/front_default/substitute.png"
@@ -21,7 +19,7 @@ def _get_pokemon_id_from_pokedex(pokemon_name):
             # Ensure we return an integer ID
             return safe_int(pdata.get("actual_id")) or safe_int(pdata.get("num"))
     except Exception as e:
-        mw.logger.log("debug", f"Error looking up pokemon ID in pokedex: {e}")
+        services.logger.log("debug", f"Error looking up pokemon ID in pokedex: {e}")
     
     return None
 
@@ -46,14 +44,14 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):
     path = _path_format(back, id, gif, shiny, female)
     if os.path.exists(path):
-        mw.logger.log("debug", f"Sprite found: {path}")
+        services.logger.log("debug", f"Sprite found: {path}")
         return path
 
     if female:
         # requested gendered but not found, try non-gendered
         path = _path_format(back, id, gif, shiny, False)
         if os.path.exists(path):
-            mw.logger.log("debug", f"Sprite found (gender fallback): {path}")
+            services.logger.log("debug", f"Sprite found (gender fallback): {path}")
             return path
 
 
@@ -63,8 +61,16 @@ def _try_back(back: bool, id: int, gif: bool, shiny: bool, female: bool):
         return path
 
     if back:
-        # requested back, fallback to front
-        path = _try_gendered(False, id, gif, shiny, female)
+        # requested back
+
+        # special fallback
+        if not gif:
+            path = f"sprites/missing_back/{id}.png"
+            if os.path.exists(path):
+                services.logger.log("debug", f"Sprite found (back fallback): {path}")
+                return path
+
+        path = _try_gendered(False, id, gif, shiny, False)
         if path:
             return path
 
@@ -93,7 +99,7 @@ def get_sprite_path(side: str, sprite_type: str, id: int, shiny: bool, gender: s
         forme_id = _get_pokemon_id_from_pokedex(pokemon_name)
         if forme_id:
             lookup_id = forme_id
-            mw.logger.log("debug", f"Using Mega/Gmax form ID {lookup_id} for {pokemon_name}")
+            services.logger.log("debug", f"Using Mega/Gmax form ID {lookup_id} for {pokemon_name}")
         # Also get the base species_id for fallback
         try:
             from .pokedex_functions import _load_pokedex_cache
@@ -137,7 +143,7 @@ def get_sprite_path(side: str, sprite_type: str, id: int, shiny: bool, gender: s
                 return path
 
     # Fallback to the generic substitute image
-    mw.logger.log(
+    services.logger.log(
         "warning",
         f"Unable to find sprite for {pokemon_name} ID {id} (Side: {side} Sprite: {sprite_type} Shiny: {shiny}, Gender: {gender}). Returning substitute.",
     )

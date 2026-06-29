@@ -10,6 +10,7 @@
   "error_occured": "Ocurrió un error con {function}. Por favor, publica este mensaje de error en Reportar un problema.",
   "missing_mainpokemon_data": "Faltan datos del Pokémon",
   "pokemon_about_to_evolve": "{main_pokemon_name} está a punto de evolucionar a {evo_pokemon_name} en el nivel {main_pokemon_level}.",
+  "pokemon_about_to_evolve_friendship": "¡{main_pokemon_name} está listo para evolucionar a {evo_pokemon_name}!",
   "mainpokemon_can_learn_new_attack": "¡Tu {main_pokemon_name} puede aprender un nuevo ataque!",
   "mainpokemon_learned_new_attack": "¡Tu {main_pokemon_name} aprendió {new_attack_name}!",
   "mainpokemon_gained_xp": "Tu {main_pokemon_name} ha ganado {exp} XP.\n Se necesitan {experience_till_next_level} exp para el siguiente nivel.\n Actualmente tiene {main_pokemon_xp}.",
@@ -453,5 +454,9 @@
   "futuresight_hits": "¡El ataque previsto golpea a {side}!",
   "futuresight_fails": "¡Premonición falló!",
   "wish_started": "¡{pokemon_name} pidió un deseo! Pronto curará {heal_amount} PS.",
-  "pc_box_label": "Caja {current}/{total}"
+  "pc_box_label": "Caja {current}/{total}",
+  "cp_label": "PC",
+  "bp_label": "PC",
+  "combat_power": "Poder de combate",
+  "battle_power": "Poder de combate"
 }

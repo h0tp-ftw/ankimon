@@ -33,3 +33,13 @@ src/Ankimon/user_files/json/*
 # Sprites are downloaded on first run, not tracked in git.
 # Source of truth: https://github.com/h0tp-ftw/ankimon-sprites
 src/Ankimon/user_files/sprites/
+venv/
+# Tier-2 agent-harness env (venv + locally-extracted Qt libs); recreate with
+# harness/setup_tier2.sh. Large + machine-specific, never committed.
+.tier2/
+__pycache__/
+# coverage.py artifacts from `harness/check.py --coverage` (dev-only measurement)
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

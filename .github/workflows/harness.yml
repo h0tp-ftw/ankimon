@@ -1,0 +1,63 @@
+name: Harness
+
+# Headless validation on every PR + pushes to main. Free on public repos (standard runners).
+# Two jobs:
+#   tier1 — fast logic gate + a functionality sweep that drives many parts of the game and
+#           fails on any crash (an `error` event). No Qt.
+#   tier2 — boots and *plays* the REAL add-on with offscreen Qt (real windows, real memory).
+# (The harness core needs only `requests` beyond stdlib; Tier 2 needs the full Qt stack.)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tier1:
+    name: Tier 1 — logic gate + functionality sweep (no Qt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install harness deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Gate (import probes + smoke play-through + regression test)
+        run: python3 harness/check.py
+      - name: Functionality sweep (drive many parts; any crash → an `error` event → fail)
+        run: |
+          python3 harness/scenarios/economy.py
+          python3 harness/scenarios/longrun.py 3000
+
+  tier2:
+    name: Tier 2 — real add-on, offscreen Qt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: System deps (Qt + WebEngine + xvfb)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 \
+            libxcb-cursor0 x11-utils libegl1 libpulse0 libnss3 libasound2t64
+      - name: Python deps (real aqt + PyQt6)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Boot + play the REAL add-on (offscreen)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          xvfb-run -a python3 -m harness.checks.probe_real_boot
+          xvfb-run -a python3 -m harness.checks.probe_real_play

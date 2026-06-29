@@ -1,3 +1,14 @@
+"""
+error_handler.py — the friendly "something went wrong" dialog.
+
+Made headless-safe: the Qt/aqt imports are guarded so this module (imported by
+~20 others across the core) loads under plain python3 with no GUI. The
+*observable* part of an error — a log line plus a structured ``error`` event —
+always happens; the rich Qt dialog is only built when a Qt runtime is present.
+"""
+
+from __future__ import annotations
+
 import os
 import re
 import json
@@ -8,18 +19,33 @@ import platform
 import sys
 from pathlib import Path
 from typing import Optional, Dict
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
-)
-from PyQt6.QtGui import QPixmap, QImage
-from PyQt6.QtCore import Qt
-from aqt import mw
-from anki.buildinfo import version as anki_version
+
+# Qt is optional. In Anki these import fine and the rich dialog is shown; in the
+# headless harness they fail and we fall back to log + structured event only.
+try:
+    from PyQt6.QtWidgets import (
+        QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
+    )
+    from PyQt6.QtGui import QPixmap, QImage
+    from PyQt6.QtCore import Qt
+    _HAVE_QT = True
+except Exception:  # pragma: no cover - exercised only headless
+    _HAVE_QT = False
 
 # Path configurations
 addon_dir = Path(__file__).parents[1]
 pyobj_path = addon_dir / "pyobj"
 manifest_path = addon_dir / "manifest.json"
+
+
+def _logger():
+    """Best-effort access to the shared logger without importing aqt."""
+    try:
+        from ..services import services
+        return services.logger
+    except Exception:
+        return None
+
 
 def get_environment_info() -> str:
     """Collect add-on, Anki, Python, and OS version information."""
@@ -29,11 +55,17 @@ def get_environment_info() -> str:
     except Exception:
         addon_ver = "unknown"
 
+    try:
+        from anki.buildinfo import version as anki_version
+    except Exception:
+        anki_version = "headless"
+
     py_ver = sys.version.split()[0]
     os_info = platform.platform()
     return f"Ankimon v{addon_ver} | Anki {anki_version} | Python {py_ver} | {os_info}"
 
-def set_image_from_url(label: QLabel, url: str, width: int = 140) -> None:
+
+def set_image_from_url(label: "QLabel", url: str, width: int = 140) -> None:
     """Load and display an image from URL in a QLabel."""
     try:
         response = requests.get(url, timeout=5)
@@ -50,6 +82,7 @@ def set_image_from_url(label: QLabel, url: str, width: int = 140) -> None:
     except Exception:
         label.setText("Image failed to load")
 
+
 def scrub_traceback(tb_text: str) -> str:
     """Sanitize traceback text by removing user paths."""
     username = os.path.expanduser("~").split(os.sep)[-1]
@@ -65,6 +98,7 @@ def scrub_traceback(tb_text: str) -> str:
         tb_text = re.sub(pattern, "/home/USER", tb_text, flags=re.IGNORECASE)
     return tb_text
 
+
 def load_error_images(json_path: Path) -> Dict[str, str]:
     """Load and select random error image metadata."""
     default_image = {"path": "", "credit": "", "url": ""}
@@ -73,10 +107,13 @@ def load_error_images(json_path: Path) -> Dict[str, str]:
             error_images = json.load(f)
         return random.choice(error_images)
     except Exception as e:
-        mw.logger.log("error", f"Failed to load error images: {str(e)}")
+        logger = _logger()
+        if logger is not None:
+            logger.log("error", f"Failed to load error images: {str(e)}")
         return default_image
 
-def create_error_label(message: str, exception: Exception) -> QLabel:
+
+def create_error_label(message: str, exception: Exception) -> "QLabel":
     """Create error label with just the message and exception (no environment info)."""
     html = (
         f"<span style='font-size:32px; color:#ffcc00; vertical-align:middle;'>&#9888;</span> "
@@ -90,7 +127,8 @@ def create_error_label(message: str, exception: Exception) -> QLabel:
     label.setWordWrap(True)
     return label
 
-def create_credit_label(chosen_image: Dict[str, str]) -> Optional[QLabel]:
+
+def create_credit_label(chosen_image: Dict[str, str]) -> "Optional[QLabel]":
     """Create image credit label with optional link."""
     if not chosen_image.get("credit") or not chosen_image.get("url"):
         return None
@@ -105,7 +143,8 @@ def create_credit_label(chosen_image: Dict[str, str]) -> Optional[QLabel]:
     label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
     return label
 
-def build_dialog_ui(dialog: QDialog, message: str, exception: Exception,
+
+def build_dialog_ui(dialog: "QDialog", message: str, exception: Exception,
                    chosen_image: Dict[str, str]) -> None:
     """Construct dialog UI layout without environment info display."""
     main_layout = QHBoxLayout(dialog)
@@ -176,7 +215,8 @@ def build_dialog_ui(dialog: QDialog, message: str, exception: Exception,
     main_layout.addLayout(right_layout)
     dialog.setLayout(main_layout)
 
-def setup_dialog_style(dialog: QDialog) -> None:
+
+def setup_dialog_style(dialog: "QDialog") -> None:
     """Apply consistent visual styling to the dialog."""
     dialog.setStyleSheet("""
         QDialog {
@@ -207,19 +247,45 @@ def setup_dialog_style(dialog: QDialog) -> None:
         }
     """)
 
+
 def show_warning_with_traceback(
-    parent: QDialog = mw,
+    parent=None,
     exception: Optional[Exception] = None,
     message: str = "An error occurred during execution."
 ) -> None:
-    """Display error dialog with environment info only in debug clipboard."""
+    """Report an error: always log + emit an ``error`` event; show the rich Qt
+    dialog only when a Qt runtime is available.
+
+    ``parent`` defaults to None; under Anki the dialog parents itself to ``mw``.
+    Headless, there is no dialog — the structured event is the record.
+    """
     if not exception:
         raise ValueError("An exception must be provided.")
 
     # Generate and sanitize traceback
     tb_text = scrub_traceback(traceback.format_exc())
     env_info = get_environment_info()
-    mw.logger.log("error", f"{message}: {exception}\n{env_info}\n{tb_text}")
+
+    # Observable record (works everywhere).
+    logger = _logger()
+    if logger is not None:
+        logger.log("error", f"{message}: {exception}\n{env_info}\n{tb_text}")
+    try:
+        from ..events import events
+        events.emit("error", message=message, exception=str(exception), traceback=tb_text)
+    except Exception:
+        pass
+
+    # No GUI → done.
+    if not _HAVE_QT:
+        return
+
+    try:
+        from aqt import mw as _mw
+    except Exception:
+        _mw = None
+    if parent is None:
+        parent = _mw
 
     # Load error images
     error_json_path = pyobj_path / 'error_images.json'
@@ -241,7 +307,8 @@ def show_warning_with_traceback(
     def copy_debug_info():
         # Wrap in triple backticks for markdown code block formatting
         full_debug = f"```python\n{env_info}\n\n{tb_text}\n```"
-        mw.app.clipboard().setText(full_debug)
+        if _mw is not None:
+            _mw.app.clipboard().setText(full_debug)
 
         # Update dialog to show copy confirmation (without env_info)
         dialog.findChild(QLabel).setText(

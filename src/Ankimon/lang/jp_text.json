@@ -10,6 +10,7 @@
   "error_occured": "{function}でエラーが発生しました。このエラーメッセージをバグ報告に投稿してください。",
   "missing_mainpokemon_data": "ポケモンデータが見つかりません",
   "pokemon_about_to_evolve": "{main_pokemon_name}はレベル{main_pokemon_level}で{evo_pokemon_name}に進化しようとしています。",
+  "pokemon_about_to_evolve_friendship": "{main_pokemon_name}は{evo_pokemon_name}に進化する準備ができました！",
   "mainpokemon_can_learn_new_attack": "あなたの{main_pokemon_name}は新しい技を覚えることができます！",
   "mainpokemon_learned_new_attack": "あなたの{main_pokemon_name}は{new_attack_name}を覚えました！",
   "mainpokemon_gained_xp": "あなたの{main_pokemon_name}は{exp} XPを獲得しました。\n 次のレベルまで{experience_till_next_level} XPが必要です。\n 現在のXP: {main_pokemon_xp}",
@@ -454,5 +455,9 @@
   "futuresight_fails": "未来予知が失敗した！",
   "weather_raindance_still": "まだ雨が降っている！",
   "wish_started": "{pokemon_name}は願い事をした！まもなく{heal_amount} HPを回復する。",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "CP",
+  "bp_label": "BP",
+  "combat_power": "戦闘力",
+  "battle_power": "バトルパワー"
 }

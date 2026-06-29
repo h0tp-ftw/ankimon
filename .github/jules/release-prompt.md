@@ -35,7 +35,7 @@ Be professional, helpful, and excited about the new update! Use Poke-puns if app
 ## Handling Missing Information (During PR Review)
 If the maintainer provides you with missing nicknames or Discord IDs in the PR comments:
 1. Update their `"nickname"` and `"discord_id"` fields directly in `.all-contributorsrc`.
-2. Update their `"name"` field in `.all-contributorsrc` to their actual nickname (instead of their GitHub username).
+2. Ensure you DO NOT override their `"name"` field in `.all-contributorsrc` to their nickname, as this field should remain their GitHub username to avoid corrupting the README table.
 3. Run `npx all-contributors-cli generate` in the terminal to update the README.md table.
 4. Update the draft changelog with the new info.
 5. Tick off the missing items in the PR description checklist.

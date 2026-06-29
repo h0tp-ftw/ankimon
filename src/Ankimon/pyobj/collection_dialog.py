@@ -31,11 +31,15 @@ def MainPokemon(
     db = mw.ankimon_db
     
     # --- Save the existing mainpokemon to mypokemon before replacing ---
+    # Persist the OUTGOING main's IN-MEMORY state (xp, friendship, current_hp
+    # gained during reviews) rather than the stale on-disk copy returned by
+    # db.get_main_pokemon(). At this point ``main_pokemon`` still references the
+    # current main; it is only overwritten with the new selection further below.
     try:
-        current_main = db.get_main_pokemon()
-        if current_main:
-            # Update or save the current main pokemon to captured_pokemon
-            db.save_pokemon(current_main)
+        # Only save if there's already an active main pokemon to replace.
+        if main_pokemon is not None and getattr(main_pokemon, "individual_id", None) and db.get_main_pokemon():
+            # Use main_pokemon.to_dict() to capture in-memory stats like xp.
+            db.save_pokemon(main_pokemon.to_dict())
     except Exception:
         pass  # If no main pokemon exists, just continue
 

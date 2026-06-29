@@ -42,6 +42,7 @@ from ..functions.pokedex_functions import (
     search_pokedex_by_id,
 )
 from ..functions.pokemon_functions import find_experience_for_level
+from ..functions.friendship_evolution import evolution_readiness
 from ..functions.gui_functions import type_icon_path, move_category_path
 from ..functions.sprite_functions import get_sprite_path
 from ..gui_entities import MovieSplashLabel
@@ -105,12 +106,25 @@ def PokemonCollectionDetails(
     nature: str = "serious",
     base_stats: dict = None,
     old_stats: dict = None,
+    friendship: int = 0,
+    evolution_rejected: bool = False,
+    friendship_time_enabled: bool = True,
 ):
     # Create the layouts
     header_layout = QVBoxLayout()
     footer_layout = QVBoxLayout()
     
     try:
+        readiness = evolution_readiness(
+            {
+                "id": id,
+                "friendship": friendship,
+                "everstone": everstone,
+                "evolution_rejected": evolution_rejected,
+                "level": level,
+            }
+        )
+
         # For Mega/Gmax and Regional forms, the species CSV often has no entry or is hyphenated — use pretty name instead
         if any(f in name.lower() for f in ['mega', 'gmax', 'alola', 'galar', 'hisui', 'paldea']):
             from ..functions.pokedex_functions import get_pretty_name_for_name, search_pokedex
@@ -121,6 +135,8 @@ def PokemonCollectionDetails(
         else:
             lang_name = get_pokemon_diff_lang_name(int(id), language)
             lang_desc = get_pokemon_descriptions(int(id), language)
+        if lang_name:
+            lang_name = lang_name.capitalize()
         description = lang_desc
         typelayout = QHBoxLayout()
         attackslayout = QVBoxLayout()
@@ -256,8 +272,15 @@ def PokemonCollectionDetails(
         for attack in attacks:
             attacks_txt += f"\n{attack.capitalize()}"
 
+        _stats_dict["friendship"] = friendship
         CompleteTable_layout = PokemonDetailsStats(
-            _stats_dict, growth_rate, level, remove_levelcap, language, old_stats
+            _stats_dict,
+            growth_rate,
+            level,
+            remove_levelcap,
+            language,
+            old_stats=old_stats,
+            friendship_bar_max=readiness["bar_max"],
         )
 
         if gender == "M":
@@ -286,11 +309,67 @@ def PokemonCollectionDetails(
         cp_label.setToolTip(cp_tooltip)
         ability_label = QLabel(ability_txt)
         attacks_label = QLabel(attacks_txt)
-        pokemon_defeated_label = QLabel(f"Pokemon Defeated: {pokemon_defeated}")
+        pokemon_defeated_label = QLabel(f"Pokémon Defeated: {pokemon_defeated}")
         if captured_date is not None:
             captured_date_label = QLabel(f"Captured: {captured_date.split()[0]}")
         else:
             captured_date_label = QLabel(f"Captured: N/A")
+        # Friendship-evolution UI: an actionable "Evolve now" button when the
+        # Pokémon is ready, otherwise the requirement line (e.g. "40 friendship
+        # to evolve into Espeon · needs Day"). Only shown when relevant.
+        evolution_req_widget = None
+        # A secondary note shown alongside the Evolve button when the user
+        # previously rejected this evolution (soft state) — the manual button
+        # stays available so they can still evolve on demand.
+        evolution_note_widget = None
+        # The friendship/time evolution feature is gated behind a master toggle,
+        # so its UI must only appear when the toggle is on. Plain LEVEL-method
+        # evolution UI is base-game behaviour and always shows.
+        show_evolution_ui = readiness["method"] == "level" or (
+            readiness["method"] == "friendship" and friendship_time_enabled
+        )
+        if show_evolution_ui and readiness["ready"]:
+            evo_name = readiness["evo_name"] or "the next form"
+            evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
+            evolve_now_button.setFont(custom_font)
+            evolve_now_button.setFixedWidth(230)
+            evolve_now_button.setStyleSheet(
+                "QPushButton { background-color: #FF69B4; color: white;"
+                " border-radius: 6px; padding: 5px; font-weight: bold; }"
+                " QPushButton:hover { background-color: #FF8DC7; }"
+            )
+
+            def evolve_now():
+                # Lazy import: evo_window is a singleton built after this module
+                # is first imported, so importing it at module top would cycle.
+                from ..singletons import evo_window
+
+                # ask_pokemon_evo is modeless and returns immediately, so a
+                # refresh here would run BEFORE the user confirms — a no-op. The
+                # real refresh happens inside evolve_pokemon after confirmation.
+                evo_window.ask_pokemon_evo(individual_id, id, readiness["evo_id"])
+
+            qconnect(evolve_now_button.clicked, evolve_now)
+            evolution_req_widget = evolve_now_button
+
+            if readiness.get("rejected"):
+                evolution_note_label = QLabel(
+                    "Evolution rejected — tap Evolve now to override"
+                )
+                evolution_note_label.setFont(custom_font)
+                evolution_note_label.setWordWrap(True)
+                evolution_note_label.setFixedWidth(230)
+                evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                evolution_note_label.setStyleSheet("color: #FF69B4;")
+                evolution_note_widget = evolution_note_label
+        elif show_evolution_ui and readiness["status_text"]:
+            evolution_req_label = QLabel(readiness["status_text"])
+            evolution_req_label.setFont(custom_font)
+            evolution_req_label.setWordWrap(True)
+            evolution_req_label.setFixedWidth(230)
+            evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            evolution_req_label.setStyleSheet("color: #FF69B4;")
+            evolution_req_widget = evolution_req_label
 
         level_label.setFont(custom_font)
         cp_label.setFont(custom_font)
@@ -357,6 +436,10 @@ def PokemonCollectionDetails(
         TopL_layout_Box.addWidget(nature_label)
         TopL_layout_Box.addWidget(captured_date_label)
         TopL_layout_Box.addWidget(pokemon_defeated_label)
+        if evolution_req_widget is not None:
+            TopL_layout_Box.addWidget(evolution_req_widget)
+        if evolution_note_widget is not None:
+            TopL_layout_Box.addWidget(evolution_note_widget)
 
         attacks_details_button = QPushButton("Attack Details")
         qconnect(attacks_details_button.clicked, lambda: attack_details_window(attacks))
@@ -458,12 +541,12 @@ def PokemonCollectionDetails(
 
 
 
-        free_pokemon_button = QPushButton("Release Pokemon")
+        free_pokemon_button = QPushButton("Release Pokémon")
         qconnect(
             free_pokemon_button.clicked,
             lambda: PokemonFree(individual_id, name, logger, refresh_callback),
         )
-        trade_pokemon_button = QPushButton("Trade Pokemon")
+        trade_pokemon_button = QPushButton("Trade Pokémon")
         qconnect(
             trade_pokemon_button.clicked,
             lambda: PokemonTrade(
@@ -481,9 +564,9 @@ def PokemonCollectionDetails(
                 refresh_callback,
             ),
         )
-        rename_button = QPushButton("Rename Pokemon")
+        rename_button = QPushButton("Rename Pokémon")
         rename_input = QLineEdit()
-        rename_input.setPlaceholderText("Enter a new Nickname for your Pokemon")
+        rename_input.setPlaceholderText("Enter a new Nickname for your Pokémon")
         qconnect(
             rename_button.clicked,
             lambda: rename_pkmn(
@@ -522,7 +605,9 @@ def PokemonCollectionDetails(
         return QWidget(), QWidget(), QWidget(), {}
 
 
-def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, language, old_stats=None):
+def PokemonDetailsStats(
+    detail_stats, growth_rate, level, remove_levelcap, language, old_stats=None, friendship_bar_max=400
+):
     CompleteTable_layout = QVBoxLayout()
     CompleteTable_layout.addSpacing(15)
     # Stat colors
@@ -535,6 +620,7 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         "spe": QColor(255, 192, 203),  # Pink
         "total": QColor(168, 168, 167),  # Beige
         "xp": QColor(58, 155, 220),  # lightblue
+        "friendship": QColor(255, 105, 180),  # Hot pink
         # Add any other stats that might appear
         "current_hp": QColor(200, 0, 0),  # Darker red
         "max_hp": QColor(255, 0, 0),  # Red
@@ -553,6 +639,7 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         "spd": "Sp. Def",
         "spe": "Speed",
         "xp": "XP",
+        "friendship": "Friendship",
     }
 
     for row, (stat, value) in enumerate(detail_stats.items()):
@@ -568,7 +655,24 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
 
-        value_item2 = QLabel(str(value))
+        # Friendship is uncapped (it keeps climbing past the bar's threshold as a
+        # "flex" stat), so a full bar alone is ambiguous. Mark the value with a ✓
+        # once it has met/exceeded the threshold the bar fills at, so the player
+        # can tell "full bar" means "requirement met" rather than just a high
+        # number that happens to be clipped. Coerce defensively: a legacy/None
+        # friendship must not blank out the whole details panel.
+        if stat == "friendship":
+            try:
+                friendship_value = int(value)
+            except (TypeError, ValueError):
+                friendship_value = 0
+        if stat == "friendship" and friendship_value >= int(friendship_bar_max):
+            value_item2 = QLabel(f"{friendship_value} ✓")
+            value_item2.setToolTip(
+                "Friendship requirement reached (it keeps rising beyond this)."
+            )
+        else:
+            value_item2 = QLabel(str(value))
         stat_item2.setFont(custom_font)
         value_item2.setFont(custom_font)
         value_item2.setFixedWidth(80)
@@ -589,6 +693,12 @@ def PokemonDetailsStats(detail_stats, growth_rate, level, remove_levelcap, langu
         if stat == "xp":
             experience = int(find_experience_for_level(growth_rate, level, True))
             new_val_mapped = int((int(value) / int(experience)) * max_width_stat_item)
+        elif stat == "friendship":
+            # Bar reads 100% exactly at the evolution threshold (bar_max).
+            new_val_mapped = min(
+                max_width_stat_item,
+                int((friendship_value / max(1, friendship_bar_max)) * max_width_stat_item),
+            )
         else:
             new_val_mapped = int(max_width_stat_item * (1 - exp(-value / max_width_stat_item)))
             
@@ -1259,6 +1369,14 @@ def PokemonFree(
     else:
         logger.log_and_showinfo("error", f"Failed to add {name} to history.")
     
+    # If this Pokémon is the current XP-Share target, clear the setting before
+    # it disappears from the DB. Otherwise the dangling individual_id would make
+    # xp_share_gain_exp look up a now-missing Pokémon and crash on the next
+    # review. str() guards against any id type mismatch in the compare.
+    settings_obj = getattr(mw, "settings_obj", None)
+    if settings_obj is not None and str(settings_obj.get("trainer.xp_share")) == str(individual_id):
+        settings_obj.set("trainer.xp_share", None)
+
     # Delete from database
     mw.ankimon_db.delete_pokemon(individual_id)
     logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")

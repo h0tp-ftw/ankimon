@@ -260,8 +260,8 @@ class SettingsWindow(QMainWindow):
             true_radio.setChecked(value)
             false_radio.setChecked(not value)
             button_group = QButtonGroup(self)
-            button_group.addButton(true_radio)
-            button_group.addButton(false_radio)
+            button_group.addButton(true_radio, 1)
+            button_group.addButton(false_radio, 0)
             if key.startswith("misc.gen"):
                 button_group.buttonClicked.connect(lambda: self._on_gen_toggled())
             h_layout.addWidget(true_radio)
@@ -358,6 +358,9 @@ class SettingsWindow(QMainWindow):
                     "Show Text Message Box in Reviewer",
                     "Message Box Display Time",
                     "Review Based Damage",
+                    "Friendship & Time Evolution",
+                    "Auto-detect Time Zone",
+                    "Time Zone UTC Offset",
                 ],
                 "subgroups": {
                     "Fight Hotkeys": {
@@ -596,8 +599,7 @@ class SettingsWindow(QMainWindow):
     def on_save(self) -> Union[int, str]:
         # Refresh self.config with latest values before modifying
         self.config = self.load_config()
-
-        # Update the self.config with values from the UI widgets
+        # Update self.config from the current state of all UI widgets
         for key, widget in self.input_widgets.items():
             original_value = self.original_config.get(key)
 
@@ -624,12 +626,12 @@ class SettingsWindow(QMainWindow):
                             self.config[key] = original_value
 
                 # Standard handling for other settings
-                elif isinstance(original_value, int):
+                elif type(original_value) is int:
                     try:
                         self.config[key] = int(new_text)
                     except ValueError:
                         self.config[key] = original_value
-                elif isinstance(original_value, float):
+                elif type(original_value) is float:
                     try:
                         self.config[key] = float(new_text)
                     except ValueError:
@@ -637,43 +639,50 @@ class SettingsWindow(QMainWindow):
                 else:
                     self.config[key] = str(new_text)
             elif isinstance(widget, QButtonGroup):
-                self.config[key] = widget.checkedButton().text() == "Enabled"
+                self.config[key] = widget.checkedId() == 1
             elif isinstance(widget, QComboBox):
                 self.config[key] = widget.currentData()
-
         # --- Enforce bounds for cash rewards ---
         has_adjustments = False
         adjustment_msg = ""
 
         # 1. Validate Interval
         if "trainer.cash_reward_interval" in self.config:
-            orig_val = self.config["trainer.cash_reward_interval"]
-            if isinstance(orig_val, int):
-                new_val = max(5, min(250, orig_val))
+            try:
+                orig_val = int(self.config["trainer.cash_reward_interval"])
+                new_val = max(5, min(100, orig_val))
                 if new_val != orig_val:
                     self.config["trainer.cash_reward_interval"] = new_val
                     has_adjustments = True
-                    adjustment_msg += f"- Reward Interval: Adjusted to {new_val} (Range: 5-250)\n"
+                    adjustment_msg += f"- Reward Interval: Adjusted to {new_val} (Range: 5-100)\n"
+            except (ValueError, TypeError):
+                self.config["trainer.cash_reward_interval"] = 10
 
         # 2. Validate Amount & Cheat Threshold
         if "trainer.cash_reward_amount" in self.config:
-            orig_amount = self.config["trainer.cash_reward_amount"]
-            if isinstance(orig_amount, int):
+            try:
+                orig_amount = int(self.config["trainer.cash_reward_amount"])
                 # Hard bounds
-                new_amount = max(10, min(2000, orig_amount))
+                new_amount = max(10, min(400, orig_amount))
                 
-                # Cheat Threshold: Max 100¥ per card
-                interval = self.config.get("trainer.cash_reward_interval", 10)
-                max_allowed = interval * 100
+                # Cheat Threshold
+                interval = int(self.config.get("trainer.cash_reward_interval", 10))
+                daily_average = int(self.config.get("battle.daily_average", 100))
+                if daily_average <= 0:
+                    daily_average = 100
+                max_per_card = 400.0 / daily_average
+                max_allowed = max(1, int(interval * max_per_card))
                 if new_amount > max_allowed:
                     new_amount = max_allowed
                     has_adjustments = True
-                    adjustment_msg += f"- Reward Amount: Capped at {new_amount}¥ to maintain the 100:1 ratio limit.\n"
+                    adjustment_msg += f"- Reward Amount: Capped at {new_amount}¥ to maintain the maximum daily economy limit.\n"
                 elif new_amount != orig_amount:
                     has_adjustments = True
-                    adjustment_msg += f"- Reward Amount: Adjusted to {new_amount}¥ (Range: 10-2,000)\n"
+                    adjustment_msg += f"- Reward Amount: Adjusted to {new_amount}¥ (Range: 10-400)\n"
                 
                 self.config["trainer.cash_reward_amount"] = new_amount
+            except (ValueError, TypeError):
+                self.config["trainer.cash_reward_amount"] = 100
 
         if has_adjustments:
             # Update UI widgets to reflect capped values
@@ -683,6 +692,23 @@ class SettingsWindow(QMainWindow):
 
             QMessageBox.warning(self, "Settings Adjusted", 
                               f"Some values were adjusted to stay within fair play bounds:\n\n{adjustment_msg}")
+        # Check if all generations are disabled
+        gen_keys = [f"misc.gen{i}" for i in range(1, 10)]
+        all_gens_disabled = all(self.config.get(key) is False for key in gen_keys)
+
+        if all_gens_disabled:
+            showWarning("You must enable at least one Pokémon generation. Reverting generations to previous settings.")
+            for key in gen_keys:
+                # Revert logic
+                self.config[key] = self.original_config.get(key, True)
+                # Update UI widgets
+                if key in self.input_widgets and isinstance(self.input_widgets[key], QButtonGroup):
+                    group = self.input_widgets[key]
+                    for button in group.buttons():
+                        if button.text() == "Enabled" and self.config[key]:
+                            button.setChecked(True)
+                        elif button.text() == "Disabled" and not self.config[key]:
+                            button.setChecked(True)
 
         # Now that self.config is up-to-date, call the save callback
         self.save_config_callback(self.config)
@@ -712,7 +738,10 @@ class SettingsWindow(QMainWindow):
             key: self.config[key]
             for key in self.config
             if not any(pattern in key for pattern in excluded_patterns)
-            and self.config[key] != self.original_config.get(key)
+            and (
+                self.config[key] != self.original_config.get(key)
+                or type(self.config[key]) is not type(self.original_config.get(key))
+            )
         }
 
         if changed_settings:

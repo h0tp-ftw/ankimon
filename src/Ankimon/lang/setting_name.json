@@ -6,6 +6,10 @@
     "battle.card_max_time": "Card Max Time",
     "battle.review_based_damage": "Review Based Damage",
 
+    "evolution.friendship_time_enabled": "Friendship & Time Evolution",
+    "evolution.timezone_auto": "Auto-detect Time Zone",
+    "evolution.timezone_offset": "Time Zone UTC Offset",
+
     "controls.pokemon_buttons": "Show Pokémon Buttons",
     "controls.defeat_key": "Key for Defeat",
     "controls.catch_key": "Key for Catching",

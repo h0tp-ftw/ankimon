@@ -115,25 +115,59 @@ class BackupManager:
             "item_count": 0,
         }
 
-        # Prefer database stats if available
-        db = mw.ankimon_db
-        if db:
+        # Prefer stats from the backup's OWN ankimon.db (not the live mw.ankimon_db),
+        # so the summary reflects this backup's historical state rather than the
+        # current database.
+        db_path = backup_dir / "ankimon.db"
+        if db_path.exists():
+            import sqlite3
+            import json
+            from contextlib import closing
             try:
-                stats = db.get_stats()
-                summary["pokemon_count"] = stats.get("pokemon", 0)
-                summary["item_count"] = stats.get("items", 0)
-                
-                main_pokemon = db.get_main_pokemon()
-                if main_pokemon:
-                    summary["main_pokemon_name"] = main_pokemon.get("name", "N/A")
-                    summary["main_pokemon_level"] = main_pokemon.get("level", "N/A")
-                
-                # Trainer info from user_data
-                summary["trainer_name"] = db.get_user_data("trainer.name", "N/A")
-                summary["trainer_cash"] = db.get_user_data("trainer.cash", 0)
-                summary["trainer_level"] = db.get_user_data("trainer.level", 1)
-                
-                return summary
+                with closing(sqlite3.connect(str(db_path))) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+
+                    cursor.execute("SELECT COUNT(*) AS count FROM captured_pokemon")
+                    summary["pokemon_count"] = cursor.fetchone()["count"]
+
+                    cursor.execute("SELECT COUNT(*) AS count FROM items")
+                    summary["item_count"] = cursor.fetchone()["count"]
+
+                    cursor.execute("SELECT data FROM captured_pokemon WHERE is_main = 1 LIMIT 1")
+                    main_row = cursor.fetchone()
+                    if main_row:
+                        main_data = json.loads(main_row["data"])
+                        summary["main_pokemon_name"] = main_data.get("name", "N/A")
+                        summary["main_pokemon_level"] = main_data.get("level", "N/A")
+
+                    # Trainer info lives in the `config` table as flat dotted
+                    # key/value rows (e.g. key='trainer.name', value='Ash'). Guard
+                    # on the table existing so an older backup can't abort the counts.
+                    cursor.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
+                    )
+                    if cursor.fetchone():
+                        def _cfg(key):
+                            cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+                            r = cursor.fetchone()
+                            return r["value"] if r else None
+
+                        name = _cfg("trainer.name")
+                        if name is not None:
+                            summary["trainer_name"] = name
+                        for cfg_key, sum_key in (
+                            ("trainer.cash", "trainer_cash"),
+                            ("trainer.level", "trainer_level"),
+                        ):
+                            raw = _cfg(cfg_key)
+                            if raw is not None:
+                                try:
+                                    summary[sum_key] = int(raw)
+                                except (ValueError, TypeError):
+                                    pass
+
+                    return summary
             except Exception as e:
                 self.logger.log("error", f"Failed to get DB stats for backup summary: {e}")
 

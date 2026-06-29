@@ -5,7 +5,7 @@ from typing import Optional
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..resources import mainpokemon_path
 from ..pyobj.pokemon_obj import PokemonObject
-from aqt import mw
+from ..services import services
 
 # default values to fall back in case of load error
 MAIN_POKEMON_DEFAULT = {
@@ -36,7 +36,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
     Updates or initializes the main Pokémon object using data from the database.
     Falls back to JSON file for backwards compatibility.
     """
-    db = mw.ankimon_db
+    db = services.db
 
     if main_pokemon is None:
         main_pokemon = PokemonObject(**MAIN_POKEMON_DEFAULT)
@@ -112,7 +112,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
 
 def save_main_pokemon(main_pokemon: PokemonObject):
     """Saves the main Pokémon object to the database."""
-    db = mw.ankimon_db
+    db = services.db
     
     if hasattr(main_pokemon, 'to_dict'):
         data = main_pokemon.to_dict()

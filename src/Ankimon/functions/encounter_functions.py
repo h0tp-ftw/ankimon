@@ -1,23 +1,14 @@
+from __future__ import annotations
+
 import json
 import random
 import math
-from typing import Union
+from typing import TYPE_CHECKING, Union
 from datetime import datetime
 import uuid
 
-from aqt import mw
-from aqt.qt import QDialog
-from aqt.utils import showWarning
-
-from ..pyobj.ankimon_tracker import AnkimonTracker
-from ..pyobj.pokemon_obj import PokemonObject
-from ..pyobj.reviewer_obj import Reviewer_Manager
-from ..pyobj.test_window import TestWindow
-from ..pyobj.trainer_card import TrainerCard
-from ..pyobj.InfoLogger import ShowInfoLogger
-from ..pyobj.evolution_window import EvoWindow
-from ..pyobj.attack_dialog import AttackDialog
-from ..pyobj.translator import Translator
+from ..services import services
+from ..events import events
 from ..functions.pokemon_functions import (
     find_experience_for_level,
     get_levelup_move_for_pokemon,
@@ -36,6 +27,9 @@ from ..functions.pokedex_functions import (
     safe_int,
     get_pretty_name_for_name
 )
+from ..functions.friendship_evolution import (
+    check_friendship_evolution_for_pokemon,
+)
 from ..pyobj.error_handler import show_warning_with_traceback
 from ..functions.trainer_functions import xp_share_gain_exp
 from ..functions.badges_functions import check_for_badge, receive_badge
@@ -43,40 +37,35 @@ from ..functions.drawing_utils import tooltipWithColour
 from ..utils import limit_ev_yield, play_effect_sound, get_ev_spread, is_alive
 from ..business import calc_experience, calculate_cp_from_dict
 from ..const import gen_ids
-from ..singletons import (
-    main_pokemon,
-    ankimon_tracker_obj,
-    trainer_card,
-    settings_obj,
-    translator,
-    ankimon_db,
-    pokemon_pc,
-)
 from . import encounter_data
 
-ALL_NATURES = [
-    "Hardy", "Lonely", "Brave", "Adamant", "Naughty",
-    "Bold", "Docile", "Relaxed", "Impish", "Lax",
-    "Timid", "Hasty", "Serious", "Jolly", "Naive",
-    "Modest", "Mild", "Quiet", "Bashful", "Rash",
-    "Calm", "Gentle", "Sassy", "Careful", "Quirky"
-]
+if TYPE_CHECKING:
+    # Type-hint-only imports (several pull in Qt). `from __future__ import
+    # annotations` keeps the signatures below as strings so these never run.
+    from ..pyobj.ankimon_tracker import AnkimonTracker
+    from ..pyobj.pokemon_obj import PokemonObject
+    from ..pyobj.reviewer_obj import Reviewer_Manager
+    from ..pyobj.test_window import TestWindow
+    from ..pyobj.trainer_card import TrainerCard
+    from ..pyobj.InfoLogger import ShowInfoLogger
+    from ..pyobj.evolution_window import EvoWindow
+    from ..pyobj.translator import Translator
 
+# Shared singletons used as bare module globals below. They are bound to the live
+# registry objects by core.bind_runtime_globals() after composition.
+main_pokemon = None
+ankimon_tracker_obj = None
+trainer_card = None
+settings_obj = None
+translator = None
+ankimon_db = None
+pokemon_pc = None
 
 def _build_regional_lookup() -> None:
-    """Populates encounter_data.REGIONAL_FORM_LOOKUP from pokedex.json.
-
-    Maps species_id -> {region -> [actual_id, ...]} for all encounterable
-    regional forms. Called once at module import. Silently no-ops if
-    pokedex.json is unavailable (e.g. first-run before data files exist).
-    """
-    import os
-    
+    """Populates encounter_data.REGIONAL_FORM_LOOKUP from pokedex.json."""
+    import json
     try:
-        pokedex_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "user_files", "data_files", "pokedex.json"
-        )
+        from ..resources import pokedex_path
         with open(pokedex_path, "r", encoding="utf-8") as f:
             pokedex = json.load(f)
         aid_to_sid: dict[int, int] = {
@@ -94,11 +83,18 @@ def _build_regional_lookup() -> None:
     except Exception as e:
         print(f"[Ankimon] Warning: Could not build regional form lookup: {e}")
 
-
 _build_regional_lookup()
 
+ALL_NATURES = [
+    "Hardy", "Lonely", "Brave", "Adamant", "Naughty",
+    "Bold", "Docile", "Relaxed", "Impish", "Lax",
+    "Timid", "Hasty", "Serious", "Jolly", "Naive",
+    "Modest", "Mild", "Quiet", "Bashful", "Rash",
+    "Calm", "Gentle", "Sassy", "Careful", "Quirky"
+]
 
 # === PERFORMANCE FIX: Cache percentage calculations ===
+
 _percentages_cache = {
     'percentages': None,
     'total_reviews': None,
@@ -111,13 +107,13 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
     Modify Pokémon encounter percentages based on total reviews, trainer level, and main Pokémon level.
     CACHED: Only recalculates when inputs change.
     """
-    # Check if cache is valid
+    # Performance Guard: Skip recalculation if inputs haven't changed
     if (_percentages_cache['percentages'] is not None and
         _percentages_cache['total_reviews'] == total_reviews and
         _percentages_cache['trainer_level'] == trainer_level and
         _percentages_cache['main_pokemon_level'] == main_pokemon.level):
         return _percentages_cache['percentages']
-        
+
 
     # Start with the base percentages
     percentages = {
@@ -183,26 +179,15 @@ def modify_percentages(total_reviews, daily_average, trainer_level):
         # Normalize percentages to ensure they sum to 100
         total = sum(percentages.values())
         for tier in percentages:
-            percentages[tier] = (percentages[tier] / total) * 100 if total > 0 else 0 
+            percentages[tier] = (percentages[tier] / total) * 100 if total > 0 else 0
 
-    #MODIFIED FOR TESTING: Fixed percentages, review restrictions.
-    """percentages = {
-                "Baby": 0,
-                "Normal": 10,
-                "Starter": 0,
-                "Legendary": 0,
-                "Mythical": 0,
-                "Ultra": 0,
-                "Mega": 90,
-                "Gmax": 0,
-            }"""
-
-    # Cache the result
+    # Cache and return
     _percentages_cache['percentages'] = percentages
     _percentages_cache['total_reviews'] = total_reviews
     _percentages_cache['trainer_level'] = trainer_level
     _percentages_cache['main_pokemon_level'] = main_pokemon.level
     
+
     return percentages
 
 def clear_encounter_cache():
@@ -288,7 +273,8 @@ def get_tier(total_reviews, trainer_level=1, event_modifier=None):
     Returns:
         choice[0]: The first choice of TIER picked randomly (by a random.choices function)
     """
-    daily_average = int(settings_obj.get("battle.daily_average"))
+    daily_average_val = settings_obj.get("battle.daily_average")
+    daily_average = int(daily_average_val) if daily_average_val is not None else 100
     percentages = modify_percentages(total_reviews, daily_average, trainer_level)
 
     tiers = list(percentages.keys())
@@ -313,10 +299,11 @@ def choose_random_pkmn_from_tier():
     try:
         tier = get_tier(total_reviews, trainer_level)
         id = get_random_pokemon_in_tier(tier)
+        services.logger.game_log(f"Selected tier: {tier}, Resulting Pokemon ID: {id}")
         return id, tier
     except Exception as e:
-        mw.logger.log("error", f"Error in choose_random_pkmn_from_tier: {str(e)}")
-        show_warning_with_traceback(parent=mw, exception=e, message="Error occurred")
+        services.logger.log("error", f"Error in choose_random_pkmn_from_tier: {str(e)}")
+        show_warning_with_traceback(exception=e, message="Error occurred")
 
 
 def check_min_generate_level(name):
@@ -635,6 +622,7 @@ def generate_random_pokemon(
     tier = selected_tier
     name = search_pokedex_by_id(pokemon_id)
 
+
     # Now we get all necessary information about the chosen pokemon.
     pokemon_type = search_pokedex(name, "types")
     base_experience = get_base_experience(
@@ -781,25 +769,35 @@ def new_pokemon(
         except RuntimeError:
             pass
 
-    class Container(object):
-        pass
+    # Observable: a fresh wild Pokemon appeared.
+    events.emit(
+        "encounter",
+        pokemon=pokemon.name,
+        id=pokemon.id,
+        level=pokemon.level,
+        tier=pokemon.tier,
+        shiny=pokemon.shiny,
+        hp=pokemon.hp,
+        max_hp=pokemon.max_hp,
+    )
 
-    reviewer = Container()
-    reviewer.web = mw.reviewer.web
-    reviewer_obj.update_life_bar(reviewer, 0, 0)
+    # Re-render the reviewer HUD. refresh_hud() grabs the live webview under
+    # Anki and is a recorded no-op headless.
+    if reviewer_obj is not None:
+        reviewer_obj.refresh_hud()
 
     # Track as seen in Pokedex
-    if hasattr(mw, 'ankimon_db'):
-        if hasattr(mw.ankimon_db, 'mark_as_seen'):
-            mw.ankimon_db.mark_as_seen(pkmn_id)
+    if services.db is not None:
+        if hasattr(services.db, 'mark_as_seen'):
+            services.db.mark_as_seen(pkmn_id)
         else:
             # Fallback tracking if not restarted
             try:
-                seen_ids = mw.ankimon_db.get_user_data("pokedex_seen", [])
+                seen_ids = services.db.get_user_data("pokedex_seen", [])
                 if not isinstance(seen_ids, list): seen_ids = []
                 if pkmn_id not in seen_ids:
                     seen_ids.append(pkmn_id)
-                    mw.ankimon_db.set_user_data("pokedex_seen", seen_ids)
+                    services.db.set_user_data("pokedex_seen", seen_ids)
             except: pass
 
     return pokemon
@@ -826,17 +824,23 @@ def save_main_pokemon_progress(
     elif main_pokemon.level != 100:
         main_pokemon.xp += exp
         level_cap = 100
+    else:
+        # Cap is on AND the main is already level 100: no XP is granted, but
+        # level_cap must still be defined or the while-loop condition below
+        # raises NameError and crashes every post-cap defeat (upstream #402).
+        level_cap = 100
     try:
-        db = mw.ankimon_db
+        db = services.db
         main_pokemon_data = db.get_main_pokemon()
         if not main_pokemon_data:
-            showWarning(translator.translate("missing_mainpokemon_data"))
+            services.ui.warn(translator.translate("missing_mainpokemon_data"))
     except Exception as e:
-        mw.logger.log("error", f"Error loading main pokemon data: {str(e)}")
+        services.logger.log("error", f"Error loading main pokemon data: {str(e)}")
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error loading main pokemon data."
+            exception=e, message="Error loading main pokemon data."
         )
         return
+    evolution_prompted = False
     while int(
         find_experience_for_level(
             main_pokemon.growth_rate,
@@ -845,6 +849,7 @@ def save_main_pokemon_progress(
         )
     ) < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap):
         main_pokemon.level += 1
+        events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
         color = "#6A4DAC"  # pokemon leveling info color for tooltip
@@ -852,7 +857,7 @@ def save_main_pokemon_progress(
         if check is False:
             achievements = receive_badge(5, achievements)
         try:
-            mw.logger.game_log(f"Level Up: {msg}")
+            services.logger.game_log(f"Level Up: {msg}")
             tooltipWithColour(msg, color)
         except:
             pass
@@ -867,14 +872,24 @@ def save_main_pokemon_progress(
             main_pokemon.level,
             evo_window,
             main_pokemon.everstone,
+            getattr(main_pokemon, "evolution_rejected", False),
         )
         if evo_id is not None:
+            evolution_prompted = True
+            events.emit("evolution_offered", pokemon=main_pokemon.name, trigger="level", evo_id=evo_id)
+            # None-safe: return_name_for_id can return None for an unknown id, so
+            # fall back to the numeric id instead of crashing on .capitalize()
+            # (mirrors the friendship-evolution path below).
+            evo_display_name = return_name_for_id(evo_id)
+            evo_display_name = (
+                evo_display_name.capitalize() if evo_display_name else str(evo_id)
+            )
             logger.log_and_showinfo(
                 "info",
                 translator.translate(
                     "pokemon_about_to_evolve",
                     main_pokemon_name=main_pokemon.name,
-                    evo_pokemon_name=return_name_for_id(evo_id).capitalize(),
+                    evo_pokemon_name=evo_display_name,
                     main_pokemon_level=main_pokemon.level,
                 ),
             )
@@ -908,9 +923,12 @@ def save_main_pokemon_progress(
                         ):
                             logger.log_and_showinfo("info", f"{msg}")
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
-                            selected_attack = dialog.selected_attack
+                        # Ask via the UI port (real dialog under Anki; scripted
+                        # choice headless). None => discard the new move.
+                        selected_attack = services.ui.choose_attack_to_replace(
+                            attacks, new_attack
+                        )
+                        if selected_attack is not None:
                             index_to_replace = None
                             for index, attack in enumerate(attacks):
                                 if attack == selected_attack:
@@ -927,7 +945,7 @@ def save_main_pokemon_progress(
                                     "info", f"'{selected_attack}' not found in the list"
                                 )
                         else:
-                            # Handle the case where the user cancels the dialog
+                            # User declined to replace a move; discard the new one.
                             logger.log_and_showinfo(
                                 "info", f"{new_attack} will be discarded."
                             )
@@ -1002,10 +1020,36 @@ def save_main_pokemon_progress(
         main_pokemon.ev["spe"] += ev_yield["speed"]
         main_pokemon.invalidate_cp_cache()
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
+        # Friendship is uncapped — it keeps climbing past MAX_FRIENDSHIP (400) so
+        # players can flex a super-bonded Pokémon. The progress bar still fills at
+        # MAX_FRIENDSHIP; the raw number above it is what keeps growing.
         main_pokemon.friendship += random.randint(5, 9)
-        if main_pokemon.friendship > 255:
-            main_pokemon.friendship = 255
         mainpkmndata["friendship"] = main_pokemon.friendship
+        if not evolution_prompted:
+            friendship_evo_id = check_friendship_evolution_for_pokemon(
+                main_pokemon.individual_id,
+                main_pokemon.id,
+                evo_window,
+                main_pokemon.everstone,
+                main_pokemon.friendship,
+                getattr(main_pokemon, "evolution_rejected", False),
+            )
+            if friendship_evo_id is not None:
+                evolution_prompted = True
+                events.emit("evolution_offered", pokemon=main_pokemon.name, trigger="friendship", evo_id=friendship_evo_id)
+                # return_name_for_id can return None (and pop a spurious warning)
+                # if the evolved id is missing from the name CSV; guard the
+                # .capitalize() so a data gap can't crash the defeat flow.
+                friendship_evo_name = return_name_for_id(friendship_evo_id)
+                friendship_evo_name = friendship_evo_name.capitalize() if friendship_evo_name else str(friendship_evo_id)
+                logger.log_and_showinfo(
+                    "info",
+                    translator.translate(
+                        "pokemon_about_to_evolve_friendship",
+                        main_pokemon_name=main_pokemon.name,
+                        evo_pokemon_name=friendship_evo_name,
+                    ),
+                )
         main_pokemon.pokemon_defeated += 1
         mainpkmndata["pokemon_defeated"] = main_pokemon.pokemon_defeated
         if hasattr(main_pokemon, "tier"):
@@ -1014,8 +1058,8 @@ def save_main_pokemon_progress(
             mainpkmndata["is_favorite"] = main_pokemon.is_favorite
 
         # Save to database (replaces JSON file I/O for performance)
-        mw.ankimon_db.save_main_pokemon(mainpkmndata)
-        mw.ankimon_db.save_pokemon(mainpkmndata)  # Also update the captured pokemon collection
+        services.db.save_main_pokemon(mainpkmndata)
+        services.db.save_pokemon(mainpkmndata)  # Also update the captured pokemon collection
 
     return main_pokemon.level
 
@@ -1025,8 +1069,8 @@ def sync_mainpokemon_to_mypokemon(main_pokemon):
     Update the relevant entry in mypokemon database with the latest values from mainpokemon.
     Uses database instead of JSON files.
     """
-    db = mw.ankimon_db
-    
+    db = services.db
+
     # Get main pokemon from database
     main_entry = db.get_main_pokemon()
     if not main_entry:
@@ -1050,6 +1094,13 @@ def kill_pokemon(
     achievements: dict,
     trainer_card: Union[TrainerCard, None] = None,
 ):
+    events.emit(
+        "defeat",
+        pokemon=enemy_pokemon.name,
+        id=enemy_pokemon.id,
+        level=enemy_pokemon.level,
+        tier=enemy_pokemon.tier,
+    )
     if trainer_card is not None:
         trainer_card.gain_xp(
             enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves")
@@ -1146,7 +1197,7 @@ def save_caught_pokemon(
     caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 
     # Save to database (replaces JSON file I/O for performance)
-    mw.ankimon_db.save_pokemon(caught_pokemon)
+    services.db.save_pokemon(caught_pokemon)
 
 
 def catch_pokemon(
@@ -1171,6 +1222,14 @@ def catch_pokemon(
     if collected_pokemon_ids is not None:
         collected_pokemon_ids.add(enemy_pokemon.id)  # Update cache
     save_caught_pokemon(enemy_pokemon, nickname, achievements)
+    events.emit(
+        "catch",
+        pokemon=enemy_pokemon.name,
+        id=enemy_pokemon.id,
+        shiny=enemy_pokemon.shiny,
+        tier=enemy_pokemon.tier,
+        nickname=nickname,
+    )
 
     ankimon_tracker_obj.general_card_count_for_battle = 0
 
@@ -1190,7 +1249,7 @@ def catch_pokemon(
     except Exception as e:
         if logger is not None:
             show_warning_with_traceback(
-                parent=mw, exception=e, message="Error while catching Pokemon:"
+                exception=e, message="Error while catching Pokemon:"
             )  # Display a message when the Pokémon is caught
 
         if is_alive(pokemon_pc):
@@ -1212,7 +1271,7 @@ def handle_enemy_faint(
     """
     if ankimon_tracker_obj.faint_processed:
         return
-    
+    events.emit("faint", who="enemy", pokemon=enemy_pokemon.name, id=enemy_pokemon.id)
     try:
         auto_battle_setting = int(settings_obj.get("battle.automatic_battle"))
         if not (0 <= auto_battle_setting <= 3):
@@ -1318,6 +1377,7 @@ def handle_main_pokemon_faint(
         "pokemon_fainted", enemy_pokemon_name=main_pokemon.name.capitalize()
     )
     tooltipWithColour(msg, "#E12939")
+    events.emit("faint", who="main", pokemon=main_pokemon.name)
     play_effect_sound(settings_obj, "Fainted")
 
     main_pokemon.hp = main_pokemon.max_hp

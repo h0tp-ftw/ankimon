@@ -16,14 +16,11 @@ def setup_discord_hooks():
     )
 
     def on_reviewer_initialized(rev, card, ease):
-        if mw.ankimon_presence:
-            if mw.ankimon_presence.loop is False:
-                mw.ankimon_presence.loop = True
-                mw.ankimon_presence.start()
-        else:
+        if not hasattr(mw, "ankimon_presence") or not mw.ankimon_presence:
             mw.ankimon_presence = DiscordPresence(
                 CLIENT_ID, LARGE_IMAGE_URL, ankimon_tracker_obj, logger, settings_obj
             )
+        if mw.ankimon_presence.loop is False:
             mw.ankimon_presence.loop = True
             mw.ankimon_presence.start()
 
@@ -32,5 +29,5 @@ def setup_discord_hooks():
         mw.ankimon_presence.stop_presence()
 
     gui_hooks.reviewer_did_answer_card.append(on_reviewer_initialized)
-    gui_hooks.reviewer_will_end.append(mw.ankimon_presence.stop_presence)
+    gui_hooks.reviewer_will_end.append(on_reviewer_will_end)
     gui_hooks.sync_did_finish.append(mw.ankimon_presence.stop)

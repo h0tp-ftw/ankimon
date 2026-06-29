@@ -2,6 +2,7 @@ from anki.hooks import addHook
 from aqt import gui_hooks, mw
 
 from .singletons import settings_obj, logger
+from .utils import test_online_connectivity
 from .pyobj.ankimon_sync import setup_ankimon_sync_hooks, check_and_sync_pokemon_data
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
@@ -22,42 +23,53 @@ def _on_profile_did_open(online_connectivity):
                 parent=mw, exception=e, message="Error showing tip of the day:"
             )
 
-        try:
-            if online_connectivity:
-                check_and_award_monthly_pokemon(logger)
-            else:
-                logger.log(
-                    "info",
-                    "Skipping monthly pokemon check due to no internet connectivity.",
-                )
-        except Exception as e:
-            show_warning_with_traceback(
-                parent=mw, exception=e, message="Error awarding monthly pokemon:"
-            )
-
-        try:
-            ankiweb_sync = settings_obj.get("misc.ankiweb_sync")
-            if not ankiweb_sync:
-                logger.log(
-                    "info",
-                    "AnkiWeb sync is disabled in settings - skipping sync system initialization",
-                )
-                return
-
-            setup_ankimon_sync_hooks(settings_obj, logger)
-
+        def check_connectivity_bg() -> bool:
+            # Only run the actual check if we think we're offline
             if not online_connectivity:
-                logger.log(
-                    "info", "No connection - AnkiWeb sync is disabled for this session"
+                return test_online_connectivity()
+            return online_connectivity
+
+        def on_done(future) -> None:
+            is_online = future.result()
+            # We want to use the result of the background check
+            try:
+                if is_online:
+                    check_and_award_monthly_pokemon(logger)
+                else:
+                    logger.log(
+                        "info",
+                        "Skipping monthly pokemon check due to no internet connectivity.",
+                    )
+            except Exception as e:
+                show_warning_with_traceback(
+                    parent=mw, exception=e, message="Error awarding monthly pokemon:"
                 )
-            else:
-                global sync_dialog
-                sync_dialog = check_and_sync_pokemon_data(settings_obj, logger)
-                logger.log("info", "Ankimon sync system initialized successfully")
-        except Exception as e:
-            show_warning_with_traceback(
-                parent=mw, exception=e, message="Error setting up sync system:"
-            )
+
+            try:
+                ankiweb_sync = settings_obj.get("misc.ankiweb_sync")
+                if not ankiweb_sync:
+                    logger.log(
+                        "info",
+                        "AnkiWeb sync is disabled in settings - skipping sync system initialization",
+                    )
+                    return
+
+                setup_ankimon_sync_hooks(settings_obj, logger)
+
+                if not is_online:
+                    logger.log(
+                        "info", "No connection - AnkiWeb sync is disabled for this session"
+                    )
+                else:
+                    global sync_dialog
+                    sync_dialog = check_and_sync_pokemon_data(settings_obj, logger)
+                    logger.log("info", "Ankimon sync system initialized successfully")
+            except Exception as e:
+                show_warning_with_traceback(
+                    parent=mw, exception=e, message="Error setting up sync system:"
+                )
+
+        mw.taskman.run_in_background(check_connectivity_bg, on_done)
 
     return handler
 

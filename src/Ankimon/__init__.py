@@ -64,11 +64,14 @@ from .menu_buttons import create_menu_actions
 from .hooks import setupHooks
 from .pyobj.error_handler import show_warning_with_traceback
 
-# --- Register singletons on mw for global access ---
-mw.settings_ankimon = settings_window
-mw.logger = logger
+# singletons.py already populated the service registry and mirrored these onto
+# mw (see services.py), so the previous mw.settings_ankimon/logger/settings_obj
+# writes here were pure duplication and are gone. The translator write stays:
+# importing menu_buttons (above) re-creates mw.translator at its module top
+# (menu_buttons.py:45), so we re-point mw.translator back to the registry's
+# instance to keep mw.translator identical to services.translator. Remove this
+# once menu_buttons stops building its own translator.
 mw.translator = translator
-mw.settings_obj = settings_obj
 
 from .gui_classes import overview_team
 

@@ -11,6 +11,7 @@ logger = mw.logger
 
 class DiscordPresence:
     def __init__(self, client_id, large_image_url, ankimon_tracker, logger, settings_obj, parent=mw):
+        self.loop = False
         try:
             self.RPC = Presence(client_id)
             self.RPC.connect()
@@ -18,7 +19,6 @@ class DiscordPresence:
             self.ankimon_tracker: AnkimonTracker = ankimon_tracker
             self.logger_obj = mw.logger
             self.settings = settings_obj
-            self.loop = True
             self.start_time = time.time()
             self.thread = None
             self.quotes = [

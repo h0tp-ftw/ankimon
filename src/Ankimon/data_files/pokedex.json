@@ -42445,7 +42445,8 @@
     "color": "Yellow",
     "prevo": "Pawmo",
     "evoType": "other",
-    "evoCondition": "walk 1000 steps in Let's Go",
+    "evoCondition": "minimumDefeated",
+    "evoDefeated": 100,
     "eggGroups": [
       "Field"
     ],
@@ -43580,7 +43581,8 @@
     "color": "Green",
     "prevo": "Rellor",
     "evoType": "other",
-    "evoCondition": "walk 1000 steps in Let's Go",
+    "evoCondition": "minimumDefeated",
+    "evoDefeated": 100,
     "eggGroups": [
       "Bug"
     ],

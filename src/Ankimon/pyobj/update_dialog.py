@@ -291,6 +291,16 @@ class UpdateDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
 
+        warning = QLabel(
+            "⚠ Do not use this if you installed Ankimon by cloning the git "
+            "repository. The updater overwrites files in place and would clobber "
+            "your checkout — update with 'git pull' instead. (Your Pokémon "
+            "data and sprites are always preserved.)"
+        )
+        warning.setStyleSheet(f"color: {c['warning']}; font-size: 11px; font-weight: bold;")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
         group = QGroupBox("Install from Source")
         group_layout = QVBoxLayout(group)
         group_layout.setSpacing(10)
@@ -427,10 +437,13 @@ class UpdateDialog(QDialog):
             percent = int((current / total) * 100)
             mw.taskman.run_on_main(lambda: self.progress_bar.setValue(percent))
 
-    def _run_update(self, download_fn, label: str):
+    def _run_update(self, download_fn, label: str, extra_warning: str = None):
+        prompt = f"Update Ankimon to {label}?\n\nYour Pokemon data, settings, and sprites will be preserved."
+        if extra_warning:
+            prompt = f"{extra_warning}\n\n{prompt}"
         confirm = QMessageBox.question(
             self, "Confirm Update",
-            f"Update Ankimon to {label}?\n\nYour Pokemon data, settings, and sprites will be preserved.",
+            prompt,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
@@ -481,7 +494,16 @@ class UpdateDialog(QDialog):
         elif source == "pr":
             data = self.target_combo.currentData()
             if data:
-                self._run_update(lambda progress_cb: _download_pr_zip(data["head_sha"], progress_cb), f"PR #{data['number']} ({data['title']})")
+                self._run_update(
+                    lambda progress_cb: _download_pr_zip(data["head_sha"], progress_cb),
+                    f"PR #{data['number']} ({data['title']})",
+                    extra_warning=(
+                        "⚠ WARNING: Anyone can open a pull request. This code is "
+                        "unreviewed and unreleased — installing it runs unverified "
+                        "code on your computer. Only proceed if you trust this PR. "
+                        "Use at your own risk."
+                    ),
+                )
         elif source == "branch":
             data = self.target_combo.currentData()
             if data:

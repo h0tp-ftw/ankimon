@@ -1,13 +1,17 @@
 """Regression test for the settings persistence init-order bug.
 
-The bug: Settings.load_config / save_config gate their DB access on
-`hasattr(mw, 'ankimon_db')`. If singletons.py constructs Settings() before
-assigning mw.ankimon_db, the first load_config silently falls through to
-defaults and the subsequent save_config skips the DB write — so saved
+The bug: Settings.load_config / set / save_config gate their DB access on the
+shared registry handle ``services.db``. If the registry constructs Settings()
+before ``services.db`` is populated, the first load_config silently falls
+through to defaults and a subsequent set/save skips the DB write — so saved
 settings are ignored on startup and overwritten on save.
 
-This test pins the contract: when `mw.ankimon_db` is set BEFORE Settings()
+This test pins the contract: when ``services.db`` is set BEFORE Settings()
 is constructed, the DB-persisted config wins over DEFAULT_CONFIG.
+
+(Pre-#492 the gate was ``hasattr(mw, 'ankimon_db')``; the services-registry
+refactor moved DB access to ``services.db`` — settings.py:6/87/173/213 — so
+this test now wires that seam instead of mw.ankimon_db.)
 """
 
 import importlib.util
@@ -130,12 +134,15 @@ def isolated_env(tmp_path, monkeypatch):
         "user_path": user_path,
         "db_mod": db_mod,
         "settings_mod": settings_mod,
+        # The live registry instance that settings.py imported (`from ..services
+        # import services`). Setting .db on it is exactly how the app wires the seam.
+        "services": settings_mod.services,
     }
 
 
-def test_settings_reads_db_when_mw_ankimon_db_is_set_first(isolated_env):
+def test_settings_reads_db_when_services_db_is_set_first(isolated_env):
     """
-    THE FIX:  mw.ankimon_db is assigned BEFORE Settings() is constructed.
+    THE FIX:  services.db is populated BEFORE Settings() is constructed.
     Settings.__init__ → load_config sees the DB and returns persisted values.
     """
     env = isolated_env
@@ -145,8 +152,8 @@ def test_settings_reads_db_when_mw_ankimon_db_is_set_first(isolated_env):
     db.save_all_config({"misc.gen9": True, "controls.allow_to_choose_moves": True})
     assert db.has_config()
 
-    # Simulate the FIXED singletons.py order: mw.ankimon_db is set FIRST.
-    env["mw"].ankimon_db = db
+    # Simulate the FIXED registry order: services.db is set FIRST.
+    env["services"].db = db
 
     settings = env["settings_mod"].Settings()
 
@@ -159,22 +166,22 @@ def test_settings_reads_db_when_mw_ankimon_db_is_set_first(isolated_env):
     )
 
 
-def test_settings_falls_through_to_defaults_without_mw_ankimon_db(isolated_env):
+def test_settings_falls_through_to_defaults_without_services_db(isolated_env):
     """
-    THE BUG (pre-fix):  Settings() runs before mw.ankimon_db is assigned.
-    Settings.load_config hits the hasattr gate, falls through, returns defaults
-    even though the DB has saved values.
+    THE BUG (pre-fix):  Settings() runs before services.db is populated.
+    Settings.load_config hits the `services.db is not None` gate, falls through,
+    returns defaults even though the DB has saved values.
 
-    This test pins the bug so a future regression of singletons.py ordering
-    will be caught: if someone moves `mw.ankimon_db = ...` back below
-    `settings_obj = Settings()`, the integration breaks in exactly this way.
+    This test pins the bug so a future regression of the init ordering will be
+    caught: if Settings() is constructed before services.db is assigned, the
+    integration breaks in exactly this way.
     """
     env = isolated_env
     db = env["db_mod"].AnkimonDB()
     db.save_all_config({"misc.gen9": True, "controls.allow_to_choose_moves": True})
 
-    # Simulate the OLD broken order: mw.ankimon_db is NOT set yet.
-    assert not hasattr(env["mw"], "ankimon_db")
+    # Simulate the OLD broken order: services.db is NOT populated yet.
+    assert env["services"].db is None
 
     settings = env["settings_mod"].Settings()
 
@@ -204,7 +211,7 @@ def test_setting_save_persists_to_db_when_gate_open(isolated_env):
     next session can read it back. This is the user-visible contract."""
     env = isolated_env
     db = env["db_mod"].AnkimonDB()
-    env["mw"].ankimon_db = db
+    env["services"].db = db
 
     settings = env["settings_mod"].Settings()
     settings.set("misc.gen9", True)

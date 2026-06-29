@@ -10,6 +10,7 @@
   "error_occured": "Une erreur est survenue avec {function}. Veuillez publier ce message d'erreur dans le rapport de bug",
   "missing_mainpokemon_data": "Données de Pokémon manquantes",
   "pokemon_about_to_evolve": "{main_pokemon_name} est sur le point d'évoluer en {evo_pokemon_name} au niveau {main_pokemon_level}",
+  "pokemon_about_to_evolve_friendship": "{main_pokemon_name} est prêt à évoluer en {evo_pokemon_name} !",
   "mainpokemon_can_learn_new_attack": "Votre {main_pokemon_name} peut apprendre une nouvelle attaque !",
   "mainpokemon_learned_new_attack": "Votre {main_pokemon_name} a appris {new_attack_name} !",
   "mainpokemon_gained_xp": "Votre {main_pokemon_name} a gagné {exp} XP.\n{experience_till_next_level} exp est nécessaire pour le niveau suivant.\nVotre Pokémon a actuellement {main_pokemon_xp}",
@@ -454,5 +455,9 @@
   "futuresight_fails": "Prescience échoue !",
   "weather_raindance_still": "Il pleut encore !",
   "wish_started": "{pokemon_name} a fait un vœu ! Il récupérera {heal_amount} PV bientôt.",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "PC",
+  "bp_label": "PB",
+  "combat_power": "Puissance de combat",
+  "battle_power": "Puissance de combat"
 }

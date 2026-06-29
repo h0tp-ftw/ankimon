@@ -1,20 +1,39 @@
+from __future__ import annotations
+
 from typing import Optional
 
-from aqt import mw
-from aqt.qt import QPainter, QLabel, Qt, sip
-from PyQt6.QtGui import QColor, QFont, QColor, QPalette
-from PyQt6.QtCore import Qt, QRect, QPoint, QSize, QPoint, QTimer
-from PyQt6.QtWidgets import QApplication, QLabel, QFrame
-
+from ..services import services
+from ..events import events
 from ..pyobj.pokemon_obj import PokemonObject
+
+# Qt is optional so this module imports headless. The painters and the tooltip
+# label only run under a GUI; headless, tooltipWithColour emits an event instead
+# of drawing — which is exactly the battle log / damage numbers / level-up text
+# an agent needs to "see".
+try:
+    from aqt.qt import QPainter, QLabel, Qt, sip
+    from PyQt6.QtGui import QColor, QFont, QPalette
+    from PyQt6.QtCore import QRect, QPoint, QSize, QTimer
+    from PyQt6.QtWidgets import QApplication, QFrame
+    _HAVE_QT = True
+except Exception:
+    _HAVE_QT = False
 
 
 def tooltipWithColour(
     msg, color, x=0, y=20, xref=1, parent=None, width=0, height=0, centered=False
 ):
-    reviewer_text_message_box = mw.settings_obj.get("gui.reviewer_text_message_box")
+    # Structured event first — the observable record of this on-screen message,
+    # emitted in both GUI and headless modes.
+    events.emit("tooltip", message=msg, color=color)
+
+    if not _HAVE_QT:
+        return
+
+    settings = services.settings
+    reviewer_text_message_box = settings.get("gui.reviewer_text_message_box")
     period = int(
-        mw.settings_obj.get("gui.reviewer_text_message_box_time") * 1000
+        settings.get("gui.reviewer_text_message_box_time") * 1000
     )  # time for pop up message
 
     class CustomLabel(QLabel):
@@ -66,7 +85,9 @@ def tooltipWithColour(
             QTimer.singleShot(
                 3000, lambda: lab.hide() if lab and not sip.isdeleted(lab) else None
             )
-        mw.logger.log_and_showinfo("game", msg)
+        logger = services.logger
+        if logger is not None:
+            logger.log_and_showinfo("game", msg)
 
 
 def draw_gender_symbols(

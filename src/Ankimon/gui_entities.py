@@ -217,15 +217,18 @@ class HelpWindow(QDialog):
                 # Path to the local file
                 local_content = read_local_file(help_local_file_path)
                 # Read content from GitHub
-                github_content, github_html_content = read_github_file(help_github_url)
+                github_content = read_github_file(help_github_url)
                 if local_content is not None and compare_files(local_content, github_content):
-                    html_content = github_html_content
+                    html_content = github_content
                 else:
                     # Download new content from GitHub
                     if github_content is not None:
                         # Write new content to the local file
                         write_local_file(help_local_file_path, github_content)
-                        html_content = github_html_content
+                        html_content = github_content
+                    elif local_content is not None:
+                        # GitHub unreachable — fall back to the cached local copy
+                        html_content = local_content
             else:
                 help_local_file_path = addon_dir / "HelpInfos.html"
                 local_content = read_local_file(help_local_file_path)

@@ -57,5 +57,7 @@
     "trainer.id": 0,
     "trainer.cash": 0,
     "trainer.cash_reward_amount": 100,
-    "trainer.cash_reward_interval": 10
+    "trainer.cash_reward_interval": 10,
+    "trainer.cash_earned_today": 0,
+    "trainer.last_cash_reward_date": ""
 }

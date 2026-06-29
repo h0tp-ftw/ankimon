@@ -7,11 +7,8 @@ import csv
 import base64
 from typing import Any, Optional
 
-from aqt import mw
-from aqt.utils import showWarning, showInfo
-
-from aqt.qt import QFontDatabase, QFont, QUrl
-from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+from .services import services
+from .events import events
 
 from .pyobj.settings import Settings
 from .pyobj.InfoLogger import ShowInfoLogger
@@ -40,9 +37,34 @@ from .resources import (
 from .move_names import format_move_name
 
 
-audio_output = QAudioOutput()
-media_player = QMediaPlayer()
-media_player.setAudioOutput(audio_output)
+# Audio is optional. Under Anki these construct real Qt players; headless (the
+# agent harness / tests) there is no QtMultimedia, so we degrade to "no audio"
+# and play_sound/play_effect_sound become event-only.
+try:
+    from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+
+    audio_output = QAudioOutput()
+    media_player = QMediaPlayer()
+    media_player.setAudioOutput(audio_output)
+    _HAVE_AUDIO = True
+except Exception:
+    audio_output = None
+    media_player = None
+    _HAVE_AUDIO = False
+
+
+def showInfo(message, *args, **kwargs):
+    """Headless-safe stand-in for ``aqt.utils.showInfo``.
+
+    Routed through the UI presenter: a real popup under Anki (the QtPresenter),
+    a recorded ``notify`` event headless. Keeps utils free of an aqt import.
+    """
+    services.ui.notify("info", str(message))
+
+
+def showWarning(message, *args, **kwargs):
+    """Headless-safe stand-in for ``aqt.utils.showWarning``."""
+    services.ui.notify("warning", str(message))
 
 with open(pokedex_path, "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -405,7 +427,7 @@ def daily_item_list():
 # Function to give an item to the player
 def give_item(item_name: str, item_type: Optional[str] = None):
     """Gives an item to the user."""
-    db = mw.ankimon_db
+    db = services.db
     
     # Get current item or create new
     existing = db.get_item(item_name)
@@ -470,12 +492,12 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
                     return int(id)
     except (OSError, KeyError) as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message="Error reading item data:"
+            exception=e, message="Error reading item data:"
         )
         return 4
     except Exception as e:
         show_warning_with_traceback(
-            parent=mw, exception=e, message=f"Unexpected error: {e}"
+            exception=e, message=f"Unexpected error: {e}"
         )
         return 4
 
@@ -500,7 +522,7 @@ def count_items_and_rewrite():
     Legacy: Previously read from items.json, now uses database.
     """
     try:
-        db = mw.ankimon_db
+        db = services.db
         
         # Get all items from database - they're already unique by item_name
         # so no need to aggregate, the database handles this automatically
@@ -581,9 +603,10 @@ def load_custom_font(font_size, language):
         font_file = "Early GameBoy.ttf"
         font_size = int((font_size * 2) / 5)
 
-    # Register the custom font with its file path if not already added
-    font_id = QFontDatabase.addApplicationFont(str(font_path / font_file))
-    
+    # Register the custom font with its file path. Qt imported lazily so utils
+    # stays importable headless (custom fonts are a GUI-only concern).
+    from PyQt6.QtGui import QFontDatabase, QFont
+    QFontDatabase.addApplicationFont(str(font_path / font_file))
     custom_font = QFont(
         font_name
     )  # Use the font family name you specified in the font file
@@ -630,12 +653,16 @@ def play_effect_sound(settings_obj, sound_type):
         elif sound_type == "Fainted":
             audio_path = fainted_sound_path
 
-        if not audio_path.is_file():
+        if audio_path is None or not audio_path.is_file():
             return
-        else:
-            audio_output.setVolume(settings_obj.get("audio.volume"))
-            media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
-            media_player.play()
+        # Structured event so an agent "hears" the effect even with no audio device.
+        events.emit("sound", kind="effect", sound=sound_type)
+        if not _HAVE_AUDIO:
+            return
+        from PyQt6.QtCore import QUrl
+        audio_output.setVolume(settings_obj.get("audio.volume"))
+        media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
+        media_player.play()
     else:
         pass
 
@@ -674,7 +701,7 @@ def save_error_code(error_code, logger=None):
 
 
 def get_main_pokemon_data():
-    main_pokemon_data = mw.ankimon_db.get_main_pokemon()
+    main_pokemon_data = services.db.get_main_pokemon()
     
     if not main_pokemon_data:
         return None
@@ -725,6 +752,10 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
         file_name = f"{enemy_pokemon_id}.ogg"
         audio_path = addon_dir / "user_files" / "sprites" / "sounds" / file_name
         if audio_path.is_file():
+            events.emit("sound", kind="cry", pokemon_id=enemy_pokemon_id)
+            if not _HAVE_AUDIO:
+                return
+            from PyQt6.QtCore import QUrl
             audio_output.setVolume(settings_obj.get("audio.volume"))
             media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
             media_player.play()
@@ -732,7 +763,7 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
 
 def load_collected_pokemon_ids() -> set:
     """Loads all captured pokemon IDs from the database."""
-    return mw.ankimon_db.get_all_pokemon_ids()
+    return services.db.get_all_pokemon_ids()
 
 
 def limit_ev_yield(
@@ -954,4 +985,9 @@ def png_to_base64(path: str) -> str:
 
 
 def close_anki():
-    mw.close()
+    # Guarded: only meaningful inside Anki. No-op headless.
+    try:
+        from aqt import mw
+        mw.close()
+    except Exception:
+        pass

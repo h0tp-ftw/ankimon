@@ -10,6 +10,7 @@
   "error_occured": "{function}에서 오류가 발생했습니다. 이 오류 메시지를 버그 신고에 올려주세요.",
   "missing_mainpokemon_data": "포켓몬 데이터가 없습니다.",
   "pokemon_about_to_evolve": "{main_pokemon_name}이(가) 레벨 {main_pokemon_level}에서 {evo_pokemon_name}으로(로) 진화하려 합니다.",
+  "pokemon_about_to_evolve_friendship": "{main_pokemon_name}이(가) {evo_pokemon_name}으로(로) 진화할 준비가 되었습니다!",
   "mainpokemon_can_learn_new_attack": "당신의 {main_pokemon_name}이(가) 새로운 기술을 배울 수 있습니다!",
   "mainpokemon_learned_new_attack": "당신의 {main_pokemon_name}이(가) {new_attack_name} 기술을 배웠습니다!",
   "mainpokemon_gained_xp": "당신의 {main_pokemon_name}이(가) {exp} XP를 획득했습니다.\n다음 레벨까지 {experience_till_next_level} XP가 필요합니다.\n현재 XP: {main_pokemon_xp}",
@@ -454,5 +455,9 @@
   "futuresight_fails": "미래예지가 실패했다!",
   "weather_raindance_still": "아직도 비가 내리고 있다!",
   "wish_started": "{pokemon_name}이(가) 소원을 빌었다! 곧 {heal_amount} HP를 회복할 것이다.",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "CP",
+  "bp_label": "BP",
+  "combat_power": "전투력",
+  "battle_power": "배틀 파워"
 }

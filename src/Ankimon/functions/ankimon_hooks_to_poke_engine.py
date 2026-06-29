@@ -5,7 +5,7 @@ import traceback
 from typing import Union
 
 from ..poke_engine import constants
-from ..singletons import ankimon_tracker_obj, settings_obj
+from ..services import services
 import math
 
 from ..poke_engine.battle import Move
@@ -13,6 +13,11 @@ from ..poke_engine.objects import Pokemon, State, StateMutator, Side
 from ..poke_engine.helpers import normalize_name
 from ..poke_engine.find_state_instructions import get_all_state_instructions
 from ..pyobj.error_handler import show_warning_with_traceback
+
+# Shared state used as bare module globals below; bound to the live registry
+# objects by core.bind_runtime_globals() after composition.
+ankimon_tracker_obj = None
+settings_obj = None
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
     """

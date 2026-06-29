@@ -1,13 +1,6 @@
-pytest
-
-pytest-qt
-
-anki
-
 aqt
-
-PyQt6
-
-orjson
-
+pytest
+pytest-qt
 requests
+PyQt6
+markdown

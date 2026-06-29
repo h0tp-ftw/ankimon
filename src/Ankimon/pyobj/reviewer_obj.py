@@ -70,6 +70,27 @@ class Reviewer_Manager:
         """This function is now a no-op. The HUD is injected via the Shadow DOM portal."""
         return web_content
 
+    def refresh_hud(self):
+        """Re-render the HUD against the live reviewer webview.
+
+        Builds the tiny reviewer shim ``update_life_bar`` expects (an object with
+        a ``.web``) from ``mw.reviewer`` and calls it. Guarded so a missing
+        reviewer/webview — or no Anki at all (the agent harness uses a recording
+        fake instead of this class) — is a silent no-op, not a crash. This is the
+        single entry point battle_loop / encounter_functions use to repaint.
+        """
+        try:
+            from aqt import mw
+
+            class _ReviewerShim:
+                pass
+
+            shim = _ReviewerShim()
+            shim.web = mw.reviewer.web
+            self.update_life_bar(shim, 0, 0)
+        except Exception:
+            pass
+
     def update_life_bar(self, reviewer, card, ease):
         # GUARD: Block hook calls (ease != 0 or card != 0)
         # Only allow direct calls from battle_loop (ease=0, card=0)
@@ -352,4 +373,3 @@ class Reviewer_Manager:
         }})({json.dumps(hud_html)}, {json.dumps(hud_css)}, {str(hud_hidden_on_startup).lower()});
         """
         reviewer.web.eval(js_code)
-

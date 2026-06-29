@@ -10,6 +10,7 @@
   "error_occured": "{function} 发生错误。请在报告错误问题中提交此错误信息。",
   "missing_mainpokemon_data": "缺少宝可梦数据",
   "pokemon_about_to_evolve": "{main_pokemon_name} 即将在 {main_pokemon_level} 级进化为 {evo_pokemon_name}。",
+  "pokemon_about_to_evolve_friendship": "{main_pokemon_name} 准备进化为 {evo_pokemon_name}！",
   "mainpokemon_can_learn_new_attack": "你的 {main_pokemon_name} 可以学习新技能！",
   "mainpokemon_learned_new_attack": "你的 {main_pokemon_name} 学会了 {new_attack_name}！",
   "mainpokemon_gained_xp": "你的 {main_pokemon_name} 获得了 {exp} 经验值。\n 还需要 {experience_till_next_level} 经验值升级。\n 目前经验值：{main_pokemon_xp}",
@@ -454,5 +455,9 @@
   "futuresight_fails": "未来视失败！",
   "weather_raindance_still": "仍在下雨！",
   "wish_started": "{pokemon_name} 许下了愿望！它很快会恢复 {heal_amount} HP。",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "CP",
+  "bp_label": "BP",
+  "combat_power": "战斗力",
+  "battle_power": "对战能力"
 }

@@ -1,0 +1,21 @@
+# Optional DEV-ONLY tooling for the harness.
+#
+# Install into a VENV — never make these add-on dependencies. The shipped
+# .ankiaddon is built from src/Ankimon/ only and MUST stay dependency-free, or
+# normal users' installs break. These are a *developer's* analysis/debug tools,
+# pointed at a Driver workload from harness/ (which never ships).
+#
+#     python3 -m venv .venv
+#     .venv/bin/pip install -r harness/requirements-dev.txt
+#
+# None of this is needed for the core Tier-1 harness (stdlib only — runs anywhere).
+# Each line is an optional tool you can point at the same headless session:
+
+pyinstrument      # low-overhead statistical call-tree profiler — diagnostics(backend="pyinstrument")
+scalene           # line-level CPU + memory profiler (separates Python vs native time)
+memray            # allocation tracking + flamegraphs (real leak hunting)
+py-spy            # sampling profiler that attaches to a running PID — no code changes
+line_profiler     # per-line timing for @profile-decorated hot functions
+objgraph          # object reference graphs — "what is keeping this alive?"
+debugpy           # DAP debug server for VS Code / PyCharm — see harness/debug.py
+pytest            # run tests/ ; add pytest-benchmark for microbenchmarks

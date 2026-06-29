@@ -6,6 +6,10 @@
     "battle.card_max_time": "Goal of maximum amount of time needed to answer a card in seconds",
     "battle.review_based_damage": "If enabled, your Pokémon's damage will be modified depending on how you graded your last few cards.",
 
+    "evolution.friendship_time_enabled": "Let Pokémon evolve when they reach their friendship requirement at the right time of day (day/night).",
+    "evolution.timezone_auto": "Use this device's local time zone to decide day vs night for evolutions. Turn off to set a fixed UTC offset below.",
+    "evolution.timezone_offset": "UTC offset in hours used for the day/night cycle when Auto-detect Time Zone is off (e.g. -5 = New York, 1 = Berlin, 5.5 = India, 0 = UTC). Ignored while auto-detect is on.",
+
     "controls.pokemon_buttons": "Enable action buttons for Pokémon commands during reviews.",
     "controls.defeat_key": "Key for defeating Pokémon when its HP is 0. [A-Z]",
     "controls.catch_key": "Key for catching Pokémon when its HP is 0. [A-Z]",
@@ -54,6 +58,6 @@
     "misc.show_tip_on_startup": "If enabled, a window with a helpful tip about Ankimon will be shown when you start Anki!",
     "misc.developer_mode": "Enable developer mode. This will create a backup every time Anki is opened.",
     "trainer.name": "Set the name of your trainer.",
-    "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 2,000]. NOTE: To prevent exploits, the payout is capped at 100¥ per card (e.g., to earn 1,000¥, you must set the interval to at least 10 cards).",
-    "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 250]."
+    "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 400]. NOTE: To prevent exploits, the payout is capped based on your daily economy limit and subject to a hard daily cap of 400¥.",
+    "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily cap of 400¥."
 }

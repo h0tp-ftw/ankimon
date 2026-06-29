@@ -10,6 +10,7 @@
   "error_occured": "Si è verificato un errore con {function}. Pubblica questo messaggio di errore nella segnalazione bug.",
   "missing_mainpokemon_data": "Dati del Pokémon mancanti",
   "pokemon_about_to_evolve": "{main_pokemon_name} sta per evolversi in {evo_pokemon_name} al livello {main_pokemon_level}",
+  "pokemon_about_to_evolve_friendship": "{main_pokemon_name} è pronto a evolversi in {evo_pokemon_name}!",
   "mainpokemon_can_learn_new_attack": "Il tuo {main_pokemon_name} può imparare un nuovo attacco!",
   "mainpokemon_learned_new_attack": "Il tuo {main_pokemon_name} ha imparato {new_attack_name}!",
   "mainpokemon_gained_xp": "Il tuo {main_pokemon_name} ha guadagnato {exp} XP.\n {experience_till_next_level} XP necessari per il livello successivo.\n Il tuo Pokémon ha attualmente {main_pokemon_xp}",
@@ -454,5 +455,9 @@
   "futuresight_fails": "Divinazione fallisce!",
   "weather_raindance_still": "Sta ancora piovendo!",
   "wish_started": "{pokemon_name} ha espresso un desiderio! Guarirà {heal_amount} PS a breve.",
-  "pc_box_label": "Box {current}/{total}"
+  "pc_box_label": "Box {current}/{total}",
+  "cp_label": "PL",
+  "bp_label": "PL",
+  "combat_power": "Potenza di combattimento",
+  "battle_power": "Potenza di lotta"
 }

@@ -1,7 +1,8 @@
 import logging
-from PyQt6.QtWidgets import QMessageBox, QTextEdit, QVBoxLayout, QDialog, QPushButton, QApplication
-from PyQt6.QtCore import Qt
 import os
+
+from ..events import events
+
 
 class ShowInfoLogger:
     def __init__(self, name="ShowInfoLogger", log_filename="app.log"):
@@ -36,44 +37,59 @@ class ShowInfoLogger:
         # Track the log viewer dialog
         self.log_dialog = None
 
-        # Track the log viewer dialog
-        self.log_dialog = None
+    def _record(self, level, message):
+        """Write to the file log and emit a structured event. No GUI here.
+
+        This is the aqt-free core of logging: it runs identically inside Anki
+        and headless. The blocking QMessageBox (info/warning/error) is layered
+        on top in ``log_and_showinfo`` and only when a Qt GUI is available.
+        """
+        # Structured event first so observers (the agent harness, a dev console)
+        # see every log line even if the file handler or Qt is unavailable.
+        try:
+            events.emit("log", level=level, message=message)
+        except Exception:
+            pass
+
+        if level == 'info':
+            self.logger.info(message)
+        elif level == 'warning':
+            self.logger.warning(message)
+        elif level == 'error':
+            self.logger.error(message)
+        elif level == 'game':
+            self.game_logger.info(message)
 
     def log_and_showinfo(self, level, message):
-        # Log the message
-        if level == 'info':
-            self.logger.info(message)
-        elif level == 'warning':
-            self.logger.warning(message)
-        elif level == 'error':
-            self.logger.error(message)
-        elif level == 'game':
-            self.game_log(message)  # Use the game-specific logging
+        # Log + emit always; show a blocking dialog only under a Qt GUI.
+        self._record(level, message)
 
         if level in ['info', 'warning', 'error']:
-            # Show the message in a QMessageBox dialog
-            msg_box = QMessageBox()
-            msg_box.setWindowTitle("Log Message")
-            msg_box.setText(message)
-            msg_box.setIcon(QMessageBox.Icon.Information)
-            msg_box.exec()
+            # Lazy, guarded import keeps this module loadable headless. When
+            # there is no Qt runtime (the agent harness / tests), the structured
+            # event above is the observable record instead of a popup.
+            try:
+                from PyQt6.QtWidgets import QMessageBox
+                msg_box = QMessageBox()
+                msg_box.setWindowTitle("Log Message")
+                msg_box.setText(message)
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                msg_box.exec()
+            except Exception:
+                pass
 
     def log(self, level, message):
-        # Log the message
-        if level == 'info':
-            self.logger.info(message)
-        elif level == 'warning':
-            self.logger.warning(message)
-        elif level == 'error':
-            self.logger.error(message)
-        elif level == 'game':
-            self.game_log(message)  # Use the game-specific logging
+        self._record(level, message)
 
     def game_log(self, message):
         # Log a game-specific message with the GAME- prefix
-        self.game_logger.info(message)
+        self._record('game', message)
 
     def toggle_log_window(self):
+        # Imported lazily so the logger module never hard-depends on Qt.
+        from PyQt6.QtWidgets import QTextEdit, QVBoxLayout, QDialog, QPushButton
+        from PyQt6.QtCore import Qt
+
         if self.log_dialog and self.log_dialog.isVisible():
             # Close the dialog if it's open and currently focused
             self.log_dialog.close()
@@ -121,6 +137,7 @@ class ShowInfoLogger:
 
         # Update the log viewer with the cleared content
         if self.log_dialog:
+            from PyQt6.QtWidgets import QTextEdit
             text_edit = self.log_dialog.findChild(QTextEdit)
             if text_edit:
                 text_edit.setPlainText('')  # Clear the displayed content in the viewer

@@ -1,11 +1,29 @@
-from PyQt6.QtCore import QTimer
 from .pokemon_obj import PokemonObject
 from datetime import datetime
-from .error_handler import show_warning_with_traceback
 from ..functions.pokedex_functions import extract_ids_from_file
 from ..utils import random_battle_scene
-from aqt import mw
+from ..services import services
 import re
+
+try:
+    from PyQt6.QtCore import QTimer
+except Exception:
+    # Headless (agent harness / tests): no Qt event loop. The session/card
+    # timers are purely cosmetic, so stub them out so the tracker still
+    # constructs and runs. start()/stop()/timeout.connect() become no-ops.
+    class _NoOpSignal:
+        def connect(self, *args, **kwargs):
+            pass
+
+    class QTimer:  # type: ignore[no-redef]
+        def __init__(self, *args, **kwargs):
+            self.timeout = _NoOpSignal()
+
+        def start(self, *args, **kwargs):
+            pass
+
+        def stop(self, *args, **kwargs):
+            pass
 
 
 class AnkimonTracker:
@@ -74,9 +92,23 @@ class AnkimonTracker:
         self.start_session_timer()
 
     def get_total_reviews(self):
-        if mw.col is None:
+        col = services.col
+        if col is None:
+            # Inside Anki the collection is live on mw; fall back to it so the
+            # count is always current (services.col may be unset at addon load).
+            try:
+                from aqt import mw
+                col = mw.col
+            except Exception:
+                col = None
+        if col is None:
             return 0
-        match = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', mw.col.studied_today())
+        try:
+            studied = col.studied_today()
+            match = re.search(r'Studied\s+[^\d]*(\d+)(?=[^\n]*card)', studied)
+        except Exception:
+            # e.g. a stub/mock collection whose studied_today() isn't a string.
+            return 0
         if match is None:
             # Empty-study session or localized Anki whose "Studied N cards"
             # text doesn't match the English regex.
@@ -255,10 +287,9 @@ class AnkimonTracker:
             owned_pokemon_ids = extract_ids_from_file()
             self.owned_pokemon_ids = owned_pokemon_ids
         except Exception as e:
-            show_warning_with_traceback(
-                parent=mw,
-                exception=e,
-                message="Error: from AnkimonTracker with function extract_ids_from_file",
+            services.ui.report_error(
+                e,
+                "Error: from AnkimonTracker with function extract_ids_from_file",
             )
 
     # def get_badges(self):

@@ -158,19 +158,94 @@ class ImprovedPokemonDataSync(QDialog):
             local_lines = []
             remote_lines = []
             
-            # Since it's a binary DB, we show stats
-            db = mw.ankimon_db
-            local_stats = db.get_stats()
+            def get_db_stats(db_path: Path) -> Dict[str, Any]:
+                stats = {
+                    "pokemon": 0,
+                    "items": 0,
+                    "history": 0,
+                    "badges": 0,
+                    "trainer_name": "N/A",
+                    "trainer_level": 1,
+                    "trainer_cash": 0
+                }
+                if not db_path.is_file():
+                    return stats
+                conn = None
+                try:
+                    import sqlite3
+                    conn = sqlite3.connect(str(db_path))
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                    tables = {row["name"] for row in cursor.fetchall()}
+                    
+                    if "captured_pokemon" in tables:
+                        cursor.execute("SELECT COUNT(*) as count FROM captured_pokemon")
+                        stats["pokemon"] = cursor.fetchone()["count"]
+                    
+                    if "items" in tables:
+                        cursor.execute("SELECT SUM(quantity) as count FROM items")
+                        res = cursor.fetchone()
+                        stats["items"] = res["count"] if res and res["count"] is not None else 0
+                    
+                    if "pokemon_history" in tables:
+                        cursor.execute("SELECT COUNT(*) as count FROM pokemon_history")
+                        stats["history"] = cursor.fetchone()["count"]
+                        
+                    if "badges" in tables:
+                        cursor.execute("SELECT COUNT(*) as count FROM badges WHERE achieved = 1")
+                        stats["badges"] = cursor.fetchone()["count"]
+                        
+                    if "config" in tables:
+                        cursor.execute("SELECT value FROM config WHERE key = 'trainer.name'")
+                        row = cursor.fetchone()
+                        if row:
+                            stats["trainer_name"] = row["value"]
+                            
+                        cursor.execute("SELECT value FROM config WHERE key = 'trainer.level'")
+                        row = cursor.fetchone()
+                        if row:
+                            stats["trainer_level"] = int(row["value"])
+                            
+                        cursor.execute("SELECT value FROM config WHERE key = 'trainer.cash'")
+                        row = cursor.fetchone()
+                        if row:
+                            stats["trainer_cash"] = int(row["value"])
+                    
+                except Exception as e:
+                    self.logger.log("error", f"Failed to get stats for {db_path.name}: {e}")
+                finally:
+                    if conn is not None:
+                        conn.close()
+                return stats
+
+            source_file = self.sync_handler._get_source_path(filename)
+            media_file = self.sync_handler._get_media_path(filename)
             
-            # We don't have an easy way to 'query' the remote DB without loading it
-            # For now, we show local stats and acknowledge the file difference
-            local_lines.append(f"Pokemon: {local_stats.get('pokemon', 0)}")
-            local_lines.append(f"Items: {local_stats.get('items', 0)}")
-            local_lines.append(f"History: {local_stats.get('history', 0)}")
+            local_stats = get_db_stats(source_file)
             
-            remote_lines.append("(Database stats comparisons require sync)")
-            remote_lines.append("(File size or hash difference detected)")
+            local_lines.append(f"Trainer: {local_stats['trainer_name']}")
+            local_lines.append(f"Level: {local_stats['trainer_level']}")
+            local_lines.append(f"Cash: {local_stats['trainer_cash']}")
+            local_lines.append(f"Captured Pokemon: {local_stats['pokemon']}")
+            local_lines.append(f"Total Items: {local_stats['items']}")
+            local_lines.append(f"Badges: {local_stats['badges']}")
+            local_lines.append(f"History: {local_stats['history']}")
             
+            if media_file.is_file():
+                remote_stats = get_db_stats(media_file)
+                remote_lines.append(f"Trainer: {remote_stats['trainer_name']}")
+                remote_lines.append(f"Level: {remote_stats['trainer_level']}")
+                remote_lines.append(f"Cash: {remote_stats['trainer_cash']}")
+                remote_lines.append(f"Captured Pokemon: {remote_stats['pokemon']}")
+                remote_lines.append(f"Total Items: {remote_stats['items']}")
+                remote_lines.append(f"Badges: {remote_stats['badges']}")
+                remote_lines.append(f"History: {remote_stats['history']}")
+            else:
+                remote_lines.append("(No database file exists on AnkiWeb)")
+                remote_lines.extend([""] * 6)
+                
             return local_lines, remote_lines
 
         def detect_structure_and_compare(local_data: Any, remote_data: Any, filename: str) -> Tuple[List[str], List[str]]:
@@ -203,7 +278,7 @@ class ImprovedPokemonDataSync(QDialog):
             local_content.append(f"Local file exists: {local_exists}")
             web_content.append(f"AnkiWeb file exists: {media_exists}")
 
-            if filename.endswith(('.json', '.obf')):
+            if filename.endswith(('.json', '.obf')) or filename == 'ankimon.db':
                 local_data = diff_info.get('local_data')
                 media_data = diff_info.get('media_data')
 
