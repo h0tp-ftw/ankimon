@@ -474,13 +474,6 @@ def read_update_state() -> Optional[dict]:
             # anything a text editor can produce must come back as None here.
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                # Auto-migrate legacy branch tracking from BRRRR_Experimental to main
-                if data.get("source_type") == "branch" and data.get("source_name") == "BRRRR_Experimental":
-                    data["source_name"] = "main"
-                    try:
-                        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-                    except Exception:
-                        pass
                 return data
     except Exception:
         pass
