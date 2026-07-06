@@ -27,6 +27,15 @@ DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
 # the release/tag pickers — going back would break the update feature itself.
 MIN_UPDATER_VERSION = (2, 0)
 
+# Auto-update channels (user-selectable in the update dialog). "stable" and
+# "experimental" are release channels told apart by the tag suffix — an
+# experimental release tag ends in "-E" (e.g. "2.02-E"), a stable one does not
+# (e.g. "2.03"). "main" tracks the main branch HEAD via the branch-SHA poll.
+CHANNEL_STABLE = "stable"
+CHANNEL_EXPERIMENTAL = "experimental"
+CHANNEL_MAIN = "main"
+UPDATE_CHANNELS = (CHANNEL_STABLE, CHANNEL_EXPERIMENTAL, CHANNEL_MAIN)
+
 
 def _git_repo_root() -> Optional[Path]:
     """Return the git repo root that contains the addon, else None.
@@ -147,6 +156,85 @@ def _is_supported_version(name: str) -> bool:
     and are excluded from the pickers."""
     v = _parse_version(name)
     return v is not None and v >= MIN_UPDATER_VERSION
+
+
+def _version_key(name: str) -> tuple:
+    """Total-ordering key for this project's *decimal-minor* tag scheme, where the
+    part after the major is a fraction — so 1.43 < 1.5, and 2.03 < 2.1. The "-E"
+    channel suffix is stripped first (it selects a channel, not an order). Unlike
+    ``_parse_version`` (a coarse threshold gate), this IS safe for max()/sorting.
+    Non-version names sort lowest.
+
+    NOTE: assumes single-dot decimal versions (2.03, 1.52, 1.3962). A multi-part
+    semver like "2.0.1" won't match and sorts lowest — revisit if the scheme changes.
+    """
+    t = name.strip().lstrip("v")
+    if t.endswith("-E"):
+        t = t[:-2]
+    m = re.match(r"(\d+)(?:\.(\d+))?$", t)
+    if not m:
+        return (-1, 0.0)
+    major = int(m.group(1))
+    frac = float("0." + m.group(2)) if m.group(2) else 0.0
+    return (major, frac)
+
+
+def channel_of_tag(tag: str) -> str:
+    """Which release channel a tag belongs to: experimental if it ends in "-E",
+    otherwise stable. (Main is a branch, never a tag, so it's not returned here.)"""
+    return CHANNEL_EXPERIMENTAL if tag.strip().endswith("-E") else CHANNEL_STABLE
+
+
+def is_newer_version(candidate: str, installed: str) -> bool:
+    """True if ``candidate`` is strictly newer than ``installed`` under the
+    decimal-minor scheme (channel suffix ignored). Used to decide whether to
+    prompt: a same-or-older latest release never nags."""
+    return _version_key(candidate) > _version_key(installed)
+
+
+def latest_release_for_channel(channel: str) -> Optional[dict]:
+    """Newest supported release (>= MIN_UPDATER_VERSION) on ``channel``.
+    stable = tags without "-E", experimental = tags ending in "-E". Returns the
+    release dict from ``fetch_releases`` (name/body/zipball_url) or None. "main"
+    returns None — it's a branch, handled by the branch-SHA poll, not releases."""
+    if channel == CHANNEL_MAIN:
+        return None
+    matches = [r for r in fetch_releases() if channel_of_tag(r["name"]) == channel]
+    if not matches:
+        return None
+    return max(matches, key=lambda r: _version_key(r["name"]))
+
+
+def get_update_channel() -> str:
+    """The user's selected auto-update channel. Defaults to matching the installed
+    build — an "-E" build → experimental, otherwise stable — until the user picks
+    one in the update dialog. Any unrecognized stored value falls back the same way."""
+    raw = None
+    try:
+        from ..services import services
+
+        if services.settings is not None:
+            raw = services.settings.get("misc.update_channel")
+    except Exception:
+        raw = None
+    if raw in UPDATE_CHANNELS:
+        return raw
+    from ..resources import IS_EXPERIMENTAL_BUILD
+
+    return CHANNEL_EXPERIMENTAL if IS_EXPERIMENTAL_BUILD else CHANNEL_STABLE
+
+
+def set_update_channel(channel: str) -> None:
+    """Persist the user's channel choice (ignored if not a known channel)."""
+    if channel not in UPDATE_CHANNELS:
+        return
+    try:
+        from ..services import services
+
+        if services.settings is not None:
+            services.settings.set("misc.update_channel", channel)
+    except Exception as e:
+        print(f"Ankimon Updater: Failed to save update channel: {e}")
 
 
 def _make_request(
