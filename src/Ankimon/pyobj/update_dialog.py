@@ -61,6 +61,8 @@ class UpdateDialog(QDialog):
         body.setSpacing(12)
         body.setContentsMargins(20, 16, 20, 16)
 
+        body.addLayout(self._build_channel_row())
+
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_brrr_tab(), f"  Branch: {self.active_branch}  ")
         self.tabs.addTab(self._build_releases_tab(), "  Releases  ")
@@ -82,6 +84,36 @@ class UpdateDialog(QDialog):
 
         layout.addLayout(body)
         self._load_data()
+
+    def _build_channel_row(self):
+        """A labeled dropdown to pick the auto-update channel (dialog-only UI).
+        Persists the choice immediately via update_manager.set_update_channel."""
+        from .update_manager import (
+            get_update_channel,
+            set_update_channel,
+            CHANNEL_STABLE,
+            CHANNEL_EXPERIMENTAL,
+            CHANNEL_MAIN,
+        )
+
+        row = QHBoxLayout()
+        label = QLabel("Auto-update channel:")
+        label.setStyleSheet("font-size: 12px;")
+        row.addWidget(label)
+
+        self.channel_combo = QComboBox()
+        self.channel_combo.addItem("Stable", CHANNEL_STABLE)
+        self.channel_combo.addItem("Experimental (-E)", CHANNEL_EXPERIMENTAL)
+        self.channel_combo.addItem("Main (bleeding edge)", CHANNEL_MAIN)
+        idx = self.channel_combo.findData(get_update_channel())
+        if idx >= 0:
+            self.channel_combo.setCurrentIndex(idx)
+        self.channel_combo.currentIndexChanged.connect(
+            lambda _i: set_update_channel(self.channel_combo.currentData())
+        )
+        row.addWidget(self.channel_combo)
+        row.addStretch()
+        return row
 
     @property
     def active_branch(self) -> str:
@@ -1073,7 +1105,7 @@ class BranchUpdatePromptDialog(QDialog):
 
 
 class BranchUpdateProgressDialog(QDialog):
-    def __init__(self, branch_name: str, remote_sha: str, parent=None):
+    def __init__(self, branch_name: str, remote_sha: str, parent=None, release: dict = None):
         super().__init__(parent or mw)
         self.setWindowTitle("Updating Ankimon")
         self.setMinimumWidth(440)
@@ -1081,6 +1113,10 @@ class BranchUpdateProgressDialog(QDialog):
 
         self.branch_name = branch_name
         self.remote_sha = remote_sha
+        # When set (a fetch_releases dict with name/zipball_url), install that
+        # release instead of a branch zip — lets the release channels reuse this
+        # same download/apply/progress flow.
+        self.release = release
 
         is_dark = theme_manager.night_mode
         bg = "#2b2b2b" if is_dark else "#ffffff"
@@ -1161,25 +1197,45 @@ class BranchUpdateProgressDialog(QDialog):
             self.start_update()
 
     def start_update(self):
-        from .update_manager import _download_branch_zip, apply_update
+        from .update_manager import (
+            _download_branch_zip,
+            _download_zip_to_temp,
+            apply_update,
+        )
+
+        release = self.release
 
         def bg(_col):
-            zip_path = _download_branch_zip(
-                self.branch_name, progress_cb=self.on_progress
-            )
+            if release:
+                zip_path = _download_zip_to_temp(
+                    release["zipball_url"], progress_cb=self.on_progress
+                )
+            else:
+                zip_path = _download_branch_zip(
+                    self.branch_name, progress_cb=self.on_progress
+                )
             if not zip_path:
                 return False, "Download failed. Check your internet connection."
 
             def status_update(msg):
                 mw.taskman.run_on_main(lambda: self.status_label.setText(msg))
 
-            success, msg = apply_update(
-                zip_path,
-                source_type="branch",
-                source_name=self.branch_name,
-                commit_sha=self.remote_sha,
-                status_cb=status_update,
-            )
+            if release:
+                success, msg = apply_update(
+                    zip_path,
+                    source_type="release",
+                    source_name=release["name"],
+                    commit_sha=release["name"],
+                    status_cb=status_update,
+                )
+            else:
+                success, msg = apply_update(
+                    zip_path,
+                    source_type="branch",
+                    source_name=self.branch_name,
+                    commit_sha=self.remote_sha,
+                    status_cb=status_update,
+                )
             return success, msg
 
         def on_done(result):
@@ -1218,3 +1274,48 @@ def show_branch_update_prompt(
     if dialog.exec() == QDialog.DialogCode.Accepted:
         progress_dialog = BranchUpdateProgressDialog(branch_name, remote_sha, mw)
         progress_dialog.exec()
+
+
+def show_release_update_prompt(channel: str, release: dict):
+    """Auto-update nudge for the stable / experimental release channels.
+
+    Shows the new version (and a snippet of its release notes) and, on accept,
+    installs it through the shared progress dialog. "Later" plus the snooze
+    checkbox defers for a week — mirroring the branch prompt's behaviour.
+    """
+    tag = release.get("name", "?")
+    channel_label = "experimental" if channel == "experimental" else "stable"
+
+    box = QMessageBox(mw)
+    box.setWindowTitle("Ankimon Update Available")
+    box.setIcon(QMessageBox.Icon.Information)
+    box.setTextFormat(Qt.TextFormat.RichText)
+    box.setText(
+        f"A new <b>{channel_label}</b> release of Ankimon is available: "
+        f"<b>{tag}</b> (you have {addon_ver}).<br><br>"
+        "Your Pokémon data, team, and settings will be preserved."
+    )
+    notes = (release.get("body") or "").strip()
+    if notes:
+        # Keep the popup compact; the full notes live on the GitHub release page.
+        box.setInformativeText(notes[:800] + ("…" if len(notes) > 800 else ""))
+
+    box.setStandardButtons(
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+    )
+    yes_btn = box.button(QMessageBox.StandardButton.Yes)
+    yes_btn.setText("Update Now")
+    box.button(QMessageBox.StandardButton.No).setText("Later")
+    box.setDefaultButton(QMessageBox.StandardButton.Yes)
+
+    snooze = QCheckBox("Don't notify me for 1 week")
+    box.setCheckBox(snooze)
+
+    box.exec()
+    if box.clickedButton() is yes_btn:
+        BranchUpdateProgressDialog(tag, tag, mw, release=release).exec()
+    elif snooze.isChecked():
+        import time
+        from .update_manager import set_update_skip_until
+
+        set_update_skip_until(time.time() + 604800)

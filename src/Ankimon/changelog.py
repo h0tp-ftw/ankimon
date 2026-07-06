@@ -187,6 +187,74 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
     ).without_collection().run_in_background()
 
 
+def check_for_update(online_connectivity: bool, ssh: bool):
+    """Channel-aware update poll — the profile-open entry point.
+
+    Routes to the right check for the user's selected channel (see update_manager):
+    ``main`` reuses the branch-SHA commit poll (:func:`check_branch_update`);
+    ``stable`` / ``experimental`` poll the newest release tag *without* / *with*
+    the ``-E`` suffix. Kept as a thin dispatcher so the branch poll — and its
+    tests — stay exactly as they were.
+    """
+    if not ssh:
+        return
+
+    from .pyobj.update_manager import get_update_channel, CHANNEL_MAIN
+
+    channel = get_update_channel()
+    _log_info(f"check_for_update: channel={channel}")
+    if channel == CHANNEL_MAIN:
+        check_branch_update(online_connectivity, ssh)
+    else:
+        _poll_release_channel(channel)
+
+
+def _poll_release_channel(channel: str):
+    """Prompt when the newest release on a release channel (stable/experimental)
+    is strictly newer than the installed version.
+
+    The installed ``addon_ver`` is the baseline — no per-channel state is needed,
+    so once the user updates the same release stops prompting. Dev clones (which
+    update via ``git pull``) and the weekly ``skip_until`` snooze are honored.
+    """
+    from .pyobj.update_manager import (
+        is_git_clone,
+        latest_release_for_channel,
+        is_newer_version,
+        read_update_state,
+    )
+
+    if is_git_clone():
+        _log_info("_poll_release_channel exited early: git clone (use git pull)")
+        return
+
+    import time
+
+    state = read_update_state() or {}
+    skip_until = state.get("skip_until")
+    if isinstance(skip_until, (int, float)) and time.time() < skip_until:
+        _log_info("_poll_release_channel exited early: skip_until active")
+        return
+
+    def bg(_col):
+        try:
+            return latest_release_for_channel(channel)
+        except Exception as e:
+            return e
+
+    def done(result):
+        if isinstance(result, Exception) or not result:
+            return
+        release = result
+        tag = release.get("name")
+        if tag and is_newer_version(tag, addon_ver):
+            from .pyobj.update_dialog import show_release_update_prompt
+
+            show_release_update_prompt(channel, release)
+
+    QueryOp(parent=mw, op=bg, success=done).without_collection().run_in_background()
+
+
 def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
     """Schedule the branch-update poll for after the profile opens.
 
@@ -198,6 +266,6 @@ def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
 
     def _on_profile_open() -> None:
         if online_connectivity:
-            check_branch_update(online_connectivity, ssh)
+            check_for_update(online_connectivity, ssh)
 
     gui_hooks.profile_did_open.append(_on_profile_open)

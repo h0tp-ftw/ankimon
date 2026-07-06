@@ -350,7 +350,7 @@ def test_fetch_helpers_tolerate_malformed_api_shapes(mock_api_get):
         assert update_manager.fetch_commit_date("a1b2c3d4e5f6") is None
 
 
-@patch("Ankimon.changelog.check_branch_update")
+@patch("Ankimon.changelog.check_for_update")
 def test_schedule_branch_update_check_uses_profile_open_hook(mock_check):
     """The boot wiring registers on gui_hooks.profile_did_open and only polls
     when a connection was available at boot (main re-fit of exp's
@@ -375,3 +375,66 @@ def test_schedule_branch_update_check_uses_profile_open_hook(mock_check):
         changelog.schedule_branch_update_check(False, True)
     registered[0]()
     mock_check.assert_not_called()
+
+
+# --- check_for_update: channel dispatch (F: user-selectable update channel) ---
+
+
+@patch("Ankimon.changelog._poll_release_channel")
+@patch("Ankimon.changelog.check_branch_update")
+@patch("Ankimon.pyobj.update_manager.get_update_channel", return_value="main")
+def test_check_for_update_main_channel_uses_branch_poll(
+    mock_channel, mock_branch, mock_release
+):
+    """The 'main' channel routes to the existing branch/commit poll, untouched."""
+    changelog.check_for_update(True, True)
+    mock_branch.assert_called_once_with(True, True)
+    mock_release.assert_not_called()
+
+
+@patch("Ankimon.changelog._poll_release_channel")
+@patch("Ankimon.changelog.check_branch_update")
+@patch("Ankimon.pyobj.update_manager.get_update_channel", return_value="stable")
+def test_check_for_update_stable_channel_uses_release_poll(
+    mock_channel, mock_branch, mock_release
+):
+    """A release channel routes to the release poll, not the branch poll."""
+    changelog.check_for_update(True, True)
+    mock_release.assert_called_once_with("stable")
+    mock_branch.assert_not_called()
+
+
+@patch("Ankimon.changelog._poll_release_channel")
+@patch("Ankimon.changelog.check_branch_update")
+def test_check_for_update_exits_when_no_ssh(mock_branch, mock_release):
+    """No connectivity -> neither poll runs (and the channel is never read)."""
+    changelog.check_for_update(True, False)
+    mock_branch.assert_not_called()
+    mock_release.assert_not_called()
+
+
+@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.pyobj.update_manager.read_update_state", return_value={})
+@patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=False)
+def test_poll_release_channel_starts_query_op(mock_clone, mock_state, mock_query_op):
+    """With no clone and no snooze, the release poll kicks off its GitHub fetch."""
+    changelog._poll_release_channel("stable")
+    mock_query_op.assert_called_once()
+
+
+@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=True)
+def test_poll_release_channel_skips_git_clone(mock_clone, mock_query_op):
+    """Dev clones update via git pull, so the release poll never prompts them."""
+    changelog._poll_release_channel("stable")
+    mock_query_op.assert_not_called()
+
+
+@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.pyobj.update_manager.read_update_state")
+@patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=False)
+def test_poll_release_channel_respects_snooze(mock_clone, mock_state, mock_query_op):
+    """A future skip_until suppresses the release poll (weekly snooze)."""
+    mock_state.return_value = {"skip_until": time.time() + 604800}
+    changelog._poll_release_channel("stable")
+    mock_query_op.assert_not_called()
