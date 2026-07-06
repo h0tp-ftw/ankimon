@@ -103,7 +103,69 @@ def check_catch_grows_collection(d, app, db, pc, pool):
             "collection %d -> %d (intended +1)" % (before, after))
 
 
-CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection]
+def check_update_channel(d, app, db, pc, pool):
+    """The user-selectable auto-update channel (real update dialog): the dropdown
+    offers stable/experimental/main and PERSISTS the choice through
+    update_manager.get/set_update_channel, and the release-channel poll raises the
+    update prompt when a newer release exists on the channel. All monkeypatches are
+    restored + the channel reset so the shared session stays clean for other checks."""
+    from Ankimon.pyobj import update_manager as um
+    import Ankimon.pyobj.update_dialog as ud
+    from Ankimon import changelog
+
+    # Only the source pickers touch the network; stub them so the dialog builds
+    # offline. The channel row itself is built in __init__, independent of this.
+    saved_fetch = {fn: getattr(ud, fn) for fn in ("fetch_releases", "fetch_tags", "fetch_branches", "fetch_open_prs")}
+    for fn in saved_fetch:
+        setattr(ud, fn, lambda *a, **k: [])
+    dlg = None
+    try:
+        dlg = ud.UpdateDialog()
+        app.processEvents()
+        combo = dlg.channel_combo
+        channels = [combo.itemData(i) for i in range(combo.count())]
+        if channels != [um.CHANNEL_STABLE, um.CHANNEL_EXPERIMENTAL, um.CHANNEL_MAIN]:
+            return ("update_channel (dropdown + release poll)", False, "channels=%s" % channels)
+
+        # Drive the real combo -> the choice must round-trip through the settings.
+        combo.setCurrentIndex(combo.findData(um.CHANNEL_EXPERIMENTAL))
+        app.processEvents()
+        persisted = (um.get_update_channel() == um.CHANNEL_EXPERIMENTAL
+                     and d.services.settings.get("misc.update_channel") == um.CHANNEL_EXPERIMENTAL)
+
+        # A newer release on the channel must reach the update prompt.
+        seen = {}
+        orig_prompt = ud.show_release_update_prompt
+        saved_um = {k: getattr(um, k) for k in ("is_git_clone", "read_update_state", "latest_release_for_channel")}
+        ud.show_release_update_prompt = lambda ch, rel: seen.update(ch=ch, rel=rel)
+        um.is_git_clone = lambda: False
+        um.read_update_state = lambda: {}
+        um.latest_release_for_channel = lambda ch: {"name": "99.9", "body": "", "zipball_url": "x"}
+        try:
+            changelog._poll_release_channel("stable")   # synchronous QueryOp -> prompt inline
+            app.processEvents()
+        finally:
+            ud.show_release_update_prompt = orig_prompt
+            for k, v in saved_um.items():
+                setattr(um, k, v)
+        prompted = seen.get("ch") == "stable" and (seen.get("rel") or {}).get("name") == "99.9"
+
+        return ("update_channel (dropdown persists + release poll prompts)", persisted and prompted,
+                "channels=%s persist=%s prompt=%s" % (channels, persisted, prompted))
+    finally:
+        for fn, orig in saved_fetch.items():
+            setattr(ud, fn, orig)
+        try:                                            # reset -> derived default (idempotent)
+            d.services.settings.set("misc.update_channel", "")
+        except Exception:
+            pass
+        if dlg is not None:                             # don't linger into interpreter teardown
+            dlg.close()
+            dlg.deleteLater()
+            app.processEvents()
+
+
+CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel]
 
 
 def _boot():
