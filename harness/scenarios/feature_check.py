@@ -116,8 +116,13 @@ def check_update_channel(d, app, db, pc, pool):
     # Only the source pickers touch the network; stub them so the dialog builds
     # offline. The channel row itself is built in __init__, independent of this.
     saved_fetch = {fn: getattr(ud, fn) for fn in ("fetch_releases", "fetch_tags", "fetch_branches", "fetch_open_prs")}
+    saved_um_fetch = {fn: getattr(um, fn) for fn in ("fetch_branch_sha", "fetch_commit_date", "fetch_branch_commits")}
     for fn in saved_fetch:
         setattr(ud, fn, lambda *a, **k: [])
+    for fn in saved_um_fetch:
+        setattr(um, fn, lambda *a, **k: None if fn != "fetch_branch_commits" else [])
+    # Preserve the original channel setting to restore after the test
+    original_channel = d.services.settings.get("misc.update_channel")
     dlg = None
     try:
         dlg = ud.UpdateDialog()
@@ -155,8 +160,10 @@ def check_update_channel(d, app, db, pc, pool):
     finally:
         for fn, orig in saved_fetch.items():
             setattr(ud, fn, orig)
-        try:                                            # reset -> derived default (idempotent)
-            d.services.settings.set("misc.update_channel", "")
+        for fn, orig in saved_um_fetch.items():
+            setattr(um, fn, orig)
+        try:                                            # restore original channel setting
+            d.services.settings.set("misc.update_channel", original_channel)
         except Exception:
             pass
         if dlg is not None:                             # don't linger into interpreter teardown

@@ -1314,7 +1314,8 @@ def show_release_update_prompt(channel: str, release: dict):
     box.exec()
     if box.clickedButton() is yes_btn:
         BranchUpdateProgressDialog(tag, tag, mw, release=release).exec()
-    elif snooze.isChecked():
+    else:
+        # User clicked "Later" — defer the prompt (with or without snooze checkbox)
         import time
         from .update_manager import set_update_skip_until
 
