@@ -227,6 +227,9 @@ def get_update_channel() -> str:
             raw = None
     if raw in UPDATE_CHANNELS:
         return raw
+    state = read_update_state()
+    if state and state.get("source_type") == "branch":
+        return CHANNEL_MAIN
     from ..resources import IS_EXPERIMENTAL_BUILD
 
     return CHANNEL_EXPERIMENTAL if IS_EXPERIMENTAL_BUILD else CHANNEL_STABLE

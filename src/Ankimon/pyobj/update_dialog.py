@@ -1277,7 +1277,6 @@ def show_release_update_prompt(channel: str, release: dict):
     box = QMessageBox(mw)
     box.setWindowTitle("Ankimon Update Available")
     box.setIcon(QMessageBox.Icon.Information)
-    box.setTextFormat(Qt.TextFormat.RichText)
     box.setText(
         f"A new <b>{channel}</b> release of Ankimon is available: "
         f"<b>{tag}</b> (you have {addon_ver}).<br><br>"
@@ -1302,8 +1301,7 @@ def show_release_update_prompt(channel: str, release: dict):
     box.exec()
     if box.clickedButton() is yes_btn:
         BranchUpdateProgressDialog(tag, tag, mw, release=release).exec()
-    else:
-        # User clicked "Later" — defer the prompt (with or without snooze checkbox)
+    elif snooze.isChecked():
         import time
         from .update_manager import set_update_skip_until
 
