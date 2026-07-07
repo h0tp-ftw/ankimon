@@ -1,3 +1,4 @@
+import time
 from typing import Union
 
 from aqt import gui_hooks, mw
@@ -63,6 +64,15 @@ def check_and_show_changelog(online_connectivity: bool, ssh: bool, no_more_news:
         op=lambda _col: download_changelog(),
         success=done,
     ).without_collection().run_in_background()
+
+
+def _is_snoozed(state: dict) -> bool:
+    """True while a weekly ``skip_until`` snooze (set from either the branch or
+    release update prompt) is still active. ``skip_until`` lives in the
+    user-editable ``update_state.json``, so a null/non-numeric value must not
+    crash the comparison — it's simply treated as "not snoozed"."""
+    skip_until = state.get("skip_until")
+    return isinstance(skip_until, (int, float)) and time.time() < skip_until
 
 
 def open_help_window(online_connectivity):
@@ -132,15 +142,12 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         ).without_collection().run_in_background()
         return
 
-    import time
-
-    skip_until = state.get("skip_until")
     _log_info(
-        f"check_branch_update: skip_until={skip_until}, current_time={time.time()}"
+        f"check_branch_update: skip_until={state.get('skip_until')}, current_time={time.time()}"
     )
     # update_state.json is user-editable: a null/non-numeric skip_until must not
     # crash the comparison (keep in sync with UpdateDialog._populate_brrr_ui).
-    if isinstance(skip_until, (int, float)) and time.time() < skip_until:
+    if _is_snoozed(state):
         _log_info("check_branch_update exited early: skip_until active")
         return
 
@@ -228,11 +235,8 @@ def _poll_release_channel(channel: str):
         _log_info("_poll_release_channel exited early: git clone (use git pull)")
         return
 
-    import time
-
     state = read_update_state() or {}
-    skip_until = state.get("skip_until")
-    if isinstance(skip_until, (int, float)) and time.time() < skip_until:
+    if _is_snoozed(state):
         _log_info("_poll_release_channel exited early: skip_until active")
         return
 

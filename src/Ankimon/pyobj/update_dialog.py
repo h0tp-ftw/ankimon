@@ -1204,39 +1204,28 @@ class BranchUpdateProgressDialog(QDialog):
         )
 
         release = self.release
+        if release:
+            source_type, source_name, commit_sha = "release", release["name"], release["name"]
+            download = lambda: _download_zip_to_temp(release["zipball_url"], progress_cb=self.on_progress)
+        else:
+            source_type, source_name, commit_sha = "branch", self.branch_name, self.remote_sha
+            download = lambda: _download_branch_zip(self.branch_name, progress_cb=self.on_progress)
 
         def bg(_col):
-            if release:
-                zip_path = _download_zip_to_temp(
-                    release["zipball_url"], progress_cb=self.on_progress
-                )
-            else:
-                zip_path = _download_branch_zip(
-                    self.branch_name, progress_cb=self.on_progress
-                )
+            zip_path = download()
             if not zip_path:
                 return False, "Download failed. Check your internet connection."
 
             def status_update(msg):
                 mw.taskman.run_on_main(lambda: self.status_label.setText(msg))
 
-            if release:
-                success, msg = apply_update(
-                    zip_path,
-                    source_type="release",
-                    source_name=release["name"],
-                    commit_sha=release["name"],
-                    status_cb=status_update,
-                )
-            else:
-                success, msg = apply_update(
-                    zip_path,
-                    source_type="branch",
-                    source_name=self.branch_name,
-                    commit_sha=self.remote_sha,
-                    status_cb=status_update,
-                )
-            return success, msg
+            return apply_update(
+                zip_path,
+                source_type=source_type,
+                source_name=source_name,
+                commit_sha=commit_sha,
+                status_cb=status_update,
+            )
 
         def on_done(result):
             success, msg = result
@@ -1284,14 +1273,13 @@ def show_release_update_prompt(channel: str, release: dict):
     checkbox defers for a week — mirroring the branch prompt's behaviour.
     """
     tag = release.get("name", "?")
-    channel_label = "experimental" if channel == "experimental" else "stable"
 
     box = QMessageBox(mw)
     box.setWindowTitle("Ankimon Update Available")
     box.setIcon(QMessageBox.Icon.Information)
     box.setTextFormat(Qt.TextFormat.RichText)
     box.setText(
-        f"A new <b>{channel_label}</b> release of Ankimon is available: "
+        f"A new <b>{channel}</b> release of Ankimon is available: "
         f"<b>{tag}</b> (you have {addon_ver}).<br><br>"
         "Your Pokémon data, team, and settings will be preserved."
     )
