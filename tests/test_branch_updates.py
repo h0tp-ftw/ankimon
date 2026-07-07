@@ -70,7 +70,7 @@ def test_update_state_read_write(tmp_path):
 
 
 def test_update_state_migration_from_experimental(tmp_path):
-    """Test that legacy BRRRR_Experimental branch is auto-migrated to main."""
+    """Test that legacy BRRRR_Experimental branch is NOT auto-migrated to main."""
     state_file = tmp_path / "update_state.json"
 
     with patch.object(update_manager, "get_update_state_path", return_value=state_file):
@@ -85,7 +85,7 @@ def test_update_state_migration_from_experimental(tmp_path):
 
         state = update_manager.read_update_state()
         assert state is not None
-        assert state["source_name"] == "main"
+        assert state["source_name"] == "BRRRR_Experimental"
 
 
 @patch("Ankimon.pyobj.update_manager._api_get")
