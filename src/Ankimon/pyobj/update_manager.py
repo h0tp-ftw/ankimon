@@ -200,23 +200,31 @@ def latest_release_for_channel(channel: str) -> Optional[dict]:
     if channel == CHANNEL_MAIN:
         return None
     matches = [r for r in fetch_releases() if channel_of_tag(r["name"]) == channel]
-    if not matches:
+    return max(matches, key=lambda r: _version_key(r["name"]), default=None)
+
+
+def _get_settings():
+    """The addon's settings service, or None if unavailable (headless tests,
+    or the registry not yet populated)."""
+    try:
+        from ..services import services
+
+        return services.settings
+    except Exception:
         return None
-    return max(matches, key=lambda r: _version_key(r["name"]))
 
 
 def get_update_channel() -> str:
     """The user's selected auto-update channel. Defaults to matching the installed
     build — an "-E" build → experimental, otherwise stable — until the user picks
     one in the update dialog. Any unrecognized stored value falls back the same way."""
+    settings = _get_settings()
     raw = None
-    try:
-        from ..services import services
-
-        if services.settings is not None:
-            raw = services.settings.get("misc.update_channel")
-    except Exception:
-        raw = None
+    if settings is not None:
+        try:
+            raw = settings.get("misc.update_channel")
+        except Exception:
+            raw = None
     if raw in UPDATE_CHANNELS:
         return raw
     from ..resources import IS_EXPERIMENTAL_BUILD
@@ -228,13 +236,12 @@ def set_update_channel(channel: str) -> None:
     """Persist the user's channel choice (ignored if not a known channel)."""
     if channel not in UPDATE_CHANNELS:
         return
-    try:
-        from ..services import services
-
-        if services.settings is not None:
-            services.settings.set("misc.update_channel", channel)
-    except Exception as e:
-        print(f"Ankimon Updater: Failed to save update channel: {e}")
+    settings = _get_settings()
+    if settings is not None:
+        try:
+            settings.set("misc.update_channel", channel)
+        except Exception as e:
+            print(f"Ankimon Updater: Failed to save update channel: {e}")
 
 
 def _make_request(
