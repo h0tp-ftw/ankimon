@@ -18,10 +18,13 @@ on:
 # just to trigger that hand-off is a fragile, expiring dependency. Folding the
 # build+publish in here removes it entirely.
 #
-# NOTE: pushing the version-bump commit to `main` requires github-actions[bot]
-# to be a bypass actor on the "Main protection" ruleset (the ruleset restricts
-# direct updates + requires PR review). Tag pushes and release creation are not
-# affected (the ruleset targets the main branch only).
+# NOTE: pushing the version-bump commit to `main` uses a GitHub App installation
+# token (minted below via create-github-app-token) — `main` has a ruleset that
+# restricts direct updates + requires PR review, and the built-in GITHUB_TOKEN
+# cannot be a ruleset bypass actor. The App (ankimon-release-bot) is on the
+# "Main protection" ruleset bypass list. Tag pushes and release creation are
+# unaffected (the ruleset targets the main branch only), so they stay on
+# GITHUB_TOKEN.
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -51,6 +54,16 @@ jobs:
           # code (pip / npx / aab). The pushes below authenticate explicitly with a
           # short-lived token-in-URL instead, so no credential is persisted.
           persist-credentials: false
+
+      # Mint a short-lived (~1h) GitHub App installation token. The App is a bypass
+      # actor on the "Main protection" ruleset, so the push to `main` below is
+      # allowed; the built-in GITHUB_TOKEN cannot be a ruleset bypass actor.
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -95,7 +108,9 @@ jobs:
 
       - name: Commit and Push Changes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GitHub App installation token — the App is on the ruleset bypass list,
+          # so this direct push to the protected main branch is allowed.
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git add src/Ankimon/manifest.json .all-contributorsrc README.md assets/changelogs/
           if git diff --cached --quiet; then
@@ -103,9 +118,8 @@ jobs:
           else
             git commit -m "chore: bump version and update changelog for $VERSION"
             # Explicit token-in-URL push (persist-credentials is off); GitHub masks
-            # the token in logs, and it is never written to git config. Requires
-            # github-actions[bot] to bypass the main-branch ruleset (see file header).
-            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+            # the token in logs, and it is never written to git config.
+            git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
           fi
 
       - name: Create and Push Tag
