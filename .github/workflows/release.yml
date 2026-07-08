@@ -11,16 +11,28 @@ on:
         required: false
         type: string
 
+# This workflow runs the ENTIRE release in one job on the built-in GITHUB_TOKEN
+# (which never expires) — prepare -> integrity test -> commit + tag -> build ->
+# publish. It deliberately does NOT hand off to main.yml via a tag push: GitHub
+# won't trigger a second workflow from a tag pushed with GITHUB_TOKEN, and a PAT
+# just to trigger that hand-off is a fragile, expiring dependency. Folding the
+# build+publish in here removes it entirely.
+#
+# NOTE: pushing the version-bump commit to `main` requires github-actions[bot]
+# to be a bypass actor on the "Main protection" ruleset (the ruleset restricts
+# direct updates + requires PR review). Tag pushes and release creation are not
+# affected (the ruleset targets the main branch only).
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
+      pull-requests: read
     # Bind the workflow_dispatch inputs to env vars once, then reference them as
-    # "$VERSION" / "$HIGHLIGHTS" in every run: block. Expanding ${{ github.event.inputs.* }}
-    # straight into a shell script is a template-injection vector (a value containing
-    # quotes or $(...) would execute); a shell reading an env var is safe.
+    # "$VERSION" / "$HIGHLIGHTS" in every run: block. Expanding
+    # ${{ github.event.inputs.* }} straight into a shell script is a
+    # template-injection vector (a value containing quotes or $(...) would
+    # execute); a shell reading an env var is safe.
     env:
       VERSION: ${{ github.event.inputs.version }}
       HIGHLIGHTS: ${{ github.event.inputs.highlights }}
@@ -31,21 +43,14 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          # The build injects the poke_engine submodule into the .ankiaddon, and
+          # `git archive` (used by aab) skips submodule contents — so we need the
+          # submodule checked out on disk to inject it manually later.
+          submodules: recursive
           # Don't leave the token in .git/config while later steps run third-party
-          # code (pip / npx / the build). The pushes below authenticate explicitly
-          # with a short-lived remote URL instead, so the PAT is never persisted.
+          # code (pip / npx / aab). The pushes below authenticate explicitly with a
+          # short-lived token-in-URL instead, so no credential is persisted.
           persist-credentials: false
-
-      - name: Verify release token
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          if [ -z "$GH_PAT" ]; then
-            echo "::error title=Missing GH_PAT secret::The release tag must be pushed with a Personal Access Token so the 'Create Add-on Release' workflow (main.yml) triggers and builds the .ankiaddon. Without GH_PAT the tag push falls back to GITHUB_TOKEN, which by design does NOT trigger other workflows — the version would bump but no release would ever be published. Add the GH_PAT repo secret (repo + workflow scope) and re-run."
-            exit 1
-          fi
-          echo "GH_PAT is present; the tag push will trigger the release build."
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,7 +62,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install python dependencies
+      - name: Install release-prep dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests pytest pytest-qt PyQt6 markdown
@@ -73,41 +78,167 @@ jobs:
         run: |
           npx -y all-contributors-cli generate
 
+      # Run the integrity gate while PyQt6 is the ONLY Qt binding installed. The
+      # build step below adds PyQt5 (aab needs it); keeping the test ahead of that
+      # avoids two Qt bindings loading into one interpreter. PYTEST_QT_API pins the
+      # binding pytest-qt selects.
       - name: Run Integrity Tests
+        env:
+          PYTEST_QT_API: pyqt6
         run: |
           pytest tests/test_addon_integrity.py
 
-      - name: Commit and Push Changes
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+      - name: Configure git identity
         run: |
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
+
+      - name: Commit and Push Changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           git add src/Ankimon/manifest.json .all-contributorsrc README.md assets/changelogs/
           if git diff --cached --quiet; then
             echo "No release changes to commit (already up to date); skipping commit."
           else
             git commit -m "chore: bump version and update changelog for $VERSION"
             # Explicit token-in-URL push (persist-credentials is off); GitHub masks
-            # the secret in logs, and the token is never written to git config.
-            git push "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+            # the token in logs, and it is never written to git config. Requires
+            # github-actions[bot] to bypass the main-branch ruleset (see file header).
+            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
           fi
 
-      # Pushing the tag (with the PAT) triggers the existing "Create Add-on Release"
-      # workflow (main.yml), which checks out the tag *with submodules*, builds the
-      # .ankiaddon (injecting the poke_engine submodule), and publishes the GitHub
-      # Release. We intentionally do NOT build/publish here — doing both would race
-      # two identical builds onto the same tag and asset.
       - name: Create and Push Tag
         env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          REMOTE="https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          REMOTE="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           if git ls-remote --exit-code "$REMOTE" "refs/tags/${VERSION}" >/dev/null 2>&1; then
             echo "Tag ${VERSION} already exists on origin; skipping tag creation."
-            echo "To (re)build an existing tag, run the 'Create Add-on Release' workflow manually."
           else
             git tag "${VERSION}" -m "Release ${VERSION}"
             git push "$REMOTE" "refs/tags/${VERSION}"
-            echo "Pushed tag ${VERSION}. The 'Create Add-on Release' workflow will now build and publish it."
+            echo "Pushed tag ${VERSION}."
           fi
+
+      # ---------------------------------------------------------------------------
+      # Build & publish (folded in from the old main.yml). Installed here, AFTER the
+      # integrity test, so PyQt5 (for aab) and PyQt6 (for the test) never share an
+      # interpreter.
+      # ---------------------------------------------------------------------------
+      - name: Install build dependencies
+        run: |
+          python -m pip install git+https://github.com/glutanimate/anki-addon-builder.git@4039b5bb743773a18cb2911e6dd38fa1e3f65982
+          python -m pip install pyqt5
+
+      - name: Create .ankiaddon package
+        run: aab build -d ankiweb
+
+      - name: Inject poke_engine submodule into package
+        run: |
+          # aab uses `git archive` internally, which silently skips git submodule
+          # directories (they appear as gitlinks, not files, in the parent tree).
+          # We must manually inject the checked-out submodule into the zip.
+          python3 - <<'EOF'
+          import os, zipfile
+
+          addon_file = next(f for f in os.listdir("build") if f.endswith(".ankiaddon"))
+          addon_path = os.path.join("build", addon_file)
+          submodule_src = "src/Ankimon/poke_engine"
+
+          with zipfile.ZipFile(addon_path, "a", zipfile.ZIP_DEFLATED) as zf:
+              existing = set(zf.namelist())
+              added = 0
+              for root, dirs, files in os.walk(submodule_src):
+                  dirs[:] = [d for d in dirs if d != "__pycache__"]
+                  for fname in files:
+                      if fname.endswith((".pyc", ".pyo")):
+                          continue
+                      abs_path = os.path.join(root, fname)
+                      arc_path = os.path.relpath(abs_path, "src/Ankimon").replace(os.sep, "/")
+                      if arc_path not in existing:
+                          zf.write(abs_path, arc_path)
+                          added += 1
+              print(f"Injected {added} poke_engine files into {addon_file}")
+          EOF
+
+      - name: Copy to stable filename
+        run: |
+          ADDON_FILE=$(ls build/*.ankiaddon)
+          cp "$ADDON_FILE" build/Ankimon.ankiaddon
+          echo "Copied $ADDON_FILE to build/Ankimon.ankiaddon"
+
+      - name: Declare variables
+        id: vars
+        shell: bash
+        run: |
+          echo "module_name=$(ls src)" >> $GITHUB_OUTPUT
+          # Tags in this repo are unprefixed; strip a leading 'v' defensively.
+          echo "release_tag=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_no_prefix=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: previoustag
+        run: |
+          PREV_TAG=$(git for-each-ref --sort=-creatordate --format='%(refname:short)' refs/tags | \
+                     grep -E '^[0-9]+(\.[0-9]+)*(-[A-Z])?$' | \
+                     grep -v "^${VERSION}$" | \
+                     head -1)
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG="0.0.0"
+          fi
+          echo "tag=${PREV_TAG}" >> $GITHUB_OUTPUT
+          echo "Previous tag: ${PREV_TAG}"
+
+      - name: Patch Changelog for GitHub Release
+        env:
+          VERSION_NO_V: ${{ steps.vars.outputs.version_no_prefix }}
+          RELEASE_TAG: ${{ steps.vars.outputs.release_tag }}
+          PREV_TAG: ${{ steps.previoustag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'EOF'
+          import os, re
+
+          version_no_v = os.environ["VERSION_NO_V"]
+          release_tag = os.environ["RELEASE_TAG"]
+          prev_tag = os.environ["PREV_TAG"]
+          repo = os.environ["REPO"]
+
+          path = f"assets/changelogs/{version_no_v}.md"
+          if os.path.exists(path):
+              with open(path, "r", encoding="utf-8") as f:
+                  content = f.read()
+              # [@username](url) (Nickname) -> @username
+              content = re.sub(r'\[@([\w-]+)\]\([^)]+\)\s*\([^)]*\)', r'@\1', content)
+              # [@username](url) -> @username
+              content = re.sub(r'\[@([\w-]+)\]\([^)]+\)', r'@\1', content)
+              # [#number](url) -> #number
+              content = re.sub(r'\[(#\d+)\]\([^)]+\)', r'\1', content)
+          else:
+              content = "No changelog available for this release."
+
+          content += (
+              f"\n\n---\n\n**Full Changelog**: "
+              f"https://github.com/{repo}/compare/{prev_tag}...{release_tag}"
+          )
+          content += (
+              f"\n\n***\n\n**Download**: "
+              f"https://github.com/{repo}/releases/download/{release_tag}/Ankimon.ankiaddon"
+          )
+
+          with open("patched_changelog.md", "w", encoding="utf-8") as f:
+              f.write(content)
+          EOF
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.vars.outputs.release_tag }}
+          name: "${{ steps.vars.outputs.module_name }} v${{ steps.vars.outputs.release_tag }}"
+          body_path: patched_changelog.md
+          files: build/*.ankiaddon
+          draft: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

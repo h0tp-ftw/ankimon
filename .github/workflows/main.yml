@@ -1,9 +1,12 @@
 name: Create Add-on Release
 
+# Manual re-build only. The full release pipeline (prepare -> build -> publish)
+# lives in release.yml and runs entirely on the built-in GITHUB_TOKEN. This
+# workflow stays as an escape hatch: dispatch it against an existing tag to
+# rebuild/republish that tag's .ankiaddon without re-running the whole release.
+# (It previously triggered on every tag push, which required a PAT and raced
+# release.yml onto the same tag.)
 on:
-  push:
-    tags:
-      - '*'
   workflow_dispatch:
 
 jobs:
