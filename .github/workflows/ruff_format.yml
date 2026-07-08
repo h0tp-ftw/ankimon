@@ -1,25 +1,19 @@
 name: Ruff Format
+
+# Check-only: verify that changed Python files are already `ruff format`-clean and
+# fail the job (with a hint) if not. It used to auto-format and push a fixup commit,
+# which needed a PAT — a GITHUB_TOKEN push wouldn't re-trigger CI, and it can't push
+# to a fork at all. Check-only drops that dependency entirely and treats every PR the
+# same, fork or not: the contributor runs `ruff format` locally and commits it.
 on: [push, pull_request]
+
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Detect fork PR
-        id: ctx
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ] \
-             && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
-            echo "is_fork_pr=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_fork_pr=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - uses: actions/checkout@v4
-        with:
-          # Same-repo events use the PAT so the auto-commit step can push back.
-          # Fork PRs can't receive secrets, so fall back to the default read-only
-          # token — we'll run ruff in --check mode instead of committing.
-          token: ${{ secrets.GH_PAT || github.token }}
 
       - name: Get changed files
         id: changed-files
@@ -37,21 +31,15 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         run: pip install ruff
 
-      - name: Run Ruff Format (auto-fix, same-repo)
-        if: steps.changed-files.outputs.any_changed == 'true' && steps.ctx.outputs.is_fork_pr == 'false'
+      - name: Check formatting of changed files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        # Read the list from an env var rather than expanding ${{ ... }} straight into
+        # the script: a PR that adds a file whose name contains shell metacharacters
+        # (quotes, ;, $(...)) could otherwise break out and inject commands.
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          # Use xargs to handle spaces in filenames
-          echo "${{ steps.changed-files.outputs.all_changed_files }}" | xargs -r ruff format --config ci_ruff_check.toml
-
-      - name: Run Ruff Format (check-only, fork PR)
-        if: steps.changed-files.outputs.any_changed == 'true' && steps.ctx.outputs.is_fork_pr == 'true'
-        run: |
-          # Fork PRs can't be auto-committed to, so fail the job if the
-          # contributor hasn't already run `ruff format` locally.
-          echo "${{ steps.changed-files.outputs.all_changed_files }}" | xargs -r ruff format --check --config ci_ruff_check.toml
-
-      - name: Commit formatting changes
-        if: steps.changed-files.outputs.any_changed == 'true' && steps.ctx.outputs.is_fork_pr == 'false'
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "style: auto ruff format"
+          if ! echo "$CHANGED_FILES" | xargs -r ruff format --check --config ci_ruff_check.toml; then
+            echo "::error::Changed Python files aren't formatted. Run 'ruff format --config ci_ruff_check.toml' locally and commit the result."
+            exit 1
+          fi
