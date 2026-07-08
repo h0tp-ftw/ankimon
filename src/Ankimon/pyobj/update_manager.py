@@ -68,6 +68,12 @@ def is_git_clone() -> bool:
     clobbered). So the destructive updater is hidden for clones; a safe
     ``git pull --ff-only`` is offered instead (see ``git_pull_ff_only``).
     """
+    try:
+        from ..utils import is_dev_mode
+        if is_dev_mode():
+            return False
+    except Exception:
+        pass
     return _git_repo_root() is not None
 
 
