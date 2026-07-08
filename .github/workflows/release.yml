@@ -60,7 +60,7 @@ jobs:
       # allowed; the built-in GITHUB_TOKEN cannot be a ruleset bypass actor.
       - name: Generate app token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -173,6 +173,12 @@ jobs:
                       if arc_path not in existing:
                           zf.write(abs_path, arc_path)
                           added += 1
+              if added == 0:
+                  raise SystemExit(
+                      "ERROR: injected 0 poke_engine files into the .ankiaddon — the "
+                      "poke_engine submodule was not checked out. Aborting to avoid "
+                      "shipping a broken add-on."
+                  )
               print(f"Injected {added} poke_engine files into {addon_file}")
           EOF
 
@@ -246,7 +252,7 @@ jobs:
           EOF
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           tag_name: ${{ steps.vars.outputs.release_tag }}
           name: "${{ steps.vars.outputs.module_name }} v${{ steps.vars.outputs.release_tag }}"
