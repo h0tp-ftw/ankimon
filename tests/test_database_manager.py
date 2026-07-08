@@ -201,3 +201,59 @@ def test_busy_timeout_set_on_background_thread_connection(temp_env):
         conn = db._get_connection()  # dedicated per-thread connection
         got = conn.execute("PRAGMA busy_timeout;").fetchone()[0]
     assert got == AnkimonDB._BUSY_TIMEOUT_MS
+
+
+def test_database_corruption_self_healing(temp_env):
+    """Verify that repair_database() successfully prunes duplicates (keeping the one
+    with the highest progress) and recovers the unique PRIMARY KEY index constraint."""
+    db, _ = temp_env
+    # Save base pokemon
+    pk1 = {"individual_id": "duplicate-uuid", "name": "archen", "id": 566, "level": 5, "xp": 100}
+    db.save_pokemon(pk1)
+    
+    # Close connections so we can bypass constraints with a custom raw connection
+    db.close()
+    
+    raw_conn = sqlite3.connect(str(db.db_path))
+    cursor = raw_conn.cursor()
+    
+    # Temporarily drop constraint by renaming and copying to a non-constrained table
+    cursor.execute("ALTER TABLE captured_pokemon RENAME TO captured_pokemon_old")
+    cursor.execute("""
+        CREATE TABLE captured_pokemon (
+            individual_id TEXT,
+            is_main INTEGER DEFAULT 0,
+            data TEXT NOT NULL
+        )
+    """)
+    cursor.execute("INSERT INTO captured_pokemon (individual_id, is_main, data) SELECT individual_id, is_main, data FROM captured_pokemon_old")
+    cursor.execute("DROP TABLE captured_pokemon_old")
+    
+    # Insert a duplicate with a higher level (Level 34)
+    pk2 = {"individual_id": "duplicate-uuid", "name": "archen", "id": 566, "level": 34, "xp": 1000}
+    cursor.execute("INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?)", 
+                   ("duplicate-uuid", json.dumps(pk2)))
+                   
+    # Insert another duplicate with intermediate level (Level 30)
+    pk3 = {"individual_id": "duplicate-uuid", "name": "archen", "id": 566, "level": 30, "xp": 500}
+    cursor.execute("INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?)", 
+                   ("duplicate-uuid", json.dumps(pk3)))
+    
+    raw_conn.commit()
+    raw_conn.close()
+    
+    # Trigger repair
+    db.repair_database()
+    
+    # Reopen and check: only the highest level (Level 34) should survive, constraint must be restored
+    conn = db._get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT data FROM captured_pokemon WHERE individual_id = 'duplicate-uuid'")
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+    saved_pk = json.loads(rows[0][0])
+    assert saved_pk["level"] == 34
+    
+    # Confirm unique constraint is back by verifying that inserting a duplicate now raises IntegrityError
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute("INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES ('duplicate-uuid', 0, '{}')")

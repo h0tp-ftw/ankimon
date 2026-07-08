@@ -9,6 +9,7 @@ import json
 import sqlite3
 import threading
 import uuid
+import weakref
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -29,13 +30,19 @@ class ConnectionWrapper:
     """Wraps a sqlite3.Connection, proxying everything, with a re-entrant
     ``with conn:`` transaction and an opt-out commit flag (used by bulk paths)."""
 
-    def __init__(self, conn):
+    def __init__(self, conn, db_mgr=None):
         self._conn = conn
         self._disable_commit = False
+        self._db_mgr = db_mgr
 
     def commit(self):
         if not self._disable_commit:
-            self._conn.commit()
+            try:
+                self._conn.commit()
+            except sqlite3.DatabaseError as e:
+                if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
+                    self._db_mgr.repair_database()
+                raise e
 
     def rollback(self):
         self._conn.rollback()
@@ -44,10 +51,23 @@ class ConnectionWrapper:
         self._conn.close()
 
     def execute(self, *args, **kwargs):
-        return self._conn.execute(*args, **kwargs)
+        try:
+            return self._conn.execute(*args, **kwargs)
+        except sqlite3.DatabaseError as e:
+            if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
+                self._db_mgr.repair_database()
+                # Re-get the connection and execute
+                return self._db_mgr._get_connection()._conn.execute(*args, **kwargs)
+            raise e
 
     def executemany(self, *args, **kwargs):
-        return self._conn.executemany(*args, **kwargs)
+        try:
+            return self._conn.executemany(*args, **kwargs)
+        except sqlite3.DatabaseError as e:
+            if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
+                self._db_mgr.repair_database()
+                return self._db_mgr._get_connection()._conn.executemany(*args, **kwargs)
+            raise e
 
     def cursor(self, *args, **kwargs):
         return self._conn.cursor(*args, **kwargs)
@@ -135,6 +155,9 @@ class AnkimonDB:
         self._wal = wal
         self._connection: Optional[ConnectionWrapper] = None       # GUI-thread connection
         self._local_conn = threading.local()                       # per-background-thread
+        self._all_connections = []
+        self._conn_lock = threading.Lock()
+        self._is_repairing = False
         # When non-None, mark_mobile_battle_resolved defers the mirror-DB sync
         # (which commits on a separate connection, escaping any outer transaction)
         # and collects the revlog ids here to be flushed after the caller's bulk
@@ -169,7 +192,10 @@ class AnkimonDB:
                 conn.execute("PRAGMA temp_store=MEMORY;")
             except Exception as e:
                 self._log("warning", f"Failed to set WAL PRAGMAs: {e}")
-        return ConnectionWrapper(conn)
+        wrapper = ConnectionWrapper(conn)
+        with self._conn_lock:
+            self._all_connections.append(weakref.ref(wrapper))
+        return wrapper
 
     def _log(self, level: str, message: str):
         """Helper for logging."""
@@ -200,7 +226,7 @@ class AnkimonDB:
                 local.conn = self._prepare_connection(conn)
                 local.db_path = self.db_path
             elif not isinstance(local.conn, ConnectionWrapper):
-                local.conn = ConnectionWrapper(local.conn)
+                local.conn = ConnectionWrapper(local.conn, self)
                 local.db_path = self.db_path
             return local.conn
 
@@ -208,23 +234,194 @@ class AnkimonDB:
             conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
             self._connection = self._prepare_connection(conn)
         elif not isinstance(self._connection, ConnectionWrapper):
-            self._connection = ConnectionWrapper(self._connection)
+            self._connection = ConnectionWrapper(self._connection, self)
         return self._connection
 
     def close(self):
-        """Closes the GUI-thread connection and this thread's background connection."""
-        if self._connection:
+        """Closes all database connections across all threads."""
+        with self._conn_lock:
+            if self._connection:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+                self._connection = None
+            
+            for conn_ref in self._all_connections:
+                conn = conn_ref()
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+            self._all_connections.clear()
+            
+            if hasattr(self, "_local_conn"):
+                try:
+                    if getattr(self._local_conn, "conn", None) is not None:
+                        self._local_conn.conn.close()
+                except Exception:
+                    pass
+                self._local_conn.conn = None
+
+    def repair_database(self):
+        """Repair a corrupted/malformed database out-of-place."""
+        if self._is_repairing:
+            return
+        self._is_repairing = True
+        self._log("warning", "SQLite database corruption detected! Initiating out-of-place self-healing repair...")
+        
+        try:
+            db_file = self.db_path
+            tmp_db = db_file.with_name(db_file.name + ".tmp")
+            backup_db = db_file.with_name(db_file.name + ".corrupt_backup")
+            
+            if tmp_db.exists():
+                try:
+                    tmp_db.unlink()
+                except Exception:
+                    pass
+                    
+            # Dump current database safely
+            src_conn = sqlite3.connect(str(db_file))
+            lines = list(src_conn.iterdump())
+            src_conn.close()
+            
+            # Modify schema to disable primary key constraint during insert and use INSERT OR REPLACE
+            modified_sql = []
+            for line in lines:
+                if "CREATE TABLE captured_pokemon" in line:
+                    line = line.replace("individual_id TEXT PRIMARY KEY", "individual_id TEXT")
+                if line.startswith("INSERT INTO "):
+                    line = line.replace("INSERT INTO ", "INSERT OR REPLACE INTO ", 1)
+                modified_sql.append(line)
+            full_sql = "\n".join(modified_sql)
+            
+            # Write to temporary file
+            dest_conn = sqlite3.connect(str(tmp_db))
+            dest_conn.executescript(full_sql)
+            
+            cursor = dest_conn.cursor()
+            
+            # Prune duplicate captured_pokemon rows by highest Level and XP
+            cursor.execute("""
+                DELETE FROM captured_pokemon 
+                WHERE rowid NOT IN (
+                    SELECT rowid FROM (
+                        SELECT rowid, ROW_NUMBER() OVER (
+                            PARTITION BY individual_id 
+                            ORDER BY 
+                                CAST(json_extract(data, '$.level') AS INTEGER) DESC, 
+                                CAST(json_extract(data, '$.xp') AS INTEGER) DESC
+                        ) as rn 
+                        FROM captured_pokemon
+                    ) WHERE rn = 1
+                )
+            """)
+            
+            # Clean duplicate keys in pending_mobile_battles if table exists
             try:
-                self._connection.close()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pending_mobile_battles'")
+                if cursor.fetchone():
+                    cursor.execute("""
+                        DELETE FROM pending_mobile_battles 
+                        WHERE rowid NOT IN (
+                            SELECT MIN(rowid) 
+                            FROM pending_mobile_battles 
+                            GROUP BY id
+                        )
+                    """)
             except Exception:
                 pass
-            self._connection = None
-        if hasattr(self, "_local_conn") and getattr(self._local_conn, "conn", None):
-            try:
-                self._local_conn.conn.close()
-            except Exception:
-                pass
-            self._local_conn.conn = None
+                
+            # Restore unique PRIMARY KEY table definition
+            cursor.execute("ALTER TABLE captured_pokemon RENAME TO captured_pokemon_old")
+            cursor.execute("""
+                CREATE TABLE captured_pokemon (
+                    individual_id TEXT PRIMARY KEY,
+                    is_main INTEGER DEFAULT 0,
+                    data TEXT NOT NULL,
+                    name TEXT GENERATED ALWAYS AS (json_extract(data, '$.name')) VIRTUAL,
+                    pokedex_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.id')) VIRTUAL,
+                    shiny BOOLEAN GENERATED ALWAYS AS (json_extract(data, '$.shiny')) VIRTUAL,
+                    level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL
+                )
+            """)
+            cursor.execute("""
+                INSERT INTO captured_pokemon (individual_id, is_main, data)
+                SELECT individual_id, is_main, data FROM captured_pokemon_old
+            """)
+            cursor.execute("DROP TABLE captured_pokemon_old")
+            
+            # Rebuild index and verify
+            cursor.execute("REINDEX")
+            cursor.execute("PRAGMA integrity_check")
+            check_result = cursor.fetchone()[0]
+            
+            if check_result == "ok":
+                dest_conn.commit()
+                dest_conn.close()
+                
+                # Close all connections completely to drop locks
+                self.close()
+                
+                # Clean up existing corrupted backup
+                if backup_db.exists():
+                    try:
+                        backup_db.unlink()
+                    except Exception:
+                        pass
+                import gc
+                import time
+                try:
+                    for attempt in range(3):
+                        try:
+                            db_file.replace(backup_db)
+                            break
+                        except Exception as e:
+                            if attempt == 2:
+                                self._log("warning", f"Failed to backup corrupt database: {e}")
+                            time.sleep(0.1)
+                            gc.collect()
+                except Exception:
+                    pass
+                    
+                # Swap in repaired file and clean WAL/SHM sidecars
+                try:
+                    for attempt in range(3):
+                        try:
+                            tmp_db.replace(db_file)
+                            break
+                        except Exception as e:
+                            if attempt == 2:
+                                raise e
+                            time.sleep(0.1)
+                            gc.collect()
+                    for sidecar in ("-wal", "-shm"):
+                        sidecar_file = db_file.with_name(db_file.name + sidecar)
+                        try:
+                            if sidecar_file.exists():
+                                sidecar_file.unlink()
+                        except Exception:
+                            pass
+                    self._log("info", "SQLite self-healing completed successfully! Database index repaired.")
+                except Exception as e:
+                    self._log("error", f"Failed to swap repaired database: {e}")
+                    if backup_db.exists() and not db_file.exists():
+                        try:
+                            backup_db.replace(db_file)
+                        except Exception:
+                            pass
+            else:
+                dest_conn.rollback()
+                dest_conn.close()
+                self._log("error", f"Integrity check on repaired DB failed: {check_result}")
+                if tmp_db.exists():
+                    tmp_db.unlink()
+        except Exception as e:
+            self._log("error", f"Self-healing database repair failed: {e}")
+        finally:
+            self._is_repairing = False
 
     def switch_database(self, db_filename: str):
         """Close current connections and reopen against a different profile DB file.
@@ -571,10 +768,20 @@ class AnkimonDB:
     def execute(self, query: str, parameters: tuple = ()) -> sqlite3.Cursor:
         """Executes a custom SQL query and returns the cursor. 
         Useful for caller-specific fast-path queries without cluttering the manager."""
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(query, parameters)
-        return cursor
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, parameters)
+            return cursor
+        except sqlite3.DatabaseError as e:
+            if ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._is_repairing:
+                self.repair_database()
+                # Retry once after repair
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute(query, parameters)
+                return cursor
+            raise e
 
     def get_pokemons_by_individual_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
         """Retrieves multiple pokemon by their individual_ids."""
