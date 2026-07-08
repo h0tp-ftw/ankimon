@@ -1256,7 +1256,7 @@ class AnkimonDB:
         elif self.is_migrated():
             import time
             now_ms = int(time.time() * 1000)
-            self.set_mobile_watermark(now_ms)
+            self.set_mobile_watermark(now_ms, force=True)
             return now_ms
         return 0
 
