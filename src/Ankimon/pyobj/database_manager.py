@@ -192,7 +192,7 @@ class AnkimonDB:
                 conn.execute("PRAGMA temp_store=MEMORY;")
             except Exception as e:
                 self._log("warning", f"Failed to set WAL PRAGMAs: {e}")
-        wrapper = ConnectionWrapper(conn)
+        wrapper = ConnectionWrapper(conn, self)
         with self._conn_lock:
             self._all_connections.append(weakref.ref(wrapper))
         return wrapper
@@ -284,15 +284,23 @@ class AnkimonDB:
                     
             # Dump current database safely
             src_conn = sqlite3.connect(str(db_file))
-            lines = list(src_conn.iterdump())
-            src_conn.close()
+            try:
+                lines = list(src_conn.iterdump())
+            finally:
+                src_conn.close()
             
-            # Modify schema to disable primary key constraint during insert and use INSERT OR REPLACE
+            # Modify schema to define generated columns as physical columns initially,
+            # which allows SQL dump inserts (which contain all values) to succeed.
+            # We also disable the unique constraint.
             modified_sql = []
             for line in lines:
                 if "CREATE TABLE captured_pokemon" in line:
-                    line = line.replace("individual_id TEXT PRIMARY KEY", "individual_id TEXT")
-                if line.startswith("INSERT INTO "):
+                    line = """CREATE TABLE captured_pokemon (
+                        individual_id TEXT,
+                        is_main INTEGER DEFAULT 0,
+                        data TEXT NOT NULL
+                    );"""
+                elif line.startswith("INSERT INTO "):
                     line = line.replace("INSERT INTO ", "INSERT OR REPLACE INTO ", 1)
                 modified_sql.append(line)
             full_sql = "\n".join(modified_sql)
@@ -352,6 +360,12 @@ class AnkimonDB:
                 SELECT individual_id, is_main, data FROM captured_pokemon_old
             """)
             cursor.execute("DROP TABLE captured_pokemon_old")
+            
+            # Recreate secondary indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_name ON captured_pokemon(name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)")
             
             # Rebuild index and verify
             cursor.execute("REINDEX")
@@ -420,8 +434,16 @@ class AnkimonDB:
                     tmp_db.unlink()
         except Exception as e:
             self._log("error", f"Self-healing database repair failed: {e}")
+            raise e
         finally:
             self._is_repairing = False
+            # Clean up the temporary database file if it was left behind due to a crash/exception
+            try:
+                tmp_db_path = self.db_path.with_name(self.db_path.name + ".tmp")
+                if tmp_db_path.exists():
+                    tmp_db_path.unlink()
+            except Exception:
+                pass
 
     def switch_database(self, db_filename: str):
         """Close current connections and reopen against a different profile DB file.

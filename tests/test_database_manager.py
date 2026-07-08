@@ -223,7 +223,11 @@ def test_database_corruption_self_healing(temp_env):
         CREATE TABLE captured_pokemon (
             individual_id TEXT,
             is_main INTEGER DEFAULT 0,
-            data TEXT NOT NULL
+            data TEXT NOT NULL,
+            name TEXT GENERATED ALWAYS AS (json_extract(data, '$.name')) VIRTUAL,
+            pokedex_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.id')) VIRTUAL,
+            shiny BOOLEAN GENERATED ALWAYS AS (json_extract(data, '$.shiny')) VIRTUAL,
+            level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL
         )
     """)
     cursor.execute("INSERT INTO captured_pokemon (individual_id, is_main, data) SELECT individual_id, is_main, data FROM captured_pokemon_old")
