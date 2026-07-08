@@ -1251,7 +1251,14 @@ class AnkimonDB:
         row = self.execute(
             "SELECT value FROM metadata WHERE key = 'mobile_revlog_watermark'"
         ).fetchone()
-        return int(row[0]) if row else 0
+        if row:
+            return int(row[0])
+        elif self.is_migrated():
+            import time
+            now_ms = int(time.time() * 1000)
+            self.set_mobile_watermark(now_ms)
+            return now_ms
+        return 0
 
     def set_mobile_watermark(self, watermark_ms: int, *, force: bool = False) -> None:
         # Monotonic by default: the watermark must never move backwards. A
