@@ -18,6 +18,21 @@ PENDING_PROFILE = "PENDING_REVIEW"
 # tools, never human contributors, so they're excluded from acknowledgement.
 _BOT_EMAIL_MARKERS = ("[bot]", "github-actions", "noreply@anthropic.com")
 
+# Login-based bot / AI-agent detection (complements the email markers above).
+# Covers any "*[bot]" account plus AI coding agents like GitHub Copilot, which
+# open PRs / author commits under a plain login (no "[bot]" suffix) yet are not
+# human contributors to acknowledge or add to the contributors table.
+_BOT_LOGINS = frozenset({"copilot", "copilot-swe-agent", "dependabot", "jules-invoke"})
+
+
+def _is_bot_login(login: str) -> bool:
+    """True for bot / AI-agent GitHub logins that must never be credited."""
+    if not login:
+        return True
+    lo = login.lower()
+    return lo.endswith("[bot]") or lo in _BOT_LOGINS
+
+
 # GitHub "noreply" commit emails encode the account login directly:
 #   12345+login@users.noreply.github.com  (modern, id-prefixed)
 #   login@users.noreply.github.com        (legacy)
@@ -105,7 +120,7 @@ def fetch_prs_since_tag(repo: str, previous_tag: str) -> List[Dict]:
             # Filter out automated release PRs
             author = pr.get("user", {}).get("login", "")
             title = pr.get("title", "")
-            if author == "github-actions[bot]" or author == "jules-invoke[bot]" or "bump version" in title.lower() or "release v" in title.lower():
+            if _is_bot_login(author) or "bump version" in title.lower() or "release v" in title.lower():
                 continue
                 
             pull_requests.append(pr)
@@ -211,7 +226,7 @@ def update_contributors(logins):
     new_found = False
     
     for login in sorted(logins):
-        if not login or login.lower() in existing or login.lower().endswith("[bot]"):
+        if not login or login.lower() in existing or _is_bot_login(login):
             continue
         print(f"Adding new contributor: {login}")
         data["contributors"].append({

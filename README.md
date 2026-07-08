@@ -37,9 +37,6 @@
       <td align="center" valign="top" width="20%"><a href="https://github.com/scotej"><img src="https://github.com/scotej.png?s=80" width="80px;" alt="scotej"/><br /><sub><b>scotej</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=scotej" title="Code">💻</a></td>
       <td align="center" valign="top" width="20%"><a href="https://github.com/maciej-baruch"><img src="https://github.com/maciej-baruch.png?s=80" width="80px;" alt="maciej-baruch"/><br /><sub><b>maciej-baruch</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=maciej-baruch" title="Code">💻</a></td>
       <td align="center" valign="top" width="20%"><a href="https://github.com/mathieulabs"><img src="https://github.com/mathieulabs.png?s=80" width="80px;" alt="mathieulabs"/><br /><sub><b>mathieulabs</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=mathieulabs" title="Code">💻</a></td>
-      <td align="center" valign="top" width="20%"><a href="https://github.com/Copilot"><img src="https://github.com/Copilot.png?s=80" width="80px;" alt="Copilot"/><br /><sub><b>Copilot</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Copilot" title="Code">💻</a></td>
-    </tr>
-    <tr>
       <td align="center" valign="top" width="20%"><a href="https://github.com/jupiterslegacy"><img src="https://github.com/jupiterslegacy.png?s=80" width="80px;" alt="jupiterslegacy"/><br /><sub><b>jupiterslegacy</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=jupiterslegacy" title="Code">💻</a></td>
     </tr>
   </tbody>
