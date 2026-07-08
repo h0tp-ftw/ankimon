@@ -1,10 +1,16 @@
 name: Onboard New Contributors
 
-# SECURITY: this runs on `pull_request_target`, so it holds the base repo's write
-# token and secrets even for fork PRs. That is only safe because the job NEVER
-# executes code from the PR — it just reads/edits .all-contributorsrc with
-# first-party python + git. Do NOT add build / test / `npm install` / PR-script
-# steps here, or untrusted PR code would run with those privileges.
+# Invite first-time contributors to fill in their changelog profile.
+#
+# Runs on `pull_request_target` purely so it holds a writable token that can
+# comment on PRs from forks (a fork's `pull_request` token is read-only and
+# cannot comment). It is COMMENT-ONLY: it never checks out or executes any code
+# from the PR, and it reads the contributor list from the base repo over the
+# API — so there is no untrusted code path and no need for a PAT. The whole job
+# is first-party github-script on the built-in GITHUB_TOKEN.
+#
+# Do NOT add checkout-of-head / build / test / install steps here, or untrusted
+# PR code would run with this job's write token + secrets.
 on:
   pull_request_target:
     types: [opened]
@@ -17,121 +23,44 @@ jobs:
       contents: read
 
     steps:
-      # Check out the PR's *head* branch (the contributor's fork/branch). We use the
-      # PAT so we can push a placeholder profile back to it when "Allow edits from
-      # maintainers" is enabled. We only read/modify .all-contributorsrc and never
-      # execute any code from the PR, so checking out untrusted head here is safe.
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-          # Keep the token out of .git/config; the push below authenticates
-          # explicitly with a short-lived remote URL instead.
-          persist-credentials: false
-
-      - name: Add placeholder profile for new contributors
-        id: profile
-        env:
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          GIT_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          # Never onboard the maintainer or bots.
-          case "$PR_AUTHOR" in
-            h0tp-ftw|*"[bot]")
-              echo "Skipping excluded user: $PR_AUTHOR"
-              echo "status=skip" >> "$GITHUB_OUTPUT"
-              exit 0
-              ;;
-          esac
-
-          RESULT=$(python3 - <<'PY'
-          import json, os
-
-          PLACEHOLDER = "PENDING_REVIEW"
-          author = os.environ["PR_AUTHOR"]
-          path = ".all-contributorsrc"
-
-          try:
-              with open(path, encoding="utf-8") as f:
-                  data = json.load(f)
-          except (FileNotFoundError, ValueError):
-              print("error")
-              raise SystemExit(0)
-
-          contributors = data.setdefault("contributors", [])
-          if any(c.get("login") == author for c in contributors):
-              print("exists")
-              raise SystemExit(0)
-
-          contributors.append({
-              "login": author,
-              "name": author,
-              "avatar_url": f"https://github.com/{author}.png",
-              "profile": f"https://github.com/{author}",
-              "contributions": ["code"],
-              "nickname": PLACEHOLDER,
-              "discord_id": PLACEHOLDER,
-          })
-          with open(path, "w", encoding="utf-8") as f:
-              json.dump(data, f, indent=2, ensure_ascii=False)
-              f.write("\n")
-          print("added")
-          PY
-          )
-
-          echo "Profile result: $RESULT"
-          if [ "$RESULT" != "added" ]; then
-            echo "status=$RESULT" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .all-contributorsrc
-          git commit -m "chore: add placeholder contributor profile for @$PR_AUTHOR"
-          if git push "https://x-access-token:${GIT_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:$HEAD_REF"; then
-            echo "Pushed placeholder profile to $HEAD_REF"
-            echo "status=pushed" >> "$GITHUB_OUTPUT"
-          else
-            echo "Could not push to the PR branch (edits-from-maintainers likely off)."
-            echo "status=push_failed" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Comment — placeholder added
-        if: steps.profile.outputs.status == 'pushed'
+      - name: Invite new contributor to add a profile
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const prAuthor = context.payload.pull_request.user.login;
-            const body =
-              `Hi @${prAuthor}, and thanks for contributing to Ankimon! 🌟\n\n` +
-              "I've added a **placeholder profile** for you in `.all-contributorsrc` and committed it to this PR. " +
-              "Please open that file and edit your entry:\n\n" +
-              "- **`nickname`** — the name you'd like credited in the in-app changelogs\n" +
-              "- **`discord_id`** — your Discord user ID, if you'd like a ping in our release announcements\n\n" +
-              "Set each to your value, **or to an empty string `\"\"`** if you'd rather not share it — either is perfectly fine. " +
-              "The *Contributor Profile Check* stays red until the `PENDING_REVIEW` placeholders are replaced; that's just so you get to decide. 💖";
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body,
-            });
 
-      - name: Comment — manual fallback
-        if: steps.profile.outputs.status == 'push_failed' || steps.profile.outputs.status == 'error'
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const prAuthor = context.payload.pull_request.user.login;
+            // Never onboard the maintainer or bots.
+            if (prAuthor === "h0tp-ftw" || prAuthor.endsWith("[bot]")) {
+              core.info(`Skipping excluded user: ${prAuthor}`);
+              return;
+            }
+
+            // Read the current contributor list from the base repo's default
+            // branch over the API (first-party; we never touch the PR head tree).
+            // If it can't be read, fall through and still post a friendly nudge.
+            const known = new Set();
+            try {
+              const res = await github.rest.repos.getContent({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                path: ".all-contributorsrc",
+              });
+              const parsed = JSON.parse(
+                Buffer.from(res.data.content, "base64").toString("utf-8")
+              );
+              for (const c of parsed.contributors || []) {
+                if (c.login) known.add(c.login.toLowerCase());
+              }
+            } catch (e) {
+              core.warning(`Could not read .all-contributorsrc: ${e.message}`);
+            }
+
+            if (known.has(prAuthor.toLowerCase())) {
+              core.info(`${prAuthor} is already credited; no nudge needed.`);
+              return;
+            }
+
             const entry = [
               "{",
               `  "login": "${prAuthor}",`,
@@ -143,17 +72,19 @@ jobs:
               '  "discord_id": ""',
               "}",
             ].join("\n");
+
             const body =
               `Hi @${prAuthor}, and thanks for contributing to Ankimon! 🌟\n\n` +
-              "I couldn't add a profile entry to your branch automatically (usually because " +
-              "*\"Allow edits from maintainers\"* is off for this PR). No problem — if you'd like a custom " +
-              "nickname in the changelogs or a Discord release ping, add yourself to `.all-contributorsrc` " +
-              "under `\"contributors\"`:\n\n" +
+              "If you'd like a custom nickname in the in-app changelogs or a Discord ping in our " +
+              "release announcements, add yourself to `.all-contributorsrc` under `\"contributors\"`:\n\n" +
               "```json\n" + entry + "\n```\n\n" +
-              "Fill in `nickname`/`discord_id`, or just leave them blank to skip — totally optional! 💖";
+              "Fill in `nickname`/`discord_id`, or just leave them blank to skip — both are totally fine. " +
+              "Either way we'll still credit you automatically at release time. 💖";
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.pull_request.number,
               body,
             });
+            core.info(`Posted onboarding comment for ${prAuthor}.`);
