@@ -152,12 +152,15 @@ class MigrationDialog(QDialog):
                         pokemon_list = json.load(f)
                     
                     total = len(pokemon_list)
+                    seen_ids = set()
                     for i, pokemon in enumerate(pokemon_list):
                         if self.cancelled: break
                         if not isinstance(pokemon, dict):
                             continue
-                        if not pokemon.get("individual_id"):
+                        ind_id = pokemon.get("individual_id")
+                        if not ind_id or ind_id in seen_ids:
                             pokemon["individual_id"] = str(uuid.uuid4())
+                        seen_ids.add(pokemon["individual_id"])
                         if self.db.save_pokemon(pokemon):
                             stats["pokemon"] += 1
                         if total > 0 and (i % 20 == 0 or i == total - 1):
