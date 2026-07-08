@@ -95,11 +95,24 @@ jobs:
       # build step below adds PyQt5 (aab needs it); keeping the test ahead of that
       # avoids two Qt bindings loading into one interpreter. PYTEST_QT_API pins the
       # binding pytest-qt selects.
+      # PyQt6's QtGui (imported by pytest-qt) links against system Qt libraries
+      # (libEGL, xcb, …) that aren't on the runner by default. Install them and run
+      # under xvfb + the offscreen platform, mirroring integrity_tests.yml — the
+      # workflow where this same test passes.
+      - name: Install system deps for headless Qt
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 \
+            x11-utils libegl1 libpulse0 libnss3 libasound2t64
+
       - name: Run Integrity Tests
         env:
           PYTEST_QT_API: pyqt6
+          QT_QPA_PLATFORM: offscreen
         run: |
-          pytest tests/test_addon_integrity.py
+          xvfb-run -a pytest tests/test_addon_integrity.py
 
       - name: Configure git identity
         run: |
