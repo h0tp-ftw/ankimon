@@ -387,8 +387,16 @@ def create_menu_actions(
     tracker_window_action.setMenuRole(QAction.MenuRole.NoRole)
     tracker_window_action.triggered.connect(ankimon_tracker_window.toggle_window)
     tracker_window_action.setShortcut(QKeySequence("Ctrl+Shift+K"))
+    
+    # Database Diagnostics (Verify & Repair)
+    from .pyobj.db_diagnostics import trigger_database_diagnostics
+    diagnostics_action = QAction("Verify and Repair Database", mw)
+    diagnostics_action.setMenuRole(QAction.MenuRole.NoRole)
+    diagnostics_action.triggered.connect(trigger_database_diagnostics)
+    
     if debug is True:
         debug_menu.addAction(tracker_window_action)
+        debug_menu.addAction(diagnostics_action)
 
     # Re-evaluate the developer-only entries each time the menu opens, so
     # toggling Developer Mode takes effect without rebuilding the menu.
@@ -402,8 +410,9 @@ def create_menu_actions(
         # Ctrl+Shift+K shortcut — an invisible-but-enabled QAction can still fire.
         tracker_window_action.setVisible(is_dev)
         tracker_window_action.setEnabled(is_dev)
+        diagnostics_action.setVisible(True)
         if debug is True:
-            debug_menu.menuAction().setVisible(is_dev)
+            debug_menu.menuAction().setVisible(True)
         # Keep the Ctrl+Shift+R hot-reload accelerator in lockstep with the menu
         # action (registered in __init__.on_startup_complete). Guard on liveness:
         # the shortcut list may be absent before startup-complete or hold a dead
