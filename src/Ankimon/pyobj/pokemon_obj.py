@@ -405,7 +405,7 @@ class PokemonObject:
     # would succeed, but the splatted value is almost certainly stale
     # relative to the new ``level``/``base_stats``, so we skip it and
     # recompute it ourselves below.
-    _READONLY_ATTRS = frozenset({"cp", "stats", "max_hp"})
+    _READONLY_ATTRS = frozenset({"cp", "stats", "max_hp", "pokedex_id", "display_name", "generation"})
 
     def update_stats(self, **kwargs):
         """Update the attributes of the Pokémon object with keyword arguments."""
