@@ -137,6 +137,7 @@ class MigrationDialog(QDialog):
         self.start_button.setText("Migrating...")
         stats = {"pokemon": 0, "main": 0, "items": 0, "badges": 0, 
                  "team": 0, "history": 0, "userdata": 0}
+        remapped_ids = {}
         
         try:
             # Check if Phase 1 is already done
@@ -159,11 +160,13 @@ class MigrationDialog(QDialog):
                             continue
                         ind_id = pokemon.get("individual_id")
                         if not ind_id or ind_id in seen_ids:
+                            new_uuid = str(uuid.uuid4())
                             if ind_id:
                                 self.log_area.append(
                                     f"  ⚠ Duplicate individual_id {ind_id}; assigned a new UUID (kept both copies)"
                                 )
-                            pokemon["individual_id"] = str(uuid.uuid4())
+                                remapped_ids.setdefault(ind_id, []).append(new_uuid)
+                            pokemon["individual_id"] = new_uuid
                         seen_ids.add(pokemon["individual_id"])
                         if self.db.save_pokemon(pokemon):
                             stats["pokemon"] += 1
@@ -287,7 +290,10 @@ class MigrationDialog(QDialog):
                 valid_team_list = []
                 for member in team_list:
                     if isinstance(member, dict):
-                        if not member.get("individual_id"):
+                        old_id = member.get("individual_id")
+                        if old_id and old_id in remapped_ids and remapped_ids[old_id]:
+                            member["individual_id"] = remapped_ids[old_id].pop(0)
+                        elif not old_id:
                             match_key = (
                                 str(member.get("name", "")).lower(),
                                 str(member.get("level", "")),
