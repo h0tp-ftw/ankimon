@@ -60,14 +60,27 @@ Set `animate_time` to `true` to enable a small animation in the reviewer. This a
 Set `gif_in_collection` to `true` to view GIF images instead of sprites of your caught Pokémon in your collection.
 - `gif_in_collection` [True/False]
 
-Setting `hp_bar_config` to `false` removes the HP bar in the reviewer interface.
-- `hp_bar_config` [True/False]
+Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface.
+- `gui.hud_hp_bars` [True/False]
 
 Setting `xp_bar_location` to 1 places the XP bar at the top of your screen in the reviewer. If set to 2, the XP bar will appear at the bottom of your screen.
 - `xp_bar_location` [1/2]
 
-Setting `xp_bar_config` to `true` will display the XP bar in the reviewer. It will show your main Pokémon's current XP and the amount needed for the next level.
-- `xp_bar_config` [True/False]
+Setting `gui.hud_xp_bar` to `true` will display the XP bar in the reviewer. It will show your main Pokémon's current XP and the amount needed for the next level.
+- `gui.hud_xp_bar` [True/False]
+
+Ankimon also supports the following granular HUD element toggles (set to `true` to show, `false` to hide):
+- `gui.hud_player_sprite` [True/False] — Show/hide player companion sprite.
+- `gui.hud_enemy_sprite` [True/False] — Show/hide wild/enemy Pokémon sprite.
+- `gui.hud_hp_text` [True/False] — Show/hide current/max HP values text.
+- `gui.hud_pokemon_id` [True/False] — Show/hide Pokédex ID.
+- `gui.hud_pokemon_gen` [True/False] — Show/hide generation.
+- `gui.hud_pokemon_lvl` [True/False] — Show/hide level.
+- `gui.hud_pokemon_name` [True/False] — Show/hide Pokémon names.
+- `gui.hud_status_badge` [True/False] — Show/hide status/type badge.
+- `gui.hud_owned_indicator` [True/False] — Show/hide Pokeball owned icon.
+- `gui.hud_enemy_shiny_indicator` [True/False] — Show/hide the enemy shiny star.
+- `gui.hud_player_shiny_indicator` [True/False] — Show/hide the player companion shiny star.
 
 Setting `YouShallNotPass_Ankimon_News` to `true` deactivates the update patch notes pop-up on Anki startup.
 - `YouShallNotPass_Ankimon_News` [True/False]
