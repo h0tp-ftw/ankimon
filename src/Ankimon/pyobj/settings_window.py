@@ -407,7 +407,25 @@ class SettingsWindow(QMainWindow):
                     "View Main Pokémon Front",
                     "XP Bar Location",
                     "Pop-Up on Defeat",
-                ]
+                ],
+                "subgroups": {
+                    "HUD Element Toggles": {
+                        "settings": [
+                            "Show Player Sprite",
+                            "Show Enemy Sprite",
+                            "Show XP Progress Bar",
+                            "Show HP Bars",
+                            "Show HP Text",
+                            "Show Pokémon ID",
+                            "Show Pokémon Generation",
+                            "Show Pokémon Level",
+                            "Show Pokémon Name",
+                            "Show Status Badge",
+                            "Show Pokeball Icon",
+                            "Show Text Message Box in Reviewer",
+                        ]
+                    }
+                }
             },
             "Sound": {
                 "settings": [

@@ -156,7 +156,7 @@ class Reviewer_Manager:
         if card is not None and not isinstance(card, int):
             return  # Hook received a Card object
 
-        if not self.settings.get("gui.styling_in_reviewer"):
+        if self.settings.get("gui.styling_in_reviewer") is False:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
             return
 
