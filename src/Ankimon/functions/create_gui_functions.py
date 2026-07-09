@@ -39,12 +39,12 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
     # If the status name is valid, create the HTML with inline CSS
     if colors:
         badge_html = ''
-        if is_pokemon_owned and settings_obj.get("gui.hud_owned_indicator") is not False:
+        if is_pokemon_owned and settings_obj.get("gui.hud_owned_indicator"):
             pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
             badge_html = f'<img id="owned-indicator-badge" src="{pokeball_url}" style="margin-right: 8px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
 
         status_html = ""
-        if settings_obj.get("gui.hud_status_badge") is not False:
+        if settings_obj.get("gui.hud_status_badge"):
             status_html = f"""
             <div id=pokestatus class="Ankimon" style="
                 background-color: {colors['background']};

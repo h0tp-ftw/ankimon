@@ -66,6 +66,8 @@ class FakeDB:
         return self._pokemon
 
 
+from Ankimon.pyobj.settings import DEFAULT_CONFIG
+
 class FakeSettings:
     def __init__(self, overrides=None):
         self.values = {
@@ -84,7 +86,9 @@ class FakeSettings:
             self.values.update(overrides)
 
     def get(self, key, default=None):
-        return self.values.get(key, default)
+        if key in self.values:
+            return self.values[key]
+        return DEFAULT_CONFIG.get(key, default)
 
     def compute_special_variable(self, name):
         return 0

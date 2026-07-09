@@ -57,7 +57,7 @@ def tooltipWithColour(
     else:
         y_offset = 0
 
-    if reviewer_text_message_box is not False and styling_in_reviewer is not False:
+    if reviewer_text_message_box:
         x = aw.mapToGlobal(QPoint(x + round(aw.width() / 2), 0)).x()
         y = aw.mapToGlobal(QPoint(0, aw.height() - (180 + y_offset))).y()
         lab = CustomLabel(aw)
