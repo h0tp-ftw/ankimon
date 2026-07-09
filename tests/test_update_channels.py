@@ -111,13 +111,13 @@ def _fake_services(stored):
 
 
 def test_get_update_channel_returns_stored_valid_value():
-    with patch("Ankimon.pyobj.update_manager.read_update_state", return_value=None):
+    with patch.object(um, "read_update_state", return_value=None):
         with patch.dict(sys.modules, {"Ankimon.services": _fake_services("main")}):
             assert um.get_update_channel() == um.CHANNEL_MAIN
 
 
 def test_get_update_channel_defaults_stable_for_plain_build():
-    with patch("Ankimon.pyobj.update_manager.read_update_state", return_value=None):
+    with patch.object(um, "read_update_state", return_value=None):
         with patch.dict(sys.modules, {"Ankimon.services": _fake_services(None)}):
             with patch("Ankimon.resources.IS_EXPERIMENTAL_BUILD", False):
                 assert um.get_update_channel() == um.CHANNEL_STABLE
@@ -125,7 +125,7 @@ def test_get_update_channel_defaults_stable_for_plain_build():
 
 def test_get_update_channel_defaults_experimental_for_e_build():
     # unrecognized stored value also falls back to the build-derived default
-    with patch("Ankimon.pyobj.update_manager.read_update_state", return_value=None):
+    with patch.object(um, "read_update_state", return_value=None):
         with patch.dict(sys.modules, {"Ankimon.services": _fake_services("garbage")}):
             with patch("Ankimon.resources.IS_EXPERIMENTAL_BUILD", True):
                 assert um.get_update_channel() == um.CHANNEL_EXPERIMENTAL

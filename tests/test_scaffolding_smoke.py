@@ -35,9 +35,17 @@ def _scaffolding_env_guard():
     import types
     from pathlib import Path
 
+    # Clear any mocked PyQt6 modules from other tests to restore the real ones
+    for m in list(sys.modules.keys()):
+        if m.startswith("PyQt6") or "webshell" in m:
+            sys.modules.pop(m, None)
+
+    # Force load of actual PyQt6 modules so sys.modules.get works for _is_main_thread checks
+    import PyQt6.QtCore
+    import PyQt6.QtWidgets
     from PyQt6.QtWidgets import QDialog
 
-    if not isinstance(QDialog, type):  # PyQt6 was mocked by another test in this run
+    if not isinstance(QDialog, type) or "MagicMock" in str(QDialog):  # PyQt6 was mocked by another test in this run
         pytest.skip(
             "real PyQt6 not active (mocked by another test); "
             "run tests/test_scaffolding_smoke.py standalone"
