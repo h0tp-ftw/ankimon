@@ -1253,7 +1253,10 @@ class AnkimonDB:
         ).fetchone()
         if row:
             return int(row[0])
-        elif self.is_migrated():
+        if self.is_migrated():
+            # ``force=True`` is load-bearing, not an optimisation: the
+            # force=False path of ``set_mobile_watermark`` calls back into
+            # this getter to clamp monotonically, which would recurse forever.
             import time
             now_ms = int(time.time() * 1000)
             self.set_mobile_watermark(now_ms, force=True)
