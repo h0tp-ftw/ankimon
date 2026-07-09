@@ -303,6 +303,9 @@ class AnkimonDB:
             # We also disable the unique constraint.
             modified_sql = []
             for line in lines:
+                if line.startswith("CREATE INDEX") or line.startswith("CREATE UNIQUE INDEX"):
+                    if "captured_pokemon" in line:
+                        continue
                 if "CREATE TABLE captured_pokemon" in line:
                     line = """CREATE TABLE captured_pokemon (
                         individual_id TEXT,
