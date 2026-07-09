@@ -105,11 +105,11 @@ def test_is_git_clone_false_in_dev_mode(tmp_path, monkeypatch):
     monkeypatch.setattr(um, "addon_dir", addon)
 
     # When not in dev mode, it returns True because it has a .git folder
-    with patch("Ankimon.utils.is_dev_mode", return_value=False, create=True):
+    with patch("Ankimon.utils.is_dev_mode", return_value=False):
         assert um.is_git_clone() is True
 
     # When in dev mode, it returns False even with a .git folder
-    with patch("Ankimon.utils.is_dev_mode", return_value=True, create=True):
+    with patch("Ankimon.utils.is_dev_mode", return_value=True):
         assert um.is_git_clone() is False
 
 
