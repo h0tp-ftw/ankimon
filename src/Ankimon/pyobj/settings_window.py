@@ -422,7 +422,8 @@ class SettingsWindow(QMainWindow):
                             "Show Pokémon Name",
                             "Show Status Badge",
                             "Show Pokeball Icon",
-                            "Show Shiny Star",
+                            "Show Enemy Shiny Star",
+                            "Show Player Shiny Star",
                             "Show Text Message Box in Reviewer",
                         ]
                     }
