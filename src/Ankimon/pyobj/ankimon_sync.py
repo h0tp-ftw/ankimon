@@ -1,9 +1,10 @@
-# ankimon_sync.py - Improved Ankimon data sync system with subfolder approach
 import base64
 import filecmp
+import gc
 import json
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -752,8 +753,6 @@ class AnkimonDataSync:
         pre-replace inode can be orphaned. Pre-existing to this change and narrow
         (opt-in file-sync overlapping a live resolve); left documented rather than
         pulling the multi-profile connection model into a hardening pass."""
-        import gc
-        import time
         source_file.parent.mkdir(parents=True, exist_ok=True)
         tmp = source_file.with_name(source_file.name + ".synctmp")
         try:
@@ -761,7 +760,7 @@ class AnkimonDataSync:
             
             # Close connection registry completely to release all OS locks
             try:
-                from ..singletons import services
+                from ..services import services
                 if services.db:
                     services.db.close()
             except Exception:
@@ -776,9 +775,9 @@ class AnkimonDataSync:
                 try:
                     os.replace(tmp, source_file)
                     break
-                except PermissionError as e:
+                except PermissionError:
                     if attempt == 2:
-                        raise e
+                        raise
                     time.sleep(0.1)
                     gc.collect()
 

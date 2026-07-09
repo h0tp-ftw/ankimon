@@ -11,7 +11,7 @@ def trigger_database_diagnostics():
         )
         return
 
-    from ..singletons import services
+    from ..services import services
     db = services.db
     if not db:
         showWarning("Database connection is not available.")

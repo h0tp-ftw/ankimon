@@ -10,6 +10,8 @@ import sqlite3
 import threading
 import uuid
 import weakref
+import gc
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -36,13 +38,17 @@ class ConnectionWrapper:
         self._db_mgr = db_mgr
 
     def commit(self):
+        # NOTE: Direct raw cursor execution (conn.cursor().execute(...)) bypasses wrapper-level auto-healing.
         if not self._disable_commit:
             try:
                 self._conn.commit()
             except sqlite3.DatabaseError as e:
                 if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
                     self._db_mgr.repair_database()
-                raise e
+                    self._conn = self._db_mgr._get_connection()._conn
+                    self._conn.commit()
+                    return
+                raise
 
     def rollback(self):
         self._conn.rollback()
@@ -51,23 +57,26 @@ class ConnectionWrapper:
         self._conn.close()
 
     def execute(self, *args, **kwargs):
+        # NOTE: Direct raw cursor execution (conn.cursor().execute(...)) bypasses wrapper-level auto-healing.
         try:
             return self._conn.execute(*args, **kwargs)
         except sqlite3.DatabaseError as e:
             if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
                 self._db_mgr.repair_database()
-                # Re-get the connection and execute
-                return self._db_mgr._get_connection()._conn.execute(*args, **kwargs)
-            raise e
+                self._conn = self._db_mgr._get_connection()._conn
+                return self._conn.execute(*args, **kwargs)
+            raise
 
     def executemany(self, *args, **kwargs):
+        # NOTE: Direct raw cursor execution (conn.cursor().execute(...)) bypasses wrapper-level auto-healing.
         try:
             return self._conn.executemany(*args, **kwargs)
         except sqlite3.DatabaseError as e:
             if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
                 self._db_mgr.repair_database()
-                return self._db_mgr._get_connection()._conn.executemany(*args, **kwargs)
-            raise e
+                self._conn = self._db_mgr._get_connection()._conn
+                return self._conn.executemany(*args, **kwargs)
+            raise
 
     def cursor(self, *args, **kwargs):
         return self._conn.cursor(*args, **kwargs)
@@ -385,8 +394,6 @@ class AnkimonDB:
                         backup_db.unlink()
                     except Exception:
                         pass
-                import gc
-                import time
                 try:
                     for attempt in range(3):
                         try:
@@ -395,6 +402,7 @@ class AnkimonDB:
                         except Exception as e:
                             if attempt == 2:
                                 self._log("warning", f"Failed to backup corrupt database: {e}")
+                                break
                             time.sleep(0.1)
                             gc.collect()
                 except Exception:
@@ -406,9 +414,9 @@ class AnkimonDB:
                         try:
                             tmp_db.replace(db_file)
                             break
-                        except Exception as e:
+                        except Exception:
                             if attempt == 2:
-                                raise e
+                                raise
                             time.sleep(0.1)
                             gc.collect()
                     for sidecar in ("-wal", "-shm"):
@@ -434,7 +442,7 @@ class AnkimonDB:
                     tmp_db.unlink()
         except Exception as e:
             self._log("error", f"Self-healing database repair failed: {e}")
-            raise e
+            raise
         finally:
             self._is_repairing = False
             # Clean up the temporary database file if it was left behind due to a crash/exception

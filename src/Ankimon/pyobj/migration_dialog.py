@@ -159,6 +159,10 @@ class MigrationDialog(QDialog):
                             continue
                         ind_id = pokemon.get("individual_id")
                         if not ind_id or ind_id in seen_ids:
+                            if ind_id:
+                                self.log_area.append(
+                                    f"  ⚠ Duplicate individual_id {ind_id}; assigned a new UUID (kept both copies)"
+                                )
                             pokemon["individual_id"] = str(uuid.uuid4())
                         seen_ids.add(pokemon["individual_id"])
                         if self.db.save_pokemon(pokemon):
