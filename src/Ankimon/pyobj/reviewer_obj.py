@@ -158,10 +158,12 @@ class Reviewer_Manager:
 
         if self.settings.get("gui.styling_in_reviewer") is False:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
+            self._last_state = None
             return
 
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 3:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
+            self._last_state = None
             return
 
         # 1. Ownership cache (avoid a DB query on every repaint of the same enemy).

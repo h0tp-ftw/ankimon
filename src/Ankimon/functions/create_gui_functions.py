@@ -70,20 +70,15 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
                 {status_html}
                 </div>
                 """
-            elif show_mainpkmn_in_reviewer == 1:
+            elif show_mainpkmn_in_reviewer in (0, 1):
                 html = f"""
                 <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {40 + hp_bar_thickness + xp_bar_spacer}px; right: 15%; z-index: 9999;">
                 {badge_html}
                 {status_html}
                 </div>
                 """
-            elif show_mainpkmn_in_reviewer == 0:
-                html = f"""
-                <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {40 + hp_bar_thickness + xp_bar_spacer}px; right: 15%; z-index: 9999;">
-                {badge_html}
-                {status_html}
-                </div>
-                """
+            else:
+                html = ""
         else:
             html = ""
     else:
