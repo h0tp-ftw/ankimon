@@ -55,6 +55,7 @@ DEFAULT_CONFIG = {
     "gui.hud_pokemon_name": True,
     "gui.hud_status_badge": True,
     "gui.hud_owned_indicator": True,
+    "gui.hud_shiny_indicator": True,
     "audio.sound_effects": False,
     "audio.sounds": True,
     "audio.battle_sounds": False,

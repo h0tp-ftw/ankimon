@@ -266,6 +266,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_pokemon_name"),
             self.settings.get("gui.hud_status_badge"),
             self.settings.get("gui.hud_owned_indicator"),
+            self.settings.get("gui.hud_shiny_indicator"),
             self.settings.get("gui.reviewer_text_message_box"),
         )
         if self._last_state == current_state and card is not None:
@@ -345,7 +346,7 @@ class Reviewer_Manager:
             enemy_parts.append(f"[#{pokedex_id}]")
         if self.settings.get("gui.hud_pokemon_name"):
             enemy_parts.append(enemy_lang_name)
-        if self.enemy_pokemon.shiny:
+        if self.enemy_pokemon.shiny and self.settings.get("gui.hud_shiny_indicator"):
             enemy_parts.append("⭐")
         if self.settings.get("gui.hud_pokemon_gen"):
             enemy_parts.append(f"(Gen {generation})")
@@ -411,7 +412,7 @@ class Reviewer_Manager:
                 main_parts.append(f"[#{main_pokedex_id}]")
             if self.settings.get("gui.hud_pokemon_name"):
                 main_parts.append(main_lang_name)
-            if self.main_pokemon.shiny:
+            if self.main_pokemon.shiny and self.settings.get("gui.hud_shiny_indicator"):
                 main_parts.append("⭐")
             if self.settings.get("gui.hud_pokemon_gen"):
                 main_parts.append(f"(Gen {main_generation})")

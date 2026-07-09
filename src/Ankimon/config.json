@@ -43,6 +43,7 @@
     "gui.hud_pokemon_name": true,
     "gui.hud_status_badge": true,
     "gui.hud_owned_indicator": true,
+    "gui.hud_shiny_indicator": true,
 
     "audio.sound_effects": false,
     "audio.sounds": true,

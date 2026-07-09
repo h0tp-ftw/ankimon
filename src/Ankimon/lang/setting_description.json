@@ -45,6 +45,7 @@
     "gui.hud_pokemon_name": "Show or hide Pokémon names on the reviewer HUD.",
     "gui.hud_status_badge": "Show or hide the wild Pokémon status/type badge on the reviewer HUD.",
     "gui.hud_owned_indicator": "Show or hide the Pokeball owned-indicator icon on the reviewer HUD.",
+    "gui.hud_shiny_indicator": "Show or hide the shiny star indicator next to Pokémon names on the reviewer HUD.",
     "audio.sound_effects": "Enable sound effects for various Pokémon actions.",
     "audio.sounds": "Enable general Pokémon sounds during interactions.",
     "audio.battle_sounds": "Enable recurring battle cries every 10 cards.",

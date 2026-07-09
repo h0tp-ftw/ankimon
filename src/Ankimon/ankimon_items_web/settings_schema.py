@@ -127,6 +127,7 @@ GROUPS = [
                 ("gui.hud_pokemon_name", "Pokémon Name"),
                 ("gui.hud_status_badge", "Status Badge"),
                 ("gui.hud_owned_indicator", "Pokeball Icon"),
+                ("gui.hud_shiny_indicator", "Shiny Star"),
                 ("gui.reviewer_text_message_box", "Battle Log"),
             ],
         },
