@@ -404,8 +404,13 @@ class PokemonObject:
     # `except Exception`). ``max_hp`` is a plain cache field — setattr
     # would succeed, but the splatted value is almost certainly stale
     # relative to the new ``level``/``base_stats``, so we skip it and
-    # recompute it ourselves below.
-    _READONLY_ATTRS = frozenset({"cp", "stats", "max_hp", "pokedex_id", "display_name", "generation"})
+    # recompute it ourselves below. ``pokedex_id`` / ``display_name`` /
+    # ``generation`` are likewise getter-only derived properties (resolved
+    # from ``self.id``), so a splatted value is redundant at best and raises
+    # AttributeError at worst.
+    _READONLY_ATTRS = frozenset(
+        {"cp", "stats", "max_hp", "pokedex_id", "display_name", "generation"}
+    )
 
     def update_stats(self, **kwargs):
         """Update the attributes of the Pokémon object with keyword arguments."""
