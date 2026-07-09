@@ -31,6 +31,7 @@ def tooltipWithColour(
         return
 
     settings = services.settings
+    styling_in_reviewer = settings.get("gui.styling_in_reviewer")
     reviewer_text_message_box = settings.get("gui.reviewer_text_message_box")
     period = int(
         settings.get("gui.reviewer_text_message_box_time") * 1000
@@ -56,7 +57,7 @@ def tooltipWithColour(
     else:
         y_offset = 0
 
-    if reviewer_text_message_box != False:
+    if reviewer_text_message_box != False and styling_in_reviewer != False:
         x = aw.mapToGlobal(QPoint(x + round(aw.width() / 2), 0)).x()
         y = aw.mapToGlobal(QPoint(0, aw.height() - (180 + y_offset))).y()
         lab = CustomLabel(aw)

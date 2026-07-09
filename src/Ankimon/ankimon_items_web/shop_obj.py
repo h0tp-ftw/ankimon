@@ -2019,12 +2019,14 @@ class AnkimonItemsWeb(QDialog):
     @staticmethod
     def _serialize_chip_group(chip_def, config):
         chips = []
+        from ..pyobj.settings import DEFAULT_CONFIG
         for key, chip_label in chip_def["keys"]:
+            val = config.get(key, DEFAULT_CONFIG.get(key, True))
             chips.append(
                 {
                     "key": key,
                     "label": chip_label,
-                    "value": bool(config.get(key, False)),
+                    "value": bool(val),
                 }
             )
         return {

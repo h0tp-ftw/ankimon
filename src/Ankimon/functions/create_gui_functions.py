@@ -39,14 +39,13 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
     # If the status name is valid, create the HTML with inline CSS
     if colors:
         badge_html = ''
-        if is_pokemon_owned:
+        if is_pokemon_owned and settings_obj.get("gui.hud_owned_indicator") is not False:
             pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
             badge_html = f'<img id="owned-indicator-badge" src="{pokeball_url}" style="margin-right: 8px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
 
-        if show_mainpkmn_in_reviewer == 2:
-            html = f"""
-            <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {140 + xp_bar_spacer + hp_bar_thickness}px; right: 1%; z-index: 9999;">
-            {badge_html}
+        status_html = ""
+        if settings_obj.get("gui.hud_status_badge") is not False:
+            status_html = f"""
             <div id=pokestatus class="Ankimon" style="
                 background-color: {colors['background']};
                 border: 2px solid {colors['outline']};
@@ -61,48 +60,32 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
                 margin: 4px;
                 font-family: Arial, sans-serif;
             ">{colors['name']}</div>
-            </div>
             """
-        elif show_mainpkmn_in_reviewer == 1:
-            html = f"""
-            <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {40 + hp_bar_thickness + xp_bar_spacer}px; right: 15%; z-index: 9999;">
-            {badge_html}
-            <div id=pokestatus class="Ankimon" style="
-                background-color: {colors['background']};
-                border: 2px solid {colors['outline']};
-                border-radius: 5px;
-                padding: 5px 10px;
-                font-size: 8px;
-                font-weight: bold !important;
-                display: inline-block;
-                color: {colors.get('text_color', '#000000')};
-                text-transform: uppercase;
-                text-align: center;
-                margin: 4px;
-                font-family: Arial, sans-serif;
-            ">{colors['name']}</div>
-            </div>
-            """
-        elif show_mainpkmn_in_reviewer == 0:
-            html = f"""
-            <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {40 + hp_bar_thickness}px; left: 160px; z-index: 9999;">
-            {badge_html}
-            <div id=pokestatus class="Ankimon" style="
-                background-color: {colors['background']};
-                border: 2px solid {colors['outline']};
-                border-radius: 5px;
-                padding: 5px 10px;
-                font-size: 8px;
-                font-weight: bold !important;
-                display: inline-block;
-                color: {colors.get('text_color', '#000000')};
-                text-transform: uppercase;
-                text-align: center;
-                margin: 4px;
-                font-family: Arial, sans-serif;
-            ">{colors['name']}</div>
-            </div>
-            """
+
+        if badge_html or status_html:
+            if show_mainpkmn_in_reviewer == 2:
+                html = f"""
+                <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {140 + xp_bar_spacer + hp_bar_thickness}px; right: 1%; z-index: 9999;">
+                {badge_html}
+                {status_html}
+                </div>
+                """
+            elif show_mainpkmn_in_reviewer == 1:
+                html = f"""
+                <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {40 + hp_bar_thickness + xp_bar_spacer}px; right: 15%; z-index: 9999;">
+                {badge_html}
+                {status_html}
+                </div>
+                """
+            elif show_mainpkmn_in_reviewer == 0:
+                html = f"""
+                <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {40 + hp_bar_thickness + xp_bar_spacer}px; right: 15%; z-index: 9999;">
+                {badge_html}
+                {status_html}
+                </div>
+                """
+        else:
+            html = ""
     else:
         html = "<div>Unknown Status</div>"
 

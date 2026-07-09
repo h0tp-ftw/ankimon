@@ -366,12 +366,6 @@ class SettingsWindow(QMainWindow):
                     "Always Catch: Gigantamax",
                     "Always Catch: Regional Form",
                     "Cards per Round",
-                    "Show Main Pokémon in Reviewer",
-                    "Hide HUD on Reviewer Startup",
-                    "Show Pokémon Buttons",
-                    "Pop-Up on Defeat",
-                    "Show Text Message Box in Reviewer",
-                    "Message Box Display Time",
                     "Review Based Damage",
                     "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
@@ -387,11 +381,8 @@ class SettingsWindow(QMainWindow):
                             "Allow Choosing Moves",
                         ]
                     },
-                    "HP, XP and Level Settings": {
+                    "Level Settings": {
                         "settings": [
-                            "HP Bar Configuration",
-                            "XP Bar Configuration",
-                            "XP Bar Location",
                             "Remove Level Cap",
                         ]
                     },
@@ -402,10 +393,20 @@ class SettingsWindow(QMainWindow):
                     "Styling in Reviewer",
                     "Team Overview in Deck Overview",
                     "Animate Time",
+                    "Show GIFs in Collection",
+                ]
+            },
+            "HUD and Reviewer": {
+                "settings": [
+                    "Show Main Pokémon in Reviewer",
+                    "Hide HUD on Reviewer Startup",
+                    "Show Pokémon Buttons",
+                    "Message Box Display Time",
                     "HP Bar Thickness",
                     "Reviewer Image as GIF",
                     "View Main Pokémon Front",
-                    "Show GIFs in Collection",
+                    "XP Bar Location",
+                    "Pop-Up on Defeat",
                 ]
             },
             "Sound": {

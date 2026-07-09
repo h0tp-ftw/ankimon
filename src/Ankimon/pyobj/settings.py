@@ -34,7 +34,6 @@ DEFAULT_CONFIG = {
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
     "gui.styling_in_reviewer": True,
-    "gui.hp_bar_config": True,
     "gui.pop_up_dialog_message_on_defeat": False,
     "gui.review_hp_bar_thickness": 2,
     "gui.reviewer_image_gif": False,
@@ -44,8 +43,18 @@ DEFAULT_CONFIG = {
     "gui.hud_hidden_on_startup": False,
     "gui.team_deck_view": True,
     "gui.view_main_front": True,
-    "gui.xp_bar_config": True,
     "gui.xp_bar_location": 2,
+    "gui.hud_player_sprite": True,
+    "gui.hud_enemy_sprite": True,
+    "gui.hud_xp_bar": True,
+    "gui.hud_hp_bars": True,
+    "gui.hud_hp_text": True,
+    "gui.hud_pokemon_id": True,
+    "gui.hud_pokemon_gen": True,
+    "gui.hud_pokemon_lvl": True,
+    "gui.hud_pokemon_name": True,
+    "gui.hud_status_badge": True,
+    "gui.hud_owned_indicator": True,
     "audio.sound_effects": False,
     "audio.sounds": True,
     "audio.battle_sounds": False,
@@ -295,7 +304,7 @@ class Settings:
         self.animate_time = 0.8 if animate_time else 0
 
         xp_bar_location = config.get("gui.xp_bar_location", 0)
-        xp_bar_config = config.get("gui.xp_bar_config", False)
+        xp_bar_config = config.get("gui.hud_xp_bar", True)
         if xp_bar_config:
             if xp_bar_location == 1:
                 self.xp_bar_location = "top"
@@ -306,7 +315,7 @@ class Settings:
         else:
             self.xp_bar_spacer = 0
 
-        hp_bar_config = config.get("gui.hp_bar_config", True)
+        hp_bar_config = config.get("gui.hud_hp_bars", True)
         if not hp_bar_config:
             self.hp_only_spacer = 15
             self.wild_hp_spacer = 65
@@ -326,7 +335,7 @@ class Settings:
             return 0.8 if animate_time else 0
 
         elif key == "xp_bar_location":
-            xp_bar_config = self.config.get("gui.xp_bar_config", True)
+            xp_bar_config = self.config.get("gui.hud_xp_bar", True)
             xp_bar_location = int(self.config.get("gui.xp_bar_location", 2))
 
             if xp_bar_config:
@@ -337,7 +346,7 @@ class Settings:
             return None  # Default when XP bar is disabled
 
         elif key == "xp_bar_spacer":
-            xp_bar_config = self.config.get("gui.xp_bar_config", False)
+            xp_bar_config = self.config.get("gui.hud_xp_bar", True)
             xp_bar_location = self.config.get("gui.xp_bar_location", 0)
 
             if xp_bar_config:
@@ -348,11 +357,11 @@ class Settings:
             return 0  # Default spacer
 
         elif key == "hp_only_spacer":
-            hp_bar_config = self.config.get("gui.hp_bar_config", True)
+            hp_bar_config = self.config.get("gui.hud_hp_bars", True)
             return 15 if not hp_bar_config else 0
 
         elif key == "wild_hp_spacer":
-            hp_bar_config = self.config.get("gui.hp_bar_config", True)
+            hp_bar_config = self.config.get("gui.hud_hp_bars", True)
             return 65 if not hp_bar_config else 0
 
         else:

@@ -149,7 +149,7 @@ body.dark #ankimon-hud #MyPokeImage,
   height: {hp_bar_thickness}px;
   position: fixed;
   bottom: {10 + xp_bar_spacer}px;
-  left: 0px;
+  right: 5px;
   z-index: 9999;
   border-radius: 5px;
   background: {enemy_hp_color};
@@ -161,8 +161,8 @@ body.dark #ankimon-hud #MyPokeImage,
 
 #ankimon-hud #hp-display {{
   position: fixed;
-  bottom: {40 + xp_bar_spacer}px;
-  right: 10px;
+  bottom: {15 + xp_bar_spacer + hp_bar_thickness}px;
+  left: 55%;
   z-index: 9999;
   color: #FFFFFF;
   font-size: 16px;
@@ -178,12 +178,12 @@ body.dark #ankimon-hud #MyPokeImage,
 
 #ankimon-hud #name-display {{
   position: fixed;
-  bottom: {40 + xp_bar_spacer}px;
-  left: 10px;
+  bottom: {15 + xp_bar_spacer + hp_bar_thickness}px;
+  right: 10px;
   z-index: 9999;
   color: #FFFFFF;
   font-size: 16px;
-  text-align: left;
+  text-align: right;
   background-color: rgba(0, 0, 0, 0.85);
   box-shadow: none !important;
   filter: none !important;
@@ -195,9 +195,8 @@ body.dark #ankimon-hud #MyPokeImage,
 #ankimon-hud #PokeImage {{
   position: fixed;
   bottom: {50 + xp_bar_spacer + hp_bar_thickness}px;
-  left: 3px;
+  right: 15px;
   z-index: 9999;
-  transform: scaleX(-1);
 }}
 """
     elif show_mainpkmn_in_reviewer == 2:
@@ -432,7 +431,7 @@ body.dark #ankimon-hud #MyPokeImage,
 
 """
 
-    if xp_bar_config is True:
+    if xp_bar_config:
         css += f"""
 /* XP bar - matte, outlined, no glow */
 #ankimon-hud #xp-bar {{
