@@ -35,35 +35,50 @@ def _scaffolding_env_guard():
     import types
     from pathlib import Path
 
-    # Clear any mocked PyQt6 modules from other tests to restore the real ones
+    # Snapshot existing state to restore on teardown
+    sys_modules_snapshot = {}
     for m in list(sys.modules.keys()):
-        if m.startswith("PyQt6") or "webshell" in m:
-            sys.modules.pop(m, None)
+        if m.startswith("PyQt6") or "webshell" in m or m == "Ankimon" or m.startswith("Ankimon."):
+            sys_modules_snapshot[m] = sys.modules.get(m)
 
-    # Force load of actual PyQt6 modules so sys.modules.get works for _is_main_thread checks
-    import PyQt6.QtCore
-    import PyQt6.QtWidgets
-    from PyQt6.QtWidgets import QDialog
+    try:
+        # Clear any mocked PyQt6 modules from other tests to restore the real ones
+        for m in list(sys_modules_snapshot.keys()):
+            if m.startswith("PyQt6") or "webshell" in m:
+                sys.modules.pop(m, None)
 
-    if not isinstance(QDialog, type) or "MagicMock" in str(QDialog):  # PyQt6 was mocked by another test in this run
-        pytest.skip(
-            "real PyQt6 not active (mocked by another test); "
-            "run tests/test_scaffolding_smoke.py standalone"
-        )
+        # Force load of actual PyQt6 modules so sys.modules.get works for _is_main_thread checks
+        import PyQt6.QtCore
+        import PyQt6.QtWidgets
+        from PyQt6.QtWidgets import QDialog
 
-    # A prior test may have rebound Ankimon as a non-package; restore a real one.
-    src = Path(__file__).parent.parent / "src"
-    if str(src) not in sys.path:
-        sys.path.insert(0, str(src))
-    ank = sys.modules.get("Ankimon")
-    if ank is None or not getattr(ank, "__path__", None):
-        pkg = types.ModuleType("Ankimon")
-        pkg.__path__ = [str(src / "Ankimon")]
-        pkg.__package__ = "Ankimon"
-        sys.modules["Ankimon"] = pkg
-        for stale in [m for m in sys.modules if m.startswith("Ankimon.")]:
-            del sys.modules[stale]
-    yield
+        if not isinstance(QDialog, type) or "MagicMock" in str(QDialog):  # PyQt6 was mocked by another test in this run
+            pytest.skip(
+                "real PyQt6 not active (mocked by another test); "
+                "run tests/test_scaffolding_smoke.py standalone"
+            )
+
+        # A prior test may have rebound Ankimon as a non-package; restore a real one.
+        src = Path(__file__).parent.parent / "src"
+        if str(src) not in sys.path:
+            sys.path.insert(0, str(src))
+        ank = sys.modules.get("Ankimon")
+        if ank is None or not getattr(ank, "__path__", None):
+            pkg = types.ModuleType("Ankimon")
+            pkg.__path__ = [str(src / "Ankimon")]
+            pkg.__package__ = "Ankimon"
+            sys.modules["Ankimon"] = pkg
+            for stale in [m for m in sys.modules if m.startswith("Ankimon.")]:
+                del sys.modules[stale]
+        yield
+    finally:
+        # Restore sys.modules completely
+        for m in list(sys.modules.keys()):
+            if m.startswith("PyQt6") or "webshell" in m or m == "Ankimon" or m.startswith("Ankimon."):
+                sys.modules.pop(m, None)
+        for m, val in sys_modules_snapshot.items():
+            if val is not None:
+                sys.modules[m] = val
 
 
 # --- (a) web-shell host mounts a stub screen -------------------------------
