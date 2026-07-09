@@ -2233,10 +2233,17 @@ class PokemonPC(QDialog):
                     if top_r_layout is None:
                         return
 
+                    # Add new Move Manager
                     def _save_pokemon(data):
                         services.db.save_pokemon(data)
-                        if self.main_pokemon and self.main_pokemon.individual_id == data.get("individual_id"):
-                            self.main_pokemon.attacks = data.get("attacks", self.main_pokemon.attacks)
+                        # Keep the live main-pokemon singleton in step with a
+                        # moveset edit, mirroring give_held_item/remove_held_item.
+                        main_pkmn = services.main_pokemon
+                        if (
+                            main_pkmn is not None
+                            and getattr(main_pkmn, "individual_id", None) == data.get("individual_id")
+                        ):
+                            main_pkmn.attacks = data.get("attacks", main_pkmn.attacks)
                         self.show_pokemon_details(pokemon)
 
                     # Retire the previous manager before building a new one.
