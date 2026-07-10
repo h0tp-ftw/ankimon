@@ -11,8 +11,8 @@ class Ankidex(QDialog):
         Initialize the Ankidex dialog and configure its embedded web frontend.
         
         Parameters:
-        	addon_dir: Directory containing the Ankidex frontend files.
-        	ankimon_tracker: Tracker used to retrieve Ankidex data.
+            addon_dir: Directory containing the Ankidex frontend files.
+            ankimon_tracker: Tracker used to retrieve Ankidex data.
         """
         super().__init__()
         self.addon_dir = addon_dir
