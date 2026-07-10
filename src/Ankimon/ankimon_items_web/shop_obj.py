@@ -35,11 +35,21 @@ from ..resources import items_path, csv_file_items_cost, csv_file_descriptions
 
 class SafeWebEnginePage(QWebEnginePage):
     def __init__(self, profile, screen_name, logger, parent=None):
+        """Initialize a web engine page with a screen identifier and optional logger."""
         super().__init__(profile, parent)
         self.screen_name = screen_name
         self.logger = logger
 
     def javaScriptConsoleMessage(self, level, message, line, source):
+        """
+        Forward JavaScript console messages to the configured logger with a severity level and screen identifier.
+        
+        Parameters:
+        	level: JavaScript console message severity.
+        	message: Text emitted by JavaScript.
+        	line: Source line associated with the message.
+        	source: Source location associated with the message.
+        """
         try:
             if self.logger:
                 if level == QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel:
@@ -928,7 +938,19 @@ class MobileBridge(QObject):
 class AnkimonItemsWeb(QDialog):
     def __init__(self, addon_dir, shop_manager, item_window, ankimon_tracker,
                  trainer_card=None, settings_obj=None, logger=None):
-        super().__init__()
+        """
+                 Initialize the persistent web-based Ankimon interface and its data bridges.
+                 
+                 Parameters:
+                     addon_dir: Directory containing the add-on resources.
+                     shop_manager: Manager for shop inventory and player currency.
+                     item_window: Legacy item-window integration used for item actions.
+                     ankimon_tracker: Tracker providing Ankimon gameplay state.
+                     trainer_card: Optional trainer-card data source.
+                     settings_obj: Optional settings manager.
+                     logger: Optional logger for JavaScript console messages.
+                 """
+                 super().__init__()
         self.addon_dir = addon_dir
         self.shop_manager = shop_manager
         self.item_window = item_window
