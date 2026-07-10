@@ -210,6 +210,7 @@ def test_database_corruption_self_healing(temp_env):
     # Save base pokemon
     pk1 = {"individual_id": "duplicate-uuid", "name": "archen", "id": 566, "level": 5, "xp": 100}
     db.save_pokemon(pk1)
+    db.set_main_pokemon("duplicate-uuid")
     
     # Close connections so we can bypass constraints with a custom raw connection
     db.close()
@@ -252,11 +253,13 @@ def test_database_corruption_self_healing(temp_env):
     # Reopen and check: only the highest level (Level 34) should survive, constraint must be restored
     conn = db._get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT data FROM captured_pokemon WHERE individual_id = 'duplicate-uuid'")
+    cursor.execute("SELECT is_main, data FROM captured_pokemon WHERE individual_id = 'duplicate-uuid'")
     rows = cursor.fetchall()
     assert len(rows) == 1
-    saved_pk = json.loads(rows[0][0])
+    is_main, data = rows[0]
+    saved_pk = json.loads(data)
     assert saved_pk["level"] == 34
+    assert is_main == 1
     
     # Confirm unique constraint is back by verifying that inserting a duplicate now raises IntegrityError
     with pytest.raises(sqlite3.IntegrityError):

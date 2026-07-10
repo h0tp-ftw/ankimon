@@ -323,6 +323,15 @@ class AnkimonDB:
             
             cursor = dest_conn.cursor()
             
+            # Propagate is_main flag to all duplicates of the main Pokémon so the highest-progress survivor inherits it
+            cursor.execute("""
+                UPDATE captured_pokemon 
+                SET is_main = 1 
+                WHERE individual_id IN (
+                    SELECT individual_id FROM captured_pokemon WHERE is_main = 1
+                )
+            """)
+
             # Prune duplicate captured_pokemon rows by highest Level and XP
             cursor.execute("""
                 DELETE FROM captured_pokemon 
