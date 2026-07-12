@@ -24,10 +24,28 @@ verdict a human can trust without re-testing.
 ## 1. Check it out (isolated; never touch the main working tree)
 ```bash
 gh pr view $ARGUMENTS --json title,headRefName,baseRefName,additions,deletions,files,body
-git fetch origin "pull/$ARGUMENTS/head:pr-$ARGUMENTS"
+git fetch origin main "pull/$ARGUMENTS/head:pr-$ARGUMENTS"
 git worktree add /tmp/pr-$ARGUMENTS "pr-$ARGUMENTS"
 cd /tmp/pr-$ARGUMENTS && git submodule update --init --recursive
 ```
+
+## 1.5 Also build the merged-with-main state (do NOT skip this)
+`mergeable: true` on GitHub only means the branch applies without conflict *markers* — it
+says nothing about whether the combined result actually behaves. This repo's main-branch
+ruleset does **not** require a PR to be rebased onto the latest `main` before merging
+(`strict_required_status_checks_policy` is off), and the full test suite (`run_integrity_tests`)
+only runs on `pull_request`, never on `push: main` — so a semantic break (two independently-clean
+changes that combine into something broken, with zero textual conflict) can land undetected
+until something notices it's broken *after* merge. Catch it before merge instead: build the
+state this PR would actually produce and test that too, not just the branch in isolation.
+```bash
+git worktree add /tmp/pr-$ARGUMENTS-merged origin/main
+cd /tmp/pr-$ARGUMENTS-merged && git submodule update --init --recursive
+git merge --squash pr-$ARGUMENTS && git commit -m "sim: PR #$ARGUMENTS merged onto main, for validation only"
+```
+(If the merge conflicts here, that's real — resolve it as part of the rebase you'll need
+before this PR can land, and note it in the verdict. Skip this step only when the PR's base
+already *is* the current `main` tip, i.e. there's no drift to test.)
 
 ## 2. Diff → test plan
 `git diff --stat <base>...HEAD`. Map the changed files to what to run:
@@ -49,7 +67,8 @@ imports `requests`, or an RNG-flaky scenario). When in doubt, re-trigger and re-
 
 ## 3. ACTUALLY RUN IT — this is the real testing
 Use the **`ankimon-harness`** skill for the how-to (its `reference.md` has every API).
-Minimum bar, always:
+Run this against **both** worktrees from steps 1 and 1.5 — the branch alone, then the
+merged-with-main state. Minimum bar, always:
 ```bash
 python3 harness/check.py            # the Tier-1 gate — must exit 0
 ```
@@ -65,6 +84,9 @@ python3 harness/scenarios/auto_battle.py       # if auto-battle touched
 - Every run: scan events for `type == "error"`; assert `get_state()` invariants (HP in
   `[0, max]`, caught-count/levels move as expected). An `error` event = a real crash.
 - Tier 2 (GUI machine): `python3 harness/check.py` then the real-window probes / screenshots.
+- **If the branch-only run passes but the merged-state run fails**, that's the signature of a
+  semantic conflict — flag it explicitly in the verdict (not just "DON'T MERGE"), since the
+  fix belongs in a rebase, not in either PR's own code being wrong.
 
 ## 4. Static review (catches what the harness can't reach)
 Run the **`code-review`** skill on the diff for correctness bugs (logic the harness didn't exercise).
@@ -87,6 +109,7 @@ The verdict MUST contain:
 ## 6. Clean up
 ```bash
 git worktree remove /tmp/pr-$ARGUMENTS --force; git branch -D "pr-$ARGUMENTS" 2>/dev/null
+git worktree remove /tmp/pr-$ARGUMENTS-merged --force 2>/dev/null
 ```
 
 ## Honest scope
