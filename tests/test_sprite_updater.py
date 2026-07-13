@@ -1,3 +1,4 @@
+import requests
 import json
 import hashlib
 import os
@@ -162,12 +163,15 @@ def test_sprite_updater_snooze(tmp_path, monkeypatch):
     import requests
     monkeypatch.setattr(requests, "get", mock_get)
 
-    # 1. With snooze active and ignore_snooze=False, silent=True -> should report up_to_date
     res_snoozed = su.calculate_sprite_diff(dest_dir, silent=True, ignore_snooze=False)
-    assert res_snoozed["status"] == "up_to_date"
+    assert res_snoozed["status"] == "snoozed"
 
     # 2. With snooze active and ignore_snooze=True -> should ignore snooze and proceed
-    mock_tree_api = {"tree": []}
+    mock_tree_api = {
+        "tree": [
+            {"path": "a.png", "type": "blob", "sha": "some_sha"}
+        ]
+    }
     def mock_get_full(url, *args, **kwargs):
         if "commits/main" in url:
             return MockResponse(mock_commits_api)

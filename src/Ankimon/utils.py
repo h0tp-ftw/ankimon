@@ -98,9 +98,14 @@ def test_online_connectivity(
     from urllib.parse import urlparse
     try:
         parsed = urlparse(url)
-        host = parsed.hostname or "raw.githubusercontent.com"
-        port = parsed.port or 443
-        socket.create_connection((host, port), timeout=timeout)
+        host = parsed.hostname
+        if not host:
+            return False
+        port = parsed.port
+        if not port:
+            port = 80 if parsed.scheme == "http" else 443
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
         return True
     except Exception:
         return False

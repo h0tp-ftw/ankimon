@@ -49,7 +49,7 @@ class SpriteUpdateDiffThread(QThread):
                     return
 
                 self.status_signal.emit(f"Downloading ({i + 1}/{total_files}): {path}")
-                url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon-sprites/main/{path}"
+                url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon-sprites/{self.remote_sha}/{path}"
                 
                 success = False
                 for attempt in range(3):
@@ -358,7 +358,7 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
 
         # Check if update prompts are currently snoozed and exit early without network requests
         if not ignore_snooze and silent and isinstance(snooze_until, (int, float)) and time.time() < snooze_until:
-            return {"status": "up_to_date", "remote_sha": local_sha}
+            return {"status": "snoozed", "remote_sha": local_sha}
 
         # 1. Fetch latest remote commit SHA
         res = requests.get("https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main", timeout=10)
@@ -377,6 +377,8 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
         res = requests.get(tree_url, timeout=15)
         res.raise_for_status()
         tree_data = res.json()
+        if tree_data.get("truncated"):
+            return {"status": "error", "error": "GitHub Git Tree response was truncated. Differential update aborted."}
         remote_tree = tree_data.get("tree", [])
 
         # Remote files map: path -> sha
@@ -401,6 +403,9 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
         for path in local_files:
             if path not in remote_files:
                 deleted.append(path)
+
+        if not added and not modified and not deleted:
+            return {"status": "up_to_date", "remote_sha": remote_sha}
 
         return {
             "status": "update_available",
