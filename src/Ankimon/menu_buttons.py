@@ -492,10 +492,7 @@ def create_menu_actions(
     file_check_action.triggered.connect(show_api_key_dialog)
     mw.pokemenu.addAction(file_check_action)
 
-    downloader_action = QAction(mw.translator.translate("download_resources_button"), mw)
-    downloader_action.setMenuRole(QAction.MenuRole.NoRole)
-    downloader_action.triggered.connect(show_agreement_and_download_dialog)
-    help_menu.addAction(downloader_action)
+
 
     # Reload-teardown guard (registry-anchored, same contract as card_hooks): a
     # module re-exec rebuilds mw.pokemenu at module scope, so drop any menu a

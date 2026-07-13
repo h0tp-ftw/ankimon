@@ -103,6 +103,18 @@ class DownloadThread(QThread):
             self.status_signal.emit(f"Error calculating hash for {file_path.name}: {e}")
             return ""
 
+    def _fetch_latest_commit_sha(self) -> Optional[str]:
+        """Fetches the latest commit SHA of the main branch from GitHub API."""
+        api_url = "https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main"
+        try:
+            response = requests.get(api_url, timeout=10)
+            response.raise_for_status()
+            commit_data = response.json()
+            return commit_data.get("sha")
+        except Exception as e:
+            self.status_signal.emit(f"Warning: Failed to fetch latest commit SHA from GitHub: {e}")
+            return None
+
     def run(self):
         self.status_signal.emit("Initializing download...")
         self.progress_signal.emit(0)
@@ -298,6 +310,28 @@ class DownloadThread(QThread):
         except OSError as e:
             self.status_signal.emit(f"Error creating completion flag file: {e}")
             # Non-critical, but report issue.
+
+        # Save commit SHA if fetched
+        latest_sha = self._fetch_latest_commit_sha()
+        if latest_sha:
+            try:
+                state_path = self.dest_dir_path.parent / "sprites_update_state.json"
+                import json
+                state_path.write_text(json.dumps({
+                    "commit_sha": latest_sha,
+                    "updated_at": time.time()
+                }, indent=2), encoding="utf-8")
+                self.status_signal.emit("Saved sprite update state metadata.")
+            except Exception as e:
+                self.status_signal.emit(f"Warning: Failed to save sprite update state: {e}")
+
+            # Force clear the local manifest cache to trigger a fresh scan
+            try:
+                manifest_path = self.dest_dir_path.parent / "sprites_local_manifest.json"
+                if manifest_path.exists():
+                    manifest_path.unlink()
+            except Exception:
+                pass
 
         self.download_finished_signal.emit(True, "Sprites download and extraction complete!")
 

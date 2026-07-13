@@ -271,5 +271,10 @@ def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
     def _on_profile_open() -> None:
         if online_connectivity:
             check_for_update(online_connectivity, ssh)
+            try:
+                from .pyobj.sprite_updater import trigger_sprites_update_check
+                trigger_sprites_update_check(parent=mw, silent=True)
+            except Exception as e:
+                _log_info(f"Failed to start silent sprite update check: {e}")
 
     gui_hooks.profile_did_open.append(_on_profile_open)

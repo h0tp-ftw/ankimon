@@ -17,6 +17,7 @@ src/Ankimon/user_files/backups
 .vscode
 .gemini
 .agents
+scratch/
 debug_console.py
 src/Ankimon/user_files/todays_shop.json
 src/Ankimon/user_files/meta.json
@@ -47,6 +48,8 @@ src/Ankimon/user_files/json/*
 # Source of truth: https://github.com/h0tp-ftw/ankimon-sprites
 src/Ankimon/user_files/sprites/
 src/Ankimon/user_files/update_state.json
+src/Ankimon/user_files/sprites_update_state.json
+src/Ankimon/user_files/sprites_local_manifest.json
 tests/encounter_weighting_simulations/simulation_report.txt
 tests/encounter_weighting_simulations/simulation_results.json
 venv/

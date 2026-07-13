@@ -92,17 +92,17 @@ def check_file_exists(folder, filename):
 
 def test_online_connectivity(
     url="https://raw.githubusercontent.com/Unlucky-Life/ankimon/main/update_txt.md",
-    timeout=5,
+    timeout=1,
 ):
+    import socket
+    from urllib.parse import urlparse
     try:
-        # Attempt to get the URL
-        response = requests.get(url, timeout=timeout)
-
-        # Check if the response status code is 200 (OK)
-        if response.status_code == 200:
-            return True
-    except:
-        # Connection error means no internet connectivity
+        parsed = urlparse(url)
+        host = parsed.hostname or "raw.githubusercontent.com"
+        port = parsed.port or 443
+        socket.create_connection((host, port), timeout=timeout)
+        return True
+    except Exception:
         return False
 
 

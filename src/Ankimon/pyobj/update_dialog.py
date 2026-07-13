@@ -1,5 +1,6 @@
 from aqt import mw
 from aqt.operations import QueryOp
+from pathlib import Path
 from aqt.qt import (
     Qt,
     QDialog,
@@ -37,7 +38,7 @@ from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
 
 
 class UpdateDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, select_tab=None):
         super().__init__(parent or mw)
         self.setWindowTitle("Update Ankimon")
         self.setMinimumWidth(520)
@@ -67,8 +68,12 @@ class UpdateDialog(QDialog):
         self.tabs.addTab(self._build_brrr_tab(), f"  Branch: {self.active_branch}  ")
         self.tabs.addTab(self._build_releases_tab(), "  Releases  ")
         self.tabs.addTab(self._build_dev_tab(), "  Developer  ")
+        self.tabs.addTab(self._build_sprites_tab(), "  Sprites  ")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         body.addWidget(self.tabs)
+
+        if select_tab == "sprites":
+            self.tabs.setCurrentIndex(3)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -641,6 +646,188 @@ class UpdateDialog(QDialog):
         layout.addWidget(group)
         layout.addStretch()
         return widget
+
+    def _build_sprites_tab(self):
+        c = self._colors
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(14)
+        layout.setContentsMargins(6, 14, 6, 6)
+
+        info = QLabel("Check and download updates for the Ankimon sprites repository.")
+        info.setStyleSheet(f"color: {c['muted']}; font-size: 11px;")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.sprites_status = QLabel("Ready to check for updates.")
+        self.sprites_status.setStyleSheet("font-size: 12px;")
+        self.sprites_status.setWordWrap(True)
+        layout.addWidget(self.sprites_status)
+
+        self.sprites_progress = QProgressBar()
+        self.sprites_progress.setRange(0, 100)
+        self.sprites_progress.setValue(0)
+        self.sprites_progress.setVisible(False)
+        self.sprites_progress.setFixedHeight(12)
+        layout.addWidget(self.sprites_progress)
+
+        self.sprites_snooze_checkbox = QCheckBox("Snooze these updates for 7 days")
+        self.sprites_snooze_checkbox.setStyleSheet(f"color: {c['muted']}; font-size: 11px;")
+        
+        from ..resources import user_path_sprites
+        import json
+        import time
+        dest_dir = Path(user_path_sprites)
+        state_path = dest_dir.parent / "sprites_update_state.json"
+        is_snoozed = False
+        if state_path.exists():
+            try:
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                snooze_until = state_data.get("snooze_until")
+                is_snoozed = isinstance(snooze_until, (int, float)) and time.time() < snooze_until
+            except Exception:
+                pass
+        self.sprites_snooze_checkbox.setChecked(is_snoozed)
+        self.sprites_snooze_checkbox.stateChanged.connect(self._on_sprites_snooze_changed)
+        layout.addWidget(self.sprites_snooze_checkbox)
+
+        btn_layout = QHBoxLayout()
+        self.sprites_check_btn = QPushButton("Check for Updates")
+        self.sprites_check_btn.setMinimumHeight(38)
+        self.sprites_check_btn.clicked.connect(self._check_sprites)
+        btn_layout.addWidget(self.sprites_check_btn)
+
+        self.sprites_update_btn = QPushButton("Install Update")
+        self.sprites_update_btn.setMinimumHeight(38)
+        self.sprites_update_btn.setVisible(False)
+        self.sprites_update_btn.clicked.connect(self._start_sprites_download)
+        btn_layout.addWidget(self.sprites_update_btn)
+
+        layout.addLayout(btn_layout)
+        layout.addStretch()
+        return widget
+
+    def _on_sprites_snooze_changed(self, _state):
+        from ..resources import user_path_sprites
+        import json
+        import time
+        dest_dir = Path(user_path_sprites)
+        state_path = dest_dir.parent / "sprites_update_state.json"
+        
+        state_data = {}
+        if state_path.exists():
+            try:
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+                
+        if self.sprites_snooze_checkbox.isChecked():
+            state_data["snooze_until"] = time.time() + 7 * 24 * 60 * 60
+        else:
+            state_data["snooze_until"] = 0
+            
+        try:
+            state_path.write_text(json.dumps(state_data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _check_sprites(self):
+        self.sprites_check_btn.setEnabled(False)
+        self.sprites_status.setText("Checking for sprite updates...")
+        self.sprites_progress.setValue(0)
+        self.sprites_progress.setVisible(False)
+        self.sprites_update_btn.setVisible(False)
+        
+        from .sprite_updater import calculate_sprite_diff
+        from ..resources import user_path_sprites
+        from aqt.operations import QueryOp
+        
+        dest_dir = Path(user_path_sprites)
+        
+        def bg(_col):
+            # Run with ignore_snooze=True since this is a manual check
+            return calculate_sprite_diff(dest_dir, silent=False, ignore_snooze=True)
+
+        def done(result):
+            self.sprites_check_btn.setEnabled(True)
+            status = result.get("status")
+            if status == "up_to_date":
+                self.sprites_status.setText("Sprites are already up to date!")
+                self.sprites_progress.setValue(100)
+                self.sprites_progress.setVisible(True)
+            elif status == "error":
+                self.sprites_status.setText(f"Error checking updates: {result.get('error')}")
+            elif status == "update_available":
+                self.sprites_added = result.get("added", [])
+                self.sprites_modified = result.get("modified", [])
+                self.sprites_deleted = result.get("deleted", [])
+                self.sprites_remote_sha = result.get("remote_sha")
+                
+                msg = f"A sprites update is available!\n\n"
+                msg += f"  • New sprites: {len(self.sprites_added)}\n"
+                msg += f"  • Modified sprites: {len(self.sprites_modified)}\n"
+                if self.sprites_deleted:
+                    msg += f"  • Obsolete to remove: {len(self.sprites_deleted)}\n"
+                
+                self.sprites_status.setText(msg)
+                self.sprites_update_btn.setVisible(True)
+
+        QueryOp(
+            parent=self,
+            op=bg,
+            success=done
+        ).without_collection().run_in_background()
+
+    def _start_sprites_download(self):
+        self.sprites_update_btn.setEnabled(False)
+        self.sprites_check_btn.setEnabled(False)
+        self.sprites_progress.setVisible(True)
+        self.sprites_progress.setValue(0)
+        
+        from .sprite_updater import SpriteUpdateDiffThread
+        from ..resources import user_path_sprites
+        from .download_sprites import DownloadThread
+        
+        dest_dir = Path(user_path_sprites)
+        total_changes = len(self.sprites_added) + len(self.sprites_modified)
+        
+        if total_changes > 150:
+            self.sprites_status.setText("Massive update detected. Downloading full zip for efficiency...")
+            urls = [
+                "https://huggingface.co/datasets/h0tp/ankimon-sprites/resolve/main/sprites.zip",
+                "https://github.com/h0tp-ftw/ankimon-sprites/releases/download/latest/sprites.zip",
+            ]
+            self.sprites_thread = DownloadThread(urls, dest_dir, force_download=True)
+        else:
+            self.sprites_thread = SpriteUpdateDiffThread(
+                self.sprites_added, self.sprites_modified, self.sprites_deleted, self.sprites_remote_sha, dest_dir
+            )
+            
+        self.sprites_thread.progress_signal.connect(self.sprites_progress.setValue)
+        self.sprites_thread.status_signal.connect(self.sprites_status.setText)
+        
+        def finished(success, message):
+            self.sprites_check_btn.setEnabled(True)
+            self.sprites_update_btn.setVisible(False)
+            self.sprites_update_btn.setEnabled(True)
+            if success:
+                try:
+                    manifest_path = dest_dir.parent / "sprites_local_manifest.json"
+                    if manifest_path.exists():
+                        manifest_path.unlink()
+                except Exception:
+                    pass
+                self.sprites_status.setText("Update complete! " + message)
+                self.sprites_progress.setValue(100)
+            else:
+                self.sprites_status.setText("Update failed: " + message)
+                
+        if isinstance(self.sprites_thread, DownloadThread):
+            self.sprites_thread.download_finished_signal.connect(finished)
+        else:
+            self.sprites_thread.finished_signal.connect(finished)
+            
+        self.sprites_thread.start()
 
     # --- Data loading ---
 

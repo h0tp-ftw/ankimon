@@ -318,6 +318,8 @@ def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
         "user_files/ankimon.db",
         "user_files/ankimonDEV.db",
         "user_files/update_state.json",
+        "user_files/sprites_update_state.json",
+        "user_files/sprites_local_manifest.json",
     ]
     for p in always_preserve:
         p = p.rstrip("/")
@@ -549,6 +551,8 @@ def _get_gitignore_patterns() -> list[str]:
             "user_files/ankimon.db",
             "user_files/json/*",
             "user_files/sprites/",
+            "user_files/sprites_update_state.json",
+            "user_files/sprites_local_manifest.json",
             "meta.json",
             "*.pyc",
             "*.log",
