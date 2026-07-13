@@ -10,6 +10,9 @@ import pytest
 _SRC = Path(__file__).parent.parent / "src"
 
 def _load_sprite_updater():
+    # Save original sys.modules state
+    old_modules = dict(sys.modules)
+    
     # Setup stubs for collections & tests to bypass aqt/Qt dependencies in non-Anki test environment
     if "aqt" not in sys.modules:
         aqt = types.ModuleType("aqt")
@@ -47,6 +50,14 @@ def _load_sprite_updater():
     su_mod = importlib.util.module_from_spec(spec)
     sys.modules["Ankimon.pyobj.sprite_updater"] = su_mod
     spec.loader.exec_module(su_mod)
+    
+    # Restore original sys.modules, keeping only the newly imported sprite_updater module
+    for k in list(sys.modules.keys()):
+        if k not in old_modules and k != "Ankimon.pyobj.sprite_updater":
+            del sys.modules[k]
+    for k, v in old_modules.items():
+        sys.modules[k] = v
+    sys.modules["Ankimon.pyobj.sprite_updater"] = su_mod
     
     return su_mod
 
