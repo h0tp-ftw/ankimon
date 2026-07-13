@@ -42,29 +42,30 @@ class SpriteUpdateDiffThread(QThread):
         self.dest_dir.mkdir(parents=True, exist_ok=True)
 
         # 1. Download added & modified files
-        for i, path in enumerate(self.added + self.modified):
-            if self._is_cancelled:
-                self.finished_signal.emit(False, "Update cancelled.")
-                return
-
-            self.status_signal.emit(f"Downloading ({i + 1}/{total_files}): {path}")
-            url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon-sprites/main/{path}"
-            
-            success = False
-            for attempt in range(3):
+        with requests.Session() as session:
+            for i, path in enumerate(self.added + self.modified):
                 if self._is_cancelled:
                     self.finished_signal.emit(False, "Update cancelled.")
                     return
-                try:
-                    response = requests.get(url, timeout=15)
-                    response.raise_for_status()
-                    dest_file = self.dest_dir / path
-                    dest_file.parent.mkdir(parents=True, exist_ok=True)
-                    dest_file.write_bytes(response.content)
-                    success = True
-                    break
-                except Exception:
-                    time.sleep(1)
+
+                self.status_signal.emit(f"Downloading ({i + 1}/{total_files}): {path}")
+                url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon-sprites/main/{path}"
+                
+                success = False
+                for attempt in range(3):
+                    if self._is_cancelled:
+                        self.finished_signal.emit(False, "Update cancelled.")
+                        return
+                    try:
+                        response = session.get(url, timeout=15)
+                        response.raise_for_status()
+                        dest_file = self.dest_dir / path
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
+                        dest_file.write_bytes(response.content)
+                        success = True
+                        break
+                    except Exception:
+                        time.sleep(1)
             
             if not success:
                 self.finished_signal.emit(False, f"Failed to download sprite: {path}")
@@ -343,14 +344,7 @@ def get_local_sprites_manifest(dest_dir: Path) -> dict:
 def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: bool = False) -> dict:
     """Calculates local file Git SHA-1 hashes and diffs them against the remote repository tree."""
     try:
-        # 1. Fetch latest remote commit SHA
-        res = requests.get("https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main", timeout=10)
-        res.raise_for_status()
-        remote_sha = res.json().get("sha")
-        if not remote_sha:
-            return {"status": "error", "error": "Invalid API response for latest commit."}
-
-        # Read local state
+        # Read local state first to check for active snooze
         local_sha = None
         snooze_until = None
         state_path = dest_dir.parent / "sprites_update_state.json"
@@ -362,9 +356,16 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
             except Exception:
                 pass
 
-        # Check if update prompts are currently snoozed
+        # Check if update prompts are currently snoozed and exit early without network requests
         if not ignore_snooze and silent and isinstance(snooze_until, (int, float)) and time.time() < snooze_until:
-            return {"status": "up_to_date", "remote_sha": remote_sha}
+            return {"status": "up_to_date", "remote_sha": local_sha}
+
+        # 1. Fetch latest remote commit SHA
+        res = requests.get("https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main", timeout=10)
+        res.raise_for_status()
+        remote_sha = res.json().get("sha")
+        if not remote_sha:
+            return {"status": "error", "error": "Invalid API response for latest commit."}
 
         # If SHA matches and sprites exist, we are up to date.
         # Bypass this shortcut on manual checks (where ignore_snooze=True) to allow verification/repair.
@@ -430,20 +431,7 @@ def trigger_sprites_update_check(parent=None, silent=False):
             dialog = SpriteUpdateDialog(parent=parent or mw, silent_on_up_to_date=False, precalculated_result=result)
             dialog.exec()
         elif status == "up_to_date":
-            if silent:
-                # Save the state file silently to prevent repeatedly checking remote Git trees on every boot
-                remote_sha = result.get("remote_sha")
-                if remote_sha:
-                    try:
-                        state_path = dest_dir.parent / "sprites_update_state.json"
-                        state_path.write_text(json.dumps({
-                            "commit_sha": remote_sha,
-                            "updated_at": time.time(),
-                            "snooze_until": 0
-                        }, indent=2), encoding="utf-8")
-                    except Exception:
-                        pass
-            else:
+            if not silent:
                 QMessageBox.information(parent or mw, "Ankimon Sprites Update", "Sprites are already up to date!")
         elif status == "error":
             print(f"Sprite update check error: {result.get('error')}")
