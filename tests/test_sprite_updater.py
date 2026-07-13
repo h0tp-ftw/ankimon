@@ -66,7 +66,9 @@ su = _load_sprite_updater()
 
 
 def test_git_blob_sha1(tmp_path):
-    test_file = tmp_path / "test.png"
+    dest_dir = tmp_path / "sprites"
+    dest_dir.mkdir()
+    test_file = dest_dir / "test.png"
     content = b"hello"
     test_file.write_bytes(content)
 
@@ -75,17 +77,7 @@ def test_git_blob_sha1(tmp_path):
     hasher.update(content)
     expected_sha = hasher.hexdigest()
 
-    local_files = {}
-    for root, dirs, files in os.walk(tmp_path):
-        for f in files:
-            full_path = Path(root) / f
-            size = full_path.stat().st_size
-            h = hashlib.sha1()
-            h.update(f"blob {size}\0".encode("utf-8"))
-            with open(full_path, "rb") as fh:
-                while chunk := fh.read(1024 * 1024):
-                    h.update(chunk)
-            local_files[f] = h.hexdigest()
+    local_files = su.get_local_sprites_manifest(dest_dir)
 
     assert local_files["test.png"] == expected_sha
     assert expected_sha == "b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0"

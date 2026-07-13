@@ -66,13 +66,12 @@ class SpriteUpdateDiffThread(QThread):
                         break
                     except Exception:
                         time.sleep(1)
-            
-            if not success:
-                self.finished_signal.emit(False, f"Failed to download sprite: {path}")
-                return
+                if not success:
+                    self.finished_signal.emit(False, f"Failed to download sprite: {path}")
+                    return
 
-            downloaded_count += 1
-            self.progress_signal.emit(int((downloaded_count / total_files) * 100))
+                downloaded_count += 1
+                self.progress_signal.emit(int((downloaded_count / total_files) * 100))
 
         # 2. Clean up deleted files
         for path in self.deleted:
