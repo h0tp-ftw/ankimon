@@ -152,12 +152,14 @@ def test_sprite_updater_snooze(tmp_path, monkeypatch):
     import json
     state_path = tmp_path / "sprites_update_state.json"
     state_path.write_text(json.dumps({
-        "commit_sha": "old_sha",
+        "commit_sha": "new_remote_commit_sha",
         "snooze_until": time.time() + 3600
     }), encoding="utf-8")
 
     mock_commits_api = {"sha": "new_remote_commit_sha"}
+    calls = []
     def mock_get(url, *args, **kwargs):
+        calls.append(url)
         return MockResponse(mock_commits_api)
 
     import requests
@@ -165,6 +167,7 @@ def test_sprite_updater_snooze(tmp_path, monkeypatch):
 
     res_snoozed = su.calculate_sprite_diff(dest_dir, silent=True, ignore_snooze=False)
     assert res_snoozed["status"] == "snoozed"
+    assert calls == []
 
     # 2. With snooze active and ignore_snooze=True -> should ignore snooze and proceed
     mock_tree_api = {
@@ -180,3 +183,4 @@ def test_sprite_updater_snooze(tmp_path, monkeypatch):
 
     res_ignored = su.calculate_sprite_diff(dest_dir, silent=True, ignore_snooze=True)
     assert res_ignored["status"] == "update_available"
+    assert res_ignored["added"] == ["a.png"]
