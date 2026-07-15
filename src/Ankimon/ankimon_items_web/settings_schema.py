@@ -202,6 +202,29 @@ GROUPS = [
                 ]
             }
         ]
+    },
+    {
+        "label": "Leaderboard",
+        "settings": [
+            {
+                "key": "misc.leaderboard",
+                "label": "Enable Leaderboard Sync",
+                "description": "Share your stats with the Ankimon leaderboard community. When enabled, your progress will be automatically synced.",
+                "type": "boolean",
+            },
+            {
+                "key": "leaderboard.username",
+                "label": "Username",
+                "description": "Your username for the Ankimon leaderboard. This will be displayed publicly on the leaderboard.",
+                "type": "string",
+            },
+            {
+                "key": "leaderboard.api_key",
+                "label": "API Key",
+                "description": 'Your API key for the Ankimon leaderboard. Feel free to get one from the <a href="https://leaderboard.ankimon.com/" target="_blank">Ankimon website</a> (at https://leaderboard.ankimon.com/)!',
+                "type": "password",
+            }
+        ]
     }
 ]
 
