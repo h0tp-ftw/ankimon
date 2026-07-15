@@ -823,3 +823,39 @@
 .setting-description a[target="_blank"]:hover::after {
     opacity: 1;
 }
+
+/* ============================================================
+   Disabled setting rows (for leaderboard toggle)
+   ============================================================ */
+.setting-row.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.setting-row.disabled .setting-input {
+    background: var(--bg-darker);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.setting-row.disabled .setting-label {
+    color: var(--text-muted);
+}
+
+.setting-row.disabled .setting-description {
+    color: var(--text-muted);
+    opacity: 0.6;
+}
+
+.setting-row.disabled .setting-input[type="password"] {
+    background: var(--bg-darker);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+}
+
+.setting-row.disabled .setting-input:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+    cursor: not-allowed;
+}
