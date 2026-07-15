@@ -65,6 +65,40 @@
         });
     }
 
+    // ---------- Leaderboard toggle handling ----------
+    function setupLeaderboardToggle() {
+        const toggleRow = document.querySelector('.setting-row[data-key="misc.leaderboard"]');
+        if (!toggleRow) return;
+        
+        const toggleButtons = toggleRow.querySelectorAll('.setting-toggle-option');
+        if (!toggleButtons.length) return;
+        
+        const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
+        const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
+        
+        function updateLeaderboardFields() {
+            const isEnabled = toggleRow.querySelector('.setting-toggle-option.active')?.textContent === 'Enabled';
+            
+            [usernameRow, apiKeyRow].forEach(row => {
+                if (!row) return;
+                const inputs = row.querySelectorAll('.setting-input');
+                inputs.forEach(input => {
+                    input.disabled = !isEnabled;
+                });
+                row.classList.toggle('disabled', !isEnabled);
+            });
+        }
+        
+        toggleButtons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                setTimeout(updateLeaderboardFields, 10);
+            });
+        });
+        
+        // Initial state
+        updateLeaderboardFields();
+    }
+
     // ---------- Rendering ----------
     function renderAll() {
         renderGroupJumps();
@@ -152,6 +186,9 @@
         
         // Setup description links after content is rendered
         setupDescriptionLinks();
+        
+        // Setup leaderboard toggle behavior
+        setupLeaderboardToggle();
     }
 
     function buildSettingRow(setting) {
