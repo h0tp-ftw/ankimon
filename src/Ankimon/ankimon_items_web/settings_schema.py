@@ -55,8 +55,8 @@ GROUPS = [
                     "keys": [
                         ("battle.auto_catch_legendary", "Legendary"),
                         ("battle.auto_catch_mythical",  "Mythical"),
-                        ("battle.auto_catch_ultra",     "Ultra Beast"),
                         ("battle.auto_catch_starter",   "Starter"),
+                        ("battle.auto_catch_ultra",     "Ultra Beast"),
                         ("battle.auto_catch_mega",      "Mega"),
                         ("battle.auto_catch_gmax",      "Gigantamax"),
                         ("battle.auto_catch_regional",  "Regional Form"),
@@ -209,7 +209,7 @@ GROUPS = [
             {
                 "key": "misc.leaderboard",
                 "label": "Enable Leaderboard Sync",
-                "description": "Share your stats with the Ankimon leaderboard community. When enabled, your progress will be automatically synced.",
+                "description": 'Share your stats with the <a href="https://leaderboard.ankimon.com/" target="_blank">Ankimon leaderboard community</a>. When enabled, your progress will be automatically synced.',
                 "type": "boolean",
             },
             {
