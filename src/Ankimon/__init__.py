@@ -56,6 +56,7 @@ from .pyobj.error_handler import show_warning_with_traceback
 from .pyobj.backup_manager import BackupManager
 from .services import services
 from .events import events
+from .pyobj.ankimon_leaderboard import migrate_credentials_from_db
 
 # singletons.py already populated the service registry and mirrored these onto
 # mw (see services.py), so the previous mw.settings_ankimon/logger/settings_obj
@@ -65,6 +66,14 @@ from .events import events
 # instance to keep mw.translator identical to services.translator. Remove this
 # once menu_buttons stops building its own translator.
 mw.translator = translator
+
+# Migrate leaderboard credentials from database to settings
+# This runs once when Anki starts up
+try:
+    migrate_credentials_from_db()
+    print("Ankimon: Leaderboard credentials migration checked")
+except Exception as e:
+    print(f"Ankimon: Error during leaderboard credentials migration: {e}")
 
 # Deck-browser / deck-overview team grid (F19). Registration is gated on the
 # gui.team_deck_view setting and reload-safe (F31 registry-anchored record on
