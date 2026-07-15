@@ -236,6 +236,19 @@ class SettingsBridge(QObject):
         """Return list of [{id, name, sprite_url}] for all caught/collected Pokémon."""
         return self._w.handle_get_caught_pokemon()
 
+    # ============================================================
+    # ADDED: Open a URL in the default browser
+    # This makes links in settings descriptions clickable
+    # ============================================================
+    @pyqtSlot(str)
+    def openUrl(self, url):
+        """Open a URL in the default browser."""
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception as e:
+            print(f"Ankimon: Failed to open URL {url}: {e}")
+
 
 class ItemsBridge(QObject):
     """Items-screen actions — only meaningful when Items is loaded."""
@@ -2287,4 +2300,3 @@ class AnkimonItemsWeb(QDialog):
 
 
 # _attribute_xp_and_evs_to_companion has been moved to functions.mobile_sync
-
