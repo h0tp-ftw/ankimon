@@ -99,6 +99,16 @@
         updateLeaderboardFields();
     }
 
+    // ---------- Validation helpers ----------
+    function clearValidationErrors() {
+        document.querySelectorAll('.validation-error').forEach(el => {
+            el.classList.remove('validation-error');
+        });
+        document.querySelectorAll('.setting-input.validation-error').forEach(el => {
+            el.classList.remove('validation-error');
+        });
+    }
+
     // ---------- Rendering ----------
     function renderAll() {
         renderGroupJumps();
@@ -259,6 +269,8 @@
             setEdit(setting.key, input.value);
             updateDirtyUI();
             markRowDirty(setting.key);
+            // Clear validation error when user types
+            clearValidationErrors();
         });
         return input;
     }
@@ -669,6 +681,8 @@
             }
             updateDirtyUI();
             markRowDirty(setting.key);
+            // Clear validation error when user types
+            clearValidationErrors();
         });
         return input;
     }
@@ -682,6 +696,8 @@
             setEdit(setting.key, input.value);
             updateDirtyUI();
             markRowDirty(setting.key);
+            // Clear validation error when user types
+            clearValidationErrors();
         });
         return input;
     }
@@ -795,6 +811,61 @@
         // callers like the unsaved-changes guard can chain navigation.
         const done = typeof onDone === 'function' ? onDone : null;
         if (!bridge) { if (done) done(); return; }
+        
+        // ============================================================
+        // LEADERBOARD VALIDATION
+        // ============================================================
+        const toggleRow = document.querySelector('.setting-row[data-key="misc.leaderboard"]');
+        if (toggleRow) {
+            const isEnabled = toggleRow.querySelector('.setting-toggle-option.active')?.textContent === 'Enabled';
+            
+            if (isEnabled) {
+                const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
+                const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
+                
+                let username = '';
+                let apiKey = '';
+                
+                if (usernameRow) {
+                    const input = usernameRow.querySelector('.setting-input');
+                    if (input) username = input.value.trim();
+                }
+                
+                if (apiKeyRow) {
+                    const input = apiKeyRow.querySelector('.setting-input');
+                    if (input) apiKey = input.value.trim();
+                }
+                
+                if (!username || !apiKey) {
+                    const missing = [];
+                    if (!username) missing.push('• Username');
+                    if (!apiKey) missing.push('• API Key');
+                    
+                    const msg = '⚠️ Leaderboard Sync is enabled but the following fields are empty:\n\n' + 
+                               missing.join('\n') + 
+                               '\n\nPlease fill in all fields before saving.';
+                    showToast(msg, true);
+                    
+                    if (!username && usernameRow) {
+                        usernameRow.classList.add('validation-error');
+                        const input = usernameRow.querySelector('.setting-input');
+                        if (input) input.classList.add('validation-error');
+                    }
+                    if (!apiKey && apiKeyRow) {
+                        apiKeyRow.classList.add('validation-error');
+                        const input = apiKeyRow.querySelector('.setting-input');
+                        if (input) input.classList.add('validation-error');
+                    }
+                    
+                    if (done) done();
+                    return;
+                }
+            }
+        }
+        // ============================================================
+        // END LEADERBOARD VALIDATION
+        // ============================================================
+        
         const payload = {...state.edits};
         if (Object.keys(payload).length === 0) { if (done) done(); return; }
         // Stringify so the bridge sees a stable `str` parameter — see the
