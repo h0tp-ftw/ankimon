@@ -859,3 +859,39 @@
     border-color: rgba(255, 255, 255, 0.08);
     cursor: not-allowed;
 }
+
+/* ============================================================
+   Validation error styles
+   ============================================================ */
+.setting-row.validation-error .setting-input {
+    border-color: var(--accent-red, #f85149);
+    box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.15);
+    animation: error-shake 0.4s ease;
+}
+
+.setting-row.validation-error .setting-label {
+    color: var(--accent-red, #f85149);
+}
+
+.setting-row.validation-error .setting-input:focus {
+    border-color: var(--accent-red, #f85149);
+    box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.25);
+}
+
+.setting-row.validation-error .setting-description {
+    color: var(--accent-red, #f85149);
+    opacity: 0.8;
+}
+
+.setting-input.validation-error {
+    border-color: var(--accent-red, #f85149) !important;
+    box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.15) !important;
+}
+
+@keyframes error-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
