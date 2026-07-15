@@ -77,7 +77,7 @@ DEFAULT_CONFIG = {
     "misc.leaderboard": False,
     "misc.ankiweb_sync": False,
     "misc.YouShallNotPass_Ankimon_News": False,
-    "misc.show_tip_on_startup": True,  # Added default for Tip of the Day
+    "misc.show_tip_on_startup": True,
     "misc.discord_rich_presence": False,
     "misc.discord_rich_presence_text": 1,
     "misc.developer_mode": False,
@@ -97,6 +97,9 @@ DEFAULT_CONFIG = {
     "mobile.enabled": True,
     "mobile.resolution_mode": "manual",
     "mobile.inactive_companions": [],
+    # Leaderboard settings
+    "leaderboard.username": "",
+    "leaderboard.api_key": "",
 }
 
 
