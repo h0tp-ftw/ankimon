@@ -36,6 +36,35 @@
         renderAll();
     };
 
+    // ---------- Link handling ----------
+    function setupDescriptionLinks() {
+        document.querySelectorAll('.setting-description a').forEach(function(link) {
+            // Remove old listener to prevent duplicates
+            if (link._clickHandler) {
+                link.removeEventListener('click', link._clickHandler);
+            }
+            
+            link._clickHandler = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const url = this.getAttribute('href');
+                if (!url) return;
+                
+                // Try to use bridge if available
+                if (bridge && typeof bridge.openUrl === 'function') {
+                    bridge.openUrl(url);
+                } else if (bridge && typeof bridge.openLink === 'function') {
+                    bridge.openLink(url);
+                } else {
+                    // Fallback: open in new tab/window
+                    window.open(url, '_blank');
+                }
+            };
+            
+            link.addEventListener('click', link._clickHandler);
+        });
+    }
+
     // ---------- Rendering ----------
     function renderAll() {
         renderGroupJumps();
@@ -120,6 +149,9 @@
             frag.appendChild(groupEl);
         });
         root.replaceChildren(frag);
+        
+        // Setup description links after content is rendered
+        setupDescriptionLinks();
     }
 
     function buildSettingRow(setting) {
@@ -173,9 +205,25 @@
                 return buildChipGroup(setting);
             case 'wishlist':
                 return buildWishlistControl(setting);
+            case 'password':
+                return buildPasswordInput(setting);
             default:
                 return buildTextInput(setting);
         }
+    }
+
+    function buildPasswordInput(setting) {
+        const input = document.createElement('input');
+        input.type = 'password';
+        input.className = 'setting-input';
+        input.value = currentValue(setting) ?? '';
+        input.placeholder = 'Enter your API key';
+        input.addEventListener('input', () => {
+            setEdit(setting.key, input.value);
+            updateDirtyUI();
+            markRowDirty(setting.key);
+        });
+        return input;
     }
 
     function buildWishlistControl(setting) {
