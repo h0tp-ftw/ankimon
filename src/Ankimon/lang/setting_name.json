@@ -69,7 +69,7 @@
     "misc.remove_level_cap": "Remove Level Cap",
     "misc.language": "Language",
     "misc.ssh": "SSH Access",
-    "misc.leaderboard": "Ankimon Leaderboard",
+    "misc.leaderboard": "Enable Leaderboard Sync",
     "misc.ankiweb_sync": "AnkiWeb Sync",
     "misc.YouShallNotPass_Ankimon_News": "Prevent Ankimon News on Startup",
     "misc.discord_rich_presence": "Discord Rich Presence - Ankimon",
@@ -78,6 +78,7 @@
     "misc.developer_mode": "Developer Mode",
     "trainer.name": "Trainer Name",
     "trainer.cash_reward_amount": "Cash Reward Per Interval",
-    "trainer.cash_reward_interval": "Cards Per Cash Reward"
-
+    "trainer.cash_reward_interval": "Cards Per Cash Reward",
+    "leaderboard.username": "Username",
+    "leaderboard.api_key": "API Key"
 }
