@@ -70,9 +70,6 @@
         const toggleRow = document.querySelector('.setting-row[data-key="misc.leaderboard"]');
         if (!toggleRow) return;
         
-        const toggleButtons = toggleRow.querySelectorAll('.setting-toggle-option');
-        if (!toggleButtons.length) return;
-        
         const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
         const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
         
@@ -89,13 +86,8 @@
             });
         }
         
-        toggleButtons.forEach(btn => {
-            btn.addEventListener('click', function() {
-                setTimeout(updateLeaderboardFields, 10);
-            });
-        });
-        
-        // Initial state
+        // No redundant click listeners needed!
+        // The toggle's click handler already calls renderAll() → setupLeaderboardToggle() → updateLeaderboardFields()
         updateLeaderboardFields();
     }
 
@@ -815,51 +807,49 @@
         // ============================================================
         // LEADERBOARD VALIDATION
         // ============================================================
-        const toggleRow = document.querySelector('.setting-row[data-key="misc.leaderboard"]');
-        if (toggleRow) {
-            const isEnabled = toggleRow.querySelector('.setting-toggle-option.active')?.textContent === 'Enabled';
+        const setting = findSetting('misc.leaderboard');
+        const isEnabled = setting ? currentValue(setting) : false;
+        
+        if (isEnabled) {
+            const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
+            const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
             
-            if (isEnabled) {
-                const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
-                const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
+            let username = '';
+            let apiKey = '';
+            
+            if (usernameRow) {
+                const input = usernameRow.querySelector('.setting-input');
+                if (input) username = input.value.trim();
+            }
+            
+            if (apiKeyRow) {
+                const input = apiKeyRow.querySelector('.setting-input');
+                if (input) apiKey = input.value.trim();
+            }
+            
+            if (!username || !apiKey) {
+                const missing = [];
+                if (!username) missing.push('• Username');
+                if (!apiKey) missing.push('• API Key');
                 
-                let username = '';
-                let apiKey = '';
+                const msg = '⚠️ Leaderboard Sync is enabled but the following fields are empty:\n\n' + 
+                           missing.join('\n') + 
+                           '\n\nPlease fill in all fields before saving.';
+                showToast(msg, true);
                 
-                if (usernameRow) {
+                if (!username && usernameRow) {
+                    usernameRow.classList.add('validation-error');
                     const input = usernameRow.querySelector('.setting-input');
-                    if (input) username = input.value.trim();
+                    if (input) input.classList.add('validation-error');
                 }
-                
-                if (apiKeyRow) {
+                if (!apiKey && apiKeyRow) {
+                    apiKeyRow.classList.add('validation-error');
                     const input = apiKeyRow.querySelector('.setting-input');
-                    if (input) apiKey = input.value.trim();
+                    if (input) input.classList.add('validation-error');
                 }
                 
-                if (!username || !apiKey) {
-                    const missing = [];
-                    if (!username) missing.push('• Username');
-                    if (!apiKey) missing.push('• API Key');
-                    
-                    const msg = '⚠️ Leaderboard Sync is enabled but the following fields are empty:\n\n' + 
-                               missing.join('\n') + 
-                               '\n\nPlease fill in all fields before saving.';
-                    showToast(msg, true);
-                    
-                    if (!username && usernameRow) {
-                        usernameRow.classList.add('validation-error');
-                        const input = usernameRow.querySelector('.setting-input');
-                        if (input) input.classList.add('validation-error');
-                    }
-                    if (!apiKey && apiKeyRow) {
-                        apiKeyRow.classList.add('validation-error');
-                        const input = apiKeyRow.querySelector('.setting-input');
-                        if (input) input.classList.add('validation-error');
-                    }
-                    
-                    if (done) done();
-                    return;
-                }
+                if (done) done();
+                return;
             }
         }
         // ============================================================
