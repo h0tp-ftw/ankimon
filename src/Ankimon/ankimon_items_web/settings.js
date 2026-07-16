@@ -15,6 +15,16 @@
     let nav = null;
     let unsavedGuardOpen = false;
 
+    /**
+     * Initializes the QWebChannel connection to the Python backend.
+     * 
+     * Establishes communication with the settings bridge object exposed
+     * by the Python side. Falls back to standalone mode if the Qt
+     * WebChannel transport is unavailable.
+     * 
+     * @param {Function} cb - Callback function invoked with the bridge object
+     *                         or null if initialization fails.
+     */
     function initChannel(cb) {
         if (typeof qt === 'undefined' || !qt.webChannelTransport) {
             console.warn('qt.webChannelTransport unavailable — standalone mode');
@@ -30,6 +40,15 @@
         });
     }
 
+    /**
+     * Entry point for the Python backend to initialize the settings UI.
+     * 
+     * Receives the settings data payload, resets any pending edits, and
+     * triggers a full UI re-render.
+     * 
+     * @param {Object} data - The settings data containing groups, settings,
+     *                        and current values from the Python backend.
+     */
     window.initializeSettings = function (data) {
         state.data = data || {groups: []};
         state.edits = {};  // fresh data resets dirty state
@@ -37,6 +56,13 @@
     };
 
     // ---------- Link handling ----------
+    /**
+     * Sets up click handlers for all anchor tags within setting descriptions.
+     * 
+     * Intercepts link clicks to prevent default browser navigation and instead
+     * routes them through the Qt bridge for opening in the system's default
+     * browser. Falls back to window.open if the bridge is unavailable.
+     */
     function setupDescriptionLinks() {
         document.querySelectorAll('.setting-description a').forEach(function(link) {
             // Remove old listener to prevent duplicates
@@ -66,6 +92,14 @@
     }
 
     // ---------- Leaderboard toggle handling ----------
+    /**
+     * Manages the enabling/disabling of leaderboard credential fields.
+     * 
+     * When the "Enable Leaderboard Sync" toggle is toggled, this function
+     * enables or disables the Username and API Key input fields accordingly.
+     * The toggle's built-in click handler already triggers a full re-render,
+     * so no additional event listeners are needed.
+     */
     function setupLeaderboardToggle() {
         const toggleRow = document.querySelector('.setting-row[data-key="misc.leaderboard"]');
         if (!toggleRow) return;
@@ -92,6 +126,13 @@
     }
 
     // ---------- Validation helpers ----------
+    /**
+     * Removes validation error styling from all form elements.
+     * 
+     * Clears the 'validation-error' class from both setting rows and
+     * individual input elements. Typically called when the user begins
+     * typing in a previously invalid field.
+     */
     function clearValidationErrors() {
         document.querySelectorAll('.validation-error').forEach(el => {
             el.classList.remove('validation-error');
@@ -102,6 +143,13 @@
     }
 
     // ---------- Rendering ----------
+    /**
+     * Renders the entire settings UI from scratch.
+     * 
+     * Orchestrates the full rendering pipeline including sidebar navigation,
+     * settings content, search filtering, dirty state indicators, and
+     * scroll position tracking.
+     */
     function renderAll() {
         renderGroupJumps();
         renderContent();
@@ -113,6 +161,12 @@
         updateActiveSection();
     }
 
+    /**
+     * Renders the sidebar navigation with group section links.
+     * 
+     * Creates clickable jump links for each settings group, displaying
+     * the group name and the count of settings within it.
+     */
     function renderGroupJumps() {
         const container = document.getElementById('group-jumps');
         // Build into a fragment then swap atomically to avoid a brief
@@ -135,12 +189,25 @@
         container.replaceChildren(frag);
     }
 
+    /**
+     * Counts the total number of settings within a group including subgroups.
+     * 
+     * @param {Object} group - The settings group object.
+     * @returns {number} The total count of settings in the group.
+     */
     function countSettings(group) {
         let n = (group.settings || []).length;
         (group.subgroups || []).forEach((s) => { n += (s.settings || []).length; });
         return n;
     }
 
+    /**
+     * Renders the main settings content area.
+     * 
+     * Builds the complete settings tree from the data payload, including
+     * all groups, subgroups, and individual setting rows. After rendering,
+     * sets up link handlers and leaderboard toggle behavior.
+     */
     function renderContent() {
         const root = document.getElementById('settings-content');
         // Build the whole settings tree into a fragment off-DOM, then swap
@@ -193,6 +260,15 @@
         setupLeaderboardToggle();
     }
 
+    /**
+     * Builds a single setting row DOM element.
+     * 
+     * Creates the DOM structure for an individual setting, including its
+     * label, description (if any), and the appropriate input control.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The constructed setting row element.
+     */
     function buildSettingRow(setting) {
         const row = document.createElement('div');
         row.className = 'setting-row';
@@ -231,6 +307,15 @@
         return row;
     }
 
+    /**
+     * Builds the appropriate input control for a setting based on its type.
+     * 
+     * Routes to the appropriate builder function based on the setting's
+     * declared type (boolean, select, int, float, chips, wishlist, password).
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The constructed input control element.
+     */
     function buildControl(setting) {
         switch (setting.type) {
             case 'boolean':
@@ -251,6 +336,15 @@
         }
     }
 
+    /**
+     * Builds a password input field for sensitive credential settings.
+     * 
+     * Creates a masked input field with placeholder text and change tracking.
+     * Clears validation errors when the user begins typing.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The password input element.
+     */
     function buildPasswordInput(setting) {
         const input = document.createElement('input');
         input.type = 'password';
@@ -267,6 +361,16 @@
         return input;
     }
 
+    /**
+     * Builds a wishlist control for managing catch wishlist Pokémon.
+     * 
+     * Creates a searchable input with dropdown suggestions and chip-based
+     * display of currently selected Pokémon. Supports adding/removing
+     * Pokémon via search or modal selection.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The wishlist control container.
+     */
     function buildWishlistControl(setting) {
         if (setting.names) {
             state._wishlistNames = state._wishlistNames || {};
@@ -579,6 +683,16 @@
         return wrap;
     }
 
+    /**
+     * Builds a chip group for multi-select boolean toggles.
+     * 
+     * Creates a group of toggle buttons where each chip represents a
+     * boolean setting. Active chips are visually highlighted and tracked
+     * in the edit state.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The chip group container.
+     */
     function buildChipGroup(setting) {
         const wrap = document.createElement('div');
         wrap.className = 'setting-chips';
@@ -609,6 +723,11 @@
         return wrap;
     }
 
+    /**
+     * Marks a chip row as dirty if any of its chips have pending edits.
+     * 
+     * @param {string} rowKey - The data-key attribute of the row to check.
+     */
     function markChipRowDirty(rowKey) {
         const row = document.querySelector(`.setting-row[data-key="${cssEscape(rowKey)}"]`);
         if (!row) return;
@@ -617,6 +736,16 @@
         row.classList.toggle('dirty', anyDirty);
     }
 
+    /**
+     * Builds a boolean toggle control with Enabled/Disabled buttons.
+     * 
+     * Creates a segmented control with two buttons (Enabled/Disabled)
+     * that act as a binary toggle. Clicking either button updates the
+     * setting value and triggers a full re-render.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The toggle control container.
+     */
     function buildToggle(setting) {
         const wrap = document.createElement('div');
         wrap.className = 'setting-toggle';
@@ -636,6 +765,12 @@
         return wrap;
     }
 
+    /**
+     * Builds a select dropdown for enumerated settings.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The select element.
+     */
     function buildSelect(setting) {
         const sel = document.createElement('select');
         sel.className = 'setting-select';
@@ -655,6 +790,15 @@
         return sel;
     }
 
+    /**
+     * Builds a numeric input with support for hyphenated ranges.
+     * 
+     * Allows numeric values and special range syntax (e.g., "1-3") for
+     * settings like cards_per_round.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The numeric input element.
+     */
     function buildNumberInput(setting) {
         const input = document.createElement('input');
         input.type = 'text';  // text so range strings like "1-3" work too
@@ -679,6 +823,12 @@
         return input;
     }
 
+    /**
+     * Builds a standard text input for string settings.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The text input element.
+     */
     function buildTextInput(setting) {
         const input = document.createElement('input');
         input.type = 'text';
@@ -694,6 +844,12 @@
         return input;
     }
 
+    /**
+     * Gets the current value of a setting, checking pending edits first.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {*} The current value from edits or the original value.
+     */
     function currentValue(setting) {
         if (Object.prototype.hasOwnProperty.call(state.edits, setting.key)) {
             return state.edits[setting.key];
@@ -702,6 +858,15 @@
     }
 
     // ---------- Edit tracking ----------
+    /**
+     * Sets a pending edit for a setting key.
+     * 
+     * Updates the edits state, tracking changes before they are saved.
+     * If the new value equals the original, the edit is removed.
+     * 
+     * @param {string} key - The setting key.
+     * @param {*} value - The new value.
+     */
     function setEdit(key, value) {
         const original = findSetting(key);
         if (!original) return;
@@ -712,6 +877,15 @@
         }
     }
 
+    /**
+     * Finds a setting definition by its key.
+     * 
+     * Searches through all groups and subgroups for a setting with the
+     * matching key.
+     * 
+     * @param {string} key - The setting key to find.
+     * @returns {Object|null} The setting object or null if not found.
+     */
     function findSetting(key) {
         for (const g of (state.data.groups || [])) {
             for (const s of (g.settings || [])) {
@@ -726,12 +900,27 @@
         return null;
     }
 
+    /**
+     * Performs a deep equality comparison between two values.
+     * 
+     * Uses JSON serialization for reliable deep comparison of objects
+     * and arrays.
+     * 
+     * @param {*} a - First value to compare.
+     * @param {*} b - Second value to compare.
+     * @returns {boolean} True if the values are deeply equal.
+     */
     function deepEqual(a, b) {
         if (a === b) return true;
         if (typeof a !== typeof b) return false;
         return JSON.stringify(a) === JSON.stringify(b);
     }
 
+    /**
+     * Marks a specific setting row as dirty (has unsaved changes).
+     * 
+     * @param {string} key - The setting key to mark dirty.
+     */
     function markRowDirty(key) {
         document.querySelectorAll('.setting-row').forEach((row) => {
             if (row.dataset.key !== key) return;
@@ -740,6 +929,12 @@
         });
     }
 
+    /**
+     * Updates the UI elements that display dirty state status.
+     * 
+     * Updates the save button state, dirty pill count, and status text
+     * based on the number of pending edits.
+     */
     function updateDirtyUI() {
         const n = Object.keys(state.edits).length;
         const dirty = n > 0;
@@ -774,6 +969,12 @@
     }
 
     // ---------- Search ----------
+    /**
+     * Filters settings based on the current search query.
+     * 
+     * Hides groups, subgroups, and individual rows that don't match the
+     * search term. Shows the empty state message when no matches are found.
+     */
     function applySearchFilter() {
         const q = state.search;
         const empty = document.getElementById('settings-empty');
@@ -798,6 +999,15 @@
     }
 
     // ---------- Save ----------
+    /**
+     * Saves all pending setting edits to the Python backend.
+     * 
+     * Performs validation on leaderboard settings before saving.
+     * If leaderboard sync is enabled, ensures username and API key
+     * are both filled. Shows validation errors if fields are missing.
+     * 
+     * @param {Function} onDone - Optional callback invoked after save completion.
+     */
     function onSave(onDone) {
         // onDone (optional) fires only after a successful save/no-op, so
         // callers like the unsaved-changes guard can chain navigation.
@@ -889,6 +1099,15 @@
         return true;
     }
 
+    /**
+     * Displays a modal dialog for unsaved changes when navigating away.
+     * 
+     * Shows a confirmation dialog with options to stay, discard changes,
+     * or save and leave.
+     * 
+     * @param {Function} proceed - Callback to continue navigation after
+     *                             the user makes a choice.
+     */
     function showUnsavedGuardModal(proceed) {
         if (unsavedGuardOpen) return;
         unsavedGuardOpen = true;
@@ -967,6 +1186,9 @@
         document.body.appendChild(backdrop);
     }
 
+    /**
+     * Discards all pending edits and resets the UI.
+     */
     function onDiscard() {
         if (Object.keys(state.edits).length === 0) return;
         state.edits = {};
@@ -974,6 +1196,12 @@
         showToast('Changes discarded');
     }
 
+    /**
+     * Displays a toast notification with optional error styling.
+     * 
+     * @param {string} message - The message to display.
+     * @param {boolean} isError - Whether the message is an error.
+     */
     function showToast(message, isError) {
         if (!message) return;
         const toast = document.getElementById('toast');
@@ -1002,6 +1230,14 @@
     let suppressSpyUntil = 0;
     const READING_LINE_PX = 80;
 
+    /**
+     * Updates the active button in the sidebar navigation.
+     * 
+     * Highlights the group jump button corresponding to the currently
+     * visible settings group.
+     * 
+     * @param {string} label - The label of the active group.
+     */
     function setActiveButton(label) {
         if (label === state.activeGroup) return;
         state.activeGroup = label;
@@ -1010,6 +1246,14 @@
         });
     }
 
+    /**
+     * Scrolls the settings content to a specific group section.
+     * 
+     * Smoothly scrolls to the target group, highlights it with a flash
+     * animation, and updates the active sidebar button.
+     * 
+     * @param {string} label - The label of the group to scroll to.
+     */
     function scrollToGroup(label) {
         const el = document.querySelector(`.settings-group[data-group="${cssEscape(label)}"]`);
         const scroller = document.querySelector('.content-scroll');
@@ -1028,6 +1272,11 @@
         suppressSpyUntil = Date.now() + 1500;
     }
 
+    /**
+     * Triggers a brief highlight flash on a section element.
+     * 
+     * @param {HTMLElement} el - The section element to flash.
+     */
     function flashSection(el) {
         // Brief tint so the user sees the jump landed on the right section.
         // Re-trigger the animation if the class is already present
@@ -1038,10 +1287,21 @@
         el.classList.add('flash-highlight');
     }
 
+    /**
+     * Escapes double quotes in a string for CSS selector usage.
+     * 
+     * @param {string} s - The string to escape.
+     * @returns {string} The escaped string.
+     */
     function cssEscape(s) {
         return s.replace(/"/g, '\\"');
     }
 
+    /**
+     * Determines which settings group is currently visible and updates
+     * the sidebar navigation accordingly. Handles edge cases when at
+     * max scroll.
+     */
     function updateActiveSection() {
         if (Date.now() < suppressSpyUntil) return;
         const scroller = document.querySelector('.content-scroll');
@@ -1082,6 +1342,12 @@
     }
 
     // ---------- UI plumbing ----------
+    /**
+     * Binds UI event handlers to DOM elements.
+     * 
+     * Sets up search input, save button, discard button, scroll spy,
+     * and keyboard shortcuts.
+     */
     function bindUI() {
         const search = document.getElementById('settings-search');
         const clear = document.getElementById('clear-search');
