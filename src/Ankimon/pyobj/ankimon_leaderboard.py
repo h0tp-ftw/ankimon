@@ -47,6 +47,16 @@ class ApiKeyDialog(QDialog):
         self.setLayout(layout)
 
     def submit(self):
+        """
+        Handle the submission of username and API key from the legacy dialog.
+        
+        Validates that both fields are filled, then saves the credentials to
+        the settings system rather than the legacy database. Enables leaderboard
+        sync automatically upon successful credential storage.
+        
+        Returns:
+            None: Displays appropriate info messages to the user via showInfo.
+        """
         username = self.username_input.text()
         api_key = self.api_key_input.text()
 
@@ -66,8 +76,27 @@ class ApiKeyDialog(QDialog):
 
 def sync_data_to_leaderboard(data):
     """
-    Sync data to leaderboard using credentials from settings.
-    This replaces the old database-based credential system.
+    Synchronize player statistics with the Ankimon leaderboard server.
+    
+    This function retrieves leaderboard credentials from the settings system
+    and sends a POST request to the leaderboard API with the provided stats.
+    The network request is executed in a background thread to prevent UI
+    freezing during network operations.
+    
+    Args:
+        data (dict): A dictionary containing the player's statistics to be
+            synchronized with the leaderboard. The structure should match
+            what the leaderboard API expects.
+    
+    Returns:
+        None: Results are logged to console; failures are handled silently
+            with console output rather than user-facing dialogs.
+    
+    Note:
+        - The function exits early if leaderboard sync is disabled in settings
+        - Credentials are read from settings (not the legacy database)
+        - Network timeouts are set to 10 seconds
+        - All exceptions are caught and logged to console
     """
     
     # First check if leaderboard is enabled in config
@@ -92,7 +121,16 @@ def sync_data_to_leaderboard(data):
         }
 
         def send_request():
-            """Send the network request in a background thread."""
+            """
+            Send the network request to the leaderboard API.
+            
+            This inner function executes the actual HTTP POST request and handles
+            any network-related exceptions. It runs in a background thread to
+            avoid blocking the main GUI thread.
+            
+            Returns:
+                None: Results and errors are logged to console.
+            """
             try:
                 # Send POST request to leaderboard API
                 response = requests.post(
@@ -119,7 +157,21 @@ def sync_data_to_leaderboard(data):
 
 
 def show_api_key_dialog():
-    """Legacy method - credentials now managed in Settings."""
+    """
+    Display a legacy dialog informing users about the new credential location.
+    
+    This function is a deprecated method that now shows an informational
+    message directing users to the new Settings UI for managing leaderboard
+    credentials. The legacy dialog is kept for backward compatibility but
+    no longer collects credentials directly.
+    
+    Returns:
+        None: Displays a QMessageBox with navigation instructions.
+    
+    Note:
+        This method is deprecated; credentials should be managed through
+        Ankimon → Ankimon Settings → Leaderboard.
+    """
     # Show a dialog telling users where to find the new settings
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Icon.Information)
@@ -136,8 +188,25 @@ def show_api_key_dialog():
 
 def migrate_credentials_from_db():
     """
-    One-time migration from database to settings.
-    Call this during initialization.
+    Migrate leaderboard credentials from the legacy database to the settings system.
+    
+    This function performs a one-time migration of username and API key from
+    the old database storage to the new settings-based storage system. It
+    checks if credentials exist in the database and whether they have already
+    been migrated to settings to avoid overwriting existing settings data.
+    
+    The migration runs during Anki startup and ensures a smooth transition
+    for users who previously configured leaderboard credentials using the
+    legacy system.
+    
+    Returns:
+        None: Migration status is logged to console; failures are caught
+            and logged without interrupting the startup process.
+    
+    Note:
+        - Function exits early if database or settings services are unavailable
+        - Only migrates if database has credentials AND settings don't
+        - Preserves the leaderboard enabled/disabled state
     """
     if services.db is None or services.settings is None:
         return
