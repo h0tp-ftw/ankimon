@@ -64,7 +64,7 @@
     "misc.remove_level_cap": "Allow leveling beyond set level cap.",
     "misc.language": "Select language ID for Pokémon names and descriptions. [1: Japanese (Hir & Kata), 2: Japanese (Roomaji), 3: Korean, 4: Chinese (Traditional), 5: French, 6: German, 7: Spanish, 8: Italian, 9: English, 10: Czech, 11: Japanese, 12: Chinese (Simplified), 13: Portuguese (Brazil), 14: Spanish (Latin America)]",
     "misc.ssh": "Enable SSH if encountering connectivity issues (like Eduroam restrictions).",
-    "misc.leaderboard": "Enable synchronization with Ankimon leaderboard (leaderboard.ankimon.com). \nTo set up, check Ankimon -> Game -> Ankimon Leaderboard and Ankimon -> Ankimon Leaderboard Credentials.",
+    "misc.leaderboard": "Share your stats with the <a href=\"https://leaderboard.ankimon.com/\" target=\"_blank\">Ankimon leaderboard community</a>. When enabled, your progress will be automatically synced.",
     "misc.ankiweb_sync": "Sync your Ankimon SAVE DATA (Pokémon, items, trainer progress) across your own devices that share one AnkiWeb account, by riding Anki's media sync. When ON, your local save is backed up automatically and integrity-checked before any incoming data is applied.\nThis is SEPARATE from Mobile Reviews: reviews done on AnkiMobile/AnkiDroid become battles regardless of this setting.\nTips: don't use 'Delete Unused' when checking media, and avoid playing on two devices between syncs (the most recent sync wins).",
     "misc.YouShallNotPass_Ankimon_News": "If enabled, you will not receive news pop-ups when Ankimon starts (like changelogs and updates).",
     "misc.discord_rich_presence": "Enable Discord Rich Presence for Ankimon. Shows in Discord as 'Playing Ankimon'.",
@@ -73,5 +73,7 @@
     "misc.developer_mode": "Enable developer mode. This will create a backup every time Anki is opened.",
     "trainer.name": "Set the name of your trainer.",
     "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 400]. NOTE: To prevent exploits, the payout is capped based on your daily economy limit and subject to a hard daily cap of 400¥.",
-    "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily cap of 400¥."
+    "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily cap of 400¥.",
+    "leaderboard.username": "Your username for the Ankimon leaderboard. This will be displayed publicly on the leaderboard.",
+    "leaderboard.api_key": "Your API key for the Ankimon leaderboard. Feel free to get one from the <a href=\"https://leaderboard.ankimon.com/\" target=\"_blank\">Ankimon website</a> (at https://leaderboard.ankimon.com/)!"
 }
