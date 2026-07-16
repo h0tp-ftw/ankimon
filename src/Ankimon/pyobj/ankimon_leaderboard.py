@@ -206,7 +206,7 @@ def migrate_credentials_from_db():
     Note:
         - Function exits early if database or settings services are unavailable
         - Only migrates if database has credentials AND settings don't
-        - Preserves the leaderboard enabled/disabled state
+        - The leaderboard enabled/disabled state is preserved automatically
     """
     if services.db is None or services.settings is None:
         return
@@ -224,11 +224,6 @@ def migrate_credentials_from_db():
         if username and api_key and (not settings_username or not settings_api_key):
             services.settings.set("leaderboard.username", username)
             services.settings.set("leaderboard.api_key", api_key)
-            
-            # If leaderboard was enabled in old system, enable it in new system
-            if services.settings.get("misc.leaderboard", False):
-                services.settings.set("misc.leaderboard", True)
-                
             print("Ankimon: Migrated leaderboard credentials from database to settings")
             
     except Exception as e:
