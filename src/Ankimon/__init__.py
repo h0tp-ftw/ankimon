@@ -67,16 +67,15 @@ from .pyobj.ankimon_leaderboard import migrate_credentials_from_db
 # once menu_buttons stops building its own translator.
 mw.translator = translator
 
+# ============================================================
 # Migrate leaderboard credentials from database to settings
 # This runs once when Anki starts up
-def _migrate_on_startup():
-    try:
-        migrate_credentials_from_db()
-        print("Ankimon: Leaderboard credentials migration checked")
-    except Exception as e:
-        print(f"Ankimon: Error during leaderboard credentials migration: {e}")
-
-events.on("startup_finished", _migrate_on_startup)
+# ============================================================
+try:
+    migrate_credentials_from_db()
+    print("Ankimon: Leaderboard credentials migration checked")
+except Exception as e:
+    print(f"Ankimon: Error during leaderboard credentials migration: {e}")
 
 # Deck-browser / deck-overview team grid (F19). Registration is gated on the
 # gui.team_deck_view setting and reload-safe (F31 registry-anchored record on
