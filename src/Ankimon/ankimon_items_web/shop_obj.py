@@ -237,12 +237,21 @@ class SettingsBridge(QObject):
         return self._w.handle_get_caught_pokemon()
 
     # ============================================================
-    # ADDED: Open a URL in the default browser
+    # Open a URL in the default browser with security validation
     # This makes links in settings descriptions clickable
     # ============================================================
     @pyqtSlot(str)
     def openUrl(self, url):
-        """Open a URL in the default browser."""
+        """Open a URL in the default browser.
+        
+        Only allows http:// and https:// schemes to prevent arbitrary
+        protocol handlers from being invoked (security hardening).
+        """
+        # Security: Only allow safe URL schemes
+        if not (url.startswith("http://") or url.startswith("https://")):
+            print(f"Ankimon: Rejected unsafe URL scheme: {url}")
+            return
+        
         try:
             import webbrowser
             webbrowser.open(url)
