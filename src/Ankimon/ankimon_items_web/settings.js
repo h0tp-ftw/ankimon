@@ -1045,8 +1045,8 @@
                 if (!apiKey) missing.push('• API Key');
                 
                 const msg = '⚠️ Leaderboard Sync is enabled but the following fields are empty:\n\n' + 
-                           missing.join('\n') + 
-                           '\n\nPlease fill in all fields before saving.';
+                        missing.join('\n') + 
+                        '\n\nPlease fill in all fields before saving.';
                 showToast(msg, true);
                 
                 if (!username && usernameRow) {
@@ -1060,8 +1060,12 @@
                     if (input) input.classList.add('validation-error');
                 }
                 
-                if (done) done();
-                return;
+                // ============================================================
+                // FIXED: Do NOT call done() here - user must stay on the page
+                // to fix validation errors before navigating away.
+                // ============================================================
+                // Removed: if (done) done();
+                return;  // Stay on the page and abort save
             }
         }
         // ============================================================
