@@ -22,7 +22,6 @@ GROUPS = [
                     "SSH Access",
                     "Prevent Ankimon News on Startup",
                     "AnkiWeb Sync",
-                    "Ankimon Leaderboard",
                     "Developer Mode",
                 ],
             },
