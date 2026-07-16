@@ -1,10 +1,11 @@
 import sys
 import json
+import threading
+import requests
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton
 from aqt.utils import showInfo
+from aqt.qt import QMessageBox
 from ..resources import user_path_credentials, mypokemon_path
-import json
-import requests
 from aqt import mw
 from ..services import services
 
@@ -51,7 +52,7 @@ class ApiKeyDialog(QDialog):
 
         if username and api_key:
             # Save to settings instead of database
-            if services.settings:
+            if services.settings is not None:
                 services.settings.set("leaderboard.username", username)
                 services.settings.set("leaderboard.api_key", api_key)
                 services.settings.set("misc.leaderboard", True)
@@ -70,7 +71,7 @@ def sync_data_to_leaderboard(data):
     """
     
     # First check if leaderboard is enabled in config
-    if not services.settings or not services.settings.get("misc.leaderboard"):
+    if services.settings is None or not services.settings.get("misc.leaderboard"):
         return
 
     try:
@@ -90,29 +91,36 @@ def sync_data_to_leaderboard(data):
             "stats": data
         }
 
-        # Send POST request to leaderboard API
-        response = requests.post(
-            ANKIMON_LEADERBOARD_API_URL,
-            json=request_data,
-            timeout=10  # Add timeout to prevent hanging
-        )
+        def send_request():
+            """Send the network request in a background thread."""
+            try:
+                # Send POST request to leaderboard API
+                response = requests.post(
+                    ANKIMON_LEADERBOARD_API_URL,
+                    json=request_data,
+                    timeout=10  # Add timeout to prevent hanging
+                )
 
-        if response.status_code == 200:
-            print("Ankimon: Data synced to leaderboard successfully")
-        else:
-            print(f"Ankimon: Failed to sync data - Status: {response.status_code}")
+                if response.status_code == 200:
+                    print("Ankimon: Data synced to leaderboard successfully")
+                else:
+                    print(f"Ankimon: Failed to sync data - Status: {response.status_code}")
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"Ankimon: Leaderboard sync network error: {e}")
+            except Exception as e:
+                print(f"Ankimon: Unexpected leaderboard error: {e}")
 
-    except requests.exceptions.RequestException as e:
-        print(f"Ankimon: Leaderboard sync network error: {e}")
+        # Offload the network request to a background thread to prevent UI freezing
+        threading.Thread(target=send_request, daemon=True).start()
+
     except Exception as e:
-        print(f"Ankimon: Unexpected leaderboard error: {e}")
+        print(f"Ankimon: Unexpected error preparing leaderboard sync: {e}")
 
 
 def show_api_key_dialog():
     """Legacy method - credentials now managed in Settings."""
     # Show a dialog telling users where to find the new settings
-    from aqt.qt import QMessageBox
-    
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Icon.Information)
     msg.setWindowTitle("Leaderboard Credentials Moved")
@@ -131,7 +139,7 @@ def migrate_credentials_from_db():
     One-time migration from database to settings.
     Call this during initialization.
     """
-    if not services.db or not services.settings:
+    if services.db is None or services.settings is None:
         return
     
     try:
