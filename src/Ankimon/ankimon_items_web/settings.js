@@ -107,8 +107,15 @@
         const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
         const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
         
+        // Use the setting value directly instead of DOM text content
+        // This is robust against translation/i18n changes
+        const setting = findSetting('misc.leaderboard');
+        const isEnabled = setting ? currentValue(setting) : false;
+        
         function updateLeaderboardFields() {
-            const isEnabled = toggleRow.querySelector('.setting-toggle-option.active')?.textContent === 'Enabled';
+            // Re-query the setting value each time to ensure fresh state
+            const setting = findSetting('misc.leaderboard');
+            const isEnabled = setting ? currentValue(setting) : false;
             
             [usernameRow, apiKeyRow].forEach(row => {
                 if (!row) return;
@@ -1021,21 +1028,16 @@
         const isEnabled = setting ? currentValue(setting) : false;
         
         if (isEnabled) {
+            // Use currentValue() to get values from settings state
+            // This is robust and independent of DOM structure
+            const usernameSetting = findSetting('leaderboard.username');
+            const apiKeySetting = findSetting('leaderboard.api_key');
+            const username = usernameSetting ? (currentValue(usernameSetting) || '').trim() : '';
+            const apiKey = apiKeySetting ? (currentValue(apiKeySetting) || '').trim() : '';
+            
+            // Still need DOM references for highlighting validation errors
             const usernameRow = document.querySelector('.setting-row[data-key="leaderboard.username"]');
             const apiKeyRow = document.querySelector('.setting-row[data-key="leaderboard.api_key"]');
-            
-            let username = '';
-            let apiKey = '';
-            
-            if (usernameRow) {
-                const input = usernameRow.querySelector('.setting-input');
-                if (input) username = input.value.trim();
-            }
-            
-            if (apiKeyRow) {
-                const input = apiKeyRow.querySelector('.setting-input');
-                if (input) apiKey = input.value.trim();
-            }
             
             if (!username || !apiKey) {
                 const missing = [];
