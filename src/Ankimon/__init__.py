@@ -68,14 +68,10 @@ from .pyobj.ankimon_leaderboard import migrate_credentials_from_db
 mw.translator = translator
 
 # ============================================================
-# Migrate leaderboard credentials from database to settings
-# This runs once when Anki starts up
+# REMOVED: Module-level migration call
+# migrate_credentials_from_db() now runs in on_startup_complete
+# where services.db is guaranteed to be initialized.
 # ============================================================
-try:
-    migrate_credentials_from_db()
-    print("Ankimon: Leaderboard credentials migration checked")
-except Exception as e:
-    print(f"Ankimon: Error during leaderboard credentials migration: {e}")
 
 # Deck-browser / deck-overview team grid (F19). Registration is gated on the
 # gui.team_deck_view setting and reload-safe (F31 registry-anchored record on
@@ -211,6 +207,16 @@ def start_asynchronous_startup():
         #    for the module-level consumers registered above).
         collected_pokemon_ids.update(results["collected_pokemon_ids"])
         init_battle_state(collected_pokemon_ids)
+
+        # ============================================================
+        # LEADERBOARD CREDENTIALS MIGRATION
+        # Now runs here where services.db is guaranteed to be initialized
+        # ============================================================
+        try:
+            migrate_credentials_from_db()
+            print("Ankimon: Leaderboard credentials migration checked")
+        except Exception as e:
+            print(f"Ankimon: Error during leaderboard credentials migration: {e}")
 
         # 3. Reviewer UI: collected IDs + shortcut/button wiring. Imported
         #    here (not at module scope) because reviewer_ui pulls lazy F31
