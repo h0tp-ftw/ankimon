@@ -1624,6 +1624,11 @@ def save_caught_pokemon(
 ):
     # Create a dictionary to store the Pokémon's data
     # add all new values like hp as max_hp, evolution_data, description and growth rate
+    if achievements is not None:
+        check = check_for_badge(achievements, 7)
+        if check is False:
+            achievements = receive_badge(7, achievements)
+
     if enemy_pokemon.tier is not None and achievements is not None:
         if enemy_pokemon.tier == "Normal":
             check = check_for_badge(achievements, 17)
