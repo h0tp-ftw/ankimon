@@ -344,6 +344,108 @@
     }
 
     /**
+     * Builds a status indicator for the leaderboard toggle.
+     * 
+     * The status is computed based on:
+     * - Whether username and API key are filled
+     * - Whether leaderboard sync is enabled
+     * 
+     * States:
+     * - Grey "Not connected": No username or API key saved
+     * - Orange "Syncing paused": Credentials saved but sync disabled
+     * - Green "Syncing live": Credentials saved and sync enabled
+     * 
+     * @returns {HTMLElement} The status indicator element.
+     */
+    function buildLeaderboardStatus() {
+        const wrap = document.createElement('div');
+        wrap.className = 'leaderboard-status';
+        
+        // Get current values from settings state
+        const leaderboardSetting = findSetting('misc.leaderboard');
+        const isEnabled = leaderboardSetting ? currentValue(leaderboardSetting) : false;
+        
+        const usernameSetting = findSetting('leaderboard.username');
+        const apiKeySetting = findSetting('leaderboard.api_key');
+        const username = usernameSetting ? (currentValue(usernameSetting) || '').trim() : '';
+        const apiKey = apiKeySetting ? (currentValue(apiKeySetting) || '').trim() : '';
+        
+        // Determine status
+        let dotColor = 'grey';
+        let statusText = 'Not connected';
+        
+        if (username && apiKey) {
+            if (isEnabled) {
+                dotColor = 'green';
+                statusText = 'Syncing live';
+            } else {
+                dotColor = 'orange';
+                statusText = 'Syncing paused';
+            }
+        }
+        
+        // Create dot
+        const dot = document.createElement('span');
+        dot.className = `status-dot status-dot-${dotColor}`;
+        
+        // Create status text
+        const text = document.createElement('span');
+        text.className = 'status-text';
+        text.textContent = statusText;
+        
+        wrap.appendChild(dot);
+        wrap.appendChild(text);
+        
+        return wrap;
+    }
+
+    /**
+     * Builds a boolean toggle control with Enabled/Disabled buttons.
+     * 
+     * Creates a segmented control with two buttons (Enabled/Disabled)
+     * that act as a binary toggle. Clicking either button updates the
+     * setting value and triggers a full re-render.
+     * 
+     * For the leaderboard toggle, adds a status indicator to the right.
+     * 
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The toggle control container.
+     */
+    function buildToggle(setting) {
+        const wrap = document.createElement('div');
+        wrap.className = 'setting-toggle-wrapper';
+        
+        const toggleWrap = document.createElement('div');
+        toggleWrap.className = 'setting-toggle';
+        
+        const current = currentValue(setting);
+        ['Enabled', 'Disabled'].forEach((label, i) => {
+            const isOn = (i === 0 && current) || (i === 1 && !current);
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'setting-toggle-option' + (isOn ? ' active' : '') + (i === 1 ? ' off' : '');
+            btn.textContent = label;
+            btn.addEventListener('click', () => {
+                setEdit(setting.key, i === 0);
+                renderAll();  // refresh control + dirty pip
+            });
+            toggleWrap.appendChild(btn);
+        });
+        
+        wrap.appendChild(toggleWrap);
+        
+        // Add status indicator for leaderboard toggle
+        if (setting.key === 'misc.leaderboard') {
+            const statusIndicator = buildLeaderboardStatus();
+            if (statusIndicator) {
+                wrap.appendChild(statusIndicator);
+            }
+        }
+        
+        return wrap;
+    }
+
+    /**
      * Builds a password input field for sensitive credential settings.
      * 
      * Creates a masked input field with placeholder text and change tracking.
@@ -744,35 +846,6 @@
     }
 
     /**
-     * Builds a boolean toggle control with Enabled/Disabled buttons.
-     * 
-     * Creates a segmented control with two buttons (Enabled/Disabled)
-     * that act as a binary toggle. Clicking either button updates the
-     * setting value and triggers a full re-render.
-     * 
-     * @param {Object} setting - The setting configuration object.
-     * @returns {HTMLElement} The toggle control container.
-     */
-    function buildToggle(setting) {
-        const wrap = document.createElement('div');
-        wrap.className = 'setting-toggle';
-        const current = currentValue(setting);
-        ['Enabled', 'Disabled'].forEach((label, i) => {
-            const isOn = (i === 0 && current) || (i === 1 && !current);
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'setting-toggle-option' + (isOn ? ' active' : '') + (i === 1 ? ' off' : '');
-            btn.textContent = label;
-            btn.addEventListener('click', () => {
-                setEdit(setting.key, i === 0);
-                renderAll();  // refresh control + dirty pip
-            });
-            wrap.appendChild(btn);
-        });
-        return wrap;
-    }
-
-    /**
      * Builds a select dropdown for enumerated settings.
      * 
      * @param {Object} setting - The setting configuration object.
@@ -1060,11 +1133,8 @@
                     if (input) input.classList.add('validation-error');
                 }
                 
-                // ============================================================
-                // FIXED: Do NOT call done() here - user must stay on the page
+                // Do NOT call done() here - user must stay on the page
                 // to fix validation errors before navigating away.
-                // ============================================================
-                // Removed: if (done) done();
                 return;  // Stay on the page and abort save
             }
         }
