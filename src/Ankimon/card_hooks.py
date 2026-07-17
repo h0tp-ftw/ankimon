@@ -50,6 +50,12 @@ def answerCard_after(rev, card, ease):
     except Exception:
         pass
 
+    try:
+        from .functions.badges_functions import check_unleeched_cards
+        check_unleeched_cards(services.col, services.db, services.achievements)
+    except Exception:
+        pass
+
 
 # Reload safety (F31): a second boot in the same session must not leave the
 # reviewer hooks registered twice, or every review would be double-counted.
