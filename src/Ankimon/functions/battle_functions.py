@@ -670,6 +670,10 @@ def validate_pokemon_status(pokemon):
     if hasattr(pokemon, "hp") and pokemon.hp > 0 and current_status == "fainted":
         return "fighting"
 
+    # If Pokemon is NOT fainted but status is fainted, override back to fighting
+    if hasattr(pokemon, "hp") and pokemon.hp > 0 and current_status == "fainted":
+        return "fighting"
+
     return current_status
 
 
