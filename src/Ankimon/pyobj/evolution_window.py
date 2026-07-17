@@ -524,6 +524,15 @@ class EvoWindow(QWidget):
         if check is False:
             receive_badge(16, self.achievements)
 
+        try:
+            from ..resources import POKEMON_TIERS
+            if int(evo_id) in POKEMON_TIERS.get("Fossil", []):
+                check_fossil = check_for_badge(self.achievements, 19)
+                if check_fossil is False:
+                    receive_badge(19, self.achievements)
+        except Exception as e:
+            self.logger.log("error", f"Error checking Badge 19 (Fossil): {e}")
+
         from ..singletons import pokemon_pc
 
         pokemon_pc.refresh_pokemon_grid()
