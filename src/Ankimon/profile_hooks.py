@@ -104,6 +104,17 @@ def _on_profile_did_open(online_connectivity):
                 parent=mw, exception=e, message="Error showing tip of the day:"
             )
 
+        try:
+            from .functions.badges_functions import check_unleeched_cards
+
+            check_unleeched_cards(
+                services.col if services.col is not None else mw.col,
+                services.db,
+                getattr(services, "achievements", None),
+            )
+        except Exception as e:
+            logger.log("error", f"Failed to evaluate leech badges on profile open: {e}")
+
         def check_connectivity_bg() -> bool:
             # Only run the actual check if we think we're offline
             if not online_connectivity:
