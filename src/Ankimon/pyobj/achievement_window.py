@@ -19,9 +19,10 @@ from PyQt6.QtWidgets import (
     )
 from PyQt6.QtGui import QIcon, QColor
 
-from ..functions.badges_functions import get_achieved_badges
+from ..functions.badges_functions import check_unleeched_cards, get_achieved_badges
 
 from ..resources import icon_path, badges_path, badges_list_path
+from ..services import services
 
 class AchievementWindow(QWidget):
     def __init__(self):
@@ -50,6 +51,14 @@ class AchievementWindow(QWidget):
         self.setLayout(self.layout)
 
     def renewWidgets(self):
+        try:
+            check_unleeched_cards(
+                getattr(services, "col", None),
+                getattr(services, "db", None),
+                getattr(services, "achievements", None),
+            )
+        except Exception:
+            pass
         # Clear the existing widgets from the layout
         for i in reversed(range(self.contentLayout.count())):
             widget = self.contentLayout.itemAt(i).widget()
