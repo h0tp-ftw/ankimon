@@ -83,7 +83,9 @@ def get_leech_tracking_data(db) -> Dict:
     try:
         row = db.execute("SELECT value FROM metadata WHERE key = 'leech_tracking_data'").fetchone()
         if row and row[0]:
-            return json.loads(row[0])
+            data = json.loads(row[0])
+            if isinstance(data, dict):
+                return data
     except Exception:
         pass
     return {"pending_untag": [], "pending_unsuspend": []}
@@ -114,7 +116,7 @@ def check_unleeched_cards(col, db, achievements):
     
     The card remains in tracking memory until all conditions are met.
     """
-    if not col or not db or not achievements:
+    if col is None or db is None or achievements is None:
         return
 
     # Skip if badge already awarded
@@ -125,17 +127,8 @@ def check_unleeched_cards(col, db, achievements):
         # Get current cards with leech tag
         current_leech_nids = {str(nid) for nid in col.find_notes("tag:leech")}
         
-        # Get current suspended card IDs
-        suspended_cids = set()
-        for cid in col.db.list("SELECT id FROM cards WHERE queue = -1"):
-            suspended_cids.add(str(cid))
-        
-        # Get the note ID for each suspended card
-        suspended_nids = set()
-        for cid in suspended_cids:
-            note_id = col.db.scalar("SELECT nid FROM cards WHERE id = ?", int(cid))
-            if note_id:
-                suspended_nids.add(str(note_id))
+        # Get the note ID for each suspended card directly
+        suspended_nids = {str(nid) for nid in col.db.list("SELECT nid FROM cards WHERE queue = -1")}
         
         # Load tracking data
         tracking = get_leech_tracking_data(db)
