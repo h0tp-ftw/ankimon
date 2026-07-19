@@ -1624,10 +1624,6 @@ def save_caught_pokemon(
 ):
     # Create a dictionary to store the Pokémon's data
     # add all new values like hp as max_hp, evolution_data, description and growth rate
-    if achievements is not None:
-        check = check_for_badge(achievements, 7)
-        if check is False:
-            achievements = receive_badge(7, achievements)
 
     if enemy_pokemon.tier is not None and achievements is not None:
         if enemy_pokemon.tier == "Normal":
@@ -1684,7 +1680,13 @@ def save_caught_pokemon(
     caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 
     # Save to database (replaces JSON file I/O for performance)
-    ankimon_db.save_pokemon(caught_pokemon)
+    save_success = ankimon_db.save_pokemon(caught_pokemon)
+
+    # Only award Badge 7 if the save was successful
+    if save_success and achievements is not None:
+        check = check_for_badge(achievements, 7)
+        if check is False:
+            achievements = receive_badge(7, achievements)
 
     try:
         from ..singletons import notify_stats_changed
