@@ -145,4 +145,3 @@ class AchievementWindow(QWidget):
         self.move(x, y)
 
         self.show()
-
