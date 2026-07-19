@@ -4,7 +4,6 @@ from aqt.utils import tooltip
 from .services import services
 from .singletons import ankimon_tracker_obj, reviewer_obj
 
-
 def on_show_question(Card):
     ankimon_tracker_obj.start_card_timer()
 
@@ -51,8 +50,8 @@ def answerCard_after(rev, card, ease):
         pass
 
     try:
-        from .functions.badges_functions import check_unleeched_cards
-        check_unleeched_cards(services.col, services.db, services.achievements)
+        from .functions.badges_functions import update_leech_tracking_on_review
+        update_leech_tracking_on_review(services.col, services.db, services.achievements, card.id)
     except Exception:
         pass
 
