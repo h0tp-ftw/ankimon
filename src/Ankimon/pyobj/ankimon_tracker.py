@@ -91,24 +91,12 @@ class AnkimonTracker:
         # Start the session timer when the object is initialized
         self.start_session_timer()
 
-
     def _get_cards_per_round(self) -> int:
-        cpr = 2
         try:
-            if hasattr(services, 'settings') and services.settings is not None:
-                val = services.settings.get('battle.cards_per_round')
-                if isinstance(val, int):
-                    cpr = val
-                elif isinstance(val, str):
-                    if '-' in val:
-                        import random
-                        min_val, max_val = map(int, val.split('-'))
-                        cpr = random.randint(min_val, max_val)
-                    elif val.isdigit():
-                        cpr = int(val)
+            from ..battle_loop import _get_cards_per_round
+            return max(1, _get_cards_per_round())
         except Exception:
-            pass
-        return max(1, cpr)
+            return 2
 
     def get_total_reviews(self):
         col = services.col
@@ -290,7 +278,10 @@ class AnkimonTracker:
     def calc_multiply_card_rating(self):
         """Calculate the multiplier based on recent card rating counts."""
 
-        max_points = 20
+        max_points = sum(self.multiplier_card_ratings_count.values()) * 10
+        if max_points == 0:
+            max_points = 20
+
         multiply_sum = (
             self.multiplier_card_ratings_count["easy"] * 20
             + self.multiplier_card_ratings_count["hard"] * 5
