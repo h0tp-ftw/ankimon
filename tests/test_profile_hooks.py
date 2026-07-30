@@ -69,6 +69,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     clear_encounter = MagicMock(name="clear_encounter_cache")
     clear_auto_battle = MagicMock(name="clear_auto_battle_override")
     warm_evolution = MagicMock(name="warm_evolution_caches", return_value=507)
+    clear_utils = MagicMock(name="clear_utils_caches")
 
     monkeypatch.setitem(
         sys.modules,
@@ -92,7 +93,11 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.utils",
-        _stub_module("Ankimon.utils", test_online_connectivity=lambda: False),
+        _stub_module(
+            "Ankimon.utils",
+            test_online_connectivity=lambda: False,
+            clear_utils_caches=clear_utils,
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -166,6 +171,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         clear_learnset,
         clear_encounter,
         clear_auto_battle,
+        clear_utils,
     )
     profile_hooks._warm = warm_evolution
     return profile_hooks

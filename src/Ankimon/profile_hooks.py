@@ -23,6 +23,7 @@ from .functions.encounter_functions import (
     clear_encounter_cache,
     clear_auto_battle_override,
 )
+from .utils import clear_utils_caches
 
 # Cache-clear-on-close (F20): the pokedex / learnset / encounter in-memory
 # caches live for the whole Python process, so without this a profile switch
@@ -53,6 +54,7 @@ def _on_profile_close():
         clear_learnset_cache()
         clear_encounter_cache()
         clear_auto_battle_override()
+        clear_utils_caches()
     except Exception as e:
         logger.log("error", f"Error clearing caches on profile close: {e}")
 
