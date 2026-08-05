@@ -49,6 +49,7 @@ class UpdateDialog(QDialog):
         self._branches = []
         self._prs = []
         self.dev_data_loaded = False
+        self._busy_action_states = None
 
         self._apply_theme()
 
@@ -78,13 +79,15 @@ class UpdateDialog(QDialog):
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setFixedHeight(18)
         body.addWidget(self.progress_bar)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("font-size: 11px; color: gray; padding: 0 4px;")
-        self.status_label.setFixedHeight(20)
+        self.status_label.setStyleSheet(
+            f"font-size: 12px; font-weight: bold; color: {self._colors['text']}; padding: 2px 4px;"
+        )
+        self.status_label.setMinimumHeight(24)
         body.addWidget(self.status_label)
 
         layout.addLayout(body)
@@ -214,6 +217,8 @@ class UpdateDialog(QDialog):
                 border: none;
                 background-color: {c["group_border"]};
                 border-radius: 4px;
+                color: {c["text"]};
+                text-align: center;
             }}
             QProgressBar::chunk {{
                 background-color: {c["accent"]};
@@ -993,9 +998,23 @@ class UpdateDialog(QDialog):
     def _set_busy(self, busy: bool):
         self.progress_bar.setVisible(busy)
         self.progress_bar.setValue(0)
-        self.update_latest_btn.setEnabled(not busy)
-        self.release_btn.setEnabled(not busy)
-        self.dev_install_btn.setEnabled(not busy)
+        action_buttons = (
+            self.brrr_update_btn,
+            self.update_latest_btn,
+            self.release_btn,
+            self.dev_install_btn,
+        )
+        if busy:
+            if self._busy_action_states is None:
+                self._busy_action_states = [
+                    (button, button.isEnabled()) for button in action_buttons
+                ]
+            for button in action_buttons:
+                button.setEnabled(False)
+        elif self._busy_action_states is not None:
+            for button, was_enabled in self._busy_action_states:
+                button.setEnabled(was_enabled)
+            self._busy_action_states = None
         if not busy:
             self.status_label.setText("")
 
