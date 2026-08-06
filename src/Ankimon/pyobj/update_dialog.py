@@ -238,6 +238,7 @@ class UpdateDialog(QDialog):
             }}
             QTabBar::tab {{
                 padding: 8px 16px;
+                color: {c["text"]};
                 border: 1px solid transparent;
                 border-bottom: none;
                 border-top-left-radius: 6px;
