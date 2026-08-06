@@ -49,7 +49,8 @@ class UpdateDialog(QDialog):
         self._branches = []
         self._prs = []
         self.dev_data_loaded = False
-        self._busy_action_states = None
+        self._busy_operations = set()
+        self._action_button_states = {}
 
         self._apply_theme()
 
@@ -79,7 +80,7 @@ class UpdateDialog(QDialog):
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(18)
+        self.progress_bar.setMinimumHeight(self.progress_bar.fontMetrics().height() + 8)
         body.addWidget(self.progress_bar)
 
         self.status_label = QLabel("")
@@ -148,6 +149,8 @@ class UpdateDialog(QDialog):
                 "btn_hover": "#505050",
                 "btn_primary": "#1976d2",
                 "btn_primary_hover": "#1565c0",
+                "progress_text": "#ffffff",
+                "progress_chunk": "#1565c0",
             }
         else:
             self._colors = {
@@ -165,6 +168,8 @@ class UpdateDialog(QDialog):
                 "btn_hover": "#e0e0e0",
                 "btn_primary": "#1976d2",
                 "btn_primary_hover": "#1565c0",
+                "progress_text": "#212121",
+                "progress_chunk": "#90caf9",
             }
         c = self._colors
         self.setStyleSheet(f"""
@@ -217,11 +222,13 @@ class UpdateDialog(QDialog):
                 border: none;
                 background-color: {c["group_border"]};
                 border-radius: 4px;
-                color: {c["text"]};
+                color: {c["progress_text"]};
                 text-align: center;
+                font-weight: bold;
+                padding: 2px;
             }}
             QProgressBar::chunk {{
-                background-color: {c["accent"]};
+                background-color: {c["progress_chunk"]};
                 border-radius: 4px;
             }}
             QTabWidget::pane {{
@@ -382,7 +389,7 @@ class UpdateDialog(QDialog):
             QPushButton:hover {{ background-color: {c["btn_primary_hover"]}; }}
             QPushButton:disabled {{ background-color: {c["btn_bg"]}; color: {c["muted"]}; }}
         """)
-        self.brrr_update_btn.setEnabled(False)
+        self._set_action_enabled(self.brrr_update_btn, False)
         self.brrr_update_btn.clicked.connect(self._on_brrr_update_clicked)
         ctrl_layout.addWidget(self.brrr_update_btn)
 
@@ -458,7 +465,7 @@ class UpdateDialog(QDialog):
             self.brrr_status_label.setStyleSheet(
                 f"font-size: 13px; font-weight: bold; color: {c['error']};"
             )
-            self.brrr_update_btn.setEnabled(False)
+            self._set_action_enabled(self.brrr_update_btn, False)
         elif local_sha != remote_sha:
             self.brrr_status_label.setText(
                 f"Status:  New Update Available! (Latest: {remote_sha[:7]})"
@@ -466,14 +473,14 @@ class UpdateDialog(QDialog):
             self.brrr_status_label.setStyleSheet(
                 f"font-size: 13px; font-weight: bold; color: {c['warning']};"
             )
-            self.brrr_update_btn.setEnabled(True)
+            self._set_action_enabled(self.brrr_update_btn, True)
             self.brrr_update_btn.setText("Update Branch Now")
         else:
             self.brrr_status_label.setText("Status:  Up to date!")
             self.brrr_status_label.setStyleSheet(
                 f"font-size: 13px; font-weight: bold; color: {c['success']};"
             )
-            self.brrr_update_btn.setEnabled(False)
+            self._set_action_enabled(self.brrr_update_btn, False)
             self.brrr_update_btn.setText("Already Up to Date")
 
         # 6. Commits Feed
@@ -551,7 +558,7 @@ class UpdateDialog(QDialog):
             QPushButton:disabled {{ background-color: {c["btn_bg"]}; color: {c["muted"]}; }}
         """)
         self.update_latest_btn.clicked.connect(self._on_latest_release_update)
-        self.update_latest_btn.setEnabled(False)
+        self._set_action_enabled(self.update_latest_btn, False)
         latest_layout.addWidget(self.update_latest_btn)
         layout.addWidget(latest_group)
 
@@ -573,7 +580,7 @@ class UpdateDialog(QDialog):
         self.release_btn = QPushButton("Install Selected Release")
         self.release_btn.setMinimumHeight(34)
         self.release_btn.clicked.connect(self._on_release_update)
-        self.release_btn.setEnabled(False)
+        self._set_action_enabled(self.release_btn, False)
         specific_layout.addWidget(self.release_btn)
         layout.addWidget(specific_group)
 
@@ -863,6 +870,7 @@ class UpdateDialog(QDialog):
                 self.target_combo.addItem("No tags found")
 
     def _load_data(self):
+        busy_token = self._begin_busy()
         self.status_label.setText("Checking for updates...")
 
         def bg(_col):
@@ -911,7 +919,7 @@ class UpdateDialog(QDialog):
             self._releases, state, remote_sha, local_commit_date, commits = result
             self._populate_brrr_ui(state, remote_sha, local_commit_date, commits)
             self._populate_ui()
-            self.status_label.setText("")
+            self._end_busy(busy_token)
 
         QueryOp(
             parent=self, op=bg, success=on_done
@@ -922,7 +930,7 @@ class UpdateDialog(QDialog):
             self._load_dev_data()
 
     def _load_dev_data(self):
-        self._set_busy(True)
+        busy_token = self._begin_busy()
         self.status_label.setText("Loading developer options...")
 
         def bg(_col):
@@ -944,7 +952,6 @@ class UpdateDialog(QDialog):
             return (tags, branches, prs)
 
         def on_done(result):
-            self._set_busy(False)
             self._tags, self._branches, self._prs = result
             self.dev_data_loaded = True
 
@@ -953,7 +960,7 @@ class UpdateDialog(QDialog):
             if source and source not in ("branch_brrr", "main"):
                 self._populate_target(source)
 
-            self.status_label.setText("")
+            self._end_busy(busy_token)
 
         QueryOp(
             parent=self, op=bg, success=on_done
@@ -969,25 +976,28 @@ class UpdateDialog(QDialog):
                     f"font-weight: bold; font-size: 13px; color: {c['success']};"
                 )
                 self.update_latest_btn.setText("Already Up to Date")
+                self._set_action_enabled(self.update_latest_btn, False)
             else:
                 self.latest_tag_label.setText(f"New version available: {latest}")
                 self.latest_tag_label.setStyleSheet(
                     f"font-weight: bold; font-size: 13px; color: {c['warning']};"
                 )
-                self.update_latest_btn.setEnabled(True)
+                self._set_action_enabled(self.update_latest_btn, True)
         else:
             self.latest_tag_label.setText("Could not check for updates.")
             self.latest_tag_label.setStyleSheet(
                 f"font-weight: bold; font-size: 13px; color: {c['error']};"
             )
+            self._set_action_enabled(self.update_latest_btn, False)
 
         self.release_combo.clear()
         if self._releases:
             for r in self._releases:
                 self.release_combo.addItem(r["name"], r)
-            self.release_btn.setEnabled(True)
+            self._set_action_enabled(self.release_btn, True)
         else:
             self.release_combo.addItem("No releases found")
+            self._set_action_enabled(self.release_btn, False)
 
         source = self.source_combo.currentData()
         if source and source != "main":
@@ -995,28 +1005,41 @@ class UpdateDialog(QDialog):
 
     # --- Actions ---
 
-    def _set_busy(self, busy: bool):
-        self.progress_bar.setVisible(busy)
-        self.progress_bar.setValue(0)
-        action_buttons = (
+    def _action_buttons(self):
+        return (
             self.brrr_update_btn,
             self.update_latest_btn,
             self.release_btn,
             self.dev_install_btn,
         )
-        if busy:
-            if self._busy_action_states is None:
-                self._busy_action_states = [
-                    (button, button.isEnabled()) for button in action_buttons
-                ]
-            for button in action_buttons:
-                button.setEnabled(False)
-        elif self._busy_action_states is not None:
-            for button, was_enabled in self._busy_action_states:
-                button.setEnabled(was_enabled)
-            self._busy_action_states = None
-        if not busy:
-            self.status_label.setText("")
+
+    def _set_action_enabled(self, button, enabled: bool):
+        self._action_button_states[button] = enabled
+        button.setEnabled(enabled and not self._busy_operations)
+
+    def _begin_busy(self):
+        token = object()
+        was_idle = not self._busy_operations
+        self._busy_operations.add(token)
+        if was_idle:
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(0)
+        for button in self._action_buttons():
+            self._action_button_states.setdefault(button, button.isEnabled())
+            button.setEnabled(False)
+        return token
+
+    def _end_busy(self, token):
+        if token not in self._busy_operations:
+            return False
+        self._busy_operations.remove(token)
+        if self._busy_operations:
+            return False
+        for button in self._action_buttons():
+            button.setEnabled(self._action_button_states.get(button, False))
+        self.progress_bar.setVisible(False)
+        self.status_label.setText("")
+        return True
 
     def _on_progress(self, current: int, total: int):
         if total > 0:
@@ -1044,7 +1067,7 @@ class UpdateDialog(QDialog):
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        self._set_busy(True)
+        busy_token = self._begin_busy()
         self.status_label.setText(f"Downloading {label}...")
 
         def bg(_col):
@@ -1067,10 +1090,10 @@ class UpdateDialog(QDialog):
             return success, msg, messages
 
         def on_done(result):
-            self._set_busy(False)
             success, msg, messages = result
-            self.status_label.setText(messages[-1] if messages else msg)
-            self.progress_bar.setValue(100 if success else 0)
+            if self._end_busy(busy_token):
+                self.status_label.setText(messages[-1] if messages else msg)
+                self.progress_bar.setValue(100 if success else 0)
             if success:
                 QMessageBox.information(
                     self,
@@ -1321,7 +1344,8 @@ class BranchUpdateProgressDialog(QDialog):
         border = "#444444" if is_dark else "#e0e0e0"
         btn_bg = "#3d3d3d" if is_dark else "#eeeeee"
         btn_hover = "#505050" if is_dark else "#e0e0e0"
-        accent = "#4fc3f7" if is_dark else "#1976d2"
+        progress_text = "#ffffff" if is_dark else "#212121"
+        progress_chunk = "#1565c0" if is_dark else "#90caf9"
 
         self.setStyleSheet(f"""
             QDialog {{
@@ -1337,11 +1361,12 @@ class BranchUpdateProgressDialog(QDialog):
                 background-color: {border};
                 border-radius: 4px;
                 text-align: center;
-                height: 16px;
-                color: {text};
+                color: {progress_text};
+                font-weight: bold;
+                padding: 2px;
             }}
             QProgressBar::chunk {{
-                background-color: {accent};
+                background-color: {progress_chunk};
                 border-radius: 4px;
             }}
             QPushButton {{
@@ -1373,6 +1398,8 @@ class BranchUpdateProgressDialog(QDialog):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setMinimumHeight(self.progress_bar.fontMetrics().height() + 8)
         layout.addWidget(self.progress_bar)
 
         btn_layout = QHBoxLayout()

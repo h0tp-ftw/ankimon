@@ -240,6 +240,17 @@
       ],
       "nickname": "Nuz",
       "discord_id": "1317008280911876109"
+    },
+    {
+      "login": "slager2",
+      "name": "slager2",
+      "avatar_url": "https://github.com/slager2.png",
+      "profile": "https://github.com/slager2",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "slager",
+      "discord_id": "955178102097600622"
     }
   ],
   "contributorsPerLine": 5

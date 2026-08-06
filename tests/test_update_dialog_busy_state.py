@@ -146,7 +146,8 @@ def test_busy_state_disables_all_actions_and_restores_prior_state():
         update_latest_btn=_Control(False),
         release_btn=_Control(True),
         dev_install_btn=_Control(True),
-        _busy_action_states=None,
+        _busy_operations=set(),
+        _action_button_states={},
     )
     buttons = (
         dialog.brrr_update_btn,
@@ -154,15 +155,59 @@ def test_busy_state_disables_all_actions_and_restores_prior_state():
         dialog.release_btn,
         dialog.dev_install_btn,
     )
+    dialog._action_buttons = lambda: buttons
 
-    update_dialog.UpdateDialog._set_busy(dialog, True)
+    busy_token = update_dialog.UpdateDialog._begin_busy(dialog)
 
     assert dialog.progress_bar.visible is True
     assert dialog.progress_bar.value == 0
     assert all(button.enabled is False for button in buttons)
 
-    update_dialog.UpdateDialog._set_busy(dialog, False)
+    update_dialog.UpdateDialog._end_busy(dialog, busy_token)
 
     assert dialog.progress_bar.visible is False
     assert [button.enabled for button in buttons] == [True, False, True, True]
+    assert dialog.status_label.text == ""
+
+
+def test_overlapping_operations_keep_busy_and_apply_latest_button_states():
+    dialog = types.SimpleNamespace(
+        progress_bar=_Progress(),
+        status_label=_Label(),
+        brrr_update_btn=_Control(True),
+        update_latest_btn=_Control(False),
+        release_btn=_Control(True),
+        dev_install_btn=_Control(True),
+        _busy_operations=set(),
+        _action_button_states={},
+    )
+    buttons = (
+        dialog.brrr_update_btn,
+        dialog.update_latest_btn,
+        dialog.release_btn,
+        dialog.dev_install_btn,
+    )
+    dialog._action_buttons = lambda: buttons
+
+    first_token = update_dialog.UpdateDialog._begin_busy(dialog)
+    dialog.progress_bar.setValue(63)
+    second_token = update_dialog.UpdateDialog._begin_busy(dialog)
+
+    assert dialog.progress_bar.value == 63
+    update_dialog.UpdateDialog._set_action_enabled(
+        dialog, dialog.update_latest_btn, True
+    )
+    update_dialog.UpdateDialog._set_action_enabled(dialog, dialog.release_btn, False)
+    assert all(button.enabled is False for button in buttons)
+
+    update_dialog.UpdateDialog._end_busy(dialog, first_token)
+
+    assert dialog.progress_bar.visible is True
+    assert dialog.status_label.text == "Working..."
+    assert all(button.enabled is False for button in buttons)
+
+    update_dialog.UpdateDialog._end_busy(dialog, second_token)
+
+    assert dialog.progress_bar.visible is False
+    assert [button.enabled for button in buttons] == [True, True, False, True]
     assert dialog.status_label.text == ""
