@@ -64,6 +64,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     clear_pokedex = MagicMock(name="clear_pokedex_caches")
     clear_learnset = MagicMock(name="clear_learnset_cache")
     clear_encounter = MagicMock(name="clear_encounter_cache")
+    clear_utils = MagicMock(name="clear_utils_caches")
 
     monkeypatch.setitem(
         sys.modules,
@@ -86,7 +87,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     )
     monkeypatch.setitem(
         sys.modules, "Ankimon.utils",
-        _stub_module("Ankimon.utils", test_online_connectivity=lambda: False),
+        _stub_module("Ankimon.utils", test_online_connectivity=lambda: False, clear_utils_caches=clear_utils),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -146,7 +147,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     profile_hooks = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, "Ankimon.profile_hooks", profile_hooks)
     spec.loader.exec_module(profile_hooks)
-    profile_hooks._clears = (clear_pokedex, clear_learnset, clear_encounter)
+    profile_hooks._clears = (clear_pokedex, clear_learnset, clear_encounter, clear_utils)
     return profile_hooks
 
 

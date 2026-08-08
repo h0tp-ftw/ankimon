@@ -15,6 +15,7 @@ from .pyobj.error_handler import show_warning_with_traceback
 from .functions.pokedex_functions import clear_pokedex_caches
 from .functions.learnset_retrieval import clear_learnset_cache
 from .functions.encounter_functions import clear_encounter_cache
+from .utils import clear_utils_caches
 
 sync_dialog = None
 
@@ -38,6 +39,7 @@ def _on_profile_close():
         clear_pokedex_caches()
         clear_learnset_cache()
         clear_encounter_cache()
+        clear_utils_caches()
     except Exception as e:
         logger.log("error", f"Error clearing caches on profile close: {e}")
 
