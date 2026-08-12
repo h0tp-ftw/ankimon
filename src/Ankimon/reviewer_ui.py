@@ -18,6 +18,7 @@ from .functions.encounter_functions import (
     catch_pokemon,
     kill_pokemon,
     new_pokemon,
+    toggle_auto_battle_override,
 )
 from .texts import _bottomHTML_template, button_style
 
@@ -178,7 +179,18 @@ def catch_shortcut_function():
             update_hud=True,
         )
     else:
-        tooltip("You only catch a pokemon once it's fainted!")
+        # Check if auto-battle is enabled
+        try:
+            auto_battle_setting = int(services.settings.get("battle.automatic_battle"))
+        except (ValueError, TypeError):
+            auto_battle_setting = 0
+        
+        if auto_battle_setting == 0:
+            # Auto-battle disabled - show the original message
+            tooltip("You only catch a pokemon once it's fainted!")
+        else:
+            # Auto-battle enabled - toggle override
+            toggle_auto_battle_override("catch")
 
 
 def defeat_shortcut_function():
@@ -199,7 +211,18 @@ def defeat_shortcut_function():
             update_hud=True,
         )
     else:
-        tooltip("Wild pokemon has to be fainted to defeat it!")
+        # Check if auto-battle is enabled
+        try:
+            auto_battle_setting = int(services.settings.get("battle.automatic_battle"))
+        except (ValueError, TypeError):
+            auto_battle_setting = 0
+        
+        if auto_battle_setting == 0:
+            # Auto-battle disabled - show the original message
+            tooltip("Wild pokemon has to be fainted to defeat it!")
+        else:
+            # Auto-battle enabled - toggle override
+            toggle_auto_battle_override("defeat")
 
 
 def team_cycle_shortcut_function():
