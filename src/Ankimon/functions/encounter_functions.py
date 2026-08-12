@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Union
 
+from aqt.utils import tooltip
 from ..services import services
 from ..events import events
 from ..functions.pokemon_functions import (
@@ -220,6 +221,45 @@ OVERHAUL_PITY_THRESHOLDS = {
 OVERHAUL_PITY_DIVISOR = 50.0
 # ==============================================================================
 
+# AUTO-BATTLE OVERRIDE SYSTEM
+# Override state for auto-battle: None, "catch", or "defeat"
+_auto_battle_override = None
+
+
+def toggle_auto_battle_override(action: str) -> str:
+    """
+    Toggle the auto-battle override for the current encounter.
+    
+    Args:
+        action: "catch" or "defeat"
+    
+    Returns:
+        Current override state as a string: None, "catch", or "defeat"
+    """
+    global _auto_battle_override
+    
+    # If the same action is already set, clear it (toggle off)
+    if _auto_battle_override == action:
+        _auto_battle_override = None
+        tooltip(f"Override removed: Auto-battle behavior restored")
+    else:
+        # Set the new override
+        _auto_battle_override = action
+        action_display = "Catch" if action == "catch" else "Defeat"
+        tooltip(f"Override set: Will {action_display} when fainted!")
+    
+    return _auto_battle_override
+
+
+def get_auto_battle_override() -> str:
+    """Get the current override state."""
+    return _auto_battle_override
+
+
+def clear_auto_battle_override():
+    """Clear the override state (called when a new encounter starts)."""
+    global _auto_battle_override
+    _auto_battle_override = None
 
 def calculate_mastery_index_ep(total_reviews, daily_average, trainer_level):
     """
@@ -1098,6 +1138,9 @@ def new_pokemon(
     Returns:
         PokemonObject: The updated `pokemon` object representing the newly generated wild Pokémon ready for battle.
     """
+    # Clear any auto-battle override from previous encounter
+    clear_auto_battle_override()
+
     ankimon_tracker.faint_processed = False
     ankimon_tracker.caught = 0
 
@@ -1695,13 +1738,7 @@ def save_caught_pokemon(
     caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 
     # Save to database (replaces JSON file I/O for performance)
-    save_success = ankimon_db.save_pokemon(caught_pokemon)
-
-    # Only award Badge 7 ("First Pokemon Caught !") if the save was successful
-    if save_success and achievements is not None:
-        check = check_for_badge(achievements, 7)
-        if check is False:
-            achievements = receive_badge(7, achievements)
+    ankimon_db.save_pokemon(caught_pokemon)
 
     try:
         from ..singletons import notify_stats_changed
@@ -1778,7 +1815,7 @@ def handle_enemy_faint(
     achievements: dict,
 ):
     """
-    Handles what automatically happens when the enemy Pokémon faints, based on auto-battle settings.
+    Handles what automatically happens when the enemy Pokémon faints, based on auto-battle settings and user overrides.
     """
     if ankimon_tracker_obj.faint_processed:
         return
@@ -1807,6 +1844,7 @@ def handle_enemy_faint(
         new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
         main_pokemon.reset_bonuses()
         ankimon_tracker_obj.general_card_count_for_battle = 0
+        clear_auto_battle_override()
         return
     # --- End wishlist fast-path ---
 
@@ -1828,6 +1866,43 @@ def handle_enemy_faint(
         or (is_regional and settings_obj.get("battle.auto_catch_regional", True))
     )
 
+    # --- CHECK FOR USER OVERRIDE FIRST ---
+    if _auto_battle_override == "catch":
+        # Override: Force catch
+        ankimon_tracker_obj.faint_processed = True
+        catch_pokemon(
+            enemy_pokemon,
+            ankimon_tracker_obj,
+            logger,
+            "",
+            collected_pokemon_ids,
+            achievements,
+        )
+        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
+        main_pokemon.reset_bonuses()
+        ankimon_tracker_obj.general_card_count_for_battle = 0
+        clear_auto_battle_override()
+        return
+        
+    elif _auto_battle_override == "defeat":
+        # Override: Force defeat
+        ankimon_tracker_obj.faint_processed = True
+        kill_pokemon(
+            main_pokemon,
+            enemy_pokemon,
+            evo_window,
+            logger,
+            achievements,
+            trainer_card,
+        )
+        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
+        main_pokemon.reset_bonuses()
+        ankimon_tracker_obj.general_card_count_for_battle = 0
+        clear_auto_battle_override()
+        return
+    # --- END OVERRIDE CHECK ---
+
+    # --- Normal auto-battle logic (no override) ---
     if auto_battle_setting == 3:  # Catch if uncollected
         enemy_id = enemy_pokemon.id
         # Check cache instead of file
@@ -1905,6 +1980,7 @@ def handle_enemy_faint(
 
     main_pokemon.reset_bonuses()
     ankimon_tracker_obj.general_card_count_for_battle = 0
+    clear_auto_battle_override()
 
 
 def handle_main_pokemon_faint(
