@@ -8,7 +8,14 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Union
 
-from aqt.utils import tooltip
+# Tooltip import - fallback for headless test environment
+try:
+    from aqt.utils import tooltip
+except (ImportError, ModuleNotFoundError):
+    # Fallback for harness tests (no Qt)
+    def tooltip(msg, period=2000):
+        print(f"[Ankimon Tooltip] {msg}")
+
 from ..services import services
 from ..events import events
 from ..functions.pokemon_functions import (
