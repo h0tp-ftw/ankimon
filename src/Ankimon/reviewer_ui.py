@@ -182,6 +182,8 @@ def catch_shortcut_function():
         # Check if auto-battle is enabled
         try:
             auto_battle_setting = int(services.settings.get("battle.automatic_battle"))
+            if not (0 <= auto_battle_setting <= 3):
+                auto_battle_setting = 0  # fallback
         except (ValueError, TypeError):
             auto_battle_setting = 0
         
@@ -214,6 +216,8 @@ def defeat_shortcut_function():
         # Check if auto-battle is enabled
         try:
             auto_battle_setting = int(services.settings.get("battle.automatic_battle"))
+            if not (0 <= auto_battle_setting <= 3):
+                auto_battle_setting = 0  # fallback
         except (ValueError, TypeError):
             auto_battle_setting = 0
         
