@@ -6,7 +6,7 @@ import os
 import random
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Literal, Optional, Union
 
 # Tooltip import - fallback for headless test environment
 try:
@@ -230,10 +230,12 @@ OVERHAUL_PITY_DIVISOR = 50.0
 
 # AUTO-BATTLE OVERRIDE SYSTEM
 # Override state for auto-battle: None, "catch", or "defeat"
-_auto_battle_override = None
+_auto_battle_override: Optional[Literal["catch", "defeat"]] = None
 
 
-def toggle_auto_battle_override(action: str) -> str:
+def toggle_auto_battle_override(
+    action: Literal["catch", "defeat"],
+) -> Optional[Literal["catch", "defeat"]]:
     """
     Toggle the auto-battle override for the current encounter.
     
@@ -258,12 +260,12 @@ def toggle_auto_battle_override(action: str) -> str:
     return _auto_battle_override
 
 
-def get_auto_battle_override() -> str:
+def get_auto_battle_override() -> Optional[Literal["catch", "defeat"]]:
     """Get the current override state."""
     return _auto_battle_override
 
 
-def clear_auto_battle_override():
+def clear_auto_battle_override() -> None:
     """Clear the override state (called when a new encounter starts)."""
     global _auto_battle_override
     _auto_battle_override = None
@@ -1841,6 +1843,9 @@ def handle_enemy_faint(
             auto_battle_setting = 0  # fallback
     except ValueError:
         auto_battle_setting = 0  # fallback
+
+    if auto_battle_setting == 0:
+        clear_auto_battle_override()
 
     is_mega = enemy_pokemon.id in encounter_data.MEGA
     is_gmax = enemy_pokemon.id in encounter_data.GMAX

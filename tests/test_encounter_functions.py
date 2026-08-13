@@ -303,6 +303,77 @@ def test_handle_enemy_faint_auto_catch_regional_disabled():
         ef.kill_pokemon = orig_kill
 
 
+def test_auto_battle_override_toggle_returns_none_when_cleared():
+    """Toggling an active override off is a valid nullable state transition."""
+    original_override = ef.get_auto_battle_override()
+    try:
+        ef.clear_auto_battle_override()
+
+        assert ef.toggle_auto_battle_override("catch") == "catch"
+        assert ef.get_auto_battle_override() == "catch"
+        assert ef.toggle_auto_battle_override("catch") is None
+        assert ef.get_auto_battle_override() is None
+    finally:
+        ef._auto_battle_override = original_override
+
+
+def test_handle_enemy_faint_manual_mode_clears_stale_override():
+    """Manual mode must not execute an override selected before auto-battle was off."""
+    original_settings = ef.settings_obj
+    original_tracker = ef.ankimon_tracker_obj
+    original_catch = ef.catch_pokemon
+    original_new = ef.new_pokemon
+    original_kill = ef.kill_pokemon
+    original_override = ef.get_auto_battle_override()
+
+    try:
+        settings = mock.MagicMock()
+        settings.get = lambda key, default=None: (
+            0 if key == "battle.automatic_battle" else default
+        )
+        tracker = mock.MagicMock()
+        tracker.faint_processed = False
+        catch = mock.MagicMock()
+        new = mock.MagicMock()
+        kill = mock.MagicMock()
+        main_pokemon = mock.MagicMock()
+        enemy_pokemon = mock.MagicMock(
+            id=25, name="Pikachu", shiny=False, tier="Normal"
+        )
+        test_window = mock.MagicMock()
+
+        ef.settings_obj = settings
+        ef.ankimon_tracker_obj = tracker
+        ef.catch_pokemon = catch
+        ef.new_pokemon = new
+        ef.kill_pokemon = kill
+        ef._auto_battle_override = "catch"
+
+        ef.handle_enemy_faint(
+            main_pokemon,
+            enemy_pokemon,
+            set(),
+            test_window,
+            mock.MagicMock(),
+            mock.MagicMock(),
+            mock.MagicMock(),
+            {},
+        )
+
+        test_window.display_pokemon_death.assert_called_once()
+        catch.assert_not_called()
+        kill.assert_not_called()
+        new.assert_not_called()
+        assert ef.get_auto_battle_override() is None
+    finally:
+        ef.settings_obj = original_settings
+        ef.ankimon_tracker_obj = original_tracker
+        ef.catch_pokemon = original_catch
+        ef.new_pokemon = original_new
+        ef.kill_pokemon = original_kill
+        ef._auto_battle_override = original_override
+
+
 def test_meets_prerequisites_fusion_and_normal():
     # Ensure the real _player_owns_base_form logic is used (in case simulation tests mutated it)
     def real_owns_base_form(actual_id, collected_ids):
