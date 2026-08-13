@@ -1864,35 +1864,39 @@ def handle_enemy_faint(
     if _auto_battle_override == "catch":
         # Override: Force catch
         ankimon_tracker_obj.faint_processed = True
-        catch_pokemon(
-            enemy_pokemon,
-            ankimon_tracker_obj,
-            logger,
-            "",
-            collected_pokemon_ids,
-            achievements,
-        )
-        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
-        main_pokemon.reset_bonuses()
-        ankimon_tracker_obj.general_card_count_for_battle = 0
-        clear_auto_battle_override()
+        try:
+            catch_pokemon(
+                enemy_pokemon,
+                ankimon_tracker_obj,
+                logger,
+                "",
+                collected_pokemon_ids,
+                achievements,
+            )
+            new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
+            main_pokemon.reset_bonuses()
+            ankimon_tracker_obj.general_card_count_for_battle = 0
+        finally:
+            clear_auto_battle_override()
         return
         
     elif _auto_battle_override == "defeat":
         # Override: Force defeat
         ankimon_tracker_obj.faint_processed = True
-        kill_pokemon(
-            main_pokemon,
-            enemy_pokemon,
-            evo_window,
-            logger,
-            achievements,
-            trainer_card,
-        )
-        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
-        main_pokemon.reset_bonuses()
-        ankimon_tracker_obj.general_card_count_for_battle = 0
-        clear_auto_battle_override()
+        try:
+            kill_pokemon(
+                main_pokemon,
+                enemy_pokemon,
+                evo_window,
+                logger,
+                achievements,
+                trainer_card,
+            )
+            new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
+            main_pokemon.reset_bonuses()
+            ankimon_tracker_obj.general_card_count_for_battle = 0
+        finally:
+            clear_auto_battle_override()
         return
     # --- END OVERRIDE CHECK ---
 
