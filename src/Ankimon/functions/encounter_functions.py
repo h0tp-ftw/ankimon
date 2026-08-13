@@ -1745,7 +1745,13 @@ def save_caught_pokemon(
     caught_pokemon["cp"] = calculate_cp_from_dict(caught_pokemon)
 
     # Save to database (replaces JSON file I/O for performance)
-    ankimon_db.save_pokemon(caught_pokemon)
+    save_success = ankimon_db.save_pokemon(caught_pokemon)
+
+    # Only award Badge 7 ("First Pokemon Caught !") if the save was successful
+    if save_success and achievements is not None:
+        check = check_for_badge(achievements, 7)
+        if check is False:
+            achievements = receive_badge(7, achievements)
 
     try:
         from ..singletons import notify_stats_changed
