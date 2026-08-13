@@ -1842,25 +1842,6 @@ def handle_enemy_faint(
     except ValueError:
         auto_battle_setting = 0  # fallback
 
-    # --- Wishlist fast-path (runs regardless of auto_battle_setting) ---
-    _wishlist = settings_obj.get("battle.auto_catch_wishlist", [])
-    if isinstance(_wishlist, list) and enemy_pokemon.id in _wishlist:
-        ankimon_tracker_obj.faint_processed = True
-        catch_pokemon(
-            enemy_pokemon,
-            ankimon_tracker_obj,
-            logger,
-            "",
-            collected_pokemon_ids,
-            achievements,
-        )
-        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
-        main_pokemon.reset_bonuses()
-        ankimon_tracker_obj.general_card_count_for_battle = 0
-        clear_auto_battle_override()
-        return
-    # --- End wishlist fast-path ---
-
     is_mega = enemy_pokemon.id in encounter_data.MEGA
     is_gmax = enemy_pokemon.id in encounter_data.GMAX
     is_regional = enemy_pokemon.id in encounter_data.REGIONAL_FORM_REGION
@@ -1914,6 +1895,25 @@ def handle_enemy_faint(
         clear_auto_battle_override()
         return
     # --- END OVERRIDE CHECK ---
+
+    # --- Wishlist fast-path (runs after override check) ---
+    _wishlist = settings_obj.get("battle.auto_catch_wishlist", [])
+    if isinstance(_wishlist, list) and enemy_pokemon.id in _wishlist:
+        ankimon_tracker_obj.faint_processed = True
+        catch_pokemon(
+            enemy_pokemon,
+            ankimon_tracker_obj,
+            logger,
+            "",
+            collected_pokemon_ids,
+            achievements,
+        )
+        new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
+        main_pokemon.reset_bonuses()
+        ankimon_tracker_obj.general_card_count_for_battle = 0
+        clear_auto_battle_override()
+        return
+    # --- End wishlist fast-path ---
 
     # --- Normal auto-battle logic (no override) ---
     if auto_battle_setting == 3:  # Catch if uncollected
