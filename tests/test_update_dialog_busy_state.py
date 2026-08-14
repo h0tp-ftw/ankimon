@@ -136,7 +136,7 @@ class _Progress:
 
 class _Label:
     def __init__(self):
-        self.text = "Working..."
+        self.text = ""
 
     def setText(self, text):
         self.text = text
@@ -188,9 +188,18 @@ class _FakeSpriteThread:
         self.finished_signal = _Signal()
         self.finished = _Signal()
         self.started = False
+        self.cancelled = False
+        self.running = False
 
     def start(self):
         self.started = True
+        self.running = True
+
+    def cancel(self):
+        self.cancelled = True
+
+    def isRunning(self):
+        return self.running
 
 
 def _make_dialog():
@@ -207,6 +216,10 @@ def _make_dialog():
         sprites_update_btn=_Control(True),
         _busy_operations=set(),
         _action_button_states={},
+        _closing=False,
+        _close_finalized=False,
+        _sprites_busy_token=None,
+        sprites_thread=None,
     )
     dialog._action_buttons = types.MethodType(
         update_dialog.UpdateDialog._action_buttons, dialog
@@ -216,6 +229,9 @@ def _make_dialog():
     )
     dialog._begin_busy = types.MethodType(update_dialog.UpdateDialog._begin_busy, dialog)
     dialog._end_busy = types.MethodType(update_dialog.UpdateDialog._end_busy, dialog)
+    dialog._defer_close_for_sprite_thread = types.MethodType(
+        update_dialog.UpdateDialog._defer_close_for_sprite_thread, dialog
+    )
     return dialog, dialog._action_buttons()
 
 
@@ -244,6 +260,7 @@ def test_busy_state_disables_all_actions_and_restores_prior_state():
 
 def test_overlapping_operations_keep_busy_and_apply_latest_button_states():
     dialog, buttons = _make_dialog()
+    dialog.status_label.setText("Working...")
 
     first_token = update_dialog.UpdateDialog._begin_busy(dialog)
     dialog.progress_bar.setValue(63)
@@ -411,7 +428,7 @@ def test_update_worker_failure_restores_controls():
         update_dialog.QMessageBox = original_message_box
 
 
-def test_sprite_workflows_share_busy_lifecycle():
+def test_sprite_workflows_share_busy_lifecycle(tmp_path):
     original_query_op = update_dialog.QueryOp
     original_mw = update_dialog.mw
     saved_modules = {
@@ -443,7 +460,7 @@ def test_sprite_workflows_share_busy_lifecycle():
         sys.modules[sprite_updater.__name__] = sprite_updater
 
         resources = types.ModuleType("Ankimon.resources")
-        resources.user_path_sprites = "/tmp/ankimon-test-sprites"
+        resources.user_path_sprites = str(tmp_path / "ankimon-test-sprites")
         sys.modules[resources.__name__] = resources
 
         check_dialog, check_buttons = _make_dialog()
@@ -497,10 +514,118 @@ def test_sprite_workflows_share_busy_lifecycle():
         crashed_dialog.sprites_thread.finished.emit()
         assert not crashed_dialog._busy_operations
         assert "unexpectedly" in crashed_dialog.sprites_status.text
+
+        closing_dialog, closing_buttons = _make_dialog()
+        closing_dialog.sprites_added = []
+        closing_dialog.sprites_modified = []
+        closing_dialog.sprites_deleted = []
+        closing_dialog.sprites_remote_sha = "abc123"
+        close_requests = []
+        closing_dialog.reject = lambda: close_requests.append(True)
+        update_dialog.UpdateDialog._start_sprites_download(closing_dialog)
+        closing_thread = closing_dialog.sprites_thread
+
+        update_dialog.UpdateDialog.reject(closing_dialog)
+
+        assert closing_thread.cancelled is True
+        assert closing_dialog._busy_operations
+        assert all(button.enabled is False for button in closing_buttons)
+
+        closing_thread.status_signal.emit("Downloading after cancellation")
+        closing_thread.progress_signal.emit(99)
+        assert closing_dialog.sprites_status.text == "Cancelling sprite update..."
+        assert closing_dialog.sprites_progress.value == 0
+
+        closing_thread.finished_signal.emit(False, "Update cancelled.")
+        assert closing_dialog._busy_operations
+        closing_thread.running = False
+        closing_thread.finished.emit()
+
+        assert not closing_dialog._busy_operations
+        assert closing_dialog.sprites_thread is None
+        assert close_requests == [True]
+        assert closing_dialog.sprites_status.text == "Cancelling sprite update..."
+
+        late_dialog, _buttons = _make_dialog()
+        late_dialog.sprites_added = []
+        late_dialog.sprites_modified = []
+        late_dialog.sprites_deleted = []
+        late_dialog.sprites_remote_sha = "abc123"
+        late_rejects = []
+        late_dialog.reject = lambda: late_rejects.append(True)
+        update_dialog.UpdateDialog._start_sprites_download(late_dialog)
+        late_thread = late_dialog.sprites_thread
+        late_dialog._closing = True
+        late_dialog._close_finalized = True
+        late_thread.running = False
+        late_thread.finished.emit()
+        assert late_rejects == []
     finally:
         _FakeQueryOp.raise_on_run = False
         update_dialog.QueryOp = original_query_op
         update_dialog.mw = original_mw
+        for name, module in saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+
+def test_branch_progress_malformed_result_uses_failure_path():
+    class MessageBox:
+        warnings = []
+
+        @staticmethod
+        def warning(*args):
+            MessageBox.warnings.append(args)
+
+        @staticmethod
+        def information(*args):
+            pass
+
+    original_query_op = update_dialog.QueryOp
+    original_message_box = update_dialog.QMessageBox
+    saved_modules = {
+        name: sys.modules.get(name)
+        for name in ("Ankimon", "Ankimon.pyobj", "Ankimon.pyobj.update_manager")
+    }
+    update_dialog.QueryOp = _FakeQueryOp
+    update_dialog.QMessageBox = MessageBox
+    try:
+        for name, path in (
+            ("Ankimon", _SRC / "Ankimon"),
+            ("Ankimon.pyobj", _SRC / "Ankimon" / "pyobj"),
+        ):
+            package = types.ModuleType(name)
+            package.__path__ = [str(path)]
+            package.__package__ = name
+            sys.modules[name] = package
+
+        manager = types.ModuleType("Ankimon.pyobj.update_manager")
+        manager._download_branch_zip = lambda *args, **kwargs: None
+        manager._download_zip_to_temp = lambda *args, **kwargs: None
+        manager.apply_update = lambda *args, **kwargs: None
+        sys.modules[manager.__name__] = manager
+
+        dialog = types.SimpleNamespace(
+            release=None,
+            branch_name="main",
+            remote_sha="abc123",
+            on_progress=lambda *args: None,
+            btn_close=_Control(False),
+            status_label=_Label(),
+            progress_bar=_Progress(),
+        )
+        update_dialog.BranchUpdateProgressDialog.start_update(dialog)
+        _FakeQueryOp.last.success(None)
+
+        assert dialog.btn_close.enabled is True
+        assert dialog.progress_bar.value == 0
+        assert "unexpectedly" in dialog.status_label.text
+        assert MessageBox.warnings
+    finally:
+        update_dialog.QueryOp = original_query_op
+        update_dialog.QMessageBox = original_message_box
         for name, module in saved_modules.items():
             if module is None:
                 sys.modules.pop(name, None)

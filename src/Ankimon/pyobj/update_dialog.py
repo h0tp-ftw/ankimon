@@ -62,6 +62,10 @@ class UpdateDialog(QDialog):
         self.dev_data_loaded = False
         self._busy_operations = set()
         self._action_button_states = {}
+        self._closing = False
+        self._close_finalized = False
+        self._sprites_busy_token = None
+        self.sprites_thread = None
 
         self._apply_theme()
 
@@ -814,13 +818,18 @@ class UpdateDialog(QDialog):
 
         dest_dir = Path(user_path_sprites)
         busy_token = self._begin_busy()
+        self._sprites_busy_token = busy_token
         self.sprites_progress.setVisible(True)
         self.sprites_progress.setValue(0)
 
         def settle_busy():
-            self._end_busy(busy_token)
+            if self._sprites_busy_token is busy_token:
+                self._sprites_busy_token = None
+                self._end_busy(busy_token)
 
         def finished(success, message):
+            if self._closing:
+                return
             try:
                 self.sprites_update_btn.setVisible(False)
                 if success:
@@ -838,11 +847,24 @@ class UpdateDialog(QDialog):
                 settle_busy()
 
         def thread_stopped():
-            if busy_token in self._busy_operations:
-                settle_busy()
+            was_active = busy_token in self._busy_operations
+            closing = self._closing
+            settle_busy()
+            self.sprites_thread = None
+            if closing and not self._close_finalized:
+                self.reject()
+            elif was_active:
                 self.sprites_status.setText(
                     "Sprite update stopped unexpectedly. Please try again."
                 )
+
+        def update_progress(value):
+            if not self._closing:
+                self.sprites_progress.setValue(value)
+
+        def update_status(message):
+            if not self._closing:
+                self.sprites_status.setText(message)
 
         try:
             self.sprites_thread = SpriteUpdateDiffThread(
@@ -852,8 +874,12 @@ class UpdateDialog(QDialog):
                 self.sprites_remote_sha,
                 dest_dir,
             )
-            self.sprites_thread.progress_signal.connect(self.sprites_progress.setValue)
-            self.sprites_thread.status_signal.connect(self.sprites_status.setText)
+            self.sprites_thread.progress_signal.connect(
+                lambda value: mw.taskman.run_on_main(lambda: update_progress(value))
+            )
+            self.sprites_thread.status_signal.connect(
+                lambda message: mw.taskman.run_on_main(lambda: update_status(message))
+            )
             self.sprites_thread.finished_signal.connect(
                 lambda success, message: mw.taskman.run_on_main(
                     lambda: finished(success, message)
@@ -865,7 +891,34 @@ class UpdateDialog(QDialog):
             self.sprites_thread.start()
         except Exception as exc:
             settle_busy()
+            self.sprites_thread = None
             self.sprites_status.setText(f"Could not start sprite update: {exc}")
+
+    def _defer_close_for_sprite_thread(self):
+        self._closing = True
+        if self.sprites_thread is not None and self.sprites_thread.isRunning():
+            self.sprites_thread.cancel()
+            self.sprites_status.setText("Cancelling sprite update...")
+            return True
+
+        if self._sprites_busy_token is not None:
+            token = self._sprites_busy_token
+            self._sprites_busy_token = None
+            self._end_busy(token)
+        return False
+
+    def reject(self):
+        if self._defer_close_for_sprite_thread():
+            return
+        self._close_finalized = True
+        super().reject()
+
+    def closeEvent(self, event):
+        if self._defer_close_for_sprite_thread():
+            event.ignore()
+            return
+        self._close_finalized = True
+        super().closeEvent(event)
 
     # --- Data loading ---
 
@@ -1510,7 +1563,11 @@ class BranchUpdateProgressDialog(QDialog):
             )
 
         def on_done(result):
-            success, msg = result
+            try:
+                success, msg = result
+            except Exception as exc:
+                on_failed(exc)
+                return
             self.btn_close.setEnabled(True)
             if success:
                 self.btn_close.setText("Restart Anki")
