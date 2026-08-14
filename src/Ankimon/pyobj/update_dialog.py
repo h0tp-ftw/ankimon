@@ -813,6 +813,9 @@ class UpdateDialog(QDialog):
         _start_query_op(self, bg, done, failed)
 
     def _start_sprites_download(self):
+        if self.sprites_thread is not None and self.sprites_thread.isRunning():
+            return
+
         from .sprite_updater import SpriteUpdateDiffThread
         from ..resources import user_path_sprites
 
@@ -821,77 +824,90 @@ class UpdateDialog(QDialog):
         self._sprites_busy_token = busy_token
         self.sprites_progress.setVisible(True)
         self.sprites_progress.setValue(0)
+        completion_result = None
+        thread = None
 
         def settle_busy():
+            if busy_token in self._busy_operations:
+                self._end_busy(busy_token)
             if self._sprites_busy_token is busy_token:
                 self._sprites_busy_token = None
-                self._end_busy(busy_token)
 
-        def finished(success, message):
-            if self._closing:
-                return
-            try:
-                self.sprites_update_btn.setVisible(False)
-                if success:
-                    try:
-                        manifest_path = dest_dir.parent / "sprites_local_manifest.json"
-                        if manifest_path.exists():
-                            manifest_path.unlink()
-                    except Exception:
-                        pass
-                    self.sprites_status.setText("Update complete! " + message)
-                    self.sprites_progress.setValue(100)
-                else:
-                    self.sprites_status.setText("Update failed: " + message)
-            finally:
-                settle_busy()
+        def record_finished(success, message):
+            nonlocal completion_result
+            completion_result = (success, message)
 
         def thread_stopped():
-            was_active = busy_token in self._busy_operations
             closing = self._closing
-            settle_busy()
-            self.sprites_thread = None
+            try:
+                if not closing and self.sprites_thread is thread:
+                    if completion_result is None:
+                        self.sprites_status.setText(
+                            "Sprite update stopped unexpectedly. Please try again."
+                        )
+                    else:
+                        success, message = completion_result
+                        self.sprites_update_btn.setVisible(False)
+                        if success:
+                            try:
+                                manifest_path = (
+                                    dest_dir.parent / "sprites_local_manifest.json"
+                                )
+                                if manifest_path.exists():
+                                    manifest_path.unlink()
+                            except Exception:
+                                pass
+                            self.sprites_status.setText("Update complete! " + message)
+                            self.sprites_progress.setValue(100)
+                        else:
+                            self.sprites_status.setText("Update failed: " + message)
+            finally:
+                settle_busy()
+                if self.sprites_thread is thread:
+                    self.sprites_thread = None
             if closing and not self._close_finalized:
                 self.reject()
-            elif was_active:
-                self.sprites_status.setText(
-                    "Sprite update stopped unexpectedly. Please try again."
-                )
 
         def update_progress(value):
-            if not self._closing:
+            if (
+                not self._closing
+                and self.sprites_thread is thread
+                and busy_token in self._busy_operations
+            ):
                 self.sprites_progress.setValue(value)
 
         def update_status(message):
-            if not self._closing:
+            if (
+                not self._closing
+                and self.sprites_thread is thread
+                and busy_token in self._busy_operations
+            ):
                 self.sprites_status.setText(message)
 
         try:
-            self.sprites_thread = SpriteUpdateDiffThread(
+            thread = SpriteUpdateDiffThread(
                 self.sprites_added,
                 self.sprites_modified,
                 self.sprites_deleted,
                 self.sprites_remote_sha,
                 dest_dir,
             )
-            self.sprites_thread.progress_signal.connect(
+            self.sprites_thread = thread
+            thread.progress_signal.connect(
                 lambda value: mw.taskman.run_on_main(lambda: update_progress(value))
             )
-            self.sprites_thread.status_signal.connect(
+            thread.status_signal.connect(
                 lambda message: mw.taskman.run_on_main(lambda: update_status(message))
             )
-            self.sprites_thread.finished_signal.connect(
-                lambda success, message: mw.taskman.run_on_main(
-                    lambda: finished(success, message)
-                )
+            thread.finished_signal.connect(
+                record_finished, Qt.ConnectionType.DirectConnection
             )
-            self.sprites_thread.finished.connect(
-                lambda: mw.taskman.run_on_main(thread_stopped)
-            )
-            self.sprites_thread.start()
+            thread.finished.connect(lambda: mw.taskman.run_on_main(thread_stopped))
+            thread.start()
         except Exception as exc:
             settle_busy()
-            self.sprites_thread = None
+            if self.sprites_thread is thread:
+                self.sprites_thread = None
             self.sprites_status.setText(f"Could not start sprite update: {exc}")
 
     def _defer_close_for_sprite_thread(self):

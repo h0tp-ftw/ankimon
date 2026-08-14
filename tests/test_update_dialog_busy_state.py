@@ -32,7 +32,9 @@ def _load_update_dialog():
         sys.modules["aqt.operations"] = operations
 
         qt = types.ModuleType("aqt.qt")
-        qt.Qt = object
+        qt.Qt = types.SimpleNamespace(
+            ConnectionType=types.SimpleNamespace(DirectConnection=object())
+        )
         for name in (
             "QDialog",
             "QVBoxLayout",
@@ -173,7 +175,7 @@ class _Signal:
     def __init__(self):
         self.callbacks = []
 
-    def connect(self, callback):
+    def connect(self, callback, *args, **kwargs):
         self.callbacks.append(callback)
 
     def emit(self, *args):
@@ -496,12 +498,14 @@ def test_sprite_workflows_share_busy_lifecycle(tmp_path):
         assert download_dialog.sprites_thread.started is True
 
         download_dialog.sprites_thread.finished_signal.emit(False, "simulated failure")
+        assert download_dialog._busy_operations
+        assert all(button.enabled is False for button in download_buttons)
+
+        download_dialog.sprites_thread.running = False
+        download_dialog.sprites_thread.finished.emit()
         assert not download_dialog._busy_operations
         assert download_dialog.sprites_check_btn.enabled is True
         assert download_dialog.sprites_update_btn.enabled is True
-        assert download_dialog.sprites_status.text == "Update failed: simulated failure"
-
-        download_dialog.sprites_thread.finished.emit()
         assert download_dialog.sprites_status.text == "Update failed: simulated failure"
 
         crashed_dialog, crashed_buttons = _make_dialog()
@@ -511,9 +515,50 @@ def test_sprite_workflows_share_busy_lifecycle(tmp_path):
         crashed_dialog.sprites_remote_sha = "abc123"
         update_dialog.UpdateDialog._start_sprites_download(crashed_dialog)
         assert all(button.enabled is False for button in crashed_buttons)
-        crashed_dialog.sprites_thread.finished.emit()
+        crashed_thread = crashed_dialog.sprites_thread
+        crashed_thread.running = False
+        crashed_thread.finished.emit()
         assert not crashed_dialog._busy_operations
         assert "unexpectedly" in crashed_dialog.sprites_status.text
+        crashed_thread.finished_signal.emit(False, "late result")
+        assert "unexpectedly" in crashed_dialog.sprites_status.text
+
+        replacement_dialog, replacement_buttons = _make_dialog()
+        replacement_dialog.sprites_added = []
+        replacement_dialog.sprites_modified = []
+        replacement_dialog.sprites_deleted = []
+        replacement_dialog.sprites_remote_sha = "abc123"
+        update_dialog.UpdateDialog._start_sprites_download(replacement_dialog)
+        old_thread = replacement_dialog.sprites_thread
+
+        update_dialog.UpdateDialog._start_sprites_download(replacement_dialog)
+        assert replacement_dialog.sprites_thread is old_thread
+        assert len(replacement_dialog._busy_operations) == 1
+
+        # The worker has stopped, but its queued QThread.finished callback has
+        # not run yet, so a new operation can replace the stored reference.
+        old_thread.running = False
+        update_dialog.UpdateDialog._start_sprites_download(replacement_dialog)
+        replacement_thread = replacement_dialog.sprites_thread
+
+        old_thread.progress_signal.emit(88)
+        old_thread.status_signal.emit("stale status")
+        old_thread.finished_signal.emit(False, "stale result")
+        old_thread.finished.emit()
+
+        assert replacement_dialog.sprites_thread is replacement_thread
+        assert len(replacement_dialog._busy_operations) == 1
+        assert all(button.enabled is False for button in replacement_buttons)
+        assert replacement_dialog.sprites_progress.value == 0
+        assert "stale status" not in replacement_dialog.sprites_status.text
+        assert "stale result" not in replacement_dialog.sprites_status.text
+
+        replacement_thread.finished_signal.emit(False, "current result")
+        replacement_thread.running = False
+        replacement_thread.finished.emit()
+        assert replacement_dialog.sprites_thread is None
+        assert not replacement_dialog._busy_operations
+        assert replacement_dialog.sprites_status.text == "Update failed: current result"
 
         closing_dialog, closing_buttons = _make_dialog()
         closing_dialog.sprites_added = []
