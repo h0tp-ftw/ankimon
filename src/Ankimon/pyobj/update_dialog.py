@@ -37,6 +37,17 @@ from .update_manager import (
 from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
 
 
+def _start_query_op(parent, op, success, failure):
+    try:
+        QueryOp(
+            parent=parent, op=op, success=success
+        ).failure(failure).without_collection().run_in_background()
+    except Exception as exc:
+        # Submission happens on the Qt thread, so synchronous failures can use
+        # the same UI-safe cleanup callback as background worker failures.
+        failure(exc)
+
+
 class UpdateDialog(QDialog):
     def __init__(self, parent=None, select_tab=None):
         super().__init__(parent or mw)
@@ -745,92 +756,116 @@ class UpdateDialog(QDialog):
             pass
 
     def _check_sprites(self):
-        self.sprites_check_btn.setEnabled(False)
+        from .sprite_updater import calculate_sprite_diff
+        from ..resources import user_path_sprites
+
+        busy_token = self._begin_busy()
         self.sprites_status.setText("Checking for sprite updates...")
         self.sprites_progress.setValue(0)
         self.sprites_progress.setVisible(False)
         self.sprites_update_btn.setVisible(False)
-        
-        from .sprite_updater import calculate_sprite_diff
-        from ..resources import user_path_sprites
-        from aqt.operations import QueryOp
-        
+
         dest_dir = Path(user_path_sprites)
-        
+
         def bg(_col):
             # Run with ignore_snooze=True since this is a manual check
             return calculate_sprite_diff(dest_dir, silent=False, ignore_snooze=True)
 
-        def done(result):
-            self.sprites_check_btn.setEnabled(True)
-            status = result.get("status")
-            if status == "up_to_date":
-                self.sprites_status.setText("Sprites are already up to date!")
-                self.sprites_progress.setValue(100)
-                self.sprites_progress.setVisible(True)
-            elif status == "error":
-                self.sprites_status.setText(f"Error checking updates: {result.get('error')}")
-            elif status == "update_available":
-                self.sprites_added = result.get("added", [])
-                self.sprites_modified = result.get("modified", [])
-                self.sprites_deleted = result.get("deleted", [])
-                self.sprites_remote_sha = result.get("remote_sha")
-                
-                msg = "A sprites update is available!\n\n"
-                msg += f"  • New sprites: {len(self.sprites_added)}\n"
-                msg += f"  • Modified sprites: {len(self.sprites_modified)}\n"
-                if self.sprites_deleted:
-                    msg += f"  • Obsolete to remove: {len(self.sprites_deleted)}\n"
-                
-                self.sprites_status.setText(msg)
-                self.sprites_update_btn.setVisible(True)
+        def settle_busy():
+            self._end_busy(busy_token)
 
-        QueryOp(
-            parent=self,
-            op=bg,
-            success=done
-        ).without_collection().run_in_background()
+        def done(result):
+            try:
+                status = result.get("status")
+                if status == "up_to_date":
+                    self.sprites_status.setText("Sprites are already up to date!")
+                    self.sprites_progress.setValue(100)
+                    self.sprites_progress.setVisible(True)
+                elif status == "error":
+                    self.sprites_status.setText(
+                        f"Error checking updates: {result.get('error')}"
+                    )
+                elif status == "update_available":
+                    self.sprites_added = result.get("added", [])
+                    self.sprites_modified = result.get("modified", [])
+                    self.sprites_deleted = result.get("deleted", [])
+                    self.sprites_remote_sha = result.get("remote_sha")
+
+                    msg = "A sprites update is available!\n\n"
+                    msg += f"  • New sprites: {len(self.sprites_added)}\n"
+                    msg += f"  • Modified sprites: {len(self.sprites_modified)}\n"
+                    if self.sprites_deleted:
+                        msg += f"  • Obsolete to remove: {len(self.sprites_deleted)}\n"
+
+                    self.sprites_status.setText(msg)
+                    self.sprites_update_btn.setVisible(True)
+            finally:
+                settle_busy()
+
+        def failed(exc):
+            settle_busy()
+            self.sprites_status.setText(f"Error checking sprite updates: {exc}")
+
+        _start_query_op(self, bg, done, failed)
 
     def _start_sprites_download(self):
-        self.sprites_update_btn.setEnabled(False)
-        self.sprites_check_btn.setEnabled(False)
-        self.sprites_progress.setVisible(True)
-        self.sprites_progress.setValue(0)
-        
         from .sprite_updater import SpriteUpdateDiffThread
         from ..resources import user_path_sprites
-        
+
         dest_dir = Path(user_path_sprites)
-        self.sprites_thread = SpriteUpdateDiffThread(
-            self.sprites_added,
-            self.sprites_modified,
-            self.sprites_deleted,
-            self.sprites_remote_sha,
-            dest_dir,
-        )
-            
-        self.sprites_thread.progress_signal.connect(self.sprites_progress.setValue)
-        self.sprites_thread.status_signal.connect(self.sprites_status.setText)
-        
+        busy_token = self._begin_busy()
+        self.sprites_progress.setVisible(True)
+        self.sprites_progress.setValue(0)
+
+        def settle_busy():
+            self._end_busy(busy_token)
+
         def finished(success, message):
-            self.sprites_check_btn.setEnabled(True)
-            self.sprites_update_btn.setVisible(False)
-            self.sprites_update_btn.setEnabled(True)
-            if success:
-                try:
-                    manifest_path = dest_dir.parent / "sprites_local_manifest.json"
-                    if manifest_path.exists():
-                        manifest_path.unlink()
-                except Exception:
-                    pass
-                self.sprites_status.setText("Update complete! " + message)
-                self.sprites_progress.setValue(100)
-            else:
-                self.sprites_status.setText("Update failed: " + message)
-                
-        self.sprites_thread.finished_signal.connect(finished)
-            
-        self.sprites_thread.start()
+            try:
+                self.sprites_update_btn.setVisible(False)
+                if success:
+                    try:
+                        manifest_path = dest_dir.parent / "sprites_local_manifest.json"
+                        if manifest_path.exists():
+                            manifest_path.unlink()
+                    except Exception:
+                        pass
+                    self.sprites_status.setText("Update complete! " + message)
+                    self.sprites_progress.setValue(100)
+                else:
+                    self.sprites_status.setText("Update failed: " + message)
+            finally:
+                settle_busy()
+
+        def thread_stopped():
+            if busy_token in self._busy_operations:
+                settle_busy()
+                self.sprites_status.setText(
+                    "Sprite update stopped unexpectedly. Please try again."
+                )
+
+        try:
+            self.sprites_thread = SpriteUpdateDiffThread(
+                self.sprites_added,
+                self.sprites_modified,
+                self.sprites_deleted,
+                self.sprites_remote_sha,
+                dest_dir,
+            )
+            self.sprites_thread.progress_signal.connect(self.sprites_progress.setValue)
+            self.sprites_thread.status_signal.connect(self.sprites_status.setText)
+            self.sprites_thread.finished_signal.connect(
+                lambda success, message: mw.taskman.run_on_main(
+                    lambda: finished(success, message)
+                )
+            )
+            self.sprites_thread.finished.connect(
+                lambda: mw.taskman.run_on_main(thread_stopped)
+            )
+            self.sprites_thread.start()
+        except Exception as exc:
+            settle_busy()
+            self.sprites_status.setText(f"Could not start sprite update: {exc}")
 
     # --- Data loading ---
 
@@ -917,14 +952,18 @@ class UpdateDialog(QDialog):
             return releases, state, remote_sha, local_commit_date, commits
 
         def on_done(result):
-            self._releases, state, remote_sha, local_commit_date, commits = result
-            self._populate_brrr_ui(state, remote_sha, local_commit_date, commits)
-            self._populate_ui()
-            self._end_busy(busy_token)
+            try:
+                self._releases, state, remote_sha, local_commit_date, commits = result
+                self._populate_brrr_ui(state, remote_sha, local_commit_date, commits)
+                self._populate_ui()
+            finally:
+                self._end_busy(busy_token)
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        def on_failed(exc):
+            if self._end_busy(busy_token):
+                self.status_label.setText(f"Could not check for updates: {exc}")
+
+        _start_query_op(self, bg, on_done, on_failed)
 
     def _on_tab_changed(self, index):
         if index == 2 and not self.dev_data_loaded:
@@ -953,19 +992,24 @@ class UpdateDialog(QDialog):
             return (tags, branches, prs)
 
         def on_done(result):
-            self._tags, self._branches, self._prs = result
-            self.dev_data_loaded = True
+            try:
+                self._tags, self._branches, self._prs = result
+                self.dev_data_loaded = True
 
-            # Repopulate targets in the Developer tab UI if needed
-            source = self.source_combo.currentData()
-            if source and source not in ("branch_brrr", "main"):
-                self._populate_target(source)
+                # Repopulate targets in the Developer tab UI if needed
+                source = self.source_combo.currentData()
+                if source and source not in ("branch_brrr", "main"):
+                    self._populate_target(source)
+            finally:
+                self._end_busy(busy_token)
 
-            self._end_busy(busy_token)
+        def on_failed(exc):
+            if self._end_busy(busy_token):
+                self.status_label.setText(
+                    f"Could not load developer options: {exc}"
+                )
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        _start_query_op(self, bg, on_done, on_failed)
 
     def _populate_ui(self):
         c = self._colors
@@ -1012,6 +1056,8 @@ class UpdateDialog(QDialog):
             self.update_latest_btn,
             self.release_btn,
             self.dev_install_btn,
+            self.sprites_check_btn,
+            self.sprites_update_btn,
         )
 
     def _set_action_enabled(self, button, enabled: bool):
@@ -1091,7 +1137,11 @@ class UpdateDialog(QDialog):
             return success, msg, messages
 
         def on_done(result):
-            success, msg, messages = result
+            try:
+                success, msg, messages = result
+            except Exception as exc:
+                on_failed(exc)
+                return
             if self._end_busy(busy_token):
                 self.status_label.setText(messages[-1] if messages else msg)
                 self.progress_bar.setValue(100 if success else 0)
@@ -1104,9 +1154,17 @@ class UpdateDialog(QDialog):
             else:
                 QMessageBox.warning(self, "Update Failed", msg)
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        def on_failed(exc):
+            if self._end_busy(busy_token):
+                self.status_label.setText(f"Update failed unexpectedly: {exc}")
+                self.progress_bar.setValue(0)
+            QMessageBox.warning(
+                self,
+                "Update Failed",
+                f"The update stopped unexpectedly. Please try again.\n\n{exc}",
+            )
+
+        _start_query_op(self, bg, on_done, on_failed)
 
     def _on_latest_release_update(self):
         if not self._releases:
@@ -1470,9 +1528,19 @@ class BranchUpdateProgressDialog(QDialog):
                 self.progress_bar.setValue(0)
                 QMessageBox.warning(self, "Update Failed", msg)
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        def on_failed(exc):
+            self.btn_close.setEnabled(True)
+            self.status_label.setText(
+                "Update stopped unexpectedly. Please check your connection and try again."
+            )
+            self.progress_bar.setValue(0)
+            QMessageBox.warning(
+                self,
+                "Update Failed",
+                f"The update stopped unexpectedly. Please try again.\n\n{exc}",
+            )
+
+        _start_query_op(self, bg, on_done, on_failed)
 
     def on_progress(self, current: int, total: int):
         if total > 0:

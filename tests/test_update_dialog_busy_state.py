@@ -110,12 +110,16 @@ update_dialog = _load_update_dialog()
 class _Control:
     def __init__(self, enabled=True):
         self.enabled = enabled
+        self.visible = True
 
     def isEnabled(self):
         return self.enabled
 
     def setEnabled(self, enabled):
         self.enabled = enabled
+
+    def setVisible(self, visible):
+        self.visible = visible
 
 
 class _Progress:
@@ -138,24 +142,85 @@ class _Label:
         self.text = text
 
 
-def test_busy_state_disables_all_actions_and_restores_prior_state():
+class _FakeQueryOp:
+    last = None
+    raise_on_run = False
+
+    def __init__(self, *, parent, op, success):
+        self.parent = parent
+        self.op = op
+        self.success = success
+        self.failure_callback = None
+        _FakeQueryOp.last = self
+
+    def failure(self, callback):
+        self.failure_callback = callback
+        return self
+
+    def without_collection(self):
+        return self
+
+    def run_in_background(self):
+        if self.raise_on_run:
+            raise RuntimeError("query submission failed")
+
+    def fail(self, exc):
+        assert self.failure_callback is not None
+        self.failure_callback(exc)
+
+
+class _Signal:
+    def __init__(self):
+        self.callbacks = []
+
+    def connect(self, callback):
+        self.callbacks.append(callback)
+
+    def emit(self, *args):
+        for callback in self.callbacks:
+            callback(*args)
+
+
+class _FakeSpriteThread:
+    def __init__(self, *args):
+        self.progress_signal = _Signal()
+        self.status_signal = _Signal()
+        self.finished_signal = _Signal()
+        self.finished = _Signal()
+        self.started = False
+
+    def start(self):
+        self.started = True
+
+
+def _make_dialog():
     dialog = types.SimpleNamespace(
         progress_bar=_Progress(),
         status_label=_Label(),
+        sprites_status=_Label(),
+        sprites_progress=_Progress(),
         brrr_update_btn=_Control(True),
         update_latest_btn=_Control(False),
         release_btn=_Control(True),
         dev_install_btn=_Control(True),
+        sprites_check_btn=_Control(True),
+        sprites_update_btn=_Control(True),
         _busy_operations=set(),
         _action_button_states={},
     )
-    buttons = (
-        dialog.brrr_update_btn,
-        dialog.update_latest_btn,
-        dialog.release_btn,
-        dialog.dev_install_btn,
+    dialog._action_buttons = types.MethodType(
+        update_dialog.UpdateDialog._action_buttons, dialog
     )
-    dialog._action_buttons = lambda: buttons
+    dialog._set_action_enabled = types.MethodType(
+        update_dialog.UpdateDialog._set_action_enabled, dialog
+    )
+    dialog._begin_busy = types.MethodType(update_dialog.UpdateDialog._begin_busy, dialog)
+    dialog._end_busy = types.MethodType(update_dialog.UpdateDialog._end_busy, dialog)
+    return dialog, dialog._action_buttons()
+
+
+def test_busy_state_disables_all_actions_and_restores_prior_state():
+    dialog, buttons = _make_dialog()
 
     busy_token = update_dialog.UpdateDialog._begin_busy(dialog)
 
@@ -166,28 +231,19 @@ def test_busy_state_disables_all_actions_and_restores_prior_state():
     update_dialog.UpdateDialog._end_busy(dialog, busy_token)
 
     assert dialog.progress_bar.visible is False
-    assert [button.enabled for button in buttons] == [True, False, True, True]
+    assert [button.enabled for button in buttons] == [
+        True,
+        False,
+        True,
+        True,
+        True,
+        True,
+    ]
     assert dialog.status_label.text == ""
 
 
 def test_overlapping_operations_keep_busy_and_apply_latest_button_states():
-    dialog = types.SimpleNamespace(
-        progress_bar=_Progress(),
-        status_label=_Label(),
-        brrr_update_btn=_Control(True),
-        update_latest_btn=_Control(False),
-        release_btn=_Control(True),
-        dev_install_btn=_Control(True),
-        _busy_operations=set(),
-        _action_button_states={},
-    )
-    buttons = (
-        dialog.brrr_update_btn,
-        dialog.update_latest_btn,
-        dialog.release_btn,
-        dialog.dev_install_btn,
-    )
-    dialog._action_buttons = lambda: buttons
+    dialog, buttons = _make_dialog()
 
     first_token = update_dialog.UpdateDialog._begin_busy(dialog)
     dialog.progress_bar.setValue(63)
@@ -209,5 +265,244 @@ def test_overlapping_operations_keep_busy_and_apply_latest_button_states():
     update_dialog.UpdateDialog._end_busy(dialog, second_token)
 
     assert dialog.progress_bar.visible is False
-    assert [button.enabled for button in buttons] == [True, True, False, True]
+    assert [button.enabled for button in buttons] == [
+        True,
+        True,
+        False,
+        True,
+        True,
+        True,
+    ]
     assert dialog.status_label.text == ""
+
+
+def test_query_workflow_failures_restore_all_controls():
+    original_query_op = update_dialog.QueryOp
+    update_dialog.QueryOp = _FakeQueryOp
+    try:
+        for workflow in (
+            update_dialog.UpdateDialog._load_data,
+            update_dialog.UpdateDialog._load_dev_data,
+        ):
+            dialog, buttons = _make_dialog()
+            workflow(dialog)
+
+            assert all(button.enabled is False for button in buttons)
+            _FakeQueryOp.last.fail(RuntimeError("network failed"))
+
+            assert not dialog._busy_operations
+            assert [button.enabled for button in buttons] == [
+                True,
+                False,
+                True,
+                True,
+                True,
+                True,
+            ]
+            assert "failed" in dialog.status_label.text.lower()
+
+        _FakeQueryOp.raise_on_run = True
+        for workflow in (
+            update_dialog.UpdateDialog._load_data,
+            update_dialog.UpdateDialog._load_dev_data,
+        ):
+            dialog, buttons = _make_dialog()
+            workflow(dialog)
+            assert not dialog._busy_operations
+            assert any(button.enabled for button in buttons)
+    finally:
+        _FakeQueryOp.raise_on_run = False
+        update_dialog.QueryOp = original_query_op
+
+
+def test_success_callback_failures_release_busy_tokens():
+    original_query_op = update_dialog.QueryOp
+    update_dialog.QueryOp = _FakeQueryOp
+    dialog, buttons = _make_dialog()
+    dialog._populate_brrr_ui = lambda *args: (_ for _ in ()).throw(
+        RuntimeError("UI failed")
+    )
+    dialog._populate_ui = lambda: None
+    try:
+        update_dialog.UpdateDialog._load_data(dialog)
+        try:
+            _FakeQueryOp.last.success(([], {}, None, None, []))
+        except RuntimeError as exc:
+            assert str(exc) == "UI failed"
+        else:
+            raise AssertionError("success callback should propagate the UI failure")
+
+        assert not dialog._busy_operations
+        assert any(button.enabled for button in buttons)
+
+        dev_dialog, dev_buttons = _make_dialog()
+        dev_dialog.source_combo = types.SimpleNamespace(
+            currentData=lambda: (_ for _ in ()).throw(RuntimeError("UI failed"))
+        )
+        dev_dialog._populate_target = lambda source: None
+        update_dialog.UpdateDialog._load_dev_data(dev_dialog)
+        try:
+            _FakeQueryOp.last.success(([], [], []))
+        except RuntimeError as exc:
+            assert str(exc) == "UI failed"
+        else:
+            raise AssertionError("success callback should propagate the UI failure")
+
+        assert not dev_dialog._busy_operations
+        assert any(button.enabled for button in dev_buttons)
+    finally:
+        update_dialog.QueryOp = original_query_op
+
+
+def test_update_worker_failure_restores_controls():
+    class MessageBox:
+        class StandardButton:
+            Yes = 1
+            No = 2
+
+        warnings = []
+
+        @staticmethod
+        def question(*args, **kwargs):
+            return MessageBox.StandardButton.Yes
+
+        @staticmethod
+        def warning(*args):
+            MessageBox.warnings.append(args)
+
+        @staticmethod
+        def information(*args):
+            pass
+
+    original_query_op = update_dialog.QueryOp
+    original_message_box = update_dialog.QMessageBox
+    update_dialog.QueryOp = _FakeQueryOp
+    update_dialog.QMessageBox = MessageBox
+    dialog, buttons = _make_dialog()
+    try:
+        update_dialog.UpdateDialog._run_update(dialog, lambda **kwargs: None, "test")
+        assert all(button.enabled is False for button in buttons)
+
+        _FakeQueryOp.last.fail(RuntimeError("download crashed"))
+
+        assert not dialog._busy_operations
+        assert any(button.enabled for button in buttons)
+        assert dialog.progress_bar.value == 0
+        assert MessageBox.warnings
+
+        malformed_dialog, malformed_buttons = _make_dialog()
+        update_dialog.UpdateDialog._run_update(
+            malformed_dialog, lambda **kwargs: None, "test"
+        )
+        _FakeQueryOp.last.success(None)
+        assert not malformed_dialog._busy_operations
+        assert any(button.enabled for button in malformed_buttons)
+
+        _FakeQueryOp.raise_on_run = True
+        submission_dialog, submission_buttons = _make_dialog()
+        update_dialog.UpdateDialog._run_update(
+            submission_dialog, lambda **kwargs: None, "test"
+        )
+        assert not submission_dialog._busy_operations
+        assert any(button.enabled for button in submission_buttons)
+    finally:
+        _FakeQueryOp.raise_on_run = False
+        update_dialog.QueryOp = original_query_op
+        update_dialog.QMessageBox = original_message_box
+
+
+def test_sprite_workflows_share_busy_lifecycle():
+    original_query_op = update_dialog.QueryOp
+    original_mw = update_dialog.mw
+    saved_modules = {
+        name: sys.modules.get(name)
+        for name in (
+            "Ankimon",
+            "Ankimon.pyobj",
+            "Ankimon.pyobj.sprite_updater",
+            "Ankimon.resources",
+        )
+    }
+    update_dialog.QueryOp = _FakeQueryOp
+    update_dialog.mw = types.SimpleNamespace(
+        taskman=types.SimpleNamespace(run_on_main=lambda callback: callback())
+    )
+    try:
+        for name, path in (
+            ("Ankimon", _SRC / "Ankimon"),
+            ("Ankimon.pyobj", _SRC / "Ankimon" / "pyobj"),
+        ):
+            package = types.ModuleType(name)
+            package.__path__ = [str(path)]
+            package.__package__ = name
+            sys.modules[name] = package
+
+        sprite_updater = types.ModuleType("Ankimon.pyobj.sprite_updater")
+        sprite_updater.calculate_sprite_diff = lambda *args, **kwargs: None
+        sprite_updater.SpriteUpdateDiffThread = _FakeSpriteThread
+        sys.modules[sprite_updater.__name__] = sprite_updater
+
+        resources = types.ModuleType("Ankimon.resources")
+        resources.user_path_sprites = "/tmp/ankimon-test-sprites"
+        sys.modules[resources.__name__] = resources
+
+        check_dialog, check_buttons = _make_dialog()
+        update_dialog.UpdateDialog._check_sprites(check_dialog)
+        assert all(button.enabled is False for button in check_buttons)
+
+        _FakeQueryOp.last.fail(RuntimeError("sprite check crashed"))
+        assert not check_dialog._busy_operations
+        assert check_dialog.sprites_check_btn.enabled is True
+
+        disabled_check_dialog, _buttons = _make_dialog()
+        disabled_check_dialog._set_action_enabled(
+            disabled_check_dialog.sprites_check_btn, False
+        )
+        update_dialog.UpdateDialog._check_sprites(disabled_check_dialog)
+        _FakeQueryOp.last.fail(RuntimeError("sprite check crashed"))
+        assert disabled_check_dialog.sprites_check_btn.enabled is False
+
+        _FakeQueryOp.raise_on_run = True
+        submission_dialog, submission_buttons = _make_dialog()
+        update_dialog.UpdateDialog._check_sprites(submission_dialog)
+        assert not submission_dialog._busy_operations
+        assert any(button.enabled for button in submission_buttons)
+        _FakeQueryOp.raise_on_run = False
+
+        download_dialog, download_buttons = _make_dialog()
+        download_dialog.sprites_added = []
+        download_dialog.sprites_modified = []
+        download_dialog.sprites_deleted = []
+        download_dialog.sprites_remote_sha = "abc123"
+        update_dialog.UpdateDialog._start_sprites_download(download_dialog)
+        assert all(button.enabled is False for button in download_buttons)
+        assert download_dialog.sprites_thread.started is True
+
+        download_dialog.sprites_thread.finished_signal.emit(False, "simulated failure")
+        assert not download_dialog._busy_operations
+        assert download_dialog.sprites_check_btn.enabled is True
+        assert download_dialog.sprites_update_btn.enabled is True
+        assert download_dialog.sprites_status.text == "Update failed: simulated failure"
+
+        download_dialog.sprites_thread.finished.emit()
+        assert download_dialog.sprites_status.text == "Update failed: simulated failure"
+
+        crashed_dialog, crashed_buttons = _make_dialog()
+        crashed_dialog.sprites_added = []
+        crashed_dialog.sprites_modified = []
+        crashed_dialog.sprites_deleted = []
+        crashed_dialog.sprites_remote_sha = "abc123"
+        update_dialog.UpdateDialog._start_sprites_download(crashed_dialog)
+        assert all(button.enabled is False for button in crashed_buttons)
+        crashed_dialog.sprites_thread.finished.emit()
+        assert not crashed_dialog._busy_operations
+        assert "unexpectedly" in crashed_dialog.sprites_status.text
+    finally:
+        _FakeQueryOp.raise_on_run = False
+        update_dialog.QueryOp = original_query_op
+        update_dialog.mw = original_mw
+        for name, module in saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
