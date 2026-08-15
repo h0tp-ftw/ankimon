@@ -233,6 +233,24 @@ OVERHAUL_PITY_DIVISOR = 50.0
 _auto_battle_override: Optional[Literal["catch", "defeat"]] = None
 
 
+def get_auto_battle_setting(settings_source=None) -> int:
+    """Read ``battle.automatic_battle`` clamped to the valid [0, 3] range.
+
+    Centralizes the parse-with-fallback logic that used to be copy-pasted
+    across ``handle_enemy_faint`` and the reviewer-button shortcut functions
+    (with drifting exception handling between the copies). Falls back to 0
+    (manual mode) on any missing/non-numeric/out-of-range value.
+    """
+    source = settings_source if settings_source is not None else settings_obj
+    try:
+        value = int(source.get("battle.automatic_battle"))
+        if not (0 <= value <= 3):
+            return 0
+        return value
+    except (ValueError, TypeError):
+        return 0
+
+
 def toggle_auto_battle_override(
     action: Literal["catch", "defeat"],
 ) -> Optional[Literal["catch", "defeat"]]:
@@ -1837,33 +1855,10 @@ def handle_enemy_faint(
 
     events.emit("faint", who="enemy", pokemon=enemy_pokemon.name, id=enemy_pokemon.id)
 
-    try:
-        auto_battle_setting = int(settings_obj.get("battle.automatic_battle"))
-        if not (0 <= auto_battle_setting <= 3):
-            auto_battle_setting = 0  # fallback
-    except ValueError:
-        auto_battle_setting = 0  # fallback
+    auto_battle_setting = get_auto_battle_setting(settings_obj)
 
     if auto_battle_setting == 0:
         clear_auto_battle_override()
-
-    is_mega = enemy_pokemon.id in encounter_data.MEGA
-    is_gmax = enemy_pokemon.id in encounter_data.GMAX
-    is_regional = enemy_pokemon.id in encounter_data.REGIONAL_FORM_REGION
-    is_legendary = enemy_pokemon.tier == "Legendary"
-    is_mythical = enemy_pokemon.tier == "Mythical"
-    is_ultra = enemy_pokemon.tier == "Ultra"
-    is_starter = enemy_pokemon.tier == "Starter"
-
-    should_catch_always = (
-        (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
-        or (is_mythical and settings_obj.get("battle.auto_catch_mythical", True))
-        or (is_ultra and settings_obj.get("battle.auto_catch_ultra", True))
-        or (is_starter and settings_obj.get("battle.auto_catch_starter", True))
-        or (is_mega and settings_obj.get("battle.auto_catch_mega", True))
-        or (is_gmax and settings_obj.get("battle.auto_catch_gmax", True))
-        or (is_regional and settings_obj.get("battle.auto_catch_regional", True))
-    )
 
     # --- CHECK FOR USER OVERRIDE FIRST ---
     if _auto_battle_override == "catch":
@@ -1920,9 +1915,30 @@ def handle_enemy_faint(
         new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
         main_pokemon.reset_bonuses()
         ankimon_tracker_obj.general_card_count_for_battle = 0
-        clear_auto_battle_override()
         return
     # --- End wishlist fast-path ---
+
+    # Tier flags / the "always auto-catch this tier" safety net are only
+    # needed by the normal auto-battle branches below (the override and
+    # wishlist fast-paths above already returned without them), so compute
+    # them here rather than unconditionally at the top of the function.
+    is_mega = enemy_pokemon.id in encounter_data.MEGA
+    is_gmax = enemy_pokemon.id in encounter_data.GMAX
+    is_regional = enemy_pokemon.id in encounter_data.REGIONAL_FORM_REGION
+    is_legendary = enemy_pokemon.tier == "Legendary"
+    is_mythical = enemy_pokemon.tier == "Mythical"
+    is_ultra = enemy_pokemon.tier == "Ultra"
+    is_starter = enemy_pokemon.tier == "Starter"
+
+    should_catch_always = (
+        (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
+        or (is_mythical and settings_obj.get("battle.auto_catch_mythical", True))
+        or (is_ultra and settings_obj.get("battle.auto_catch_ultra", True))
+        or (is_starter and settings_obj.get("battle.auto_catch_starter", True))
+        or (is_mega and settings_obj.get("battle.auto_catch_mega", True))
+        or (is_gmax and settings_obj.get("battle.auto_catch_gmax", True))
+        or (is_regional and settings_obj.get("battle.auto_catch_regional", True))
+    )
 
     # --- Normal auto-battle logic (no override) ---
     if auto_battle_setting == 3:  # Catch if uncollected
@@ -2002,7 +2018,10 @@ def handle_enemy_faint(
 
     main_pokemon.reset_bonuses()
     ankimon_tracker_obj.general_card_count_for_battle = 0
-    clear_auto_battle_override()
+    # No explicit clear_auto_battle_override() here: every branch above either
+    # already called new_pokemon() (which clears it as its first statement) or
+    # is the manual-mode branch, which already cleared it earlier in this
+    # function when auto_battle_setting == 0 was detected.
 
 
 def handle_main_pokemon_faint(

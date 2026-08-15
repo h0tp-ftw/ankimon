@@ -16,6 +16,7 @@ from .singletons import (
 )
 from .functions.encounter_functions import (
     catch_pokemon,
+    get_auto_battle_setting,
     kill_pokemon,
     new_pokemon,
     toggle_auto_battle_override,
@@ -179,15 +180,7 @@ def catch_shortcut_function():
             update_hud=True,
         )
     else:
-        # Check if auto-battle is enabled
-        try:
-            auto_battle_setting = int(services.settings.get("battle.automatic_battle"))
-            if not (0 <= auto_battle_setting <= 3):
-                auto_battle_setting = 0  # fallback
-        except (ValueError, TypeError):
-            auto_battle_setting = 0
-        
-        if auto_battle_setting == 0:
+        if get_auto_battle_setting(services.settings) == 0:
             # Auto-battle disabled - show the original message
             tooltip("You only catch a pokemon once it's fainted!")
         else:
@@ -213,15 +206,7 @@ def defeat_shortcut_function():
             update_hud=True,
         )
     else:
-        # Check if auto-battle is enabled
-        try:
-            auto_battle_setting = int(services.settings.get("battle.automatic_battle"))
-            if not (0 <= auto_battle_setting <= 3):
-                auto_battle_setting = 0  # fallback
-        except (ValueError, TypeError):
-            auto_battle_setting = 0
-        
-        if auto_battle_setting == 0:
+        if get_auto_battle_setting(services.settings) == 0:
             # Auto-battle disabled - show the original message
             tooltip("Wild pokemon has to be fainted to defeat it!")
         else:

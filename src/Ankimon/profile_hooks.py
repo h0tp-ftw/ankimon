@@ -14,7 +14,7 @@ from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
 from .functions.pokedex_functions import clear_pokedex_caches
 from .functions.learnset_retrieval import clear_learnset_cache
-from .functions.encounter_functions import clear_encounter_cache
+from .functions.encounter_functions import clear_encounter_cache, clear_auto_battle_override
 
 sync_dialog = None
 
@@ -26,6 +26,14 @@ sync_dialog = None
 # than a module-level flag: it survives a re-execution of this module (an
 # add-on reload), so re-registering swaps the handler in place instead of
 # stacking a second copy onto gui_hooks.profile_will_close.
+#
+# The pending auto-battle catch/defeat override (encounter_functions.py's
+# _auto_battle_override) is the same kind of process-lifetime bare global as
+# these caches, so it needs the same treatment: without clearing it here, a
+# user who arms an override in one profile and switches profiles before the
+# wild Pokemon faints would carry that override into the next profile, where
+# it could silently force-catch/force-defeat the first faint under
+# auto-battle before that profile's user has touched anything.
 _CLOSE_HANDLER_RECORD = "_profile_close_cache_clear_handler"
 _DID_OPEN_HANDLER_RECORD = "_profile_did_open_handler"
 _WILL_CLOSE_BACKUP_RECORD = "_profile_will_close_backup_handler"
@@ -38,6 +46,7 @@ def _on_profile_close():
         clear_pokedex_caches()
         clear_learnset_cache()
         clear_encounter_cache()
+        clear_auto_battle_override()
     except Exception as e:
         logger.log("error", f"Error clearing caches on profile close: {e}")
 
