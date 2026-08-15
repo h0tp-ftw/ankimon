@@ -58,12 +58,16 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     returns a FRESH module object (fresh handler functions) — exactly what an
     add-on reload produces — while ``Ankimon.services`` is left to the caller.
 
-    The three ``clear_*`` callables are separate MagicMocks so a test can assert
+    The ``clear_*`` callables are separate MagicMocks so a test can assert
     each was called (and so encounter_functions' real pokedex.json import-time
-    IO is never triggered)."""
+    IO is never triggered).
+
+    Every name profile_hooks imports has to appear on the stub below, or the
+    exec fails with ImportError before a single assertion runs."""
     clear_pokedex = MagicMock(name="clear_pokedex_caches")
     clear_learnset = MagicMock(name="clear_learnset_cache")
     clear_encounter = MagicMock(name="clear_encounter_cache")
+    clear_auto_battle = MagicMock(name="clear_auto_battle_override")
 
     monkeypatch.setitem(
         sys.modules,
@@ -137,6 +141,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         _stub_module(
             "Ankimon.functions.encounter_functions",
             clear_encounter_cache=clear_encounter,
+            clear_auto_battle_override=clear_auto_battle,
         ),
     )
 
@@ -146,7 +151,12 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     profile_hooks = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, "Ankimon.profile_hooks", profile_hooks)
     spec.loader.exec_module(profile_hooks)
-    profile_hooks._clears = (clear_pokedex, clear_learnset, clear_encounter)
+    profile_hooks._clears = (
+        clear_pokedex,
+        clear_learnset,
+        clear_encounter,
+        clear_auto_battle,
+    )
     return profile_hooks
 
 
