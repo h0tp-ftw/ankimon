@@ -1837,6 +1837,32 @@ def catch_pokemon(
         pokemon_pc.refresh_pokemon_grid()
 
 
+def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
+    """Whether enemy_pokemon's tier is covered by an "always auto-catch" setting.
+
+    Legendary/Mythical/Ultra/Starter/Mega/Gmax/Regional Pokémon are each
+    exempted from being defeated (auto or override) via their own
+    battle.auto_catch_* setting, defaulting to on.
+    """
+    is_mega = enemy_pokemon.id in encounter_data.MEGA
+    is_gmax = enemy_pokemon.id in encounter_data.GMAX
+    is_regional = enemy_pokemon.id in encounter_data.REGIONAL_FORM_REGION
+    is_legendary = enemy_pokemon.tier == "Legendary"
+    is_mythical = enemy_pokemon.tier == "Mythical"
+    is_ultra = enemy_pokemon.tier == "Ultra"
+    is_starter = enemy_pokemon.tier == "Starter"
+
+    return (
+        (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
+        or (is_mythical and settings_obj.get("battle.auto_catch_mythical", True))
+        or (is_ultra and settings_obj.get("battle.auto_catch_ultra", True))
+        or (is_starter and settings_obj.get("battle.auto_catch_starter", True))
+        or (is_mega and settings_obj.get("battle.auto_catch_mega", True))
+        or (is_gmax and settings_obj.get("battle.auto_catch_gmax", True))
+        or (is_regional and settings_obj.get("battle.auto_catch_regional", True))
+    )
+
+
 def handle_enemy_faint(
     main_pokemon: PokemonObject,
     enemy_pokemon: PokemonObject,
@@ -1881,17 +1907,31 @@ def handle_enemy_faint(
         return
         
     elif _auto_battle_override == "defeat":
-        # Override: Force defeat
+        # Override: Force defeat, unless the enemy is protected by an
+        # "always auto-catch" tier setting (legendary/mythical/ultra/
+        # starter/mega/gmax/regional) — an explicit defeat override should
+        # not be able to permanently kill a protected Pokémon, e.g. via a
+        # misclick or a toggle the user forgot was still armed.
         ankimon_tracker_obj.faint_processed = True
         try:
-            kill_pokemon(
-                main_pokemon,
-                enemy_pokemon,
-                evo_window,
-                logger,
-                achievements,
-                trainer_card,
-            )
+            if _enemy_protected_by_auto_catch(enemy_pokemon):
+                catch_pokemon(
+                    enemy_pokemon,
+                    ankimon_tracker_obj,
+                    logger,
+                    "",
+                    collected_pokemon_ids,
+                    achievements,
+                )
+            else:
+                kill_pokemon(
+                    main_pokemon,
+                    enemy_pokemon,
+                    evo_window,
+                    logger,
+                    achievements,
+                    trainer_card,
+                )
             new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
             main_pokemon.reset_bonuses()
             ankimon_tracker_obj.general_card_count_for_battle = 0
@@ -1918,27 +1958,12 @@ def handle_enemy_faint(
         return
     # --- End wishlist fast-path ---
 
-    # Tier flags / the "always auto-catch this tier" safety net are only
-    # needed by the normal auto-battle branches below (the override and
-    # wishlist fast-paths above already returned without them), so compute
-    # them here rather than unconditionally at the top of the function.
-    is_mega = enemy_pokemon.id in encounter_data.MEGA
-    is_gmax = enemy_pokemon.id in encounter_data.GMAX
-    is_regional = enemy_pokemon.id in encounter_data.REGIONAL_FORM_REGION
-    is_legendary = enemy_pokemon.tier == "Legendary"
-    is_mythical = enemy_pokemon.tier == "Mythical"
-    is_ultra = enemy_pokemon.tier == "Ultra"
-    is_starter = enemy_pokemon.tier == "Starter"
-
-    should_catch_always = (
-        (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
-        or (is_mythical and settings_obj.get("battle.auto_catch_mythical", True))
-        or (is_ultra and settings_obj.get("battle.auto_catch_ultra", True))
-        or (is_starter and settings_obj.get("battle.auto_catch_starter", True))
-        or (is_mega and settings_obj.get("battle.auto_catch_mega", True))
-        or (is_gmax and settings_obj.get("battle.auto_catch_gmax", True))
-        or (is_regional and settings_obj.get("battle.auto_catch_regional", True))
-    )
+    # The "always auto-catch this tier" safety net is only needed by the
+    # normal auto-battle branches below (the wishlist fast-path above and
+    # the defeat-override branch above already resolved it or returned
+    # without it), so compute it here rather than unconditionally at the
+    # top of the function.
+    should_catch_always = _enemy_protected_by_auto_catch(enemy_pokemon)
 
     # --- Normal auto-battle logic (no override) ---
     if auto_battle_setting == 3:  # Catch if uncollected

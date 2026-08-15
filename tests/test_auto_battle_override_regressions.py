@@ -30,6 +30,8 @@ def _run_override_scenario(
     *,
     wishlist_ids=(),
     collected_ids=(),
+    enemy_tier="Normal",
+    auto_catch_overrides=None,
 ):
     ef = _load_ef()
     original_names = (
@@ -45,6 +47,7 @@ def _run_override_scenario(
 
     settings = mock.MagicMock()
     wishlist = list(wishlist_ids)
+    auto_catch_overrides = auto_catch_overrides or {}
 
     def get_setting(key, default=None):
         if key == "battle.automatic_battle":
@@ -52,7 +55,7 @@ def _run_override_scenario(
         if key == "battle.auto_catch_wishlist":
             return wishlist
         if key.startswith("battle.auto_catch_"):
-            return False
+            return auto_catch_overrides.get(key, False)
         return default
 
     settings.get = get_setting
@@ -66,7 +69,7 @@ def _run_override_scenario(
         id=25,
         name="Pikachu",
         shiny=False,
-        tier="Normal",
+        tier=enemy_tier,
     )
     test_window = mock.MagicMock()
     evo_window = mock.MagicMock()
@@ -149,6 +152,45 @@ def test_defeat_override_precedes_wishlist_and_catch_if_new():
         "defeat",
         wishlist_ids=(25,),
         collected_ids=(),
+    )
+
+    result.defeat.assert_called_once()
+    result.catch.assert_not_called()
+    _assert_completed_override(result)
+
+
+def test_defeat_override_yields_to_legendary_auto_catch_safety_net():
+    result = _run_override_scenario(
+        1,
+        "defeat",
+        enemy_tier="Legendary",
+        auto_catch_overrides={"battle.auto_catch_legendary": True},
+    )
+
+    result.catch.assert_called_once()
+    result.defeat.assert_not_called()
+    _assert_completed_override(result)
+
+
+def test_defeat_override_yields_to_mythical_auto_catch_safety_net():
+    result = _run_override_scenario(
+        1,
+        "defeat",
+        enemy_tier="Mythical",
+        auto_catch_overrides={"battle.auto_catch_mythical": True},
+    )
+
+    result.catch.assert_called_once()
+    result.defeat.assert_not_called()
+    _assert_completed_override(result)
+
+
+def test_defeat_override_kills_legendary_when_safety_net_disabled():
+    result = _run_override_scenario(
+        1,
+        "defeat",
+        enemy_tier="Legendary",
+        auto_catch_overrides={"battle.auto_catch_legendary": False},
     )
 
     result.defeat.assert_called_once()
