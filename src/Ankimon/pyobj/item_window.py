@@ -125,6 +125,7 @@ class ItemWindow(QWidget):
 
         self.evolution_items = set()
         self.load_evolution_items()
+        self.ability_items = {"ability-capsule", "ability-patch"}
 
         self.setWindowIcon(QIcon(str(icon_path)))  # Add a Pokeball icon
         self.setWindowTitle("Itembag")
@@ -388,6 +389,11 @@ class ItemWindow(QWidget):
             use_item_button.clicked.connect(
                 lambda: self._prompt_and_check_evo_item(item_name)
             )
+        elif item_name in self.ability_items:
+            use_item_button = QPushButton("Change Ability")
+            use_item_button.clicked.connect(
+                lambda: self._prompt_and_change_ability(item_name)
+            )
         elif item_name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS or item_name.endswith("-berry") or item_name.endswith("-gem"):
             use_item_button = QLabel("Not implemented yet")
             use_item_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -452,6 +458,9 @@ class ItemWindow(QWidget):
                 return {"ok": True, "message": f"Threw {name}."}
             if name in self.evolution_items:
                 self._prompt_and_check_evo_item(name)
+                return {"ok": True, "message": ""}
+            if name in self.ability_items:
+                self._prompt_and_change_ability(name)
                 return {"ok": True, "message": ""}
             if (
                 name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
@@ -525,6 +534,76 @@ class ItemWindow(QWidget):
             return
         individual_id, prevo_id = selected
         self.Check_Evo_Item(individual_id, prevo_id, item_name)
+
+    def _prompt_and_change_ability(self, item_name: str):
+        selected = self._select_pokemon("Use Ability Item")
+        if not selected:
+            return
+        individual_id, poke_id = selected
+        self.Change_Ability(individual_id, item_name)
+
+    def Change_Ability(self, individual_id: str, item_name: str):
+        db = services.db
+        pokemon = db.get_pokemon(individual_id)
+        if not pokemon:
+            return
+
+        poke_obj = PokemonObject.from_dict(pokemon)
+        from ..functions.pokedex_functions import search_pokedex
+
+        # Get abilities from pokedex
+        abilities = search_pokedex(poke_obj.name, "abilities")
+        if not abilities:
+            self.logger.log_and_showinfo("error", f"Could not find abilities for {poke_obj.name}.")
+            return
+
+        current_ability = poke_obj.ability
+        new_ability = None
+
+        if item_name == "ability-patch":
+            # Switch to Hidden Ability (usually 'H', sometimes 'S' for Special like Battle Bond)
+            hidden_ability = abilities.get("H")
+            special_ability = abilities.get("S")
+
+            if hidden_ability and current_ability != hidden_ability:
+                new_ability = hidden_ability
+            elif special_ability and current_ability != special_ability:
+                new_ability = special_ability
+            else:
+                self.logger.log_and_showinfo("info", f"{poke_obj.name} already has its Hidden Ability or doesn't have one.")
+                return
+
+        elif item_name == "ability-capsule":
+            # Switch between standard abilities (usually '0' and '1')
+            ability_0 = abilities.get("0")
+            ability_1 = abilities.get("1")
+
+            if ability_0 and ability_1:
+                if current_ability == ability_0:
+                    new_ability = ability_1
+                elif current_ability == ability_1:
+                    new_ability = ability_0
+                else:
+                    self.logger.log_and_showinfo("info", f"{poke_obj.name} has a Hidden Ability. Ability Capsule only works on standard abilities.")
+                    return
+            else:
+                self.logger.log_and_showinfo("info", f"{poke_obj.name} only has one standard ability.")
+                return
+
+        if new_ability:
+            poke_obj.ability = new_ability
+            pokemon["ability"] = new_ability
+            db.save_pokemon(pokemon)
+            db.update_item_quantity(item_name, -1)
+            self.logger.log_and_showinfo("info", f"{poke_obj.name}'s ability changed to {new_ability}!")
+
+            # Refresh if it's the main pokemon
+            if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
+                self.main_pokemon.ability = new_ability
+
+            # Trigger GUI refresh
+            self.update_bag_gui()
+
 
     def Evolve_Fossil(
         self, item_name: str, fossil_id: int, fossil_poke_name: str
