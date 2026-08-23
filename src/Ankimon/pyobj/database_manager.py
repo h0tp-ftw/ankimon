@@ -1694,11 +1694,18 @@ class AnkimonDB:
                     
                     for item in items_list:
                         if not item: continue
-                        # Support multiple legacy keys for item name
-                        item_name = item.get("item") or item.get("name") or item.get("item_name")
-                        quantity = item.get("quantity", item.get("amount", 1))
+                        if isinstance(item, str):
+                            item_name = item
+                            quantity = 1
+                            extra_data = None
+                        elif isinstance(item, dict):
+                            item_name = item.get("item") or item.get("name") or item.get("item_name")
+                            quantity = item.get("quantity", item.get("amount", 1))
+                            extra_data = item
+                        else:
+                            continue
                         if item_name:
-                            if self.add_item(item_name, quantity, extra_data=item, commit=False):
+                            if self.add_item(item_name, quantity, extra_data=extra_data, commit=False):
                                 stats["items"] += 1
                     
                     self._get_connection().commit()

@@ -149,7 +149,7 @@ def test_json_migration(temp_env):
     mainpokemon_json.write_text(json.dumps({}))
     
     items_json = tmp_path / "items_mig.json"
-    items_json.write_text(json.dumps([{"item": "master-ball", "quantity": 1}]))
+    items_json.write_text(json.dumps(["fresh-water", {"item": "master-ball", "quantity": 1}]))
     
     badges_json = tmp_path / "badges_mig.json"
     badges_json.write_text(json.dumps(["1", "2"]))
@@ -165,6 +165,7 @@ def test_json_migration(temp_env):
     # Check items
     item = db.get_item("master-ball")
     assert item["id"] == 1
+    assert db.get_item("fresh-water")["quantity"] == 1
     
     # Check badges
     badges = db.get_all_badges()
