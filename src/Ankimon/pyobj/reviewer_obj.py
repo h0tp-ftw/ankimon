@@ -500,7 +500,7 @@ class Reviewer_Manager:
             }
 
             .night_mode #xp_text {
-                font-color: rgba(0, 191, 255, 0.85)
+                color: rgba(0, 191, 255, 0.85);
                 font-family: Arial, sans-serif;
                 background: #1f1f1f !important;
                 border-radius: 5px !important;

@@ -461,7 +461,7 @@ body.dark #ankimon-hud #MyPokeImage,
   {xp_bar_location}: 2px;
   left: 15px;
   z-index: 9999;
-  font-color: rgba(0, 191, 255, 0.85);
+  color: rgba(0, 191, 255, 0.85);
   font-size: 10px;
   font-weight: bold;
   text-align: center;
