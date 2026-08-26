@@ -667,14 +667,35 @@ def process_battle_data(
 
         # 3. User attack section
         if user_attack and user_attack != constants.DO_NOTHING_MOVE:
+            # If the Pokémon's HP is greater than 0, but the status claims it fainted (erroneous status from engine),
+            # we should completely ignore the "fainted" status to avoid the immersion-breaking "Greninja fainted!" message.
+            # We use user_hp_after to ensure it survived the turn (even after recoil).
+            if battle_status == "fainted" and user_hp_after > 0:
+                # Override to prevent erroneous message
+                battle_status = "fighting"
+
             # Handle special battle statuses first
+            status_msg = None
             if battle_status and battle_status != "fighting":
                 status_msg = _handle_special_battle_status(
                     main_pokemon, battle_status, translator
                 )
                 if status_msg:
                     message_parts.append(status_msg)
-            else:
+
+            # Non-preventing statuses like BURN, POISON, TOXIC should still allow the move to be announced.
+            # Only statuses that truly prevent moves should skip the move announcement.
+            preventing_statuses = [
+                constants.SLEEP,
+                constants.PARALYZED,
+                constants.FROZEN,
+                constants.FLINCH,
+                "fainted" # If it genuinely fainted (and user_hp_after <= 0)
+            ]
+
+            should_announce_move = battle_status not in preventing_statuses
+
+            if should_announce_move:
                 # --- NEW: Format user move name ---
                 formatted_user_attack = format_move_name(user_attack)
 
