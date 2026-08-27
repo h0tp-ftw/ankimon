@@ -1047,7 +1047,23 @@ class AnkimonDataSync:
                     # silently skipped — still strictly safer than no mtime check
                     # at all, since a genuine age gap is still caught.
                     if source_file.is_file() and os.path.getmtime(media_file) < os.path.getmtime(source_file):
-                        continue
+                        # FALLBACK: If it's a DB file, opening Anki might have just touched the local file.
+                        # We must check if the "older" cloud file actually has MORE progress.
+                        # We only check monotonically increasing metrics to avoid falsely flagging a
+                        # newer local save as older just because the user spent cash or used items.
+                        if filename.endswith(".db") and not filecmp.cmp(source_file, media_file, shallow=False):
+                            local_stats = _get_db_stats_for_sync(source_file)
+                            media_stats = _get_db_stats_for_sync(media_file)
+                            media_has_more_progress = False
+                            for key in ["history", "badges"]:
+                                if media_stats[key] > local_stats[key]:
+                                    media_has_more_progress = True
+                                    break
+
+                            if not media_has_more_progress:
+                                continue  # Local is newer AND cloud doesn't have more progress
+                        else:
+                            continue
 
                     is_db = filename.endswith(".db")
 
@@ -1136,6 +1152,25 @@ class AnkimonDataSync:
                 if file_diff['local_exists'] and file_diff['media_exists']:
                     if os.path.getmtime(media_file) > os.path.getmtime(source_file):
                         file_diff['files_differ'] = not filecmp.cmp(source_file, media_file, shallow=False)
+                    else:
+                        # The local file is "newer" (or tied) by mtime. But opening Anki touches the local file.
+                        # If contents differ, we must inspect if the media file actually has more progress.
+                        # We only check monotonically increasing metrics to avoid falsely flagging a
+                        # newer local save as older just because the user spent cash or used items.
+                        if not filecmp.cmp(source_file, media_file, shallow=False):
+                            if filename.endswith(".db"):
+                                local_stats = _get_db_stats_for_sync(source_file)
+                                media_stats = _get_db_stats_for_sync(media_file)
+
+                                # Check if media has more progress in monotonically increasing metrics
+                                is_conflict = False
+                                for key in ["history", "badges"]:
+                                    if media_stats[key] > local_stats[key]:
+                                        is_conflict = True
+                                        break
+
+                                if is_conflict:
+                                    file_diff['files_differ'] = True
                 elif file_diff['local_exists'] or file_diff['media_exists']:
                     file_diff['files_differ'] = True
 
@@ -1284,6 +1319,63 @@ class AnkimonDataSync:
 
 # Global instance for easy access - but will be lazy initialized
 _ankimon_sync_instance = None
+
+
+def _get_db_stats_for_sync(db_path):
+    stats = {
+        "pokemon": 0,
+        "items": 0,
+        "history": 0,
+        "badges": 0,
+        "trainer_level": 1,
+        "trainer_cash": 0
+    }
+    if not db_path.is_file():
+        return stats
+    conn = None
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row["name"] for row in cursor.fetchall()}
+
+        if "captured_pokemon" in tables:
+            cursor.execute("SELECT COUNT(*) as count FROM captured_pokemon")
+            stats["pokemon"] = cursor.fetchone()["count"]
+
+        if "items" in tables:
+            cursor.execute("SELECT SUM(quantity) as count FROM items")
+            res = cursor.fetchone()
+            stats["items"] = res["count"] if res and res["count"] is not None else 0
+
+        if "pokemon_history" in tables:
+            cursor.execute("SELECT COUNT(*) as count FROM pokemon_history")
+            stats["history"] = cursor.fetchone()["count"]
+
+        if "badges" in tables:
+            cursor.execute("SELECT COUNT(*) as count FROM badges WHERE achieved = 1")
+            stats["badges"] = cursor.fetchone()["count"]
+
+        if "config" in tables:
+            cursor.execute("SELECT value FROM config WHERE key = 'trainer.level'")
+            row = cursor.fetchone()
+            if row:
+                stats["trainer_level"] = int(row["value"])
+
+            cursor.execute("SELECT value FROM config WHERE key = 'trainer.cash'")
+            row = cursor.fetchone()
+            if row:
+                stats["trainer_cash"] = int(row["value"])
+
+    except Exception as e:
+        pass
+    finally:
+        if conn is not None:
+            conn.close()
+    return stats
 
 def get_ankimon_sync() -> AnkimonDataSync:
     """Get the global AnkimonDataSync instance, creating it if needed."""
