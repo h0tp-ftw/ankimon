@@ -34,7 +34,7 @@ DEFAULT_CONFIG = {
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
     "gui.show_sprites_across_ankimon": True,
-    "gui.styling_in_reviewer": True,
+    "gui.hud_styling": True,
     "gui.pop_up_dialog_message_on_defeat": False,
     "gui.pop_up_dialog_message_on_item": True,
     "gui.review_hp_bar_thickness": 2,
@@ -192,12 +192,17 @@ class Settings:
             if default is None and config.get(key) == "None":
                 config[key] = None
 
+        styling_migrated = "gui.hud_styling" not in config or "gui.styling_in_reviewer" in config
+        if "gui.hud_styling" not in config:
+            config["gui.hud_styling"] = config.get("gui.styling_in_reviewer", True)
+        config.pop("gui.styling_in_reviewer", None)
+
         # Ensure all default settings are present. A stored value of ``None``
         # is treated as "unset" and reseeded from the DEFAULT_CONFIG value —
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
-        modified = False
+        modified = styling_migrated
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None
