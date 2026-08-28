@@ -193,9 +193,12 @@ class Settings:
                 config[key] = None
 
         styling_migrated = "gui.hud_styling" not in config or "gui.styling_in_reviewer" in config
-        if "gui.hud_styling" not in config:
-            config["gui.hud_styling"] = config.get("gui.styling_in_reviewer", True)
-        config.pop("gui.styling_in_reviewer", None)
+        if "gui.styling_in_reviewer" in config:
+            # Legacy key takes precedence if both exist
+            config["gui.hud_styling"] = config["gui.styling_in_reviewer"]
+            config.pop("gui.styling_in_reviewer", None)
+        elif "gui.hud_styling" not in config:
+            config["gui.hud_styling"] = DEFAULT_CONFIG.get("gui.hud_styling", True)
 
         # Ensure all default settings are present. A stored value of ``None``
         # is treated as "unset" and reseeded from the DEFAULT_CONFIG value —
