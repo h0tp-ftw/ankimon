@@ -439,7 +439,7 @@ class SettingsWindow(QMainWindow):
                             "Show Enemy Shiny Star",
                             "Show Player Shiny Star",
                             "Show Text Message Box in Reviewer",
-                            "Show HUD Styling",
+                            "Styling",
                         ]
                     }
                 }
