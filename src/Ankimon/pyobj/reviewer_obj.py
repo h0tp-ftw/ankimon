@@ -500,7 +500,8 @@ class Reviewer_Manager:
             }
 
             .night_mode #xp_text {
-                color: rgba(0, 191, 255, 0.85);
+            .night_mode #ankimon-hud #xp_text {
+                color: rgba(0, 191, 255, 0.85) !important;
                 font-family: Arial, sans-serif;
                 background: #1f1f1f !important;
                 border-radius: 5px !important;
