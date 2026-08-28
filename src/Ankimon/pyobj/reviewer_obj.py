@@ -177,7 +177,7 @@ class Reviewer_Manager:
             self._last_state = None
             return
 
-        if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 3:
+        if int(self.settings.get("gui.show_mainpkmn_in_reviewer", 0)) == 3:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
             self._last_state = None
             return
@@ -277,32 +277,32 @@ class Reviewer_Manager:
             main_hp,
             main_max_hp,
             self.main_pokemon.xp,
-            self.settings.get("gui.show_mainpkmn_in_reviewer"),
-            self.settings.get("gui.reviewer_image_gif"),
-            self.settings.get("misc.language"),
+            self.settings.get("gui.show_mainpkmn_in_reviewer", 0),
+            self.settings.get("gui.reviewer_image_gif", False),
+            self.settings.get("misc.language", "en"),
             _boost_snapshot(self.enemy_pokemon),
             _boost_snapshot(self.main_pokemon),
-            self.settings.get("gui.styling_in_reviewer"),
-            self.settings.get("gui.hud_player_sprite"),
-            self.settings.get("gui.hud_enemy_sprite"),
-            self.settings.get("gui.hud_xp_bar"),
-            self.settings.get("gui.hud_hp_bars"),
-            self.settings.get("gui.hud_hp_text"),
-            self.settings.get("gui.hud_pokemon_id"),
-            self.settings.get("gui.hud_pokemon_gen"),
-            self.settings.get("gui.hud_pokemon_lvl"),
-            self.settings.get("gui.hud_pokemon_name"),
-            self.settings.get("gui.hud_status_badge"),
-            self.settings.get("gui.hud_owned_indicator"),
-            self.settings.get("gui.hud_enemy_shiny_indicator"),
-            self.settings.get("gui.hud_player_shiny_indicator"),
-            self.settings.get("gui.reviewer_text_message_box"),
+            self.settings.get("gui.hud_styling", True),
+            self.settings.get("gui.hud_player_sprite", True),
+            self.settings.get("gui.hud_enemy_sprite", True),
+            self.settings.get("gui.hud_xp_bar", True),
+            self.settings.get("gui.hud_hp_bars", True),
+            self.settings.get("gui.hud_hp_text", True),
+            self.settings.get("gui.hud_pokemon_id", True),
+            self.settings.get("gui.hud_pokemon_gen", True),
+            self.settings.get("gui.hud_pokemon_lvl", True),
+            self.settings.get("gui.hud_pokemon_name", True),
+            self.settings.get("gui.hud_status_badge", True),
+            self.settings.get("gui.hud_owned_indicator", True),
+            self.settings.get("gui.hud_enemy_shiny_indicator", True),
+            self.settings.get("gui.hud_player_shiny_indicator", True),
+            self.settings.get("gui.reviewer_text_message_box", True),
         )
         if self._last_state == current_state and card is not None:
             return  # No changes, skip update
         self._last_state = current_state
 
-        image_format = "gif" if self.settings.get("gui.reviewer_image_gif") else "png"
+        image_format = "gif" if self.settings.get("gui.reviewer_image_gif", False) else "png"
 
         addon_package = self._resolve_addon_package()
 
@@ -322,7 +322,7 @@ class Reviewer_Manager:
 
         main_pkmn_sprite_url = None
         side = "back"  # Default side
-        if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
+        if int(self.settings.get("gui.show_mainpkmn_in_reviewer", 0)) > 0:
             if image_format == "gif":
                 if self.settings.compute_special_variable("view_main_front") == -1:
                     side = "front"
@@ -333,7 +333,7 @@ class Reviewer_Manager:
             main_pkmn_sprite_url = get_sprite_url(self.main_pokemon, side)
 
         pokemon_hp_percent = int((enemy_hp / enemy_max_hp) * 50)
-        if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
+        if int(self.settings.get("gui.show_mainpkmn_in_reviewer", 0)) > 0:
             mainpkmn_hp_percent = int((main_hp / main_max_hp) * 50)
         else:
             mainpkmn_hp_percent = 0  # Not used in this mode
@@ -343,9 +343,9 @@ class Reviewer_Manager:
 
         # Build hud_html
         hud_html = '<div id="ankimon-hud">'
-        if self.settings.get("gui.hud_hp_bars"):
+        if self.settings.get("gui.hud_hp_bars", True):
             hud_html += '<div id="life-bar" class="Ankimon"></div>'
-        if self.settings.get("gui.hud_xp_bar"):
+        if self.settings.get("gui.hud_xp_bar", True):
             hud_html += '<div id="xp-bar" class="Ankimon"></div>'
             hud_html += '<div id="xp_text" class="Ankimon">XP</div>'
 
@@ -355,15 +355,15 @@ class Reviewer_Manager:
         generation = getattr(self.enemy_pokemon, "generation", 1)
 
         enemy_parts = []
-        if self.settings.get("gui.hud_pokemon_id"):
+        if self.settings.get("gui.hud_pokemon_id", True):
             enemy_parts.append(f"[#{pokedex_id}]")
-        if self.settings.get("gui.hud_pokemon_name"):
+        if self.settings.get("gui.hud_pokemon_name", True):
             enemy_parts.append(enemy_lang_name)
-        if self.enemy_pokemon.shiny and self.settings.get("gui.hud_enemy_shiny_indicator"):
+        if self.enemy_pokemon.shiny and self.settings.get("gui.hud_enemy_shiny_indicator", True):
             enemy_parts.append("⭐")
-        if self.settings.get("gui.hud_pokemon_gen"):
+        if self.settings.get("gui.hud_pokemon_gen", True):
             enemy_parts.append(f"(Gen {generation})")
-        if self.settings.get("gui.hud_pokemon_lvl"):
+        if self.settings.get("gui.hud_pokemon_lvl", True):
             enemy_parts.append(f"LvL: {self.enemy_pokemon.level}")
 
         if enemy_parts:
@@ -385,17 +385,17 @@ class Reviewer_Manager:
                 "fainted", self.settings, is_pokemon_owned, addon_package
             )
 
-        if self.settings.get("gui.hud_hp_text"):
+        if self.settings.get("gui.hud_hp_text", True):
             hud_html += f'<div id="hp-display" class="Ankimon">HP: {enemy_hp}/{enemy_max_hp}</div>'
 
-        if self.settings.get("gui.hud_enemy_sprite"):
+        if self.settings.get("gui.hud_enemy_sprite", True):
             enemy_poke_animation_style = (
                 f"animation: ankimon-shake-normal {self.seconds}s ease;"
             )
             hud_html += f'<div id="PokeImage" class="Ankimon"><img src="{enemy_sprite_url}" alt="PokeImage" style="{enemy_poke_animation_style}"></div>'
 
-        if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
-            if self.settings.get("gui.hud_player_sprite"):
+        if int(self.settings.get("gui.show_mainpkmn_in_reviewer", 0)) > 0:
+            if self.settings.get("gui.hud_player_sprite", True):
                 my_poke_html_attributes = ""
                 # SPECIAL CASE: For front-facing GIFs, the animation conflicts with the transform.
                 # We will sacrifice the animation in this case to force the flip using a static class.
@@ -421,15 +421,15 @@ class Reviewer_Manager:
             main_generation = getattr(self.main_pokemon, "generation", 1)
 
             main_parts = []
-            if self.settings.get("gui.hud_pokemon_id"):
+            if self.settings.get("gui.hud_pokemon_id", True):
                 main_parts.append(f"[#{main_pokedex_id}]")
-            if self.settings.get("gui.hud_pokemon_name"):
+            if self.settings.get("gui.hud_pokemon_name", True):
                 main_parts.append(main_lang_name)
-            if self.main_pokemon.shiny and self.settings.get("gui.hud_player_shiny_indicator"):
+            if self.main_pokemon.shiny and self.settings.get("gui.hud_player_shiny_indicator", True):
                 main_parts.append("⭐")
-            if self.settings.get("gui.hud_pokemon_gen"):
+            if self.settings.get("gui.hud_pokemon_gen", True):
                 main_parts.append(f"(Gen {main_generation})")
-            if self.settings.get("gui.hud_pokemon_lvl"):
+            if self.settings.get("gui.hud_pokemon_lvl", True):
                 main_parts.append(f"LvL: {self.main_pokemon.level}")
 
             if main_parts:
@@ -438,33 +438,33 @@ class Reviewer_Manager:
                     self.main_pokemon, display_neutral_boost=False
                 )
                 hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
-            if self.settings.get("gui.hud_hp_text"):
+            if self.settings.get("gui.hud_hp_text", True):
                 hud_html += f'<div id="myhp-display" class="Ankimon">HP: {main_hp}/{main_max_hp}</div>'
-            if self.settings.get("gui.hud_hp_bars"):
+            if self.settings.get("gui.hud_hp_bars", True):
                 hud_html += '<div id="mylife-bar" class="Ankimon"></div>'
 
         hud_html += "</div>"
 
         # Build hud_css
-        if self.settings.get("gui.styling_in_reviewer"):
+        if self.settings.get("gui.hud_styling", True):
             hud_css = create_css_for_reviewer(
-                int(self.settings.get("gui.show_mainpkmn_in_reviewer")),
+                int(self.settings.get("gui.show_mainpkmn_in_reviewer", 0)),
                 pokemon_hp_percent,
-                self.settings.get("gui.review_hp_bar_thickness") * 4,
+                self.settings.get("gui.review_hp_bar_thickness", 5) * 4,
                 int(self.settings.compute_special_variable("xp_bar_spacer")),
                 -1
-                if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 1
+                if int(self.settings.get("gui.show_mainpkmn_in_reviewer", 0)) == 1
                 else self.settings.compute_special_variable("view_main_front"),
                 mainpkmn_hp_percent,
                 int(self.settings.compute_special_variable("hp_only_spacer")),
                 int(self.settings.compute_special_variable("wild_hp_spacer")),
-                self.settings.get("gui.hud_xp_bar"),
+                self.settings.get("gui.hud_xp_bar", True),
                 self.main_pokemon,
                 int(
                     find_experience_for_level(
                         self.main_pokemon.growth_rate,
                         self.main_pokemon.level,
-                        self.settings.get("misc.remove_level_cap"),
+                        self.settings.get("misc.remove_level_cap", False),
                     )
                 ),
                 self.settings.compute_special_variable("xp_bar_location"),
@@ -500,7 +500,7 @@ class Reviewer_Manager:
             }
 
             .night_mode #xp_text {
-                font-color: rgba(0, 191, 255, 0.85)
+                color: rgba(0, 191, 255, 0.85);
                 font-family: Arial, sans-serif;
                 background: #1f1f1f !important;
                 border-radius: 5px !important;
@@ -512,7 +512,7 @@ class Reviewer_Manager:
 
         # Use reviewer.web.eval to call the portal
         # Store HUD data and auto-render if not hidden on startup
-        hud_hidden_on_startup = bool(self.settings.get("gui.hud_hidden_on_startup"))
+        hud_hidden_on_startup = bool(self.settings.get("gui.hud_hidden_on_startup", False))
         js_code = f"""
         (function(h,c,hiddenOnStartup){{
             if(window.__ankimonHud){{
