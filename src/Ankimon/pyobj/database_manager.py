@@ -333,6 +333,11 @@ class AnkimonDB:
         self._local_conn = threading.local()                       # per-background-thread
         self._all_connections = []
         self._conn_lock = threading.RLock()
+        # Serialises the read-modify-write of the pokedex_caught / pokedex_seen
+        # user_data lists. save_pokemon() runs on the background mobile-sync
+        # thread as well as the GUI thread, and those two lists are rewritten
+        # wholesale, so without this an interleaved save loses an id.
+        self._pokedex_lock = threading.Lock()
         self._is_repairing = False
         # When non-None, mark_mobile_battle_resolved defers the mirror-DB sync
         # (which commits on a separate connection, escaping any outer transaction)
@@ -1493,33 +1498,62 @@ class AnkimonDB:
                 return val
         return default
 
+    @staticmethod
+    def _coerce_pokedex_id_list(raw: Any) -> List[int]:
+        """Normalises a stored pokedex id list to plain ints.
+
+        Legacy stores (and hand-edited/corrupt data) can hold string ids such as
+        ``"25"`` alongside ints, or entries that are not ids at all. Without
+        normalising, ``25 not in ["25"]`` is True (so the id is appended a
+        second time) and the resulting mixed set breaks both the Ankidex's
+        ``seen - caught`` subtraction and profile_data's ``search_pokedex_by_id``
+        lookup. Unhashable/garbage entries are dropped rather than allowed to
+        raise out of the getters.
+        """
+        if not isinstance(raw, list):
+            return []
+        ids: List[int] = []
+        for entry in raw:
+            try:
+                ids.append(int(entry))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
     def mark_as_caught(self, pokemon_id: int):
         """Marks a pokemon as caught in the pokedex history."""
-        # Update caught list
-        caught_ids = self.get_user_data("pokedex_caught", [])
-        if not isinstance(caught_ids, list):
-            caught_ids = []
-        if pokemon_id not in caught_ids:
-            caught_ids.append(pokemon_id)
-            self.set_user_data("pokedex_caught", caught_ids)
+        try:
+            pokemon_id = int(pokemon_id)
+        except (TypeError, ValueError):
+            self._log("warning", f"Ignoring non-numeric pokedex id: {pokemon_id!r}")
+            return
 
-        # Update seen list (catching implies seeing)
-        seen_ids = self.get_user_data("pokedex_seen", [])
-        if not isinstance(seen_ids, list):
-            seen_ids = []
-        if pokemon_id not in seen_ids:
-            seen_ids.append(pokemon_id)
-            self.set_user_data("pokedex_seen", seen_ids)
+        # Both lists are rewritten wholesale, so hold the lock across the whole
+        # read-modify-write (save_pokemon also runs on the mobile-sync thread).
+        with self._pokedex_lock:
+            # Update caught list
+            caught_ids = self._coerce_pokedex_id_list(
+                self.get_user_data("pokedex_caught", [])
+            )
+            if pokemon_id not in caught_ids:
+                caught_ids.append(pokemon_id)
+                self.set_user_data("pokedex_caught", caught_ids)
+
+            # Update seen list (catching implies seeing)
+            seen_ids = self._coerce_pokedex_id_list(
+                self.get_user_data("pokedex_seen", [])
+            )
+            if pokemon_id not in seen_ids:
+                seen_ids.append(pokemon_id)
+                self.set_user_data("pokedex_seen", seen_ids)
 
     def get_caught_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs explicitly marked as caught."""
-        caught = self.get_user_data("pokedex_caught", [])
-        return set(caught) if isinstance(caught, list) else set()
+        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", [])))
 
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
-        seen = self.get_user_data("pokedex_seen", [])
-        return set(seen) if isinstance(seen, list) else set()
+        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_seen", [])))
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
