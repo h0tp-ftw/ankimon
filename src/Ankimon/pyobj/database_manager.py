@@ -14,7 +14,7 @@ import gc
 import time
 import contextlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import csv
 from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpokemon_path, items_path, badges_path, team_pokemon_path as team_path
@@ -347,6 +347,7 @@ class AnkimonDB:
         self._connection_epoch = 0
         self._connection_epoch_gui = -1
         self._setup_database()
+        self._reconcile_pokedex_history_safely()
 
     def _prepare_connection(self, conn):
         """Apply row factory, a generous busy-timeout, and (only when opted in)
@@ -748,7 +749,13 @@ class AnkimonDB:
                 raise
 
             self._log("info", f"Switched database to {db_filename}")
-            return True
+
+        # Deliberately outside ``quiesce``: that holds ``_conn_lock`` for the whole
+        # block, and the sweep takes ``_pokedex_lock`` and *then* a connection
+        # (i.e. ``_conn_lock``). Running it in there would invert the order every
+        # mark_as_caught uses and could deadlock against a concurrent save.
+        self._reconcile_pokedex_history_safely()
+        return True
 
     # --- Obfuscation / De-obfuscation ---
 
@@ -1004,13 +1011,16 @@ class AnkimonDB:
         conn.commit()
         self._clear_reviewer_ownership_cache()
 
-        # Automatically mark the pokemon as caught
+        # Automatically mark the pokemon as caught. The row is already committed,
+        # so a failure here must not fail the save -- but it is logged as an error
+        # (not a warning) because it means the Pokedex is now behind the
+        # collection until _reconcile_pokedex_history heals it on the next launch.
         pokemon_id = pokemon_data.get("id")
         if pokemon_id:
             try:
                 self.mark_as_caught(int(pokemon_id))
             except Exception as e:
-                self._log("warning", f"Failed to mark saved pokemon as caught: {e}")
+                self._log("error", f"Failed to mark saved pokemon as caught: {e}")
 
         return True
 
@@ -1194,13 +1204,15 @@ class AnkimonDB:
         conn.commit()
         self._clear_reviewer_ownership_cache()
 
-        # Automatically mark the pokemon as caught
+        # Automatically mark the pokemon as caught (see save_pokemon: logged as an
+        # error because the Pokedex is left behind the collection until the next
+        # _reconcile_pokedex_history sweep).
         pokemon_id = pokemon_data.get("id")
         if pokemon_id:
             try:
                 self.mark_as_caught(int(pokemon_id))
             except Exception as e:
-                self._log("warning", f"Failed to mark saved main pokemon as caught: {e}")
+                self._log("error", f"Failed to mark saved main pokemon as caught: {e}")
 
         return True
 
@@ -1520,8 +1532,71 @@ class AnkimonDB:
                 continue
         return ids
 
+    def _append_pokedex_ids(self, additions: Dict[str, Iterable[Any]]) -> Dict[str, int]:
+        """Append ids to the pokedex ``user_data`` lists in ONE transaction.
+
+        ``additions`` maps ``"pokedex_caught"`` / ``"pokedex_seen"`` to the ids
+        to record. Every key is read, merged and rewritten on the same
+        connection and committed exactly once, so the two lists cannot diverge:
+        either both land or neither does. Driving them through two
+        ``set_user_data`` calls instead (a commit each) can persist a caught id
+        whose matching seen id was lost to whatever failed in between — a disk
+        error, the busy-timeout expiring under write contention, or the process
+        going away — leaving the Ankidex with a species it counts as caught but
+        never saw, and no way to tell that happened.
+
+        The commit goes through the ConnectionWrapper rather than the raw
+        sqlite3 handle so a bulk mobile "Resolve All" (which sets
+        ``_disable_commit`` and holds one long write transaction) still folds
+        these writes into its outer transaction and rolls them back with it.
+
+        Callers must hold ``self._pokedex_lock``. Returns the number of ids
+        newly added per key.
+        """
+        conn = self._get_connection()
+        pending: List[tuple] = []
+        added: Dict[str, int] = {}
+
+        for key, ids in additions.items():
+            # De-duplicated on the way out as well as in: a list that a legacy
+            # write left holding "25" alongside 25 is stored back normalised
+            # once we have a reason to rewrite it.
+            known: set = set()
+            stored: List[int] = []
+            for pokemon_id in self._coerce_pokedex_id_list(self.get_user_data(key, [])):
+                if pokemon_id not in known:
+                    known.add(pokemon_id)
+                    stored.append(pokemon_id)
+
+            new_ids: List[int] = []
+            for raw_id in ids:
+                try:
+                    pokemon_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if pokemon_id not in known:
+                    known.add(pokemon_id)
+                    new_ids.append(pokemon_id)
+
+            added[key] = len(new_ids)
+            if new_ids:
+                pending.append((key, json.dumps(stored + new_ids)))
+
+        if pending:
+            with conn.cursor() as cursor:
+                cursor.executemany(
+                    "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
+                    pending,
+                )
+            conn.commit()
+        return added
+
     def mark_as_caught(self, pokemon_id: int):
-        """Marks a pokemon as caught in the pokedex history."""
+        """Marks a pokemon as caught (and seen) in the pokedex history.
+
+        Raises if the write fails — callers on a save path swallow and log that,
+        but the failure must be visible rather than reported as a success.
+        """
         try:
             pokemon_id = int(pokemon_id)
         except (TypeError, ValueError):
@@ -1530,22 +1605,75 @@ class AnkimonDB:
 
         # Both lists are rewritten wholesale, so hold the lock across the whole
         # read-modify-write (save_pokemon also runs on the mobile-sync thread).
+        # Catching implies seeing, so both are recorded in the same transaction.
         with self._pokedex_lock:
-            # Update caught list
-            caught_ids = self._coerce_pokedex_id_list(
-                self.get_user_data("pokedex_caught", [])
+            self._append_pokedex_ids(
+                {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
             )
-            if pokemon_id not in caught_ids:
-                caught_ids.append(pokemon_id)
-                self.set_user_data("pokedex_caught", caught_ids)
 
-            # Update seen list (catching implies seeing)
-            seen_ids = self._coerce_pokedex_id_list(
-                self.get_user_data("pokedex_seen", [])
+    def _reconcile_pokedex_history_safely(self):
+        """``_reconcile_pokedex_history`` that can never stop the DB from opening."""
+        try:
+            self._reconcile_pokedex_history()
+        except Exception as e:
+            self._log("error", f"Failed to reconcile pokedex history: {e}")
+
+    def _reconcile_pokedex_history(self):
+        """Heal the caught/seen lists from the Pokemon the DB still knows about.
+
+        ``mark_as_caught`` is best-effort at every call site — ``save_pokemon``
+        and the evolution window log a failure and carry on rather than fail the
+        catch — so one locked or failed write would otherwise drop a species
+        from the Ankidex permanently once its ``captured_pokemon`` row is
+        overwritten by an evolution. This idempotent startup sweep re-derives
+        the lists from the rows that are still authoritative (every owned
+        Pokemon, plus every released one in ``pokemon_history``), so a missed
+        mark heals on the next launch instead of becoming silent data loss.
+
+        It doubles as the backfill for databases written before the caught list
+        existed: those start empty, and without this the list only ever covers
+        Pokemon saved after the upgrade.
+        """
+        ids: set = set()
+
+        try:
+            cursor = self.execute(
+                "SELECT DISTINCT pokedex_id FROM captured_pokemon "
+                "WHERE pokedex_id IS NOT NULL"
             )
-            if pokemon_id not in seen_ids:
-                seen_ids.append(pokemon_id)
-                self.set_user_data("pokedex_seen", seen_ids)
+            ids.update(
+                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
+            )
+        except Exception as e:
+            self._log("warning", f"Pokedex reconcile: could not read captured_pokemon: {e}")
+
+        # Released Pokemon: still caught for Pokedex purposes. Wrapped separately
+        # so an older DB without pokemon_history still reconciles the owned rows.
+        try:
+            cursor = self.execute(
+                "SELECT DISTINCT json_extract(data, '$.id') FROM pokemon_history"
+            )
+            ids.update(
+                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
+            )
+        except Exception as e:
+            self._log("warning", f"Pokedex reconcile: could not read pokemon_history: {e}")
+
+        if not ids:
+            return
+
+        sorted_ids = sorted(ids)
+        with self._pokedex_lock:
+            added = self._append_pokedex_ids(
+                {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
+            )
+        if any(added.values()):
+            self._log(
+                "info",
+                "Pokedex history reconciled from stored Pokemon: "
+                f"+{added.get('pokedex_caught', 0)} caught, "
+                f"+{added.get('pokedex_seen', 0)} seen.",
+            )
 
     def get_caught_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs explicitly marked as caught."""
