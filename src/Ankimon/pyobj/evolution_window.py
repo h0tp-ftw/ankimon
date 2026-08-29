@@ -375,11 +375,19 @@ class EvoWindow(QWidget):
             # Persist the pre-evolved species as caught before the id changes so
             # the Pokédex keeps crediting the earlier form (no-op on stores that
             # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
+            # Logged as an error, not a warning: unlike a failed mark on an
+            # ordinary save, this one is NOT recoverable. Once the id below is
+            # overwritten the pre-evolution is gone from captured_pokemon, so
+            # _reconcile_pokedex_history has nothing left to re-derive it from.
             if hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
                 except Exception as e:
-                    self.logger.log("warning", f"Failed to mark prevo as caught: {e}")
+                    self.logger.log(
+                        "error",
+                        f"Failed to mark pre-evolution {prevo_id} as caught; it will "
+                        f"be missing from the Pokedex: {e}",
+                    )
 
             pokemon["name"] = evo_name.capitalize()
             pokemon["id"] = evo_id
