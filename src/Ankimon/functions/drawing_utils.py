@@ -31,7 +31,6 @@ def tooltipWithColour(
         return
 
     settings = services.settings
-    hud_styling = settings.get("gui.hud_styling")
     reviewer_text_message_box = settings.get("gui.reviewer_text_message_box")
     period = int(
         settings.get("gui.reviewer_text_message_box_time") * 1000
