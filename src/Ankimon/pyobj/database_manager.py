@@ -998,6 +998,15 @@ class AnkimonDB:
             )
         conn.commit()
         self._clear_reviewer_ownership_cache()
+
+        # Automatically mark the pokemon as caught
+        pokemon_id = pokemon_data.get("id")
+        if pokemon_id:
+            try:
+                self.mark_as_caught(int(pokemon_id))
+            except Exception as e:
+                self._log("warning", f"Failed to mark saved pokemon as caught: {e}")
+
         return True
 
     def get_pokemon(self, individual_id: str) -> Optional[Dict[str, Any]]:
@@ -1179,6 +1188,15 @@ class AnkimonDB:
         )
         conn.commit()
         self._clear_reviewer_ownership_cache()
+
+        # Automatically mark the pokemon as caught
+        pokemon_id = pokemon_data.get("id")
+        if pokemon_id:
+            try:
+                self.mark_as_caught(int(pokemon_id))
+            except Exception as e:
+                self._log("warning", f"Failed to mark saved main pokemon as caught: {e}")
+
         return True
 
     def get_main_pokemon(self) -> Optional[Dict[str, Any]]:
@@ -1474,6 +1492,34 @@ class AnkimonDB:
             except:
                 return val
         return default
+
+    def mark_as_caught(self, pokemon_id: int):
+        """Marks a pokemon as caught in the pokedex history."""
+        # Update caught list
+        caught_ids = self.get_user_data("pokedex_caught", [])
+        if not isinstance(caught_ids, list):
+            caught_ids = []
+        if pokemon_id not in caught_ids:
+            caught_ids.append(pokemon_id)
+            self.set_user_data("pokedex_caught", caught_ids)
+
+        # Update seen list (catching implies seeing)
+        seen_ids = self.get_user_data("pokedex_seen", [])
+        if not isinstance(seen_ids, list):
+            seen_ids = []
+        if pokemon_id not in seen_ids:
+            seen_ids.append(pokemon_id)
+            self.set_user_data("pokedex_seen", seen_ids)
+
+    def get_caught_ids(self) -> set[int]:
+        """Returns a set of all pokemon IDs explicitly marked as caught."""
+        caught = self.get_user_data("pokedex_caught", [])
+        return set(caught) if isinstance(caught, list) else set()
+
+    def get_seen_ids(self) -> set[int]:
+        """Returns a set of all pokemon IDs marked as seen."""
+        seen = self.get_user_data("pokedex_seen", [])
+        return set(seen) if isinstance(seen, list) else set()
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
