@@ -359,7 +359,10 @@ class ItemWindow(QWidget):
         if item_name in self.hp_heal_items:
             use_item_button = QPushButton("Heal Mainpokemon")
             hp_heal = self.hp_heal_items[item_name]
-            use_item_button.clicked.connect(lambda: self.Check_Heal_Item(self.main_pokemon.name, hp_heal, item_name, self.achievements))
+            # Resolve the main Pokemon inside the handler, not in the lambda:
+            # ``self.main_pokemon.name`` here is evaluated on click and raises
+            # before the no-main guard in Check_Heal_Item can report anything.
+            use_item_button.clicked.connect(lambda: self._heal_main_pokemon(item_name, hp_heal))
         elif item_name in self.fossil_pokemon:
             fossil_id = self.fossil_pokemon[item_name]
             fossil_pokemon_name = search_pokedex_by_id(fossil_id)
@@ -598,14 +601,36 @@ class ItemWindow(QWidget):
         else:
             self.logger.log_and_showinfo("error", f"{item_name} is not a valid Poké Ball!")
 
-    def delete_item(self, item_name: str) -> bool:
-        """Consume one unit of ``item_name``. Returns True if one was removed.
+    def _refresh_bag(self):
+        """Redraw the bag grid, absorbing any failure while doing so.
 
-        ``update_item_quantity`` treats a missing row as a warning and returns
-        without touching the bag, and its return value cannot express that:
-        "the item was not there" and "you just used your last one" are both 0.
-        Read the quantity first so callers get an unambiguous answer and can
-        decline to hand out an effect that was never paid for.
+        This runs *after* the effect an item paid for has been applied, and it
+        walks the whole inventory: one unreadable row, a missing sprite or a
+        window whose C++ side has gone away must not raise on a code path where
+        the item has already left the bag.
+        """
+        try:
+            self.renewWidgets()
+        except Exception as exc:
+            self.logger.log("error", f"Could not refresh the item bag: {exc}")
+
+    def _consume_one(self, item_name: str) -> bool:
+        """Spend one ``item_name`` from the bag. Returns True if one was spent.
+
+        Database only -- deliberately no UI work, so that nothing fallible sits
+        between the payment and the effect it pays for. Callers redraw with
+        ``_refresh_bag`` once that effect has landed.
+
+        Authorization is ``consume_item``'s answer, not the read below it:
+        ``get_item`` and any later write are two separate statements, and the
+        row can empty in between (a second click, a background writer), which
+        ``update_item_quantity`` reports as the same 0 it uses for "the item was
+        never there". ``consume_item`` decrements under a ``quantity >= 1``
+        condition in a single statement and reports whether that matched.
+
+        The read is kept because it is still worth something: it keeps a
+        malformed row ("quantity": "lots") out of the write path, which SQL
+        would otherwise happily compare and decrement.
         """
         try:
             item = services.db.get_item(item_name)
@@ -618,8 +643,29 @@ class ItemWindow(QWidget):
             self.logger.log("warning", f"No {item_name} left in the bag; nothing consumed.")
             return False
 
-        services.db.update_item_quantity(item_name, -1)
-        self.renewWidgets()
+        if not services.db.consume_item(item_name):
+            # The read above said there was stock; by the time the bag was
+            # charged there was not. Distinct wording so the log tells the two
+            # apart.
+            self.logger.log(
+                "warning",
+                f"The last {item_name} was gone before the bag could be charged; "
+                "nothing consumed.",
+            )
+            return False
+        return True
+
+    def delete_item(self, item_name: str) -> bool:
+        """Consume one unit of ``item_name`` and redraw the bag.
+
+        Returns True if one was removed. This is the entry point for the paths
+        whose effect has already happened by the time they pay (the Poke Ball
+        throw, the fossil revival); ``Check_Heal_Item`` calls ``_consume_one``
+        itself so that it can redraw only once the HP has been granted.
+        """
+        if not self._consume_one(item_name):
+            return False
+        self._refresh_bag()
         return True
 
     def Check_Heal_Item(self, prevo_name: str, heal_points: int, item_name: str, achievements) -> bool:
@@ -634,20 +680,21 @@ class ItemWindow(QWidget):
         used to drop the database's "item not found" warning on the floor. The
         heal was therefore granted whether or not anything was spent. Paying
         first makes the effect impossible to get for free from any call path.
+
+        Consume with ``_consume_one`` rather than ``delete_item``: the latter
+        redraws the bag as part of paying, and rebuilding the grid reads every
+        row and rebuilds every widget. Anything that threw in there would leave
+        the item spent and the HP never granted -- the same free item bug in
+        the other direction.
         """
         if self.main_pokemon is None:
             self.logger.log_and_showinfo("error", "No active Pokemon to heal.")
             return False
 
-        if not self.delete_item(item_name):
+        if not self._consume_one(item_name):
             self.logger.log_and_showinfo("info", f"You have no {item_name} left.")
             return False
 
-        # Badge 20 is "used a healing item" -- award it only once one was
-        # actually spent.
-        check = check_for_badge(achievements, 20)
-        if check is False:
-            receive_badge(20, achievements)
         if item_name == "fullrestore" or item_name == "maxpotion":
             heal_points = self.main_pokemon.max_hp
         self.main_pokemon.hp += heal_points
@@ -658,9 +705,32 @@ class ItemWindow(QWidget):
         # ._normalize_loaded_hp reads ``current_hp`` first, so bumping ``hp``
         # alone makes the heal disappear the next time this record is loaded.
         self.main_pokemon.current_hp = self.main_pokemon.hp
+        # Everything below is bookkeeping and presentation, and runs only once
+        # the HP is safely granted. Badge 20 is "used a healing item", so it is
+        # awarded here rather than before the heal: an item was really spent.
+        check = check_for_badge(achievements, 20)
+        if check is False:
+            receive_badge(20, achievements)
+        self._refresh_bag()
         play_effect_sound(self.settings_obj, "HpHeal")
         self.logger.log_and_showinfo("info", f"{prevo_name} was healed for {heal_points}")
         return True
+
+    def _heal_main_pokemon(self, item_name: str, heal_points: int) -> bool:
+        """Bag-button entry point for a healing item.
+
+        The "Heal Mainpokemon" button used to bind ``self.main_pokemon.name``
+        inside its own lambda, and a lambda body is evaluated at click time: with
+        no main Pokemon that raised AttributeError before ``Check_Heal_Item``
+        was even entered, so the no-main guard added there never got the chance
+        to speak. Resolve the name defensively and let that guard answer.
+        """
+        return self.Check_Heal_Item(
+            getattr(self.main_pokemon, "name", "your Pokemon"),
+            heal_points,
+            item_name,
+            self.achievements,
+        )
 
     def Check_Evo_Item(self, individual_id: str, prevo_id: str, item_name: str):
         try:

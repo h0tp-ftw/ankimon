@@ -1350,6 +1350,46 @@ class AnkimonDB:
         conn.commit()
         return new_qty
 
+    def consume_item(self, item_name: str, count: int = 1) -> bool:
+        """Spend ``count`` units of ``item_name``. Returns whether they were.
+
+        ``update_item_quantity`` cannot answer "did I actually pay for this?":
+        it reads the quantity and writes it back in two steps, and its return
+        value collapses "the row was gone" and "you just spent your last one"
+        into the same 0. A caller that hands out an effect on the strength of
+        that -- a heal, a revived fossil -- can hand it out for free.
+
+        The decrement here is one conditional statement, so the row cannot
+        change between the check and the write: sqlite reports through
+        ``rowcount`` whether the ``quantity >= count`` guard actually matched.
+        The follow-up DELETE only tidies an emptied row and is idempotent;
+        both share the one transaction below.
+        """
+        if count <= 0:
+            self._log("warning", f"Refusing to consume {count} of '{item_name}'.")
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE items SET quantity = quantity - ? "
+            "WHERE item_name = ? AND quantity >= ?",
+            (count, item_name, count)
+        )
+        consumed = cursor.rowcount == 1
+        if consumed:
+            cursor.execute(
+                "DELETE FROM items WHERE item_name = ? AND quantity <= 0",
+                (item_name,)
+            )
+        conn.commit()
+        if not consumed:
+            self._log(
+                "warning",
+                f"Item '{item_name}' could not be consumed: fewer than {count} in inventory."
+            )
+        return consumed
+
     # --- Badge Operations ---
 
     def save_badge(self, badge_id: str, badge_data: Dict[str, Any]):

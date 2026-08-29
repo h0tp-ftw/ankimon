@@ -78,11 +78,16 @@ def MainPokemon(
         # Pokemon's HP/xp/friendship earned since its last write; the switch
         # below then overwrites that state in memory. Someone who is never told
         # cannot know to re-check their old main.
+        # Two lines on purpose: the exception text is diagnostic, and dropping a
+        # raw repr into a message box tells the player nothing they can act on.
+        # Keep it in the log file and show a message that names the Pokemon and
+        # says what to check.
+        logger.log("error", f"Could not save outgoing main pokemon: {exc}")
         logger.log_and_showinfo(
             "error",
             f"Could not save {getattr(main_pokemon, 'name', 'your previous main')} "
-            f"before switching: {exc}. Any progress it gained since the last "
-            "save may be lost.",
+            "before switching. Any progress it gained since the last save may be "
+            "lost - check it in your PC box. See the Ankimon log for details.",
         )
 
     # --- Now proceed to set the new mainpokemon as before ---

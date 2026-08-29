@@ -182,6 +182,72 @@ def test_update_item_quantity_preserves_metadata(temp_env):
     assert item["id"] == 100
     assert item["cost"] == 500
 
+def test_consume_item_decrements_and_preserves_metadata(temp_env):
+    """Spending one unit must not cost the row its identity."""
+    db, _ = temp_env
+    db.save_item(100, "elixir", 5, category_id=10, cost=500)
+
+    assert db.consume_item("elixir") is True
+
+    item = db.get_item("elixir")
+    assert item["quantity"] == 4
+    assert item["id"] == 100
+    assert item["cost"] == 500
+
+
+def test_consume_item_removes_the_row_on_the_last_unit(temp_env):
+    db, _ = temp_env
+    db.save_item(101, "last-potion", 1)
+
+    assert db.consume_item("last-potion") is True
+    assert db.get_item("last-potion") is None
+
+
+def test_consume_item_refuses_what_is_not_there(temp_env):
+    """The distinction ``update_item_quantity`` cannot draw.
+
+    It answers 0 both for "the row was missing" and for "you just spent your
+    last one", so a caller handing out an effect on that answer hands it out
+    for free. ``consume_item`` reports whether it actually decremented.
+    """
+    db, _ = temp_env
+
+    assert db.consume_item("never-owned") is False
+    assert db.get_item("never-owned") is None
+
+
+def test_consume_item_refuses_a_leftover_zero_row(temp_env):
+    """A row at quantity 0 is not stock, and must not go negative."""
+    db, _ = temp_env
+    db.save_item(102, "ghost-potion", 0)
+
+    assert db.consume_item("ghost-potion") is False
+    item = db.get_item("ghost-potion")
+    assert item is None or item["quantity"] == 0
+
+
+def test_consume_item_cannot_spend_the_same_unit_twice(temp_env):
+    """The atomicity that matters: one potion pays for exactly one effect."""
+    db, _ = temp_env
+    db.save_item(103, "single", 1)
+
+    assert db.consume_item("single") is True
+    assert db.consume_item("single") is False
+    assert db.get_item("single") is None
+
+
+def test_consume_item_refuses_a_short_bag_without_partial_payment(temp_env):
+    """Asking for more than is there takes nothing at all."""
+    db, _ = temp_env
+    db.save_item(104, "bulk", 2)
+
+    assert db.consume_item("bulk", count=3) is False
+    assert db.get_item("bulk")["quantity"] == 2, "a refused consume still charged the bag"
+
+    assert db.consume_item("bulk", count=2) is True
+    assert db.get_item("bulk") is None
+
+
 def test_get_item_returns_empty_dict_extras(temp_env):
     db, _ = temp_env
     # Inject a row with NULL data manually to test the default extra_data logic
