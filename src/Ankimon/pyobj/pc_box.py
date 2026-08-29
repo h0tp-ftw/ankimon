@@ -306,7 +306,7 @@ class MoveManagerWidget(QWidget):
                     QPushButton { 
                         text-align: left; 
                         font-size: 12px; 
-                        color: #e6edf3; 
+                        color: #00112b; 
                         font-weight: 600; 
                         border: none; 
                         padding: 4px 8px; 
@@ -972,7 +972,7 @@ class PokemonPC(QDialog):
             + """
             #countLabel {
                 font-size: 11px;
-                color: #94a3b8;
+                color: #00112b;
                 padding: 2px 8px 4px 8px;
                 letter-spacing: 0.3px;
             }
@@ -1416,6 +1416,15 @@ class PokemonPC(QDialog):
         theme_vars = self.theme_vars
         border = theme_vars["button_border"]
 
+        is_dark_mode = theme_manager.night_mode
+
+        if is_dark_mode:
+            species_color = "#e6edf3"
+            level_color = "#ffffff"
+        else:
+            species_color = "#010a1c"
+            level_color = "#00112b"
+
         for row in range(self.n_rows):
             for col in range(self.n_cols):
                 pokemon_idx = row * self.n_cols + col
@@ -1428,17 +1437,70 @@ class PokemonPC(QDialog):
                     continue
 
                 pokemon = pokemon_list_slice[pokemon_idx]
-                pkmn_image_path = get_sprite_path(
-                    "front",
-                    "gif" if self.gif_in_collection else "png",
-                    pokemon["id"],
-                    pokemon.get("shiny", False),
-                    pokemon["gender"],
-                    pokemon.get("name"),
-                )
-                pokemon_button = PokemonSlotButton("", self.grid_container)
-                pokemon_button.setObjectName("pokemonSlot")
-                pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+
+                show_sprites = self.show_sprites_across_ankimon
+
+                if show_sprites:
+                    # SPRITE MODE: Show the Pokémon sprite
+                    pkmn_image_path = get_sprite_path(
+                        "front",
+                        "gif" if self.gif_in_collection else "png",
+                        pokemon["id"],
+                        pokemon.get("shiny", False),
+                        pokemon["gender"],
+                        pokemon.get("name"),
+                    )
+                    pokemon_button = PokemonSlotButton("", self.grid_container)
+                    pokemon_button.setObjectName("pokemonSlot")
+                    pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+                else:
+                    # TEXT MODE: Show species name and level
+                    pokemon_button = PokemonSlotButton("", self.grid_container)
+                    pokemon_button.setObjectName("pokemonSlot")
+                    pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+
+                    # Get the species name (use nickname if available, otherwise the species name)
+                    display_name = pokemon.get("nickname") or pokemon.get("name", "???")
+                    if display_name:
+                        display_name = display_name.capitalize()
+
+                    # Create a vertical layout for the text
+                    text_layout = QVBoxLayout(pokemon_button)
+                    text_layout.setContentsMargins(4, 4, 4, 4)
+                    text_layout.setSpacing(2)
+                    text_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                    # Species name label with theme-aware color
+                    name_label = QLabel(display_name)
+                    name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    name_label.setStyleSheet(f"""
+                        QLabel {{
+                            color: {species_color};
+                            font-size: 11px;
+                            font-weight: bold;
+                            background: transparent;
+                            padding: 0px;
+                        }}
+                    """)
+                    name_label.setWordWrap(True)
+
+                    level_label = QLabel(f"Lvl {pokemon.get('level', 1)}")
+                    level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    level_label.setStyleSheet(f"""
+                        QLabel {{
+                            color: {level_color};
+                            font-size: 10px;
+                            font-weight: normal;
+                            background: transparent;
+                            padding: 0px;
+                        }}
+                    """)
+
+                    text_layout.addWidget(name_label)
+                    text_layout.addWidget(level_label)
+
+                    pokemon_button._name_label = name_label
+                    pokemon_button._level_label = level_label
 
                 # BFF (highest friendship) takes visual precedence
                 is_bff = bff_id is not None and pokemon.get("individual_id") == bff_id
@@ -1478,29 +1540,30 @@ class PokemonPC(QDialog):
                     pokemon_button, row, col, alignment=Qt.AlignmentFlag.AlignCenter
                 )
 
-                if self.gif_in_collection and self.show_sprites_across_ankimon:
-                    scaled_movie_label = ScaledMovieLabel(
-                        pkmn_image_path,
-                        self.slot_size - 10,
-                        self.slot_size - 10,
-                        self.grid_container,
-                    )
-                    scaled_movie_label.setAttribute(
-                        Qt.WidgetAttribute.WA_TransparentForMouseEvents
-                    )
-                    self.pokemon_grid.addWidget(
-                        scaled_movie_label,
-                        row,
-                        col,
-                        alignment=Qt.AlignmentFlag.AlignCenter,
-                    )
-                elif self.show_sprites_across_ankimon:
-                    pokemon_button.setIcon(QIcon(pkmn_image_path))
-                    pokemon_button.setIconSize(
-                        QSize(self.slot_size - 10, self.slot_size - 10)
-                    )
+                if show_sprites:
+                    if self.gif_in_collection:
+                        scaled_movie_label = ScaledMovieLabel(
+                            pkmn_image_path,
+                            self.slot_size - 10,
+                            self.slot_size - 10,
+                            self.grid_container,
+                        )
+                        scaled_movie_label.setAttribute(
+                            Qt.WidgetAttribute.WA_TransparentForMouseEvents
+                        )
+                        self.pokemon_grid.addWidget(
+                            scaled_movie_label,
+                            row,
+                            col,
+                            alignment=Qt.AlignmentFlag.AlignCenter,
+                        )
+                    else:
+                        pokemon_button.setIcon(QIcon(pkmn_image_path))
+                        pokemon_button.setIconSize(
+                            QSize(self.slot_size - 10, self.slot_size - 10)
+                        )
 
-                # Overlays (Heart for BFF, Star/Moon/Sun for Evolution)
+                # Overlays (Heart for BFF, Star for Shiny, Evolution indicators)
                 badge_tooltips = []
                 readiness = evolution_readiness(pokemon)
 
@@ -1525,6 +1588,29 @@ class PokemonPC(QDialog):
                     )
                     badge_tooltips.append(self.translator.translate("bff_tooltip"))
 
+                if pokemon.get("shiny", False):
+                    shiny_badge = QLabel("⭐", self.grid_container)
+                    shiny_badge.setAttribute(
+                        Qt.WidgetAttribute.WA_TransparentForMouseEvents
+                    )
+                    shiny_badge.setStyleSheet(
+                        "QLabel {"
+                        "  margin-top: 5px;"
+                        "  margin-right: 5px;"
+                        "  background: transparent;"
+                        "  font-size: 16px;"
+                        "}"
+                    )
+                    shiny_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.pokemon_grid.addWidget(
+                        shiny_badge,
+                        row,
+                        col,
+                        alignment=Qt.AlignmentFlag.AlignTop
+                        | Qt.AlignmentFlag.AlignRight,
+                    )
+                    badge_tooltips.append("Shiny Pokémon")
+
                 if readiness["ready"] and (
                     readiness["method"] == "level" or friendship_time_enabled
                 ):
@@ -1534,7 +1620,7 @@ class PokemonPC(QDialog):
                     )
                     evo_badge.setFixedSize(
                         23, 23
-                    )  # Slightly larger size to accommodate margins cleanly
+                    )
 
                     # Load the generated high-quality PNG asset
                     badge_path = addon_dir / "addon_sprites" / "evolution_indicator.png"
@@ -1547,21 +1633,38 @@ class PokemonPC(QDialog):
                             Qt.TransformationMode.SmoothTransformation,
                         )
                         evo_badge.setPixmap(scaled_pixmap)
-                        evo_badge.setStyleSheet(
-                            "margin-top: 2px; margin-right: 1px; background: transparent;"
-                        )
+                        # If more than one overlap is present, adjust margin to avoid overlap
+                        if pokemon.get("shiny", False):
+                            evo_badge.setStyleSheet(
+                                "margin-top: 28px; margin-right: 1px; background: transparent;"
+                            )
+                        else:
+                            evo_badge.setStyleSheet(
+                                "margin-top: 2px; margin-right: 1px; background: transparent;"
+                            )
                     else:
                         # Fallback to plain text ⇈ if asset is not found
                         evo_badge.setText("⇈")
-                        evo_badge.setStyleSheet(
-                            "QLabel {"
-                            "  color: #3b82f6;"
-                            "  font-weight: bold;"
-                            "  margin-top: 2px;"
-                            "  margin-right: 1px;"
-                            "  background: transparent;"
-                            "}"
-                        )
+                        if pokemon.get("shiny", False):
+                            evo_badge.setStyleSheet(
+                                "QLabel {"
+                                "  color: #3b82f6;"
+                                "  font-weight: bold;"
+                                "  margin-top: 28px;"
+                                "  margin-right: 1px;"
+                                "  background: transparent;"
+                                "}"
+                            )
+                        else:
+                            evo_badge.setStyleSheet(
+                                "QLabel {"
+                                "  color: #3b82f6;"
+                                "  font-weight: bold;"
+                                "  margin-top: 2px;"
+                                "  margin-right: 1px;"
+                                "  background: transparent;"
+                                "}"
+                            )
 
                     evo_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.pokemon_grid.addWidget(
@@ -1584,13 +1687,23 @@ class PokemonPC(QDialog):
                     wait_badge.setAttribute(
                         Qt.WidgetAttribute.WA_TransparentForMouseEvents
                     )
-                    wait_badge.setStyleSheet(
-                        "QLabel {"
-                        "  margin-top: 5px;"
-                        "  margin-right: 5px;"
-                        "  background: transparent;"
-                        "}"
-                    )
+                    if pokemon.get("shiny", False):
+                        wait_badge.setStyleSheet(
+                            "QLabel {"
+                            "  margin-top: 28px;"
+                            "  margin-right: 5px;"
+                            "  background: transparent;"
+                            "}"
+                        )
+                    else:
+                        wait_badge.setStyleSheet(
+                            "QLabel {"
+                            "  margin-top: 5px;"
+                            "  margin-right: 5px;"
+                            "  background: transparent;"
+                            "}"
+                        )
+                    wait_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.pokemon_grid.addWidget(
                         wait_badge,
                         row,
