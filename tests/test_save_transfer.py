@@ -59,7 +59,6 @@ for _n in ("showInfo", "showWarning", "tooltip", "askUser"):
     if not hasattr(_aqt_utils, _n):
         setattr(_aqt_utils, _n, MagicMock())
 
-from Ankimon.services import services  # noqa: E402
 import Ankimon.pyobj.save_transfer as st  # noqa: E402
 
 
@@ -570,3 +569,79 @@ def test_rescue_is_deferred_off_the_profile_open_stack(media, live_db, logger, m
     assert st.get_db_stats(live_db)["pokemon"] == 3  # nothing replaced yet
     scheduled[0]()                                   # next event-loop turn
     assert st.get_db_stats(live_db)["pokemon"] == 42
+
+
+# --------------------------------------------------------------------------
+# Telling the affected population the feature is gone
+# --------------------------------------------------------------------------
+class _StubDB:
+    def __init__(self, value):
+        self._cfg = {"misc.ankiweb_sync": value} if value is not None else {}
+        self.deleted = []
+
+    def get_config_value(self, key, default=None):
+        return self._cfg.get(key, default)
+
+    def execute(self, sql, params=()):
+        if "DELETE FROM config" in sql:
+            self.deleted.append(params[0])
+
+
+@pytest.fixture
+def stub_services(monkeypatch):
+    """_notify_affected_user re-imports ``..services`` on every call, and other
+    test modules swap that module in sys.modules, so patching this file's own
+    import binding is order-dependent. Give it a private module to import."""
+    def _install(value):
+        db = _StubDB(value)
+        registry = types.ModuleType("Ankimon.services")
+        registry.services = types.SimpleNamespace(db=db)
+        monkeypatch.setitem(sys.modules, "Ankimon.services", registry)
+        return db
+    return _install
+
+
+@pytest.mark.parametrize("stored", [True, 1, "true", "True"])
+def test_users_who_had_sync_on_are_told_it_is_gone(media, live_db, logger, stub_services,
+                                                   monkeypatch, stored):
+    """The removal must not be silent for the population it affects. The stored
+    config row is the only reliable way to find them."""
+    db = stub_services(stored)
+    info = MagicMock()
+    monkeypatch.setattr(st, "showInfo", info)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    info.assert_called_once()
+    assert "Export Save File" in info.call_args[0][0]
+    assert db.deleted == ["misc.ankiweb_sync"]   # cannot re-fire
+
+
+@pytest.mark.parametrize("stored", [None, False, 0, "false", "False", ""])
+def test_users_who_never_enabled_sync_see_nothing(media, live_db, logger, stub_services,
+                                                  monkeypatch, stored):
+    db = stub_services(stored)
+    info = MagicMock()
+    monkeypatch.setattr(st, "showInfo", info)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    info.assert_not_called()
+    assert db.deleted == []
+
+
+def test_the_notice_never_breaks_the_migration(media, live_db, logger, monkeypatch):
+    """It runs during profile open like everything else here."""
+    class _Boom:
+        def get_config_value(self, *a, **k):
+            raise RuntimeError("db exploded")
+
+    registry = types.ModuleType("Ankimon.services")
+    registry.services = types.SimpleNamespace(db=_Boom())
+    monkeypatch.setitem(sys.modules, "Ankimon.services", registry)
+    marked = MagicMock()
+    monkeypatch.setattr(st, "_mark_migration_done", marked)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    marked.assert_called_once()          # migration still completed

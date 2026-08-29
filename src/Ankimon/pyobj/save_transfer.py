@@ -257,7 +257,9 @@ def _sqlite_backup(source: Path, dest: Path) -> None:
 
 def export_save(parent=None) -> bool:
     """Write the ACTIVE Ankimon save to a file the user chooses."""
-    from .ankimon_sync import _verify_sqlite_integrity
+    from .ankimon_sync import (
+        SYNC_LOCK_MESSAGE, _is_lock_error, _retry_on_lock, _verify_sqlite_integrity,
+    )
 
     parent = parent or mw
     source = _active_db_path()
@@ -299,10 +301,17 @@ def export_save(parent=None) -> bool:
             )
             return False
 
-        os.replace(tmp, dest)
+        # Same lock ladder the import path uses. Exporting over an existing
+        # file inside a OneDrive/Dropbox folder is the obvious thing a
+        # two-desktop user does, and a bare os.replace there throws WinError 5
+        # with no actionable text (issue #636).
+        _retry_on_lock(lambda: os.replace(tmp, dest))
         tmp = None
     except Exception as e:
-        showWarning(f"Export failed: {e}\n\nYour save is unchanged.")
+        if _is_lock_error(e):
+            showWarning(SYNC_LOCK_MESSAGE)
+        else:
+            showWarning(f"Export failed: {e}\n\nYour save is unchanged.")
         return False
     finally:
         if tmp is not None:
@@ -521,6 +530,65 @@ def _offer_rescue_later(protected: Path, target: Path) -> None:
         _go()
 
 
+def _settle(logger) -> None:
+    """Conclude the migration for this profile: notify, then mark done.
+
+    One function because every terminal path must do both — the notice was
+    originally after an early return on the no-candidates path, so the users
+    most likely to have nothing left in media (and most likely to have had the
+    feature on) were the ones who never heard about it.
+    """
+    _notify_affected_user(logger)
+    _mark_migration_done()
+
+
+def _notify_affected_user(logger) -> None:
+    """Tell the users who actually had the feature ON that it is gone.
+
+    Without this the removal is silent for exactly the population it affects: a
+    two-device user learns nothing unless the rescue prompt happens to fire, and
+    that only fires when the media copy is STRICTLY ahead on the monotone
+    counters — two devices that happen to be level produce no message at all.
+
+    The stored ``misc.ankiweb_sync`` row is the only reliable way to identify
+    them. The key is gone from DEFAULT_CONFIG, but the row persists in the
+    config table (writes were INSERT OR REPLACE only, nothing ever deleted), so
+    it can still be read here. It is deleted afterwards so this cannot re-fire.
+    """
+    try:
+        from ..services import services
+
+        db = services.db
+        if db is None:
+            return
+        raw = db.get_config_value("misc.ankiweb_sync", None)
+        if raw in (None, "", False, 0, "0", "false", "False"):
+            return
+
+        showInfo(
+            "Ankimon's automatic AnkiWeb save-sync has been removed.\n\n"
+            "It decided which device's save was newer by comparing file "
+            "timestamps, but AnkiWeb never sends a save's authoring time — so it "
+            "could pick the wrong one and overwrite newer progress. It could not "
+            "be made reliable, so it has been taken out rather than left to lose "
+            "data.\n\n"
+            "Your save on this computer is untouched, and any copy in your media "
+            "folder has been preserved.\n\n"
+            "To move a save between computers now, use Ankimon → Export Save "
+            "File… on one and Import Save File… on the other."
+        )
+        try:
+            db.execute("DELETE FROM config WHERE key = ?", ("misc.ankiweb_sync",))
+        except Exception:
+            # Non-fatal: the worst case is the notice appearing once more.
+            logger.log("info", "Could not clear the legacy misc.ankiweb_sync row.")
+    except Exception as e:
+        try:
+            logger.log("error", f"Could not show the sync-removal notice: {e}")
+        except Exception:
+            pass
+
+
 def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False) -> None:
     """Protect, and offer to rescue, whatever the removed sync left in media.
 
@@ -567,7 +635,7 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
             # has actually completed this session. Before that, an empty folder
             # on a second device just means the download has not landed yet.
             if _media_sync_completed_this_session:
-                _mark_migration_done()
+                _settle(logger)
             return
 
         best = max(saves, key=lambda p: _progress_key(get_db_stats(p)))
@@ -623,7 +691,7 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
                 return
             # Declined: remember that, so this asks at most once.
 
-        _mark_migration_done()
+        _settle(logger)
     except Exception as e:
         try:
             logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
