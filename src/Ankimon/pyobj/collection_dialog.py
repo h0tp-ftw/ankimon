@@ -72,10 +72,18 @@ def MainPokemon(
             # Use main_pokemon.to_dict() to capture in-memory stats like xp.
             db.save_pokemon(main_pokemon.to_dict())
     except Exception as exc:
-        # Keep going -- a failure here must not block the switch -- but do not
-        # swallow it silently: since the incoming main is no longer full-healed,
-        # this save is the only thing preserving the outgoing Pokemon's HP.
-        logger.log("error", f"Could not save outgoing main pokemon: {exc}")
+        # Keep going -- a failure here must not block the switch -- but tell the
+        # PLAYER, not just the log file. Since the incoming main is no longer
+        # full-healed, this save is the only thing preserving the outgoing
+        # Pokemon's HP/xp/friendship earned since its last write; the switch
+        # below then overwrites that state in memory. Someone who is never told
+        # cannot know to re-check their old main.
+        logger.log_and_showinfo(
+            "error",
+            f"Could not save {getattr(main_pokemon, 'name', 'your previous main')} "
+            f"before switching: {exc}. Any progress it gained since the last "
+            "save may be lost.",
+        )
 
     # --- Now proceed to set the new mainpokemon as before ---
     pokemon_id = pokemon_data.get("id")

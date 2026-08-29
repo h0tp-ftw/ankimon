@@ -345,8 +345,13 @@ def test_special_form_does_not_leak_from_the_outgoing_main(collection_dialog):
     assert db.saved_main[-1]["special_form"] is None
 
 
-def test_outgoing_save_failure_is_logged_not_swallowed(collection_dialog):
-    """This save is now the only thing preserving the outgoing Pokemon's HP."""
+def test_outgoing_save_failure_is_shown_to_the_player(collection_dialog):
+    """This save is now the only thing preserving the outgoing Pokemon's HP.
+
+    A line in the log file is not a report: the switch overwrites the outgoing
+    Pokemon's in-memory state a few lines later, so a player who is never told
+    cannot know to go and re-check their old main.
+    """
     class _BoomDB(_FakeDB):
         def save_pokemon(self, data):
             raise RuntimeError("disk on fire")
@@ -367,7 +372,15 @@ def test_outgoing_save_failure_is_logged_not_swallowed(collection_dialog):
         _stored_pokemon(), outgoing, logger, MagicMock(), MagicMock(), test_window
     )
 
-    assert logger.log.called, "the swallowed save failure was never reported"
+    # The successful-switch "picked" notice is the LAST log_and_showinfo call,
+    # so look through every call rather than only the most recent one.
+    errors = [
+        call.args[1]
+        for call in logger.log_and_showinfo.call_args_list
+        if call.args and call.args[0] == "error"
+    ]
+    assert errors, "the save failure never reached the player"
+    assert "pikachu" in errors[0].lower(), "the message must name what failed to save"
     assert db.saved_main, "the switch itself must still complete"
 
 
