@@ -422,9 +422,14 @@ class ItemWindow(QWidget):
                 if not self.main_pokemon:
                     return {"ok": False, "message": "No active Pokémon to heal."}
                 hp_heal = self.hp_heal_items[name]
-                self.Check_Heal_Item(
+                # Report what actually happened: Check_Heal_Item declines when
+                # the bag turns out to be empty (a stale web list, a double
+                # click), and claiming a heal that never happened would leave
+                # the HP the toast promised nowhere to be found.
+                if not self.Check_Heal_Item(
                     self.main_pokemon.name, hp_heal, name, self.achievements
-                )
+                ):
+                    return {"ok": False, "message": f"No {name} left in your bag."}
                 return {
                     "ok": True,
                     "message": f"Healed {self.main_pokemon.name} with {name}.",
@@ -593,12 +598,53 @@ class ItemWindow(QWidget):
         else:
             self.logger.log_and_showinfo("error", f"{item_name} is not a valid Poké Ball!")
 
-    def delete_item(self, item_name: str):
-        # Update database directly for performance
+    def delete_item(self, item_name: str) -> bool:
+        """Consume one unit of ``item_name``. Returns True if one was removed.
+
+        ``update_item_quantity`` treats a missing row as a warning and returns
+        without touching the bag, and its return value cannot express that:
+        "the item was not there" and "you just used your last one" are both 0.
+        Read the quantity first so callers get an unambiguous answer and can
+        decline to hand out an effect that was never paid for.
+        """
+        try:
+            item = services.db.get_item(item_name)
+            quantity = int((item or {}).get("quantity") or 0)
+        except (TypeError, ValueError, AttributeError) as exc:
+            self.logger.log("error", f"Could not read {item_name} from the bag: {exc}")
+            return False
+
+        if quantity <= 0:
+            self.logger.log("warning", f"No {item_name} left in the bag; nothing consumed.")
+            return False
+
         services.db.update_item_quantity(item_name, -1)
         self.renewWidgets()
+        return True
 
-    def Check_Heal_Item(self, prevo_name: str, heal_points: int, item_name: str, achievements):
+    def Check_Heal_Item(self, prevo_name: str, heal_points: int, item_name: str, achievements) -> bool:
+        """Heal the main Pokemon with ``item_name``, consuming one from the bag.
+
+        Returns True only when the item was actually spent AND the heal applied.
+
+        Consume BEFORE healing: the bag UI is the only thing that used to stop a
+        player healing with an item they no longer own -- the Qt "Heal
+        Mainpokemon" button (``ItemLabel``) checks nothing at all and relies on
+        ``renewWidgets`` having rebuilt itself in time -- and ``delete_item``
+        used to drop the database's "item not found" warning on the floor. The
+        heal was therefore granted whether or not anything was spent. Paying
+        first makes the effect impossible to get for free from any call path.
+        """
+        if self.main_pokemon is None:
+            self.logger.log_and_showinfo("error", "No active Pokemon to heal.")
+            return False
+
+        if not self.delete_item(item_name):
+            self.logger.log_and_showinfo("info", f"You have no {item_name} left.")
+            return False
+
+        # Badge 20 is "used a healing item" -- award it only once one was
+        # actually spent.
         check = check_for_badge(achievements, 20)
         if check is False:
             receive_badge(20, achievements)
@@ -612,9 +658,9 @@ class ItemWindow(QWidget):
         # ._normalize_loaded_hp reads ``current_hp`` first, so bumping ``hp``
         # alone makes the heal disappear the next time this record is loaded.
         self.main_pokemon.current_hp = self.main_pokemon.hp
-        self.delete_item(item_name)
         play_effect_sound(self.settings_obj, "HpHeal")
         self.logger.log_and_showinfo("info", f"{prevo_name} was healed for {heal_points}")
+        return True
 
     def Check_Evo_Item(self, individual_id: str, prevo_id: str, item_name: str):
         try:
