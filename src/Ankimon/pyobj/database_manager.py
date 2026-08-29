@@ -1364,6 +1364,21 @@ class AnkimonDB:
         ``rowcount`` whether the ``quantity >= count`` guard actually matched.
         The follow-up DELETE only tidies an emptied row and is idempotent;
         both share the one transaction below.
+
+        Roll back if the commit fails, mirroring ``ConnectionWrapper.__exit__``.
+        A failed commit -- the busy_timeout expiring under write contention,
+        a full disk -- does not necessarily end sqlite's transaction, so the
+        decrement stays pending on this thread's connection. Nobody is paid:
+        ``consume_item`` never returns True, so ``Check_Heal_Item`` refuses the
+        heal. But the next unrelated write on the same connection commits, and
+        the pending decrement rides along with it -- the potion is gone and the
+        HP was never granted, which is precisely the half of the invariant this
+        method exists to hold. ``with conn:`` would also roll back, but its
+        ``__enter__`` issues an explicit BEGIN (which collides with exactly the
+        still-open transaction at issue) and its ``__exit__`` commits the raw
+        connection, ignoring the ``_disable_commit`` opt-out that mobile sync's
+        bulk resolve relies on. Roll back here instead and re-raise: a lost
+        write must not read as success.
         """
         if count <= 0:
             self._log("warning", f"Refusing to consume {count} of '{item_name}'.")
@@ -1371,18 +1386,28 @@ class AnkimonDB:
 
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE items SET quantity = quantity - ? "
-            "WHERE item_name = ? AND quantity >= ?",
-            (count, item_name, count)
-        )
-        consumed = cursor.rowcount == 1
-        if consumed:
+        try:
             cursor.execute(
-                "DELETE FROM items WHERE item_name = ? AND quantity <= 0",
-                (item_name,)
+                "UPDATE items SET quantity = quantity - ? "
+                "WHERE item_name = ? AND quantity >= ?",
+                (count, item_name, count)
             )
-        conn.commit()
+            consumed = cursor.rowcount == 1
+            if consumed:
+                cursor.execute(
+                    "DELETE FROM items WHERE item_name = ? AND quantity <= 0",
+                    (item_name,)
+                )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                # Nothing better to do: the original failure is the one the
+                # caller needs, and a connection too broken to roll back has
+                # no pending decrement anybody can accidentally commit.
+                pass
+            raise
         if not consumed:
             self._log(
                 "warning",

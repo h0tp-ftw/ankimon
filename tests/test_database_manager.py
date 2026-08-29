@@ -82,6 +82,24 @@ def temp_env(tmp_path):
         db = AnkimonDB(MockLogger())
         yield db, tmp_path
 
+
+def _quantity_on_disk(db, item_name):
+    """Read a quantity through a connection of our own.
+
+    ``db.get_item`` goes through the connection under test, which cannot tell a
+    committed row from one still sitting in an open transaction. A separate
+    handle only ever sees what is durable.
+    """
+    raw = sqlite3.connect(str(db.db_path), timeout=1.0)
+    try:
+        row = raw.execute(
+            "SELECT quantity FROM items WHERE item_name = ?", (item_name,)
+        ).fetchone()
+    finally:
+        raw.close()
+    return None if row is None else row[0]
+
+
 def test_database_initialization(temp_env):
     db, _ = temp_env
     conn = db._get_connection()
@@ -246,6 +264,55 @@ def test_consume_item_refuses_a_short_bag_without_partial_payment(temp_env):
 
     assert db.consume_item("bulk", count=2) is True
     assert db.get_item("bulk") is None
+
+
+def test_consume_item_rolls_back_a_failed_commit(temp_env):
+    """A commit that fails must not leave the decrement waiting for a ride.
+
+    sqlite does not necessarily end the transaction when COMMIT fails (a
+    busy_timeout expiring under write contention, a full disk), so without a
+    rollback the decrement stays pending on this thread's connection. Nobody
+    is paid for it -- ``consume_item`` raises rather than returning True, so
+    ``Check_Heal_Item`` refuses the heal -- but the next unrelated write on the
+    same connection commits, and the pending decrement rides along: the potion
+    is gone and the HP was never granted.
+    """
+    db, _ = temp_env
+    db.save_item(105, "contended-potion", 5)
+
+    conn = db._get_connection()
+    with patch.object(conn, "commit",
+                      side_effect=sqlite3.OperationalError("database is locked")):
+        with pytest.raises(sqlite3.OperationalError):
+            db.consume_item("contended-potion")
+
+    assert db.get_item("contended-potion")["quantity"] == 5, \
+        "the failed payment still charged the bag"
+
+    # The scenario that makes it matter: some later write succeeds on the very
+    # same connection. Anything still pending is committed by it.
+    db.save_item(106, "unrelated", 1)
+
+    assert _quantity_on_disk(db, "contended-potion") == 5, \
+        "the pending decrement rode along on a later successful commit"
+
+
+def test_consume_item_leaves_no_transaction_open_after_a_failed_commit(temp_env):
+    """The mechanism behind the test above: the transaction is actually gone.
+
+    Reading back through the same connection cannot tell a committed row from
+    an uncommitted one, so assert on the connection itself.
+    """
+    db, _ = temp_env
+    db.save_item(107, "doomed-potion", 2)
+
+    conn = db._get_connection()
+    with patch.object(conn, "commit", side_effect=sqlite3.OperationalError("disk I/O error")):
+        with pytest.raises(sqlite3.OperationalError):
+            db.consume_item("doomed-potion")
+
+    assert conn.in_transaction is False, \
+        "the decrement is still pending and will be committed by the next write"
 
 
 def test_get_item_returns_empty_dict_extras(temp_env):

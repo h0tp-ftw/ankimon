@@ -381,6 +381,19 @@ def test_outgoing_save_failure_is_shown_to_the_player(collection_dialog):
     ]
     assert errors, "the save failure never reached the player"
     assert "pikachu" in errors[0].lower(), "the message must name what failed to save"
+    # Naming the Pokemon is only half of it. What makes the message worth
+    # showing is that it tells the player something happened to their data --
+    # drop the warning and this test must not keep passing.
+    assert "may be lost" in errors[0].lower(), \
+        "the message must warn that recent progress may be lost"
+    # And it must stay a message the player can act on: the backend exception
+    # goes to the log, not into a dialog box.
+    assert "disk on fire" not in errors[0].lower(), \
+        "the raw backend exception must not be shown to the player"
+    logged = " ".join(
+        str(call.args[1]) for call in logger.log.call_args_list if len(call.args) > 1
+    )
+    assert "disk on fire" in logged, "the exception must still be diagnosable from the log"
     assert db.saved_main, "the switch itself must still complete"
 
 
