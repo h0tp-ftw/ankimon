@@ -125,19 +125,37 @@ class ConnectionWrapper:
                     self._conn.commit()
                 except sqlite3.DatabaseError as e:
                     msg = str(e).lower()
-                    # NOTE: Deliberately NO "closed database" retry here. Unlike
-                    # execute()/executemany(), commit() has nothing to replay:
-                    # sqlite rolled this connection's transaction back when it was
-                    # closed, so committing a *different* connection would be a
-                    # no-op that reports success for a write that no longer exists.
-                    # Let it raise -- see the __exit__ comment in database_manager.
+                    # NOTE: Deliberately NO retry that reports success here. Unlike
+                    # execute()/executemany(), commit() has nothing to replay, so
+                    # committing a *different* connection is a no-op that reports
+                    # success for a write that no longer exists. That holds for both
+                    # failures we know how to recognise:
+                    #
+                    #   "closed database" -- sqlite rolled this connection's
+                    #   transaction back when the connection was closed.
+                    #
+                    #   "malformed"/"disk image" -- repair_database() rebuilds the
+                    #   file from a *separate* connection's iterdump(), which cannot
+                    #   see this connection's uncommitted rows, then quiesces every
+                    #   registered connection and swaps the rebuilt file into place.
+                    #   The pending transaction does not survive either step.
+                    #
+                    # So heal the file -- leaving it corrupt helps nobody -- but let
+                    # the original failure propagate. Callers such as consume_item
+                    # hand out an effect on the strength of a successful commit: a
+                    # heal, a revived fossil. Reporting success for a decrement that
+                    # the repair threw away is exactly the free-heal those callers
+                    # exist to prevent. See the __exit__ comment below.
                     if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
                         self.release_lease()
                         lease_released = True
-                        self._db_mgr.repair_database()
-                        fresh = self._db_mgr._get_connection()
-                        fresh._conn.commit()
-                        return
+                        try:
+                            self._db_mgr.repair_database()
+                        except Exception:
+                            # repair_database() logs its own failure. Whether it
+                            # healed or not, the caller's transaction is gone; the
+                            # commit error is the one it needs to see.
+                            pass
                     raise
         finally:
             if not lease_released:

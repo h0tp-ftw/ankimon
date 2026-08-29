@@ -5,6 +5,7 @@ import csv
 import sqlite3
 import pytest
 import importlib.util
+import contextlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import types
@@ -98,6 +99,40 @@ def _quantity_on_disk(db, item_name):
     finally:
         raw.close()
     return None if row is None else row[0]
+
+
+class _CorruptOnCommit:
+    """A connection whose COMMIT fails the way a corrupt database file does.
+
+    Patching ``ConnectionWrapper.commit`` -- what the busy-timeout tests below
+    do -- cannot reach the wrapper's own corruption branch, because that branch
+    lives inside the method being replaced. Patching the raw handle is not an
+    option either: ``sqlite3.Connection.commit`` is a read-only C attribute.
+    So wrap the real connection and let everything except the commit through;
+    ``ConnectionWrapper._conn`` is a plain Python attribute, so it can be swapped.
+    """
+
+    def __init__(self, conn):
+        self._real = conn
+        self.commit_attempts = 0
+
+    def commit(self):
+        self.commit_attempts += 1
+        raise sqlite3.DatabaseError("database disk image is malformed")
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+@contextlib.contextmanager
+def _corrupt_commits_on(conn):
+    """Make ``conn``'s raw handle fail COMMIT, and put the real one back after."""
+    real = conn._conn
+    conn._conn = _CorruptOnCommit(real)
+    try:
+        yield conn._conn
+    finally:
+        conn._conn = real
 
 
 def test_database_initialization(temp_env):
@@ -313,6 +348,71 @@ def test_consume_item_leaves_no_transaction_open_after_a_failed_commit(temp_env)
 
     assert conn.in_transaction is False, \
         "the decrement is still pending and will be committed by the next write"
+
+
+def test_commit_does_not_report_success_after_a_repair_loses_the_transaction(temp_env):
+    """Corruption found at COMMIT time must not be healed into a fake success.
+
+    ``ConnectionWrapper.commit`` recognises "malformed"/"disk image" and calls
+    ``repair_database``, which rebuilds the file from a *separate* connection's
+    ``iterdump()`` -- so it cannot see rows still pending on this one -- then
+    quiesces every registered connection and swaps the rebuilt file into place.
+    Neither step carries the pending transaction across. Committing the fresh
+    post-repair connection therefore commits nothing, and returning from that
+    reports success for a write that no longer exists.
+
+    That is the free-heal ``consume_item`` was written to close: the potion is
+    still in the bag, and the caller was told it paid for one.
+    """
+    db, _ = temp_env
+    db.save_item(108, "cursed-potion", 3)
+
+    conn = db._get_connection()
+    backup = db.db_path.with_name(db.db_path.name + ".corrupt_backup")
+    assert not backup.exists()
+
+    with _corrupt_commits_on(conn) as fake:
+        # Through the wrapper, without keeping the cursor: nothing holds a lease,
+        # so the repair's quiesce really does drain and the file really is
+        # swapped -- the case where the old code returned success.
+        conn.execute(
+            "UPDATE items SET quantity = 1 WHERE item_name = 'cursed-potion'"
+        )
+        assert conn._lease_count == 0
+        with pytest.raises(sqlite3.DatabaseError, match="malformed"):
+            conn.commit()
+        assert fake.commit_attempts == 1
+
+    assert backup.exists(), \
+        "the repair never ran, so this asserts nothing about the repair branch"
+    assert _quantity_on_disk(db, "cursed-potion") == 3, \
+        "the pending write survived the repair -- premise of the test is wrong"
+
+
+def test_consume_item_pays_nothing_when_the_commit_finds_corruption(temp_env):
+    """The invariant end-to-end: a decrement lost to a repair is never paid for.
+
+    Today the decrement is doubly safe -- ``consume_item`` holds its cursor, so
+    the lease keeps the repair's quiesce from draining and the repair aborts.
+    Pin the outcome rather than that mechanism: whichever way the commit fails,
+    ``consume_item`` must raise instead of returning True, leave the bag intact,
+    and leave nothing pending for the next write to carry.
+    """
+    db, _ = temp_env
+    db.save_item(109, "hexed-potion", 2)
+
+    conn = db._get_connection()
+    with _corrupt_commits_on(conn):
+        with pytest.raises(sqlite3.DatabaseError, match="malformed"):
+            db.consume_item("hexed-potion")
+
+    assert db.get_item("hexed-potion")["quantity"] == 2, \
+        "the failed payment still charged the bag"
+
+    db.save_item(110, "unrelated-after-corruption", 1)
+
+    assert _quantity_on_disk(db, "hexed-potion") == 2, \
+        "the pending decrement rode along on a later successful commit"
 
 
 def test_get_item_returns_empty_dict_extras(temp_env):
