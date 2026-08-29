@@ -59,12 +59,12 @@ def find_trainer_rank(highest_level, trainer_level):
         print("Error: One of the files (Pokedex or MyPokemon) could not be found.")
         return "Unknown Rank"
 
-def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_id, exp, xp_share_individual_id):
+def xp_share_gain_exp(logger, settings_obj, evo_window, main_pokemon_individual_id, exp, xp_share_individual_id):
     # Ensure that the XP Share Pokémon is set and different from the main Pokémon
     if not xp_share_individual_id:
         return exp
 
-    if xp_share_individual_id == main_pokemon_id:
+    if xp_share_individual_id == main_pokemon_individual_id:
         return exp
 
     original_exp = int(exp * 0.5)
