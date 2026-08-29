@@ -1670,7 +1670,7 @@ def kill_pokemon(
                 logger,
                 settings_obj,
                 evo_window,
-                main_pokemon.id,
+                main_pokemon.individual_id,
                 exp,
                 xp_share_individual_id,
             )
