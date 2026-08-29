@@ -499,7 +499,6 @@ class Reviewer_Manager:
                 padding: 4px 8px !important;
             }
 
-            .night_mode #xp_text {
             .night_mode #ankimon-hud #xp_text {
                 color: rgba(0, 191, 255, 0.85) !important;
                 font-family: Arial, sans-serif;
