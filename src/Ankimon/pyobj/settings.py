@@ -77,7 +77,6 @@ DEFAULT_CONFIG = {
     "misc.language": 9,
     "misc.ssh": True,
     "misc.leaderboard": False,
-    "misc.ankiweb_sync": False,
     "misc.YouShallNotPass_Ankimon_News": False,
     "misc.show_tip_on_startup": True,  # Added default for Tip of the Day
     "misc.discord_rich_presence": False,

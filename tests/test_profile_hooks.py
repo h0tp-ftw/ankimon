@@ -98,8 +98,12 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         _stub_module(
             "Ankimon.pyobj.ankimon_sync",
             setup_ankimon_sync_hooks=MagicMock(),
-            check_and_sync_pokemon_data=MagicMock(),
         ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.pyobj.save_transfer",
+        _stub_module("Ankimon.pyobj.save_transfer", run_media_migration=MagicMock()),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -236,10 +240,13 @@ def test_cache_clear_hook_idempotent_on_module_reexec(monkeypatch):
 
 
 # --- Mobile-review sync wiring (decoupling fix) ------------------------------
-# The profile_did_open handler must register the AnkiWeb sync hooks
-# SYNCHRONOUSLY and independent of the legacy misc.ankiweb_sync file-sync
-# toggle, so mobile-review detection is live for a default-config user. The
-# file-based data-sync DIALOG, by contrast, stays gated behind that toggle.
+# The profile_did_open handler must register the post-sync hook SYNCHRONOUSLY
+# and UNCONDITIONALLY, so mobile-review detection is live for every user. It was
+# once gated behind the misc.ankiweb_sync file-sync toggle (default False),
+# which meant a mid-session sync never turned phone reviews into battles (#586).
+# That toggle, and the file-sync it gated, have since been removed entirely —
+# so these tests now assert registration under the SHIPPED configuration, with
+# no toggle available to mask a re-gating regression.
 
 
 class _Future:
@@ -250,7 +257,7 @@ class _Future:
         return self._value
 
 
-def _fire_profile_did_open(monkeypatch, *, ankiweb_sync, mobile_enabled=True):
+def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True):
     """Register hooks, then fire the profile_did_open handler with the given
     settings and return (profile_hooks, its stubbed ankimon_sync module)."""
     _fresh_services(monkeypatch)
@@ -259,7 +266,6 @@ def _fire_profile_did_open(monkeypatch, *, ankiweb_sync, mobile_enabled=True):
 
     def _get(key, default=None):
         return {
-            "misc.ankiweb_sync": ankiweb_sync,
             "mobile.enabled": mobile_enabled,
         }.get(key, default)
 
@@ -278,23 +284,26 @@ def _fire_profile_did_open(monkeypatch, *, ankiweb_sync, mobile_enabled=True):
     handler()
 
     sync_mod = sys.modules["Ankimon.pyobj.ankimon_sync"]
-    return profile_hooks, sync_mod
+    transfer_mod = sys.modules["Ankimon.pyobj.save_transfer"]
+    return profile_hooks, sync_mod, transfer_mod
 
 
-def test_sync_hooks_registered_even_when_ankiweb_sync_disabled(monkeypatch):
-    """Regression guard: mobile-review detection must be wired for a DEFAULT
-    user (misc.ankiweb_sync=False). Previously on_done returned early on the
-    False flag and setup_ankimon_sync_hooks was never called, so a mid-session
-    sync never turned phone reviews into battles."""
-    _, sync_mod = _fire_profile_did_open(monkeypatch, ankiweb_sync=False)
+def test_mobile_sync_hook_registered_with_shipped_defaults(monkeypatch):
+    """Regression guard for #586, restated for the post-removal world.
 
-    sync_mod.setup_ankimon_sync_hooks.assert_called_once()
-    # The OPT-IN file-based data-sync dialog stays gated behind the toggle.
-    sync_mod.check_and_sync_pokemon_data.assert_not_called()
-
-
-def test_sync_hooks_registered_when_ankiweb_sync_enabled(monkeypatch):
-    """With the file-sync toggle on, the hooks still register (unconditional)."""
-    _, sync_mod = _fire_profile_did_open(monkeypatch, ankiweb_sync=True)
+    Mobile-review detection must be wired for a default user. It previously
+    returned early on a False misc.ankiweb_sync, so a mid-session sync never
+    turned phone reviews into battles. There is no longer any setting that could
+    gate it, and this asserts that under the shipped configuration."""
+    _, sync_mod, _ = _fire_profile_did_open(monkeypatch)
 
     sync_mod.setup_ankimon_sync_hooks.assert_called_once()
+
+
+def test_media_migration_runs_on_profile_open(monkeypatch):
+    """The one-shot cleanup after the file-sync removal must actually be
+    invoked; it is what protects a user's media copy from Check Media and
+    offers to rescue it."""
+    _, _, transfer_mod = _fire_profile_did_open(monkeypatch)
+
+    transfer_mod.run_media_migration.assert_called_once()

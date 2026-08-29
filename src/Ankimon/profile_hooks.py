@@ -8,15 +8,14 @@ from aqt import gui_hooks, mw
 from .services import services
 from .singletons import settings_obj, logger
 from .utils import test_online_connectivity
-from .pyobj.ankimon_sync import setup_ankimon_sync_hooks, check_and_sync_pokemon_data
+from .pyobj.ankimon_sync import setup_ankimon_sync_hooks
+from .pyobj.save_transfer import run_media_migration
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
 from .functions.pokedex_functions import clear_pokedex_caches
 from .functions.learnset_retrieval import clear_learnset_cache
 from .functions.encounter_functions import clear_encounter_cache, clear_auto_battle_override
-
-sync_dialog = None
 
 # Cache-clear-on-close (F20): the pokedex / learnset / encounter in-memory
 # caches live for the whole Python process, so without this a profile switch
@@ -148,32 +147,19 @@ def _on_profile_did_open(online_connectivity):
                     parent=mw, exception=e, message="Error awarding monthly pokemon:"
                 )
 
-            try:
-                # The sync HOOKS are already registered synchronously above, so
-                # mobile-review detection is live regardless of this block. What
-                # remains here is only the OPT-IN file-based data sync
-                # (subsystem B) — it copies/overwrites ankimon.db across devices,
-                # so it stays gated behind misc.ankiweb_sync + connectivity.
-                ankiweb_sync = settings_obj.get("misc.ankiweb_sync")
-                if not ankiweb_sync:
-                    logger.log(
-                        "info",
-                        "AnkiWeb file-sync disabled in settings - mobile-review detection still active",
-                    )
-                elif not is_online:
-                    logger.log(
-                        "info", "No connection - AnkiWeb file-sync disabled for this session"
-                    )
-                else:
-                    global sync_dialog
-                    sync_dialog = check_and_sync_pokemon_data(settings_obj, logger)
-                    logger.log("info", "Ankimon file-sync system initialized successfully")
-            except Exception as e:
-                show_warning_with_traceback(
-                    parent=mw, exception=e, message="Error setting up sync system:"
-                )
-
         mw.taskman.run_in_background(check_connectivity_bg, on_done)
+
+        # One-shot per-profile cleanup after the removal of the AnkiWeb
+        # file-sync: protect whatever that feature left in collection.media from
+        # Anki's "Delete Unused Files", and offer to rescue it if it holds more
+        # progress than the local save. Deliberately on the MAIN thread and
+        # after the connectivity task is dispatched, not inside its callback:
+        # it touches only local files, needs no network, and must be able to
+        # raise a modal that the user actually sees. It never raises.
+        try:
+            run_media_migration(settings_obj, logger)
+        except Exception as e:
+            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
 
     return handler
 
