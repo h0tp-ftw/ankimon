@@ -16,6 +16,7 @@ except (ImportError, ModuleNotFoundError):
     def tooltip(msg, period=2000):
         print(f"[Ankimon Tooltip] {msg}")
 
+
 from ..services import services
 from ..events import events
 from ..functions.pokemon_functions import (
@@ -256,15 +257,15 @@ def toggle_auto_battle_override(
 ) -> Optional[Literal["catch", "defeat"]]:
     """
     Toggle the auto-battle override for the current encounter.
-    
+
     Args:
         action: "catch" or "defeat"
-    
+
     Returns:
         Current override state as a string: None, "catch", or "defeat"
     """
     global _auto_battle_override
-    
+
     # If the same action is already set, clear it (toggle off)
     if _auto_battle_override == action:
         _auto_battle_override = None
@@ -274,7 +275,7 @@ def toggle_auto_battle_override(
         _auto_battle_override = action
         action_display = "Catch" if action == "catch" else "Defeat"
         tooltip(f"Override set: Will {action_display} when fainted!")
-    
+
     return _auto_battle_override
 
 
@@ -287,6 +288,7 @@ def clear_auto_battle_override() -> None:
     """Clear the override state (called when a new encounter starts)."""
     global _auto_battle_override
     _auto_battle_override = None
+
 
 def calculate_mastery_index_ep(total_reviews, daily_average, trainer_level):
     """
@@ -1326,6 +1328,43 @@ def save_main_pokemon_progress(
             exception=e, message="Error loading main pokemon data."
         )
         return
+
+    # Moveset both evolution checks below evaluate. Seeded from the record
+    # loaded above — normally the SAME captured_pokemon row the checkers would
+    # re-read for themselves (get_main_pokemon() selects is_main = 1,
+    # get_pokemon() selects that row by individual_id), so the seed is identical
+    # to their fallback's result while sparing the review path one query on
+    # every no-level-up victory. The level-up merge below rebinds this to the
+    # live mainpkmndata["attacks"] list, so moves learned on THIS level are seen
+    # too. This is NOT main_pokemon.attacks — see the note at the friendship
+    # check.
+    #
+    # "Normally" is why the identity is CHECKED below rather than assumed.
+    # is_main carries no uniqueness constraint (db_diagnostics.py exists to hunt
+    # for duplicate rows) and get_main_pokemon() fetchone()s whatever it finds,
+    # so the stored main row and the in-memory main_pokemon can name different
+    # Pokemon — the level-up merge below guards itself against exactly that, by
+    # name, before touching the moveset. Handing a mismatched row's moves to the
+    # checkers would evaluate a levelMove or known_move_type gate against ANOTHER
+    # Pokemon, and unlike the merge they have no guard of their own. Passing None
+    # on a mismatch costs one query and restores each checker's
+    # get_pokemon(individual_id) lookup, which is keyed correctly by
+    # construction — the same fallback a wholly missing record already takes.
+    attacks = (
+        list(main_pokemon_data.get("attacks") or []) if main_pokemon_data else None
+    )
+    # Compared as strings because individual_id is TEXT in the schema but has
+    # reached this code as an int from callers; a genuine match must not be
+    # declined over the type alone. Two missing ids are NOT a match — with
+    # nothing to compare the identity is unverified, which is the case this
+    # exists to refuse.
+    _main_individual_id = getattr(main_pokemon, "individual_id", None)
+    stored_row_is_main_pokemon = (
+        bool(main_pokemon_data)
+        and _main_individual_id is not None
+        and main_pokemon_data.get("individual_id") is not None
+        and str(main_pokemon_data.get("individual_id")) == str(_main_individual_id)
+    )
     evolution_prompted = False
     levels_gained = 0
     while int(
@@ -1336,20 +1375,27 @@ def save_main_pokemon_progress(
         )
     ) < int(main_pokemon.xp) and (level_cap is None or main_pokemon.level < level_cap):
         if levels_gained >= 10:
-            logger.log("error", f"Level-up loop exceeded safety cap of 10 for {main_pokemon.name}")
-            next_level_cost = int(find_experience_for_level(
-                main_pokemon.growth_rate,
-                main_pokemon.level,
-                settings_obj.get("misc.remove_level_cap"),
-            ))
+            logger.log(
+                "error",
+                f"Level-up loop exceeded safety cap of 10 for {main_pokemon.name}",
+            )
+            next_level_cost = int(
+                find_experience_for_level(
+                    main_pokemon.growth_rate,
+                    main_pokemon.level,
+                    settings_obj.get("misc.remove_level_cap"),
+                )
+            )
             main_pokemon.xp = max(0, next_level_cost - 1)
             break
         levels_gained += 1
-        current_lvl_xp_cost = int(find_experience_for_level(
-            main_pokemon.growth_rate,
-            main_pokemon.level,
-            settings_obj.get("misc.remove_level_cap"),
-        ))
+        current_lvl_xp_cost = int(
+            find_experience_for_level(
+                main_pokemon.growth_rate,
+                main_pokemon.level,
+                settings_obj.get("misc.remove_level_cap"),
+            )
+        )
         main_pokemon.level += 1
         events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
@@ -1368,41 +1414,6 @@ def save_main_pokemon_progress(
             if settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True:
                 logger.log_and_showinfo("info", f"{msg}")
         main_pokemon.xp = int(max(0, int(main_pokemon.xp) - current_lvl_xp_cost))
-
-        # Request to open the pokemon evo window
-        evo_id = check_evolution_for_pokemon(
-            main_pokemon.individual_id,
-            main_pokemon.id,
-            main_pokemon.level,
-            evo_window,
-            main_pokemon.everstone,
-            getattr(main_pokemon, "evolution_rejected", False),
-        )
-        if evo_id is not None:
-            evolution_prompted = True
-            events.emit(
-                "evolution_offered",
-                pokemon=main_pokemon.name,
-                trigger="level",
-                evo_id=evo_id,
-            )
-            # None-safe: return_name_for_id can return None for an unknown id, so
-            # fall back to the numeric id instead of crashing on .capitalize()
-            # (mirrors the friendship-evolution path below).
-            evo_display_name = return_name_for_id(evo_id)
-            evo_display_name = (
-                evo_display_name.capitalize() if evo_display_name else str(evo_id)
-            )
-            if not _in_bulk_resolve():
-                logger.log_and_showinfo(
-                    "info",
-                    translator.translate(
-                        "pokemon_about_to_evolve",
-                        main_pokemon_name=main_pokemon.name,
-                        evo_pokemon_name=evo_display_name,
-                        main_pokemon_level=main_pokemon.level,
-                    ),
-                )
 
         if main_pokemon_data:
             mainpkmndata = main_pokemon_data
@@ -1472,6 +1483,46 @@ def save_main_pokemon_progress(
                                 "info", f"{new_attack} will be discarded."
                             )
                 mainpkmndata["attacks"] = attacks
+
+        # Request to open the pokemon evo window — AFTER the level-up attack
+        # merge above, so a move-based (levelMove) evolution sees moves learned
+        # on this very level and fires on that event instead of one level late.
+        evo_id = check_evolution_for_pokemon(
+            main_pokemon.individual_id,
+            main_pokemon.id,
+            main_pokemon.level,
+            evo_window,
+            main_pokemon.everstone,
+            getattr(main_pokemon, "evolution_rejected", False),
+            current_attacks=attacks if stored_row_is_main_pokemon else None,
+            gender=getattr(main_pokemon, "gender", None),
+        )
+        if evo_id is not None:
+            evolution_prompted = True
+            events.emit(
+                "evolution_offered",
+                pokemon=main_pokemon.name,
+                trigger="level",
+                evo_id=evo_id,
+            )
+            # None-safe: return_name_for_id can return None for an unknown id, so
+            # fall back to the numeric id instead of crashing on .capitalize()
+            # (mirrors the friendship-evolution path below).
+            evo_display_name = return_name_for_id(evo_id)
+            evo_display_name = (
+                evo_display_name.capitalize() if evo_display_name else str(evo_id)
+            )
+            if not _in_bulk_resolve():
+                logger.log_and_showinfo(
+                    "info",
+                    translator.translate(
+                        "pokemon_about_to_evolve",
+                        main_pokemon_name=main_pokemon.name,
+                        evo_pokemon_name=evo_display_name,
+                        main_pokemon_level=main_pokemon.level,
+                    ),
+                )
+
     experience_till_next_level = int(
         find_experience_for_level(
             main_pokemon.growth_rate,
@@ -1571,6 +1622,25 @@ def save_main_pokemon_progress(
                 main_pokemon.everstone,
                 main_pokemon.friendship,
                 getattr(main_pokemon, "evolution_rejected", False),
+                # The stored moveset, refreshed by the level-up merge above
+                # when this defeat produced one. Do NOT "optimize" this into
+                # `main_pokemon.attacks` (reverted once already, 9a54562f): the
+                # merge writes the learned move to mainpkmndata (the DB dict)
+                # only, so the in-memory PokemonObject's moveset goes stale on
+                # the first level-up and never re-syncs for the rest of the
+                # session (update_main_pokemon only runs at boot / on an
+                # evolution / from the profile+shop screens). Feeding that stale
+                # list to the CSV known_move_type gate stops offering Sylveon to
+                # an Eevee that HAS learned a Fairy move — and flip-flops, since
+                # the rarer level-up defeats still pass the fresh list. The
+                # stored record is safe where the object is not: it is the very
+                # row this checker's own fallback would re-read — as long as it
+                # really is this Pokemon's row, which is what the flag checks.
+                attacks=attacks if stored_row_is_main_pokemon else None,
+                # The defeat count, unlike the moveset, IS accurate in memory —
+                # it was incremented for this battle a few lines above — so pass
+                # it and spare the checker that half of the lookup.
+                pokemon_defeated=main_pokemon.pokemon_defeated,
             )
             if friendship_evo_id is not None:
                 evolution_prompted = True
@@ -1775,6 +1845,7 @@ def save_caught_pokemon(
 
     try:
         from ..singletons import notify_stats_changed
+
         notify_stats_changed()
     except Exception:
         pass
@@ -1905,7 +1976,7 @@ def handle_enemy_faint(
         finally:
             clear_auto_battle_override()
         return
-        
+
     elif _auto_battle_override == "defeat":
         # Override: Force defeat, unless the enemy is protected by an
         # "always auto-catch" tier setting (legendary/mythical/ultra/

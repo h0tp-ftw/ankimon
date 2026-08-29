@@ -1,9 +1,8 @@
-from typing import Literal
+from typing import Optional
 from ..resources import (
     pokedex_path,
     pokedesc_lang_path,
     pokenames_lang_path,
-    learnset_path,
     moves_file_path,
     poke_evo_path,
     poke_species_path,
@@ -18,6 +17,7 @@ try:
     from aqt import mw
 except Exception:
     mw = None
+import functools
 import json
 import math
 import random
@@ -79,7 +79,6 @@ def is_valid_base_stats(base_stats) -> bool:
         ):
             return False
     return True
-
 
 
 def _load_pokedex_cache():
@@ -256,6 +255,87 @@ def _load_poke_evo_cache():
     return _poke_evo_cache
 
 
+_poke_evo_index = None
+
+
+def _load_poke_evo_index():
+    """Index the evolution rows by ``evolved_species_id`` for O(1) lookup.
+
+    Same lazy-module-global shape as :func:`_load_pokedex_id_index`, and built
+    FROM :func:`_load_poke_evo_cache`, so the CSV is parsed once and the rows
+    exist once — the index holds references, not copies.
+
+    Keys are ``str`` and lookups stringify, reproducing
+    :func:`rows_for_key_in_table`'s ``str(row[col]) == str(value)`` exactly.
+    Callers pass both ints (:func:`_evolution_row_gender_id_cached`) and the
+    strings :func:`pokemon_evolves_from_id` returns, and a zero-padded
+    ``"0700"`` must keep matching nothing — so do NOT ``safe_int`` the key.
+    """
+    global _poke_evo_index
+    if _poke_evo_index is None:
+        buckets = {}
+        for row in _load_poke_evo_cache():
+            # `"col" in row` mirrors rows_for_key_in_table's guard exactly.
+            if "evolved_species_id" not in row:
+                continue
+            buckets.setdefault(str(row["evolved_species_id"]), []).append(row)
+        _poke_evo_index = {key: tuple(rows) for key, rows in buckets.items()}
+    return _poke_evo_index
+
+
+def evolution_rows_for_evolved_species(evolved_species_id):
+    """Every ``pokemon_evolution.csv`` row for one evolved species.
+
+    In-memory equivalent of ``rows_for_key_in_table("evolved_species_id", ...,
+    poke_evo_path)`` — same rows, same order, same string comparison — without
+    the synchronous re-parse. Use this on the review path (repo rule: no
+    synchronous disk I/O mid-review; static data is parsed once at startup) —
+    :func:`warm_evolution_caches` is what does that parsing at startup, so this
+    only ever reads memory once the boot has run.
+
+    Returns a tuple of the SHARED row dicts; treat them as read-only, the same
+    contract :func:`_load_poke_evo_cache` already has.
+    """
+    return _load_poke_evo_index().get(str(evolved_species_id), ())
+
+
+def warm_evolution_caches():
+    """Parse ``pokemon_evolution.csv`` and build its index, off the review path.
+
+    The loaders above are lazy, which leaves their FIRST caller deciding when
+    the ~500-row parse happens — and every production caller of these rows sits
+    on the review path: :func:`_evolution_row_gender_id_cached` for the gender
+    gate, ``friendship_evolution``'s level and friendship lookups, all reached
+    from ``on_review_card``. Left cold, the first level-up of a session opened
+    and parsed the CSV mid-review, which is the synchronous disk I/O the repo
+    rule forbids ("static data is parsed once at startup").
+
+    Two callers make that rule true. ``startup.run_startup_background_checks``
+    warms on the boot thread, before ``services.startup_finished`` opens the
+    review gate; ``profile_hooks``' did-open handler warms again, because a
+    profile switch runs :func:`clear_pokedex_caches` while the once-per-process
+    boot does not run a second time.
+
+    Purely an optimization, so it must not add a failure mode. Moving the first
+    read earlier means a file that is momentarily unreadable at boot (an add-on
+    update mid-write, a cold network drive) would otherwise let
+    :func:`_load_poke_evo_cache` memoize its empty fallback for the whole
+    session, silently answering "this species has no evolution rows" to every
+    gate. So an empty result puts both globals back to ``None`` and the lazy
+    path simply retries on first use, exactly as it does today.
+
+    Returns the number of rows indexed (0 if the CSV could not be read).
+    """
+    global _poke_evo_cache, _poke_evo_index
+    rows = _load_poke_evo_cache()
+    if rows:
+        _load_poke_evo_index()
+        return len(rows)
+    _poke_evo_cache = None
+    _poke_evo_index = None
+    return 0
+
+
 def _load_moves_cache():
     """Cache moves.json to avoid repeated file I/O"""
     global _moves_cache
@@ -337,6 +417,7 @@ def clear_pokedex_caches():
         _pokemon_csv_cache, \
         _stats_csv_cache, \
         _poke_evo_cache, \
+        _poke_evo_index, \
         _moves_cache, \
         _pokedex_id_index, \
         _pokemon_names_cache, \
@@ -346,6 +427,16 @@ def clear_pokedex_caches():
     _pokemon_csv_cache = None
     _stats_csv_cache = None
     _poke_evo_cache = None
+    # Reset with its source cache: the index holds references into the rows
+    # _load_poke_evo_cache built, so leaving it warm past a clear would keep
+    # the pre-clear rows alive (parity with _pokedex_id_index above).
+    _poke_evo_index = None
+    # ...and so does the memo built ON TOP of that index. _evolution_row_gender_id_cached
+    # answers from _poke_evo_index (and, for form ids >= 10000, from
+    # _pokedex_cache via search_pokedex_by_id), so a clear that leaves it warm
+    # keeps serving pre-clear verdicts for the rest of the session — the gender
+    # gate would then contradict the reloaded data it is supposed to read.
+    _evolution_row_gender_id_cached.cache_clear()
     _moves_cache = None
     _pokedex_id_index = None
     _pokemon_names_cache = {}
@@ -592,9 +683,6 @@ def get_pretty_name_for_name(pokemon_name):
             if suffix in pokemon_name.lower():
                 base_name = pokemon_name.lower().replace(suffix, "").replace("-", "")
                 if base_name in pokedex_data:
-                    raw_base = pokedex_data[base_name].get(
-                        "name", base_name.capitalize()
-                    )
                     return format_lore_name(pokemon_name.title())
     except:
         pass
@@ -833,7 +921,227 @@ def return_identifier_for_item_id(item_id):
     return None
 
 
-def check_evolution_by_item(pokemon_id, item_id):
+def _csv_gender_id(gender) -> Optional[int]:
+    """Normalize Ankimon's ``"M"/"F"/"Genderless"`` values to CSV gender ids.
+
+    ``pokemon_evolution.csv`` follows the veekun convention: 1 = female,
+    2 = male. Returns ``None`` for anything unrecognised (including
+    "Genderless") so a gate never matches on junk data.
+    """
+    if isinstance(gender, str):
+        gender = gender.strip().upper()
+        # Accept both the internal short form ("M"/"F", what
+        # pick_random_gender stores) and long-form variants seen in legacy
+        # saves. Anything else (incl. "Genderless") -> None -> no gate.
+        if gender in ("M", "MALE"):
+            return 2
+        if gender in ("F", "FEMALE"):
+            return 1
+    return None
+
+
+# ``evolution_trigger_id`` values of the bundled veekun CSV, grouped by the code
+# path that consults them. Scoping the gender lookup to the trigger the caller is
+# actually evaluating keeps one method's gate from leaking onto another: today
+# every gendered species has exactly one row, but the CSV is regenerated from
+# upstream data and a second, ungendered path to the same species would
+# otherwise silently inherit the gate.
+_ITEM_EVO_TRIGGERS = (2, 3)  # 2 = trade-with-held-item, 3 = use-item
+_LEVEL_EVO_TRIGGERS = (1,)  # 1 = level-up (plain, timed, and levelMove)
+
+
+def _evolution_row_gender_id(evolved_species_id, trigger_ids=None) -> Optional[int]:
+    """Return the ``gender_id`` gating ``evolved_species_id``, if any.
+
+    Scans the bundled ``pokemon_evolution.csv`` rows whose
+    ``evolved_species_id`` matches and returns the first parseable non-blank
+    ``gender_id`` (veekun convention: 1 = female, 2 = male). ``None`` means the
+    species' evolution rows carry no gender gate. Anything that isn't an integer
+    id degrades to ``None`` ("no gate") rather than raising.
+
+    The coercion happens HERE rather than inside the cached helper so that an
+    unhashable argument still returns ``None`` instead of dying in
+    ``lru_cache``'s key lookup, and so the cache keys on the normalized int
+    (``475`` and ``"475"`` share one entry).
+
+    Args:
+        evolved_species_id: National Pokédex id of the *evolved* species.
+        trigger_ids: Optional tuple of ``evolution_trigger_id`` values to scope
+            the scan to (:data:`_ITEM_EVO_TRIGGERS` / :data:`_LEVEL_EVO_TRIGGERS`).
+            ``None`` scans every row.
+    """
+    try:
+        species_ref = int(evolved_species_id)
+    except (TypeError, ValueError):
+        return None
+    return _evolution_row_gender_id_cached(species_ref, trigger_ids)
+
+
+@functools.lru_cache(maxsize=None)
+def _evolution_row_gender_id_cached(species_ref: int, trigger_ids) -> Optional[int]:
+    """CSV-backed body of :func:`_evolution_row_gender_id` (see it for semantics).
+
+    Form-variant ids (>= 10000, e.g. Wormadam-Sandy 10004) resolve to their base
+    species first — the CSV only carries base-species rows (repo tripwire: "IDs
+    >= 10000 must be resolved to their base species via check_id_ok()").
+
+    ``lru_cache``d because this sits on the review path: a level-up runs it for
+    every eligible evolution candidate. The rows now come from the startup-built
+    in-memory index (:func:`evolution_rows_for_evolved_species`) rather than a
+    fresh ~500-row CSV parse per cache miss, so the cache saves the scan rather
+    than the file I/O (coding guideline: no synchronous disk I/O mid-review —
+    static data is parsed once at startup).
+    ``poke_evo_path`` points into the shipped, read-only ``data_files`` dir, so
+    the CSV really is immutable for the process and the memoized
+    ``Optional[int]`` is safe to share. The key space is bounded by
+    species x trigger-scope (a few thousand small ints at most), so ``maxsize=None``
+    can't grow without bound. Same caveat as the other CSV caches here: a
+    transient read failure would be memoized for the session.
+    """
+    if species_ref >= 10000:
+        # Form variant: the CSV keys on the base species id only.
+        form_name = search_pokedex_by_id(species_ref)
+        base_species = (
+            safe_int(search_pokedex(form_name, "species_id"))
+            if (form_name and form_name != "Pokémon not found")
+            else 0
+        )
+        if base_species > 0:
+            species_ref = base_species
+    wanted_triggers = {str(t) for t in trigger_ids} if trigger_ids is not None else None
+    for csv_row in evolution_rows_for_evolved_species(species_ref):
+        if (
+            wanted_triggers is not None
+            and (csv_row.get("evolution_trigger_id") or "").strip()
+            not in wanted_triggers
+        ):
+            continue
+        raw_gender = (csv_row.get("gender_id") or "").strip()
+        if not raw_gender:
+            continue
+        try:
+            return int(raw_gender)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def gender_allows_evolution(evolved_species_id, caller_gender_id, trigger_ids) -> bool:
+    """Return whether a gender may take one evolution, per the CSV gate.
+
+    The single place the gate's semantics live, so the three call sites that
+    apply it to a ``pokedex.json`` entry (:func:`check_evolution_by_item`,
+    :func:`check_evolution_for_pokemon` and the web bag's inline eligibility
+    loop) and the one that applies it to a bare id
+    (``friendship_evolution._level_gender_gate``) cannot drift apart.
+
+    ``caller_gender_id is None`` — no gender, or one :func:`_csv_gender_id`
+    doesn't recognise, "Genderless" included — fails **open**, keeping the
+    historical no-check behavior for callers and saves without gender data. A
+    species whose rows carry no ``gender_id`` is likewise unrestricted.
+
+    Args:
+        evolved_species_id: National Pokédex id of the *evolved* species.
+        caller_gender_id: The Pokémon's gender as a CSV id (1 = female,
+            2 = male), or ``None`` for "unknown — don't gate".
+        trigger_ids: Trigger scope to consult (:data:`_ITEM_EVO_TRIGGERS` /
+            :data:`_LEVEL_EVO_TRIGGERS`), so one method's gate never leaks
+            onto another.
+    """
+    if caller_gender_id is None:
+        return True
+    required_gender_id = _evolution_row_gender_id(evolved_species_id, trigger_ids)
+    return required_gender_id is None or required_gender_id == caller_gender_id
+
+
+def evolution_target_species_id(target_data) -> int:
+    """National id of the evolved species a ``pokedex.json`` entry describes.
+
+    ``actual_id`` carries it for base species and forms alike; ``species_id``
+    is the fallback for entries that predate it. ``0`` when neither resolves.
+    """
+    if not isinstance(target_data, dict):
+        return 0
+    return safe_int(target_data.get("actual_id") or target_data.get("species_id"))
+
+
+def evolution_gender_allows(target_data, gender, trigger_ids) -> bool:
+    """:func:`gender_allows_evolution` for a ``pokedex.json`` evolution entry.
+
+    Takes the raw Ankimon gender string (``"M"``/``"F"``/``"Genderless"``/
+    ``None``) and the evolved species' own pokedex entry, so callers holding a
+    ``target_data`` dict apply the gate identically without restating the
+    id-extraction and the comparison.
+    """
+    return gender_allows_evolution(
+        evolution_target_species_id(target_data),
+        _csv_gender_id(gender),
+        trigger_ids,
+    )
+
+
+def _pokedex_form_gender(species_ref) -> Optional[str]:
+    """Return ``"M"``/``"F"`` when pokedex.json marks a species/form single-gender.
+
+    This is the ``gender`` field on the *evolved* entry (e.g. ``meowstic`` -> M,
+    ``meowsticf`` -> F). ``None`` for anything unlabelled or unresolvable.
+    """
+    try:
+        name = search_pokedex_by_id(species_ref)
+    except Exception:
+        return None
+    if not name or name == "Pokémon not found":
+        return None
+    entry = (_load_pokedex_cache() or {}).get(name)
+    if not isinstance(entry, dict):
+        return None
+    form_gender = entry.get("gender")
+    return form_gender if form_gender in ("M", "F") else None
+
+
+def filter_gender_split_forms(evo_ids, gender):
+    """Narrow sibling evolution targets to the ones this gender can reach.
+
+    A SECOND gender source, needed because ``pokemon_evolution.csv`` cannot see
+    every split. veekun models Espurr -> Meowstic and Lechonk -> Oinkologne as
+    two *forms of one species* rather than as two gendered evolutions, so those
+    rows carry no ``gender_id`` and :func:`_evolution_row_gender_id` answers
+    "no gate" for both candidates — leaving the lowest-``evo_id`` tie-break to
+    hand every Espurr the MALE Meowstic and every Lechonk the MALE Oinkologne,
+    which is the exact failure the CSV gate fixes for Burmy. pokedex.json does
+    carry the split, on the evolved forms' own ``gender`` field.
+
+    Deliberately applied ONLY as a tie-break between siblings whose labels
+    disagree. A lone target carrying a ``gender`` (Bounsweet -> Steenee, both
+    female-only) is stating a species property, not an evolution requirement,
+    and must never block an evolution — every such line in the bundled data has
+    a single-gender pre-evolution anyway, so gating on it could only ever hurt a
+    save whose stored gender disagrees with its own species. Unlabelled siblings
+    are kept, and a gender matching no sibling falls back to the full set, so
+    this can never empty the candidate list.
+
+    Args:
+        evo_ids: Candidate evolved-species ids (form ids >= 10000 included).
+        gender: The Pokémon's gender (``"M"``/``"F"``/...); unrecognised values
+            disable the filter.
+
+    Returns:
+        The surviving ids, in the order given.
+    """
+    ids = list(evo_ids)
+    caller_gender_id = _csv_gender_id(gender)
+    if caller_gender_id is None or len(ids) < 2:
+        return ids
+    labels = {evo_id: _pokedex_form_gender(evo_id) for evo_id in ids}
+    if len({label for label in labels.values() if label}) < 2:
+        # Siblings agree (or none is labelled): a species property, not a split.
+        return ids
+    wanted = "M" if caller_gender_id == 2 else "F"
+    matching = [evo_id for evo_id in ids if labels.get(evo_id) in (wanted, None)]
+    return matching or ids
+
+
+def check_evolution_by_item(pokemon_id, item_id, gender=None):
     """
     Check if a Pokémon evolves using a specific item.
 
@@ -850,6 +1158,11 @@ def check_evolution_by_item(pokemon_id, item_id):
     Args:
         pokemon_id (int): The ID of the (pre-evolution) Pokémon.
         item_id (int): The ID of the item.
+        gender (str | None): The Pokémon's gender ("M"/"F"/"Genderless"). When
+            given, gender-gated evolutions from ``pokemon_evolution.csv``
+            (Gallade needs a male Kirlia, Froslass a female Snorunt/Kirlia)
+            only match when the gender agrees; ``None`` keeps the historical
+            no-gender-check behavior for callers without gender data.
 
     Returns:
         int | None: The evolved species id if the Pokémon evolves with the given
@@ -886,6 +1199,18 @@ def check_evolution_by_item(pokemon_id, item_id):
                             "useItem",
                             "trade",
                         ):
+                            # Gender gate from the bundled CSV (veekun ids:
+                            # 1 = female, 2 = male). Gallade (475) requires a
+                            # male Kirlia, Froslass (478) a female Snorunt.
+                            # Only enforced when the caller supplies a
+                            # RECOGNISED gender ("M"/"F"); None/unrecognised
+                            # keeps the historical no-check behavior so
+                            # callers without gender data are unaffected.
+                            if not evolution_gender_allows(
+                                target_data, gender, _ITEM_EVO_TRIGGERS
+                            ):
+                                continue
+
                             # Normalize both sides by stripping spaces, hyphens and
                             # apostrophes so pokedex.json display names (e.g.
                             # "King's Rock") match items.csv identifiers (e.g.
@@ -1036,6 +1361,8 @@ def check_evolution_for_pokemon(
     evo_window,
     everstone=False,
     evolution_rejected=False,
+    current_attacks=None,
+    gender=None,
 ):
     """
     Check if a Pokémon evolves by a level (or move-based level-up) condition.
@@ -1055,6 +1382,17 @@ def check_evolution_for_pokemon(
         everstone (bool): Whether the Pokémon is holding an Everstone.
         evolution_rejected (bool): Whether the user previously rejected this
             evolution. When True the automatic prompt is suppressed.
+        current_attacks (list | None): The Pokémon's just-updated moveset, when
+            the caller has fresher data than the database (e.g. immediately
+            after new level-up moves were learned). ``None`` falls back to the
+            stored moveset from the DB seam. Move-based evolutions evaluate
+            against this list so learning the required move on this very level
+            triggers the offer on that same event instead of one level late.
+        gender (str | None): The Pokémon's gender (``"M"``/``"F"``/...). When a
+            recognised gender is supplied, CSV ``gender_id`` gates are enforced:
+            Vespiquen needs a female Combee, Salazzle a female Salandit,
+            Wormadam a female Burmy and Mothim a male one. ``None`` keeps the
+            historical no-check behavior for callers without gender data.
 
     Returns:
         int | None: The evolution ID if an evolution is found, or None otherwise.
@@ -1139,34 +1477,56 @@ def check_evolution_for_pokemon(
                             required_move = target_data.get("evoMove")
                             knows_move = False
 
-                            pkmn_data = None
-                            try:
-                                pkmn_data = services.db.get_pokemon(individual_id)
-                            except Exception:
-                                pkmn_data = None
-                            if pkmn_data and "attacks" in pkmn_data:
-                                p_attacks = pkmn_data["attacks"]
-                                if required_move and any(
+                            # Prefer the caller's just-updated moveset when
+                            # provided (the DB may still hold the pre-level-up
+                            # moveset at this point); fall back to the stored
+                            # one otherwise.
+                            if current_attacks is not None:
+                                p_attacks = current_attacks
+                            else:
+                                p_attacks = None
+                                try:
+                                    pkmn_data = services.db.get_pokemon(individual_id)
+                                except Exception:
+                                    pkmn_data = None
+                                if pkmn_data and "attacks" in pkmn_data:
+                                    p_attacks = pkmn_data["attacks"]
+                            if (
+                                required_move
+                                and p_attacks
+                                and any(
                                     isinstance(a, str)
                                     and a.lower().replace(" ", "").replace("-", "")
                                     == required_move.lower()
                                     .replace(" ", "")
                                     .replace("-", "")
                                     for a in p_attacks
-                                ):
-                                    knows_move = True
-                            else:
-                                # Fail closed when the moveset can't be fetched:
-                                # a move-gated evolution must never fire on
-                                # unconfirmed data (mirrors friendship_evolution.py's
-                                # conservative levelMove handling). knows_move stays
-                                # False so the evolution simply doesn't trigger.
-                                knows_move = False
+                                )
+                            ):
+                                knows_move = True
+                            # Fail closed when the moveset can't be fetched:
+                            # a move-gated evolution must never fire on
+                            # unconfirmed data (mirrors friendship_evolution.py's
+                            # conservative levelMove handling). knows_move stays
+                            # False so the evolution simply doesn't trigger.
 
                             if knows_move:
                                 is_level_evo = True
 
                         if is_level_evo:
+                            # Gender gate from the bundled CSV (veekun ids:
+                            # 1 = female, 2 = male): Vespiquen needs a female
+                            # Combee, Salazzle a female Salandit, and Burmy
+                            # splits into Wormadam (female) / Mothim (male).
+                            # Only enforced when the caller supplies a
+                            # RECOGNISED gender ("M"/"F"); None/unrecognised
+                            # keeps the historical no-check behavior so
+                            # callers without gender data are unaffected.
+                            if not evolution_gender_allows(
+                                target_data, gender, _LEVEL_EVO_TRIGGERS
+                            ):
+                                continue
+
                             time_of_day = None
                             if "day" in condition:
                                 time_of_day = "day"
@@ -1215,6 +1575,23 @@ def check_evolution_for_pokemon(
                                         eligible_evos.append(target_data)
 
                 if eligible_evos:
+                    # Second gender source for splits the CSV cannot express as
+                    # gendered rows (Espurr -> Meowstic/Meowstic-F, Lechonk ->
+                    # Oinkologne/Oinkologne-F are FORMS in the veekun schema).
+                    # Narrows siblings only; never empties the list.
+                    by_id = {}
+                    for candidate in eligible_evos:
+                        by_id.setdefault(
+                            evolution_target_species_id(candidate), candidate
+                        )
+                    kept = set(filter_gender_split_forms(list(by_id), gender))
+                    if kept:
+                        eligible_evos = [
+                            candidate
+                            for candidate in eligible_evos
+                            if evolution_target_species_id(candidate) in kept
+                        ]
+
                     eligible_evos.sort(key=lambda x: 0 if x.get("evoRegion") else 1)
                     target_data = eligible_evos[0]
                     evo_id = safe_int(
@@ -1337,42 +1714,6 @@ def check_key_in_table(column_name, value, file_path):
 
     # Return the matching row or None if no match is found
     return matching_row
-
-
-def rows_for_key_in_table(column_name, value, file_path):
-    """Return *all* rows where ``column_name`` equals ``value`` (as a list).
-
-    Unlike :func:`check_key_in_table`, which stops at the first hit, this returns
-    every matching row. The bundled ``pokemon_evolution.csv`` stores one row per
-    evolution *method*, so a single evolved species can appear on several rows —
-    e.g. Sylveon has a blank row and a separate ``minimum_happiness`` row, and
-    Persian has both a level-up row and a friendship row. Callers that need to
-    pick the row matching a specific method (level vs. friendship) must see them
-    all rather than just whichever comes first in the file.
-
-    Args:
-        column_name: The column to match on.
-        value: The value to match (compared as a string, like
-            :func:`check_key_in_table`).
-        file_path: Path to the CSV file to scan.
-
-    Returns:
-        A list of matching rows (each a ``dict``); empty on no match or error.
-    """
-    matching_rows = []
-    try:
-        with open(file_path, mode="r", encoding="utf-8") as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                # Use .get() to prevent KeyError if the column doesn't exist.
-                if row.get(column_name) and str(row[column_name]) == str(value):
-                    matching_rows.append(row)
-    except FileNotFoundError:
-        print(f"Error: The file {file_path} does not exist.")
-    except Exception as e:
-        print(f"Error: {e}")
-
-    return matching_rows
 
 
 def rows_for_key_in_table(column_name, value, file_path):
