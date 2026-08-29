@@ -50,7 +50,7 @@ from aqt import mw, gui_hooks
 from aqt.utils import showWarning, tooltip
 from ..pyobj.error_handler import show_warning_with_traceback
 
-from ..resources import user_path, addon_dir
+from ..resources import user_path
 
 
 # --------------------------------------------------------------------------
@@ -207,19 +207,6 @@ def _atomic_write_over(src: Path, dest: Path, before_replace: Callable[[], Any] 
             pass
 
 
-def _lock_tooltip(action: str, unchanged: bool = False) -> None:
-    """Non-blocking tooltip for a transient file lock on an AUTOMATIC sync path
-    (it self-heals on the next sync, so this never becomes a traceback dialog).
-    Shares one sync-client list with ``SYNC_LOCK_MESSAGE`` so the guidance can't
-    drift between the manual and automatic paths."""
-    tail = "Your local data is unchanged; it" if unchanged else "It"
-    tooltip(
-        f"Ankimon: couldn't {action} right now — a program such as OneDrive, "
-        "Google Drive, Dropbox, or an antivirus is holding the file open. "
-        f"{tail} will retry on the next sync."
-    )
-
-
 def _verify_sqlite_integrity(db_file: Path) -> bool:
     """True only if ``db_file`` is a readable, non-empty Ankimon SQLite DB that
     passes a quick integrity check and carries the core ``captured_pokemon``
@@ -275,93 +262,13 @@ class AnkimonDataSync:
     that path is gone (see this module's docstring). What survives here is the
     part that was hard-won and is still correct: the legacy ``config.obf``
     obfuscation helpers that ``settings.py`` still needs to read a pre-SQLite
-    config, the profile-scoped media paths, the integrity gate, the
-    backup-before-overwrite gate, and the atomic replace with its Windows
-    file-lock tolerance (issue #636). ``pyobj/save_transfer.py`` builds the
-    user-facing Export/Import on top of these.
+    config, the integrity gate, the backup-before-overwrite gate, and the atomic
+    replace with its Windows file-lock tolerance (issue #636).
+    ``pyobj/save_transfer.py`` builds the user-facing Export/Import on top of
+    these, and resolves the media folder itself when it needs it.
     """
 
     _OBFUSCATION_KEY = "H0tP-!s-N0t-4-C@tG!rL_v2"
-
-    # Where each Ankimon data file lives on disk. Retained because
-    # ``_get_source_path`` resolves against it; nothing copies these anywhere
-    # automatically any more.
-    SYNC_FILES = {
-        "ankimon.db": "user_files"
-        # config.obf removed - now stored in ankimon.db
-    }
-
-    def __init__(self, addon_name: str = None):
-        """Initialize with addon name for folder naming."""
-        self.addon_name = addon_name or self._get_addon_name()
-        self.addon_path = addon_dir
-        self.user_files_path = user_path
-
-        # Media paths are resolved lazily and re-resolved whenever the profile
-        # changes — see _ensure_paths_initialized.
-        self._media_path = None
-        self._media_profile_folder = None
-
-    def _get_addon_name(self) -> str:
-        """Get the addon name from the current addon folder."""
-        try:
-            current_file = Path(__file__)
-            addon_dir = current_file.parents[2]  # Go up to addon root
-            return addon_dir.name
-        except:
-            return "ankimon"  # fallback
-
-    def _ensure_paths_initialized(self):
-        """Resolve the media path for the CURRENTLY OPEN profile.
-
-        Re-resolved whenever the profile folder changes, not cached forever. A
-        profile switch keeps the same Python process — ``unloadProfile`` /
-        ``loadProfile`` do not re-import add-on modules — so the previous
-        ``if self._media_path is None`` guard meant this object went on pointing
-        at the PREVIOUS profile's ``collection.media`` for the rest of the
-        session, while ``collection.media`` is per-profile. Anything that then
-        read or wrote through it silently addressed the wrong profile's data.
-        """
-        profile_folder = mw.pm.profileFolder()
-        if profile_folder is None:
-            raise RuntimeError("No Anki profile loaded. Cannot initialize sync paths.")
-
-        if self._media_path is None or self._media_profile_folder != profile_folder:
-            self._media_profile_folder = profile_folder
-            self._media_path = Path(profile_folder) / "collection.media"
-
-    @property
-    def media_path(self) -> Path:
-        """Get media path for the current profile, resolving if needed."""
-        self._ensure_paths_initialized()
-        return self._media_path
-
-    @property
-    def media_sync_path(self) -> Path:
-        """The media folder ROOT.
-
-        Files in a SUBFOLDER of ``collection.media`` are never scanned and never
-        sync — Anki's media scan iterates ``read_dir_files``, which skips
-        non-file entries and never recurses. The old subfolder design here was
-        already defused by aliasing this to the media root; the alias is now the
-        whole story, and the name is kept only for call-site compatibility.
-        """
-        return self.media_path
-
-    def _get_source_path(self, filename: str) -> Path:
-        """Get the source path for a file based on its location."""
-        location = self.SYNC_FILES.get(filename)
-        if location == "addon_root" or filename == "meta.json":
-            return self.addon_path / filename
-        elif location == "user_files":
-            return self.user_files_path / filename
-        else:
-            raise ValueError(f"Unknown location for file: {filename}")
-
-    def _get_media_path(self, filename: str) -> Path:
-        """Get the media subfolder path for a synced file."""
-        return self.media_sync_path / filename
-
 
     def _obfuscate_data(self, data: dict) -> str:
         """Obfuscates dictionary data into a string."""

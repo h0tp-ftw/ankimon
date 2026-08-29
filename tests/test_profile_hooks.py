@@ -103,7 +103,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.pyobj.save_transfer",
-        _stub_module("Ankimon.pyobj.save_transfer", run_media_migration=MagicMock()),
+        _stub_module("Ankimon.pyobj.save_transfer", register_media_migration_hooks=MagicMock()),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -300,10 +300,11 @@ def test_mobile_sync_hook_registered_with_shipped_defaults(monkeypatch):
     sync_mod.setup_ankimon_sync_hooks.assert_called_once()
 
 
-def test_media_migration_runs_on_profile_open(monkeypatch):
-    """The one-shot cleanup after the file-sync removal must actually be
-    invoked; it is what protects a user's media copy from Check Media and
-    offers to rescue it."""
+def test_media_migration_hooks_registered_on_profile_open(monkeypatch):
+    """The cleanup after the file-sync removal must be wired up. Registration —
+    not a bare one-shot call — because Anki fires profile_did_open one line
+    before it starts its own sync (aqt/main.py:568-569), so the scan also has to
+    run again once a media sync has actually delivered something."""
     _, _, transfer_mod = _fire_profile_did_open(monkeypatch)
 
-    transfer_mod.run_media_migration.assert_called_once()
+    transfer_mod.register_media_migration_hooks.assert_called_once()

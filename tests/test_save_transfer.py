@@ -309,6 +309,17 @@ def test_import_refuses_the_file_it_is_already_using(tmp_path, live_db, monkeypa
 # --------------------------------------------------------------------------
 # One-shot migration off the removed feature
 # --------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def run_deferred_inline(monkeypatch):
+    """The rescue is deferred by one event-loop turn via mw.progress.single_shot
+    so it never runs on the profile_did_open stack. ``mw`` is a MagicMock here,
+    which would swallow the callback, so run it inline instead."""
+    monkeypatch.setattr(
+        st.mw.progress, "single_shot",
+        lambda ms, fn, requires_collection=True: fn(),
+    )
+
+
 @pytest.fixture
 def media(tmp_path, monkeypatch):
     d = tmp_path / "collection.media"
@@ -451,3 +462,111 @@ def test_migration_settles_after_a_successful_rescue(media, live_db, logger, mon
     st.run_media_migration(MagicMock(), logger)       # the next boot
 
     assert ask.call_count == 1                        # not asked a second time
+
+
+# --------------------------------------------------------------------------
+# The boot-ordering trap (the bug the first cut of this migration shipped)
+# --------------------------------------------------------------------------
+def test_empty_media_at_profile_open_does_not_burn_the_one_shot(media, live_db, logger, monkeypatch):
+    """THE regression guard. Anki fires profile_did_open at aqt/main.py:568, one
+    line BEFORE maybe_auto_sync_on_open_close at :569. On a brand-new second
+    device collection.media EXISTS (Anki creates it with the profile) but is
+    empty — the peer's save arrives from the sync that starts moments later.
+
+    Concluding "nothing here, mark this profile done" at that moment burns the
+    flag permanently and the arriving save is never protected or offered, for
+    exactly the two-device user the rescue exists to serve.
+    """
+    marked = MagicMock()
+    monkeypatch.setattr(st, "_mark_migration_done", marked)
+    monkeypatch.setattr(st, "_media_sync_completed_this_session", False)
+
+    st.run_media_migration(MagicMock(), logger)     # the profile_did_open scan
+
+    marked.assert_not_called()
+
+
+def test_peer_save_is_picked_up_on_the_post_sync_pass(media, live_db, logger, monkeypatch):
+    """...and the post-media-sync pass is what actually finds it."""
+    monkeypatch.setattr(st, "_media_sync_completed_this_session", False)
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    st.run_media_migration(MagicMock(), logger)                 # boot: nothing yet
+    assert not (media / st.MEDIA_SAVE_NAME).exists()
+    ask.assert_not_called()
+
+    _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)   # download lands
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    assert (media / st.MEDIA_SAVE_NAME).is_file()               # protected
+    ask.assert_called_once()                                    # and offered
+
+
+def test_empty_media_after_a_completed_sync_does_settle(media, live_db, logger, monkeypatch):
+    """The flag must still be reachable: once a media sync has completed and the
+    folder is genuinely empty, stop scanning on every launch."""
+    monkeypatch.setattr(st, "_media_sync_completed_this_session", False)
+    marked = MagicMock()
+    monkeypatch.setattr(st, "_mark_migration_done", marked)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    marked.assert_called_once()
+
+
+# --------------------------------------------------------------------------
+# Developer-mode partitioning, and not trusting an unreadable protected copy
+# --------------------------------------------------------------------------
+def test_dev_and_normal_saves_are_not_ranked_against_each_other(media, tmp_path, logger, monkeypatch):
+    """A developer save with more test captures must not be crowned 'best',
+    become the single protected copy, and be offered over the real save."""
+    active = _make_save(tmp_path / "ankimon.db", pokemon=3)
+    monkeypatch.setattr(st, "_active_db_path", lambda: active)
+    _make_save(media / "ankimon.db", pokemon=1)
+    _make_save(media / "ankimonDEV.db", pokemon=500, badges=50, history=900)
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    # The dev save is not what got preserved, and no rescue was offered from it.
+    assert st.get_db_stats(media / st.MEDIA_SAVE_NAME)["pokemon"] == 1
+    ask.assert_not_called()
+
+
+def test_a_readable_but_staler_candidate_does_not_replace_the_protected_copy(media, live_db, logger, monkeypatch):
+    """_progress_key floors an unreadable save below everything, so without an
+    explicit guard a readable-but-stale candidate would overwrite a protected
+    copy that merely failed to open this once."""
+    _make_save(media / st.MEDIA_SAVE_NAME, pokemon=80, badges=9, history=120)
+    _make_save(media / "ankimon.db", pokemon=1)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    assert st.get_db_stats(media / st.MEDIA_SAVE_NAME)["pokemon"] == 80
+
+
+def test_rescue_is_deferred_off_the_profile_open_stack(media, live_db, logger, monkeypatch):
+    """close_anki() -> mw.close() starts unloadProfileAndExit(); running that
+    from inside profile_did_open would tear the collection down and then return
+    into loadProfile, which proceeds straight to maybe_auto_sync_on_open_close."""
+    _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: True)
+    monkeypatch.setattr(st, "showInfo", MagicMock())
+    monkeypatch.setattr(st, "close_anki", MagicMock())
+    _stub_sync(monkeypatch)
+
+    scheduled = []
+    monkeypatch.setattr(
+        st.mw.progress, "single_shot",
+        lambda ms, fn, requires_collection=True: scheduled.append(fn),
+    )
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    assert len(scheduled) == 1                       # deferred, not called inline
+    assert st.get_db_stats(live_db)["pokemon"] == 3  # nothing replaced yet
+    scheduled[0]()                                   # next event-loop turn
+    assert st.get_db_stats(live_db)["pokemon"] == 42

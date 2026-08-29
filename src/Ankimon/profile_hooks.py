@@ -9,7 +9,7 @@ from .services import services
 from .singletons import settings_obj, logger
 from .utils import test_online_connectivity
 from .pyobj.ankimon_sync import setup_ankimon_sync_hooks
-from .pyobj.save_transfer import run_media_migration
+from .pyobj.save_transfer import register_media_migration_hooks
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
@@ -152,12 +152,16 @@ def _on_profile_did_open(online_connectivity):
         # One-shot per-profile cleanup after the removal of the AnkiWeb
         # file-sync: protect whatever that feature left in collection.media from
         # Anki's "Delete Unused Files", and offer to rescue it if it holds more
-        # progress than the local save. Deliberately on the MAIN thread and
-        # after the connectivity task is dispatched, not inside its callback:
-        # it touches only local files, needs no network, and must be able to
-        # raise a modal that the user actually sees. It never raises.
+        # progress than the local save.
+        #
+        # This registers a media-sync-completion hook AND runs one scan now.
+        # Both are needed: Anki fires profile_did_open one line BEFORE it starts
+        # its own sync (aqt/main.py:568-569), so on a second device this first
+        # scan sees a media folder the peer's save has not reached yet, and only
+        # the post-sync pass can find it. Local files only, no network, never
+        # raises.
         try:
-            run_media_migration(settings_obj, logger)
+            register_media_migration_hooks(settings_obj, logger)
         except Exception as e:
             logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
 

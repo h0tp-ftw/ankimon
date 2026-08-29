@@ -69,6 +69,29 @@ LEGACY_MEDIA_DB_NAMES = ("ankimon.db", "ankimonDEV.db")
 # backup of the save cannot rewind it and re-trigger the migration.
 _MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
 
+# True once a media sync has actually finished in THIS session, so the scan has
+# had a real chance to see files AnkiWeb delivered. Per session, not persisted:
+# the question it answers ("could this scan have seen a downloaded file?") is
+# only ever about the current run.
+#
+# This exists because of the boot ordering in aqt/main.py:
+#
+#     gui_hooks.profile_did_open()          # :568 — our first scan runs here
+#     self.maybe_auto_sync_on_open_close(_onsuccess)   # :569 — the download starts here
+#
+# On a brand-new second device, ``collection.media`` already EXISTS (Anki creates
+# it with the profile) but is empty, because the peer's save arrives from the
+# sync that begins on the very next line. A scan that concluded "nothing here,
+# mark this profile done" would burn the one-shot flag permanently and the
+# arriving save would never be protected or offered as a rescue — for exactly
+# the two-device user the rescue exists to serve.
+_media_sync_completed_this_session = False
+
+# Reload safety, same pattern as the sync hook: the (hook, handler) pair this
+# module last registered, anchored on the services registry so it survives a
+# re-execution of this module and can be removed before re-appending.
+_MIGRATION_HOOK_RECORD = "_ankimon_media_migration_handlers"
+
 
 # ---------------------------------------------------------------------------
 # Reading a save without opening it read-write
@@ -414,8 +437,21 @@ def _mark_migration_done() -> None:
         pass
 
 
-def _find_media_saves(media_dir: Path) -> list:
-    """Every Ankimon save left in collection.media, protected name first.
+def _target_db_for(candidate: Path) -> str:
+    """Which local database a media candidate belongs to.
+
+    Developer mode keeps a separate ``ankimonDEV.db``, and the old sync wrote
+    both under their own media names. Ranking them in one list would let a
+    developer save with more test captures be crowned "best", become the single
+    protected copy, and be offered as a rescue over the real save (or the
+    reverse, in developer mode). Compare like with like instead.
+    """
+    name = candidate.name
+    return "ankimonDEV.db" if "ankimonDEV" in name else "ankimon.db"
+
+
+def _find_media_saves(media_dir: Path, target_db: str) -> list:
+    """Every Ankimon save in collection.media belonging to ``target_db``.
 
     The legacy underscore names are GLOBBED rather than reconstructed. The old
     code built them from ``Path(__file__).parents[2].name``, which is
@@ -443,19 +479,49 @@ def _find_media_saves(media_dir: Path) -> list:
         seen.add(resolved)
         candidates.append(path)
 
-    _add(media_dir / MEDIA_SAVE_NAME)
-    for name in LEGACY_MEDIA_DB_NAMES:
-        _add(media_dir / name)
-    for pattern in ("_*_ankimon.db", "_*_ankimonDEV.db"):
-        try:
-            for path in sorted(media_dir.glob(pattern)):
+    if target_db == "ankimon.db":
+        _add(media_dir / MEDIA_SAVE_NAME)
+        _add(media_dir / "ankimon.db")
+        pattern = "_*_ankimon.db"
+    else:
+        _add(media_dir / "ankimonDEV.db")
+        pattern = "_*_ankimonDEV.db"
+
+    try:
+        for path in sorted(media_dir.glob(pattern)):
+            # glob("_*_ankimon.db") also matches "_*_ankimonDEV.db"? No — but a
+            # future name could collide, so re-check the partition explicitly.
+            if _target_db_for(path) == target_db:
                 _add(path)
-        except Exception:
-            continue
+    except Exception:
+        pass
     return candidates
 
 
-def run_media_migration(settings_obj, logger) -> None:
+def _offer_rescue_later(protected: Path, target: Path) -> None:
+    """Run the rescue off the current call stack.
+
+    The rescue ends in ``close_anki()`` → ``mw.close()``, whose ``closeEvent``
+    starts ``unloadProfileAndExit()``. Calling that from inside
+    ``profile_did_open`` would begin tearing the collection down and then return
+    into ``loadProfile``, which proceeds straight to
+    ``maybe_auto_sync_on_open_close`` — starting a sync against a collection
+    that is being unloaded. Deferring by one event-loop turn keeps the whole
+    thing in a settled session, the way the menu-driven Import already is.
+    """
+    def _go():
+        try:
+            _replace_active_save(protected, target, "Rescue")
+        except Exception:
+            pass
+
+    try:
+        mw.progress.single_shot(0, _go, False)
+    except Exception:
+        _go()
+
+
+def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False) -> None:
     """Protect, and offer to rescue, whatever the removed sync left in media.
 
     Runs once per Anki profile. Two jobs, in this order:
@@ -464,7 +530,7 @@ def run_media_migration(settings_obj, logger) -> None:
        ``_ankimon_save.db`` if that protected name does not already hold it.
        Every name the old feature used except the pre-2024 legacy one lacks the
        leading underscore, so today Anki's "Delete Unused Files" lists the user's
-       cloud save and deletes it — and that deletion propagates to their other
+       save and deletes it — and that deletion propagates to their other
        devices. Nothing is deleted here; the unprotected copies are left where
        they are, now harmlessly, because a protected copy exists.
 
@@ -473,39 +539,59 @@ def run_media_migration(settings_obj, logger) -> None:
        relied on the removed feature can get back progress that only ever made
        it to AnkiWeb. Declining is remembered, so this asks at most once.
 
+    Called twice per session: once from ``profile_did_open``, and again whenever
+    a media sync finishes (``after_media_sync=True``). The second call is what
+    makes this correct on a second device — see ``_media_sync_completed_this_session``
+    for why a scan before the first download must NOT conclude "nothing here".
+
     Any failure is logged and swallowed: this runs during profile open and must
     never be able to stop Ankimon from loading.
     """
+    global _media_sync_completed_this_session
+    if after_media_sync:
+        _media_sync_completed_this_session = True
+
     try:
         if _migration_done():
             return
         media_dir = _media_dir()
         if media_dir is None or not media_dir.is_dir():
-            # No profile / no media folder yet — don't burn the one-shot flag,
-            # just try again next launch.
-            return
+            return          # no profile / no media folder — retry later
 
-        saves = _find_media_saves(media_dir)
+        target = _active_db_path()
+        target_db = Path(target).name if target else "ankimon.db"
+        saves = _find_media_saves(media_dir, target_db)
+
         if not saves:
-            _mark_migration_done()
+            # Only conclude "there was never anything here" once a media sync
+            # has actually completed this session. Before that, an empty folder
+            # on a second device just means the download has not landed yet.
+            if _media_sync_completed_this_session:
+                _mark_migration_done()
             return
 
         best = max(saves, key=lambda p: _progress_key(get_db_stats(p)))
 
         protected = media_dir / MEDIA_SAVE_NAME
         if best != protected:
-            try:
-                _sqlite_backup(best, protected)
-                logger.log(
-                    "info",
-                    f"Ankimon: preserved {best.name} as {MEDIA_SAVE_NAME} "
-                    "(protected from Anki's Delete Unused Files).",
-                )
-            except Exception as e:
-                logger.log("error", f"Could not preserve {best.name} in media: {e}")
-                protected = best
+            # Never overwrite the protected copy with something that ranks no
+            # higher than it — including an unreadable protected copy, which
+            # _progress_key floors below everything and which a readable but
+            # stale candidate would otherwise replace.
+            if protected.is_file() and _progress_key(get_db_stats(protected)) >= _progress_key(get_db_stats(best)):
+                best = protected
+            else:
+                try:
+                    _sqlite_backup(best, protected)
+                    logger.log(
+                        "info",
+                        f"Ankimon: preserved {best.name} as {MEDIA_SAVE_NAME} "
+                        "(protected from Anki's Delete Unused Files).",
+                    )
+                except Exception as e:
+                    logger.log("error", f"Could not preserve {best.name} in media: {e}")
+                    protected = best
 
-        target = _active_db_path()
         media_stats = get_db_stats(protected)
         local_stats = get_db_stats(target) if target else None
 
@@ -514,14 +600,15 @@ def run_media_migration(settings_obj, logger) -> None:
                 "Ankimon's automatic AnkiWeb save-sync has been removed — it "
                 "could not tell reliably which device's save was newer, and "
                 "sometimes overwrote the wrong one.\n\n"
-                "The copy left on AnkiWeb looks further along than the save on "
-                "this computer:\n\n"
-                f"ON ANKIWEB\n{_format_stats(media_stats)}\n\n"
+                "A save left in your Anki media folder (synced from AnkiWeb, if "
+                "media sync is on) looks further along than the save on this "
+                "computer:\n\n"
+                f"IN YOUR MEDIA FOLDER\n{_format_stats(media_stats)}\n\n"
                 f"ON THIS COMPUTER\n{_format_stats(local_stats)}\n\n"
-                "Load the AnkiWeb copy? Your current save will be backed up "
+                "Load the media-folder copy? Your current save will be backed up "
                 "first, and Anki will close so it can be loaded cleanly.\n\n"
                 "If you say no, nothing changes and you will not be asked again "
-                "— the AnkiWeb copy stays in your media folder either way.",
+                "— the copy stays in your media folder either way.",
                 parent=mw,
                 defaultno=True,
             ):
@@ -532,7 +619,7 @@ def run_media_migration(settings_obj, logger) -> None:
                 # a persisting file lock — the flag is still unset, so the user
                 # is offered the rescue again next launch instead of silently
                 # losing their only route back to that data.
-                _replace_active_save(protected, Path(target), "Rescue")
+                _offer_rescue_later(protected, Path(target))
                 return
             # Declined: remember that, so this asks at most once.
 
@@ -542,3 +629,47 @@ def run_media_migration(settings_obj, logger) -> None:
             logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
         except Exception:
             pass
+
+
+def register_media_migration_hooks(settings_obj, logger) -> None:
+    """Run the migration at profile open AND after every media sync.
+
+    The post-sync pass is the load-bearing one: ``profile_did_open`` fires one
+    line before Anki starts its own sync (``aqt/main.py:568-569``), so the boot
+    scan on a second device runs against a media folder the peer's save has not
+    reached yet. ``media_sync_did_start_or_stop(False)`` is the only signal that
+    a download has actually landed.
+
+    That hook fires on failure and abort as well as success, and even fires
+    degenerately when media syncing is switched off in preferences — which is
+    fine here, because it is treated only as "rescan now", never as "it worked".
+
+    Handlers are removed before re-appending (the F31 registry-anchored pattern)
+    so an in-session add-on reload cannot stack a second copy. The body is
+    exception-proof because Anki permanently unregisters a gui-hook callback
+    that raises, which would silently disable the rescan for the rest of the
+    session.
+    """
+    from aqt import gui_hooks
+    from ..services import services
+
+    for hook, handler in getattr(services, _MIGRATION_HOOK_RECORD, ()):
+        try:
+            hook.remove(handler)
+        except Exception:
+            pass
+
+    def on_media_sync_state(running: bool) -> None:
+        try:
+            if running:
+                return
+            run_media_migration(settings_obj, logger, after_media_sync=True)
+        except Exception:
+            pass
+
+    handlers = ((gui_hooks.media_sync_did_start_or_stop, on_media_sync_state),)
+    for hook, handler in handlers:
+        hook.append(handler)
+    setattr(services, _MIGRATION_HOOK_RECORD, handlers)
+
+    run_media_migration(settings_obj, logger)

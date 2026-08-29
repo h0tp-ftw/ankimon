@@ -215,7 +215,7 @@ def test_history_trims_to_500(mobile_db):
 def test_record_desktop_review_durably_records_without_advancing_watermark(mobile_db):
     db, _ = mobile_db
     prev_settings = services.settings
-    services.settings = _Settings({"mobile.enabled": True, "misc.ankiweb_sync": True})
+    services.settings = _Settings({"mobile.enabled": True})
     try:
         db.set_mobile_watermark(1000)
         ms.record_desktop_review(1200)
@@ -248,7 +248,7 @@ def test_record_desktop_review_durable_write_follows_mobile_enabled(mobile_db):
     # Gating it on misc.ankiweb_sync (off by default) while detection ignored the
     # flag meant a restart lost the in-memory set and re-queued already-battled
     # desktop reviews as phantom mobile battles (double XP).
-    services.settings = _Settings({"mobile.enabled": True, "misc.ankiweb_sync": False})
+    services.settings = _Settings({"mobile.enabled": True})
     try:
         ms.record_desktop_review(2000)
         assert 2000 in ms.get_desktop_session_revlog_ids()
@@ -268,7 +268,7 @@ def test_record_desktop_review_skips_durable_write_when_mobile_disabled(mobile_d
     prev_settings = services.settings
     # With mobile disabled, detection never runs, so the durable record (an fsync)
     # is pointless and skipped; the in-memory session set still de-dupes.
-    services.settings = _Settings({"mobile.enabled": False, "misc.ankiweb_sync": False})
+    services.settings = _Settings({"mobile.enabled": False})
     try:
         ms.record_desktop_review(2000)
         assert 2000 in ms.get_desktop_session_revlog_ids()
