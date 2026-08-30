@@ -360,3 +360,48 @@ def test_a_locked_local_save_is_not_ranked_or_settled_against(
         assert elapsed < 1.0, f"blocked {elapsed:.1f}s on a locked local save"
     finally:
         holder.close()
+
+
+# ===========================================================================
+# A wall-clock bound, not just a lock bound
+# ===========================================================================
+def test_a_large_unlocked_save_cannot_outrun_the_probe_budget(
+    media, live_db, logger, monkeypatch
+):
+    """sqlite3.connect(timeout=) bounds the wait for a LOCK and nothing else.
+
+    PRAGMA quick_check scans the entire database, so a big enough save runs past
+    MIGRATION_PROBE_TIMEOUT with no lock involved -- on the profile-open stack,
+    which is the freeze this budget exists to prevent. A progress handler is the
+    only real deadline: SQLite calls it every N VM instructions and aborts the
+    statement when it returns non-zero.
+
+    Driven here by pinning the budget at zero rather than by building a
+    multi-gigabyte fixture: with the handler in place any scan is over budget on
+    its first callback, so this fails outright if the handler is absent.
+    """
+    big = media / "ankimon.db"
+    _make_save(big, pokemon=400, badges=8, history=400)
+
+    monkeypatch.setattr(st, "MIGRATION_PROBE_TIMEOUT", 0.0)
+    marked = MagicMock()
+    monkeypatch.setattr(st, "_mark_migration_done", marked)
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    # Over budget => unreadable => nothing concluded, nothing overwritten.
+    marked.assert_not_called()
+    ask.assert_not_called()
+    assert not (media / st.MEDIA_SAVE_NAME).exists()
+
+
+def test_the_probe_deadline_covers_quick_check_itself(tmp_path):
+    """The bound must sit on the integrity check, not only on connect()."""
+    from Ankimon.pyobj.ankimon_sync import _verify_sqlite_integrity
+
+    save = _make_save(tmp_path / "ankimon.db", pokemon=200, history=200)
+
+    assert _verify_sqlite_integrity(save) is True  # generous budget: fine
+    assert _verify_sqlite_integrity(save, timeout=0.0) is False  # zero: aborts

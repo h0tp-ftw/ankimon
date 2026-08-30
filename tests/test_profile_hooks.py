@@ -264,7 +264,11 @@ class _Future:
 
 def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True, warm_error=None):
     """Register hooks, then fire the profile_did_open handler with the given
-    settings and return (profile_hooks, its stubbed ankimon_sync module)."""
+    settings.
+
+    Returns ``(profile_hooks, stubbed ankimon_sync, stubbed save_transfer)`` —
+    the third is what lets a caller assert on the media-migration registration
+    without reaching into sys.modules itself."""
     _fresh_services(monkeypatch)
     gui_hooks = _fresh_gui_hooks()
     profile_hooks = _exec_profile_hooks(monkeypatch, gui_hooks)

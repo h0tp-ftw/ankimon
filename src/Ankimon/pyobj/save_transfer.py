@@ -35,6 +35,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -156,6 +157,14 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
             return None
         uri = Path(db_path).resolve().as_uri() + "?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+        # Same wall-clock bound as _verify_sqlite_integrity: connect(timeout=)
+        # covers lock waiting only, and the COUNT(*)s below scan whole tables.
+        # Aborting surfaces as an exception and is read as "could not read this
+        # side", which is the honest answer and keeps the migration armed.
+        _deadline = time.monotonic() + timeout
+        conn.set_progress_handler(
+            lambda: 1 if time.monotonic() > _deadline else 0, 2000
+        )
     except Exception:
         return None
 

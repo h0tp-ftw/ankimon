@@ -231,6 +231,18 @@ def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
         # wrongly refuse the import.
         uri = db_file.resolve().as_uri() + "?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+        # connect(timeout=) bounds only the wait for a LOCK. PRAGMA quick_check
+        # scans the whole database, so on a big enough save it can run well past
+        # `timeout` with no lock involved at all — and this runs synchronously on
+        # the profile-open stack. A progress handler is the only real wall-clock
+        # bound: SQLite calls it every N VM instructions and aborts the statement
+        # when it returns non-zero, which surfaces as OperationalError and is
+        # caught below as "could not read this file" — leaving the migration
+        # armed to retry rather than concluding anything.
+        _deadline = time.monotonic() + timeout
+        conn.set_progress_handler(
+            lambda: 1 if time.monotonic() > _deadline else 0, 2000
+        )
         try:
             row = conn.execute("PRAGMA quick_check;").fetchone()
             if not row or str(row[0]).lower() != "ok":
