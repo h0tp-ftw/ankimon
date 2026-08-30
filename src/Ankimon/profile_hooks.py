@@ -179,12 +179,18 @@ def _on_profile_did_open(online_connectivity):
         # Anki's "Delete Unused Files", and offer to rescue it if it holds more
         # progress than the local save.
         #
-        # This registers a media-sync-completion hook AND runs one scan now.
+        # This registers a media-sync-completion hook AND starts one scan now.
         # Both are needed: Anki fires profile_did_open one line BEFORE it starts
         # its own sync (aqt/main.py:568-569), so on a second device this first
         # scan sees a media folder the peer's save has not reached yet, and only
         # the post-sync pass can find it. Local files only, no network, never
         # raises.
+        #
+        # The scan itself runs on a background thread (mw.taskman): it opens
+        # SQLite saves, and a locked or oversized one must not be waited on here,
+        # where the wait is a frozen startup. Only the decisions come back to
+        # this thread. A profile that has already resolved its media folder is a
+        # handful of stat calls and starts no thread at all.
         try:
             register_media_migration_hooks(settings_obj, logger)
         except Exception as e:
