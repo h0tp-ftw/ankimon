@@ -40,6 +40,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node.js is not available")
 RESOLVE_START = "function resolveActualId(id) {"
 OWNS_START = "function ownsForRequirement(id) {"
 PREREQS_START = "function prerequisitesFor(id, speciesId) {"
+NODE_STATE_START = "function getNodeState(id) {"
 FN_END = "\n}"
 
 
@@ -84,11 +85,25 @@ def _eval(source, state, expression):
     return run_node_json(script)
 
 
-def _state(owned, owned_now, prerequisites=None):
+def _state(owned, owned_now, prerequisites=None, species=None):
     return {
         "collection": {"owned": owned, "ownedNow": owned_now},
         "prerequisites": prerequisites or {},
+        "fullSpeciesMap": species or {},
     }
+
+
+def _eval_node_state(source, state, node_id):
+    """Run the real getNodeState() against a state, helpers and all."""
+    script = f"""
+    const state = {json.dumps(state)};
+    state.collection.owned = new Set(state.collection.owned);
+    state.collection.ownedNow = new Set(state.collection.ownedNow);
+    {_helpers(source)}
+    {_extract(source, NODE_STATE_START)}
+    console.log(JSON.stringify(getNodeState({node_id})));
+    """
+    return run_node_json(script)
 
 
 # --- the collection a requirement check reads --------------------------------
@@ -171,3 +186,108 @@ def test_badge_does_not_promise_an_immediate_encounter(js_source):
     assert "ready for encounter" not in js_source
     assert 'badgeEl.textContent = "Available";' not in js_source
     assert 'badgeEl.textContent = "Unlocked";' in js_source
+
+
+# --- the rest of the SPA has to use them too ---------------------------------
+# The badge was only one of the places that answers "is this requirement met?".
+# Leaving the others on the wide set made the same panel contradict itself: the
+# briefing counter said "0 of 1 requirements caught" from ownedNow while the row
+# underneath it labelled that same Pokemon "Caught" from owned.
+
+
+def test_the_briefing_requirement_rows_use_the_roll_owned_set(js_source):
+    assert "      const rOwned = ownsForRequirement(reqId);" in js_source
+    assert "const rOwned = state.collection.owned.has(reqId);" not in js_source
+
+
+def test_the_prerequisite_strip_uses_the_roll_owned_set(js_source):
+    # renderRequirements' Mega/Gmax branch (reqs = [p.species_id]) IS the roll's
+    # Guard 3, which reads load_collected_pokemon_ids() and nothing wider.
+    assert "    const isCaught = ownsForRequirement(reqId);" in js_source
+    assert (
+        "const isCaught = state.collection.owned.has(resolveActualId(reqId));"
+        not in js_source
+    )
+
+
+def test_the_prerequisite_strip_consults_the_id_own_row_first(js_source):
+    # Species-first lookup showed Giratina-Origin (10007 -> {487}) its species'
+    # chain {483, 484} — Dialga + Palkia, where the roll gates on Giratina.
+    assert "reqs = prerequisitesFor(p.actual_id, p.species_id);" in js_source
+    assert (
+        "state.prerequisites[p.species_id] || state.prerequisites[p.actual_id]"
+        not in js_source
+    )
+
+
+def test_the_map_edge_split_keeps_completion_on_the_wide_set(js_source):
+    # line-met is a requirement verdict (narrow); line-completed says the target
+    # was captured, which is a collection state (wide).
+    assert "const srcCaught = ownsForRequirement(reqId);" in js_source
+    assert (
+        "const dstCaught = state.collection.owned.has(resolveActualId(targetId));"
+        in js_source
+    )
+
+
+def test_a_release_changes_the_collection_hash(js_source):
+    """The hash is what gates every re-render, and a release moves an id out of
+    ownedNow ALONE — `owned` keeps it (pokemon_history), and `seen` is computed
+    as seen-minus-owned so it does not move either. Blind to ownedNow the hash
+    came back identical, and the discovery map went on painting requirement
+    states the roll no longer agreed with."""
+    assert "${ownedNowList.length}" in js_source
+    assert '${ownedNowList.slice(0, 10).join(",")}' in js_source
+
+
+# --- the discovery map's node states -----------------------------------------
+
+
+def test_a_released_requirement_does_not_unlock_a_map_node(js_source):
+    # Mew caught then released: in `owned` (history), out of `ownedNow`. The
+    # roll's _meets_prerequisites(150, {}) is False, so Mewtwo's node is locked.
+    state = _state(owned=[151], owned_now=[], prerequisites={"150": [151]})
+    assert _eval_node_state(js_source, state, 150) == "locked"
+
+
+def test_a_currently_owned_requirement_unlocks_a_map_node(js_source):
+    state = _state(owned=[151], owned_now=[151], prerequisites={"150": [151]})
+    assert _eval_node_state(js_source, state, 150) == "available"
+
+
+def test_a_released_requirement_does_not_satisfy_an_or_node(js_source):
+    state = _state(
+        owned=[144, 145],
+        owned_now=[],
+        prerequisites={"249": ["OR", [144, 145]]},
+    )
+    assert _eval_node_state(js_source, state, 249) == "locked"
+
+
+def test_a_partly_met_chain_still_reads_in_progress(js_source):
+    state = _state(
+        owned=[144, 145, 146],
+        owned_now=[144],
+        prerequisites={"249": [144, 145, 146]},
+    )
+    assert _eval_node_state(js_source, state, 249) == "in-progress"
+
+
+def test_a_map_node_form_id_inherits_its_species_requirements(js_source):
+    # Without the remap a form id with no row of its own fell through to
+    # "available" — the map's version of the 31-form hole.
+    state = _state(
+        owned=[],
+        owned_now=[],
+        prerequisites={"718": [716, 717]},
+        species={"10119": {"species_id": 718}},
+    )
+    assert _eval_node_state(js_source, state, 10119) == "locked"
+
+
+def test_a_caught_map_node_still_reads_from_the_wide_set(js_source):
+    # "caught" is a collection state, not a requirement verdict: an evolved-away
+    # or released Pokemon is still one the player has completed, exactly as the
+    # briefing panel's "Completed" badge treats it.
+    state = _state(owned=[150], owned_now=[], prerequisites={"150": [151]})
+    assert _eval_node_state(js_source, state, 150) == "caught"

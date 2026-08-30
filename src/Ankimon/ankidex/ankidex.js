@@ -84,7 +84,8 @@ window.initializeAnkidex = async function (data) {
   state.collection.owned = new Set(data.owned);
   // Older payloads have no ownedNow; fall back so requirement checks keep
   // working rather than reading an empty set and locking everything.
-  state.collection.ownedNow = new Set(data.ownedNow || data.owned);
+  const ownedNowList = data.ownedNow || data.owned;
+  state.collection.ownedNow = new Set(ownedNowList);
   state.collection.shinies = new Set(data.shinies);
   state.collection.seen = new Set(data.seen);
   state.collection.encounterable = new Set(data.encounterable || []);
@@ -98,8 +99,13 @@ window.initializeAnkidex = async function (data) {
     state.ui.spriteMode = data.prefs.spriteMode || "static";
   }
 
-  // Update collection hash to detect status changes
-  const newHash = `${data.owned.length}-${data.seen.length}-${data.shinies.length}-${data.owned.slice(0, 10).join(",")}`;
+  // Update collection hash to detect status changes. ownedNow is part of it
+  // because a release moves an id out of THAT set alone: `owned` keeps it (it
+  // folds in pokemon_history), `seen` subtracts `owned` so it does not move
+  // either, and the whole hash would come back identical. The discovery map
+  // only repaints when this says the collection changed, so without ownedNow a
+  // release left every requirement state on it painted as still met.
+  const newHash = `${data.owned.length}-${ownedNowList.length}-${data.seen.length}-${data.shinies.length}-${data.owned.slice(0, 10).join(",")}-${ownedNowList.slice(0, 10).join(",")}`;
   const collectionChanged = state.collectionHash !== newHash;
   state.collectionHash = newHash;
 
@@ -1274,7 +1280,10 @@ function renderBriefing(p, id, visState, displayId) {
       const rp = state.fullSpeciesMap[reqId];
       if (!rp) return;
       const rVisState = getVisibilityState(reqId);
-      const rOwned = state.collection.owned.has(reqId);
+      // Same gate as the counter above (and it picks up the id alias the
+      // raw lookup was missing): this row says whether the REQUIREMENT is
+      // satisfied, not whether the species was ever in the collection.
+      const rOwned = ownsForRequirement(reqId);
 
       const row = document.createElement("div");
       row.className = "req-row";
@@ -1713,8 +1722,11 @@ function renderRequirements(p) {
   if (isMegaGmax && isActuallyForm) {
     reqs = [p.species_id];
   } else {
-    reqs =
-      state.prerequisites[p.species_id] || state.prerequisites[p.actual_id];
+    // The roll consults the id's OWN row first and only falls back to the
+    // species for form ids (>= 10000). Looking the species up first showed
+    // Giratina-Origin (10007 -> {487}) its species' chain {483, 484} instead:
+    // Dialga + Palkia, where the roll gates on Giratina.
+    reqs = prerequisitesFor(p.actual_id, p.species_id);
   }
 
   if (!reqs) {
@@ -1733,7 +1745,10 @@ function renderRequirements(p) {
 
   idsToDisplay.forEach((reqId) => {
     const item = document.createElement("div");
-    const isCaught = state.collection.owned.has(resolveActualId(reqId));
+    // Requirement semantics again — and for the Mega/Gmax branch above this
+    // IS the roll's Guard 3 (_player_owns_base_form), which reads the
+    // currently-owned set and nothing wider.
+    const isCaught = ownsForRequirement(reqId);
     item.className = `prereq-item ${isCaught ? "caught" : "locked"}`;
 
     const reqPokemon = state.fullSpeciesMap[reqId];
@@ -2071,7 +2086,9 @@ function renderDiscoveryMap() {
       if (!nodes[reqId]) return;
       const src = nodes[reqId];
       const dst = nodes[targetId];
-      const srcCaught = state.collection.owned.has(resolveActualId(reqId));
+      // line-met marks a requirement as satisfied (narrow set); line-completed
+      // marks the target as captured, which is a collection state (wide set).
+      const srcCaught = ownsForRequirement(reqId);
       const dstCaught = state.collection.owned.has(resolveActualId(targetId));
       let lineClass = "discovery-line";
       if (srcCaught) lineClass += " line-met";
@@ -2331,14 +2348,19 @@ function clearChainPreview() {
 // ============================================================
 
 function getNodeState(id) {
+  // "caught" is a collection state, so it keeps the wide set — same split the
+  // briefing panel's "Completed" badge uses. Everything below it is the roll's
+  // Guard 4, so it reads the narrow one through the same helpers the briefing
+  // does; the map used to paint a node "available" off a released requirement.
   if (state.collection.owned.has(resolveActualId(id))) return "caught";
-  const reqs = state.prerequisites[id];
+  const node = state.fullSpeciesMap[id];
+  const reqs = prerequisitesFor(id, node && node.species_id);
   if (!reqs) return "available";
   let metCount = 0,
     total = 0;
   if (Array.isArray(reqs) && reqs[0] === "OR") {
     const any = reqs[1].some(
-      (rid) => typeof rid === "number" && state.collection.owned.has(resolveActualId(rid)),
+      (rid) => typeof rid === "number" && ownsForRequirement(rid),
     );
     return any ? "available" : "locked";
   } else {
@@ -2346,7 +2368,7 @@ function getNodeState(id) {
     ids.forEach((rid) => {
       if (typeof rid === "number") {
         total++;
-        if (state.collection.owned.has(resolveActualId(rid))) metCount++;
+        if (ownsForRequirement(rid)) metCount++;
       }
     });
     if (metCount === total) return "available";
