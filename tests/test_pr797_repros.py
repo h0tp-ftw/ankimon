@@ -774,6 +774,41 @@ def test_a_request_arriving_mid_scan_is_coalesced_not_dropped(
     assert taskman.queued == []                          # exactly one re-run
 
 
+def test_a_download_landing_mid_scan_is_not_settled_away(
+    real_flag_media, live_db, logger, monkeypatch, taskman
+):
+    """The race the background dispatch introduced, and the reason the settle
+    stores the fingerprint the SCAN took rather than the folder as it stands.
+
+    The scan reads a stale save on a worker while Anki's media sync is running.
+    The peer's newer save lands before the callback gets to settle. Fingerprint
+    the folder at settle time and the stored signature covers a file nothing
+    ever examined -- so the coalesced rerun looks up, sees a match, and no-ops.
+    That is the original P1 again, now hiding inside a window of milliseconds.
+    """
+    folder, _profile = real_flag_media
+    _make_save(folder / "ankimon.db", pokemon=1)          # stale, local is ahead
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    st.start_media_migration(MagicMock(), logger)
+
+    def _download_lands_after_the_read():
+        (folder / "ankimon.db").unlink()
+        _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
+        st.start_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    taskman.run_next(mid_scan=_download_lands_after_the_read)
+
+    ask.assert_not_called()                  # the scan only saw the stale save
+    assert len(taskman.queued) == 1          # ...and the rerun was NOT swallowed
+
+    taskman.run_next()
+
+    ask.assert_called_once()
+    assert st.get_db_stats(folder / st.MEDIA_SAVE_NAME)["pokemon"] == 42
+
+
 def test_a_profile_switch_during_the_scan_discards_the_result(
     real_flag_media, live_db, logger, monkeypatch, taskman, tmp_path
 ):

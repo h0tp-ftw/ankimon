@@ -326,7 +326,12 @@ def media(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "_media_dir", lambda: d)
     flag = {}
     monkeypatch.setattr(st, "_migration_done", lambda: bool(flag.get("done")))
-    monkeypatch.setattr(st, "_mark_migration_done", lambda: flag.__setitem__("done", True))
+    monkeypatch.setattr(
+        st,
+        "_mark_migration_done",
+        # takes the scan's fingerprint; this stand-in only records THAT it settled
+        lambda fingerprint: flag.__setitem__("done", True),
+    )
     return d
 
 

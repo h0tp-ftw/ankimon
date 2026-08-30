@@ -640,17 +640,22 @@ def _migration_done() -> bool:
         return False
 
 
-def _mark_migration_done() -> None:
+def _mark_migration_done(fingerprint: str) -> None:
     """Record WHAT was resolved, not merely THAT something was.
 
-    Written after every file this pass creates, so the fingerprint describes the
-    folder the resolution actually covered. A fingerprint that cannot be
-    computed is stored as the empty string, which ``_migration_done`` reads as
-    not-settled: the cost of that is one more scan, where the cost of wrongly
-    settling is a save nobody ever offers back.
+    ``fingerprint`` comes from the scan that reached this resolution — it
+    describes the folder AS EXAMINED, not as it stands now. Those differ: the
+    scan runs on a worker while Anki's media sync is running, so a download can
+    land between the read and this call. Storing the folder's current state
+    there would settle on a file nothing ever looked at, which is the exact
+    failure the fingerprint exists to prevent.
+
+    A fingerprint that could not be computed is stored as the empty string,
+    which ``_migration_done`` reads as not-settled: the cost of that is one more
+    scan, where the cost of wrongly settling is a save nobody offers back.
     """
     try:
-        mw.pm.profile[_MIGRATION_FLAG] = _current_media_fingerprint()
+        mw.pm.profile[_MIGRATION_FLAG] = fingerprint
         mw.pm.save()
     except Exception:
         pass
@@ -681,14 +686,34 @@ def _media_fingerprint(media_dir: Optional[Path], target_db: str) -> str:
     """
     if media_dir is None:
         return ""
-    parts = []
+    return _join_fingerprint(_media_fingerprint_entries(media_dir, target_db))
+
+
+def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str]:
+    """``{filename: signature}`` for the partition, so a caller can amend it.
+
+    The scan takes this before it touches anything and then replaces only the
+    entries for files it wrote ITSELF, which is what separates "the folder the
+    scan resolved" from "the folder as it stands after an unrelated download".
+    """
+    entries: Dict[str, str] = {}
     for path in _media_candidate_paths(media_dir, target_db):
-        try:
-            stat = path.stat()
-        except Exception:
-            continue        # absent, or unstattable: not part of the signature
-        parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}")
-    return "|".join(sorted(parts))
+        entry = _fingerprint_entry(path)
+        if entry is not None:
+            entries[path.name] = entry
+    return entries
+
+
+def _fingerprint_entry(path: Path) -> Optional[str]:
+    try:
+        stat = path.stat()
+    except Exception:
+        return None         # absent, or unstattable: not part of the signature
+    return f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+
+
+def _join_fingerprint(entries: Dict[str, str]) -> str:
+    return "|".join(sorted(entries.values()))
 
 
 def _target_db_for(candidate: Path) -> str:
@@ -824,7 +849,7 @@ def _offer_rescue_later(protected: Path, target: Path) -> None:
         _go()
 
 
-def _settle(logger) -> None:
+def _settle(logger, fingerprint: str) -> None:
     """Conclude the migration for this profile: notify, then record what was seen.
 
     Called only from a genuine terminal state — every candidate readable and the
@@ -839,7 +864,7 @@ def _settle(logger) -> None:
     it keys off, so running it on every pass cannot repeat it.
     """
     _notify_affected_user(logger)
-    _mark_migration_done()
+    _mark_migration_done(fingerprint)
 
 
 def _notify_affected_user(logger) -> None:
@@ -917,11 +942,27 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     """
     notes: list = []
     unreadable: list = []
+    written: list = []
     target_db = Path(target).name if target else "ankimon.db"
+
+    # Taken BEFORE anything is read or written, and amended below with only the
+    # files this scan wrote itself. That is what makes the settle describe the
+    # folder this pass actually examined: Anki's media sync runs concurrently
+    # with this worker, so a peer's save can land between here and the settle,
+    # and recording it as "resolved" would bury it exactly as a permanent
+    # one-shot did.
+    entries = _media_fingerprint_entries(media_dir, target_db)
+
     saves, integrity_failures = _find_media_saves(media_dir, target_db)
     unreadable.extend(integrity_failures)
 
     def _result(outcome: str, **extra) -> Dict[str, Any]:
+        for path in written:
+            entry = _fingerprint_entry(path)
+            if entry is None:
+                entries.pop(path.name, None)
+            else:
+                entries[path.name] = entry
         base = {
             "outcome": outcome,
             "notify": False,
@@ -932,6 +973,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
             "media_path": None,
             "media_stats": None,
             "local_stats": None,
+            "fingerprint": _join_fingerprint(entries),
         }
         base.update(extra)
         return base
@@ -996,7 +1038,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
             # supersedes what is there — everything the protected copy holds is
             # in the candidate too, so replacing it loses nothing.
             media_path, media_stats = _preserve(
-                best, protected, stats[best], notes, unreadable
+                best, protected, stats[best], notes, unreadable, written
             )
             protected_now = stats[best] if media_path == protected else protected_stats
         elif _dominates(protected_stats, stats[best]) or _progress_key(
@@ -1017,7 +1059,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     # already staying armed to retry it.
     if protected_now is not None:
         _preserve_diverged(
-            media_dir, target_db, stats, protected_now, notes, unreadable
+            media_dir, target_db, stats, protected_now, notes, unreadable, written
         )
 
     local_stats = (
@@ -1047,7 +1089,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
 
 
 def _preserve(source: Path, protected: Path, source_stats: Dict[str, Any],
-              notes: list, unreadable: list) -> tuple:
+              notes: list, unreadable: list, written: list) -> tuple:
     """Copy ``source`` to the partition's protected name.
 
     Returns the (path, stats) the rescue comparison should use. On failure that
@@ -1057,6 +1099,7 @@ def _preserve(source: Path, protected: Path, source_stats: Dict[str, Any],
     """
     try:
         _sqlite_backup(source, protected)
+        written.append(protected)
         notes.append((
             "info",
             f"Ankimon: preserved {source.name} as {protected.name} "
@@ -1072,7 +1115,7 @@ def _preserve(source: Path, protected: Path, source_stats: Dict[str, Any],
 def _preserve_diverged(media_dir: Path, target_db: str,
                        stats: Dict[Path, Dict[str, Any]],
                        protected_stats: Optional[Dict[str, Any]],
-                       notes: list, unreadable: list) -> None:
+                       notes: list, unreadable: list, written: list) -> None:
     """Give the AT-RISK save a protected home without touching the protected copy.
 
     "At risk" is a precise, small set: within a partition every candidate but the
@@ -1132,6 +1175,7 @@ def _preserve_diverged(media_dir: Path, target_db: str,
         return
     try:
         _sqlite_backup(at_risk, diverged)
+        written.append(diverged)
         notes.append((
             "info",
             f"Ankimon: {at_risk.name} diverged from {protected_name} — each holds "
@@ -1234,7 +1278,7 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             pass
         return
 
-    _settle(logger)
+    _settle(logger, result.get("fingerprint", ""))
 
 
 def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False) -> None:
@@ -1293,7 +1337,14 @@ def start_media_migration(settings_obj, logger, *, after_media_sync: bool = Fals
 
     ``run_in_background`` rather than ``QueryOp`` on purpose — this is silent
     background housekeeping and must not raise a progress window over Anki's
-    startup, nor block on the collection it does not touch.
+    startup, nor block on the collection it does not touch. Its callback is safe
+    for the dialogs and the ``mw.pm`` write in ``_apply_migration_result``
+    because aqt wraps it (``aqt/taskman.py:86-88``)::
+
+        if on_done is not None:
+            fut.add_done_callback(
+                lambda future: self.run_on_main(lambda: on_done(future))
+            )
     """
     del after_media_sync        # a rescan trigger; carries no success meaning
     try:
@@ -1356,6 +1407,10 @@ def register_media_migration_hooks(settings_obj, logger) -> None:
     That hook fires on failure and abort as well as success, and even fires
     degenerately when media syncing is switched off in preferences — which is
     fine here, because it is treated only as "rescan now", never as "it worked".
+
+    A request that arrives while a scan is in flight is COALESCED into one more
+    run rather than dropped, because the media-sync hook can fire during the
+    boot scan — which is the very ordering the post-sync pass exists to cover.
 
     Handlers are removed before re-appending (the F31 registry-anchored pattern)
     so an in-session add-on reload cannot stack a second copy. The body is
