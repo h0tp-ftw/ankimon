@@ -99,6 +99,16 @@ EXPORT_EXCLUDED_CONFIG_KEYS = ("leaderboard.api_key",)
 # backup of the save cannot rewind it and re-trigger the migration.
 _MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
 
+# The fingerprint of the folder whose comparison the user has already ANSWERED,
+# kept apart from the settle above because the two expire on different things.
+# A folder holding one save that will not open plus one readable save that is
+# ahead of the local one reaches a real comparison AND has to stay armed to
+# retry the unreadable file — and staying armed means never settling, so without
+# this the same rescue prompt greets the user on every single profile open.
+# Recording the answer separately suppresses only the repeated question; the
+# retry survives, and a folder that changes gets asked afresh.
+_MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
+
 # SETTLE POLICY — the one rule this migration turns on.
 #
 # Settle (record the per-profile one-shot) ONLY on a positive resolution: every
@@ -661,6 +671,26 @@ def _mark_migration_done(fingerprint: str) -> None:
         pass
 
 
+def _comparison_answered(fingerprint: str) -> bool:
+    """Has the user already answered the comparison for THIS exact folder?"""
+    if not fingerprint:
+        return False
+    try:
+        return mw.pm.profile.get(_MIGRATION_ANSWERED_FLAG) == fingerprint
+    except Exception:
+        return False
+
+
+def _remember_comparison_answered(fingerprint: str) -> None:
+    if not fingerprint:
+        return
+    try:
+        mw.pm.profile[_MIGRATION_ANSWERED_FLAG] = fingerprint
+        mw.pm.save()
+    except Exception:
+        pass
+
+
 def _current_media_fingerprint() -> str:
     try:
         target = _active_db_path()
@@ -1088,6 +1118,37 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     )
 
 
+def _protect_copy(source: Path, dest: Path) -> None:
+    """Build the protected copy beside its destination, then move it into place.
+
+    ``Connection.backup`` writes pages INTO the destination it is handed, so
+    backing straight up over the protected copy means an interruption — a full
+    disk, a killed process, a power loss — leaves that copy half-written. Nothing
+    deletes it and the next pass correctly reads it as unreadable and stays
+    armed, but the one file this whole migration exists to keep safe is gone
+    until someone restores it.
+
+    So: build into a temp, then hand the finished file to ``_atomic_write_over``,
+    which is the same lock ladder and same-volume/EXDEV handling the import and
+    export paths use (#639/#636). Its own temp is chosen internally, so this one
+    deliberately lives in the system temp dir and cannot collide with the
+    ``<dest>.synctmp`` sibling that function reaps on entry.
+    """
+    from .ankimon_sync import _atomic_write_over
+
+    fd, name = tempfile.mkstemp(prefix="ankimon-protect-", suffix=".db")
+    os.close(fd)
+    tmp = Path(name)
+    try:
+        _sqlite_backup(source, tmp)
+        _atomic_write_over(tmp, dest)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 def _preserve(source: Path, protected: Path, source_stats: Dict[str, Any],
               notes: list, unreadable: list, written: list) -> tuple:
     """Copy ``source`` to the partition's protected name.
@@ -1098,7 +1159,7 @@ def _preserve(source: Path, protected: Path, source_stats: Dict[str, Any],
     stays armed and retries the copy next time.
     """
     try:
-        _sqlite_backup(source, protected)
+        _protect_copy(source, protected)
         written.append(protected)
         notes.append((
             "info",
@@ -1162,6 +1223,14 @@ def _preserve_diverged(media_dir: Path, target_db: str,
         ))
         unreadable.append(diverged)
         return
+    if diverged.is_file() and (
+        _dominates(occupant, at_risk_stats)
+        or _progress_key(occupant) == _progress_key(at_risk_stats)
+    ):
+        # Already preserved — this is the steady state after an earlier pass
+        # wrote it, so a repeat scan must be a silent no-op rather than copying
+        # the same save over itself on every boot.
+        return
     if diverged.is_file() and not _dominates(at_risk_stats, occupant):
         # A third, equally incomparable save. Nothing here may be overwritten and
         # inventing further names would not terminate, so leave all of it in
@@ -1174,7 +1243,7 @@ def _preserve_diverged(media_dir: Path, target_db: str,
         ))
         return
     try:
-        _sqlite_backup(at_risk, diverged)
+        _protect_copy(at_risk, diverged)
         written.append(diverged)
         notes.append((
             "info",
@@ -1208,8 +1277,12 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
     target = result.get("target")
     media_stats = result.get("media_stats")
     local_stats = result.get("local_stats")
+    fingerprint = result.get("fingerprint", "")
+    # A pass that must stay armed for an unreadable file never reaches _settle,
+    # so the answer is remembered on its own or the question repeats every boot.
+    answered = _comparison_answered(fingerprint)
 
-    if target is not None and _dominates(media_stats, local_stats):
+    if target is not None and _dominates(media_stats, local_stats) and not answered:
         if askUser(
             "Ankimon's automatic AnkiWeb save-sync has been removed — it "
             "could not tell reliably which device's save was newer, and "
@@ -1235,9 +1308,12 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             # instead of silently losing their only route back to that data.
             _offer_rescue_later(Path(result["media_path"]), Path(target))
             return
-        # Declined: settling below remembers that for this media folder.
+        # Declined: remembered for this media folder, whether or not this pass
+        # goes on to settle.
+        _remember_comparison_answered(fingerprint)
     elif (
-        target is not None
+        answered is False
+        and target is not None
         and media_stats is not None
         and local_stats is not None
         and not _dominates(local_stats, media_stats)
@@ -1261,6 +1337,7 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             "and load it with Ankimon → Import Save File… — your current save is "
             "backed up before it is replaced."
         )
+        _remember_comparison_answered(fingerprint)
 
     if result.get("unreadable"):
         # Something in the folder exists but could not be judged this pass — a

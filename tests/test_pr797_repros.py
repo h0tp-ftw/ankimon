@@ -393,7 +393,10 @@ def test_a_large_unlocked_save_cannot_outrun_the_probe_budget(
     big = media / "ankimon.db"
     _make_save(big, pokemon=400, badges=8, history=400)
 
-    monkeypatch.setattr(st, "MIGRATION_PROBE_TIMEOUT", 0.0)
+    # Negative, not zero: the handler aborts on `monotonic() > deadline`, and a
+    # coarse clock can return the same value at the first callback, letting the
+    # scan finish and inverting every assertion below.
+    monkeypatch.setattr(st, "MIGRATION_PROBE_TIMEOUT", -1.0)
     marked = MagicMock()
     monkeypatch.setattr(st, "_mark_migration_done", marked)
     ask = MagicMock(return_value=False)
@@ -414,7 +417,8 @@ def test_the_probe_deadline_covers_quick_check_itself(tmp_path):
     save = _make_save(tmp_path / "ankimon.db", pokemon=200, history=200)
 
     assert _verify_sqlite_integrity(save) is True  # generous budget: fine
-    assert _verify_sqlite_integrity(save, timeout=0.0) is False  # zero: aborts
+    # Negative rather than zero, so the deadline is unambiguously already past.
+    assert _verify_sqlite_integrity(save, timeout=-1.0) is False  # aborts
 
 
 # ===========================================================================
@@ -697,6 +701,10 @@ def test_the_diverged_copy_is_not_rewritten_on_every_pass(
     diverged = media / st.DIVERGED_MEDIA_SAVE_NAME
     stamp = diverged.stat().st_mtime_ns
 
+    # The `media` fixture settles a BOOLEAN one-shot, so the second pass would
+    # return at the _migration_done() guard and the assertion below would hold
+    # no matter what a repeat scan does. Re-arm, so the scan really runs again.
+    monkeypatch.setattr(st, "_migration_done", lambda: False)
     st.run_media_migration(MagicMock(), logger, after_media_sync=True)
 
     assert diverged.stat().st_mtime_ns == stamp
@@ -853,3 +861,79 @@ def test_start_falls_back_to_a_synchronous_run_without_a_task_manager(
 
     ask.assert_called_once()
     assert st._MIGRATION_SCAN_STATE["running"] is False
+
+
+# ---------------------------------------------------------------------------
+# Third round: what an interruption, and an unreadable neighbour, may cost
+# ---------------------------------------------------------------------------
+def test_an_interrupted_protect_does_not_destroy_the_protected_copy(
+    media, live_db, logger, monkeypatch
+):
+    """Connection.backup writes pages INTO the file it is handed, so backing up
+    straight over the protected copy means a full disk, a killed process or a
+    power loss leaves that copy half-written -- and the one file this migration
+    exists to keep safe is gone. Build into a temp and move it into place."""
+    protected = media / st.MEDIA_SAVE_NAME
+    _make_save(protected, pokemon=5, badges=3, history=20)
+    before = protected.read_bytes()
+    _make_save(media / "ankimon.db", pokemon=40, badges=9, history=90)  # dominates
+
+    def _interrupted(source, dest):
+        Path(dest).write_bytes(b"half a database" * 100)   # partial write...
+        raise RuntimeError("disk full")                    # ...then it dies
+
+    monkeypatch.setattr(st, "_sqlite_backup", _interrupted)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    assert protected.read_bytes() == before
+
+
+def test_an_unreadable_neighbour_does_not_re_ask_the_same_rescue_every_boot(
+    real_flag_media, live_db, logger, monkeypatch
+):
+    """A folder can hold one save that will not open AND one readable save that
+    is genuinely ahead of the local one. That reaches a real comparison and must
+    STAY ARMED to retry the unreadable file -- and staying armed means never
+    settling, so the answer has to be remembered on its own or the same prompt
+    greets the user on every single profile open."""
+    folder, _profile = real_flag_media
+    _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
+    corrupt = folder / "_1908235722_ankimon.db"
+    _make_save(corrupt, pokemon=3)
+    raw = bytearray(corrupt.read_bytes())
+    for i in range(1024, len(raw)):
+        raw[i] = 0
+    corrupt.write_bytes(bytes(raw))          # header intact, body shredded
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    for _ in range(3):
+        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    assert ask.call_count == 1
+    assert not st._migration_done()          # still armed to retry the corrupt one
+
+
+def test_a_changed_folder_asks_again_even_after_an_answer(
+    real_flag_media, live_db, logger, monkeypatch
+):
+    """The guard on the guard: remembering an answer must be scoped to the
+    folder that was answered about, or the next peer's save is silently
+    swallowed by the memory of the last one."""
+    folder, _profile = real_flag_media
+    _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
+    corrupt = folder / "_1908235722_ankimon.db"
+    corrupt.write_bytes(b"SQLite format 3\x00" + b"\x00" * 2048)
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    assert ask.call_count == 1
+
+    (folder / "ankimon.db").unlink()
+    _make_save(folder / "ankimon.db", pokemon=90, badges=12, history=300)
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    assert ask.call_count == 2
