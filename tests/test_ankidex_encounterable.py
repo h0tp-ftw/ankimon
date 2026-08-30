@@ -1,9 +1,17 @@
-"""Tier-1 contract for the Ankidex 'Available' badge source (ankidex_data).
+"""Tier-1 contract for the Ankidex 'Unlocked' badge source (ankidex_data).
 
-build_encounterable_ids() must mark a species 'Available' when and only when the
-live wild-encounter roll can actually produce it. It therefore mirrors
-generate_random_pokemon() guard for guard rather than unioning the raw
-encounter_data tier lists. The regressions this pins:
+build_encounterable_ids() answers "has this account unlocked the species for the
+wild roll?" — a PROGRESSION predicate (main-Pokemon level, generation toggles,
+active region, Pokemon currently owned). It deliberately does NOT answer "can the
+next roll produce it": the live roll additionally weights tiers by today's review
+progress, and the legacy path folds every non-Normal tier into "Normal" until 40%
+of battle.daily_average is done. Modelling that here would flip ~370 species to
+Locked every morning and churn the two Ankidex form lists that read this same
+set. tests/test_encounter_functions.py pins that weighting on the production path;
+this file pins the progression half.
+
+Within that scope it mirrors generate_random_pokemon()'s per-candidate guards
+rather than unioning the raw encounter_data tier lists. The regressions this pins:
 
 * Tier gate — a tier below its main-Pokémon level threshold has probability 0 and
   the roll's fallback only degrades to "Normal", so it is unreachable (Starter
@@ -16,7 +24,13 @@ encounter_data tier lists. The regressions this pins:
   and when no region is active it offers variants from *every* region. Ankidex
   used to add only the active region's raw list, which marked all ~57 forms
   Unavailable at the default (no region) setting while they could still spawn.
+* Guard 3 — a Mega/Gmax candidate is only reachable once the player owns its base
+  species, exactly as the roll's _player_owns_base_form() decides it. Without this
+  all 111 Mega and 34 Gmax ids were badged Unlocked for a brand-new player.
 * UNAVAILABLE ids never appear.
+
+Guard 4 (prerequisites) is NOT applied here on purpose — the payload ships
+`prerequisites` separately and the SPA gates the badge on it.
 
 Qt-free: ankidex_data.py imports no Qt; encounter_functions / encounter_data are
 stubbed so the test controls the gate and never touches the real 1000-line data.
@@ -39,10 +53,15 @@ _TIER_POOL = {
     "Ultra": [793],
     "Legendary": [1007, 888],  # 1007 = Gen 9 (disabled below), 888 = Gen 8
     "Mythical": [1024],  # Gen 9 (disabled)
-    "Mega": [],
-    "Gmax": [],
+    # 10041 / 10043 are Mega forms of bases 6 / 150; 10186 is a Gmax form of 3.
+    "Mega": [10041, 10043],
+    "Gmax": [10186],
     "Starter": [152, 155, 157],
 }
+
+# actual_id -> species_id, the remap _player_owns_base_form() does before checking
+# the collection.
+_BASE_SPECIES = {10041: 6, 10043: 150, 10186: 3}
 
 # Live tier thresholds (encounter_functions.OVERHAUL_LEVEL_THRESHOLDS, which is
 # identical to the legacy inline dict in _modify_percentages_legacy).
@@ -97,6 +116,18 @@ def _fake_get_regional_form_lookup():
     return _REGIONAL_LOOKUP
 
 
+def _fake_player_owns_base_form(actual_id, collected_ids):
+    """Stand-in for the roll's Guard 3 predicate.
+
+    Mirrors the real one's shape, including its "can't determine -> allow
+    through" fallback for an id with no known base species.
+    """
+    species_id = _BASE_SPECIES.get(actual_id)
+    if not species_id:
+        return True
+    return species_id in collected_ids
+
+
 class _Settings:
     def __init__(self, region=None):
         self._region = region
@@ -121,6 +152,7 @@ def ankidex_data(monkeypatch):
     ef = types.ModuleType("Ankimon.functions.encounter_functions")
     ef.OVERHAUL_LEVEL_THRESHOLDS = _TIER_THRESHOLDS
     ef._get_regional_form_lookup = _fake_get_regional_form_lookup
+    ef._player_owns_base_form = _fake_player_owns_base_form
     ef.check_id_ok = _fake_check_id_ok
     ef.check_min_generate_level = _fake_check_min_generate_level
     ef.get_all_pokemon_in_tier = _fake_get_all_pokemon_in_tier
@@ -160,6 +192,7 @@ def test_encounterable_starters_require_level_80_gate(ankidex_data):
 
 
 def test_encounterable_keeps_eligible_starters(ankidex_data):
+    # owned_ids omitted -> Guard 3 is skipped, so the Mega/Gmax ids are present.
     ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=100)
     assert ids == {
         1,
@@ -173,6 +206,9 @@ def test_encounterable_keeps_eligible_starters(ankidex_data):
         152,
         155,
         157,  # Starter tier, gate open at 80
+        10041,
+        10043,
+        10186,  # Mega / Gmax, ungated without an owned set
         10091,
         10107,
         10161,
@@ -280,3 +316,111 @@ def test_stats_key_removed_from_empty_payload(ankidex_data):
     # The dead 'stats' block (2 aggregate SQL queries nothing in the UI read) is
     # gone from the payload shape.
     assert "stats" not in ankidex_data._empty_payload()
+
+
+# --- Guard 3: Mega/Gmax base-form ownership --------------------------------
+
+
+def test_mega_and_gmax_require_owning_the_base_species(ankidex_data):
+    # The roll skips a Mega/Gmax candidate whose base species the player does
+    # not own (generate_random_pokemon Guard 3). Before this was mirrored, all
+    # 111 Mega and 34 Gmax ids were badged Unlocked for a brand-new player —
+    # "No requirements. Find Mega Charizard in the wild." for someone with an
+    # empty collection.
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(), player_level=100, owned_ids=set()
+    )
+    assert 10041 not in ids  # base 6 not owned
+    assert 10043 not in ids  # base 150 not owned
+    assert 10186 not in ids  # base 3 not owned
+    # Non-Mega/Gmax tiers are untouched by Guard 3.
+    assert 152 in ids
+    assert 888 in ids
+
+
+def test_owning_the_base_species_unlocks_its_mega(ankidex_data):
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(), player_level=100, owned_ids={6}
+    )
+    assert 10041 in ids  # base 6 owned
+    assert 10043 not in ids  # base 150 still not owned
+    assert 10186 not in ids
+
+
+def test_guard_three_is_skipped_when_no_owned_set_is_supplied(ankidex_data):
+    # None means "caller supplied no collection", not "an empty collection" —
+    # a host that cannot resolve the DB must not have every Mega vanish.
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(), player_level=100, owned_ids=None
+    )
+    assert {10041, 10043, 10186} <= ids
+
+
+def test_mega_still_obeys_the_tier_level_gate_when_owned(ankidex_data):
+    # Ownership does not bypass the Mega tier's own level-60 threshold.
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(), player_level=59, owned_ids={3, 6, 150}
+    )
+    assert 10041 not in ids
+    assert 10186 not in ids  # Gmax opens at 65
+
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(), player_level=60, owned_ids={3, 6, 150}
+    )
+    assert 10041 in ids
+    assert 10186 not in ids  # still below the Gmax threshold
+
+
+# --- the payload keeps the two owned sets apart -----------------------------
+
+
+class _FakeCursor:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _FakeDb:
+    """Minimal stand-in for AnkimonDB covering only what get_ankidex_data reads.
+
+    ``history`` are ids that were caught and later released: they live in
+    pokemon_history but no longer in captured_pokemon, which is exactly the
+    divergence between the two owned sets.
+    """
+
+    def __init__(self, captured=(), history=()):
+        self._captured = list(captured)
+        self._history = list(history)
+        self.get_seen_ids = lambda: set()
+
+    def execute(self, sql, *args):
+        if "shiny = 1" in sql:
+            return _FakeCursor([])
+        if "captured_pokemon" in sql:
+            return _FakeCursor([(pid,) for pid in self._captured])
+        if "pokemon_history" in sql:
+            return _FakeCursor([(pid,) for pid in self._history])
+        raise AssertionError(f"unexpected query: {sql}")
+
+
+def test_payload_ships_the_roll_owned_set_separately(ankidex_data):
+    payload = ankidex_data.get_ankidex_data(
+        _FakeDb(captured=[6], history=[151]), _Settings(), player_level=100
+    )
+    # "owned" stays the wide set the sprite / "Completed" states need...
+    assert set(payload["owned"]) == {6, 151}
+    # ...while "ownedNow" is exactly what the roll's guards see.
+    assert set(payload["ownedNow"]) == {6}
+
+
+def test_payload_applies_guard_three_with_the_currently_owned_set(ankidex_data):
+    # Base 6 owned, base 150 only in history (released). Guard 3 must unlock the
+    # Mega of 6 and keep the Mega of 150 out, matching the roll.
+    payload = ankidex_data.get_ankidex_data(
+        _FakeDb(captured=[6], history=[150]), _Settings(), player_level=100
+    )
+    encounterable = set(payload["encounterable"])
+    assert 10041 in encounterable  # base 6 currently owned
+    assert 10043 not in encounterable  # base 150 released — the roll skips it

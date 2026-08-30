@@ -8,6 +8,7 @@ const state = {
   speciesMap: {}, // actual_id -> species object
   collection: {
     owned: new Set(),
+    ownedNow: new Set(),
     shinies: new Set(),
     seen: new Set(),
     encounterable: new Set(),
@@ -81,6 +82,9 @@ const TYPES = [
 // Entry point called from Python
 window.initializeAnkidex = async function (data) {
   state.collection.owned = new Set(data.owned);
+  // Older payloads have no ownedNow; fall back so requirement checks keep
+  // working rather than reading an empty set and locking everything.
+  state.collection.ownedNow = new Set(data.ownedNow || data.owned);
   state.collection.shinies = new Set(data.shinies);
   state.collection.seen = new Set(data.seen);
   state.collection.encounterable = new Set(data.encounterable || []);
@@ -175,6 +179,30 @@ function formatLoreName(name) {
 
 function resolveActualId(id) {
   return id === 718 ? 10119 : id;
+}
+
+// The wild roll gates its prerequisite check (_meets_prerequisites) and its
+// Mega/Gmax base-form check on CURRENTLY-owned Pokemon only
+// (load_collected_pokemon_ids -> captured_pokemon). state.collection.owned is
+// wider: it folds in released Pokemon and pokemon_history. Requirement checks
+// must use the narrower set, or releasing a Mew leaves Mewtwo reading
+// "Available" while the roll goes on refusing to produce it.
+function ownsForRequirement(id) {
+  return state.collection.ownedNow.has(resolveActualId(id));
+}
+
+// Mirror _meets_prerequisites()'s remap: a form id (>= 10000) carries no
+// PREREQUISITES row of its own, so the roll looks up its base species instead.
+// Without the same remap 31 form ids read `undefined` here and were treated as
+// requirement-free — badged "Available / No requirements" while the roll's
+// Guard 4 was blocking them.
+function prerequisitesFor(id, speciesId) {
+  const own = state.prerequisites[id];
+  if (own !== undefined) return own;
+  if (speciesId !== undefined && speciesId !== id) {
+    return state.prerequisites[speciesId];
+  }
+  return undefined;
 }
 
 function getVisibilityState(id) {
@@ -1135,7 +1163,7 @@ function renderBriefing(p, id, visState, displayId) {
   else sprite.style.filter = "none";
 
   // 1. Determine Chain State & Requirements
-  let reqs = state.prerequisites[id] || [];
+  let reqs = prerequisitesFor(id, p.species_id) || [];
   let isOR = false;
   if (Array.isArray(reqs) && reqs[0] === "OR") {
     isOR = true;
@@ -1149,7 +1177,7 @@ function renderBriefing(p, id, visState, displayId) {
 
   let caughtCount = 0;
   reqs.forEach((reqId) => {
-    if (state.collection.owned.has(resolveActualId(reqId))) caughtCount++;
+    if (ownsForRequirement(reqId)) caughtCount++;
   });
 
   const totalReqs = isOR ? 1 : reqs.length;
@@ -1169,18 +1197,22 @@ function renderBriefing(p, id, visState, displayId) {
     summaryEl.textContent = "This target has been successfully captured.";
     nextStepEl.textContent = "This chain is complete.";
   } else if (reqsMet && isEncounterable) {
-    badgeEl.textContent = "Available";
+    // "Unlocked", not "Available": this badge reports account progression, not
+    // the odds on the next roll. Rare tiers stay weighted at 0 until 40% of the
+    // day's review goal is done, so promising an encounter here would be a
+    // false positive for the whole first stretch of every day.
+    badgeEl.textContent = "Unlocked";
     badgeEl.classList.add("available");
     summaryEl.textContent =
-      "All requirements met. This target is unlocked and ready for encounter.";
+      "All requirements met. This target is unlocked and can appear in the wild.";
     const targetName = visState >= 1 ? formatLoreName(p.name) : "???";
-    nextStepEl.textContent = `Encounter and catch ${targetName}.`;
+    nextStepEl.textContent = `Encounter and catch ${targetName}. Rarer targets appear as you work through today's reviews.`;
   } else if (caughtCount > 0) {
     badgeEl.textContent = "In Progress";
     badgeEl.classList.add("in-progress");
     summaryEl.textContent = `${displayCaught} of ${totalReqs} requirements caught.`;
 
-    const missingReqs = reqs.filter((rId) => !state.collection.owned.has(resolveActualId(rId)));
+    const missingReqs = reqs.filter((rId) => !ownsForRequirement(rId));
     if (isOR) {
       nextStepEl.textContent = `Catch any one of the alternative requirements.`;
     } else if (missingReqs.length === 1) {
@@ -1210,13 +1242,13 @@ function renderBriefing(p, id, visState, displayId) {
     }
   } else {
     // No reqs defined
-    badgeEl.textContent = isEncounterable ? "Available" : "Locked";
+    badgeEl.textContent = isEncounterable ? "Unlocked" : "Locked";
     badgeEl.classList.add(isEncounterable ? "available" : "locked");
     summaryEl.textContent = isEncounterable
-      ? "No requirements. This target is available."
-      : "This target is currently restricted by level or region progress.";
+      ? "No requirements. This target is unlocked."
+      : "Not unlocked yet: check your level, active region, enabled generations, and whether you own its base form.";
     nextStepEl.textContent = isEncounterable
-      ? `Find ${formatLoreName(p.name)} in the wild.`
+      ? `${formatLoreName(p.name)} can appear in the wild.`
       : "Continue your journey.";
   }
 
