@@ -44,8 +44,11 @@ def force_load_module(name, filepath):
     return mod
 
 
-# Force load encounter_data and pokedex_functions so they are not MagicMocks
-force_load_module(
+# Force load encounter_data and pokedex_functions so they are not MagicMocks.
+# The return value is bound because the Starter-activation tests below assert
+# against the real tier lists — comparing against a MagicMock attribute would be
+# vacuously true.
+encounter_data = force_load_module(
     "Ankimon.functions.encounter_data",
     _src / "Ankimon" / "functions" / "encounter_data.py",
 )
@@ -677,3 +680,68 @@ def test_victory_seed_tolerates_int_vs_str_id_drift():
     # individual_id is TEXT in the schema but callers have passed ints; the
     # guard must not decline a genuine match over the type alone.
     assert _run_victory_with_stored_row(7, "7") == ["Tackle", "Charm"]
+
+
+# ---------------------------------------------------------------------------
+# Starter activation (PR #813) — production path.
+#
+# These run against the REAL encounter_functions. tests/test_ankidex_encounterable.py
+# stubs the module out to test the Ankidex gate in isolation, so it cannot see
+# either of the two edits that actually enable starters; reverting both left the
+# whole suite green before these existed.
+#
+# The pre-existing Starter assertions do not cover them either: they sit at main
+# level 45/50 (test_encounter_overhaul.py) and 10 (test_encounter_simulator.py),
+# all below the level-80 tier gate that zeroes Starter on its own — so they read
+# 0.0 both with and without the feature.
+# ---------------------------------------------------------------------------
+
+
+def test_starter_tier_serves_the_real_starter_pool():
+    """The tier query must return the real STARTERS list, not the disabled []."""
+    pool = ef.get_all_pokemon_in_tier("Starter")
+    assert pool, "Starter tier must not be empty once starters are enabled"
+    assert pool == encounter_data.STARTERS
+
+
+def _legacy_percentages(main_level, total_reviews=50, daily_average=100):
+    """Legacy weighting at an injected main level, with the cache bypassed.
+
+    ``main_level`` is the simulation hook, which also skips the module-level
+    single-slot cache — without that, a second call at a different level would
+    return the first level's dict and the assertion would pass for the wrong
+    reason.
+    """
+    return ef._modify_percentages_legacy(
+        total_reviews=total_reviews,
+        daily_average=daily_average,
+        trainer_level=5,
+        main_level=main_level,
+    )
+
+
+def test_legacy_starter_weight_opens_at_level_80():
+    """The hard ``percentages["Starter"] = 0`` clamp is gone.
+
+    Only the level-80 tier threshold gates Starter now. This is the assertion
+    that fails if the clamp is restored — every other Starter assertion in the
+    suite sits below 80, where the threshold zeroes it anyway.
+    """
+    assert _legacy_percentages(main_level=79)["Starter"] == 0
+    assert _legacy_percentages(main_level=80)["Starter"] > 0
+
+
+def test_legacy_review_ratio_gate_removes_every_rare_tier():
+    """Below 40% of the daily goal the legacy path keeps only "Normal".
+
+    Pinned because the Ankidex "Unlocked" badge deliberately does NOT model this
+    (see ankidex_data.build_encounterable_ids): it is a per-day transient, and
+    the two Ankidex form lists read that same set. If this weighting ever changes,
+    that docstring's reasoning has to be revisited.
+    """
+    warming_up = _legacy_percentages(main_level=80, total_reviews=39)
+    assert list(warming_up) == ["Normal"]
+    assert "Starter" not in warming_up
+
+    past_the_gate = _legacy_percentages(main_level=80, total_reviews=40)
+    assert past_the_gate["Starter"] > 0
