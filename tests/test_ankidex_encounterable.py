@@ -38,7 +38,7 @@ _TIER_POOL = {
     "Baby": [172],
     "Ultra": [793],
     "Legendary": [1007, 888],  # 1007 = Gen 9 (disabled below), 888 = Gen 8
-    "Mythical": [1024],        # Gen 9 (disabled)
+    "Mythical": [1024],  # Gen 9 (disabled)
     "Mega": [],
     "Gmax": [],
     "Starter": [152, 155, 157],
@@ -59,9 +59,9 @@ _TIER_THRESHOLDS = {
 # encounter_data.REGIONAL_FORM_LOOKUP that the roll resolves variants through.
 _REGIONAL_LOOKUP = {
     19: {"alola": [10091]},
-    27: {"alola": [10101]},           # 10101 is generation-disabled below
+    27: {"alola": [10101]},  # 10101 is generation-disabled below
     52: {"alola": [10107], "galar": [10161]},
-    157: {"hisui": [10233]},          # base lives in the level-80 Starter tier
+    157: {"hisui": [10233]},  # base lives in the level-80 Starter tier
 }
 
 # Ids the generation toggle rejects (stand-in for misc.gen9 == False, plus a
@@ -70,10 +70,10 @@ _DISABLED = {1007, 1024, 10101}
 
 # Individual minimum generate levels; everything else is 1.
 _MIN_LEVELS = {
-    "pokemon-7": 20,      # exercises the [main - 3, main + 3] wild-level window
-    "pokemon-155": 90,    # a Starter with its own requirement above the tier gate
-    "pokemon-888": 50,    # Legendary sitting exactly on its tier floor
-    "pokemon-999": 103,   # above the level-100 wild cap
+    "pokemon-7": 20,  # exercises the [main - 3, main + 3] wild-level window
+    "pokemon-155": 90,  # a Starter with its own requirement above the tier gate
+    "pokemon-888": 50,  # Legendary sitting exactly on its tier floor
+    "pokemon-999": 103,  # above the level-100 wild cap
 }
 
 
@@ -162,10 +162,21 @@ def test_encounterable_starters_require_level_80_gate(ankidex_data):
 def test_encounterable_keeps_eligible_starters(ankidex_data):
     ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=100)
     assert ids == {
-        1, 7, 19, 27, 52,           # Normal (4 is UNAVAILABLE, 999 needs 103)
-        172, 793, 888,              # Baby / Ultra / Legendary
-        152, 155, 157,              # Starter tier, gate open at 80
-        10091, 10107, 10161, 10233,  # every region's forms — none is active
+        1,
+        7,
+        19,
+        27,
+        52,  # Normal (4 is UNAVAILABLE, 999 needs 103)
+        172,
+        793,
+        888,  # Baby / Ultra / Legendary
+        152,
+        155,
+        157,  # Starter tier, gate open at 80
+        10091,
+        10107,
+        10161,
+        10233,  # every region's forms — none is active
     }
 
 
@@ -178,11 +189,12 @@ def test_encounterable_regional_forms_are_generation_gated(ankidex_data):
     ids = ankidex_data.build_encounterable_ids(
         _Settings(region="alola"), player_level=100
     )
-    assert 10091 in ids       # enabled regional form for the active region
-    assert 10101 not in ids   # disabled regional form must not appear
+    assert 10091 in ids  # enabled regional form for the active region
+    assert 10101 not in ids  # disabled regional form must not appear
 
 
 # --- the wild-level window ---------------------------------------------------
+
 
 def test_species_available_three_levels_before_its_own_minimum(ankidex_data):
     # pokemon-7 needs level 20. The roll can produce a wild level of main + 3,
@@ -211,13 +223,14 @@ def test_tier_gate_still_blocks_a_species_the_window_would_reach(ankidex_data):
 
 # --- regional forms ----------------------------------------------------------
 
+
 @pytest.mark.parametrize("region", [None, "no region", "No Region", ""])
-def test_regional_forms_show_for_every_region_when_none_is_active(
-    ankidex_data, region
-):
+def test_regional_forms_show_for_every_region_when_none_is_active(ankidex_data, region):
     # The roll's form-resolution step falls back to *all* regions when no region
     # is set (the shipped default), so every form of a rolled base can spawn.
-    ids = ankidex_data.build_encounterable_ids(_Settings(region=region), player_level=100)
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(region=region), player_level=100
+    )
     assert {10091, 10107, 10161} <= ids
 
 
@@ -225,8 +238,8 @@ def test_active_region_restricts_forms_to_that_region(ankidex_data):
     ids = ankidex_data.build_encounterable_ids(
         _Settings(region="alola"), player_level=100
     )
-    assert 10107 in ids       # meowth-alola, the active region
-    assert 10161 not in ids   # meowth-galar is out of region
+    assert 10107 in ids  # meowth-alola, the active region
+    assert 10161 not in ids  # meowth-galar is out of region
 
 
 def test_active_region_is_case_and_whitespace_insensitive(ankidex_data):
@@ -253,12 +266,13 @@ def test_regional_form_requires_its_base_species_to_be_reachable(ankidex_data):
 
 # --- defensive ---------------------------------------------------------------
 
+
 @pytest.mark.parametrize("level", [None, "not a level"])
 def test_unusable_player_level_falls_back_to_one(ankidex_data, level):
     # services.main_pokemon.level is None before the first main Pokémon is bound;
     # the level comparisons must not raise.
     ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=level)
-    assert 1 in ids       # a level-1 Normal is still Available
+    assert 1 in ids  # a level-1 Normal is still Available
     assert 152 not in ids  # the Starter gate stays shut
 
 

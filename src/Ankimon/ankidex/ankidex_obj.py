@@ -9,7 +9,7 @@ class Ankidex(QDialog):
     def __init__(self, addon_dir, ankimon_tracker):
         """
         Initialize the Ankidex dialog and configure its embedded web frontend.
-        
+
         Parameters:
             addon_dir: Directory containing the Ankidex frontend files.
             ankimon_tracker: Tracker used to retrieve Ankidex data.
@@ -42,9 +42,14 @@ class Ankidex(QDialog):
         self.setLayout(self.layout)
 
         from ..ankimon_items_web.shop_obj import SafeWebEnginePage
+
         self.profile = QWebEngineProfile()
         self.webview = QWebEngineView()
-        self.webview.setPage(SafeWebEnginePage(self.profile, "ankidex_standalone", services.logger, self.webview))
+        self.webview.setPage(
+            SafeWebEnginePage(
+                self.profile, "ankidex_standalone", services.logger, self.webview
+            )
+        )
 
         self.frame.setLayout(QVBoxLayout())
         self.frame.layout().setContentsMargins(0, 0, 0, 0)
