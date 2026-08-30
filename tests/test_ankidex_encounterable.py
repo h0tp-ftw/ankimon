@@ -424,3 +424,65 @@ def test_payload_applies_guard_three_with_the_currently_owned_set(ankidex_data):
     encounterable = set(payload["encounterable"])
     assert 10041 in encounterable  # base 6 currently owned
     assert 10043 not in encounterable  # base 150 released — the roll skips it
+
+
+# --- the payload names the released set, so the SPA can explain a "not met" --
+# "owned" minus "ownedNow" is not the same thing as "released": it also holds
+# every Pokemon evolved away (mark_as_caught keeps the pre-evolution in
+# pokedex_caught). The SPA can only say the word "Released" about a species it
+# is told was released, so pokemon_history ships as its own key.
+
+
+def test_payload_names_the_released_species(ankidex_data):
+    payload = ankidex_data.get_ankidex_data(
+        _FakeDb(captured=[6], history=[151]), _Settings(), player_level=100
+    )
+    assert set(payload["released"]) == {151}
+    # ...and it is still folded into the wide set: releasing does not un-catch.
+    assert set(payload["owned"]) == {6, 151}
+    assert set(payload["ownedNow"]) == {6}
+
+
+def test_released_does_not_claim_an_evolved_away_species(ankidex_data):
+    # 4 sits in pokedex_caught (get_caught_ids) because it was caught and then
+    # evolved. It is in "owned" and out of "ownedNow" exactly like a released
+    # Pokemon — but nothing recorded a release, so it must not be named one.
+    db = _FakeDb(captured=[5], history=[])
+    db.get_caught_ids = lambda: {4}
+    payload = ankidex_data.get_ankidex_data(db, _Settings(), player_level=100)
+    assert set(payload["owned"]) == {4, 5}
+    assert set(payload["ownedNow"]) == {5}
+    assert set(payload["released"]) == set()
+
+
+def test_a_species_can_be_released_and_still_owned(ankidex_data):
+    # One Mew released, another still in the box. The set is "has ever been
+    # released", not "is gone" — the SPA resolves the overlap by checking
+    # ownedNow first, so the row still reads "Caught".
+    payload = ankidex_data.get_ankidex_data(
+        _FakeDb(captured=[151], history=[151]), _Settings(), player_level=100
+    )
+    assert set(payload["released"]) == {151}
+    assert set(payload["ownedNow"]) == {151}
+
+
+def test_an_unreadable_history_table_leaves_released_empty(ankidex_data):
+    # Same degradation the wide set already takes: a restored backup predating
+    # pokemon_history must serve a payload, not raise.
+    class _NoHistoryDb(_FakeDb):
+        def execute(self, sql, *args):
+            if "pokemon_history" in sql:
+                raise RuntimeError("no such table: pokemon_history")
+            return super().execute(sql, *args)
+
+    payload = ankidex_data.get_ankidex_data(
+        _NoHistoryDb(captured=[6]), _Settings(), player_level=100
+    )
+    assert payload["released"] == []
+    assert set(payload["owned"]) == {6}
+
+
+def test_empty_payload_carries_the_released_key(ankidex_data):
+    # The DB-absent payload has to have the same shape, or the SPA's
+    # `data.released || []` fallback silently becomes the only code path.
+    assert ankidex_data._empty_payload()["released"] == []

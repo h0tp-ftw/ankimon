@@ -14,8 +14,15 @@ The other two roll guards are resolved in the SPA, and both were wrong:
   releasing a Mew marked Mewtwo's requirement met here while the roll went on
   refusing to produce it.
 
-Extracts the two helpers out of ankidex.js and runs them under node, the same
-way tests/test_battle_webview_index_html.py exercises the battle webview.
+Narrowing the gate then exposed a second problem — not in the verdict but in how
+the panel worded it. Every unmet requirement the Pokedex already counted as
+caught rendered as "Missing", so a released Mew read "Missing" in Mewtwo's
+requirement list while its own card, one click away, read "Caught". The chip now
+distinguishes "Released" (on record in pokemon_history) from "Not owned" (caught
+before, gone now, no reason recorded — an evolution, typically).
+
+Extracts the helpers out of ankidex.js and runs them under node, the same way
+tests/test_battle_webview_index_html.py exercises the battle webview.
 """
 
 import json
@@ -39,6 +46,10 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="node.js is not available")
 
 RESOLVE_START = "function resolveActualId(id) {"
 OWNS_START = "function ownsForRequirement(id) {"
+RELEASED_START = "function isReleased(id) {"
+RECATCH_START = "function requirementNeedsRecatch(id) {"
+STATUS_START = "function requirementStatus(id) {"
+VISIBILITY_START = "function getVisibilityState(id) {"
 PREREQS_START = "function prerequisitesFor(id, speciesId) {"
 NODE_STATE_START = "function getNodeState(id) {"
 FN_END = "\n}"
@@ -58,7 +69,15 @@ def _extract(source, start_marker):
 def _helpers(source):
     return "\n".join(
         _extract(source, marker)
-        for marker in (RESOLVE_START, OWNS_START, PREREQS_START)
+        for marker in (
+            RESOLVE_START,
+            OWNS_START,
+            RELEASED_START,
+            VISIBILITY_START,
+            RECATCH_START,
+            STATUS_START,
+            PREREQS_START,
+        )
     )
 
 
@@ -79,15 +98,24 @@ def _eval(source, state, expression):
     const state = {json.dumps(state)};
     state.collection.owned = new Set(state.collection.owned);
     state.collection.ownedNow = new Set(state.collection.ownedNow);
+    state.collection.released = new Set(state.collection.released || []);
+    state.collection.seen = new Set(state.collection.seen || []);
     {_helpers(source)}
     console.log(JSON.stringify({expression}));
     """
     return run_node_json(script)
 
 
-def _state(owned, owned_now, prerequisites=None, species=None):
+def _state(
+    owned, owned_now, prerequisites=None, species=None, released=None, seen=None
+):
     return {
-        "collection": {"owned": owned, "ownedNow": owned_now},
+        "collection": {
+            "owned": owned,
+            "ownedNow": owned_now,
+            "released": released or [],
+            "seen": seen or [],
+        },
         "prerequisites": prerequisites or {},
         "fullSpeciesMap": species or {},
     }
@@ -99,6 +127,8 @@ def _eval_node_state(source, state, node_id):
     const state = {json.dumps(state)};
     state.collection.owned = new Set(state.collection.owned);
     state.collection.ownedNow = new Set(state.collection.ownedNow);
+    state.collection.released = new Set(state.collection.released || []);
+    state.collection.seen = new Set(state.collection.seen || []);
     {_helpers(source)}
     {_extract(source, NODE_STATE_START)}
     console.log(JSON.stringify(getNodeState({node_id})));
@@ -196,7 +226,13 @@ def test_badge_does_not_promise_an_immediate_encounter(js_source):
 
 
 def test_the_briefing_requirement_rows_use_the_roll_owned_set(js_source):
-    assert "      const rOwned = ownsForRequirement(reqId);" in js_source
+    # The row now goes through requirementStatus(), whose first branch is the
+    # same narrow gate; the wide set only ever explains a "no" it returns.
+    assert "      const rStatus = requirementStatus(reqId);" in js_source
+    assert (
+        '  if (ownsForRequirement(id)) return { text: "Caught", cls: "caught" };'
+        in js_source
+    )
     assert "const rOwned = state.collection.owned.has(reqId);" not in js_source
 
 
@@ -291,3 +327,102 @@ def test_a_caught_map_node_still_reads_from_the_wide_set(js_source):
     # briefing panel's "Completed" badge treats it.
     state = _state(owned=[150], owned_now=[], prerequisites={"150": [151]})
     assert _eval_node_state(js_source, state, 150) == "caught"
+
+
+# --- the requirement chip may not contradict the card next to it -------------
+# `ownsForRequirement` decides whether a requirement is MET, and it is right to
+# read the narrow set. What was wrong is how the panel worded the "no": every
+# unmet requirement the Pokedex already counted as caught rendered as "Missing",
+# which is the only thing that string ever did — visState is 2 exactly when
+# `owned` has the id, so the Seen and Locked branches took every other case. A
+# released Mew therefore read "Missing" in Mewtwo's requirement list while its
+# own grid card read "Caught" and its briefing badge read "Completed".
+
+
+def _status(source, state, req_id):
+    return _eval(source, state, f"requirementStatus({req_id})")
+
+
+def test_a_released_requirement_reads_released_not_missing(js_source):
+    state = _state(owned=[151], owned_now=[], released=[151])
+    assert _status(js_source, state, 151) == {"text": "Released", "cls": "released"}
+
+
+def test_a_currently_owned_requirement_still_reads_caught(js_source):
+    state = _state(owned=[151], owned_now=[151], released=[])
+    assert _status(js_source, state, 151) == {"text": "Caught", "cls": "caught"}
+
+
+def test_owning_another_copy_outranks_the_release_record(js_source):
+    # One Mew released, another still in the box: the requirement IS met, so the
+    # release record must not downgrade the chip.
+    state = _state(owned=[151], owned_now=[151], released=[151])
+    assert _status(js_source, state, 151) == {"text": "Caught", "cls": "caught"}
+
+
+def test_a_caught_but_unowned_requirement_is_not_called_released(js_source):
+    # Evolved away: in `owned` via pokedex_caught, out of `ownedNow`, and with
+    # no release on record. It needs re-catching just the same, but the panel
+    # may not invent a reason — and it still may not say "Missing".
+    state = _state(owned=[4], owned_now=[], released=[])
+    assert _status(js_source, state, 4) == {"text": "Not owned", "cls": "missing"}
+
+
+def test_a_seen_requirement_still_reads_seen(js_source):
+    state = _state(owned=[], owned_now=[], seen=[151])
+    assert _status(js_source, state, 151) == {"text": "Seen", "cls": "seen"}
+
+
+def test_an_unseen_requirement_still_reads_locked(js_source):
+    state = _state(owned=[], owned_now=[], seen=[])
+    assert _status(js_source, state, 151) == {"text": "Locked", "cls": "locked"}
+
+
+def test_the_release_lookup_applies_the_zygarde_id_alias(js_source):
+    # The collection stores the form id (718 -> 10119); every other requirement
+    # read remaps, and a chip that skipped it would say "Not owned" for a
+    # Zygarde the player is on record as having released.
+    state = _state(owned=[10119], owned_now=[], released=[10119])
+    assert _status(js_source, state, 718) == {"text": "Released", "cls": "released"}
+
+
+def test_the_chip_no_longer_has_a_missing_state(js_source):
+    # Not cosmetic: "Missing" was unreachable for anything the player had never
+    # caught, so every render of it was the contradiction in this finding. Only
+    # the prose explaining that may still contain the word.
+    assert 'text: "Missing"' not in js_source
+    assert 'statusText = "Missing"' not in js_source
+    for line in js_source.splitlines():
+        code = line.split("//", 1)[0]
+        assert '"Missing"' not in code, f"'Missing' still rendered: {line.strip()}"
+
+
+def test_an_older_payload_without_released_still_renders(js_source):
+    # `data.released || []` — an empty set degrades to "Not owned", which is
+    # true, rather than to a claim the payload cannot support.
+    assert "new Set(data.released || [])" in js_source
+
+
+def test_the_next_step_does_not_ask_for_a_first_catch_twice(js_source):
+    # A single released prerequisite lands in the Locked branch (caughtCount is
+    # 0), which used to read "Start by catching Mew." one click from the
+    # player's own caught Mew.
+    assert "nextStepEl.textContent = `Catch ${mName} again to unlock.`;" in js_source
+    assert "? `Catch ${mName} again.`" in js_source
+
+
+def test_the_prerequisite_strip_says_which_kind_of_not_met(js_source):
+    assert "item.title = `${name} — released; catch it again`;" in js_source
+    assert 'item.title = isCaught ? name : "Requirement Locked";' not in js_source
+
+
+def test_recatch_is_the_unmet_half_of_the_wide_set(js_source):
+    # The predicate behind both wordings: unmet by the roll, caught per the dex.
+    released = _state(owned=[151], owned_now=[], released=[151])
+    assert _eval(js_source, released, "requirementNeedsRecatch(151)") is True
+    evolved = _state(owned=[4], owned_now=[], released=[])
+    assert _eval(js_source, evolved, "requirementNeedsRecatch(4)") is True
+    owned_now = _state(owned=[151], owned_now=[151], released=[151])
+    assert _eval(js_source, owned_now, "requirementNeedsRecatch(151)") is False
+    never = _state(owned=[], owned_now=[], seen=[151])
+    assert _eval(js_source, never, "requirementNeedsRecatch(151)") is False

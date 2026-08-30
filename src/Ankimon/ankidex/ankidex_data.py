@@ -156,6 +156,7 @@ def _empty_payload():
     return {
         "owned": [],
         "ownedNow": [],
+        "released": [],
         "shinies": [],
         "seen": [],
         "encounterable": [],
@@ -224,6 +225,11 @@ def get_ankidex_data(db, settings, tracker=None, player_level=1):
     # Released Pokemon (from history). Wrapped so an older/unmigrated DB file
     # (e.g. a restored backup predating the pokemon_history table) degrades to
     # "no released entries" instead of failing the whole payload.
+    # Kept as its own set as well as folded into caught_ids: it is the only
+    # thing that can tell the SPA WHY a species the Pokedex marks caught is not
+    # available to a requirement check. Without it a released Mew read "Missing"
+    # in Mewtwo's requirement list and "Caught" on its own card, one click away.
+    released_ids = set()
     try:
         cursor = db.execute(
             "SELECT DISTINCT json_extract(data, '$.id') FROM pokemon_history"
@@ -231,11 +237,12 @@ def get_ankidex_data(db, settings, tracker=None, player_level=1):
         for row in cursor.fetchall():
             if row[0]:
                 try:
-                    caught_ids.add(int(row[0]))
+                    released_ids.add(int(row[0]))
                 except (ValueError, TypeError):
                     continue
     except Exception:
         pass
+    caught_ids.update(released_ids)
 
     # Explicitly recorded caught Pokemon (e.g. from evolutions or prior captures)
     if hasattr(db, "get_caught_ids"):
@@ -275,6 +282,12 @@ def get_ankidex_data(db, settings, tracker=None, player_level=1):
         # and history, which is right for the sprite/"Completed" states but wrong
         # for a requirement check — the roll counts neither.
         "ownedNow": list(owned_now),
+        # Every species with a pokemon_history row: released at least once. Not
+        # a gate — "ownedNow" decides whether a requirement is met — but the
+        # wording of the "not met" answer, so the panel can say "Released"
+        # instead of contradicting the card that says "Caught". A species can be
+        # in both sets (one copy released, another still owned); ownedNow wins.
+        "released": list(released_ids),
         "shinies": shiny_owned_ids,
         "seen": list(seen_ids),
         "encounterable": list(encounterable_ids),

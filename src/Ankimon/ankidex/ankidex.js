@@ -9,6 +9,7 @@ const state = {
   collection: {
     owned: new Set(),
     ownedNow: new Set(),
+    released: new Set(),
     shinies: new Set(),
     seen: new Set(),
     encounterable: new Set(),
@@ -86,6 +87,10 @@ window.initializeAnkidex = async function (data) {
   // working rather than reading an empty set and locking everything.
   const ownedNowList = data.ownedNow || data.owned;
   state.collection.ownedNow = new Set(ownedNowList);
+  // Older payloads have no `released` either. Empty is the safe degradation:
+  // a released requirement then reads "Not owned" rather than "Released" —
+  // still true, just less specific — instead of claiming something unproven.
+  state.collection.released = new Set(data.released || []);
   state.collection.shinies = new Set(data.shinies);
   state.collection.seen = new Set(data.seen);
   state.collection.encounterable = new Set(data.encounterable || []);
@@ -105,6 +110,11 @@ window.initializeAnkidex = async function (data) {
   // either, and the whole hash would come back identical. The discovery map
   // only repaints when this says the collection changed, so without ownedNow a
   // release left every requirement state on it painted as still met.
+  // `released` is deliberately NOT here, and it does not need to be: it only
+  // ever changes the rendering of an id that ownedNow has just dropped (a
+  // requirement the player still owns another copy of renders "Caught" off
+  // ownedNow, whatever `released` says), so ownedNow already moves the hash on
+  // every release that changes a pixel.
   const newHash = `${data.owned.length}-${ownedNowList.length}-${data.seen.length}-${data.shinies.length}-${data.owned.slice(0, 10).join(",")}-${ownedNowList.slice(0, 10).join(",")}`;
   const collectionChanged = state.collectionHash !== newHash;
   state.collectionHash = newHash;
@@ -195,6 +205,46 @@ function resolveActualId(id) {
 // "Available" while the roll goes on refusing to produce it.
 function ownsForRequirement(id) {
   return state.collection.ownedNow.has(resolveActualId(id));
+}
+
+// Released at least once: in `owned` (the Pokedex remembers the catch) and, if
+// no other copy survives, out of `ownedNow`. Never a gate — ownsForRequirement
+// alone decides whether a requirement is met — only the reason behind a "no".
+function isReleased(id) {
+  return state.collection.released.has(resolveActualId(id));
+}
+
+// True when the requirement is unmet but the Pokedex already counts the species
+// as caught: released, or evolved away (mark_as_caught keeps the pre-evolution
+// in pokedex_caught). Both need re-catching for the roll to accept them, and
+// neither may be described as if the player had never found one.
+function requirementNeedsRecatch(id) {
+  return !ownsForRequirement(id) && getVisibilityState(id) === 2;
+}
+
+// The status chip on a briefing requirement row.
+//
+// The chip has to answer two different questions at once: is the REQUIREMENT
+// met (the narrow, roll-owned set), and — when it is not — what does the
+// Pokedex already know about this species (the wide set). Before this, every
+// "no" that the wide set disagreed with rendered as "Missing", which is the
+// only thing that string ever did: `visState` is 2 exactly when `owned` has the
+// id, so the Seen/Locked branches took every other case. A released Mew
+// therefore read "Missing" in Mewtwo's requirement list while its own card, one
+// click away, read "Caught" and its briefing badge read "Completed".
+function requirementStatus(id) {
+  if (ownsForRequirement(id)) return { text: "Caught", cls: "caught" };
+  const vis = getVisibilityState(id);
+  if (vis === 2) {
+    // "Released" is only claimed off pokemon_history. The rest of this bucket
+    // is "caught before, gone now" with no recorded reason, so it says exactly
+    // that rather than guessing at an evolution.
+    return isReleased(id)
+      ? { text: "Released", cls: "released" }
+      : { text: "Not owned", cls: "missing" };
+  }
+  if (vis === 1) return { text: "Seen", cls: "seen" };
+  return { text: "Locked", cls: "locked" };
 }
 
 // Mirror _meets_prerequisites()'s remap: a form id (>= 10000) carries no
@@ -1229,7 +1279,11 @@ function renderBriefing(p, id, visState, displayId) {
       const m = state.fullSpeciesMap[mId];
       const mVis = getVisibilityState(mId);
       const mName = m && mVis >= 1 ? formatLoreName(m.name) : "???";
-      nextStepEl.textContent = `Catch ${mName} next.`;
+      // "again" for one the Pokedex already has: the same panel calling it
+      // caught cannot also be asking for a first catch.
+      nextStepEl.textContent = requirementNeedsRecatch(mId)
+        ? `Catch ${mName} again.`
+        : `Catch ${mName} next.`;
     } else {
       nextStepEl.textContent = `Catch ${missingReqs.length} more requirements.`;
     }
@@ -1246,6 +1300,11 @@ function renderBriefing(p, id, visState, displayId) {
 
     if (isOR) {
       nextStepEl.textContent = `Catch any one of the alternative requirements to unlock.`;
+    } else if (requirementNeedsRecatch(mId)) {
+      // The single-prerequisite release lands here, not in the In Progress
+      // branch above: caughtCount is 0, so "Start by catching Mew" was the
+      // line the player saw one click from their own caught Mew.
+      nextStepEl.textContent = `Catch ${mName} again to unlock.`;
     } else {
       nextStepEl.textContent = `Start by catching ${mName}.`;
     }
@@ -1282,8 +1341,10 @@ function renderBriefing(p, id, visState, displayId) {
       const rVisState = getVisibilityState(reqId);
       // Same gate as the counter above (and it picks up the id alias the
       // raw lookup was missing): this row says whether the REQUIREMENT is
-      // satisfied, not whether the species was ever in the collection.
-      const rOwned = ownsForRequirement(reqId);
+      // satisfied, not whether the species was ever in the collection — and
+      // when it is not, why, so a released Pokemon is not called "Missing"
+      // by the same window that calls it "Caught".
+      const rStatus = requirementStatus(reqId);
 
       const row = document.createElement("div");
       row.className = "req-row";
@@ -1294,23 +1355,10 @@ function renderBriefing(p, id, visState, displayId) {
       else if (rVisState === 1)
         rFilter = "filter: brightness(0) invert(1) brightness(0.4)";
 
-      let statusText = "Missing";
-      let statusClass = "missing";
-      if (rOwned) {
-        statusText = "Caught";
-        statusClass = "caught";
-      } else if (rVisState === 1) {
-        statusText = "Seen";
-        statusClass = "seen";
-      } else if (rVisState === 0) {
-        statusText = "Locked";
-        statusClass = "locked";
-      }
-
       row.innerHTML = `
                 <img id="briefing-req-sprite-${reqId}" class="req-sprite" style="${rFilter}">
                 <div class="req-name">${rVisState >= 1 ? formatLoreName(rp.name) : "???"}</div>
-                <div class="req-status ${statusClass}">${statusText}</div>
+                <div class="req-status ${rStatus.cls}">${rStatus.text}</div>
             `;
       const reqImg = row.querySelector(".req-sprite");
       reqImg.src = getSpritePath(reqId);
@@ -1754,7 +1802,18 @@ function renderRequirements(p) {
     const reqPokemon = state.fullSpeciesMap[reqId];
     const name = reqPokemon ? formatLoreName(reqPokemon.name) : "???";
     const formattedId = "#" + reqId.toString().padStart(4, "0");
-    item.title = isCaught ? name : "Requirement Locked";
+    // The blacked-out sprite is right (the requirement is not met), but
+    // "Requirement Locked" over a species the Pokedex marks caught is the same
+    // contradiction as the chip. Say which kind of "not met" it is.
+    if (isCaught) {
+      item.title = name;
+    } else if (isReleased(reqId)) {
+      item.title = `${name} — released; catch it again`;
+    } else if (requirementNeedsRecatch(reqId)) {
+      item.title = `${name} — not in your collection; catch it again`;
+    } else {
+      item.title = "Requirement Locked";
+    }
 
     const filter = isCaught ? "" : "brightness(0)";
     const displayLabel = formattedId;

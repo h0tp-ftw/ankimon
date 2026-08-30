@@ -2330,6 +2330,9 @@ body {
 
 .req-status.caught { color: var(--accent-green); }
 .req-status.seen { color: var(--text-main); }
+/* Caught once, gone now: gold rather than green or red, because it is neither a
+   met requirement nor a species the player has yet to find. */
+.req-status.released { color: var(--accent-gold); }
 .req-status.missing { color: var(--text-muted); }
 .req-status.locked { color: var(--accent-red); opacity: 0.7; }
 
