@@ -88,7 +88,7 @@ def test_save_main_pokemon_progress_caps_at_10_levelups():
     settings.get = lambda k, d=None: {
         "misc.remove_level_cap": True,
         "gui.pop_up_dialog_message_on_defeat": False,
-        "gui.styling_in_reviewer": False,
+        "gui.hud_styling": False,
         "gui.reviewer_text_message_box": False,
         "gui.reviewer_text_message_box_time": 4,
     }.get(k, d)

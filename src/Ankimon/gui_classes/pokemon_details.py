@@ -143,6 +143,10 @@ def PokemonCollectionDetailsSplit(
             "everstone": everstone,
             "attacks": attacks,
             "pokemon_defeated": pokemon_defeated,
+            # Needed for the CSV gender_id gate (Wormadam/Mothim, Vespiquen,
+            # Salazzle): without it this panel's status line would silently skip
+            # a gate the PC grid and the automatic level-up path both enforce.
+            "gender": gender,
         }
         readiness = evolution_readiness(pkmn_data_stub)
 
