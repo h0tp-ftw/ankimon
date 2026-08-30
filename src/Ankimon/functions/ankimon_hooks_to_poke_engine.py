@@ -142,6 +142,15 @@ class _FormTolerantPokedex:
         return self._base.items()
 
 
+
+def _patch_engine_constants():
+    # 'allies' is the target for moves like Howl or Life Dew, but the engine
+    # forgot to list it as a self-targeting move type, causing it to incorrectly
+    # boost the opponent's stats or heal them.
+    if "allies" not in constants.MOVE_TARGET_SELF:
+        constants.MOVE_TARGET_SELF.append("allies")
+
+
 def _install_form_tolerant_pokedex():
     # Patch the modules whose lookups are keyed by a live battler's id/name. The
     # weight moves in modify_move are the confirmed crash; damage_calculator's
@@ -157,6 +166,7 @@ def _install_form_tolerant_pokedex():
 
 try:
     _install_form_tolerant_pokedex()
+    _patch_engine_constants()
 except Exception:
     # Never let a hardening patch break battle import; the raw engine still works
     # for every canonical Pokemon, which is the overwhelming majority.
