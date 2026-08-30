@@ -11,9 +11,7 @@ from ..functions import encounter_data
 
 
 # Tiers the live wild-encounter roll draws from (encounter_functions.
-# get_all_pokemon_in_tier). "Starter" is included on purpose: that function
-# returns [] for it (starters come only from the one-time starter picker), so
-# gating through it keeps Ankidex's "Available" badge in lockstep with the roll.
+# get_all_pokemon_in_tier), in the order generate_random_pokemon() walks them.
 _ENCOUNTER_TIERS = (
     "Normal",
     "Baby",
@@ -25,52 +23,95 @@ _ENCOUNTER_TIERS = (
     "Starter",
 )
 
+# The roll rolls a wild level in [main - 3, main + 3] and gates each candidate on
+# THAT level, not on the player's. Mirror the window so a species whose minimum
+# generate level sits just above the player's level is not falsely "Unavailable".
+_LVL_VARIATION = 3
+
+
+def _max_wild_level(player_level):
+    """Highest wild level generate_random_pokemon() can roll for this player."""
+    if player_level == 100:
+        return 100  # the roll pins the wild level to 100 at the cap
+    return max(1, player_level + _LVL_VARIATION)
+
 
 def build_encounterable_ids(settings, player_level):
     """Return the set of Pokemon the live wild-encounter roll can actually produce.
 
-    Built from the SAME source the roll uses — ``get_all_pokemon_in_tier()`` per
-    tier, each candidate gated by the same generation and minimum-level checks
-    as the roll — instead of unioning the raw ``encounter_data`` tier lists.
-    Starter encounters additionally require a level-80 player Pokémon, matching
-    the live tier gate.
+    Mirrors ``generate_random_pokemon()`` guard for guard, from the SAME sources
+    the roll uses, instead of unioning the raw ``encounter_data`` tier lists:
+
+    * **Tier gate** — a tier whose main-Pokemon level threshold is not met has
+      probability 0, and the roll's fallback only ever degrades to "Normal", so
+      such a tier is unreachable. (``Starter`` opens at 80, ``Mythical`` at 75, ...)
+    * **Generation gate** — ``check_id_ok()``.
+    * **Level gate** — ``check_min_generate_level()`` compared against the highest
+      wild level the roll can produce (``player_level + 3``), not the player's own
+      level.
+    * **Regional forms** — resolved exactly like the roll's form-resolution step:
+      a variant is reachable only once its BASE species is in the pool, and when
+      no region is active the roll offers variants from *every* region.
     """
     from ..functions.encounter_functions import (
+        OVERHAUL_LEVEL_THRESHOLDS,
+        _get_regional_form_lookup,
         check_id_ok,
         check_min_generate_level,
         get_all_pokemon_in_tier,
         search_pokedex_by_id,
     )
 
+    try:
+        player_level = int(player_level)
+    except (TypeError, ValueError):
+        player_level = 1
+    max_wild_level = _max_wild_level(player_level)
+
     def is_eligible(pid):
+        """The roll's Guard 1 (generation) + Guard 2 (minimum generate level)."""
         if not check_id_ok(pid):
             return False
         name = search_pokedex_by_id(pid)
-        return (
-            bool(name)
-            and name != "Pokémon not found"
-            and player_level >= check_min_generate_level(str(name).lower())
-        )
+        if not name or name == "Pokémon not found":
+            return False
+        return max_wild_level >= check_min_generate_level(str(name).lower())
 
     ids = set()
     for tier in _ENCOUNTER_TIERS:
-        if tier == "Starter" and player_level < 80:
+        # Tier weight is forced to 0 below its threshold, and a failed roll
+        # degrades straight to "Normal" — never sideways into a gated tier.
+        if player_level < OVERHAUL_LEVEL_THRESHOLDS.get(tier, 0):
             continue
         for pid in get_all_pokemon_in_tier(tier):
             if is_eligible(pid):
                 ids.add(pid)
 
+    # Regional forms. The roll only reaches a variant *after* rolling its base
+    # species, so a variant is encounterable exactly when its base is — and with
+    # no active region the roll draws variants from every region, not none.
+    active_region = settings.get("misc.active_region") if settings is not None else None
+    if isinstance(active_region, str):
+        active_region = active_region.lower().strip()
+    else:
+        active_region = None
+    region_scoped = bool(active_region) and active_region not in ("no region", "")
+
+    lookup = _get_regional_form_lookup()
+    for base_id in list(ids):
+        forms = lookup.get(base_id, {})
+        if region_scoped:
+            variants = forms.get(active_region, [])
+        else:
+            variants = [v for region_ids in forms.values() for v in region_ids]
+        for variant_id in variants:
+            if is_eligible(variant_id):
+                ids.add(variant_id)
+
     # Explicit exclusions: never spawnable regardless of tier / generation.
+    # Applied last so a regional form can never slip back in past them.
     for uid in getattr(encounter_data, "UNAVAILABLE", []):
         ids.discard(uid)
-
-    # Regional forms for the active region — same generation gate as the roll.
-    active_region = settings.get("misc.active_region") if settings is not None else None
-    regional = getattr(encounter_data, "REGIONAL_FORMS", {})
-    if active_region and active_region in regional:
-        for pid in regional[active_region]:
-            if is_eligible(pid):
-                ids.add(pid)
 
     return ids
 

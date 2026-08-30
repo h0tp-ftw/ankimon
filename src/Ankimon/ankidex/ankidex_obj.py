@@ -63,7 +63,11 @@ class Ankidex(QDialog):
         """
         from .ankidex_data import get_ankidex_data
 
-        player_level = getattr(services.main_pokemon, "level", 1)
+        # None-safe the same way the roll is: the attribute exists but is None
+        # before the first main Pokemon is bound, and the level gates compare it.
+        player_level = getattr(services.main_pokemon, "level", None)
+        if player_level is None:
+            player_level = 1
         return get_ankidex_data(
             services.db, services.settings, self.ankimon_tracker, player_level
         )
