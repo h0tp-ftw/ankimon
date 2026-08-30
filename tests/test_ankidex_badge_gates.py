@@ -132,6 +132,15 @@ def test_a_base_species_with_no_row_stays_requirement_free(js_source):
     assert _eval(js_source, state, "prerequisitesFor(25, 25) === undefined") is True
 
 
+def test_the_remap_is_gated_on_the_form_id_range_the_roll_uses(js_source):
+    # _meets_prerequisites only remaps for pokemon_id >= 10000. A base-range id
+    # whose species_id happens to differ must NOT inherit, or the badge would
+    # gate on a chain the roll never consults.
+    state = _state(owned=[], owned_now=[], prerequisites={"150": [151]})
+    assert _eval(js_source, state, "prerequisitesFor(9999, 150) === undefined") is True
+    assert _eval(js_source, state, "prerequisitesFor(10000, 150)") == [151]
+
+
 def test_a_form_whose_species_has_no_row_stays_requirement_free(js_source):
     state = _state(owned=[], owned_now=[], prerequisites={"150": [151]})
     assert _eval(js_source, state, "prerequisitesFor(10186, 3) === undefined") is True

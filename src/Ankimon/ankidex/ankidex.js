@@ -199,7 +199,10 @@ function ownsForRequirement(id) {
 function prerequisitesFor(id, speciesId) {
   const own = state.prerequisites[id];
   if (own !== undefined) return own;
-  if (speciesId !== undefined && speciesId !== id) {
+  // `id >= 10000` is the roll's own condition for the remap, not `id !==
+  // speciesId`. They coincide for every current pokedex.json entry, but
+  // matching the roll's test keeps them from drifting apart if one is added.
+  if (id >= 10000 && speciesId !== undefined && speciesId !== id) {
     return state.prerequisites[speciesId];
   }
   return undefined;
