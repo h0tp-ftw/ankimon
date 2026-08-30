@@ -673,10 +673,13 @@ def _offer_rescue_later(protected: Path, target: Path) -> None:
 def _settle(logger) -> None:
     """Conclude the migration for this profile: notify, then mark done.
 
-    One function because every terminal path must do both — the notice was
-    originally after an early return on the no-candidates path, so the users
-    most likely to have nothing left in media (and most likely to have had the
-    feature on) were the ones who never heard about it.
+    Called only from a genuine terminal state — every candidate readable and the
+    rescue answered. The paths that stay armed (an empty folder, an unreadable
+    candidate, an unreadable local or protected save) call
+    ``_notify_affected_user`` on its own instead: the users most likely to have
+    nothing left in media are also the most likely to have had the feature on,
+    and they still need to hear it is gone. That notice deletes the config row
+    it keys off, so running it on every pass cannot repeat it.
     """
     _notify_affected_user(logger)
     _mark_migration_done()
@@ -829,7 +832,24 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
                     unreadable = list(unreadable) + [media_dir / _protected_name_for(target_db)]
 
         media_stats = get_db_stats(protected, timeout=MIGRATION_PROBE_TIMEOUT)
-        local_stats = get_db_stats(target) if target else None
+        local_stats = (
+            get_db_stats(target, timeout=MIGRATION_PROBE_TIMEOUT) if target else None
+        )
+
+        # The LOCAL save gets the same UNKNOWN treatment as the protected copy.
+        # _progress_key floors an unreadable save to (-1,-1,-1), so a local save
+        # merely locked this second — the OneDrive/antivirus case this add-on
+        # already has a lock ladder for — would lose to any readable media copy,
+        # be offered against a side the dialog itself renders as "could not read
+        # this file", and then, if the user sensibly declined, fall through to
+        # _settle() and burn the one-shot on a comparison that never happened.
+        if target is not None and local_stats is None:
+            logger.log(
+                "info",
+                f"Ankimon: {Path(target).name} could not be read this pass; "
+                "not comparing saves, rescanning later.",
+            )
+            return
 
         if target is not None and _progress_key(media_stats) > _progress_key(local_stats):
             if askUser(

@@ -1,9 +1,17 @@
-"""Failing regression tests for the six defects confirmed against PR #797 head (0582ffd0).
+"""Regression guards for the defects found in the first cut of this branch.
 
-Drop into `tests/` and run:  python3 -m pytest tests/test_pr797_repros.py -q
+Each of these was written RED against head 0582ffd0 -- reproducing a real
+failure -- and is kept green by the fixes in this commit. They are grouped by
+what they protect rather than by module, because they share one theme: the
+migration must never treat an ABSENCE or an UNKNOWN as a resolution.
 
-Every test asserts the CORRECT behaviour, so a failure here IS the defect.
-Reuses the PR's own scaffolding so setup matches the shipped tests exactly.
+  * a media-sync hook that fires on failure is not proof a download arrived;
+  * a save that will not open is unknown, not empty, on either side;
+  * developer and normal saves never share a protected name;
+  * export never writes over the live save, and never carries a credential.
+
+Reuses the shipped scaffolding in test_save_transfer so the setup matches the
+rest of the suite exactly.
 """
 
 import os
@@ -307,5 +315,48 @@ def test_migration_does_not_block_profile_open_on_a_locked_save(
         assert elapsed < 1.0, (
             f"profile-open path blocked for {elapsed:.1f}s on a locked media save"
         )
+    finally:
+        holder.close()
+
+
+# ===========================================================================
+# The same UNKNOWN rule, applied to the LOCAL save
+# ===========================================================================
+def test_a_locked_local_save_is_not_ranked_or_settled_against(
+    media, tmp_path, logger, monkeypatch
+):
+    """_progress_key floors an unreadable save to (-1,-1,-1), so a local save
+    that is merely locked this second -- the OneDrive/antivirus case this add-on
+    already carries a lock ladder for -- would lose to any readable media copy.
+
+    The rescue would then be offered against a side the dialog itself renders as
+    "could not read this file", and a user who sensibly declined would fall
+    through to _settle(): the one-shot burned on a comparison that never
+    happened. Nothing may be concluded from a save that would not open.
+    """
+    import time
+
+    local = _make_save(tmp_path / "ankimon.db", pokemon=500, badges=30, history=400)
+    monkeypatch.setattr(st, "_active_db_path", lambda: local)
+    _make_save(media / "ankimon.db", pokemon=2)  # readable, and far behind
+
+    holder = sqlite3.connect(str(local), isolation_level=None)
+    holder.execute("PRAGMA locking_mode = EXCLUSIVE;")
+    holder.execute("BEGIN EXCLUSIVE;")
+    holder.execute("INSERT INTO items VALUES ('lockholder', 1)")
+
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+    marked = MagicMock()
+    monkeypatch.setattr(st, "_mark_migration_done", marked)
+
+    try:
+        t0 = time.monotonic()
+        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        elapsed = time.monotonic() - t0
+
+        ask.assert_not_called()  # never offered against an unreadable local
+        marked.assert_not_called()  # and never settled on it
+        assert elapsed < 1.0, f"blocked {elapsed:.1f}s on a locked local save"
     finally:
         holder.close()
