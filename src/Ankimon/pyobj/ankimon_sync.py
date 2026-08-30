@@ -207,12 +207,19 @@ def _atomic_write_over(src: Path, dest: Path, before_replace: Callable[[], Any] 
             pass
 
 
-def _verify_sqlite_integrity(db_file: Path) -> bool:
+def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
     """True only if ``db_file`` is a readable, non-empty Ankimon SQLite DB that
     passes a quick integrity check and carries the core ``captured_pokemon``
     table. Guards the live save against being overwritten by a truncated /
     corrupt / foreign file — whether that file came from the media folder or
-    from a file the user picked in the Import dialog."""
+    from a file the user picked in the Import dialog.
+
+    ``timeout`` bounds the wait on a locked file. It used to be unset, which is
+    sqlite3's 5 s default — paid synchronously on the profile-open stack by the
+    media migration, where a single locked save visibly froze Anki's startup.
+    User-initiated Import/Export still wait the full 30 s; the migration passes
+    ``save_transfer.MIGRATION_PROBE_TIMEOUT`` and rescans later instead.
+    """
     try:
         db_file = Path(db_file)
         if not db_file.is_file() or db_file.stat().st_size < 512:
@@ -223,7 +230,7 @@ def _verify_sqlite_integrity(db_file: Path) -> bool:
         # — a raw f-string URI would fail to open a perfectly valid DB and
         # wrongly refuse the import.
         uri = db_file.resolve().as_uri() + "?mode=ro"
-        conn = sqlite3.connect(uri, uri=True)
+        conn = sqlite3.connect(uri, uri=True, timeout=timeout)
         try:
             row = conn.execute("PRAGMA quick_check;").fetchone()
             if not row or str(row[0]).lower() != "ok":
@@ -346,7 +353,7 @@ class AnkimonDataSync:
             yield closed
 
     @staticmethod
-    def _verify_sqlite_integrity(db_file: Path) -> bool:
+    def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
         """Delegates to the module-level ``_verify_sqlite_integrity``.
 
         Kept as a method so callers and tests that reach for
@@ -354,7 +361,7 @@ class AnkimonDataSync:
         ``save_transfer`` can import the plain function without constructing an
         ``AnkimonDataSync`` (which needs a loaded Anki profile).
         """
-        return _verify_sqlite_integrity(db_file)
+        return _verify_sqlite_integrity(db_file, timeout=timeout)
 
     def _backup_before_overwrite(self, required_file: str = "ankimon.db") -> bool:
         """Timestamped backup of the local Ankimon DB(s) before an import

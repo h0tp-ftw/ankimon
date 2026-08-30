@@ -55,10 +55,25 @@ from ..utils import close_anki
 # users from the protected legacy name TO that unprotected one.
 MEDIA_SAVE_NAME = "_ankimon_save.db"
 
+# Developer mode keeps its own ``ankimonDEV.db``, and it needs its own protected
+# name too. Sharing one destination let a developer-mode run write dev data into
+# _ankimon_save.db, which _target_db_for then reads back as a NORMAL-partition
+# candidate (the name carries no "ankimonDEV"), so a test save could be ranked
+# against — and offered over — the real one. collection.media syncs, so the
+# contaminated file reached other devices as well.
+DEV_MEDIA_SAVE_NAME = "_ankimon_save_dev.db"
+
 # Bare names the removed feature (and its pre-SQLite ancestors) left behind in
 # collection.media. Only ``.db`` entries are candidates for rescue; the JSON
 # files predate the SQLite migration and are already imported into ankimon.db.
 LEGACY_MEDIA_DB_NAMES = ("ankimon.db", "ankimonDEV.db")
+
+# Config rows that are machine-local and must never ride along in an exported
+# save. The export exists to be carried to another computer (or handed to
+# someone else), and a full SQLite backup would otherwise take the user's
+# leaderboard credential with it. Only genuine secrets belong here — the
+# username is not one.
+EXPORT_EXCLUDED_CONFIG_KEYS = ("leaderboard.api_key",)
 
 # Set once per Anki PROFILE, not once per add-on install: ``user_files`` is
 # add-on-scoped and shared by every profile, while ``collection.media`` is
@@ -69,23 +84,42 @@ LEGACY_MEDIA_DB_NAMES = ("ankimon.db", "ankimonDEV.db")
 # backup of the save cannot rewind it and re-trigger the migration.
 _MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
 
-# True once a media sync has actually finished in THIS session, so the scan has
-# had a real chance to see files AnkiWeb delivered. Per session, not persisted:
-# the question it answers ("could this scan have seen a downloaded file?") is
-# only ever about the current run.
+# SETTLE POLICY — the one rule this migration turns on.
 #
-# This exists because of the boot ordering in aqt/main.py:
+# Settle (burn the per-profile one-shot) ONLY on a positive resolution: every
+# candidate that was discovered could be read, and the rescue reached a terminal
+# answer — declined, or not needed because the local save is already level.
 #
-#     gui_hooks.profile_did_open()          # :568 — our first scan runs here
-#     self.maybe_auto_sync_on_open_close(_onsuccess)   # :569 — the download starts here
+# Stay ARMED on every absence or uncertainty: an empty folder, a candidate that
+# would not open, an unreadable protected copy, or an accepted rescue (which
+# re-runs on the next boot and settles then).
 #
-# On a brand-new second device, ``collection.media`` already EXISTS (Anki creates
-# it with the profile) but is empty, because the peer's save arrives from the
-# sync that begins on the very next line. A scan that concluded "nothing here,
-# mark this profile done" would burn the one-shot flag permanently and the
-# arriving save would never be protected or offered as a rescue — for exactly
-# the two-device user the rescue exists to serve.
-_media_sync_completed_this_session = False
+# There is deliberately no "a media sync finished, so the folder has had its
+# chance" signal, because Anki does not offer one. In aqt/mediasync.py:77-86:
+#
+#     gui_hooks.media_sync_did_start_or_stop(False)   # :80 — fires FIRST
+#     exc = future.exception()                        # :82 — inspected AFTER
+#
+# the hook fires before Anki looks at the future, so False means "the worker
+# stopped", never "it succeeded" — a dropped network, a user abort and a
+# media-sync-disabled profile all raise the identical signal. Settling an empty
+# folder on it burned the one-shot for exactly the two-device user the rescue
+# exists to serve, and the process-global that carried it also leaked across
+# profile switches (Anki does not re-import add-on modules on a switch), so
+# profile B inherited profile A's "a sync finished" and settled before its own
+# download had landed.
+#
+# Staying armed costs almost nothing: an empty folder is three stat calls and a
+# glob, with no SQLite opens at all.
+
+# How long the AUTOMATIC migration will wait on a locked file. It runs on the
+# profile-open stack, so this is time Anki's startup is frozen — with the old
+# unset sqlite3 default (5 s) in _verify_sqlite_integrity, a single locked media
+# save stalled boot by 5.2 s measured. Failing fast is free here because a
+# skipped file leaves the migration armed and it is retried on the next pass.
+# User-initiated Export/Import keep the full 30 s, where waiting out a passing
+# lock is exactly what the user wants.
+MIGRATION_PROBE_TIMEOUT = 0.5
 
 # Reload safety, same pattern as the sync hook: the (hook, handler) pair this
 # module last registered, anchored on the services registry so it survives a
@@ -97,7 +131,7 @@ _MIGRATION_HOOK_RECORD = "_ankimon_media_migration_handlers"
 # Reading a save without opening it read-write
 # ---------------------------------------------------------------------------
 
-def get_db_stats(db_path: Path) -> Optional[Dict[str, Any]]:
+def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
     """Summarise an Ankimon save for side-by-side display.
 
     Returns ``None`` when the file cannot be read, so the caller can say
@@ -110,12 +144,18 @@ def get_db_stats(db_path: Path) -> Optional[Dict[str, Any]]:
     spaces or non-ASCII characters still resolves, with an explicit busy timeout
     — the default 5 s is easy to exceed while the live connection is mid-write,
     and a timeout here would otherwise look like a corrupt file.
+
+    ``timeout`` is generous (30 s) for the user-initiated Export/Import, where
+    waiting out a passing lock is exactly what the user wants. The automatic
+    migration passes ``MIGRATION_PROBE_TIMEOUT`` instead: it runs on the
+    profile-open stack, so it must fail fast and rescan later rather than freeze
+    Anki's startup on a locked file.
     """
     try:
         if not Path(db_path).is_file():
             return None
         uri = Path(db_path).resolve().as_uri() + "?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=30)
+        conn = sqlite3.connect(uri, uri=True, timeout=timeout)
     except Exception:
         return None
 
@@ -130,7 +170,7 @@ def get_db_stats(db_path: Path) -> Optional[Dict[str, Any]]:
     }
     try:
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout = 30000;")
+        conn.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)};")
         tables = {
             r[0]
             for r in conn.execute(
@@ -255,6 +295,64 @@ def _sqlite_backup(source: Path, dest: Path) -> None:
         src_conn.close()
 
 
+def _is_same_file(a: Path, b: Path) -> bool:
+    """True if ``a`` and ``b`` name the same file on disk.
+
+    ``resolve()`` catches the ordinary cases and works when the destination does
+    not exist yet; ``os.path.samefile`` additionally catches hard links and
+    aliases, but raises when either side is missing, so it only runs when both
+    do.
+    """
+    try:
+        if Path(a).resolve() == Path(b).resolve():
+            return True
+    except Exception:
+        pass
+    try:
+        if Path(a).exists() and Path(b).exists():
+            return os.path.samefile(str(a), str(b))
+    except Exception:
+        pass
+    return False
+
+
+def _strip_local_secrets(db_path: Path, logger=None) -> None:
+    """Remove machine-local credentials from a save that is about to travel.
+
+    The export is a full SQLite backup, and Ankimon's settings live in the same
+    database's ``config`` table (``settings.set`` → ``db.set_config_value``), so
+    without this the user's leaderboard API key rides along in a file whose
+    whole purpose is to be copied to another computer — or handed to someone
+    else. Runs on the temp copy, before verification, so the live save is never
+    touched and a failure discards the export rather than shipping the key.
+
+    The VACUUM is load-bearing, not tidiness. DELETE only unlinks the row; the
+    bytes stay in the freed page until something reuses it, so ``strings`` on
+    the exported file still recovers the key. VACUUM rebuilds the database and
+    drops the old pages with it.
+    """
+    conn = sqlite3.connect(str(db_path), timeout=30)
+    try:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "config" not in tables:
+            return
+        conn.execute("PRAGMA secure_delete = ON;")
+        conn.executemany(
+            "DELETE FROM config WHERE key = ?",
+            [(k,) for k in EXPORT_EXCLUDED_CONFIG_KEYS],
+        )
+        conn.commit()
+        conn.execute("VACUUM;")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def export_save(parent=None) -> bool:
     """Write the ACTIVE Ankimon save to a file the user chooses."""
     from .ankimon_sync import (
@@ -281,6 +379,21 @@ def export_save(parent=None) -> bool:
     if dest.suffix.lower() != ".db":
         dest = dest.with_suffix(".db")
 
+    # Refuse to export ONTO the live save. import_save has always guarded the
+    # mirror image of this; without it here, os.replace() swaps the pathname
+    # underneath the add-on's open SQLite connection — the handle keeps the old,
+    # now-unlinked inode while ankimon.db names a new file, so subsequent writes
+    # land where nothing will ever read them again (and on Windows it throws
+    # WinError 5 instead). Checked after the .db normalisation, since that is
+    # what can turn a different-looking choice into the same path.
+    if _is_same_file(dest, source):
+        showWarning(
+            "That is the save Ankimon is currently using.\n\nChoose a different "
+            "file or folder for the export — exporting onto the live save would "
+            "replace the file Ankimon has open."
+        )
+        return False
+
     # Build into a temp file beside the destination and move it into place only
     # after it verifies, so an interrupted or failed export can never leave a
     # half-written file the user might later import over a good save.
@@ -293,6 +406,7 @@ def export_save(parent=None) -> bool:
         # which it does happily, but an existing zero-byte file is fine as a
         # backup target.
         _sqlite_backup(source, tmp)
+        _strip_local_secrets(tmp)
 
         if not _verify_sqlite_integrity(tmp):
             showWarning(
@@ -456,11 +570,32 @@ def _target_db_for(candidate: Path) -> str:
     reverse, in developer mode). Compare like with like instead.
     """
     name = candidate.name
+    # The protected names are matched EXPLICITLY, before the substring test.
+    # "_ankimon_save_dev.db" carries no "ankimonDEV", so a substring check alone
+    # hands the developer partition's protected copy to the normal one.
+    if name == DEV_MEDIA_SAVE_NAME:
+        return "ankimonDEV.db"
+    if name == MEDIA_SAVE_NAME:
+        return "ankimon.db"
     return "ankimonDEV.db" if "ankimonDEV" in name else "ankimon.db"
 
 
-def _find_media_saves(media_dir: Path, target_db: str) -> list:
+def _protected_name_for(target_db: str) -> str:
+    """The protected filename belonging to ``target_db``'s partition.
+
+    Each partition gets its own, so a developer-mode run can never write test
+    progress into the name the normal-mode scan reads back.
+    """
+    return DEV_MEDIA_SAVE_NAME if target_db == "ankimonDEV.db" else MEDIA_SAVE_NAME
+
+
+def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
     """Every Ankimon save in collection.media belonging to ``target_db``.
+
+    Returns ``(candidates, unreadable)``. A file that exists but will not open
+    lands in ``unreadable`` rather than being silently dropped: it may be a real
+    save merely locked by another process this second, and the caller must stay
+    armed and rescan rather than settle as though the folder held nothing.
 
     The legacy underscore names are GLOBBED rather than reconstructed. The old
     code built them from ``Path(__file__).parents[2].name``, which is
@@ -471,6 +606,7 @@ def _find_media_saves(media_dir: Path, target_db: str) -> list:
     from .ankimon_sync import _verify_sqlite_integrity
 
     candidates = []
+    unreadable = []
     seen = set()
 
     def _add(path: Path):
@@ -483,7 +619,10 @@ def _find_media_saves(media_dir: Path, target_db: str) -> list:
         # Only ever touch a file that positively identifies as an Ankimon save.
         # Bare names like ankimon.db are specific enough, but the check also
         # guards against a same-named file another tool put there.
-        if not _verify_sqlite_integrity(path):
+        if not _verify_sqlite_integrity(path, timeout=MIGRATION_PROBE_TIMEOUT):
+            # Unreadable OR merely locked right now — either way this scan
+            # cannot judge it, so record that and let the caller stay armed.
+            unreadable.append(path)
             return
         seen.add(resolved)
         candidates.append(path)
@@ -493,6 +632,7 @@ def _find_media_saves(media_dir: Path, target_db: str) -> list:
         _add(media_dir / "ankimon.db")
         pattern = "_*_ankimon.db"
     else:
+        _add(media_dir / DEV_MEDIA_SAVE_NAME)
         _add(media_dir / "ankimonDEV.db")
         pattern = "_*_ankimonDEV.db"
 
@@ -504,7 +644,7 @@ def _find_media_saves(media_dir: Path, target_db: str) -> list:
                 _add(path)
     except Exception:
         pass
-    return candidates
+    return candidates, unreadable
 
 
 def _offer_rescue_later(protected: Path, target: Path) -> None:
@@ -592,33 +732,33 @@ def _notify_affected_user(logger) -> None:
 def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False) -> None:
     """Protect, and offer to rescue, whatever the removed sync left in media.
 
-    Runs once per Anki profile. Two jobs, in this order:
+    Runs until it RESOLVES for a profile, not merely once. Two jobs, in order:
 
-    1. **Protect.** Copy the best save found in ``collection.media`` to
-       ``_ankimon_save.db`` if that protected name does not already hold it.
-       Every name the old feature used except the pre-2024 legacy one lacks the
-       leading underscore, so today Anki's "Delete Unused Files" lists the user's
-       save and deletes it — and that deletion propagates to their other
-       devices. Nothing is deleted here; the unprotected copies are left where
-       they are, now harmlessly, because a protected copy exists.
+    1. **Protect.** Copy the best save found in ``collection.media`` to the
+       partition's protected name (``_ankimon_save.db``, or
+       ``_ankimon_save_dev.db`` in developer mode) if that name does not already
+       hold something at least as good. Every name the old feature used except
+       the pre-2024 legacy one lacks the leading underscore, so today Anki's
+       "Delete Unused Files" lists the user's save and deletes it — and that
+       deletion propagates to their other devices. Nothing is deleted here; the
+       unprotected copies are left where they are, now harmlessly, because a
+       protected copy exists.
 
     2. **Rescue.** If the media save is strictly further along than the local one
        on monotone counters, offer to import it. That is the only way a user who
        relied on the removed feature can get back progress that only ever made
        it to AnkiWeb. Declining is remembered, so this asks at most once.
 
-    Called twice per session: once from ``profile_did_open``, and again whenever
-    a media sync finishes (``after_media_sync=True``). The second call is what
-    makes this correct on a second device — see ``_media_sync_completed_this_session``
-    for why a scan before the first download must NOT conclude "nothing here".
+    Called from ``profile_did_open`` and again whenever the media-sync worker
+    stops (``after_media_sync=True``). That second signal is a RESCAN TRIGGER
+    only — Anki fires it before it inspects the future, so it says nothing about
+    whether the sync succeeded. See the SETTLE POLICY note at the top of this
+    module for what may and may not burn the one-shot flag.
 
     Any failure is logged and swallowed: this runs during profile open and must
     never be able to stop Ankimon from loading.
     """
-    global _media_sync_completed_this_session
-    if after_media_sync:
-        _media_sync_completed_this_session = True
-
+    del after_media_sync        # a rescan trigger; carries no success meaning
     try:
         if _migration_done():
             return
@@ -628,39 +768,67 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
 
         target = _active_db_path()
         target_db = Path(target).name if target else "ankimon.db"
-        saves = _find_media_saves(media_dir, target_db)
+        saves, unreadable = _find_media_saves(media_dir, target_db)
 
         if not saves:
-            # Only conclude "there was never anything here" once a media sync
-            # has actually completed this session. Before that, an empty folder
-            # on a second device just means the download has not landed yet.
-            if _media_sync_completed_this_session:
-                _settle(logger)
+            # An absence is never a resolution. The folder may simply not have
+            # received the peer's save yet — Anki gives no trustworthy "the
+            # download finished" signal (see the SETTLE POLICY note above) — so
+            # stay armed and rescan on the next boot or media-sync event.
+            #
+            # The removal notice is independent of that and is safe to run on
+            # every pass: it fires only for users who had the feature ON, and it
+            # deletes the config row it keys off, so it cannot repeat.
+            _notify_affected_user(logger)
             return
 
-        best = max(saves, key=lambda p: _progress_key(get_db_stats(p)))
+        protected = media_dir / _protected_name_for(target_db)
 
-        protected = media_dir / MEDIA_SAVE_NAME
+        # An existing protected copy that will not open is UNKNOWN, not empty.
+        # _progress_key floors it to (-1,-1,-1), so the old ranking let any
+        # readable candidate — including a badly stale one — win and overwrite
+        # it. A protected copy with a valid SQLite header and a damaged body is
+        # writable, so that overwrite really did destroy saves; only a file of
+        # pure garbage survived, and then only because SQLite refused the
+        # destination connection.
+        if protected.is_file() and get_db_stats(protected, timeout=MIGRATION_PROBE_TIMEOUT) is None:
+            logger.log(
+                "info",
+                f"Ankimon: {protected.name} could not be read this pass; leaving "
+                "it untouched and rescanning later.",
+            )
+            return
+
+        best = max(
+            saves,
+            key=lambda p: _progress_key(get_db_stats(p, timeout=MIGRATION_PROBE_TIMEOUT)),
+        )
+
         if best != protected:
-            # Never overwrite the protected copy with something that ranks no
-            # higher than it — including an unreadable protected copy, which
-            # _progress_key floors below everything and which a readable but
-            # stale candidate would otherwise replace.
-            if protected.is_file() and _progress_key(get_db_stats(protected)) >= _progress_key(get_db_stats(best)):
+            best_key = _progress_key(get_db_stats(best, timeout=MIGRATION_PROBE_TIMEOUT))
+            protected_key = _progress_key(
+                get_db_stats(protected, timeout=MIGRATION_PROBE_TIMEOUT)
+            )
+            # Both sides are known readable here, so this is a real comparison.
+            if protected.is_file() and protected_key >= best_key:
                 best = protected
             else:
                 try:
                     _sqlite_backup(best, protected)
                     logger.log(
                         "info",
-                        f"Ankimon: preserved {best.name} as {MEDIA_SAVE_NAME} "
+                        f"Ankimon: preserved {best.name} as {protected.name} "
                         "(protected from Anki's Delete Unused Files).",
                     )
                 except Exception as e:
                     logger.log("error", f"Could not preserve {best.name} in media: {e}")
+                    # The protected name was not written, so nothing here is
+                    # resolved. Rank against the candidate itself for the rescue
+                    # offer, but do not settle — retry the preserve next pass.
                     protected = best
+                    unreadable = list(unreadable) + [media_dir / _protected_name_for(target_db)]
 
-        media_stats = get_db_stats(protected)
+        media_stats = get_db_stats(protected, timeout=MIGRATION_PROBE_TIMEOUT)
         local_stats = get_db_stats(target) if target else None
 
         if target is not None and _progress_key(media_stats) > _progress_key(local_stats):
@@ -690,6 +858,19 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
                 _offer_rescue_later(protected, Path(target))
                 return
             # Declined: remember that, so this asks at most once.
+
+        if unreadable:
+            # Something in the folder exists but could not be judged this pass —
+            # a lock, or damage that may yet be repaired. Notify, but stay armed
+            # so a later scan can still protect and offer it.
+            _notify_affected_user(logger)
+            logger.log(
+                "info",
+                "Ankimon: "
+                + ", ".join(sorted(p.name for p in unreadable))
+                + " could not be read this pass; rescanning later.",
+            )
+            return
 
         _settle(logger)
     except Exception as e:

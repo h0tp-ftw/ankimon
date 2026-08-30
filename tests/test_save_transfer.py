@@ -478,7 +478,6 @@ def test_empty_media_at_profile_open_does_not_burn_the_one_shot(media, live_db, 
     """
     marked = MagicMock()
     monkeypatch.setattr(st, "_mark_migration_done", marked)
-    monkeypatch.setattr(st, "_media_sync_completed_this_session", False)
 
     st.run_media_migration(MagicMock(), logger)     # the profile_did_open scan
 
@@ -487,7 +486,6 @@ def test_empty_media_at_profile_open_does_not_burn_the_one_shot(media, live_db, 
 
 def test_peer_save_is_picked_up_on_the_post_sync_pass(media, live_db, logger, monkeypatch):
     """...and the post-media-sync pass is what actually finds it."""
-    monkeypatch.setattr(st, "_media_sync_completed_this_session", False)
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
@@ -502,16 +500,27 @@ def test_peer_save_is_picked_up_on_the_post_sync_pass(media, live_db, logger, mo
     ask.assert_called_once()                                    # and offered
 
 
-def test_empty_media_after_a_completed_sync_does_settle(media, live_db, logger, monkeypatch):
-    """The flag must still be reachable: once a media sync has completed and the
-    folder is genuinely empty, stop scanning on every launch."""
-    monkeypatch.setattr(st, "_media_sync_completed_this_session", False)
+def test_empty_media_never_settles_however_many_syncs_have_finished(
+    media, live_db, logger, monkeypatch
+):
+    """DELIBERATELY INVERTED from the behaviour this file first shipped.
+
+    It used to assert that an empty folder settles once a media sync has
+    "completed". There is no such signal: aqt/mediasync.py fires
+    media_sync_did_start_or_stop(False) at :80 and only inspects
+    future.exception() at :82, so the hook means "the worker stopped" and fires
+    identically on failure, on abort, and when media syncing is switched off.
+
+    Settling on it burned the one-shot for the two-device user the rescue exists
+    to serve. An absence is never a resolution; the scan costs three stat calls
+    and a glob, so staying armed is close to free."""
     marked = MagicMock()
     monkeypatch.setattr(st, "_mark_migration_done", marked)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    for _ in range(3):
+        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
 
-    marked.assert_called_once()
+    marked.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -641,6 +650,8 @@ def test_the_notice_never_breaks_the_migration(media, live_db, logger, monkeypat
     monkeypatch.setitem(sys.modules, "Ankimon.services", registry)
     marked = MagicMock()
     monkeypatch.setattr(st, "_mark_migration_done", marked)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+    _make_save(media / "ankimon.db", pokemon=1)   # a real, resolvable candidate
 
     st.run_media_migration(MagicMock(), logger, after_media_sync=True)
 
