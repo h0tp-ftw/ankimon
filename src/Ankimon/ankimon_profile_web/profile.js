@@ -201,7 +201,7 @@
         const frag = document.createDocumentFragment();
         grid.forEach((b) => {
             const cell = document.createElement('div');
-            cell.className = 'badge-cell' + (b.unlocked ? '' : ' locked');
+            cell.className = 'badge-cell' + (b.unlocked ? ' unlocked' : ' locked');
             cell.innerHTML = `
                 <img src="${BADGE_BASE}/${b.id}.png" alt="${esc(b.name)}"
                      onerror="this.onerror=null;this.src='${BADGE_BASE}/default.png';">

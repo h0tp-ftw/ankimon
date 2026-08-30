@@ -34,6 +34,7 @@ except ImportError:  # dev helper not landed yet (thread-reload-and-misc-utils u
 
 from ..resources import items_path, csv_file_items_cost, csv_file_descriptions
 
+
 class SafeWebEnginePage(QWebEnginePage):
     def __init__(self, profile, screen_name, logger, parent=None):
         """Initialize a web engine page with a screen identifier and optional logger."""
@@ -44,7 +45,7 @@ class SafeWebEnginePage(QWebEnginePage):
     def javaScriptConsoleMessage(self, level, message, line, source):
         """
         Forward JavaScript console messages to the configured logger with a severity level and screen identifier.
-        
+
         Parameters:
             level: JavaScript console message severity.
             message: Text emitted by JavaScript.
@@ -53,19 +54,28 @@ class SafeWebEnginePage(QWebEnginePage):
         """
         try:
             if self.logger:
-                if level == QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel:
+                if (
+                    level
+                    == QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel
+                ):
                     self.logger.log("info", f"[JS:{self.screen_name}] {message}")
-                elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel:
+                elif (
+                    level
+                    == QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel
+                ):
                     self.logger.log("warning", f"[JS:{self.screen_name}] {message}")
                 else:
                     self.logger.log("error", f"[JS:{self.screen_name}] {message}")
         except Exception:
             pass
 
+
 from ..functions.pokedex_functions import (
     find_details_move,
+    _ITEM_EVO_TRIGGERS,
     _load_pokedex_cache,
     check_evolution_by_item,
+    evolution_gender_allows,
     return_id_for_item_name,
 )
 from ..business import calculate_cp_from_dict
@@ -141,7 +151,6 @@ class NavBridge(QObject):
         self._w.load_screen(SCREEN_HISTORY)
 
 
-
 class TrainerBridge(QObject):
     """Profile-screen data + sprite-picker actions (delegates to ProfileData)."""
 
@@ -207,7 +216,9 @@ class TeamBridge(QObject):
                 raise ValueError("team payload must be a list")
         except (TypeError, ValueError) as e:
             return {"ok": False, "message": f"Invalid team payload: {e}"}
-        return self._w.profile_data.handle_save_team(team_ids, xp_share_id or None, companion_id or None)
+        return self._w.profile_data.handle_save_team(
+            team_ids, xp_share_id or None, companion_id or None
+        )
 
 
 class SettingsBridge(QObject):
@@ -334,6 +345,7 @@ class MobileBridge(QObject):
 
             # Read settings for cards_per_round
             from ..functions import mobile_sync
+
             settings_obj = services.settings
             cards_per_round, _ = mobile_sync._parse_cards_per_round(settings_obj)
 
@@ -343,7 +355,9 @@ class MobileBridge(QObject):
             # status load.
             resolved_battles = 0
             try:
-                cursor = db.execute("SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'")
+                cursor = db.execute(
+                    "SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'"
+                )
                 row = cursor.fetchone()
                 resolved_battles = int(row[0]) if row else 0
             except Exception:
@@ -368,7 +382,7 @@ class MobileBridge(QObject):
                 0: "Manual (Auto-Resolve)",
                 1: "Auto-Catch",
                 2: "Auto-Defeat",
-                3: "Catch Uncollected"
+                3: "Catch Uncollected",
             }
             auto_battle_val = 0
             try:
@@ -398,16 +412,21 @@ class MobileBridge(QObject):
             if main_pokemon is not None:
                 main_pokemon_name = main_pokemon.name
                 main_pokemon_level = main_pokemon.level
-                
+
                 from ..functions.sprite_functions import get_relative_sprite_path
+
                 main_pokemon_sprite = get_relative_sprite_path(
-                    main_pokemon.id, bool(main_pokemon.shiny), (main_pokemon.gender or "N"), main_pokemon.name, "gif"
+                    main_pokemon.id,
+                    bool(main_pokemon.shiny),
+                    (main_pokemon.gender or "N"),
+                    main_pokemon.name,
+                    "gif",
                 )
 
             if settings_obj is not None:
                 sprite_mode = settings_obj.get(
                     "ankidex.spriteMode",
-                    settings_obj.get("pokedex_v2.spriteMode", "static")
+                    settings_obj.get("pokedex_v2.spriteMode", "static"),
                 )
 
             # Trigger async estimates calculation if there are pending reviews
@@ -445,16 +464,19 @@ class MobileBridge(QObject):
                         for r in reviews_rows_thread
                     ]
                     if pending_count > len(reviews_list_thread):
-                        reviews_list_thread.extend([{"ease": 3}] * (pending_count - len(reviews_list_thread)))
+                        reviews_list_thread.extend(
+                            [{"ease": 3}] * (pending_count - len(reviews_list_thread))
+                        )
 
                     from ..functions.mobile_sync import simulate_pending_mobile_battles
+
                     return simulate_pending_mobile_battles(
                         reviews_list_thread,
                         main_pokemon,
                         settings_obj,
                         trainer_card,
                         ankimon_tracker_obj,
-                        ankimon_db=db
+                        ankimon_db=db,
                     )
 
                 def on_sim_success(sim_res):
@@ -491,10 +513,9 @@ class MobileBridge(QObject):
                     battle_count = estimates["encounters"]
                 else:
                     from aqt.operations import QueryOp
+
                     QueryOp(
-                        parent=self._w,
-                        op=run_sim,
-                        success=on_sim_success
+                        parent=self._w, op=run_sim, success=on_sim_success
                     ).without_collection().run_in_background()
 
             return {
@@ -516,10 +537,18 @@ class MobileBridge(QObject):
             }
         except Exception as e:
             import traceback
+
             logger = services.logger
             if logger:
-                logger.log("error", f"getMobileStatus failed: {e}\n{traceback.format_exc()}")
-            return {"error": str(e), "pending_count": 0, "pending_count_at_start": 0, "cap": 10000}
+                logger.log(
+                    "error", f"getMobileStatus failed: {e}\n{traceback.format_exc()}"
+                )
+            return {
+                "error": str(e),
+                "pending_count": 0,
+                "pending_count_at_start": 0,
+                "cap": 10000,
+            }
 
     @pyqtSlot(result="QVariant")
     def getMobileHistory(self) -> list:
@@ -549,9 +578,10 @@ class MobileBridge(QObject):
             with db._get_connection() as conn:
                 conn.execute(
                     "UPDATE pending_mobile_battles SET resolved=1, resolved_at=? WHERE resolved=0",
-                    (int(time.time() * 1000),)
+                    (int(time.time() * 1000),),
                 )
             from ..menu_buttons import update_mobile_badge
+
             update_mobile_badge(0)
             return {"dismissed": count_before, "success": True}
         except Exception as e:
@@ -584,6 +614,7 @@ class MobileBridge(QObject):
             return self._run_resolve_all()
         except Exception as e:
             import traceback
+
             logger = services.logger
             if logger:
                 logger.log("error", f"resolveAll failed: {e}\n{traceback.format_exc()}")
@@ -597,7 +628,7 @@ class MobileBridge(QObject):
         try:
             res = self._run_resolve_all(limit=limit)
             if isinstance(res, dict) and res.get("success"):
-                res["done"] = (services.db.get_pending_mobile_count() == 0)
+                res["done"] = services.db.get_pending_mobile_count() == 0
             return res
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -621,7 +652,7 @@ class MobileBridge(QObject):
             "xp_gained": 0,
             "caught_list": [],
             "done": False,
-            "error": None
+            "error": None,
         }
         self._bulk_paused = False
         self._bulk_stopped = False
@@ -648,6 +679,7 @@ class MobileBridge(QObject):
                             self._bulk_progress["total"] = total
 
                     import time
+
                     # GIL yield / rate limit (Bug 2). The per-review battle
                     # simulation is CPU-bound pure Python that holds the GIL; on a
                     # plain worker thread it starves the Qt GUI thread, so the
@@ -663,7 +695,9 @@ class MobileBridge(QObject):
                         time.sleep(0.003)
                         self._bulk_last_yield = time.monotonic()
 
-                    while getattr(self, "_bulk_paused", False) and not getattr(self, "_bulk_stopped", False):
+                    while getattr(self, "_bulk_paused", False) and not getattr(
+                        self, "_bulk_stopped", False
+                    ):
                         time.sleep(0.1)
 
                     if getattr(self, "_bulk_stopped", False):
@@ -679,25 +713,32 @@ class MobileBridge(QObject):
                     logger=services.logger,
                     day_cutoff=day_cutoff,
                     limit=None,
-                    progress_callback=progress_cb
+                    progress_callback=progress_cb,
                 )
                 if res:
                     if not res.get("success", True):
-                        raise Exception(res.get("error", "Unknown error in background resolve"))
+                        raise Exception(
+                            res.get("error", "Unknown error in background resolve")
+                        )
                     self._bulk_progress["processed"] = res.get("reviews_processed", 0)
                     self._bulk_progress["resolved"] = res.get("resolved", 0)
                     self._bulk_progress["catches"] = res.get("catches", 0)
                     self._bulk_progress["cash_gained"] = res.get("cash_gained", 0)
-                    self._bulk_progress["trainer_xp_gained"] = res.get("trainer_xp_gained", 0)
+                    self._bulk_progress["trainer_xp_gained"] = res.get(
+                        "trainer_xp_gained", 0
+                    )
                     self._bulk_progress["xp_gained"] = res.get("xp_gained", 0)
                     if res.get("caught_list"):
                         self._bulk_progress["caught_list"] = res.get("caught_list")
 
             except Exception as e:
                 import traceback
+
                 logger = services.logger
                 if logger:
-                    logger.log("error", f"bg_resolve failed: {e}\n{traceback.format_exc()}")
+                    logger.log(
+                        "error", f"bg_resolve failed: {e}\n{traceback.format_exc()}"
+                    )
                 self._bulk_progress["error"] = f"{str(e)}\n{traceback.format_exc()}"
             finally:
                 self._bulk_progress["done"] = True
@@ -719,7 +760,9 @@ class MobileBridge(QObject):
 
     @pyqtSlot(result="QVariant")
     def getBulkResolveProgress(self) -> dict:
-        progress = getattr(self, "_bulk_progress", {"done": True, "processed": 0, "total": 0}).copy()
+        progress = getattr(
+            self, "_bulk_progress", {"done": True, "processed": 0, "total": 0}
+        ).copy()
         progress["paused"] = getattr(self, "_bulk_paused", False)
         # If it just finished, perform safe main-thread refreshes!
         if progress.get("done") and not getattr(self, "_bulk_refreshed", False):
@@ -731,13 +774,16 @@ class MobileBridge(QObject):
                 # Refresh active companion
                 if services.main_pokemon:
                     from ..functions.update_main_pokemon import update_main_pokemon
+
                     update_main_pokemon(services.main_pokemon)
                 # Update mobile badge safely on main thread
                 try:
                     remaining = services.db.get_pending_mobile_count()
                     from ..menu_buttons import update_mobile_badge
+
                     update_mobile_badge(remaining)
-                except Exception: pass
+                except Exception:
+                    pass
                 # Live-refresh whatever screen is showing (self._w IS the shell
                 # window) and emit the seam signal for any cross-cutting
                 # listeners — replaces exp's singletons.notify_stats_changed().
@@ -745,10 +791,15 @@ class MobileBridge(QObject):
                 events.emit("stats_changed")
             except Exception as e:
                 import traceback
+
                 logger = services.logger
                 if logger:
-                    logger.log("error", f"Error refreshing singletons after bulk resolve: {e}\n{traceback.format_exc()}")
+                    logger.log(
+                        "error",
+                        f"Error refreshing singletons after bulk resolve: {e}\n{traceback.format_exc()}",
+                    )
         return progress
+
     @pyqtSlot(str, result="QVariant")
     def resolveNext(self, companion_id: str = "") -> dict:
         try:
@@ -775,16 +826,18 @@ class MobileBridge(QObject):
                     trainer_card=trainer_card,
                     main_pokemon=main_pokemon,
                     logger=services.logger,
-                    day_cutoff=day_cutoff
+                    day_cutoff=day_cutoff,
                 )
                 if isinstance(res, dict) and "current_pending_outcome" in res:
                     outcome = res["current_pending_outcome"]
                     if outcome:
-                        outcome.update({
-                            "main_pokemon": main_pokemon,
-                            "trainer_card": trainer_card,
-                            "settings_obj": settings_obj,
-                        })
+                        outcome.update(
+                            {
+                                "main_pokemon": main_pokemon,
+                                "trainer_card": trainer_card,
+                                "settings_obj": settings_obj,
+                            }
+                        )
                     self._current_pending_outcome = outcome
                     return res["result"]
                 return res
@@ -800,39 +853,46 @@ class MobileBridge(QObject):
                         trainer_card=trainer_card,
                         main_pokemon=main_pokemon,
                         logger=services.logger,
-                        day_cutoff=day_cutoff
+                        day_cutoff=day_cutoff,
                     )
 
                 def on_sim_success(sim_res):
-                    if isinstance(sim_res, dict) and "current_pending_outcome" in sim_res:
+                    if (
+                        isinstance(sim_res, dict)
+                        and "current_pending_outcome" in sim_res
+                    ):
                         outcome = sim_res["current_pending_outcome"]
                         if outcome:
-                            outcome.update({
-                                "main_pokemon": main_pokemon,
-                                "trainer_card": trainer_card,
-                                "settings_obj": settings_obj,
-                            })
+                            outcome.update(
+                                {
+                                    "main_pokemon": main_pokemon,
+                                    "trainer_card": trainer_card,
+                                    "settings_obj": settings_obj,
+                                }
+                            )
                         self._current_pending_outcome = outcome
                         result_data = sim_res["result"]
                     else:
                         result_data = sim_res
 
                     import json
+
                     js = f"if (window.onResolveNextReady) {{ window.onResolveNextReady({json.dumps(result_data)}); }}"
                     self._w.webview_mobile.page().runJavaScript(js)
 
                 QueryOp(
-                    parent=self._w,
-                    op=run_sim,
-                    success=on_sim_success
+                    parent=self._w, op=run_sim, success=on_sim_success
                 ).without_collection().run_in_background()
 
                 return {"loading": True}
         except Exception as e:
             import traceback
+
             logger = services.logger
             if logger:
-                logger.log("error", f"resolveNext failed: {e}\n{traceback.format_exc()}")
+                logger.log(
+                    "error", f"resolveNext failed: {e}\n{traceback.format_exc()}"
+                )
             return {"success": False, "error": str(e)}
 
     @pyqtSlot(str, result="QVariant")
@@ -859,16 +919,20 @@ class MobileBridge(QObject):
                 trainer_card=trainer_card,
                 main_pokemon=main_pokemon,
                 achievements_dict=achievements_dict,
-                logger=logger
+                logger=logger,
             )
             if res.get("success"):
                 self._current_pending_outcome = None
             return res
         except Exception as e:
             import traceback
+
             logger = services.logger
             if logger:
-                logger.log("error", f"commitReplayOutcome failed: {e}\n{traceback.format_exc()}")
+                logger.log(
+                    "error",
+                    f"commitReplayOutcome failed: {e}\n{traceback.format_exc()}",
+                )
             return {"success": False, "error": str(e)}
 
     @pyqtSlot(str, result="QVariant")
@@ -896,7 +960,11 @@ class MobileBridge(QObject):
             db = services.db
             team_rows = db.get_team()
             settings_obj = services.settings
-            inactive = set(settings_obj.get("mobile.inactive_companions", [])) if settings_obj else set()
+            inactive = (
+                set(settings_obj.get("mobile.inactive_companions", []))
+                if settings_obj
+                else set()
+            )
             from ..functions.sprite_functions import get_relative_sprite_path
 
             team_list = []
@@ -906,6 +974,7 @@ class MobileBridge(QObject):
                     data = db.get_pokemon(ind_id)
                     if data:
                         from ..pyobj.pokemon_obj import PokemonObject
+
                         pkmn = PokemonObject(**data)
                         name = pkmn.display_name
                         level = data.get("level", 5)
@@ -915,18 +984,22 @@ class MobileBridge(QObject):
                         pkmn_type = data.get("type", ["Normal"])
                         if isinstance(pkmn_type, str):
                             pkmn_type = [pkmn_type]
-                        
-                        sprite_path = get_relative_sprite_path(pkmn_id, shiny, gender, pkmn.name, "gif")
+
+                        sprite_path = get_relative_sprite_path(
+                            pkmn_id, shiny, gender, pkmn.name, "gif"
+                        )
                         is_inactive = ind_id in inactive
 
-                        team_list.append({
-                            "individual_id": ind_id,
-                            "name": name,
-                            "level": level,
-                            "sprite_path": sprite_path,
-                            "type": pkmn_type,
-                            "inactive": is_inactive
-                        })
+                        team_list.append(
+                            {
+                                "individual_id": ind_id,
+                                "name": name,
+                                "level": level,
+                                "sprite_path": sprite_path,
+                                "type": pkmn_type,
+                                "inactive": is_inactive,
+                            }
+                        )
 
             return {"team": team_list, "inactive": list(inactive)}
         except Exception as e:
@@ -939,8 +1012,10 @@ class MobileBridge(QObject):
         """
         try:
             from aqt import mw
+
             if hasattr(mw, "onSync"):
                 from aqt.qt import QTimer
+
                 QTimer.singleShot(0, mw.onSync)
                 return {"success": True}
             else:
@@ -950,8 +1025,16 @@ class MobileBridge(QObject):
 
 
 class AnkimonItemsWeb(QDialog):
-    def __init__(self, addon_dir, shop_manager, item_window, ankimon_tracker,
-                 trainer_card=None, settings_obj=None, logger=None):
+    def __init__(
+        self,
+        addon_dir,
+        shop_manager,
+        item_window,
+        ankimon_tracker,
+        trainer_card=None,
+        settings_obj=None,
+        logger=None,
+    ):
         """
         Initialize the persistent web-based Ankimon interface and its data bridges.
 
@@ -1026,25 +1109,47 @@ class AnkimonItemsWeb(QDialog):
         frame.layout().addWidget(self.stack)
 
         self.webview_items = QWebEngineView()
-        self.webview_items.setPage(SafeWebEnginePage(self.profile, SCREEN_ITEMS, logger, self.webview_items))
+        self.webview_items.setPage(
+            SafeWebEnginePage(self.profile, SCREEN_ITEMS, logger, self.webview_items)
+        )
 
         self.webview_ankidex = QWebEngineView()
-        self.webview_ankidex.setPage(SafeWebEnginePage(self.profile, SCREEN_ANKIDEX, logger, self.webview_ankidex))
+        self.webview_ankidex.setPage(
+            SafeWebEnginePage(
+                self.profile, SCREEN_ANKIDEX, logger, self.webview_ankidex
+            )
+        )
 
         self.webview_settings = QWebEngineView()
-        self.webview_settings.setPage(SafeWebEnginePage(self.profile, SCREEN_SETTINGS, logger, self.webview_settings))
+        self.webview_settings.setPage(
+            SafeWebEnginePage(
+                self.profile, SCREEN_SETTINGS, logger, self.webview_settings
+            )
+        )
 
         self.webview_profile = QWebEngineView()
-        self.webview_profile.setPage(SafeWebEnginePage(self.profile, SCREEN_PROFILE, logger, self.webview_profile))
+        self.webview_profile.setPage(
+            SafeWebEnginePage(
+                self.profile, SCREEN_PROFILE, logger, self.webview_profile
+            )
+        )
 
         self.webview_team = QWebEngineView()
-        self.webview_team.setPage(SafeWebEnginePage(self.profile, SCREEN_TEAM, logger, self.webview_team))
+        self.webview_team.setPage(
+            SafeWebEnginePage(self.profile, SCREEN_TEAM, logger, self.webview_team)
+        )
 
         self.webview_mobile = QWebEngineView()
-        self.webview_mobile.setPage(SafeWebEnginePage(self.profile, SCREEN_MOBILE, logger, self.webview_mobile))
+        self.webview_mobile.setPage(
+            SafeWebEnginePage(self.profile, SCREEN_MOBILE, logger, self.webview_mobile)
+        )
 
         self.webview_history = QWebEngineView()
-        self.webview_history.setPage(SafeWebEnginePage(self.profile, SCREEN_HISTORY, logger, self.webview_history))
+        self.webview_history.setPage(
+            SafeWebEnginePage(
+                self.profile, SCREEN_HISTORY, logger, self.webview_history
+            )
+        )
         self._views = {
             SCREEN_ITEMS: self.webview_items,
             SCREEN_ANKIDEX: self.webview_ankidex,
@@ -1078,7 +1183,6 @@ class AnkimonItemsWeb(QDialog):
             if screen in (SCREEN_MOBILE, SCREEN_HISTORY):
                 channel.registerObject("mobile", self._mobile_bridge)
             view.page().setWebChannel(channel)
-
 
             view.loadFinished.connect(
                 lambda ok, s=screen: self._on_screen_load_finished(ok, s)
@@ -1157,7 +1261,9 @@ class AnkimonItemsWeb(QDialog):
         if not ok:
             return
         self.ready_screens.add(screen)
-        settings_obj = self.shop_manager.settings_obj if self.shop_manager is not None else None
+        settings_obj = (
+            self.shop_manager.settings_obj if self.shop_manager is not None else None
+        )
         if settings_obj is not None and screen in SPRITE_VISIBILITY_SCREENS:
             self._apply_sprite_visibility(
                 settings_obj.get("gui.show_sprites_across_ankimon", True),
@@ -1243,7 +1349,9 @@ class AnkimonItemsWeb(QDialog):
             self.webview_profile.page().runJavaScript(js)
         elif self.current_screen == SCREEN_TEAM:
             data = self.profile_data.get_team_data()
-            js = f"if (window.initializeTeam) window.initializeTeam({json.dumps(data)});"
+            js = (
+                f"if (window.initializeTeam) window.initializeTeam({json.dumps(data)});"
+            )
             self.webview_team.page().runJavaScript(js)
         elif self.current_screen == SCREEN_MOBILE:
             data = self._mobile_bridge.getMobileStatus()
@@ -1324,7 +1432,9 @@ class AnkimonItemsWeb(QDialog):
             try:
                 db = services.db
                 count = db.get_pending_mobile_count() if db is not None else 0
-                active_view.page().runJavaScript(f"if (window.updateNavSwitcherUnresolvedCount) window.updateNavSwitcherUnresolvedCount({count});")
+                active_view.page().runJavaScript(
+                    f"if (window.updateNavSwitcherUnresolvedCount) window.updateNavSwitcherUnresolvedCount({count});"
+                )
             except Exception:
                 pass
 
@@ -1336,7 +1446,10 @@ class AnkimonItemsWeb(QDialog):
         except Exception as e:
             logger = services.logger
             if logger:
-                logger.log("error", f"[Ankimon] live refresh failed ({self.current_screen}): {e}")
+                logger.log(
+                    "error",
+                    f"[Ankimon] live refresh failed ({self.current_screen}): {e}",
+                )
 
     def _push_profile_live(self):
         """Push a full Profile refresh (cash, caught, Pokédex, shinies, highest,
@@ -1474,7 +1587,11 @@ class AnkimonItemsWeb(QDialog):
     def handle_get_caught_pokemon(self):
         """Get the list of caught/collected Pokémon for the quick-add panel."""
         from ..utils import load_collected_pokemon_ids
-        from ..functions.pokedex_functions import _load_pokedex_cache, search_pokedex_by_id, get_pretty_name_for_id
+        from ..functions.pokedex_functions import (
+            _load_pokedex_cache,
+            search_pokedex_by_id,
+            get_pretty_name_for_id,
+        )
 
         caught_ids = load_collected_pokemon_ids()
         results = []
@@ -1484,10 +1601,12 @@ class AnkimonItemsWeb(QDialog):
             internal_name = search_pokedex_by_id(pid)
             if internal_name and internal_name != "Pokémon not found":
                 pretty_name = get_pretty_name_for_id(pid)
-                results.append({
-                    "id": int(pid),
-                    "name": pretty_name,
-                })
+                results.append(
+                    {
+                        "id": int(pid),
+                        "name": pretty_name,
+                    }
+                )
         # Sort by name alphabetically
         results.sort(key=lambda r: r["name"].lower())
         return {"results": results}
@@ -1541,14 +1660,19 @@ class AnkimonItemsWeb(QDialog):
                 if held:
                     if held not in equipped_by_map:
                         equipped_by_map[held] = []
-                    equipped_by_map[held].append({
-                        "name": pkm.get("name", "Unknown"),
-                        "individual_id": pkm.get("individual_id")
-                    })
+                    equipped_by_map[held].append(
+                        {
+                            "name": pkm.get("name", "Unknown"),
+                            "individual_id": pkm.get("individual_id"),
+                        }
+                    )
         except Exception as e:
             logger = services.logger
             if logger:
-                logger.log("error", f"[Ankimon] get_all_pokemon failed in _get_mart_and_bag_data: {e}")
+                logger.log(
+                    "error",
+                    f"[Ankimon] get_all_pokemon failed in _get_mart_and_bag_data: {e}",
+                )
 
         owned_index = {}
         for row in owned_rows:
@@ -1561,7 +1685,11 @@ class AnkimonItemsWeb(QDialog):
                 "category_id": row.get("category_id"),
             }
 
-        all_names = sorted(set(shop_index.keys()) | set(owned_index.keys()) | set(equipped_by_map.keys()))
+        all_names = sorted(
+            set(shop_index.keys())
+            | set(owned_index.keys())
+            | set(equipped_by_map.keys())
+        )
 
         items = []
         for name in all_names:
@@ -1618,7 +1746,14 @@ class AnkimonItemsWeb(QDialog):
         return {"ok": True}
 
     def _serialize_item(
-        self, name, is_tm, in_shop, shop_price, item_type, owned_quantity, equipped_instances=None
+        self,
+        name,
+        is_tm,
+        in_shop,
+        shop_price,
+        item_type,
+        owned_quantity,
+        equipped_instances=None,
     ):
         ui_name = name.replace("-", " ").title()
         entry = {
@@ -1688,7 +1823,9 @@ class AnkimonItemsWeb(QDialog):
             return None
         try:
             settings = self.shop_manager.settings_obj
-            lang = int(settings.get("misc.language") or 9) if settings is not None else 9
+            lang = (
+                int(settings.get("misc.language") or 9) if settings is not None else 9
+            )
         except (TypeError, ValueError, AttributeError):
             lang = 9
         if lang == 14:  # es_latam → fall back to es per legacy behaviour
@@ -1785,15 +1922,17 @@ class AnkimonItemsWeb(QDialog):
         # Compute new stock + write to DB first; only deduct cash once the
         # write succeeds. Otherwise a DB failure could swallow the reroll
         # cost with nothing to show for it.
-        from ..pyobj.ankimon_shop import DAILY_ITEMS_POOL
+        from ..pyobj.ankimon_shop import get_daily_items_pool
+
+        daily_items_pool = get_daily_items_pool()
 
         random.seed()
         # Clamp sample sizes — random.sample raises if asked for more entries
         # than the pool contains, which would crash the bridge call.
         tm_pool = sm.get_tm_pool()
-        num_items = min(sm.number_of_daily_items, len(DAILY_ITEMS_POOL))
+        num_items = min(sm.number_of_daily_items, len(daily_items_pool))
         num_tms = min(sm.number_of_daily_items, len(tm_pool))
-        new_items = random.sample(DAILY_ITEMS_POOL, num_items)
+        new_items = random.sample(daily_items_pool, num_items)
         new_tms = random.sample(tm_pool, num_tms)
 
         try:
@@ -1852,7 +1991,7 @@ class AnkimonItemsWeb(QDialog):
         is_evo_item = False
         if item_name:
             # We assume non-TM here; if it was a TM, useItemOnPokemon wouldn't be called.
-            is_evo_item = (self._categorize(item_name, False) == "evolution")
+            is_evo_item = self._categorize(item_name, False) == "evolution"
 
         cached = getattr(self, "_pokemon_choices_cache", None)
         # If not an evolution item, we can safely return the base cache (if it exists).
@@ -1865,7 +2004,10 @@ class AnkimonItemsWeb(QDialog):
         except Exception as e:
             logger = services.logger
             if logger:
-                logger.log("error", f"[Ankimon] get_pokemon_choices: get_all_pokemon failed: {e}")
+                logger.log(
+                    "error",
+                    f"[Ankimon] get_pokemon_choices: get_all_pokemon failed: {e}",
+                )
             return {"choices": []}
 
         # Active Pokémon's individual_id (so we can flag it in the UI).
@@ -1886,97 +2028,168 @@ class AnkimonItemsWeb(QDialog):
 
         choices = []
         for data in pokemons:
-          try:
-            if not isinstance(data, dict):
+            try:
+                if not isinstance(data, dict):
+                    continue
+                individual_id = data.get("individual_id")
+                pokedex_id = data.get("id")
+                name = data.get("name")
+                if not individual_id or not name:
+                    continue
+
+                nickname = (data.get("nickname") or "").strip()
+                held_item = data.get("held_item") or ""
+                level = data.get("level")
+                shiny = bool(data.get("shiny"))
+                is_main = bool(
+                    main_individual_id and individual_id == main_individual_id
+                )
+
+                # Resolve internal name using the optimized pokedex index
+                internal_name = search_pokedex_by_id(pokedex_id)
+                p_details = pokedex_data.get(internal_name)
+
+                # Sprite fallback: get base species_id
+                base_id = pokedex_id
+                if p_details:
+                    base_id = p_details.get("species_id") or pokedex_id
+
+                entry = {
+                    "id": individual_id,
+                    "p": pokedex_id or 0,
+                    "b": base_id or 0,
+                    "n": name,
+                    "l": int(level) if level is not None else None,
+                    "cp": calculate_cp_from_dict(data),
+                }
+                if shiny:
+                    entry["s"] = 1
+                if is_main:
+                    entry["m"] = 1
+                if held_item:
+                    entry["h"] = held_item
+                if nickname and nickname.lower() != (name or "").lower():
+                    entry["nk"] = nickname
+
+                # Evolution eligibility (Optimized inline to avoid file I/O)
+                if is_evo_item and item_name and p_details:
+                    # Gender gate, through the SAME helper check_evolution_by_item
+                    # uses: Gallade needs a male Kirlia, Froslass a female
+                    # Snorunt. Without it this picker flags a Pokemon that
+                    # Check_Evo_Item then refuses — and shop.js filters the list
+                    # to e === 1, so the player is offered the one candidate the
+                    # actual use will turn down. Sharing the helper is what keeps
+                    # the two verdicts from drifting; the CSV lookup behind it is
+                    # lru_cached, so the picker stays free of per-row file I/O.
+                    pokemon_gender = data.get("gender")
+                    evo_list = p_details.get("evos")
+                    if evo_list:
+                        for target_evo_name in evo_list:
+                            normalized_target = (
+                                target_evo_name.lower()
+                                .replace(" ", "")
+                                .replace("-", "")
+                                .replace("'", "")
+                                .replace(".", "")
+                                .replace(":", "")
+                            )
+                            target_data = pokedex_data.get(
+                                normalized_target
+                            ) or pokedex_data.get(target_evo_name.lower())
+
+                            if target_data and target_data.get("evoType") in (
+                                "useItem",
+                                "trade",
+                            ):
+                                if not evolution_gender_allows(
+                                    target_data, pokemon_gender, _ITEM_EVO_TRIGGERS
+                                ):
+                                    continue
+
+                                # "trade" belongs here alongside "useItem": Ankimon has no
+                                # trading, so the trade-with-held-item species (Rhydon ->
+                                # Rhyperior via Protector, Onix -> Steelix via Metal Coat,
+                                # Seadra -> Kingdra via Dragon Scale, ...) are evolved by
+                                # applying the item directly. Omitting it hid every one of
+                                # them from this picker, which shop.js filters to e === 1.
+                                #
+                                # Normalize both sides by stripping spaces, hyphens and
+                                # apostrophes so pokedex.json display names (e.g.
+                                # "King's Rock") match items.csv identifiers (e.g.
+                                # "kings-rock"), which drop the apostrophe. Mirrors the
+                                # canonical logic in functions/pokedex_functions.py.
+                                required_item = (
+                                    (target_data.get("evoItem") or "")
+                                    .lower()
+                                    .replace(" ", "")
+                                    .replace("-", "")
+                                    .replace("'", "")
+                                )
+                                normalized_item_name = (
+                                    (item_name or "")
+                                    .lower()
+                                    .replace(" ", "")
+                                    .replace("-", "")
+                                    .replace("'", "")
+                                )
+                                if required_item == normalized_item_name:
+                                    target_region = target_data.get("evoRegion")
+
+                                    if target_region:
+                                        if (
+                                            active_region
+                                            and active_region.lower()
+                                            == target_region.lower()
+                                        ):
+                                            entry["e"] = 1
+                                            break
+                                    else:
+                                        # Standard form is only allowed if there is no regional sibling for this region/method
+                                        has_matching_regional_sibling = False
+                                        for sibling_name in evo_list:
+                                            sib_norm = (
+                                                sibling_name.lower()
+                                                .replace(" ", "")
+                                                .replace("-", "")
+                                                .replace("'", "")
+                                                .replace(".", "")
+                                                .replace(":", "")
+                                            )
+                                            sib_data = pokedex_data.get(
+                                                sib_norm
+                                            ) or pokedex_data.get(sibling_name.lower())
+                                            if (
+                                                sib_data
+                                                and sib_data.get("evoRegion")
+                                                and active_region
+                                                and sib_data.get("evoRegion").lower()
+                                                == active_region.lower()
+                                            ):
+                                                if (
+                                                    sib_data.get("evoType")
+                                                    == target_data.get("evoType")
+                                                    and (
+                                                        sib_data.get("evoItem") or ""
+                                                    ).lower()
+                                                    == (
+                                                        target_data.get("evoItem") or ""
+                                                    ).lower()
+                                                ):
+                                                    has_matching_regional_sibling = True
+                                                    break
+                                        if not has_matching_regional_sibling:
+                                            entry["e"] = 1
+                                            break
+
+                choices.append(entry)
+            except Exception as e:
+                logger = services.logger
+                if logger:
+                    logger.log(
+                        "error",
+                        f"[Ankimon] get_pokemon_choices: skipping malformed record: {e}",
+                    )
                 continue
-            individual_id = data.get("individual_id")
-            pokedex_id = data.get("id")
-            name = data.get("name")
-            if not individual_id or not name:
-                continue
-
-            nickname = (data.get("nickname") or "").strip()
-            held_item = data.get("held_item") or ""
-            level = data.get("level")
-            shiny = bool(data.get("shiny"))
-            is_main = bool(main_individual_id and individual_id == main_individual_id)
-
-            # Resolve internal name using the optimized pokedex index
-            internal_name = search_pokedex_by_id(pokedex_id)
-            p_details = pokedex_data.get(internal_name)
-
-            # Sprite fallback: get base species_id
-            base_id = pokedex_id
-            if p_details:
-                base_id = p_details.get("species_id") or pokedex_id
-
-            entry = {
-                "id": individual_id,
-                "p": pokedex_id or 0,
-                "b": base_id or 0,
-                "n": name,
-                "l": int(level) if level is not None else None,
-                "cp": calculate_cp_from_dict(data),
-            }
-            if shiny:
-                entry["s"] = 1
-            if is_main:
-                entry["m"] = 1
-            if held_item:
-                entry["h"] = held_item
-            if nickname and nickname.lower() != (name or "").lower():
-                entry["nk"] = nickname
-
-            # Evolution eligibility (Optimized inline to avoid file I/O)
-            if is_evo_item and item_name and p_details:
-                evo_list = p_details.get("evos")
-                if evo_list:
-                    for target_evo_name in evo_list:
-                        normalized_target = target_evo_name.lower().replace(" ", "").replace("-", "").replace("'", "").replace(".", "").replace(":", "")
-                        target_data = pokedex_data.get(normalized_target) or pokedex_data.get(target_evo_name.lower())
-
-                        if target_data and target_data.get("evoType") in ("useItem", "trade"):
-                            # "trade" belongs here alongside "useItem": Ankimon has no
-                            # trading, so the trade-with-held-item species (Rhydon ->
-                            # Rhyperior via Protector, Onix -> Steelix via Metal Coat,
-                            # Seadra -> Kingdra via Dragon Scale, ...) are evolved by
-                            # applying the item directly. Omitting it hid every one of
-                            # them from this picker, which shop.js filters to e === 1.
-                            #
-                            # Normalize both sides by stripping spaces, hyphens and
-                            # apostrophes so pokedex.json display names (e.g.
-                            # "King's Rock") match items.csv identifiers (e.g.
-                            # "kings-rock"), which drop the apostrophe. Mirrors the
-                            # canonical logic in functions/pokedex_functions.py.
-                            required_item = (target_data.get("evoItem") or "").lower().replace(" ", "").replace("-", "").replace("'", "")
-                            normalized_item_name = (item_name or "").lower().replace(" ", "").replace("-", "").replace("'", "")
-                            if required_item == normalized_item_name:
-                                target_region = target_data.get("evoRegion")
-
-                                if target_region:
-                                    if active_region and active_region.lower() == target_region.lower():
-                                        entry["e"] = 1
-                                        break
-                                else:
-                                    # Standard form is only allowed if there is no regional sibling for this region/method
-                                    has_matching_regional_sibling = False
-                                    for sibling_name in evo_list:
-                                        sib_norm = sibling_name.lower().replace(" ", "").replace("-", "").replace("'", "").replace(".", "").replace(":", "")
-                                        sib_data = pokedex_data.get(sib_norm) or pokedex_data.get(sibling_name.lower())
-                                        if sib_data and sib_data.get("evoRegion") and active_region and sib_data.get("evoRegion").lower() == active_region.lower():
-                                            if sib_data.get("evoType") == target_data.get("evoType") and (sib_data.get("evoItem") or "").lower() == (target_data.get("evoItem") or "").lower():
-                                                has_matching_regional_sibling = True
-                                                break
-                                    if not has_matching_regional_sibling:
-                                        entry["e"] = 1
-                                        break
-
-            choices.append(entry)
-          except Exception as e:
-            logger = services.logger
-            if logger:
-                logger.log("error", f"[Ankimon] get_pokemon_choices: skipping malformed record: {e}")
-            continue
 
         # Eligible first, then active first, then level (high → low), then alphabetical.
         choices.sort(
@@ -1992,6 +2205,7 @@ class AnkimonItemsWeb(QDialog):
         if not is_evo_item:
             self._pokemon_choices_cache = result
         return result
+
     def handle_use_with_target(self, item_name, individual_id):
         """Apply an item to a specific Pokémon (chosen via the in-shell
         picker). Bypasses dispatch_use's QInputDialog branches by calling
@@ -2021,11 +2235,19 @@ class AnkimonItemsWeb(QDialog):
                 except Exception as e:
                     logger = services.logger
                     if logger:
-                        logger.log("error", f"[Ankimon] get_pokemon({individual_id}) failed: {e}")
+                        logger.log(
+                            "error",
+                            f"[Ankimon] get_pokemon({individual_id}) failed: {e}",
+                        )
                 pokedex_id = (pokemon_data or {}).get("id")
                 if not pokedex_id:
                     return {"ok": False, "message": "Could not look up that Pokémon."}
-                bag.Check_Evo_Item(individual_id, pokedex_id, item_name)
+                # Hand the record over rather than let Check_Evo_Item re-read it
+                # for the gender gate: one query, and the id and the gender are
+                # guaranteed to come from the same snapshot.
+                bag.Check_Evo_Item(
+                    individual_id, pokedex_id, item_name, pokemon_data=pokemon_data
+                )
                 return {"ok": True, "message": ""}
 
             # Held items (and anything else routed through the give-item
@@ -2040,35 +2262,43 @@ class AnkimonItemsWeb(QDialog):
         """Unequip a held item from a specific Pokémon and return it to the bag."""
         if not individual_id:
             return {"ok": False, "message": "No Pokémon selected."}
-        
+
         self._invalidate_pokemon_cache()
         try:
             from ..pyobj.pokemon_obj import PokemonObject
+
             pokemon_data = services.db.get_pokemon(individual_id)
             if not pokemon_data:
                 return {"ok": False, "message": "Could not find that Pokémon."}
-            
+
             pokemon_obj = PokemonObject.from_dict(pokemon_data)
             if pokemon_obj.held_item != item_name:
-                return {"ok": False, "message": "That Pokémon is not holding this item."}
-                
+                return {
+                    "ok": False,
+                    "message": "That Pokémon is not holding this item.",
+                }
+
             pokemon_obj.remove_held_item()
-            
+
             # Refresh open legacy item bag if it exists
             if self.item_window is not None:
                 self.item_window.renewWidgets()
-                
+
             # Also refresh an already-open PC Box window. Peek the registry
             # (services.pokemon_pc) rather than importing the lazy ``pokemon_pc``
             # proxy — that proxy would CONSTRUCT a brand-new PC window (and a Test
             # window) when none is open, so is_alive() would always be True and
             # we'd force an unwanted build. Mirrors singletons.swap_ankimon_account.
             from ..utils import is_alive
+
             pc = services.pokemon_pc
             if is_alive(pc):
                 pc.refresh_gui()
-                
-            return {"ok": True, "message": f"Unequipped {item_name.replace('-', ' ').title()} from {pokemon_data.get('name')}."}
+
+            return {
+                "ok": True,
+                "message": f"Unequipped {item_name.replace('-', ' ').title()} from {pokemon_data.get('name')}.",
+            }
         except Exception as e:
             return {"ok": False, "message": f"Unequip failed: {e}"}
 
@@ -2086,7 +2316,9 @@ class AnkimonItemsWeb(QDialog):
         """Build the schema + current values payload for the Settings screen."""
         from . import settings_schema
 
-        settings_obj = self.shop_manager.settings_obj if self.shop_manager is not None else None
+        settings_obj = (
+            self.shop_manager.settings_obj if self.shop_manager is not None else None
+        )
         if settings_obj is None:
             # Reload-safe: shop_manager / settings can be unset during early boot
             # or a profile swap. Serve an empty-but-valid payload so settings.js
@@ -2133,7 +2365,9 @@ class AnkimonItemsWeb(QDialog):
                 )
                 sub_chip_def = sub.get("chip_group")
                 if sub_chip_def:
-                    sub_settings.append(self._serialize_chip_group(sub_chip_def, config))
+                    sub_settings.append(
+                        self._serialize_chip_group(sub_chip_def, config)
+                    )
                 group["subgroups"].append(
                     {
                         "label": sub["label"],
@@ -2211,6 +2445,7 @@ class AnkimonItemsWeb(QDialog):
         if key == "battle.auto_catch_wishlist":
             entry["type"] = "wishlist"
             from ..functions.pokedex_functions import get_pretty_name_for_id
+
             names_dict = {}
             if isinstance(value, list):
                 for pid in value:
@@ -2277,7 +2512,9 @@ class AnkimonItemsWeb(QDialog):
         else:
             explicit_overrides = set()
 
-        settings_obj = self.shop_manager.settings_obj if self.shop_manager is not None else None
+        settings_obj = (
+            self.shop_manager.settings_obj if self.shop_manager is not None else None
+        )
         if settings_obj is None:
             return {"ok": False, "message": "Settings service is uninitialized."}
 
@@ -2299,11 +2536,15 @@ class AnkimonItemsWeb(QDialog):
                     and settings_schema.is_unchanged_secret_placeholder(raw_val)
                 ):
                     continue
-                working_config[key] = self._coerce_incoming(working_config[key], raw_val)
+                working_config[key] = self._coerce_incoming(
+                    working_config[key], raw_val
+                )
         except ValueError as e:
             return {"ok": False, "message": f"Validation error: {e}"}
 
-        working_config, adjustments = settings_schema.validate_and_clamp(working_config, original_config)
+        working_config, adjustments = settings_schema.validate_and_clamp(
+            working_config, original_config
+        )
 
         try:
             changed = False
@@ -2379,7 +2620,11 @@ class AnkimonItemsWeb(QDialog):
         config = data.get("config") if isinstance(data, dict) else None
         if config is None:
             # If no config payload was provided, reload from disk.
-            settings_obj = self.shop_manager.settings_obj if self.shop_manager is not None else None
+            settings_obj = (
+                self.shop_manager.settings_obj
+                if self.shop_manager is not None
+                else None
+            )
             if settings_obj is not None:
                 try:
                     config = settings_obj.load_config()
@@ -2427,7 +2672,7 @@ class AnkimonItemsWeb(QDialog):
         if isinstance(existing, list):
             if isinstance(incoming, list):
                 # Accept only integer IDs; silently drop anything non-numeric.
-                return [int(x) for x in incoming if str(x).lstrip('-').isdigit()]
+                return [int(x) for x in incoming if str(x).lstrip("-").isdigit()]
             return existing  # reject non-list payloads silently
         if isinstance(existing, bool):
             return bool(incoming)

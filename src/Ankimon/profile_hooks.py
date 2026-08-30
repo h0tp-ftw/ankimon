@@ -1,4 +1,5 @@
 from anki.hooks import addHook
+
 try:
     from anki.hooks import remHook
 except ImportError:
@@ -13,9 +14,12 @@ from .pyobj.save_transfer import register_media_migration_hooks
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
-from .functions.pokedex_functions import clear_pokedex_caches
+from .functions.pokedex_functions import clear_pokedex_caches, warm_evolution_caches
 from .functions.learnset_retrieval import clear_learnset_cache
-from .functions.encounter_functions import clear_encounter_cache, clear_auto_battle_override
+from .functions.encounter_functions import (
+    clear_encounter_cache,
+    clear_auto_battle_override,
+)
 
 # Cache-clear-on-close (F20): the pokedex / learnset / encounter in-memory
 # caches live for the whole Python process, so without this a profile switch
@@ -52,6 +56,20 @@ def _on_profile_close():
 
 def _on_profile_did_open(online_connectivity):
     def handler():
+        # Re-warm the static evolution table _on_profile_close just dropped.
+        # The boot warm (startup.run_startup_background_checks) runs once per
+        # Anki PROCESS, so a profile SWITCH leaves pokemon_evolution.csv
+        # unparsed with the review gate already open — the next level-up would
+        # then parse it inside on_review_card, the synchronous review-path I/O
+        # the boot warm exists to prevent. Cheap enough for the main thread
+        # (one ~500-row CSV) and guarded like everything else here: the warm is
+        # an optimization and runs first, so a raise would take the sync-hook
+        # registration and the tip of the day down with it.
+        try:
+            warm_evolution_caches()
+        except Exception as e:
+            logger.log("error", f"Error warming evolution caches on profile open: {e}")
+
         # Mobile-review sync bootstrap (F20 deferred half): initialise the revlog
         # watermark on first run, clear the desktop session set for a fresh
         # inter-sync interval, run a startup detection pass to catch reviews pulled
@@ -75,7 +93,10 @@ def _on_profile_did_open(online_connectivity):
                 # Run detection immediately to catch reviews pulled in by startup sync
                 if settings_obj.get("mobile.enabled", True):
                     try:
-                        from .functions.mobile_sync import process_mobile_reviews_after_sync
+                        from .functions.mobile_sync import (
+                            process_mobile_reviews_after_sync,
+                        )
+
                         process_mobile_reviews_after_sync(
                             col=col,
                             ankimon_db=db,
@@ -83,7 +104,10 @@ def _on_profile_did_open(online_connectivity):
                             logger=logger,
                         )
                     except Exception as sync_err:
-                        logger.log("error", f"Failed to run startup mobile reviews sync: {sync_err}")
+                        logger.log(
+                            "error",
+                            f"Failed to run startup mobile reviews sync: {sync_err}",
+                        )
 
                 # Restore badge — show pending count from previous session
                 pending = db.get_pending_mobile_count()
@@ -117,6 +141,7 @@ def _on_profile_did_open(online_connectivity):
         # and adds them to the candidates list for later review
         try:
             from .functions.badges_functions import check_unleeched_cards
+
             check_unleeched_cards(
                 services.col if services.col is not None else mw.col,
                 services.db,
