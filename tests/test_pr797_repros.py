@@ -598,6 +598,29 @@ def test_a_diverged_candidate_does_not_overwrite_the_protected_copy(
     assert (media / "ankimon.db").is_file()          # nothing is ever deleted
 
 
+def test_a_diverged_bare_save_is_protected_even_when_it_ranks_lower(
+    media, live_db, logger, monkeypatch
+):
+    """The mirror of the case above, and the one a ranking-shaped fix misses.
+
+    When the PROTECTED copy is the one that ranks highest, there is nothing to
+    preserve it from — but the bare ankimon.db beside it still holds badges and
+    history the protected copy does not, and the bare name is the only one in
+    the partition that "Delete Unused Files" can take. Protecting the at-risk
+    file cannot be conditional on it having won a ranking."""
+    protected = media / st.MEDIA_SAVE_NAME
+    _make_save(protected, pokemon=10, badges=0, history=50)
+    _make_save(media / "ankimon.db", pokemon=5, badges=3, history=200)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+
+    kept = st.get_db_stats(protected)
+    assert (kept["pokemon"], kept["badges"], kept["history"]) == (10, 0, 50)
+    rescued = st.get_db_stats(media / st.DIVERGED_MEDIA_SAVE_NAME)
+    assert (rescued["pokemon"], rescued["badges"], rescued["history"]) == (5, 3, 200)
+
+
 def test_a_diverged_media_save_is_never_offered_as_a_replacement(
     media, tmp_path, logger, monkeypatch
 ):

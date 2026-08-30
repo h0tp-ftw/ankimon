@@ -987,15 +987,18 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     # _dominates instead.
     best = max(stats, key=lambda p: _progress_key(stats[p]))
     media_path, media_stats = best, stats[best]
+    protected_stats = stats.get(protected)
+    protected_now = protected_stats     # what the protected NAME holds after this pass
 
     if best != protected:
-        protected_stats = stats.get(protected)
-        if not protected.is_file():
-            media_path, media_stats = _preserve(best, protected, stats[best], notes, unreadable)
-        elif _dominates(stats[best], protected_stats):
-            # Strictly supersedes it: everything the protected copy holds is in
-            # the candidate too, so replacing it loses nothing.
-            media_path, media_stats = _preserve(best, protected, stats[best], notes, unreadable)
+        if not protected.is_file() or _dominates(stats[best], protected_stats):
+            # Either there is nothing to lose, or the candidate strictly
+            # supersedes what is there — everything the protected copy holds is
+            # in the candidate too, so replacing it loses nothing.
+            media_path, media_stats = _preserve(
+                best, protected, stats[best], notes, unreadable
+            )
+            protected_now = stats[best] if media_path == protected else protected_stats
         elif _dominates(protected_stats, stats[best]) or _progress_key(
             protected_stats
         ) == _progress_key(stats[best]):
@@ -1003,14 +1006,19 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
             media_path, media_stats = protected, protected_stats
         else:
             # DIVERGED: each side holds progress the other lacks, and there is no
-            # honest way to name a winner. Keep both. Only a name without a
-            # leading underscore is actually at risk from "Delete Unused Files",
-            # and there is at most one such name per partition, so one extra
-            # protected name is always enough.
+            # honest way to name a winner, so the protected copy is left alone
+            # and the other side is preserved beside it below.
             media_path, media_stats = protected, protected_stats
-            _preserve_diverged(
-                media_dir, target_db, stats, protected_stats, notes, unreadable
-            )
+
+    # Whatever the protected name ended up holding, a save that diverges from it
+    # is still unprotected — and that is just as true when the protected copy is
+    # the one that ranked highest, which is why this is not inside the branch
+    # above. Skipped only when the protect step failed, because then the pass is
+    # already staying armed to retry it.
+    if protected_now is not None:
+        _preserve_diverged(
+            media_dir, target_db, stats, protected_now, notes, unreadable
+        )
 
     local_stats = (
         get_db_stats(target, timeout=MIGRATION_PROBE_TIMEOUT) if target else None
