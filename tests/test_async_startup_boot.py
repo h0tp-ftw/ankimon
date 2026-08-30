@@ -263,6 +263,7 @@ def startup_env(monkeypatch, tmp_path):
         _stub_module(
             "Ankimon.functions.pokedex_functions",
             warm_evolution_caches=rec("warm_evolution_caches", 507),
+            warm_pokedex_caches=rec("warm_pokedex_caches", 1384),
         ),
     )
     monkeypatch.setitem(
@@ -386,6 +387,7 @@ def test_background_checks_do_no_ui_work_and_return_contract(startup_env):
     assert _called(env, "generate_random_pokemon")
     assert _called(env, "count_items_and_rewrite")
     assert _called(env, "warm_evolution_caches")
+    assert _called(env, "warm_pokedex_caches")
 
 
 def test_background_checks_warm_the_evolution_table(startup_env):
@@ -417,6 +419,59 @@ def test_evolution_table_is_warmed_even_when_assets_are_missing(startup_env):
 
     assert results["database_complete"] is False
     assert len(_called(env, "warm_evolution_caches")) == 1
+
+
+def test_background_checks_warm_the_pokedex(startup_env):
+    """``pokedex.json`` (~800 KB) must be parsed HERE too.
+
+    ``Ankidex.showEvent`` -> ``build_encounterable_ids`` walks the roll's tier
+    lists through ``search_pokedex_by_id`` / ``check_min_generate_level``, so a
+    cold cache turns opening that window into a synchronous read on the GUI
+    thread. The first-enemy roll below warms it as a side effect — but only when
+    ``database_complete`` is True (see the next test), and the Ankidex opens
+    either way.
+    """
+    env = startup_env
+    env.mod.run_startup_background_checks()
+
+    assert len(_called(env, "warm_pokedex_caches")) == 1
+
+
+def test_the_pokedex_is_warmed_even_when_assets_are_missing(startup_env):
+    """pokedex.json ships inside the add-on, so it is warmable whether or not
+    the player's sprite folders are complete — and those are exactly the players
+    the first-enemy roll does NOT warm it for, since that step is gated on
+    ``database_complete``."""
+    env = startup_env
+    env.folders_exist = False
+
+    results = env.mod.run_startup_background_checks()
+
+    assert results["database_complete"] is False
+    assert _called(env, "generate_random_pokemon") == []
+    assert len(_called(env, "warm_pokedex_caches")) == 1
+
+
+def test_a_failing_pokedex_warm_cannot_fail_the_boot(startup_env, monkeypatch):
+    """Same contract as the evolution warm one test below: this rides on a
+    QueryOp with no recovery, so a raise would leave ``startup_finished`` False
+    and silently drop every answered card. Failing to pre-parse a JSON file must
+    never cost the player the add-on."""
+    env = startup_env
+
+    def boom():
+        raise OSError("pokedex.json unreadable")
+
+    monkeypatch.setattr(env.mod, "warm_pokedex_caches", boom)
+
+    results = env.mod.run_startup_background_checks()
+
+    assert results["database_complete"] is True
+    assert _called(env, "count_items_and_rewrite")
+    assert any(
+        call[0] == "log" and call[1] == "error" and "pokedex.json unreadable" in call[2]
+        for call in env.logger.calls
+    )
 
 
 def test_a_failing_warm_cannot_fail_the_boot(startup_env, monkeypatch):

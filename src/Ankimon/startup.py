@@ -28,7 +28,7 @@ from .utils import (
     count_items_and_rewrite,
 )
 from .functions.encounter_functions import generate_random_pokemon
-from .functions.pokedex_functions import warm_evolution_caches
+from .functions.pokedex_functions import warm_evolution_caches, warm_pokedex_caches
 from .functions.badges_functions import get_achieved_badges
 from .functions.rate_addon_functions import rate_this_addon
 from .gui_entities import CheckFiles
@@ -129,6 +129,15 @@ def run_startup_background_checks(backup_manager=None):
         warm_evolution_caches()
     except Exception as e:
         logger.log("error", f"Error warming evolution caches: {e}")
+
+    # 5b. Same treatment for pokedex.json (~800 KB). The first-enemy roll below
+    #     warms it as a side effect — but only when database_complete is True,
+    #     and the Ankidex is openable either way. Left cold, opening that window
+    #     parses the file inside showEvent, on the GUI thread.
+    try:
+        warm_pokedex_caches()
+    except Exception as e:
+        logger.log("error", f"Error warming pokedex caches: {e}")
 
     # 6. First enemy + starter/rating preconditions (DB/CPU); the Qt side of
     #    each (stat application, starter window, rate dialog) runs in

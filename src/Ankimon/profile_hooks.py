@@ -13,7 +13,11 @@ from .pyobj.ankimon_sync import setup_ankimon_sync_hooks, check_and_sync_pokemon
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
-from .functions.pokedex_functions import clear_pokedex_caches, warm_evolution_caches
+from .functions.pokedex_functions import (
+    clear_pokedex_caches,
+    warm_evolution_caches,
+    warm_pokedex_caches,
+)
 from .functions.learnset_retrieval import clear_learnset_cache
 from .functions.encounter_functions import (
     clear_encounter_cache,
@@ -70,6 +74,14 @@ def _on_profile_did_open(online_connectivity):
             warm_evolution_caches()
         except Exception as e:
             logger.log("error", f"Error warming evolution caches on profile open: {e}")
+
+        # ...and pokedex.json, which _on_profile_close dropped as well. The boot
+        # warm does not run again on a profile SWITCH, so without this the next
+        # Ankidex open re-parses ~800 KB on the GUI thread inside showEvent.
+        try:
+            warm_pokedex_caches()
+        except Exception as e:
+            logger.log("error", f"Error warming pokedex caches on profile open: {e}")
 
         # Mobile-review sync bootstrap (F20 deferred half): initialise the revlog
         # watermark on first run, clear the desktop session set for a fresh

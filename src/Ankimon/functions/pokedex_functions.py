@@ -336,6 +336,41 @@ def warm_evolution_caches():
     return 0
 
 
+def warm_pokedex_caches():
+    """Parse ``pokedex.json`` and build its id index, off the GUI thread.
+
+    Same shape and the same reason as :func:`warm_evolution_caches`, one file
+    over: :func:`_load_pokedex_cache` is lazy, so its FIRST caller pays the
+    ~800 KB read and parse. Opening the Ankidex is one of those callers —
+    ``ankidex_data.build_encounterable_ids`` walks the roll's tier lists through
+    ``search_pokedex_by_id`` / ``check_min_generate_level`` — and that build runs
+    inside ``showEvent`` on the GUI thread, so a cold cache turns a window open
+    into a synchronous disk read. Usually the boot's first-enemy roll has
+    already warmed it; it has NOT when the sprite folders are incomplete (that
+    step is gated on ``database_complete``) or after a profile switch, which
+    runs :func:`clear_pokedex_caches` without re-running the once-per-process
+    boot.
+
+    Warming early is only safe with the same guard: :func:`_load_pokedex_cache`
+    memoizes ``{}`` when the read fails, and :func:`_load_pokedex_id_index`
+    memoizes ``{}`` built on top of it, so a file that is momentarily unreadable
+    (an add-on update mid-write, a cold network drive) would otherwise answer
+    "no such Pokemon" to every lookup for the rest of the session. An empty
+    parse therefore puts BOTH globals back to ``None`` and the lazy path simply
+    retries on first use.
+
+    Returns the number of pokedex entries loaded (0 if it could not be read).
+    """
+    global _pokedex_cache, _pokedex_id_index
+    pokedex = _load_pokedex_cache()
+    if pokedex:
+        _load_pokedex_id_index()
+        return len(pokedex)
+    _pokedex_cache = None
+    _pokedex_id_index = None
+    return 0
+
+
 def _load_moves_cache():
     """Cache moves.json to avoid repeated file I/O"""
     global _moves_cache

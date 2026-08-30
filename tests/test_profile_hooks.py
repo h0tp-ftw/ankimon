@@ -69,6 +69,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     clear_encounter = MagicMock(name="clear_encounter_cache")
     clear_auto_battle = MagicMock(name="clear_auto_battle_override")
     warm_evolution = MagicMock(name="warm_evolution_caches", return_value=507)
+    warm_pokedex = MagicMock(name="warm_pokedex_caches", return_value=1384)
 
     monkeypatch.setitem(
         sys.modules,
@@ -130,6 +131,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
             "Ankimon.functions.pokedex_functions",
             clear_pokedex_caches=clear_pokedex,
             warm_evolution_caches=warm_evolution,
+            warm_pokedex_caches=warm_pokedex,
         ),
     )
     monkeypatch.setitem(
@@ -162,6 +164,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         clear_auto_battle,
     )
     profile_hooks._warm = warm_evolution
+    profile_hooks._warm_pokedex = warm_pokedex
     return profile_hooks
 
 
@@ -256,7 +259,12 @@ class _Future:
 
 
 def _fire_profile_did_open(
-    monkeypatch, *, ankiweb_sync, mobile_enabled=True, warm_error=None
+    monkeypatch,
+    *,
+    ankiweb_sync,
+    mobile_enabled=True,
+    warm_error=None,
+    pokedex_warm_error=None,
 ):
     """Register hooks, then fire the profile_did_open handler with the given
     settings and return (profile_hooks, its stubbed ankimon_sync module)."""
@@ -265,6 +273,8 @@ def _fire_profile_did_open(
     profile_hooks = _exec_profile_hooks(monkeypatch, gui_hooks)
     if warm_error is not None:
         profile_hooks._warm.side_effect = warm_error
+    if pokedex_warm_error is not None:
+        profile_hooks._warm_pokedex.side_effect = pokedex_warm_error
 
     def _get(key, default=None):
         return {
@@ -336,4 +346,31 @@ def test_profile_open_warm_failure_does_not_break_the_rest_of_the_handler(monkey
     profile_hooks.logger.log.assert_any_call(
         "error",
         "Error warming evolution caches on profile open: data_files unreadable",
+    )
+
+
+def test_profile_open_rewarms_the_pokedex(monkeypatch):
+    """The clear on profile close takes pokedex.json with it, and the boot warm
+    does not run again on a SWITCH. Left cold, the next Ankidex open parses
+    ~800 KB inside showEvent, on the GUI thread."""
+    profile_hooks, _ = _fire_profile_did_open(monkeypatch, ankiweb_sync=False)
+
+    profile_hooks._warm_pokedex.assert_called_once_with()
+
+
+def test_profile_open_pokedex_warm_failure_does_not_break_the_rest(monkeypatch):
+    """Same contract as the evolution warm: it runs early in the handler, so a
+    raise would take the mobile-sync registration and the tip of the day with
+    it — far more than an unparsed JSON file costs."""
+    profile_hooks, sync_mod = _fire_profile_did_open(
+        monkeypatch,
+        ankiweb_sync=False,
+        pokedex_warm_error=OSError("pokedex.json unreadable"),
+    )
+
+    profile_hooks._warm_pokedex.assert_called_once_with()
+    sync_mod.setup_ankimon_sync_hooks.assert_called_once()
+    profile_hooks.logger.log.assert_any_call(
+        "error",
+        "Error warming pokedex caches on profile open: pokedex.json unreadable",
     )
