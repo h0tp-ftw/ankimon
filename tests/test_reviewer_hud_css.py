@@ -122,3 +122,54 @@ def test_xp_text_is_not_overridden_by_the_display_pill_group():
             "create_css_for_reviewer already did; the later rule wins and the "
             "dedicated XP styling is lost"
         )
+
+
+def _without_comments(css):
+    """Rules only. Both files *explain* in comments why the OS media query is
+    gone, and a naive substring search would read those explanations as the
+    thing they warn about."""
+    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+
+
+def test_no_hud_rule_keys_off_the_operating_system_theme():
+    """``prefers-color-scheme`` reports the OS, never Anki. Once the HUD takes
+    its theme from ``theme_manager.night_mode`` (the resolved flag, which
+    already folds in the OS for Anki's "Automatic"), any surviving media query
+    is a second, contradicting source of truth: it darkened the HUD for a user
+    who deliberately ran Anki light on a dark desktop."""
+    for source_name, css in (
+        ("reviewer_obj.py", _hud_css_literal()),
+        ("create_css_for_reviewer.py", _create_css_source()),
+    ):
+        css = _without_comments(css)
+        assert "prefers-color-scheme" not in css, (
+            f"{source_name}: a rule still keys off the OS colour scheme. "
+            "The HUD's theme is Anki's resolved night_mode flag — see the "
+            "night_mode class on #ankimon-hud."
+        )
+
+
+def test_the_outline_variable_follows_the_same_theme_as_everything_else():
+    """--ankimon-outline feeds every pill and bar outline. When it was the one
+    property still driven by the OS it disagreed with the pills it outlined:
+    Anki light on a dark desktop drew a #1F1F1F ring around a white pill."""
+    css = _create_css_source()
+    for selector in ("#ankimon-hud {", "#ankimon-hud.night_mode {"):
+        assert any(
+            "--ankimon-outline" in block for block in _blocks_for(css, selector)
+        ), (
+            f"no {selector!r} block defines --ankimon-outline; the light and "
+            "dark values must both hang off the HUD's own theme class, or the "
+            "outline goes back to disagreeing with the pill it outlines"
+        )
+
+
+def _blocks_for(css, selector):
+    """Every block opened by ``selector``, body only. A selector can legitimately
+    appear more than once (``#ankimon-hud`` also carries the filter reset), so
+    callers check whether ANY of its blocks declares what they are after."""
+    start = css.find(selector)
+    while start != -1:
+        body_start = start + len(selector)
+        yield css[body_start : css.find("}", body_start)]
+        start = css.find(selector, body_start)

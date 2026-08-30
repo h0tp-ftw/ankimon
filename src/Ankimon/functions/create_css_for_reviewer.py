@@ -54,14 +54,19 @@ def create_css_for_reviewer(
   transform: scaleX(-1) !important;
 }
 
-/* Theme variables */
-:host, :root {
+/* Theme variables. Keyed off the night_mode class the HUD carries (set from
+   theme_manager.night_mode in reviewer_obj.py), not @media
+   (prefers-color-scheme: dark): the media query tracks the OS, so once the
+   pills started following Anki the outline was the one thing left following
+   the desktop -- a white pill ringed in #1F1F1F for anyone running Anki light
+   on a dark desktop, and a white ring around the black XP pill in the mirror
+   case. Every var(--ankimon-outline) consumer is a descendant of
+   #ankimon-hud, so defining it there still inherits to all of them. */
+#ankimon-hud {
   --ankimon-outline: #FFFFFF; /* Light mode outline */
 }
-@media (prefers-color-scheme: dark) {
-  :host, :root {
-    --ankimon-outline: #1F1F1F; /* Dark mode outline */
-  }
+#ankimon-hud.night_mode {
+  --ankimon-outline: #1F1F1F; /* Dark mode outline */
 }
 
 /* If any parent applies invert, force HUD back to normal colors */

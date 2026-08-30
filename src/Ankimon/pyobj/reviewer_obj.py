@@ -53,6 +53,14 @@ class Reviewer_Manager:
         _handlers = (
             (gui_hooks.reviewer_will_end, self.reviewer_reset_life_bar_inject),
             (gui_hooks.reviewer_did_answer_card, self.update_life_bar),
+            # Anki announces a theme flip by toggling classes on <html>/<body>
+            # (aqt.webview.on_theme_did_change); it never reloads the page.
+            # That signal cannot cross the HUD's closed shadow boundary, so the
+            # HUD has to repaint itself or it keeps the old palette until the
+            # next answered card. The same hook covers an OS flip while Anki is
+            # set to "Automatic" -- theme_manager fires it either way -- which
+            # is what @media (prefers-color-scheme: dark) used to handle live.
+            (gui_hooks.theme_did_change, self.refresh_hud),
         )
         for _hook, _handler in _handlers:
             _hook.append(_handler)
