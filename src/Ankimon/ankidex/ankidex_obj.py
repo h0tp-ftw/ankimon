@@ -63,7 +63,10 @@ class Ankidex(QDialog):
         """
         from .ankidex_data import get_ankidex_data
 
-        return get_ankidex_data(services.db, services.settings, self.ankimon_tracker)
+        player_level = getattr(services.main_pokemon, "level", 1)
+        return get_ankidex_data(
+            services.db, services.settings, self.ankimon_tracker, player_level
+        )
 
     def load_initial_html(self):
         file_path = os.path.join(self.addon_dir, "ankidex", "ankidex.html").replace(

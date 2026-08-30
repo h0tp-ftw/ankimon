@@ -5,8 +5,8 @@ wild-encounter roll can actually produce it — i.e. it must gate every candidat
 through encounter_functions.get_all_pokemon_in_tier() + check_id_ok(), NOT union
 the raw encounter_data tier lists. The regression this pins:
 
-* Starters never appear (get_all_pokemon_in_tier('Starter') is [] — starters
-  come only from the one-time starter picker).
+* Starters appear only once the player's Pokémon reaches the live level-80
+  tier gate, and only when they meet their individual level requirement.
 * Generation-disabled species (e.g. Gen 9 legendaries when misc.gen9 is off)
   never appear, because check_id_ok() rejects them.
 * UNAVAILABLE ids and generation-disabled regional forms never appear.
@@ -24,8 +24,7 @@ import pytest
 
 _src = Path(__file__).parent.parent / "src"
 
-# Simulated live-roll pool. Starter is empty on purpose (matches the real
-# get_all_pokemon_in_tier('Starter') == []).
+# Simulated live-roll pool.
 _TIER_POOL = {
     "Normal": [1, 4, 7],
     "Baby": [172],
@@ -34,7 +33,7 @@ _TIER_POOL = {
     "Mythical": [1024],        # Gen 9 (disabled)
     "Mega": [],
     "Gmax": [],
-    "Starter": [],             # never wild-spawnable
+    "Starter": [152, 155],
 }
 
 # Ids the generation toggle rejects (stand-in for misc.gen9 == False, plus a
@@ -48,6 +47,14 @@ def _fake_get_all_pokemon_in_tier(tier):
 
 def _fake_check_id_ok(pid):
     return pid not in _DISABLED
+
+
+def _fake_search_pokedex_by_id(pid):
+    return f"pokemon-{pid}"
+
+
+def _fake_check_min_generate_level(name):
+    return 90 if name == "pokemon-155" else 1
 
 
 class _Settings:
@@ -73,7 +80,9 @@ def ankidex_data(monkeypatch):
 
     ef = types.ModuleType("Ankimon.functions.encounter_functions")
     ef.check_id_ok = _fake_check_id_ok
+    ef.check_min_generate_level = _fake_check_min_generate_level
     ef.get_all_pokemon_in_tier = _fake_get_all_pokemon_in_tier
+    ef.search_pokedex_by_id = _fake_search_pokedex_by_id
     monkeypatch.setitem(sys.modules, "Ankimon.functions.encounter_functions", ef)
 
     spec = importlib.util.spec_from_file_location(
@@ -86,7 +95,7 @@ def ankidex_data(monkeypatch):
 
 
 def test_encounterable_excludes_generation_disabled_legendaries(ankidex_data):
-    ids = ankidex_data.build_encounterable_ids(_Settings())
+    ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=100)
     # The exact reported bug: a Gen-9-disabled legendary/mythical shown Available.
     assert 1007 not in ids
     assert 1024 not in ids
@@ -94,19 +103,32 @@ def test_encounterable_excludes_generation_disabled_legendaries(ankidex_data):
     assert 888 in ids
 
 
-def test_encounterable_excludes_starters(ankidex_data):
-    ids = ankidex_data.build_encounterable_ids(_Settings())
-    # Starter tier yields [] — no starter can leak in as wild-Available.
-    assert ids == {1, 7, 172, 793, 888}
+def test_encounterable_starters_require_level_80_gate(ankidex_data):
+    ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=79)
+    assert 152 not in ids
+    assert 155 not in ids
+
+    ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=80)
+    # The level-80 Starter gate is open, but individual level requirements stay
+    # in effect.
+    assert 152 in ids
+    assert 155 not in ids
+
+
+def test_encounterable_keeps_eligible_starters(ankidex_data):
+    ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=100)
+    assert ids == {1, 7, 152, 155, 172, 793, 888}
 
 
 def test_encounterable_applies_unavailable_exclusion(ankidex_data):
-    ids = ankidex_data.build_encounterable_ids(_Settings())
+    ids = ankidex_data.build_encounterable_ids(_Settings(), player_level=100)
     assert 4 not in ids  # in UNAVAILABLE
 
 
 def test_encounterable_regional_forms_are_generation_gated(ankidex_data):
-    ids = ankidex_data.build_encounterable_ids(_Settings(region="alola"))
+    ids = ankidex_data.build_encounterable_ids(
+        _Settings(region="alola"), player_level=100
+    )
     assert 10100 in ids       # enabled regional form for the active region
     assert 10101 not in ids   # disabled regional form must not appear
 

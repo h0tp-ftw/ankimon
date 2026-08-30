@@ -26,26 +26,38 @@ _ENCOUNTER_TIERS = (
 )
 
 
-def build_encounterable_ids(settings):
+def build_encounterable_ids(settings, player_level):
     """Return the set of Pokemon the live wild-encounter roll can actually produce.
 
     Built from the SAME source the roll uses — ``get_all_pokemon_in_tier()`` per
-    tier, each candidate gated by ``check_id_ok()`` (the roll's generation-toggle
-    / regional-form check) — instead of unioning the raw ``encounter_data`` tier
-    lists. Reading the raw lists marked species "Available" that can never spawn:
-    every Starter (``get_all_pokemon_in_tier('Starter')`` is ``[]``) and, by
-    default, every generation whose ``misc.genN`` toggle is off (Gen 9 defaults
-    off), e.g. Koraidon / Miraidon / Terapagos.
+    tier, each candidate gated by the same generation and minimum-level checks
+    as the roll — instead of unioning the raw ``encounter_data`` tier lists.
+    Starter encounters additionally require a level-80 player Pokémon, matching
+    the live tier gate.
     """
     from ..functions.encounter_functions import (
         check_id_ok,
+        check_min_generate_level,
         get_all_pokemon_in_tier,
+        search_pokedex_by_id,
     )
+
+    def is_eligible(pid):
+        if not check_id_ok(pid):
+            return False
+        name = search_pokedex_by_id(pid)
+        return (
+            bool(name)
+            and name != "Pokémon not found"
+            and player_level >= check_min_generate_level(str(name).lower())
+        )
 
     ids = set()
     for tier in _ENCOUNTER_TIERS:
+        if tier == "Starter" and player_level < 80:
+            continue
         for pid in get_all_pokemon_in_tier(tier):
-            if check_id_ok(pid):
+            if is_eligible(pid):
                 ids.add(pid)
 
     # Explicit exclusions: never spawnable regardless of tier / generation.
@@ -57,7 +69,7 @@ def build_encounterable_ids(settings):
     regional = getattr(encounter_data, "REGIONAL_FORMS", {})
     if active_region and active_region in regional:
         for pid in regional[active_region]:
-            if check_id_ok(pid):
+            if is_eligible(pid):
                 ids.add(pid)
 
     return ids
@@ -98,7 +110,7 @@ def _prefs(settings):
     }
 
 
-def get_ankidex_data(db, settings, tracker=None):
+def get_ankidex_data(db, settings, tracker=None, player_level=1):
     """Fetch comprehensive collection data for the Ankidex SPA (widget-free).
 
     ``db`` / ``settings`` are the services-resolved singletons (passed in so this
@@ -160,7 +172,7 @@ def get_ankidex_data(db, settings, tracker=None):
     seen_ids = seen_ids - caught_ids
 
     # 4. Encounterable IDs — gated to exactly what the live roll can produce.
-    encounterable_ids = build_encounterable_ids(settings)
+    encounterable_ids = build_encounterable_ids(settings, player_level)
 
     # 5. Prerequisites
     prereqs = {}
