@@ -154,8 +154,8 @@ _MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
 #
 # Settle (record the per-profile one-shot) ONLY on a positive resolution: every
 # candidate that was discovered could be read, and the rescue reached a terminal
-# answer — declined, not needed because the local save already holds everything
-# the media copy does, or reported as a divergence only the user can resolve.
+# answer — declined, not needed because the media copy is nowhere ahead of the
+# local save, or reported as a divergence only the user can resolve.
 #
 # Stay ARMED on every absence or uncertainty: an empty folder, a candidate that
 # would not open, an unreadable protected copy, an unreadable local save, or an
@@ -1013,8 +1013,8 @@ def _notify_affected_user(logger) -> None:
 
     Without this the removal is silent for exactly the population it affects: a
     two-device user learns nothing unless the rescue prompt happens to fire, and
-    that only fires when the media copy is STRICTLY ahead on the monotone
-    counters — two devices that happen to be level produce no message at all.
+    that only fires when the media copy is ahead of the local save on every
+    counter — two devices that happen to be level produce no message at all.
 
     The stored ``misc.ankiweb_sync`` row is the only reliable way to identify
     them. The key is gone from DEFAULT_CONFIG, but the row persists in the

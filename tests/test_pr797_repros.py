@@ -408,7 +408,7 @@ def test_a_large_unlocked_save_cannot_outrun_the_probe_budget(
     # Over budget => unreadable => nothing concluded, nothing overwritten.
     marked.assert_not_called()
     ask.assert_not_called()
-    assert not (media / st.MEDIA_SAVE_NAME).exists()
+    assert _protected(media) == []
 
 
 def test_the_probe_deadline_covers_quick_check_itself(tmp_path):
