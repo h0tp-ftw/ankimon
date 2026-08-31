@@ -1486,7 +1486,8 @@ class PokemonPC(QDialog):
                     """)
                     name_label.setWordWrap(True)
 
-                    level_label = QLabel(f"Lvl {pokemon.get('level', 1)}")
+                    level_text = self.translator.translate("level_label", level=pokemon.get('level', 1))
+                    level_label = QLabel(level_text)
                     level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     level_label.setStyleSheet(f"""
                         QLabel {{
@@ -1611,7 +1612,7 @@ class PokemonPC(QDialog):
                         alignment=Qt.AlignmentFlag.AlignTop
                         | Qt.AlignmentFlag.AlignRight,
                     )
-                    badge_tooltips.append("Shiny Pokémon")
+                    badge_tooltips.append(self.translator.translate("shiny_tooltip"))
 
                 if readiness["ready"] and (
                     readiness["method"] == "level" or friendship_time_enabled
