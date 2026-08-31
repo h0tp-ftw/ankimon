@@ -306,7 +306,7 @@ class MoveManagerWidget(QWidget):
                     QPushButton { 
                         text-align: left; 
                         font-size: 12px; 
-                        color: #00112b; 
+                        color: #e6edf3; 
                         font-weight: 600; 
                         border: none; 
                         padding: 4px 8px; 
@@ -972,7 +972,7 @@ class PokemonPC(QDialog):
             + """
             #countLabel {
                 font-size: 11px;
-                color: #00112b;
+                color: #94a3b8;
                 padding: 2px 8px 4px 8px;
                 letter-spacing: 0.3px;
             }
@@ -1419,8 +1419,8 @@ class PokemonPC(QDialog):
         is_dark_mode = theme_manager.night_mode
 
         if is_dark_mode:
-            species_color = "#e6edf3"
-            level_color = "#ffffff"
+            species_color = "#ffffff"
+            level_color = "#e6edf3"
         else:
             species_color = "#010a1c"
             level_color = "#00112b"
@@ -1459,10 +1459,12 @@ class PokemonPC(QDialog):
                     pokemon_button.setObjectName("pokemonSlot")
                     pokemon_button.setFixedSize(self.slot_size, self.slot_size)
 
-                    # Get the species name (use nickname if available, otherwise the species name)
                     display_name = pokemon.get("nickname") or pokemon.get("name", "???")
                     if display_name:
-                        display_name = display_name.capitalize()
+                        if pokemon.get("nickname"):
+                            pass
+                        else:
+                            display_name = format_lore_name(display_name)
 
                     # Create a vertical layout for the text
                     text_layout = QVBoxLayout(pokemon_button)
@@ -1633,10 +1635,9 @@ class PokemonPC(QDialog):
                             Qt.TransformationMode.SmoothTransformation,
                         )
                         evo_badge.setPixmap(scaled_pixmap)
-                        # If more than one overlap is present, adjust margin to avoid overlap
                         if pokemon.get("shiny", False):
                             evo_badge.setStyleSheet(
-                                "margin-top: 28px; margin-right: 1px; background: transparent;"
+                                "margin-top: 24px; margin-right: 1px; background: transparent;"
                             )
                         else:
                             evo_badge.setStyleSheet(
@@ -1650,7 +1651,7 @@ class PokemonPC(QDialog):
                                 "QLabel {"
                                 "  color: #3b82f6;"
                                 "  font-weight: bold;"
-                                "  margin-top: 28px;"
+                                "  margin-top: 24px;"
                                 "  margin-right: 1px;"
                                 "  background: transparent;"
                                 "}"
@@ -1690,7 +1691,7 @@ class PokemonPC(QDialog):
                     if pokemon.get("shiny", False):
                         wait_badge.setStyleSheet(
                             "QLabel {"
-                            "  margin-top: 28px;"
+                            "  margin-top: 24px;"
                             "  margin-right: 5px;"
                             "  background: transparent;"
                             "}"
