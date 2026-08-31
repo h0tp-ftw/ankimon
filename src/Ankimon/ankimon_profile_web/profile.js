@@ -173,8 +173,13 @@
         const shinyRate = (caught > 0 && shinies > 0)
             ? '1 in ' + Math.round(caught / shinies).toLocaleString()
             : '—';
+        const desktopCashEarned = Number(data.cash_earned_today) || 0;
+        const mobileCashEarned = Number(data.mobile_cash_earned_today) || 0;
+        const dailyCash = desktopCashEarned + mobileCashEarned;
+        const cashValue = `${num(data.cash)} ¥<div style="font-size:0.7em; opacity:0.8; margin-top:4px;">Daily Limit: ${num(dailyCash)} / 400 ¥</div>`;
+
         const tiles = [
-            ['Cash', num(data.cash) + ' ¥', 'var(--accent-gold)'],
+            ['Cash', cashValue, 'var(--accent-gold)'],
             ['Caught', num(data.caught), 'var(--accent-green)'],
             ['Pokédex', num(data.dex_seen), 'var(--accent-blue)'],
             ['Shinies', num(data.shinies), 'var(--accent-gold)'],
