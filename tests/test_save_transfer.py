@@ -75,9 +75,14 @@ class _Logger:
 
 
 def _make_save(path: Path, *, pokemon=0, badges=0, history=0,
-               name="Ash", level=1, cash=0, badge_flag=1):
+               name="Ash", level=1, cash=0, badge_flag=1, ids="uuid"):
     """A minimally realistic Ankimon save: enough shape that the integrity gate
-    accepts it and get_db_stats can read every field it reports."""
+    accepts it and get_db_stats can read every field it reports.
+
+    ``ids`` names the row-id namespace, so two saves can be built with the same
+    COUNTS and no rows in common — which is the whole point of the aggregate
+    counters not being evidence of containment.
+    """
     conn = sqlite3.connect(str(path))
     conn.executescript(
         """
@@ -89,11 +94,11 @@ def _make_save(path: Path, *, pokemon=0, badges=0, history=0,
         """
     )
     for i in range(pokemon):
-        conn.execute("INSERT INTO captured_pokemon VALUES (?, 0, '{}')", (f"uuid-{i}",))
+        conn.execute("INSERT INTO captured_pokemon VALUES (?, 0, '{}')", (f"{ids}-{i}",))
     for i in range(badges):
         conn.execute("INSERT INTO badges VALUES (?, ?)", (i, badge_flag))
     for i in range(history):
-        conn.execute("INSERT INTO pokemon_history VALUES (?)", (f"hist-{i}",))
+        conn.execute("INSERT INTO pokemon_history VALUES (?)", (f"{ids}-hist-{i}",))
     conn.execute("INSERT INTO items VALUES ('potion', 7)")
     conn.executemany(
         "INSERT INTO config VALUES (?, ?)",
@@ -102,6 +107,30 @@ def _make_save(path: Path, *, pokemon=0, badges=0, history=0,
     conn.commit()
     conn.close()
     return path
+
+
+def _protected(media: Path, target_db: str = "ankimon.db"):
+    """The content-addressed protected copies the migration wrote, by name.
+
+    The migration no longer writes a FIXED protected name — a fixed name can
+    hold one save, so the second one to arrive forces a choice between
+    overwriting it and leaving the newcomer under the bare, deletable name, and
+    the progress counters cannot make that choice honestly. Each distinct save
+    is preserved as ``_ankimon_save_<digest of its bytes>.db`` instead, so tests
+    ask what is protected rather than assuming one name.
+    """
+    legacy = {
+        st.MEDIA_SAVE_NAME, st.DEV_MEDIA_SAVE_NAME,
+        st.DIVERGED_MEDIA_SAVE_NAME, st.DEV_DIVERGED_MEDIA_SAVE_NAME,
+    }
+    prefix = (
+        st.DEV_MEDIA_SAVE_PREFIX if target_db == "ankimonDEV.db"
+        else st.MEDIA_SAVE_PREFIX
+    )
+    return sorted(
+        path for path in media.glob(prefix + "*.db")
+        if path.name not in legacy and st._target_db_for(path) == target_db
+    )
 
 
 @pytest.fixture
@@ -344,10 +373,10 @@ def test_migration_protects_the_bare_media_save(media, live_db, logger, monkeypa
 
     st.run_media_migration(MagicMock(), logger)
 
-    protected = media / st.MEDIA_SAVE_NAME
-    assert protected.is_file()
-    assert protected.name.startswith("_")
-    assert st.get_db_stats(protected)["pokemon"] == 1
+    copies = _protected(media)
+    assert len(copies) == 1
+    assert copies[0].name.startswith("_")
+    assert st.get_db_stats(copies[0])["pokemon"] == 1
     assert (media / "ankimon.db").is_file()   # nothing is deleted
     assert logger.errors == []
 
@@ -357,11 +386,17 @@ def test_migration_finds_underscore_legacy_names_by_glob(media, live_db, logger,
     from Path(__file__).parents[2].name, which differs between an install, a
     checkout and a numeric package id — so it must be globbed."""
     _make_save(media / "_1908235722_ankimon.db", pokemon=7, badges=3, history=9)
-    monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
 
     st.run_media_migration(MagicMock(), logger)
 
-    assert st.get_db_stats(media / st.MEDIA_SAVE_NAME)["pokemon"] == 7
+    # Found, read and judged against the local save (3, 1, 2)...
+    ask.assert_called_once()
+    assert "Pokemon: 7" in ask.call_args[0][0]
+    # ...and left exactly where it is: the leading underscore already protects
+    # it from a media check, so copying it would only duplicate the save.
+    assert _protected(media) == []
 
 
 def test_migration_ignores_a_foreign_file_with_a_matching_name(media, live_db, logger, monkeypatch):
@@ -370,7 +405,7 @@ def test_migration_ignores_a_foreign_file_with_a_matching_name(media, live_db, l
 
     st.run_media_migration(MagicMock(), logger)
 
-    assert not (media / st.MEDIA_SAVE_NAME).exists()
+    assert _protected(media) == []
     assert (media / "ankimon.db").read_bytes().startswith(b"some other")
 
 
@@ -495,13 +530,13 @@ def test_peer_save_is_picked_up_on_the_post_sync_pass(media, live_db, logger, mo
     monkeypatch.setattr(st, "askUser", ask)
 
     st.run_media_migration(MagicMock(), logger)                 # boot: nothing yet
-    assert not (media / st.MEDIA_SAVE_NAME).exists()
+    assert _protected(media) == []
     ask.assert_not_called()
 
     _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)   # download lands
     st.run_media_migration(MagicMock(), logger, after_media_sync=True)
 
-    assert (media / st.MEDIA_SAVE_NAME).is_file()               # protected
+    assert len(_protected(media)) == 1                          # protected
     ask.assert_called_once()                                    # and offered
 
 
@@ -544,21 +579,32 @@ def test_dev_and_normal_saves_are_not_ranked_against_each_other(media, tmp_path,
     st.run_media_migration(MagicMock(), logger, after_media_sync=True)
 
     # The dev save is not what got preserved, and no rescue was offered from it.
-    assert st.get_db_stats(media / st.MEDIA_SAVE_NAME)["pokemon"] == 1
+    copies = _protected(media)
+    assert len(copies) == 1
+    assert st.get_db_stats(copies[0])["pokemon"] == 1
+    assert _protected(media, "ankimonDEV.db") == []
     ask.assert_not_called()
 
 
 def test_a_readable_but_staler_candidate_does_not_replace_the_protected_copy(media, live_db, logger, monkeypatch):
-    """_progress_key floors an unreadable save below everything, so without an
-    explicit guard a readable-but-stale candidate would overwrite a protected
-    copy that merely failed to open this once."""
-    _make_save(media / st.MEDIA_SAVE_NAME, pokemon=80, badges=9, history=120)
+    """A save already sitting under a protected name is never a write target —
+    not for a stale candidate, and not for any other. _ankimon_save.db is what
+    earlier builds of this migration wrote, and those files are still out there
+    in real media folders, so they have to survive a scan untouched."""
+    fixed = media / st.MEDIA_SAVE_NAME
+    _make_save(fixed, pokemon=80, badges=9, history=120)
+    before = fixed.read_bytes()
     _make_save(media / "ankimon.db", pokemon=1)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
     st.run_media_migration(MagicMock(), logger, after_media_sync=True)
 
-    assert st.get_db_stats(media / st.MEDIA_SAVE_NAME)["pokemon"] == 80
+    assert fixed.read_bytes() == before
+    # ...and the stale bare save is still given a home of its own, because the
+    # bare name is the one a media check can delete.
+    copies = _protected(media)
+    assert len(copies) == 1
+    assert st.get_db_stats(copies[0])["pokemon"] == 1
 
 
 def test_rescue_is_deferred_off_the_profile_open_stack(media, live_db, logger, monkeypatch):

@@ -23,7 +23,9 @@ What replaces it here is deliberately explicit and one-directional at a time:
   an integrity check, a successful safety backup, and an explicit confirmation
   that shows the user both saves' contents side by side.
 * **The migration** protects and rescues whatever the removed feature left in
-  ``collection.media``. See ``run_media_migration``.
+  ``collection.media``. It preserves by CONTENT — every distinct save gets its
+  own ``_ankimon_save_<digest>.db`` — so it can add a protected copy but never
+  choose between two saves. See ``run_media_migration``.
 
 Every destructive step is gated conjunctively: verified source, successful
 backup, explicit user confirmation, atomic replace. Any failure aborts with the
@@ -32,7 +34,9 @@ local save byte-identical.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
 import sqlite3
 import tempfile
 import time
@@ -54,6 +58,11 @@ from ..utils import close_anki
 # thing standing between it and "Delete Unused Files". The shipped code wrote
 # the bare name ``ankimon.db``, and ``_migrate_legacy_files`` actively moved
 # users from the protected legacy name TO that unprotected one.
+#
+# READ-ONLY as of the content-addressed scheme below: earlier builds of this
+# migration wrote these fixed names, so they are still discovered, ranked and
+# offered — but nothing writes them any more, because a fixed name is a name
+# that eventually has to be overwritten.
 MEDIA_SAVE_NAME = "_ankimon_save.db"
 
 # Developer mode keeps its own ``ankimonDEV.db``, and it needs its own protected
@@ -64,19 +73,51 @@ MEDIA_SAVE_NAME = "_ankimon_save.db"
 # contaminated file reached other devices as well.
 DEV_MEDIA_SAVE_NAME = "_ankimon_save_dev.db"
 
-# Where a media save that has DIVERGED from the protected copy is preserved.
-#
-# Two saves diverge when neither is a superset of the other on the monotone
-# counters — device A caught three more Pokemon, device B earned two more badges
-# — which is the normal outcome of two machines that both played while the
-# removed sync was picking a winner by mtime. The protected name can only hold
-# one of them, and overwriting is destruction, so the other one gets its own
-# underscore-prefixed name here. Only ONE extra name is ever needed: within a
-# partition every candidate except the bare ``ankimon.db`` / ``ankimonDEV.db``
-# already starts with an underscore and is therefore already safe from Anki's
-# "Delete Unused Files", so at most one file per partition is at risk.
+# ...but the two fixed names above are what EARLIER builds wrote. They are kept
+# only so those files are still FOUND — they already start with an underscore,
+# so they are already safe, and nothing below ever writes to them again.
 DIVERGED_MEDIA_SAVE_NAME = "_ankimon_save_diverged.db"
 DEV_DIVERGED_MEDIA_SAVE_NAME = "_ankimon_save_dev_diverged.db"
+
+# What this migration writes TODAY: ``_ankimon_save_<digest>.db``, where the
+# digest is of the preserved file's own bytes.
+#
+# CONTENT-ADDRESSED, because there is nothing else honest to key a name on.
+# A fixed name can hold one save, so a second one arriving forces a choice
+# between overwriting (destruction) and leaving the newcomer under the bare,
+# deletable name — and the only evidence available to make that choice is the
+# progress counters, which cannot make it: they are aggregates, so
+# ``(3 pokemon, 2 badges, 101 history) >= (2, 2, 100)`` says nothing about
+# whether those three Pokemon INCLUDE the two, and captures are not even
+# monotone (``AnkimonDB.delete_pokemon`` releases one; the duplicate prune drops
+# rows). Equal counters are just as uninformative — two saves can agree on all
+# three and share not a single row.
+#
+# So no aggregate ever authorises a write here. Identity is exact file content,
+# and a digest gives every distinct save its own name:
+#
+# * dedupe is a stat call — if ``_ankimon_save_<digest>.db`` exists, that exact
+#   save is already preserved, so a repeat scan is a no-op;
+# * the third, fourth and Nth divergent save each get a protected home, instead
+#   of the third being knowingly left under the name Anki's "Delete Unused
+#   Files" can take;
+# * nothing is ever overwritten, so no comparison can be wrong in a way that
+#   costs the user data;
+# * the name is derived from the bytes alone, so two devices that receive the
+#   same save through media sync compute the SAME filename and converge on one
+#   copy rather than multiplying them.
+#
+# The cost is that a folder can accumulate one file per distinct save that ever
+# passed through it. That is bounded by how many genuinely different saves the
+# user has, it is their own data, and it is the right side of the trade against
+# deleting one.
+MEDIA_SAVE_PREFIX = "_ankimon_save_"
+DEV_MEDIA_SAVE_PREFIX = "_ankimon_save_dev_"
+
+# Half a SHA-256, in hex. Long enough that an accidental collision between two
+# of a single user's saves is not a thing that happens; short enough to stay a
+# readable filename.
+MEDIA_SAVE_DIGEST_CHARS = 32
 
 # Bare names the removed feature (and its pre-SQLite ancestors) left behind in
 # collection.media. Only ``.db`` entries are candidates for rescue; the JSON
@@ -228,11 +269,36 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
             ).fetchall()
         }
 
+        def _fatal(exc: Exception) -> None:
+            """Re-raise the failures that mean the read was CUT SHORT.
+
+            The queries below are wrapped so that a save written by an older
+            schema — a missing column, a renamed table — still reports the
+            fields it does have instead of reading as unreadable. A statement
+            the progress handler ABORTED is not that: it says the probe budget
+            ran out mid-count, and swallowing it returns the ``default`` (0) for
+            a table that may hold thousands of rows. "Unknown" would then be
+            indistinguishable from "empty", which is the one thing this function
+            exists to keep apart — and a false (0, 0, 0) is dominated by every
+            real save, so it feeds straight into a comparison that can authorise
+            a rescue over the save that actually holds the progress.
+
+            The deadline is the primary test because it holds however SQLite
+            spells the abort; the message check catches an interruption raised
+            by some other means (``interrupt()``, a handler a test installed)
+            before the wall clock has run out.
+            """
+            if time.monotonic() > _deadline:
+                raise exc
+            if isinstance(exc, sqlite3.OperationalError) and "interrupt" in str(exc).lower():
+                raise exc
+
         def _scalar(sql: str, default=0):
             try:
                 row = conn.execute(sql).fetchone()
                 return row[0] if row and row[0] is not None else default
-            except Exception:
+            except Exception as e:
+                _fatal(e)
                 return default
 
         if "captured_pokemon" in tables:
@@ -257,18 +323,23 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
                         "SELECT value FROM config WHERE key = ?", (key,)
                     ).fetchone()
                     return row[0] if row else default
+                except Exception as e:
+                    _fatal(e)
+                    return default
+
+            def _as_int(value, default=0):
+                # Tolerates only the CONVERSION failing — a level stored as ''
+                # or 'None' by an older build. Wrapping the _cfg call itself
+                # would put the swallow-everything back one level up and undo
+                # what _fatal is for.
+                try:
+                    return int(value)
                 except Exception:
                     return default
 
             stats["trainer_name"] = _cfg("trainer.name", "-")
-            try:
-                stats["trainer_level"] = int(_cfg("trainer.level", 0))
-            except Exception:
-                pass
-            try:
-                stats["trainer_cash"] = int(_cfg("trainer.cash", 0))
-            except Exception:
-                pass
+            stats["trainer_level"] = _as_int(_cfg("trainer.level", 0))
+            stats["trainer_cash"] = _as_int(_cfg("trainer.cash", 0))
         return stats
     except Exception:
         return None
@@ -298,17 +369,22 @@ def _progress_key(stats: Optional[Dict[str, Any]]) -> tuple:
 
     Deliberately excludes cash and level: both can legitimately go DOWN (spending
     in the shop; a level recomputed from a changed XP curve), so including them
-    would let a save that merely spent money look 'older'. Counts of captured
-    Pokemon, achieved badges and history rows only ever grow.
+    would let a save that merely spent money look 'older'. Captures, achieved
+    badges and history rows are the closest thing to a progress signal the save
+    has — though not a monotone one either: ``AnkimonDB.delete_pokemon`` releases
+    a Pokemon and the duplicate prune drops rows, so even this tuple can fall.
 
-    This is a ranking heuristic and NOT an ordering of saves. Comparing the
-    tuples directly compares them lexicographically, which invents a winner
-    between two saves that merely diverged: (10, 0, 50) > (8, 3, 200) purely
-    because 10 > 8 decides it before badges or history are ever looked at, and
-    acting on that answer throws away three badges and 150 history rows. Nothing
-    that overwrites or replaces a save may use ``>`` on these tuples — use
-    ``_dominates`` for that. Ranking a list to pick a most-advanced candidate is
-    fine, because picking one destroys nothing.
+    A RANKING HEURISTIC, and nothing more. It has exactly two jobs: choose which
+    media candidate to show the user, and decide whether a rescue is worth
+    OFFERING. It may not authorise a write, and neither may ``_dominates``,
+    which is built from it — see that function.
+
+    Comparing the tuples directly compares them lexicographically, which invents
+    a winner between two saves that merely diverged: (10, 0, 50) > (8, 3, 200)
+    purely because 10 > 8 decides it before badges or history are ever looked
+    at. That is why the rescue offer goes through ``_dominates`` rather than
+    ``>``; ranking a list to pick a candidate to LOOK at is fine, because
+    picking one destroys nothing.
     """
     if stats is None:
         return (-1, -1, -1)
@@ -316,14 +392,21 @@ def _progress_key(stats: Optional[Dict[str, Any]]) -> tuple:
 
 
 def _dominates(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> bool:
-    """True when ``a`` contains everything ``b`` does, and something more.
+    """True when ``a`` is ahead of ``b`` on every count Ankimon can compare.
 
-    The only comparison allowed to authorise a destructive step. Every counter
-    in ``_progress_key`` is monotone, so a save that is genuinely descended from
-    another is >= it on all three and > on at least one. Anything else is a
-    DIVERGENCE — two saves that each hold progress the other lacks — and there
-    is no honest way to pick a winner between them; the caller must preserve
-    both and say so rather than overwrite one.
+    NOT a containment test, and nothing destructive may be built on it. These
+    are aggregate counts: three captures are not evidence of WHICH three, so
+    ``(3, 2, 101) >= (2, 2, 100)`` is entirely consistent with two saves that
+    share no rows at all, and the counters are not monotone in the first place
+    (``delete_pokemon``). Equality is no better — same counts, possibly
+    disjoint contents.
+
+    What it is good for is deciding whether a rescue is worth OFFERING. A media
+    save that is behind or level on all three has nothing to give the user, so
+    asking would be noise; one that is ahead on all three might, so the question
+    gets asked — with both saves' contents shown, the local save backed up
+    first, and the user's explicit yes. Files in the media folder are preserved
+    by ``_preserve``, which asks this function nothing.
 
     An unreadable save (``None``) neither dominates nor is dominated: unknown is
     not the same as empty, and a file we merely failed to open this second must
@@ -768,25 +851,50 @@ def _target_db_for(candidate: Path) -> str:
     }
     if name in explicit:
         return explicit[name]
+    # Content-addressed copies carry no "ankimonDEV" either, and the normal
+    # prefix is a prefix OF the developer one, so the developer test has to come
+    # first. A digest can never spell "dev_" (v is not a hex digit), so the two
+    # prefixes cannot be confused in the other direction.
+    if name.startswith(DEV_MEDIA_SAVE_PREFIX):
+        return "ankimonDEV.db"
+    if name.startswith(MEDIA_SAVE_PREFIX):
+        return "ankimon.db"
     return "ankimonDEV.db" if "ankimonDEV" in name else "ankimon.db"
 
 
-def _protected_name_for(target_db: str) -> str:
-    """The protected filename belonging to ``target_db``'s partition.
+def _protected_copy_prefix(target_db: str) -> str:
+    """The content-addressed prefix belonging to ``target_db``'s partition.
 
     Each partition gets its own, so a developer-mode run can never write test
-    progress into the name the normal-mode scan reads back.
+    progress into a name the normal-mode scan reads back.
     """
-    return DEV_MEDIA_SAVE_NAME if target_db == "ankimonDEV.db" else MEDIA_SAVE_NAME
-
-
-def _diverged_name_for(target_db: str) -> str:
-    """Where this partition keeps a save that diverged from the protected one."""
     return (
-        DEV_DIVERGED_MEDIA_SAVE_NAME
-        if target_db == "ankimonDEV.db"
-        else DIVERGED_MEDIA_SAVE_NAME
+        DEV_MEDIA_SAVE_PREFIX if target_db == "ankimonDEV.db" else MEDIA_SAVE_PREFIX
     )
+
+
+def _protected_copy_name(target_db: str, digest: str) -> str:
+    """Where a save with content ``digest`` is preserved in this partition."""
+    return f"{_protected_copy_prefix(target_db)}{digest}.db"
+
+
+def _content_digest(path: Path) -> Optional[str]:
+    """Hex digest of ``path``'s bytes, or ``None`` if it could not be read.
+
+    Exact file content is the ONLY identity this migration trusts. Two files
+    with the same digest are the same save and one copy is enough; anything else
+    is treated as a distinct save and gets its own protected name — a
+    conservative direction, because the worst it can do is keep a redundant copy
+    of a save that some other measure might have called equal.
+    """
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()[:MEDIA_SAVE_DIGEST_CHARS]
+    except Exception:
+        return None
 
 
 def _media_candidate_paths(media_dir: Path, target_db: str) -> list:
@@ -805,18 +913,21 @@ def _media_candidate_paths(media_dir: Path, target_db: str) -> list:
     """
     if target_db == "ankimonDEV.db":
         explicit = (DEV_MEDIA_SAVE_NAME, DEV_DIVERGED_MEDIA_SAVE_NAME, "ankimonDEV.db")
-        pattern = "_*_ankimonDEV.db"
+        patterns = ("_*_ankimonDEV.db", DEV_MEDIA_SAVE_PREFIX + "*.db")
     else:
         explicit = (MEDIA_SAVE_NAME, DIVERGED_MEDIA_SAVE_NAME, "ankimon.db")
-        pattern = "_*_ankimon.db"
+        patterns = ("_*_ankimon.db", MEDIA_SAVE_PREFIX + "*.db")
 
     paths = [media_dir / name for name in explicit]
     try:
-        for path in sorted(media_dir.glob(pattern)):
-            # The globs are disjoint today, but a future name could collide, so
-            # re-check the partition explicitly rather than trusting the pattern.
-            if _target_db_for(path) == target_db and path not in paths:
-                paths.append(path)
+        for pattern in patterns:
+            for path in sorted(media_dir.glob(pattern)):
+                # The normal partition's glob deliberately over-matches — it
+                # catches the developer partition's content-addressed names too
+                # — so the partition is re-checked explicitly rather than
+                # trusted to the pattern.
+                if _target_db_for(path) == target_db and path not in paths:
+                    paths.append(path)
     except Exception:
         pass
     return paths
@@ -956,15 +1067,13 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
 
     Two jobs, in order:
 
-    1. **Protect.** Copy the most advanced save found in ``collection.media`` to
-       the partition's protected name (``_ankimon_save.db``, or
-       ``_ankimon_save_dev.db`` in developer mode) when that name does not
-       already hold it. Every name the old feature used except the pre-2024
-       legacy one lacks the leading underscore, so today Anki's "Delete Unused
-       Files" lists the user's save and deletes it — and that deletion
-       propagates to their other devices. Nothing is deleted here, and nothing
-       is overwritten that is not strictly superseded; a save that merely
-       DIVERGED from the protected copy is preserved beside it instead.
+    1. **Protect.** Copy the bare ``ankimon.db`` / ``ankimonDEV.db`` — the only
+       name in the partition that Anki's "Delete Unused Files" can take, and the
+       name the removed feature wrote — to ``_ankimon_save_<digest>.db``. The
+       name comes from the file's own content, so this can only ever collide
+       with a copy of the same save: nothing is deleted, nothing is overwritten,
+       and no comparison decides anything. A second, third or tenth divergent
+       save each get their own protected name.
 
     2. **Judge.** Read the local save and hand the comparison back. Whether to
        offer a rescue is decided in ``_apply_migration_result``, because it ends
@@ -1031,21 +1140,6 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         else:
             stats[path] = summary
 
-    protected = media_dir / _protected_name_for(target_db)
-
-    # An existing protected copy that will not open is UNKNOWN, not empty.
-    # _progress_key floors it to (-1, -1, -1), so ranking it against a readable
-    # candidate lets any candidate — including a badly stale one — win and
-    # overwrite it. A protected copy with a valid SQLite header and a damaged
-    # body is writable, so that overwrite really did destroy saves.
-    if protected.is_file() and protected not in stats:
-        notes.append((
-            "info",
-            f"Ankimon: {protected.name} could not be read this pass; leaving it "
-            "untouched and rescanning later.",
-        ))
-        return _result("armed")
-
     if not stats:
         notes.append((
             "info",
@@ -1054,50 +1148,45 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         ))
         return _result("armed")
 
-    # Ranking is allowed to use the raw counters — picking a candidate to look
-    # at more closely destroys nothing. Every step below that WRITES uses
-    # _dominates instead.
+    # PROTECT. Exactly ONE file in this partition can be taken by Anki's "Delete
+    # Unused Files": the bare ``ankimon.db`` / ``ankimonDEV.db``. Every other
+    # candidate — the fixed names earlier builds wrote, the pre-2024 legacy
+    # names, the content-addressed copies — already begins with an underscore,
+    # and the media check only offers to delete a file when
+    # ``!file.starts_with('_')``. So the protect step has one job, on one file,
+    # and it is unconditional: it does not rank, does not compare, and does not
+    # write over anything. Nothing else in the folder is touched at all.
+    at_risk = media_dir / target_db
+    preserved = (
+        _preserve(at_risk, media_dir, target_db, notes, unreadable, written)
+        if at_risk in stats
+        else None
+    )
+
+    # JUDGE. Ranking chooses which candidate to SHOW the user; picking one
+    # destroys nothing, so the raw counters are allowed here. Whether that
+    # candidate is worth offering at all is decided in _apply_migration_result.
     best = max(stats, key=lambda p: _progress_key(stats[p]))
     media_path, media_stats = best, stats[best]
-    protected_stats = stats.get(protected)
-    protected_now = protected_stats     # what the protected NAME holds after this pass
-
-    if best != protected:
-        if not protected.is_file() or _dominates(stats[best], protected_stats):
-            # Either there is nothing to lose, or the candidate strictly
-            # supersedes what is there — everything the protected copy holds is
-            # in the candidate too, so replacing it loses nothing.
-            media_path, media_stats = _preserve(
-                best, protected, stats[best], notes, unreadable, written
-            )
-            protected_now = stats[best] if media_path == protected else protected_stats
-        elif _dominates(protected_stats, stats[best]) or _progress_key(
-            protected_stats
-        ) == _progress_key(stats[best]):
-            # The protected copy already holds this progress, or more.
-            media_path, media_stats = protected, protected_stats
-        else:
-            # DIVERGED: each side holds progress the other lacks, and there is no
-            # honest way to name a winner, so the protected copy is left alone
-            # and the other side is preserved beside it below.
-            media_path, media_stats = protected, protected_stats
-
-    # Whatever the protected name ended up holding, a save that diverges from it
-    # is still unprotected — and that is just as true when the protected copy is
-    # the one that ranked highest, which is why this is not inside the branch
-    # above. Skipped only when the protect step failed, because then the pass is
-    # already staying armed to retry it.
-    if protected_now is not None:
-        _preserve_diverged(
-            media_dir, target_db, stats, protected_now, notes, unreadable, written
-        )
+    if best == at_risk and preserved is not None and (
+        preserved in written or preserved in stats
+    ):
+        # Byte-for-byte the same save, under the name that will still be there
+        # after a media check — so that is the one to name in the dialog and to
+        # rescue from. Only when this pass either WROTE it (and verified it
+        # before publishing) or read it: an older copy of the same content that
+        # would not open this pass is still preserved, but it is not something
+        # to offer as a replacement for the live save.
+        media_path = preserved
 
     local_stats = (
         get_db_stats(target, timeout=MIGRATION_PROBE_TIMEOUT) if target else None
     )
 
-    # The LOCAL save gets the same UNKNOWN treatment as the protected copy. A
-    # local save merely locked this second — the OneDrive/antivirus case this
+    # A save that will not open is UNKNOWN, never empty — the distinction the
+    # whole comparison rests on, and the one _progress_key cannot make on its
+    # own, since it floors an unreadable save to (-1, -1, -1). A local save
+    # merely locked this second — the OneDrive/antivirus case this
     # add-on already has a lock ladder for — would otherwise lose to any readable
     # media copy, be offered against a side the dialog itself renders as "could
     # not read this file", and then, if the user sensibly declined, settle the
@@ -1118,142 +1207,88 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     )
 
 
-def _protect_copy(source: Path, dest: Path) -> None:
-    """Build the protected copy beside its destination, then move it into place.
+def _preserve(at_risk: Path, media_dir: Path, target_db: str,
+              notes: list, unreadable: list, written: list) -> Optional[Path]:
+    """Give the one deletable save in this folder a protected, permanent home.
 
-    ``Connection.backup`` writes pages INTO the destination it is handed, so
-    backing straight up over the protected copy means an interruption — a full
-    disk, a killed process, a power loss — leaves that copy half-written. Nothing
-    deletes it and the next pass correctly reads it as unreadable and stays
-    armed, but the one file this whole migration exists to keep safe is gone
-    until someone restores it.
+    Copies ``at_risk`` — the bare ``ankimon.db`` / ``ankimonDEV.db``, the only
+    name in the partition Anki's "Delete Unused Files" can take — to
+    ``_ankimon_save_<digest>.db``. Returns that path, whether this pass wrote it
+    or found it already there; ``None`` if the copy could not be made.
 
-    So: build into a temp, then hand the finished file to ``_atomic_write_over``,
-    which is the same lock ladder and same-volume/EXDEV handling the import and
-    export paths use (#639/#636). Its own temp is chosen internally, so this one
-    deliberately lives in the system temp dir and cannot collide with the
-    ``<dest>.synctmp`` sibling that function reaps on entry.
+    Three properties, in the order they matter:
+
+    * **It never overwrites.** The destination name is derived from the source's
+      own bytes, so the only file it can collide with is one holding that exact
+      save. There is no case in which this function has to choose between two
+      different saves, which means there is no case in which it can choose
+      wrong.
+    * **It is idempotent.** Once the copy exists, its name is a statement about
+      its content, so the next pass recognises the steady state from a digest
+      and a ``stat``, and writes nothing.
+    * **It leaves the source alone.** A plain byte copy, deliberately: the media
+      file is static (nothing here has it open, and Anki's media sync replaces
+      files rather than writing into them), so ``Connection.backup`` would buy
+      nothing — while opening it read-write, which on a file carrying a hot
+      rollback journal runs recovery and MODIFIES the one thing this migration
+      promised not to touch.
+
+    The published name is taken from the TEMP's bytes, not from the probe above
+    it, so a media download landing mid-copy cannot produce a file whose name
+    describes a different save than its contents. The temp is verified before it
+    is published — the protected copy is the one file here that has to be
+    trustworthy — and ``_atomic_write_over`` (the same lock ladder and EXDEV
+    handling as import/export, #639/#636) moves it into place, so an
+    interruption cannot leave a half-written protected copy behind.
     """
-    from .ankimon_sync import _atomic_write_over
+    from .ankimon_sync import _atomic_write_over, _verify_sqlite_integrity
 
-    fd, name = tempfile.mkstemp(prefix="ankimon-protect-", suffix=".db")
-    os.close(fd)
-    tmp = Path(name)
+    tmp = None
+    dest = None
     try:
-        _sqlite_backup(source, tmp)
+        # Cheap path first: hash what is already on disk and see whether that
+        # save has a home. In the steady state — the folder settled, this pass
+        # armed only because something ELSE changed — that is one read and one
+        # stat, with no copy and no write at all.
+        probe = _content_digest(at_risk)
+        if probe is not None:
+            settled = media_dir / _protected_copy_name(target_db, probe)
+            if settled.is_file():
+                return settled
+
+        fd, name = tempfile.mkstemp(prefix="ankimon-protect-", suffix=".db")
+        os.close(fd)
+        tmp = Path(name)
+        shutil.copy2(at_risk, tmp)
+        digest = _content_digest(tmp)
+        if digest is None:
+            raise OSError(f"could not read back the copy of {at_risk.name}")
+        dest = media_dir / _protected_copy_name(target_db, digest)
+        if dest.is_file():
+            return dest         # this exact save is already preserved
+        if not _verify_sqlite_integrity(tmp, timeout=MIGRATION_PROBE_TIMEOUT):
+            raise OSError(f"the copy of {at_risk.name} did not verify")
         _atomic_write_over(tmp, dest)
-    finally:
-        try:
-            tmp.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-
-def _preserve(source: Path, protected: Path, source_stats: Dict[str, Any],
-              notes: list, unreadable: list, written: list) -> tuple:
-    """Copy ``source`` to the partition's protected name.
-
-    Returns the (path, stats) the rescue comparison should use. On failure that
-    is the candidate itself — the rescue is still worth offering from where the
-    file actually is — and the protected name joins ``unreadable`` so the pass
-    stays armed and retries the copy next time.
-    """
-    try:
-        _protect_copy(source, protected)
-        written.append(protected)
+        written.append(dest)
         notes.append((
             "info",
-            f"Ankimon: preserved {source.name} as {protected.name} "
-            "(protected from Anki's Delete Unused Files).",
+            f"Ankimon: preserved {at_risk.name} as {dest.name} "
+            "(protected from Anki's Delete Unused Files). Nothing was deleted "
+            "or overwritten.",
         ))
-        return protected, source_stats
-    except Exception as e:
-        notes.append(("error", f"Could not preserve {source.name} in media: {e}"))
-        unreadable.append(protected)
-        return source, source_stats
-
-
-def _preserve_diverged(media_dir: Path, target_db: str,
-                       stats: Dict[Path, Dict[str, Any]],
-                       protected_stats: Optional[Dict[str, Any]],
-                       notes: list, unreadable: list, written: list) -> None:
-    """Give the AT-RISK save a protected home without touching the protected copy.
-
-    "At risk" is a precise, small set: within a partition every candidate but the
-    bare ``ankimon.db`` / ``ankimonDEV.db`` already carries a leading underscore,
-    and Anki's media check only offers to delete a file when
-    ``!file.starts_with('_')``. So there is exactly one file per partition that
-    "Delete Unused Files" can take, and one spare protected name is always
-    enough — as long as it is that file this looks at, not whichever candidate
-    happened to rank highest.
-    """
-    protected_name = _protected_name_for(target_db)
-    at_risk = media_dir / target_db
-    at_risk_stats = stats.get(at_risk)
-
-    if at_risk_stats is None:
-        # The divergence is between two files that are both already protected —
-        # the steady state after an earlier pass wrote the diverged name, which
-        # is why that copy is not made again on every boot.
-        notes.append((
-            "info",
-            "Ankimon: the saves in your media folder have diverged — each holds "
-            "progress the other does not. All are kept; none is overwritten.",
-        ))
-        return
-
-    if protected_stats is not None and (
-        _dominates(protected_stats, at_risk_stats)
-        or _progress_key(protected_stats) == _progress_key(at_risk_stats)
-    ):
-        return          # already safe: the protected copy holds all of it
-
-    diverged = media_dir / _diverged_name_for(target_db)
-    occupant = (
-        get_db_stats(diverged, timeout=MIGRATION_PROBE_TIMEOUT)
-        if diverged.is_file()
-        else None
-    )
-    if diverged.is_file() and occupant is None:
-        # Unknown is not empty, and not something to write over. Retry later.
-        notes.append((
-            "info",
-            f"Ankimon: {diverged.name} could not be read this pass; leaving "
-            f"{at_risk.name} where it is and rescanning later.",
-        ))
-        unreadable.append(diverged)
-        return
-    if diverged.is_file() and (
-        _dominates(occupant, at_risk_stats)
-        or _progress_key(occupant) == _progress_key(at_risk_stats)
-    ):
-        # Already preserved — this is the steady state after an earlier pass
-        # wrote it, so a repeat scan must be a silent no-op rather than copying
-        # the same save over itself on every boot.
-        return
-    if diverged.is_file() and not _dominates(at_risk_stats, occupant):
-        # A third, equally incomparable save. Nothing here may be overwritten and
-        # inventing further names would not terminate, so leave all of it in
-        # place — untouched is worse than protected, but it is not destroyed.
-        notes.append((
-            "info",
-            f"Ankimon: {at_risk.name} diverges from both {protected_name} and "
-            f"{diverged.name}; all three are left exactly as they are. Nothing "
-            "is deleted, but do not use Anki's Delete Unused Files here.",
-        ))
-        return
-    try:
-        _protect_copy(at_risk, diverged)
-        written.append(diverged)
-        notes.append((
-            "info",
-            f"Ankimon: {at_risk.name} diverged from {protected_name} — each holds "
-            f"progress the other does not — so it was preserved as "
-            f"{diverged.name} rather than written over it.",
-        ))
+        return dest
     except Exception as e:
         notes.append(("error", f"Could not preserve {at_risk.name} in media: {e}"))
-        unreadable.append(diverged)
+        # Stay armed and retry next pass: the at-risk file is still sitting
+        # there under a name a media check can delete.
+        unreadable.append(dest if dest is not None else at_risk)
+        return None
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 def _apply_migration_result(result: Dict[str, Any], logger) -> None:
@@ -1288,12 +1323,15 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             "could not tell reliably which device's save was newer, and "
             "sometimes overwrote the wrong one.\n\n"
             "A save left in your Anki media folder (synced from AnkiWeb, if "
-            "media sync is on) contains everything the save on this computer "
-            "does, and more:\n\n"
+            "media sync is on) is further along than the save on this computer "
+            "on every count Ankimon can compare:\n\n"
             f"IN YOUR MEDIA FOLDER\n{_format_stats(media_stats)}\n\n"
             f"ON THIS COMPUTER\n{_format_stats(local_stats)}\n\n"
-            "Load the media-folder copy? Your current save will be backed up "
-            "first, and Anki will close so it can be loaded cleanly.\n\n"
+            "Load the media-folder copy? Compare the two above first — Ankimon "
+            "counts what each save holds, it cannot tell whether one contains "
+            "the other. Your current save will be backed up before anything is "
+            "replaced, and Anki will close so the copy can be loaded cleanly."
+            "\n\n"
             "If you say no, nothing changes — the copy stays in your media "
             "folder either way, and you will not be asked about it again "
             "unless a different copy arrives there.",
