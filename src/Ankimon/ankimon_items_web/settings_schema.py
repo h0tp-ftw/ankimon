@@ -67,6 +67,7 @@ GROUPS = [
                 "settings": [
                     "Cards per Round",
                     "Review Based Damage",
+                    "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",
                 ],
