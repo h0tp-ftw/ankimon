@@ -465,5 +465,6 @@
   "evolve_now_button": "⇈ 进化为 {evo_name}！ ⇈",
   "badge_ready": "⇈ 准备进化！",
   "badge_wait_day": "☀️ 准备在白天进化",
-  "badge_wait_night": "🌙 准备在夜晚进化"
+  "badge_wait_night": "🌙 准备在夜晚进化",
+  "switched_pokemon": "换上了{pokemon_name}！Lv.{level}"
 }

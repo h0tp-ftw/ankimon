@@ -465,5 +465,6 @@
   "evolve_now_button": "⇈ 지금 {evo_name}(으)로 진화! ⇈",
   "badge_ready": "⇈ 진화할 준비가 되었습니다!",
   "badge_wait_day": "☀️ 낮 동안 진화할 수 있습니다",
-  "badge_wait_night": "🌙 밤 동안 진화할 수 있습니다"
+  "badge_wait_night": "🌙 밤 동안 진화할 수 있습니다",
+  "switched_pokemon": "{pokemon_name}(으)로 교체! Lv.{level}"
 }

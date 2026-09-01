@@ -1,0 +1,10 @@
+{
+ "accuracy": "Genauigkeit",
+ "attack": "Angriff",
+ "defense": "Verteidigung",
+ "evasion": "Fluchtwert",
+ "hp": "KP",
+ "specialattack": "Spezialangriff",
+ "specialdefense": "Spezialverteidigung",
+ "speed": "Initiative"
+}

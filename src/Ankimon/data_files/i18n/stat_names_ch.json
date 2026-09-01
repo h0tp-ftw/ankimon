@@ -1,0 +1,10 @@
+{
+ "accuracy": "命中",
+ "attack": "攻擊",
+ "defense": "防禦",
+ "evasion": "閃避",
+ "hp": "HP",
+ "specialattack": "特攻",
+ "specialdefense": "特防",
+ "speed": "速度"
+}

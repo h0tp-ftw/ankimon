@@ -350,14 +350,13 @@ class ItemWindow(QWidget):
         info_item_button = QPushButton("More Info")
         info_item_button.clicked.connect(lambda: self.more_info_button_act(item_name))
 
-        item_name_for_label = item_name.replace(
-            "-", " "
-        )  # Remove hyphens from item_name
-        item_name_for_label = (
-            f"{item_name_for_label.capitalize()} x{quantity}"  # Display quantity
-        )
+        from ..localized_text import item_name as _item_name, move_name as _move_name
         if item_type == "TM":
-            item_name_for_label = f"TM: {item_name_for_label}"
+            # TM labels are "TM: <Move Name>" — localize the move.
+            item_name_for_label = f"TM: {_move_name(item_name, item_name.replace('-', ' ').title())} x{quantity}"
+        else:
+            _pretty = item_name.replace("-", " ").capitalize()
+            item_name_for_label = f"{_item_name(item_name, _pretty)} x{quantity}"
         item_name_label = QLabel(item_name_for_label)
         item_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -1006,5 +1005,8 @@ class ItemWindow(QWidget):
         self.show()
 
     def more_info_button_act(self, item_name: str):
-        description = get_id_and_description_by_item_name(item_name)
+        from ..localized_text import item_description
+        description = item_description(
+            item_name, get_id_and_description_by_item_name(item_name) or ""
+        )
         self.logger.log_and_showinfo("info", f"{description}")

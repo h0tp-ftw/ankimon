@@ -174,7 +174,10 @@ def MainPokemon(
     logger.log_and_showinfo(
         "info",
         translator.translate(
-            "picked_main_pokemon", main_pokemon_name=main_pokemon.name.capitalize()
+            "picked_main_pokemon",
+            main_pokemon_name=getattr(
+                main_pokemon, "display_name", main_pokemon.name.capitalize()
+            ),
         ),
     )
 

@@ -90,6 +90,21 @@ from ..events import events
 # mobile not yet installed.
 
 
+def _local_pokemon_name(pokedex_id, english_fallback):
+    """Localized species name for the current language, English fallback."""
+    try:
+        lang = int(services.settings.get("misc.language", 9))
+        if lang != 9 and pokedex_id:
+            from ..functions.pokedex_functions import get_pokemon_diff_lang_name
+
+            loc = get_pokemon_diff_lang_name(int(pokedex_id), lang)
+            if loc and loc != "No Translation in this language":
+                return loc
+    except Exception:
+        pass
+    return english_fallback
+
+
 SCREEN_ITEMS = "items"
 SCREEN_ANKIDEX = "ankidex"
 SCREEN_SETTINGS = "settings"
@@ -336,6 +351,13 @@ class MobileBridge(QObject):
         """
         try:
             db = services.db
+            # Language code (jp / sp / es_latam / en / ...) so the mobile battle
+            # narration can localize itself; mirrors move_names._current_lang_code.
+            try:
+                from ..move_names import _current_lang_code
+                mobile_language = _current_lang_code()
+            except Exception:
+                mobile_language = "en"
             # 1. Count and ease breakdown in one GROUP BY query (lightweight)
             rows = db.execute(
                 """SELECT ease, COUNT(*) as cnt FROM pending_mobile_battles
@@ -365,7 +387,7 @@ class MobileBridge(QObject):
             battle_count = resolved_battles + math.ceil(pending_count / cards_per_round)
 
             if pending_count == 0:
-                return {"pending_count": 0, "cap": 10000, "battle_count": 0}
+                return {"pending_count": 0, "cap": 10000, "battle_count": 0, "language": mobile_language}
 
             # Populate ease breakdown from rows count
             ease_breakdown = {"1": 0, "2": 0, "3": 0, "4": 0}
@@ -534,6 +556,7 @@ class MobileBridge(QObject):
                 "main_pokemon_sprite": main_pokemon_sprite,
                 "sprite_mode": sprite_mode,
                 "team_status": self.getTeamStatus(),
+                "language": mobile_language,
             }
         except Exception as e:
             import traceback
@@ -548,6 +571,7 @@ class MobileBridge(QObject):
                 "pending_count": 0,
                 "pending_count_at_start": 0,
                 "cap": 10000,
+                "language": "en",
             }
 
     @pyqtSlot(result="QVariant")
@@ -1578,7 +1602,9 @@ class AnkimonItemsWeb(QDialog):
                 if pid and int(pid) > 0:
                     pid_val = int(pid)
                     if pid_val not in encounter_data.UNAVAILABLE:
-                        results.append({"id": pid_val, "name": pretty_name})
+                        results.append(
+                            {"id": pid_val, "name": _local_pokemon_name(pid_val, pretty_name)}
+                        )
             if len(results) >= 20:
                 break
         results.sort(key=lambda r: r["name"].lower())
@@ -1604,7 +1630,7 @@ class AnkimonItemsWeb(QDialog):
                 results.append(
                     {
                         "id": int(pid),
-                        "name": pretty_name,
+                        "name": _local_pokemon_name(int(pid), pretty_name),
                     }
                 )
         # Sort by name alphabetically
@@ -1755,7 +1781,19 @@ class AnkimonItemsWeb(QDialog):
         owned_quantity,
         equipped_instances=None,
     ):
-        ui_name = name.replace("-", " ").title()
+        from ..localized_text import (
+            item_name as _item_name,
+            item_description as _item_desc,
+            move_name as _move_name,
+            move_description as _move_desc,
+            type_name as _type_name,
+        )
+
+        english_ui_name = name.replace("-", " ").title()
+        if is_tm:
+            ui_name = _move_name(name, english_ui_name)
+        else:
+            ui_name = _item_name(name, english_ui_name)
         entry = {
             "name": name,
             "ui_name": ui_name,
@@ -1774,12 +1812,13 @@ class AnkimonItemsWeb(QDialog):
             entry["image_url"] = QUrl.fromLocalFile(
                 str(items_path / f"Bag_TM_{move_type}_SV_Sprite.png")
             ).toString()
-            short_desc = move.get("shortDesc") or ""
+            short_desc = _move_desc(name, move.get("shortDesc") or "")
             entry["description"] = (
                 f"Teaches a compatible Pokémon the move {ui_name}."
                 + (f" {short_desc}" if short_desc else "")
             )
             entry["move_type"] = move_type
+            entry["move_type_label"] = _type_name(move_type, move_type)
             entry["move_power"] = self._coerce_int(move.get("basePower"))
             accuracy = move.get("accuracy")
             entry["move_accuracy"] = (
@@ -1791,8 +1830,8 @@ class AnkimonItemsWeb(QDialog):
             entry["image_url"] = QUrl.fromLocalFile(
                 str(items_path / f"{name}.png")
             ).toString()
-            entry["description"] = (
-                self._lookup_description(name) or f"A useful item: {ui_name}"
+            entry["description"] = _item_desc(
+                name, self._lookup_description(name) or f"A useful item: {ui_name}"
             )
 
         return entry

@@ -324,7 +324,8 @@ class MoveManagerWidget(QWidget):
                 move_data = find_details_move(move)
                 m_type = move_data.get("type", "Normal")
                 color = MOVE_TYPE_COLORS.get(m_type, "#777")
-                slot["type_chip"].setText(m_type.upper())
+                from ..localized_text import type_name as _type_name
+                slot["type_chip"].setText(_type_name(m_type, m_type).upper())
                 slot["type_chip"].setStyleSheet(
                     f"background-color: {color}; border-radius: 4px; font-size: 9px; font-weight: bold; color: white;"
                 )

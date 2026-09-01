@@ -6,6 +6,7 @@
 const state = {
   allPokemon: [], // Raw data from pokedex.json
   speciesMap: {}, // actual_id -> species object
+  i18n: {}, // localized text overlay for the current language (see initializeAnkidex)
   collection: {
     owned: new Set(),
     shinies: new Set(),
@@ -84,6 +85,14 @@ window.initializeAnkidex = async function (data) {
   state.collection.shinies = new Set(data.shinies);
   state.collection.seen = new Set(data.seen);
   state.collection.encounterable = new Set(data.encounterable || []);
+  // Localized in-game text for the current language (empty for English).
+  // { names:{id:str}, types:{English:str}, abilities:{slug:str},
+  //   abilityDesc:{slug:str}, flavor:{speciesId:str} }
+  state.i18n = data.i18n || {};
+  if (state.allPokemon.length) {
+    applyI18nToSpecies();
+    Object.assign(state.flavor, state.i18n.flavor || {});
+  }
   state.evolutionNote = data.evolutionNote || "";
   state.prerequisites = data.prerequisites || {};
   state.regionalData = data.regional_data || { boosts: {}, forms: {} };
@@ -120,6 +129,25 @@ window.initializeAnkidex = async function (data) {
   applyFiltersAndRender(collectionChanged);
   state.isInitializing = false;
 };
+
+// Overlay the localized species name + a parallel localized type list onto each
+// loaded Pokémon. The English `p.types` is left intact (type filters, --type-*
+// colour vars and effectiveness all key on it); `p.typesLocal` is display only.
+function applyI18nToSpecies() {
+  const names = (state.i18n && state.i18n.names) || {};
+  const types = (state.i18n && state.i18n.types) || {};
+  state.allPokemon.forEach((p) => {
+    if (p._enName === undefined) p._enName = p.name;
+    p.name = names[p.actual_id] || names[p.species_id] || p._enName;
+    p.typesLocal = (Array.isArray(p.types) ? p.types : []).map(
+      (t) => types[t] || t,
+    );
+  });
+}
+
+function localTypeLabel(p, t, i) {
+  return (p && p.typesLocal && p.typesLocal[i]) || t;
+}
 
 function formatLoreName(name) {
   if (!name || typeof name !== "string") return name;
@@ -198,6 +226,7 @@ async function loadFlavorData() {
   try {
     const response = await fetch("pokedex_flavor.json");
     state.flavor = await response.json();
+    Object.assign(state.flavor, (state.i18n && state.i18n.flavor) || {});
   } catch (err) {
     console.warn("Flavor text not found, continuing without lore.");
   }
@@ -291,6 +320,7 @@ async function loadSpeciesData() {
     state.allPokemon.forEach((p) => {
       state.speciesMap[p.actual_id] = p;
     });
+    applyI18nToSpecies();
 
     const uniqueSpecies = new Set(state.allPokemon.map((p) => p.species_id));
     state.counts.total = uniqueSpecies.size;
@@ -977,11 +1007,11 @@ function renderGrid() {
 
       const typeContainer = card.querySelector(".card-types");
       if (visState >= 1) {
-        p.types.forEach((t) => {
+        p.types.forEach((t, i) => {
           const badge = document.createElement("span");
           badge.className = "mini-type";
           badge.style.backgroundColor = `var(--type-${t.toLowerCase()})`;
-          badge.textContent = t.substring(0, 3);
+          badge.textContent = localTypeLabel(p, t, i).substring(0, 3);
           typeContainer.appendChild(badge);
         });
       }
@@ -1045,11 +1075,11 @@ function selectPokemon(id, cardElement = null) {
   const typeContainer = document.getElementById("det-types");
   typeContainer.innerHTML = "";
   if (visState >= 1) {
-    types.forEach((t) => {
+    types.forEach((t, i) => {
       const badge = document.createElement("span");
       badge.className = "mini-type";
       badge.style.backgroundColor = `var(--type-${t.toLowerCase()})`;
-      badge.textContent = t.substring(0, 3);
+      badge.textContent = localTypeLabel(p, t, i).substring(0, 3);
       typeContainer.appendChild(badge);
     });
   }
@@ -1621,9 +1651,11 @@ function renderAbilities(p, visState) {
     const nameRow = document.createElement("div");
     nameRow.className = "ability-name-row";
 
+    const abilitySlug = name.toLowerCase().replace(/[^a-z0-9]/g, "");
     const nameEl = document.createElement("span");
     nameEl.className = "ability-name";
-    nameEl.textContent = name;
+    nameEl.textContent =
+      (state.i18n.abilities && state.i18n.abilities[abilitySlug]) || name;
     nameRow.appendChild(nameEl);
 
     if (key === "H") {
@@ -1635,9 +1667,11 @@ function renderAbilities(p, visState) {
 
     item.appendChild(nameRow);
 
-    const abilityId = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const abilityId = abilitySlug;
     const description =
-      state.abilities[abilityId] || "Detailed research data unavailable.";
+      (state.i18n.abilityDesc && state.i18n.abilityDesc[abilityId]) ||
+      state.abilities[abilityId] ||
+      "Detailed research data unavailable.";
 
     if (visState === 2) {
       const descEl = document.createElement("div");

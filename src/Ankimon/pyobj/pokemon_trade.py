@@ -13,6 +13,25 @@ import uuid
 from ..functions.pokedex_functions import get_base_experience, get_growth_rate
 from ..utils import get_tier_by_id
 from .error_handler import show_warning_with_traceback
+
+
+def _local_species_name(internal_name, pokedex_id):
+    """Localized species name for the current language, English fallback."""
+    from ..functions.pokedex_functions import format_lore_name
+
+    fallback = format_lore_name(internal_name or "?")
+    try:
+        from ..services import services
+        from ..functions.pokedex_functions import get_pokemon_diff_lang_name
+
+        lang = int(services.settings.get("misc.language", 9))
+        if lang != 9 and pokedex_id:
+            loc = get_pokemon_diff_lang_name(int(pokedex_id), lang)
+            if loc and loc != "No Translation in this language":
+                return loc
+    except Exception:
+        pass
+    return fallback
 from ..services import services
 
 # --- Module-level functions for Monthly Challenges ---
@@ -191,6 +210,7 @@ class PokemonTrade:
 
     def __init__(self, name, id, level, ability, iv, ev, gender, attacks, individual_id, shiny, logger, refresh_callback, parent_window=None, nature="serious"):
         self.name = name
+        self.display_name = _local_species_name(name, id)
         self.id = id
         self.level = level
         self.ability = ability
@@ -247,7 +267,7 @@ class PokemonTrade:
     def open_trade_window(self):
         parent = self.parent_window if self.parent_window is not None else mw
         window = QDialog(parent)
-        window.setWindowTitle(f"Trade Pokémon: {self.name}")
+        window.setWindowTitle(f"Trade Pokémon: {self.display_name}")
         window.setWindowModality(Qt.WindowModality.ApplicationModal)
         window.setMinimumSize(380, 450)
 
@@ -255,7 +275,7 @@ class PokemonTrade:
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
 
-        title_label = QLabel(f"Trading Away: {self.name}")
+        title_label = QLabel(f"Trading Away: {self.display_name}")
         title_label.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
@@ -299,7 +319,7 @@ class PokemonTrade:
             transparent_pixmap.fill(Qt.GlobalColor.transparent)
             your_pokemon_sprite_label.setPixmap(transparent_pixmap)
         
-        your_pokemon_name_label = QLabel(f"{self.name}")
+        your_pokemon_name_label = QLabel(f"{self.display_name}")
         your_pokemon_name_label.setFont(QFont("Arial", 12))
         your_pokemon_layout.addWidget(your_pokemon_sprite_label)
         your_pokemon_layout.addWidget(your_pokemon_name_label)
@@ -540,7 +560,7 @@ class PokemonTrade:
                     parts = canonical.split(',')
                     pokemon_id = int(parts[0])
                     other_name = self.get_pokemon_name_by_id(pokemon_id)
-                    self.other_pokemon_name_label.setText(other_name)
+                    self.other_pokemon_name_label.setText(_local_species_name(other_name, pokemon_id))
                 return
             
             self.other_pokemon_sprite_label.setPixmap(QPixmap())
@@ -558,7 +578,7 @@ class PokemonTrade:
                 other_shiny = (shiny_val == 1)
                 
                 other_name = self.get_pokemon_name_by_id(pokemon_id)
-                self.other_pokemon_name_label.setText(other_name)
+                self.other_pokemon_name_label.setText(_local_species_name(other_name, pokemon_id))
                 sprite_path = get_sprite_path(side="front", sprite_type="gif", id=pokemon_id, shiny=other_shiny, gender=other_gender, pokemon_name=other_name)
                 
                 if hasattr(self, '_other_pokemon_movie') and self._other_pokemon_movie is not None:
@@ -618,14 +638,14 @@ class PokemonTrade:
             if parts[0] == "-200":
                 if len(parts) > 1 and parts[1].isdigit():
                     pokemon_id = int(parts[1])
-                    name = self.get_pokemon_name_by_id(pokemon_id)
+                    name = _local_species_name(self.get_pokemon_name_by_id(pokemon_id), pokemon_id)
             elif parts[0].isdigit():
                 pokemon_id = int(parts[0])
-                name = self.get_pokemon_name_by_id(pokemon_id)
+                name = _local_species_name(self.get_pokemon_name_by_id(pokemon_id), pokemon_id)
         msg = QMessageBox(parent_window)
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Confirm Trade")
-        msg.setText(f"Are you sure you want to trade your {self.name} for {name}?")
+        msg.setText(f"Are you sure you want to trade your {self.display_name} for {name}?")
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         result = msg.exec()
         if result == QMessageBox.StandardButton.Yes:

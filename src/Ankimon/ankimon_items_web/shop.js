@@ -428,7 +428,7 @@
         if (item.is_tm && item.move_type) {
             const t = document.createElement('span');
             t.className = 'mini-type';
-            t.textContent = item.move_type;
+            t.textContent = item.move_type_label || item.move_type;
             t.style.background = TYPE_COLORS[item.move_type.toLowerCase()] || 'var(--border-main)';
             tagsRow.appendChild(t);
         } else if (CATEGORY_LABELS[item.category]) {
@@ -511,7 +511,7 @@
         if (item.is_tm && item.move_type) {
             const t = document.createElement('span');
             t.className = 'det-pill move-type';
-            t.textContent = item.move_type;
+            t.textContent = item.move_type_label || item.move_type;
             t.style.background = TYPE_COLORS[item.move_type.toLowerCase()] || 'var(--border-main)';
             statusRow.appendChild(t);
         }

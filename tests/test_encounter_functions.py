@@ -24,6 +24,7 @@ for module in [
     "Ankimon.functions.trainer_functions",
     "Ankimon.functions.badges_functions",
     "Ankimon.functions.drawing_utils",
+    "Ankimon.move_names",
     "Ankimon.utils",
     "Ankimon.business",
     "Ankimon.const",
@@ -187,7 +188,7 @@ def test_handle_enemy_faint_auto_catch_regional_enabled():
         achievements = {}
 
         # Execute
-        ef.handle_enemy_faint(
+        result = ef.handle_enemy_faint(
             main_pokemon,
             enemy_pokemon,
             collected_pokemon_ids,
@@ -203,6 +204,10 @@ def test_handle_enemy_faint_auto_catch_regional_enabled():
         mock_new.assert_called_once()
         mock_kill.assert_not_called()
         assert mock_tracker.faint_processed is True
+        # battle_loop.py skips its end-of-turn display_battle() based on this
+        # return value — a fresh encounter was painted here via new_pokemon(),
+        # so it must report True.
+        assert result is True
 
     finally:
         # Restore original globals
@@ -349,7 +354,7 @@ def test_handle_enemy_faint_manual_mode_clears_stale_override():
         ef.kill_pokemon = kill
         ef._auto_battle_override = "catch"
 
-        ef.handle_enemy_faint(
+        result = ef.handle_enemy_faint(
             main_pokemon,
             enemy_pokemon,
             set(),
@@ -365,6 +370,11 @@ def test_handle_enemy_faint_manual_mode_clears_stale_override():
         kill.assert_not_called()
         new.assert_not_called()
         assert ef.get_auto_battle_override() is None
+        # Manual mode shows the death/catch screen, not a fresh encounter —
+        # battle_loop.py's enemy_pokemon.hp > 0 check already excludes this
+        # case from the end-of-turn repaint, but the return value itself must
+        # still honestly report "did not replace the encounter".
+        assert result is False
     finally:
         ef.settings_obj = original_settings
         ef.ankimon_tracker_obj = original_tracker
@@ -677,3 +687,64 @@ def test_victory_seed_tolerates_int_vs_str_id_drift():
     # individual_id is TEXT in the schema but callers have passed ints; the
     # guard must not decline a genuine match over the type alone.
     assert _run_victory_with_stored_row(7, "7") == ["Tackle", "Charm"]
+
+
+def test_soothe_bell_boosts_friendship_gain_by_half(monkeypatch):
+    """Soothe Bell (real-game effect: 1.5x friendship gained per step/event)
+    held by the main Pokémon must scale save_main_pokemon_progress's
+    friendship roll the same way Lucky Egg already scales XP."""
+    import types
+
+    names = (
+        "settings_obj", "translator", "services", "ankimon_db",
+        "find_experience_for_level", "limit_ev_yield",
+        "check_friendship_evolution_for_pokemon", "check_evolution_for_pokemon",
+    )
+    orig = {n: getattr(ef, n) for n in names}
+    monkeypatch.setattr(ef.random, "randint", lambda a, b: 6)
+    try:
+        settings = mock.MagicMock()
+        settings.get = lambda k, d=None: {
+            "misc.remove_level_cap": False,
+            "gui.pop_up_dialog_message_on_defeat": False,
+        }.get(k, d)
+        ef.settings_obj = settings
+        ef.translator = mock.MagicMock()
+        ef.translator.translate = lambda *a, **k: "msg"
+        ef.services = mock.MagicMock()
+        ef.ankimon_db = mock.MagicMock()
+        ef.find_experience_for_level = lambda *a, **k: 10**9  # never level up
+        ef.limit_ev_yield = lambda have, add: {
+            "hp": 0, "attack": 0, "defense": 0,
+            "special-attack": 0, "special-defense": 0, "speed": 0,
+        }
+        ef.check_friendship_evolution_for_pokemon = mock.MagicMock(return_value=None)
+        ef.check_evolution_for_pokemon = mock.MagicMock(return_value=None)
+
+        def _make_main(held_item):
+            return types.SimpleNamespace(
+                name="Pikachu", growth_rate="medium", level=50, xp=0,
+                individual_id="iid", id=25, everstone=False, friendship=300,
+                stats={}, ev={"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+                hp=100, held_item=held_item, pokemon_defeated=0, tier="Normal",
+                is_favorite=False, evolution_rejected=False,
+                invalidate_cp_cache=lambda: None,
+            )
+
+        enemy = types.SimpleNamespace(ev_yield={})
+
+        main_no_item = _make_main(None)
+        ef.services.db.get_main_pokemon.return_value = {
+                "attacks": ["Tackle"],
+                "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+            }
+        ef.save_main_pokemon_progress(main_no_item, enemy, 5, {}, mock.MagicMock(), None)
+
+        main_soothe = _make_main("soothe-bell")
+        ef.save_main_pokemon_progress(main_soothe, enemy, 5, {}, mock.MagicMock(), None)
+
+        assert main_no_item.friendship == 300 + 6
+        assert main_soothe.friendship == 300 + int(6 * 1.5)
+    finally:
+        for n, v in orig.items():
+            setattr(ef, n, v)

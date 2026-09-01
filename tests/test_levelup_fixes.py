@@ -195,7 +195,8 @@ def test_xp_share_gain_exp_caps_at_10_levelups():
     tf.check_evolution_for_pokemon = mock.MagicMock(return_value=None)
     
     try:
-        # Give massive XP (e.g. 2,000,000 XP, which is multiplied by 0.5 to 1,000,000 XP for XP share)
+        # Give massive XP (e.g. 2,000,000 XP — ORAS-style XP Share grants the
+        # holder that same full amount, no longer halved)
         xp_share_gain_exp(
             mock.MagicMock(), settings, None, "other_id", 2000000, "some_id"
         )

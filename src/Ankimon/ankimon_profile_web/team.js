@@ -71,9 +71,15 @@
         Rock: '#c7b78b', Ghost: '#5269ad', Dragon: '#0c6ac8', Dark: '#5a5366',
         Steel: '#5a8ea1', Fairy: '#ec8fe6',
     };
-    function typeBadge(t) {
+    function typeBadge(t, label) {
+        // Colour + effectiveness stay keyed on the English type name `t`;
+        // `label` (when supplied) is the localized text shown on the badge.
         const c = TYPE_COLORS[t] || '#6b727c';
-        return `<span class="type-badge" style="background:${c};">${esc(t)}</span>`;
+        return `<span class="type-badge" style="background:${c};">${esc(label || t)}</span>`;
+    }
+    function typeBadges(m) {
+        const ti = m.ti || [];
+        return (m.types || []).map((t, i) => typeBadge(t, ti[i])).join('');
     }
 
     // Type effectiveness chart (attacking -> defending), only the non-1× cells.
@@ -169,7 +175,7 @@
 
             if (m) {
                 const cp = (m.cp === undefined || m.cp === null) ? '—' : num(m.cp);
-                const types = (m.types || []).map(typeBadge).join('');
+                const types = typeBadges(m);
                 const hasCycle = state.teamCycleCount > 1 && i < state.teamCycleCount;
                 const cycleBadge = hasCycle ? '<span class="slot-rotation-badge" title="Cycled via Hotkey 9">↻</span>' : '';
 
@@ -285,6 +291,7 @@
         if (stub.s) member.s = 1;
         if (stub.sprite) member.sprite = stub.sprite;   // carry the resolved forme/mega sprite (else it'd 404 to 0.png)
         if (stub.types) member.types = stub.types;
+        if (stub.ti) member.ti = stub.ti;
         if (stub.cp != null) member.cp = stub.cp;   // stored CP from the roster (shown instantly)
         state.team[slot] = member;
         markDirty();
@@ -296,6 +303,7 @@
                 if (cur && String(cur.id) === String(stub.id) && res) {
                     if (res.cp != null) cur.cp = res.cp;   // don't clobber the shown CP with a missing value
                     cur.types = res.types || cur.types || [];
+                    cur.ti = res.ti || cur.ti || [];
                     renderTeam();
                 }
             });
@@ -497,7 +505,7 @@
             const isCurrent = xpMode && String(state.xpShare) === String(c.id);
             const card = document.createElement('div');
             card.className = 'roster-card' + (inTeam ? ' in-team' : '') + (isCurrent ? ' current' : '');
-            const types = (c.types || []).map(typeBadge).join('');
+            const types = typeBadges(c);
             const cp = (c.cp != null && c.cp > 0) ? num(c.cp) : '—';
             card.innerHTML = `
                 <img class="rc-sprite" src="${spriteUrl(c)}" alt="${esc(c.n)}" onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='${FALLBACK}'; }">

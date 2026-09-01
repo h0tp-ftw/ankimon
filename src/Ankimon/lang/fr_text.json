@@ -465,5 +465,6 @@
   "evolve_now_button": "⇈ Évoluer en {evo_name} ! ⇈",
   "badge_ready": "⇈ Prêt à évoluer !",
   "badge_wait_day": "☀️ Prêt à évoluer pendant la journée",
-  "badge_wait_night": "🌙 Prêt à évoluer pendant la nuit"
+  "badge_wait_night": "🌙 Prêt à évoluer pendant la nuit",
+  "switched_pokemon": "À toi, {pokemon_name} ! N.{level}"
 }

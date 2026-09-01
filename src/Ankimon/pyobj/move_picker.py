@@ -326,7 +326,8 @@ class MovePickerDialog(QDialog):
             t_icon_path = type_icon_path(m_type.lower())
             if t_icon_path.exists():
                 type_item.setIcon(QIcon(str(t_icon_path)))
-            type_item.setToolTip(m_type)
+            from ..localized_text import type_name as _type_name
+            type_item.setToolTip(_type_name(m_type, m_type))
 
             self.table.setItem(row_idx, 0, name_item)
             self.table.setItem(row_idx, 1, type_item)
@@ -367,7 +368,10 @@ class MovePickerDialog(QDialog):
             self.table.setItem(row_idx, 5, pp_item)
 
             # Description
-            desc_item = QTableWidgetItem(move.get("shortDesc") or "")
+            from ..move_names import format_move_description
+            desc_item = QTableWidgetItem(
+                format_move_description(move_name, move.get("shortDesc") or "")
+            )
             self.table.setItem(row_idx, 6, desc_item)
 
             if is_known:

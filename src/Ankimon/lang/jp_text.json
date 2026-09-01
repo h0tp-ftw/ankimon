@@ -465,5 +465,6 @@
   "evolve_now_button": "⇈ {evo_name}に進化させる！ ⇈",
   "badge_ready": "⇈ 進化の準備ができました！",
   "badge_wait_day": "☀️ 昼の間に進化できます",
-  "badge_wait_night": "🌙 夜の間に進化できます"
+  "badge_wait_night": "🌙 夜の間に進化できます",
+  "switched_pokemon": "{pokemon_name}に　交代！　Lv.{level}"
 }

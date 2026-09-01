@@ -72,6 +72,26 @@ class Reviewer_Manager:
         self._ownership_cache.clear()
         self._last_state = None
 
+        # The Ankimon Window popup keeps showing its last battle line (e.g.
+        # "Oshawott used Tackle!") after the deck runs out and the review
+        # session ends — nothing else tells it the battle is over. Clear it
+        # so a fresh encounter (or a stale re-show) doesn't display leftover
+        # text from the previous session.
+        try:
+            from ..utils import is_alive
+
+            test_window = services.test_window
+            if is_alive(test_window):
+                test_window.last_message_text = ""
+                if test_window.current_view == "battle":
+                    # force_ bypasses the render debounce: this fires right
+                    # after the turn's own display_battle() call, well inside
+                    # the 50ms window, so a plain display_battle() would
+                    # silently no-op and the stale text would stay on screen.
+                    test_window.force_display_battle()
+        except Exception:
+            pass
+
     def invalidate_hud_cache(self):
         """Clear the per-encounter HUD perf caches so the next repaint rebuilds.
 

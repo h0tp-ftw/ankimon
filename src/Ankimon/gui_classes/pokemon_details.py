@@ -297,8 +297,11 @@ def PokemonCollectionDetailsSplit(
         description_formated = "\n".join(result)
         description_txt = f"Description: \n {description_formated}"
         lvl = f" Level: {level}"
-        ability_txt = f" Ability: {ability.capitalize()}"
-        nature_display = (nature or "serious").strip().title()
+        from ..localized_text import ability_name, ability_description, nature_name
+        ability_local = ability_name(ability, ability.capitalize()) if ability else ""
+        ability_txt = f" Ability: {ability_local}"
+        ability_desc_local = ability_description(ability) if ability else ""
+        nature_display = nature_name(nature or "serious", (nature or "serious").strip().title())
         nature_txt = f" Nature: {nature_display}"
         _stats_dict = {}
         for key in ("hp", "atk", "def", "spa", "spd", "spe"):
@@ -318,7 +321,7 @@ def PokemonCollectionDetailsSplit(
 
         attacks_txt = "MOVES:"
         for attack in attacks:
-            attacks_txt += f"\n{attack.capitalize()}"
+            attacks_txt += f"\n{format_move_name(attack)}"
 
         CompleteTable_layout = PokemonDetailsStats(
             _stats_dict,
@@ -359,6 +362,8 @@ def PokemonCollectionDetailsSplit(
         cp_label = QLabel(cp_txt)
         cp_label.setToolTip(cp_tooltip)
         ability_label = QLabel(ability_txt)
+        if ability_desc_local:
+            ability_label.setToolTip(ability_desc_local)
         nature_label = QLabel(nature_txt)
         attacks_label = QLabel(attacks_txt)
         pokemon_defeated_label = QLabel(f"Pokémon Defeated: {pokemon_defeated}")

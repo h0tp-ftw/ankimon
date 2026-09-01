@@ -1,0 +1,23 @@
+{
+ "bug": "むし",
+ "dark": "あく",
+ "dragon": "ドラゴン",
+ "electric": "でんき",
+ "fairy": "フェアリー",
+ "fighting": "かくとう",
+ "fire": "ほのお",
+ "flying": "ひこう",
+ "ghost": "ゴースト",
+ "grass": "くさ",
+ "ground": "じめん",
+ "ice": "こおり",
+ "normal": "ノーマル",
+ "poison": "どく",
+ "psychic": "エスパー",
+ "rock": "いわ",
+ "shadow": "ダーク",
+ "steel": "はがね",
+ "stellar": "ステラ",
+ "unknown": "？？？",
+ "water": "みず"
+}

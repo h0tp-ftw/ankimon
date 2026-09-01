@@ -10,6 +10,69 @@ stays cheap to import and easy to stub in tests.
 from ..functions import encounter_data
 
 
+def _ankidex_i18n(settings, flavor_species_ids=None):
+    """Localized name / type / ability / flavor overlay for the Ankidex SPA.
+
+    Empty dict for English (or on any failure) — the JS then renders the bundled
+    English data unchanged. ``flavor_species_ids`` limits the (bulky) flavor map
+    to species the dex will actually reveal; None means all.
+    """
+    try:
+        lang = int(settings.get("misc.language", 9)) if settings is not None else 9
+    except Exception:
+        lang = 9
+    if lang == 9:
+        return {}
+
+    out = {"names": {}, "types": {}, "abilities": {}, "abilityDesc": {}, "flavor": {}}
+    try:
+        from ..functions.pokedex_functions import (
+            _load_pokemon_names_csv,
+            _load_pokemon_descriptions_csv,
+            _normalize_language_id,
+            get_pokemon_diff_lang_name,
+        )
+        from ..localized_text import type_name, current_lang_code, _load
+
+        norm_lang = _normalize_language_id(lang)
+
+        names_cache = _load_pokemon_names_csv()  # {(species_id, lang_id): name}
+        for (sid, lid), name in names_cache.items():
+            if lid == norm_lang and name:
+                out["names"][str(sid)] = name
+
+        # Regional / mega / gmax form ids carry a distinct localized name.
+        for fid in getattr(encounter_data, "REGIONAL_FORM_REGION", {}):
+            try:
+                loc = get_pokemon_diff_lang_name(int(fid), lang)
+                if loc and loc != "No Translation in this language":
+                    out["names"][str(fid)] = loc
+            except Exception:
+                continue
+
+        desc_cache = _load_pokemon_descriptions_csv()  # {(species_id, lang_id): [txt]}
+        for (sid, lid), texts in desc_cache.items():
+            if lid != norm_lang or not texts:
+                continue
+            if flavor_species_ids is not None and sid not in flavor_species_ids:
+                continue
+            out["flavor"][str(sid)] = " ".join(str(texts[0]).split())
+
+        for eng in (
+            "Normal Fire Water Electric Grass Ice Fighting Poison Ground Flying "
+            "Psychic Bug Rock Ghost Dragon Dark Steel Fairy"
+        ).split():
+            out["types"][eng] = type_name(eng, eng)
+
+        code = current_lang_code()
+        out["abilities"] = dict(_load("ability_names", code))
+        out["abilityDesc"] = dict(_load("ability_desc", code))
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"[Ankimon] ankidex i18n build failed: {e}")
+        return {}
+    return out
+
+
 # Tiers the live wild-encounter roll draws from (encounter_functions.
 # get_all_pokemon_in_tier). "Starter" is included on purpose: that function
 # returns [] for it (starters come only from the one-time starter picker), so
@@ -76,6 +139,7 @@ def _empty_payload():
             "sortMode": "id-asc",
             "spriteMode": "static",
         },
+        "i18n": {},
         "regional_data": {"boosts": {}, "forms": {}},
         "evolutionNote": "",
     }
@@ -96,6 +160,18 @@ def _prefs(settings):
             "ankidex.spriteMode", settings.get("pokedex_v2.spriteMode", "static")
         ),
     }
+
+
+def _relevant_species_ids(caught_ids, seen_ids):
+    """Species whose flavor text can actually be shown (dex hides it until the
+    Pokémon is seen/caught), so we don't ship ~900 descriptions every open."""
+    ids = set()
+    for i in list(caught_ids) + list(seen_ids):
+        try:
+            ids.add(int(i))
+        except (TypeError, ValueError):
+            continue
+    return ids
 
 
 def get_ankidex_data(db, settings, tracker=None):
@@ -181,6 +257,9 @@ def get_ankidex_data(db, settings, tracker=None):
         "encounterable": list(encounterable_ids),
         "prerequisites": prereqs,
         "prefs": _prefs(settings),
+        "i18n": _ankidex_i18n(
+            settings, _relevant_species_ids(caught_ids, seen_ids)
+        ),
         "regional_data": {
             "boosts": {
                 "kanto": [1],

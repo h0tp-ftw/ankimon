@@ -1,0 +1,10 @@
+{
+ "accuracy": "명중률",
+ "attack": "공격",
+ "defense": "방어",
+ "evasion": "회피율",
+ "hp": "HP",
+ "specialattack": "특수공격",
+ "specialdefense": "특수방어",
+ "speed": "스피드"
+}

@@ -169,8 +169,14 @@ class PokemonObject:
             if pretty_name == "No Translation in this language":
                 pretty_name = get_pretty_name_for_name(self.name)
 
+            # The English pretty name — the catch flow auto-stores THIS as the
+            # "nickname" regardless of the current language, so a JP/DE/… player
+            # would otherwise see "Paldean Wooper" instead of パルデアウパー.
+            english_name = get_pretty_name_for_name(self.name)
+
             if self.nickname:
-                # Check if the nickname is just a variation of the internal/pretty name.
+                # Check if the nickname is just a variation of the internal /
+                # localized / English name.
                 def normalize(s):
                     return (
                         str(s)
@@ -183,8 +189,10 @@ class PokemonObject:
                     )
 
                 norm_nick = normalize(self.nickname)
-                if norm_nick != normalize(self.name) and norm_nick != normalize(
-                    pretty_name
+                if norm_nick not in (
+                    normalize(self.name),
+                    normalize(pretty_name),
+                    normalize(english_name),
                 ):
                     return self.nickname
 

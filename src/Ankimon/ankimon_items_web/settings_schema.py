@@ -69,6 +69,23 @@ GROUPS = [
                     "Review Based Damage",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",
+                    {
+                        "key": "trainer.xp_share_mode",
+                        "label": "XP Share Mode",
+                        "description": (
+                            "Choose how XP Share splits experience:<br>"
+                            "• <strong>Classic</strong>: pick one team member as the XP Share holder — "
+                            "it splits each battle's XP 50/50 with your active Pokémon (pre-Gen-6 item behavior).<br>"
+                            "• <strong>ORAS-Style</strong>: your active Pokémon keeps its full, un-reduced XP, "
+                            "and your WHOLE active team also earns that same full amount — no holder to pick, "
+                            "just turn it on (Gen 6+ Key Item behavior)."
+                        ),
+                        "type": "select",
+                        "options": [
+                            {"value": "classic", "label": "Classic (50/50 split, choose a holder)"},
+                            {"value": "oras", "label": "ORAS-Style (whole team, full XP)"},
+                        ],
+                    },
                 ],
             },
             {

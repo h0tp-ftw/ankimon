@@ -1,0 +1,23 @@
+{
+ "bug": "Käfer",
+ "dark": "Unlicht",
+ "dragon": "Drache",
+ "electric": "Elektro",
+ "fairy": "Fee",
+ "fighting": "Kampf",
+ "fire": "Feuer",
+ "flying": "Flug",
+ "ghost": "Geist",
+ "grass": "Pflanze",
+ "ground": "Boden",
+ "ice": "Eis",
+ "normal": "Normal",
+ "poison": "Gift",
+ "psychic": "Psycho",
+ "rock": "Gestein",
+ "shadow": "Crypto",
+ "steel": "Stahl",
+ "stellar": "Stellar",
+ "unknown": "???",
+ "water": "Wasser"
+}

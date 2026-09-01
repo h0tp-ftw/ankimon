@@ -26,6 +26,7 @@ from ..functions.pokedex_functions import (
     search_pokedex,
 )
 from ..functions.pokemon_functions import get_random_moves_for_pokemon
+from ..move_names import format_move_name
 from ..functions.battle_functions import calculate_hp
 from ..functions.update_main_pokemon import (
     update_main_pokemon,
@@ -411,8 +412,8 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "replaced_attack",
-                                        selected_attack=selected_attack,
-                                        new_attack=new_attack,
+                                        selected_attack=format_move_name(selected_attack),
+                                        new_attack=format_move_name(new_attack),
                                     ),
                                 )
                             except ValueError:
@@ -420,7 +421,7 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "selected_attack_not_found",
-                                        selected_attack=selected_attack,
+                                        selected_attack=format_move_name(selected_attack),
                                     ),
                                 )
                         else:
@@ -619,8 +620,8 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "replaced_attack",
-                                        selected_attack=selected_attack,
-                                        new_attack=new_attack,
+                                        selected_attack=format_move_name(selected_attack),
+                                        new_attack=format_move_name(new_attack),
                                     ),
                                 )
                             except ValueError:
@@ -628,7 +629,7 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "selected_attack_not_found",
-                                        selected_attack=selected_attack,
+                                        selected_attack=format_move_name(selected_attack),
                                     ),
                                 )
                         else:

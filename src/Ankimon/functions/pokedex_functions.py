@@ -603,6 +603,13 @@ def format_lore_name(name: str) -> str:
     if name.lower() == "eternatus-eternamax":
         return "Eternamax"
 
+    # Ash-Greninja has its own name; Battle-Bond Greninja is shown as plain
+    # "Greninja" in the games (the Ash form is battle-only).
+    if "-Ash" in name:
+        return "Ash-" + name.replace("-Ash", "")
+    if "-Bond" in name:
+        return name.replace("-Bond", "")
+
     # Order matters: check more specific ones first
     if "-Mega-X" in name:
         return "Mega " + name.replace("-Mega-X", " X")
@@ -798,6 +805,70 @@ def get_pokemon_descriptions(species_id, language):
         return "Description not found."
 
 
+# Regional / alternate form names in every localized language. format_lore_name
+# handles English; this covers the forms the games give a distinct, well-known
+# localized name to. Each language maps to (prefix, suffix) glued around the
+# localized base name — Japanese/Korean/Chinese prefix the region (アローラ +
+# ロコン); the European languages append it (Vulpix + " de Alola"). Language ids
+# are _normalize_language_id output: 1 jp · 3 kr · 4 ch · 5 fr · 6 de · 7 sp/latam
+# · 8 it.
+_FORM_NAME_LOCALIZATION = {
+    "-Alola": {
+        1: ("アローラ", ""), 3: ("알로라 ", ""), 4: ("阿羅拉", ""),
+        5: ("", " d'Alola"), 6: ("Alola-", ""), 7: ("", " de Alola"), 8: ("", " di Alola"),
+    },
+    "-Galar": {
+        1: ("ガラル", ""), 3: ("가라르 ", ""), 4: ("伽勒爾", ""),
+        5: ("", " de Galar"), 6: ("Galar-", ""), 7: ("", " de Galar"), 8: ("", " di Galar"),
+    },
+    "-Hisui": {
+        1: ("ヒスイ", ""), 3: ("히스이 ", ""), 4: ("洗翠", ""),
+        5: ("", " de Hisui"), 6: ("Hisui-", ""), 7: ("", " de Hisui"), 8: ("", " di Hisui"),
+    },
+    "-Paldea": {
+        1: ("パルデア", ""), 3: ("팔데아 ", ""), 4: ("帕底亞", ""),
+        5: ("", " de Paldea"), 6: ("Paldea-", ""), 7: ("", " de Paldea"), 8: ("", " di Paldea"),
+    },
+    "-Mega": {
+        1: ("メガ", ""), 3: ("메가 ", ""), 4: ("超級", ""),
+        5: ("Méga-", ""), 6: ("Mega-", ""), 7: ("Mega-", ""), 8: ("Mega", ""),
+    },
+    "-Mega-X": {
+        1: ("メガ", "Ｘ"), 3: ("메가 ", " X"), 4: ("超級", "Ｘ"),
+        5: ("Méga-", " X"), 6: ("Mega-", " X"), 7: ("Mega-", " X"), 8: ("Mega", " X"),
+    },
+    "-Mega-Y": {
+        1: ("メガ", "Ｙ"), 3: ("메가 ", " Y"), 4: ("超級", "Ｙ"),
+        5: ("Méga-", " Y"), 6: ("Mega-", " Y"), 7: ("Mega-", " Y"), 8: ("Mega", " Y"),
+    },
+    "-Primal": {
+        1: ("ゲンシ", ""), 3: ("원시 ", ""), 4: ("原始", ""),
+        5: ("Primo-", ""), 6: ("Proto-", ""), 7: ("", " primigenio"), 8: ("", " Primevo"),
+    },
+    # Ash-Greninja — a distinct localized name in the games.
+    "-Ash": {
+        1: ("サトシ", ""), 3: ("지우 ", ""), 4: ("小智", ""),
+        5: ("", " Sacha"), 6: ("", "-Ash"), 7: ("", " Ash"), 8: ("", " Ash"),
+    },
+}
+
+# Battle-only / cosmetic forms with no distinct name in any language — show the
+# plain species name.
+_FORM_BASE_ONLY = {"-Bond", "-Totem", "-Meteor", "-Zen", "-Gulping", "-Gorging",
+                   "-Busted", "-Noice", "-Hangry", "-Ash-Gmax"}
+
+
+def _localize_form_name(base_lang_name: str, suffix: str, language: int):
+    """Return a localized regional-form name, or None to fall back to English glue."""
+    if suffix in _FORM_BASE_ONLY:
+        return base_lang_name
+    mapping = _FORM_NAME_LOCALIZATION.get(suffix)
+    if not mapping or language not in mapping:
+        return None
+    prefix, tail = mapping[language]
+    return f"{prefix}{base_lang_name}{tail}"
+
+
 def get_pokemon_diff_lang_name(pokemon_id: int, language: int):
     """Get pokemon name in specified language from cache."""
     language = _normalize_language_id(language)
@@ -825,6 +896,9 @@ def get_pokemon_diff_lang_name(pokemon_id: int, language: int):
                 # If we have a hyphenated name, reconstruct with translated base
                 if "-" in raw_pokedex_name:
                     suffix = raw_pokedex_name[raw_pokedex_name.find("-") :]
+                    localized = _localize_form_name(base_lang_name, suffix, language)
+                    if localized:
+                        return localized
                     return format_lore_name(base_lang_name + suffix)
                 return format_lore_name(base_lang_name)
 
