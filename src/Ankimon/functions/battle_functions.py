@@ -4,6 +4,12 @@ from ..poke_engine import constants
 from ..pyobj.error_handler import show_warning_with_traceback
 from ..move_names import format_move_name
 
+# The two battle_status values this module reads and writes. Deliberately NOT
+# poke_engine's constants.FAINTED — that one is the engine's internal "dead",
+# a different string from the "fainted" persisted on Ankimon's Pokémon rows.
+FAINTED = "fainted"
+FIGHTING = "fighting"
+
 
 def update_pokemon_battle_status(battle_info: dict, enemy_pokemon, main_pokemon):
     """
@@ -56,12 +62,12 @@ def update_pokemon_battle_status(battle_info: dict, enemy_pokemon, main_pokemon)
             # Handle regular status removal
             elif action == constants.MUTATOR_REMOVE_STATUS:
                 if target == "opponent":
-                    if enemy_pokemon.battle_status != "fighting":
-                        enemy_pokemon.battle_status = "fighting"
+                    if enemy_pokemon.battle_status != FIGHTING:
+                        enemy_pokemon.battle_status = FIGHTING
                         enemy_status_changed = True
                 elif target == "user":
-                    if main_pokemon.battle_status != "fighting":
-                        main_pokemon.battle_status = "fighting"
+                    if main_pokemon.battle_status != FIGHTING:
+                        main_pokemon.battle_status = FIGHTING
                         main_status_changed = True
 
             # Handle volatile status application
@@ -88,14 +94,14 @@ def update_pokemon_battle_status(battle_info: dict, enemy_pokemon, main_pokemon)
 
         # Final check for fainted status based on the already-updated HP from the main loop
         if hasattr(enemy_pokemon, "hp") and enemy_pokemon.hp <= 0:
-            if enemy_pokemon.battle_status != "fainted":
-                enemy_pokemon.battle_status = "fainted"
+            if enemy_pokemon.battle_status != FAINTED:
+                enemy_pokemon.battle_status = FAINTED
                 enemy_pokemon.volatile_status = set()  # Clear volatiles on faint
                 enemy_status_changed = True
 
         if hasattr(main_pokemon, "hp") and main_pokemon.hp <= 0:
-            if main_pokemon.battle_status != "fainted":
-                main_pokemon.battle_status = "fainted"
+            if main_pokemon.battle_status != FAINTED:
+                main_pokemon.battle_status = FAINTED
                 main_pokemon.volatile_status = set()  # Clear volatiles on faint
                 main_status_changed = True
 
@@ -179,8 +185,8 @@ def _process_battle_effects(
         # Track status applications
         if (
             key.endswith(".status")
-            and before in ("fighting", None)
-            and after not in ("fighting", None)
+            and before in (FIGHTING, None)
+            and after not in (FIGHTING, None)
         ):
             target = "user" if key.startswith("user.") else "opponent"
             newly_applied_statuses.add((target, normalize_status_name(after)))
@@ -216,8 +222,8 @@ def _process_battle_effects(
 
         # Status for main Pokemon
         if main_pokemon and getattr(main_pokemon, "battle_status", None) not in (
-            "fighting",
-            "fainted",
+            FIGHTING,
+            FAINTED,
             None,
         ):
             norm_status = normalize_status_name(main_pokemon.battle_status)
@@ -232,8 +238,8 @@ def _process_battle_effects(
 
         # Status for enemy Pokemon
         if enemy_pokemon and getattr(enemy_pokemon, "battle_status", None) not in (
-            "fighting",
-            "fainted",
+            FIGHTING,
+            FAINTED,
             None,
         ):
             norm_status = normalize_status_name(enemy_pokemon.battle_status)
@@ -249,7 +255,7 @@ def _process_battle_effects(
         # Volatile for main Pokemon
         if (
             main_pokemon
-            and getattr(main_pokemon, "battle_status", None) != "fainted"
+            and getattr(main_pokemon, "battle_status", None) != FAINTED
             and hasattr(main_pokemon, "volatile_status")
             and main_pokemon.volatile_status
         ):
@@ -267,7 +273,7 @@ def _process_battle_effects(
         # Volatile for enemy Pokemon
         if (
             enemy_pokemon
-            and getattr(enemy_pokemon, "battle_status", None) != "fainted"
+            and getattr(enemy_pokemon, "battle_status", None) != FAINTED
             and hasattr(enemy_pokemon, "volatile_status")
             and enemy_pokemon.volatile_status
         ):
@@ -304,8 +310,16 @@ def _process_battle_effects(
                 target = "user" if key.startswith("user.") else "opponent"
                 pokemon_name = get_pokemon_name(target)
 
-                # Status applied
-                if before in ("fighting", None) and after not in ("fighting", None):
+                # Status applied — fainting gets its own dedicated message
+                # elsewhere (enemy_pokemon_fainted / player_pokemon_fainted),
+                # so skip it here: falling through to the generic
+                # status_unknown_apply template produced the nonsensical
+                # "X is affected by Fainted!".
+                if (
+                    before in (FIGHTING, None)
+                    and after not in (FIGHTING, None)
+                    and after != FAINTED
+                ):
                     normalized_status = normalize_status_name(after)
                     translation_key = f"status_{normalized_status}_apply"
 
@@ -324,8 +338,14 @@ def _process_battle_effects(
                         )
                     effect_messages.append(message)
 
-                # Status removed
-                elif before not in ("fighting", None) and after in ("fighting", None):
+                # Status removed — same "fainted" exclusion as above (a
+                # fresh encounter resetting fainted -> fighting shouldn't
+                # print "X recovers from Fainted!").
+                elif (
+                    before not in (FIGHTING, None)
+                    and after in (FIGHTING, None)
+                    and before != FAINTED
+                ):
                     normalized_status = normalize_status_name(before)
                     translation_key = f"status_{normalized_status}_remove"
 
@@ -591,11 +611,11 @@ def validate_pokemon_status(pokemon):
         "slp",
         "confusion",
         "flinching",
-        "fainted",
-        "fighting",
+        FAINTED,
+        FIGHTING,
     }
 
-    current_status = getattr(pokemon, "battle_status", "fighting")
+    current_status = getattr(pokemon, "battle_status", FIGHTING)
 
     # Ensure volatile_status exists
     if not hasattr(pokemon, "volatile_status"):
@@ -604,13 +624,13 @@ def validate_pokemon_status(pokemon):
     # If status is not valid, default to fighting (or fainted if HP <= 0)
     if current_status not in valid_statuses:
         if hasattr(pokemon, "hp") and pokemon.hp <= 0:
-            return "fainted"
+            return FAINTED
         else:
-            return "fighting"
+            return FIGHTING
 
     # If Pokemon is fainted but status isn't fainted, override
-    if hasattr(pokemon, "hp") and pokemon.hp <= 0 and current_status != "fainted":
-        return "fainted"
+    if hasattr(pokemon, "hp") and pokemon.hp <= 0 and current_status != FAINTED:
+        return FAINTED
 
     return current_status
 
@@ -667,8 +687,20 @@ def process_battle_data(
 
         # 3. User attack section
         if user_attack and user_attack != constants.DO_NOTHING_MOVE:
-            # Handle special battle statuses first
-            if battle_status and battle_status != "fighting":
+            # Handle special battle statuses first.
+            #
+            # "fainted" is excluded for the same reason _process_battle_effects
+            # excludes it: there is no status_fainted_* / pokemon_is_fainted
+            # key, so it fell through to the generic "pokemon_special_condition"
+            # template and printed "X is affected by Fainted!" — and it is the
+            # PRIMARY producer of that line, not the status-diff path.
+            # battle_loop.py sets battle_status from validate_pokemon_status(),
+            # which returns "fainted" for any hp <= 0, so this fired on every
+            # single turn the player's Pokemon went down. Fainting already has
+            # its own dedicated message (player_pokemon_fainted, raised by
+            # handle_main_pokemon_faint), so skip the special-status branch and
+            # let the normal "X used Y!" announcement print instead.
+            if battle_status and battle_status not in (FIGHTING, FAINTED):
                 status_msg = _handle_special_battle_status(
                     main_pokemon, battle_status, translator
                 )

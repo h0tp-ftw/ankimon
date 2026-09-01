@@ -44,7 +44,12 @@ def CatchPokemonHook(collected_pokemon_ids):
             reviewer_obj,
             update_hud=True,
         )
-    for hook in catch_pokemon_hooks:
+    # list(): a hook may unregister itself from this very bucket while it
+    # runs (the double-faint resolver does), and removing the element at the
+    # current index makes the iterator skip the NEXT hook. These buckets are
+    # public to other add-ons via mw.add_catch_pokemon_hook, so that
+    # skipped hook could belong to anyone.
+    for hook in list(catch_pokemon_hooks):
         hook()
 
 
@@ -65,5 +70,10 @@ def DefeatPokemonHook():
             reviewer_obj,
             update_hud=True,
         )
-    for hook in defeat_pokemon_hooks:
+    # list(): a hook may unregister itself from this very bucket while it
+    # runs (the double-faint resolver does), and removing the element at the
+    # current index makes the iterator skip the NEXT hook. These buckets are
+    # public to other add-ons via mw.add_defeat_pokemon_hook, so that
+    # skipped hook could belong to anyone.
+    for hook in list(defeat_pokemon_hooks):
         hook()

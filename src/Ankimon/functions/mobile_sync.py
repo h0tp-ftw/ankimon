@@ -185,18 +185,47 @@ def _parse_cards_per_round(settings_obj) -> tuple[int, int]:
     cpr_split = cards_per_round
     return cards_per_round, cpr_split
 
-def _xp_share_split(earned_xp: int, earner_id, xp_share_id) -> tuple[int, int]:
-    """Split one companion's battle XP under trainer.xp_share.
+def _xp_share_split(earned_xp: int, earner_id, settings_obj, db=None) -> tuple[int, dict]:
+    """Split one companion's battle XP under XP Share.
 
-    Returns ``(xp_kept_by_earner, xp_for_share_target)`` mirroring the 50/50
-    split desktop ``encounter_functions.kill_pokemon`` applies. No share when
-    XP-Share is unset, points at the earner itself, or there is no positive XP;
-    the earner keeps the odd remainder so no XP is lost.
+    Mirrors desktop's ``trainer_functions.xp_share_gain_exp`` — two modes,
+    picked by ``trainer.xp_share_mode`` (default "classic"):
+
+    * "classic": one chosen holder (``trainer.xp_share``) splits ``earned_xp``
+      50/50 with the earner — both are reduced.
+    * "oras": the earner keeps its FULL xp, and EVERY other Pokémon on the
+      active team also earns that same full amount — no holder to choose.
+
+    Returns ``(xp_kept_by_earner, {target_id: xp_for_target, ...})``. The
+    targets dict is empty when there's nothing to share (XP-Share unset,
+    no positive XP, or — classic only — the holder is the earner itself).
     """
-    if not xp_share_id or earned_xp <= 0 or str(xp_share_id) == str(earner_id):
-        return earned_xp, 0
+    if earned_xp <= 0:
+        return earned_xp, {}
+
+    mode = settings_obj.get("trainer.xp_share_mode", "classic") if settings_obj else "classic"
+
+    if mode == "oras":
+        if db is None:
+            return earned_xp, {}
+        try:
+            team_rows = db.get_team() or []
+        except Exception:
+            team_rows = []
+        targets = {}
+        for row in team_rows:
+            ind_id = row.get("individual_id")
+            if not ind_id or str(ind_id) == str(earner_id):
+                continue
+            targets[ind_id] = earned_xp
+        return earned_xp, targets
+
+    # --- classic mode ---
+    xp_share_id = settings_obj.get("trainer.xp_share") if settings_obj else None
+    if not xp_share_id or str(xp_share_id) == str(earner_id):
+        return earned_xp, {}
     share_half = int(earned_xp * 0.5)
-    return earned_xp - share_half, share_half
+    return earned_xp - share_half, {xp_share_id: share_half}
 
 def _compute_initial_reviews(db, tracker, day_cutoff: int) -> int:
     """Computes the adjusted total review count for encounter seeding based on day_cutoff."""
@@ -1214,6 +1243,10 @@ def _run_mobile_battles_impl(
     current_battle_cash = 0
     ci = int(settings_obj.get("trainer.cash_reward_interval", 5)) if settings_obj else 5
     ca = int(settings_obj.get("trainer.cash_reward_amount", 10)) if settings_obj else 10
+    # Amulet Coin / Lucky Incense — see battle_loop.py's identical check for
+    # why both apply the same doubling here.
+    if getattr(main_pokemon, "held_item", None) in ("amulet-coin", "luck-incense"):
+        ca *= 2
     # Seed the per-encounter cash counter from the SAME persisted carryover the
     # final wallet credit uses (trainer.mobile_reviews_resolved_since_payout),
     # so the sum of history entries' cash_gained matches trainer.cash actually
@@ -1584,13 +1617,13 @@ def _run_mobile_battles_impl(
         # suppression / thread serialisation still hold — the mobile path does
         # not open the evolution window for companions, so we intentionally do
         # not route through the desktop evo-triggering xp_share_gain_exp here.
-        xp_share_id = settings_obj.get("trainer.xp_share") if settings_obj else None
-        xp_share_pending = 0
+        xp_share_pending = {}  # target_id -> accumulated xp across all companions
         for cid, earned_xp in companion_xp.items():
             evs_gained = companion_evs.get(cid, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0})
             battles_fought = companion_battle_count.get(cid, 0)
-            grant_xp, share_half = _xp_share_split(earned_xp, cid, xp_share_id)
-            xp_share_pending += share_half
+            grant_xp, share_targets = _xp_share_split(earned_xp, cid, settings_obj, db=db)
+            for target_id, amount in share_targets.items():
+                xp_share_pending[target_id] = xp_share_pending.get(target_id, 0) + amount
             if grant_xp > 0 or any(evs_gained.values()) or battles_fought > 0:
                 if main_pokemon and cid == main_pokemon.individual_id:
                     class DummyEnemy:
@@ -1614,13 +1647,14 @@ def _run_mobile_battles_impl(
                 else:
                     _attribute_xp_and_evs_to_companion(cid, grant_xp, evs_gained, settings_obj, battles_fought=battles_fought, db=db, logger=logger)
 
-        # Grant the accumulated XP-Share half to the configured target Pokémon.
-        if xp_share_id and xp_share_pending > 0:
-            _attribute_xp_and_evs_to_companion(
-                str(xp_share_id), xp_share_pending,
-                {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-                settings_obj, battles_fought=0, db=db, logger=logger
-            )
+        # Grant the accumulated XP-Share amount to each target Pokémon.
+        for target_id, pending_amount in xp_share_pending.items():
+            if pending_amount > 0:
+                _attribute_xp_and_evs_to_companion(
+                    str(target_id), pending_amount,
+                    {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+                    settings_obj, battles_fought=0, db=db, logger=logger
+                )
 
         total_trainer_xp = 0
         from ..pyobj.trainer_card import POKEMON_TIERS
@@ -1837,6 +1871,8 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
             # auto-resolve path.
             ci = max(1, int(settings_obj.get("trainer.cash_reward_interval", 5)))
             ca = int(settings_obj.get("trainer.cash_reward_amount", 10))
+            if getattr(main_pokemon, "held_item", None) in ("amulet-coin", "luck-incense"):
+                ca *= 2
             
             raw_gained_cash = (new_counter // ci) * ca
             remaining_counter = new_counter % ci
@@ -1908,20 +1944,21 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                     # replay prep). Runs on this QueryOp background thread under
                     # _mobile_sync_lock via the mobile attribution path, so no
                     # evo-window / tooltip Qt work happens here.
-                    xp_share_id = settings_obj.get("trainer.xp_share") if settings_obj else None
-                    grant_xp, share_half = (
-                        _xp_share_split(total_xp, companion_id, xp_share_id)
-                        if companion_id else (total_xp, 0)
+                    grant_xp, share_targets = (
+                        _xp_share_split(total_xp, companion_id, settings_obj, db=db)
+                        if companion_id else (total_xp, {})
                     )
 
                     if companion_id and (grant_xp > 0 or any(accumulated_evs.values())):
                         _attribute_xp_and_evs_to_companion(companion_id, grant_xp, accumulated_evs, settings_obj, db=db, logger=logger)
-                    if companion_id and xp_share_id and share_half > 0:
-                        _attribute_xp_and_evs_to_companion(
-                            str(xp_share_id), share_half,
-                            {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-                            settings_obj, battles_fought=0, db=db, logger=logger
-                        )
+                    if companion_id:
+                        for target_id, amount in share_targets.items():
+                            if amount > 0:
+                                _attribute_xp_and_evs_to_companion(
+                                    str(target_id), amount,
+                                    {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+                                    settings_obj, battles_fought=0, db=db, logger=logger
+                                )
 
                 # 3. Mark resolved in DB
                 if review_ids:
@@ -2329,7 +2366,10 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
 
     
     friendship = int(pkmndata.get("friendship", 0))
-    friendship += random.randint(5, 9)
+    friendship_gain = random.randint(5, 9)
+    if pkmndata.get("held_item") == "soothe-bell":
+        friendship_gain = int(friendship_gain * 1.5)
+    friendship += friendship_gain
     pkmndata["friendship"] = min(255, friendship)
     
     pkmndata["pokemon_defeated"] = int(pkmndata.get("pokemon_defeated", 0)) + battles_fought

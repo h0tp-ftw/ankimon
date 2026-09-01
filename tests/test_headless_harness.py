@@ -255,6 +255,30 @@ def test_victory_path_move_gate_sees_moves_learned_at_level_up():
         % (result["db_attacks"],)
     )
 
+def test_amulet_coin_doubles_cash_reward_interval():
+    """Amulet Coin / Lucky Incense held by the main Pokemon double the
+    trainer.cash payout at the reward interval — mirrors their identical
+    "double prize money" effect in the mainline games, adapted onto
+    Ankimon's own per-review cash-interval reward."""
+    result = _subrun(
+        "from harness.driver import Driver\n"
+        "overrides = {'battle.cards_per_round': 1, 'trainer.cash_reward_interval': 1, 'trainer.cash_reward_amount': 50}\n"
+        "d = Driver(settings_overrides=overrides)\n"
+        "d.services.main_pokemon.held_item = None\n"
+        "before = d.services.settings.get('trainer.cash', 0)\n"
+        "d.answer('good')\n"
+        "no_item_gain = d.services.settings.get('trainer.cash', 0) - before\n"
+        "d2 = Driver(settings_overrides=overrides)\n"
+        "d2.services.main_pokemon.held_item = 'amulet-coin'\n"
+        "before2 = d2.services.settings.get('trainer.cash', 0)\n"
+        "d2.answer('good')\n"
+        "amulet_gain = d2.services.settings.get('trainer.cash', 0) - before2\n"
+        "print(%r + json.dumps({'no_item_gain': no_item_gain, 'amulet_gain': amulet_gain}))"
+        % _MARKER
+    )
+    assert result["no_item_gain"] == 50
+    assert result["amulet_gain"] == 100
+
 
 if __name__ == "__main__":
     test_play_session_runs_without_errors()
@@ -262,6 +286,7 @@ if __name__ == "__main__":
     test_auto_battle_mode_cycles()
     test_battle_loop_survives_dead_windows()
     test_victory_path_move_gate_sees_moves_learned_at_level_up()
+    test_amulet_coin_doubles_cash_reward_interval()
     print("headless harness tests: OK")
 
 

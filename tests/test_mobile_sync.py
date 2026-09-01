@@ -365,24 +365,42 @@ def test_parse_cards_per_round(value, expected):
     assert ms._parse_cards_per_round(settings)[0] == expected
 
 
-@pytest.mark.parametrize("earned,earner,share_id,expected", [
-    (100, "A", "B", (50, 50)),      # even split
-    (101, "A", "B", (51, 50)),      # earner keeps the odd remainder, no XP lost
-    (100, "A", "A", (100, 0)),      # can't share with yourself
-    (100, "A", None, (100, 0)),     # XP-Share not configured
-    (0, "A", "B", (0, 0)),          # nothing to split
-    (100, "A", "b", (50, 50)),      # distinct ids -> split applies
+@pytest.mark.parametrize("earned,earner,holder,expected", [
+    (100, "A", "B", (50, {"B": 50})),   # even 50/50 split
+    (101, "A", "B", (51, {"B": 50})),   # earner keeps the odd remainder, no XP lost
+    (100, "A", "A", (100, {})),         # can't share with yourself
+    (100, "A", None, (100, {})),        # XP-Share not configured
+    (0, "A", "B", (0, {})),             # nothing to split
+    (100, "A", "b", (50, {"b": 50})),   # distinct ids -> split applies
 ])
-def test_xp_share_split(earned, earner, share_id, expected):
-    assert ms._xp_share_split(earned, earner, share_id) == expected
+def test_xp_share_split_classic(earned, earner, holder, expected):
+    settings = _Settings({"trainer.xp_share": holder, "trainer.xp_share_mode": "classic"})
+    assert ms._xp_share_split(earned, earner, settings) == expected
+
+
+def test_xp_share_split_oras_grants_full_xp_to_every_other_team_member():
+    settings = _Settings({"trainer.xp_share_mode": "oras"})
+    db = MagicMock()
+    db.get_team.return_value = [
+        {"individual_id": "A"}, {"individual_id": "B"}, {"individual_id": "C"}
+    ]
+    kept, targets = ms._xp_share_split(100, "A", settings, db=db)
+    assert kept == 100                       # earner keeps its full, un-reduced XP
+    assert targets == {"B": 100, "C": 100}   # every OTHER team member also earns full
+
+
+def test_xp_share_split_oras_needs_db():
+    settings = _Settings({"trainer.xp_share_mode": "oras"})
+    assert ms._xp_share_split(100, "A", settings, db=None) == (100, {})
 
 
 def test_commit_replay_defeat_applies_xp_share(monkeypatch):
     """XP-Share parity on the MANUAL replay-resolve path: commit_replay_outcome
-    ('defeat', ...) must split the battling companion's XP 50/50 with the
-    configured trainer.xp_share target, exactly like the bulk-resolve commit
-    block. Without the split this path grants the companion 100% and the
-    XP-Share target nothing (finding: mobile_sync commit_replay_outcome)."""
+    ('defeat', ...) must split the battling companion's XP with the configured
+    trainer.xp_share target, exactly like the bulk-resolve commit block. Without
+    this the path grants the companion 100% and the XP-Share target nothing
+    (finding: mobile_sync commit_replay_outcome). Default mode is classic, so
+    the split is 50/50."""
     class _S:
         def __init__(self, d): self._d = dict(d)
         def get(self, k, default=None): return self._d.get(k, default)
@@ -419,7 +437,7 @@ def test_commit_replay_defeat_applies_xp_share(monkeypatch):
 
     res = ms.commit_replay_outcome("defeat", outcome_data, db, settings, None, None)
     assert res.get("success") is True
-    # Companion keeps half; the XP-Share target receives the other half.
+    # Classic 50/50: the companion keeps half, the XP-Share target gets the other.
     assert ("COMP", 50) in calls
     assert ("TARGET", 50) in calls
 
