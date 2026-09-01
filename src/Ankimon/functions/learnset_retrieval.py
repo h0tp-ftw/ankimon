@@ -253,5 +253,5 @@ def get_levelup_move_for_pokemon(pokemon_name, pokemon_level, generation=9):
     all_moves = _get_learnset_moves(pokemon_name, pokemon_level, generation)
 
     return [
-        move for move, learn_level in all_moves.items() if learn_level == pokemon_level
+        move for move, learn_level in all_moves.items() if learn_level == pokemon_level or learn_level == 0
     ]

@@ -595,7 +595,7 @@ def validate_pokemon_status(pokemon):
         "fighting",
     }
 
-    current_status = getattr(pokemon, "battle_status", "fighting")
+    current_status = getattr(pokemon, "battle_status", "fighting").lower()
 
     # Ensure volatile_status exists
     if not hasattr(pokemon, "volatile_status"):

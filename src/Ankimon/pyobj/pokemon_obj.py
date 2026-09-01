@@ -117,7 +117,7 @@ class PokemonObject:
         self.friendship = friendship
 
         # Battle and status
-        self.battle_status = str(battle_status)
+        self.battle_status = str(battle_status).lower()
         self.position = (
             tuple(position) if isinstance(position, (list, tuple)) else (0, 0)
         )
@@ -503,7 +503,7 @@ class PokemonObject:
     def reset_stats(self):
         """Reset the stats of the Pokémon to default values."""
         self.hp = self.max_hp
-        self.battle_status = "Fighting"
+        self.battle_status = "fighting"
         self._update_battle_stats()
 
     def _update_battle_stats(self):
