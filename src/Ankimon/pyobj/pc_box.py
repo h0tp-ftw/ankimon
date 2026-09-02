@@ -533,6 +533,49 @@ def format_item_name(item_name: str) -> str:
     return item_name.replace("-", " ").title()
 
 
+def fit_text_to_slot(text, font_metrics, max_width, max_lines=2):
+    """Lay `text` onto at most `max_lines` lines of `max_width` px, eliding the rest.
+
+    QLabel.setWordWrap can only break on spaces, so a single long species name
+    ("Crabominable", "Gigantamax Charizard") overflows a PC slot and is cut off
+    mid-glyph. Wrapping by hand and eliding whatever still does not fit keeps the
+    label readable; callers pair this with a tooltip carrying the untruncated name.
+    """
+    text = (text or "").strip()
+    if not text:
+        return ""
+
+    elide = Qt.TextElideMode.ElideRight
+
+    def fits(candidate):
+        return font_metrics.horizontalAdvance(candidate) <= max_width
+
+    if fits(text):
+        return text
+
+    words = text.split()
+    lines = []
+    i = 0
+    while i < len(words) and len(lines) < max_lines:
+        word = words[i]
+        if not fits(word):
+            # A single word wider than the slot can only be elided.
+            lines.append(font_metrics.elidedText(word, elide, max_width))
+            i += 1
+            continue
+        line = word
+        i += 1
+        while i < len(words) and fits(f"{line} {words[i]}"):
+            line = f"{line} {words[i]}"
+            i += 1
+        lines.append(line)
+
+    if i < len(words):
+        # Out of lines with words left over: mark the truncation on the last one.
+        lines[-1] = font_metrics.elidedText(f"{lines[-1]} \u2026", elide, max_width)
+    return "\n".join(lines)
+
+
 def clear_layout(layout):
     """
     Recursively removes all widgets and nested layouts from a given layout.
@@ -1439,6 +1482,14 @@ class PokemonPC(QDialog):
                 pokemon = pokemon_list_slice[pokemon_idx]
 
                 show_sprites = self.show_sprites_across_ankimon
+                is_shiny = bool(pokemon.get("shiny", False))
+
+                pokemon_button = PokemonSlotButton("", self.grid_container)
+                pokemon_button.setObjectName("pokemonSlot")
+                pokemon_button.setFixedSize(self.slot_size, self.slot_size)
+
+                # Set in text mode only; also used as the slot's tooltip title.
+                display_name = None
 
                 if show_sprites:
                     # SPRITE MODE: Show the Pokémon sprite
@@ -1446,25 +1497,15 @@ class PokemonPC(QDialog):
                         "front",
                         "gif" if self.gif_in_collection else "png",
                         pokemon["id"],
-                        pokemon.get("shiny", False),
+                        is_shiny,
                         pokemon["gender"],
                         pokemon.get("name"),
                     )
-                    pokemon_button = PokemonSlotButton("", self.grid_container)
-                    pokemon_button.setObjectName("pokemonSlot")
-                    pokemon_button.setFixedSize(self.slot_size, self.slot_size)
                 else:
                     # TEXT MODE: Show species name and level
-                    pokemon_button = PokemonSlotButton("", self.grid_container)
-                    pokemon_button.setObjectName("pokemonSlot")
-                    pokemon_button.setFixedSize(self.slot_size, self.slot_size)
-
-                    display_name = pokemon.get("nickname") or pokemon.get("name", "???")
-                    if display_name:
-                        if pokemon.get("nickname"):
-                            pass
-                        else:
-                            display_name = format_lore_name(display_name)
+                    display_name = pokemon.get("nickname") or format_lore_name(
+                        pokemon.get("name") or "???"
+                    )
 
                     # Create a vertical layout for the text
                     text_layout = QVBoxLayout(pokemon_button)
@@ -1472,19 +1513,32 @@ class PokemonPC(QDialog):
                     text_layout.setSpacing(2)
                     text_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                    # Species name label with theme-aware color
-                    name_label = QLabel(display_name)
+                    # Species name label with theme-aware color. The font is set
+                    # on the widget rather than in the stylesheet so that the
+                    # metrics used for eliding below match what actually renders.
+                    name_label = QLabel()
+                    name_font = QFont(name_label.font())
+                    name_font.setPixelSize(11)
+                    name_font.setBold(True)
+                    name_label.setFont(name_font)
                     name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     name_label.setStyleSheet(f"""
                         QLabel {{
                             color: {species_color};
-                            font-size: 11px;
-                            font-weight: bold;
                             background: transparent;
                             padding: 0px;
                         }}
                     """)
-                    name_label.setWordWrap(True)
+                    # Wrapping is done by hand: setWordWrap cannot break a single
+                    # long name, and the slot has no room for a third line.
+                    name_label.setWordWrap(False)
+                    name_label.setText(
+                        fit_text_to_slot(
+                            display_name,
+                            name_label.fontMetrics(),
+                            self.slot_size - 8,  # minus the layout's 4px margins
+                        )
+                    )
 
                     level_text = self.translator.translate("level_label", level=pokemon.get('level', 1))
                     level_label = QLabel(level_text)
@@ -1501,9 +1555,6 @@ class PokemonPC(QDialog):
 
                     text_layout.addWidget(name_label)
                     text_layout.addWidget(level_label)
-
-                    pokemon_button._name_label = name_label
-                    pokemon_button._level_label = level_label
 
                 # BFF (highest friendship) takes visual precedence
                 is_bff = bff_id is not None and pokemon.get("individual_id") == bff_id
@@ -1591,7 +1642,7 @@ class PokemonPC(QDialog):
                     )
                     badge_tooltips.append(self.translator.translate("bff_tooltip"))
 
-                if pokemon.get("shiny", False):
+                if is_shiny:
                     shiny_badge = QLabel("⭐", self.grid_container)
                     shiny_badge.setAttribute(
                         Qt.WidgetAttribute.WA_TransparentForMouseEvents
@@ -1621,9 +1672,11 @@ class PokemonPC(QDialog):
                     evo_badge.setAttribute(
                         Qt.WidgetAttribute.WA_TransparentForMouseEvents
                     )
-                    evo_badge.setFixedSize(
-                        23, 23
-                    )
+                    # Sit below the shiny star when there is one. The label has to
+                    # grow with the margin: a top margin taller than the widget
+                    # leaves a negative content height and nothing is painted.
+                    evo_margin_top = 24 if is_shiny else 2
+                    evo_badge.setFixedSize(23, evo_margin_top + 21)
 
                     # Load the generated high-quality PNG asset
                     badge_path = addon_dir / "addon_sprites" / "evolution_indicator.png"
@@ -1636,37 +1689,22 @@ class PokemonPC(QDialog):
                             Qt.TransformationMode.SmoothTransformation,
                         )
                         evo_badge.setPixmap(scaled_pixmap)
-                        if pokemon.get("shiny", False):
-                            evo_badge.setStyleSheet(
-                                "margin-top: 24px; margin-right: 1px; background: transparent;"
-                            )
-                        else:
-                            evo_badge.setStyleSheet(
-                                "margin-top: 2px; margin-right: 1px; background: transparent;"
-                            )
+                        evo_badge.setStyleSheet(
+                            f"margin-top: {evo_margin_top}px; margin-right: 1px;"
+                            " background: transparent;"
+                        )
                     else:
                         # Fallback to plain text ⇈ if asset is not found
                         evo_badge.setText("⇈")
-                        if pokemon.get("shiny", False):
-                            evo_badge.setStyleSheet(
-                                "QLabel {"
-                                "  color: #3b82f6;"
-                                "  font-weight: bold;"
-                                "  margin-top: 24px;"
-                                "  margin-right: 1px;"
-                                "  background: transparent;"
-                                "}"
-                            )
-                        else:
-                            evo_badge.setStyleSheet(
-                                "QLabel {"
-                                "  color: #3b82f6;"
-                                "  font-weight: bold;"
-                                "  margin-top: 2px;"
-                                "  margin-right: 1px;"
-                                "  background: transparent;"
-                                "}"
-                            )
+                        evo_badge.setStyleSheet(
+                            "QLabel {"
+                            "  color: #3b82f6;"
+                            "  font-weight: bold;"
+                            f"  margin-top: {evo_margin_top}px;"
+                            "  margin-right: 1px;"
+                            "  background: transparent;"
+                            "}"
+                        )
 
                     evo_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.pokemon_grid.addWidget(
@@ -1689,22 +1727,14 @@ class PokemonPC(QDialog):
                     wait_badge.setAttribute(
                         Qt.WidgetAttribute.WA_TransparentForMouseEvents
                     )
-                    if pokemon.get("shiny", False):
-                        wait_badge.setStyleSheet(
-                            "QLabel {"
-                            "  margin-top: 24px;"
-                            "  margin-right: 5px;"
-                            "  background: transparent;"
-                            "}"
-                        )
-                    else:
-                        wait_badge.setStyleSheet(
-                            "QLabel {"
-                            "  margin-top: 5px;"
-                            "  margin-right: 5px;"
-                            "  background: transparent;"
-                            "}"
-                        )
+                    # No setFixedSize here, so the label grows with the margin.
+                    wait_badge.setStyleSheet(
+                        "QLabel {"
+                        f"  margin-top: {24 if is_shiny else 5}px;"
+                        "  margin-right: 5px;"
+                        "  background: transparent;"
+                        "}"
+                    )
                     wait_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.pokemon_grid.addWidget(
                         wait_badge,
@@ -1719,8 +1749,13 @@ class PokemonPC(QDialog):
                         else "badge_wait_day"
                     )
                     badge_tooltips.append(self.translator.translate(key))
-                if badge_tooltips:
-                    pokemon_button.setToolTip("\n".join(badge_tooltips))
+                # In text mode the name may have been elided to fit the slot, so
+                # the tooltip leads with the full name before any badge text.
+                tooltip_lines = badge_tooltips
+                if display_name:
+                    tooltip_lines = [display_name] + badge_tooltips
+                if tooltip_lines:
+                    pokemon_button.setToolTip("\n".join(tooltip_lines))
         self._update_count_label()
         self._refresh_slot_selection()
 
