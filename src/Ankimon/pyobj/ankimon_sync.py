@@ -215,9 +215,9 @@ def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
     from a file the user picked in the Import dialog.
 
     ``timeout`` bounds the wait on a locked file. It used to be unset, which is
-    sqlite3's 5 s default — paid synchronously on the profile-open stack by the
-    media migration, where a single locked save visibly froze Anki's startup.
-    User-initiated Import/Export still wait the full 30 s; the migration passes
+    sqlite3's 5 s default — and when the media migration still ran on the
+    profile-open stack, a single locked save visibly froze Anki's startup.
+    User-initiated Import/Export wait the full 30 s; the migration passes
     ``save_transfer.MIGRATION_PROBE_TIMEOUT`` and rescans later instead.
     """
     try:
@@ -233,12 +233,11 @@ def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
         conn = sqlite3.connect(uri, uri=True, timeout=timeout)
         # connect(timeout=) bounds only the wait for a LOCK. PRAGMA quick_check
         # scans the whole database, so on a big enough save it can run well past
-        # `timeout` with no lock involved at all — and this runs synchronously on
-        # the profile-open stack. A progress handler is the only real wall-clock
-        # bound: SQLite calls it every N VM instructions and aborts the statement
-        # when it returns non-zero, which surfaces as OperationalError and is
-        # caught below as "could not read this file" — leaving the migration
-        # armed to retry rather than concluding anything.
+        # `timeout` with no lock involved at all. A progress handler is the only
+        # real wall-clock bound: SQLite calls it every N VM instructions and
+        # aborts the statement when it returns non-zero, which surfaces as
+        # OperationalError and is caught below as "could not read this file" —
+        # leaving the migration armed to retry rather than concluding anything.
         _deadline = time.monotonic() + timeout
         conn.set_progress_handler(
             lambda: 1 if time.monotonic() > _deadline else 0, 2000

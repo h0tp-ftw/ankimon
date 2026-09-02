@@ -631,6 +631,47 @@ def test_rescue_is_deferred_off_the_profile_open_stack(media, live_db, logger, m
     assert st.get_db_stats(live_db)["pokemon"] == 42
 
 
+def test_rescue_reverifies_the_media_file_at_the_moment_of_the_write(
+    media, live_db, logger, monkeypatch
+):
+    """The scan verified the candidate on a worker thread; the user then read a
+    dialog. In that window Anki's media sync can replace a bare or fixed-name
+    media file underneath the offer, so what is copied over the live save has to
+    be checked again right before the copy — not only when it was chosen."""
+    bare = _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: True)
+    monkeypatch.setattr(st, "showInfo", MagicMock())
+    warn = MagicMock()
+    monkeypatch.setattr(st, "showWarning", warn)
+    monkeypatch.setattr(st, "close_anki", MagicMock())
+    # Make the protect step fail, so the offer names the bare, replaceable file
+    # rather than a content-addressed copy nothing overwrites.
+    monkeypatch.setattr(st, "_preserve", lambda *a, **k: None)
+    calls = _stub_sync(monkeypatch)
+    scheduled = []
+    monkeypatch.setattr(
+        st.mw.progress, "single_shot",
+        lambda ms, fn, requires_collection=True: scheduled.append(fn),
+    )
+    before = Path(live_db).read_bytes()
+
+    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    assert len(scheduled) == 1
+
+    # A media download lands between the dialog and the deferred write: header
+    # intact, pages shredded — the shape a torn or foreign file actually takes.
+    raw = bytearray(bare.read_bytes())
+    for i in range(1024, len(raw)):
+        raw[i] = 0
+    bare.write_bytes(bytes(raw))
+
+    scheduled[0]()
+
+    assert Path(live_db).read_bytes() == before
+    assert calls == []                       # no backup, no replace
+    assert warn.called
+
+
 # --------------------------------------------------------------------------
 # Telling the affected population the feature is gone
 # --------------------------------------------------------------------------
@@ -642,9 +683,9 @@ class _StubDB:
     def get_config_value(self, key, default=None):
         return self._cfg.get(key, default)
 
-    def execute(self, sql, params=()):
-        if "DELETE FROM config" in sql:
-            self.deleted.append(params[0])
+    def delete_config_value(self, key):
+        self.deleted.append(key)
+        return True
 
 
 @pytest.fixture

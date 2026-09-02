@@ -195,13 +195,17 @@ _MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
 # because the fingerprint check is stat-only and short-circuits before any scan
 # is dispatched.
 
-# How long the AUTOMATIC migration will wait on a locked file. It runs on the
-# profile-open stack, so this is time Anki's startup is frozen — with the old
-# unset sqlite3 default (5 s) in _verify_sqlite_integrity, a single locked media
-# save stalled boot by 5.2 s measured. Failing fast is free here because a
-# skipped file leaves the migration armed and it is retried on the next pass.
-# User-initiated Export/Import keep the full 30 s, where waiting out a passing
-# lock is exactly what the user wants.
+# How long the AUTOMATIC migration will wait on a locked file, and the
+# wall-clock budget for each statement it runs against a save. The scan no
+# longer runs on the profile-open stack — ``start_media_migration`` puts it on a
+# worker — but it stays short: a file that will not open this second is simply
+# rescanned on the next pass, so a long wait buys nothing, and while a scan is
+# in flight a post-sync rescan request is coalesced behind it, so every second
+# spent here is a second the rescan that matters arrives late. (The synchronous
+# fallback, ``run_media_migration``, does pay this on the calling thread; there
+# the old unset sqlite3 default of 5 s stalled a boot by 5.2 s measured on one
+# locked file.) User-initiated Export/Import keep the full 30 s, where waiting
+# out a passing lock is exactly what the user wants.
 MIGRATION_PROBE_TIMEOUT = 0.5
 
 # Reload safety, same pattern as the sync hook: the (hook, handler) pair this
@@ -230,9 +234,9 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
 
     ``timeout`` is generous (30 s) for the user-initiated Export/Import, where
     waiting out a passing lock is exactly what the user wants. The automatic
-    migration passes ``MIGRATION_PROBE_TIMEOUT`` instead: it runs on the
-    profile-open stack, so it must fail fast and rescan later rather than freeze
-    Anki's startup on a locked file.
+    migration passes ``MIGRATION_PROBE_TIMEOUT`` instead: a file it cannot read
+    this second is rescanned on a later pass, so it fails fast rather than hold
+    the scan — and the rescan coalesced behind it — on a locked file.
     """
     try:
         if not Path(db_path).is_file():
@@ -655,12 +659,17 @@ def import_save(parent=None) -> bool:
 def _replace_active_save(source: Path, target: Path, what: str) -> bool:
     """Back up, then atomically put ``source`` in place of the live save.
 
-    Order is load-bearing. The backup happens first and a failed backup REFUSES
-    the replacement — never overwrite the live save with no recovery path. The
-    replace itself goes through ``_atomic_replace``, which closes the live
-    connection, writes a temp on the same volume, ``os.replace``s it into place
-    (retrying a transient OneDrive/antivirus lock) and reaps stale ``-wal`` /
-    ``-shm`` sidecars belonging to the old file.
+    Order is load-bearing. The source is verified HERE, at the moment of the
+    write, not only when it was chosen: Import checks its file a few lines
+    before this, but the rescue checked its candidate on a worker thread and
+    then waited for the user to read a dialog — a window in which Anki's media
+    sync can replace a bare or fixed-name media file underneath the offer.
+    Then the backup, and a failed backup REFUSES the replacement — never
+    overwrite the live save with no recovery path. The replace itself goes
+    through ``_atomic_replace``, which closes the live connection, writes a temp
+    on the same volume, ``os.replace``s it into place (retrying a transient
+    OneDrive/antivirus lock) and reaps stale ``-wal`` / ``-shm`` sidecars
+    belonging to the old file.
 
     Anki is closed afterwards, and that is deliberate rather than lazy: the next
     boot re-runs ``profile_did_open``, whose ``watermark == 0`` re-derivation
@@ -668,7 +677,17 @@ def _replace_active_save(source: Path, target: Path, what: str) -> bool:
     watermark from queueing thousands of already-handled reviews as fresh mobile
     battles. It also rehydrates every singleton holding the old connection.
     """
-    from .ankimon_sync import get_ankimon_sync, _handle_manual_sync_error
+    from .ankimon_sync import (
+        get_ankimon_sync, _handle_manual_sync_error, _verify_sqlite_integrity,
+    )
+
+    if not _verify_sqlite_integrity(Path(source)):
+        showWarning(
+            f"{what} aborted: the save file no longer passes an integrity check "
+            "(it may have changed since it was checked), so nothing was "
+            "replaced. Your save is unchanged."
+        )
+        return False
 
     sync = get_ankimon_sync()
     if not sync._backup_before_overwrite(Path(target).name):
@@ -1044,7 +1063,11 @@ def _notify_affected_user(logger) -> None:
             "File… on one and Import Save File… on the other."
         )
         try:
-            db.execute("DELETE FROM config WHERE key = ?", ("misc.ankiweb_sync",))
+            # Through the committing helper, not a bare ``db.execute``: that
+            # left the DELETE in an open transaction — invisible to the next
+            # boot, so the notice repeated, and holding this connection's write
+            # lock until some unrelated write happened to commit it.
+            db.delete_config_value("misc.ankiweb_sync")
         except Exception:
             # Non-fatal: the worst case is the notice appearing once more.
             logger.log("info", "Could not clear the legacy misc.ankiweb_sync row.")
@@ -1452,7 +1475,11 @@ def start_media_migration(settings_obj, logger, *, after_media_sync: bool = Fals
 
     ``run_in_background`` rather than ``QueryOp`` on purpose — this is silent
     background housekeeping and must not raise a progress window over Anki's
-    startup, nor block on the collection it does not touch. Its callback is safe
+    startup, nor block on the collection it does not touch. The second half of
+    that needs ``uses_collection=False``: the default executor is the single
+    worker Anki's own collection sync and every ``QueryOp`` queue on, so a scan
+    waiting out a locked file would hold the boot sync behind it, and the boot
+    sync would hold the post-sync rescan behind it. Its callback is safe
     for the dialogs and the ``mw.pm`` write in ``_apply_migration_result``
     because aqt wraps it (``aqt/taskman.py:86-88``)::
 
@@ -1498,7 +1525,7 @@ def start_media_migration(settings_obj, logger, *, after_media_sync: bool = Fals
 
         _MIGRATION_SCAN_STATE["running"] = True
         try:
-            mw.taskman.run_in_background(_scan, _done)
+            mw.taskman.run_in_background(_scan, _done, uses_collection=False)
         except Exception:
             # No task manager (or it refused): correctness beats responsiveness.
             _MIGRATION_SCAN_STATE["running"] = False

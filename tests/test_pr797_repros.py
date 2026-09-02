@@ -455,8 +455,10 @@ class _FakeTaskman:
 
     def __init__(self):
         self.queued = []
+        self.kwargs = None
 
-    def run_in_background(self, task, on_done=None, args=None):
+    def run_in_background(self, task, on_done=None, args=None, **kwargs):
+        self.kwargs = kwargs
         self.queued.append((task, on_done))
 
     def run_next(self, mid_scan=None):
