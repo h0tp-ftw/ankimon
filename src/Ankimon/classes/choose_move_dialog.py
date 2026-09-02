@@ -1,6 +1,6 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt
 from ..functions.pokedex_functions import find_details_move
 from ..move_names import format_move_name
@@ -32,6 +32,13 @@ class MoveSelectionDialog(QDialog):
         # Add labels for each move
         self.move_labels = []
         for index, move in enumerate(mainpokemon_attacks):
+            # Bind global QShortcut for this move index (1-based)
+            if index < 9:
+                shortcut_key = str(index + 1)
+                shortcut = QShortcut(QKeySequence(shortcut_key), self)
+                shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+                shortcut.activated.connect(self.create_shortcut_handler(index))
+
             move_detail = find_details_move(move)
             move_name = format_move_name(move_detail.get('name', move))
             move_label = QLabel(f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}")
@@ -50,15 +57,12 @@ class MoveSelectionDialog(QDialog):
             self.select_move(index)
         return handle_mouse_press
 
+    def create_shortcut_handler(self, index):
+        def handle_shortcut():
+            self.select_move(index)
+        return handle_shortcut
+
     def select_move(self, index):
         """Handle move selection and close the dialog."""
         self.selected_move = self.mainpokemon_attacks[index]
         self.accept()
-
-    def keyPressEvent(self, event):
-        """Handle keyboard shortcuts for move selection."""
-        key = event.key()
-        if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
-            move_index = key - Qt.Key.Key_1  # Convert key to list index
-            if 0 <= move_index < len(self.mainpokemon_attacks):
-                self.select_move(move_index)
