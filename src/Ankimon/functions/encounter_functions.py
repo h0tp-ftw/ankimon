@@ -1182,6 +1182,17 @@ def new_pokemon(
     except Exception as e:
         print(f"[Ankimon] Error resetting battle state in new_pokemon: {e}")
 
+    # Clear the PLAYER's volatile statuses as well. The enemy object is rebuilt
+    # from `pokemon_data` below, which carries a fresh `volatile_status`, but
+    # `main_pokemon` persists across encounters — so a confusion/taunt/leechseed
+    # left over from the battle that just ended would otherwise follow the
+    # player into the next one and be re-sent to the engine on turn 1. The
+    # hooks-level reset in ankimon_hooks_to_poke_engine only runs on the
+    # `state is not None` path, and this function forces `_state.new_state =
+    # None` immediately above, so it can never cover this.
+    if main_pokemon is not None and hasattr(main_pokemon, "volatile_status"):
+        main_pokemon.volatile_status = set()
+
     # Force HUD update on next card/refresh via the HUD leaf's public
     # invalidation method, so this call site never has to track the leaf's
     # private cache set. Guarded so it works both before and after that leaf
