@@ -7,8 +7,11 @@ from ..move_names import format_move_name
 import random
 
 class MoveSelectionDialog(QDialog):
-    def __init__(self, mainpokemon_attacks):
-        super().__init__()
+    def __init__(self, mainpokemon_attacks, parent=None):
+        """``parent`` should always be the main window: a parentless dialog
+        can spawn with no stacking/focus cue on some window managers, so
+        exec() blocks the calling turn on a dialog nobody can see."""
+        super().__init__(parent)
 
         # Dialog settings
         self.setWindowTitle("Select a Move")

@@ -66,6 +66,7 @@ GROUPS = [
                 "settings": [
                     "Cards per Round",
                     "Review Based Damage",
+                    "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",
                 ],
@@ -91,7 +92,6 @@ GROUPS = [
     {
         "label": "Styling",
         "settings": [
-            "Styling in Reviewer",
             "Team Overview in Deck Overview",
             "Animate Time",
             "Show GIFs in Collection",
@@ -130,6 +130,7 @@ GROUPS = [
                 ("gui.hud_enemy_shiny_indicator", "Enemy Shiny Star"),
                 ("gui.hud_player_shiny_indicator", "Player Shiny Star"),
                 ("gui.reviewer_text_message_box", "Battle Log"),
+                ("gui.hud_styling", "Styling"),
             ],
         },
     },

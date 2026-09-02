@@ -188,6 +188,7 @@ def details(qapp, tmp_path):
 
     aqt_mod = types.ModuleType("aqt")
     aqt_mod.qconnect = lambda signal, func: signal.connect(func)
+    aqt_mod.mw = types.SimpleNamespace()
     sys.modules["aqt"] = aqt_mod
 
     sv = types.ModuleType("Ankimon.services")
@@ -211,8 +212,20 @@ def details(qapp, tmp_path):
     ad = types.ModuleType("Ankimon.pyobj.attack_dialog")
 
     class AttackDialog:
-        def __init__(self, attacks, new_attack):
+        # remember_attack() calls AttackDialog(attacks, new_attack, parent=mw)
+        # then schedules .raise_()/.activateWindow() for the modal event loop,
+        # and .deleteLater() in a finally (the battle-freeze fix plus cleanup).
+        def __init__(self, attacks, new_attack, parent=None):
             self.selected_attack = attacks[0]
+
+        def raise_(self):
+            pass
+
+        def activateWindow(self):
+            pass
+
+        def deleteLater(self):
+            pass
 
         def exec(self):
             return 0  # rejected by default
@@ -706,6 +719,103 @@ def test_remember_attack_saves_via_services_db_and_refreshes(details):
     # The main pokemon mirror is kept in sync too.
     assert db.saved_main and db.saved_main[-1]["attacks"] == ["tackle", "thunderbolt"]
     assert refreshed == [True]
+
+
+def test_remember_attack_with_a_full_moveset_goes_through_the_replace_dialog(details):
+    # 4 known moves -> the "learn a 5th" path can't just append, it has to
+    # prompt AttackDialog(attacks, new_attack, parent=mw) for a replacement —
+    # the double's exec() returns 0 (rejected) by default, so the new move is
+    # discarded and the original 4 attacks are unchanged.
+    db = _FakeDB(
+        pokemon={
+            "uuid-1": {
+                "individual_id": "uuid-1",
+                "name": "pikachu",
+                "attacks": ["tackle", "thunderbolt", "quick-attack", "growl"],
+            }
+        },
+        main_pokemon={
+            "individual_id": "uuid-1",
+            "attacks": ["tackle", "thunderbolt", "quick-attack", "growl"],
+        },
+    )
+    details._test_services.db = db
+    logger = _RecorderLogger()
+
+    details.remember_attack(
+        "uuid-1",
+        ["tackle", "thunderbolt", "quick-attack", "growl"],
+        "thunder",
+        logger,
+        lambda: None,
+    )
+
+    # The dialog was declined (double's default), so the moveset is untouched
+    # rather than silently growing past 4 or swapping something unintended.
+    assert db.saved[-1]["attacks"] == ["tackle", "thunderbolt", "quick-attack", "growl"]
+
+
+def test_remember_attack_establishes_modality_before_showing_dialog(
+    details, monkeypatch
+):
+    """The fifth-move prompt must be modal before it becomes visible."""
+    events = []
+    callbacks = []
+
+    class ProbeTimer:
+        @staticmethod
+        def singleShot(interval, callback):
+            assert interval == 0
+            events.append("scheduled")
+            callbacks.append(callback)
+
+    class ModalProbeAttackDialog:
+        def __init__(self, attacks, new_attack, parent=None):
+            self.selected_attack = attacks[0]
+
+        def show(self):
+            events.append("show")
+
+        def raise_(self):
+            events.append("raise")
+
+        def activateWindow(self):
+            events.append("activate")
+
+        def exec(self):
+            events.append("exec")
+            while callbacks:
+                callbacks.pop(0)()
+            return 0
+
+        def deleteLater(self):
+            events.append("delete")
+
+    monkeypatch.setattr(details, "AttackDialog", ModalProbeAttackDialog)
+    monkeypatch.setattr(details, "QTimer", ProbeTimer, raising=False)
+    details._test_services.db = _FakeDB(
+        pokemon={
+            "uuid-1": {
+                "individual_id": "uuid-1",
+                "name": "pikachu",
+                "attacks": ["tackle", "thunderbolt", "quick-attack", "growl"],
+            }
+        },
+        main_pokemon={
+            "individual_id": "uuid-1",
+            "attacks": ["tackle", "thunderbolt", "quick-attack", "growl"],
+        },
+    )
+
+    details.remember_attack(
+        "uuid-1",
+        ["tackle", "thunderbolt", "quick-attack", "growl"],
+        "thunder",
+        _RecorderLogger(),
+        lambda: None,
+    )
+
+    assert events == ["scheduled", "exec", "raise", "activate", "delete"]
 
 
 def test_forget_attack_refuses_to_remove_last_move(details):

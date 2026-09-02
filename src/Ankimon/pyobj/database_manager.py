@@ -1894,6 +1894,15 @@ class AnkimonDB:
         conn.commit()
         return True
 
+    def delete_config_value(self, key: str) -> bool:
+        """Removes a single config key. Settings migrations need this:
+        save_all_config only upserts, so a renamed key's old row would otherwise
+        outlive every save and be read back on the next load."""
+        conn = self._get_connection()
+        conn.execute("DELETE FROM config WHERE key = ?", (key,))
+        conn.commit()
+        return True
+
     def has_config(self) -> bool:
         """Checks if config data exists in the database."""
         cursor = self.execute("SELECT COUNT(*) FROM config")

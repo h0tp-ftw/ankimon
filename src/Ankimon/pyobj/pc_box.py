@@ -549,6 +549,12 @@ def clear_layout(layout):
         item = layout.takeAt(0)
         widget = item.widget()
         if widget is not None:
+            # Removing a widget from a layout does not hide it immediately.
+            # Disable and detach stale slots before deleteLater() so an account
+            # switch/filter refresh cannot leave clickable old Pokémon behind.
+            widget.setEnabled(False)
+            widget.hide()
+            widget.setParent(None)
             widget.deleteLater()
         elif item.layout():
             clear_layout(item.layout())
@@ -2106,9 +2112,7 @@ class PokemonPC(QDialog):
             lambda: self.show_pokemon_details(pokemon)
         )
         main_pokemon_action.triggered.connect(
-            lambda: self.main_pokemon_function_callback(
-                services.db.get_pokemon(pokemon["individual_id"])
-            )
+            lambda: self.pick_as_main_pokemon(pokemon)
         )
         make_favorite_action.triggered.connect(lambda: self.toggle_favorite(pokemon))
         give_held_item.triggered.connect(lambda: self.give_held_item(pokemon))
@@ -2126,6 +2130,20 @@ class PokemonPC(QDialog):
 
         # Show the menu at the button's position, aligned below the button
         menu.exec(button.mapToGlobal(button.rect().topRight()))
+
+    def pick_as_main_pokemon(self, pokemon_stub):
+        """Select a live database record as main, ignoring stale grid entries."""
+        individual_id = pokemon_stub.get("individual_id")
+        pokemon = services.db.get_pokemon(individual_id) if individual_id else None
+        if not pokemon:
+            if self.logger:
+                self.logger.log(
+                    "warning",
+                    f"Cannot select missing Pokémon {individual_id!r} as main; refreshing PC.",
+                )
+            self.refresh_pokemon_grid()
+            return
+        self.main_pokemon_function_callback(pokemon)
 
     def show_pokemon_details(self, pokemon_stub):
         """
