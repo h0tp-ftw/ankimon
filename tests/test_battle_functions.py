@@ -20,18 +20,22 @@ sys.modules["aqt.utils"] = MagicMock()
 
 from Ankimon.functions.battle_functions import validate_pokemon_status
 
+
 class MockPokemon:
     def __init__(self, hp, battle_status):
         self.hp = hp
         self.battle_status = battle_status
 
+
 def test_validate_pokemon_status_fainted_hp_0():
     poke = MockPokemon(0, "fighting")
     assert validate_pokemon_status(poke) == "fainted"
 
+
 def test_validate_pokemon_status_healed():
     poke = MockPokemon(50, "fainted")
     assert validate_pokemon_status(poke) == "fighting"
+
 
 def test_validate_pokemon_status_normal():
     poke = MockPokemon(50, "fighting")
