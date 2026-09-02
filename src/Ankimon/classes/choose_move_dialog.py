@@ -75,7 +75,10 @@ class MoveSelectionDialog(QDialog):
     def select_move(self, index):
         """Handle move selection and close the dialog."""
         self.selected_move = self.mainpokemon_attacks[index]
-        self.accept()
+        # Defers the accept call to let the Qt event loop pump any remaining
+        # rogue QKeyEvents (e.g. from Contanki) before the window is destroyed.
+        from aqt.qt import QTimer
+        QTimer.singleShot(50, self.accept)
 
     def handle_navigation_key(self, key) -> bool:
         """Handle arrow keys and enter for controller navigation. Returns True if consumed."""
