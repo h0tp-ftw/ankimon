@@ -769,7 +769,5 @@ def calculate_hp(base_stat_hp, level, ev, iv):
     ev_value = ev["hp"] / 4
     iv_value = iv["hp"]
     # hp = int(((iv + 2 * (base_stat_hp + ev) + 100) * level) / 100 + 10)
-    hp = int(
-        ((((2 * base_stat_hp) + iv_value + ev_value) * level) / 100) + level + 10
-    )
+    hp = int(((((2 * base_stat_hp) + iv_value + ev_value) * level) / 100) + level + 10)
     return hp
