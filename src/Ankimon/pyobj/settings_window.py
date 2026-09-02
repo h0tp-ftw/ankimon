@@ -25,6 +25,9 @@ from aqt.qt import (
 from aqt.utils import showWarning
 from aqt import mw
 from aqt.theme import theme_manager
+from ..services import services
+from ..utils import is_alive
+from .settings import HUD_TOGGLE_AUTO_SYNC_KEYS
 
 
 # create_rounded_pixmap function remains the same
@@ -57,6 +60,7 @@ class SettingsWindow(QMainWindow):
         self.setMaximumWidth(600)
         self.setMaximumHeight(900)
         self.parent = mw
+        self.explicit_hud_toggle_overrides = set()
 
         self.descriptions = self.load_descriptions()
         self.friendly_names = self.load_friendly_names()
@@ -272,6 +276,10 @@ class SettingsWindow(QMainWindow):
             button_group.addButton(false_radio, 0)
             if key.startswith("misc.gen"):
                 button_group.buttonClicked.connect(lambda: self._on_gen_toggled())
+            if key in HUD_TOGGLE_AUTO_SYNC_KEYS:
+                button_group.buttonClicked.connect(
+                    lambda _, hud_key=key: self._on_hud_toggle_clicked(hud_key)
+                )
             h_layout.addWidget(true_radio)
             h_layout.addWidget(false_radio)
             layout.addWidget(radio_container)
@@ -279,6 +287,9 @@ class SettingsWindow(QMainWindow):
             self.input_widgets[key] = button_group
         elif isinstance(value, (int, str, float)):
             line_edit = QLineEdit(str(value))
+            # Mask the API Key field if it's ever rendered in the legacy window
+            if key == "leaderboard.api_key":
+                line_edit.setEchoMode(QLineEdit.EchoMode.Password)
             layout.addWidget(line_edit)
             created_widgets.append(line_edit)
             self.input_widgets[key] = line_edit
@@ -294,6 +305,9 @@ class SettingsWindow(QMainWindow):
         return button
 
     def setup_ui(self):
+        """
+        Builds the settings window interface, including the logo, search bar, hierarchical settings sections, and save control.
+        """
         self.setMinimumSize(450, 600)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -342,7 +356,6 @@ class SettingsWindow(QMainWindow):
                             "SSH Access",
                             "Prevent Ankimon News on Startup",
                             "AnkiWeb Sync",
-                            "Ankimon Leaderboard",
                             "Developer Mode",
                         ]
                     },
@@ -390,10 +403,10 @@ class SettingsWindow(QMainWindow):
             },
             "Styling": {
                 "settings": [
-                    "Styling in Reviewer",
                     "Team Overview in Deck Overview",
                     "Animate Time",
                     "Show GIFs in Collection",
+                    "Show Sprites Across Ankimon",
                 ]
             },
             "HUD and Reviewer": {
@@ -407,6 +420,7 @@ class SettingsWindow(QMainWindow):
                     "View Main Pokémon Front",
                     "XP Bar Location",
                     "Pop-Up on Defeat",
+                    "Pop-Up on Item Receive",
                 ],
                 "subgroups": {
                     "HUD Element Toggles": {
@@ -425,6 +439,7 @@ class SettingsWindow(QMainWindow):
                             "Show Enemy Shiny Star",
                             "Show Player Shiny Star",
                             "Show Text Message Box in Reviewer",
+                            "Styling",
                         ]
                     }
                 }
@@ -457,6 +472,13 @@ class SettingsWindow(QMainWindow):
                     "Generation 7",
                     "Generation 8",
                     "Generation 9",
+                ]
+            },
+            "Leaderboard": {
+                "settings": [
+                    "Enable Leaderboard Sync",
+                    "Username",
+                    "API Key",
                 ]
             },
         }
@@ -554,6 +576,68 @@ class SettingsWindow(QMainWindow):
         if region_combo is not None:
             self._refresh_region_dropdown(region_combo)
 
+    def _refresh_live_windows(self):
+        """Refresh native Ankimon windows that depend on sprite visibility."""
+        from ..utils import is_alive
+        from .. import singletons
+
+        try:
+            if is_alive(services.pokemon_pc):
+                services.pokemon_pc.refresh_gui()
+        except Exception:
+            pass
+
+        try:
+            if is_alive(services.reviewer):
+                services.reviewer.refresh_hud()
+        except Exception:
+            pass
+
+        try:
+            if services.trainer_card is not None:
+                services.trainer_card.refresh()
+        except Exception:
+            pass
+
+        try:
+            achievement_win = singletons._WINDOW_CACHE.get("achievement_bag")
+            if is_alive(achievement_win):
+                achievement_win.renewWidgets()
+        except Exception:
+            pass
+
+        try:
+            settings_win = singletons._WINDOW_CACHE.get("settings_window")
+            if is_alive(settings_win) and settings_win is not self:
+                settings_win.config = settings_win.load_config()
+                settings_win._refresh_widgets()
+        except Exception:
+            pass
+
+        # Refresh the live AnkimonItemsWeb view if it is open. The web shell
+        # displays the reviewer and PC box content, both of which depend on
+        # the sprite visibility setting.
+        try:
+            items_web = singletons._items_web_window
+            if is_alive(items_web):
+                show_sprites = self.config.get(
+                    "gui.show_sprites_across_ankimon", True
+                )
+                # The web shell exposes refresh_content() to rebuild its UI
+                # based on the current sprite setting.
+                if hasattr(items_web, "refresh_content"):
+                    items_web.refresh_content()
+                elif hasattr(items_web, "set_sprite_visibility"):
+                    items_web.set_sprite_visibility(show_sprites)
+                else:
+                    # Fallback: apply sprite visibility first, then refresh data
+                    if hasattr(items_web, "_apply_sprite_visibility"):
+                        items_web._apply_sprite_visibility(show_sprites)
+                    if hasattr(items_web, "update_ui_data"):
+                        items_web.update_ui_data()
+        except Exception:
+            pass
+
     def _gen_enabled_in_ui(self, gen_key):
         """Current (possibly unsaved) state of a generation toggle, read from
         its widget; falls back to the stored config when no widget exists."""
@@ -570,6 +654,11 @@ class SettingsWindow(QMainWindow):
         region_combo = self.input_widgets.get("misc.active_region")
         if region_combo is not None:
             self._refresh_region_dropdown(region_combo)
+
+    def _on_hud_toggle_clicked(self, key):
+        # Track explicit HUD toggle changes so the autosync rule does not
+        # override a user choice made in the same save transaction.
+        self.explicit_hud_toggle_overrides.add(key)
 
     def _refresh_region_dropdown(self, combo):
         region_to_gen = {
@@ -641,12 +730,15 @@ class SettingsWindow(QMainWindow):
                 widget.setVisible(is_expanded)
 
     def on_save(self) -> Union[int, str]:
-        # Refresh self.config with latest values before modifying
-        self.config = self.load_config()
+        # Load the CURRENT live config as our baseline
+        live_config = self.load_config()
+        # Create a detached working copy for all validation/coercion
+        working_config = dict(live_config)
+        original_config = dict(live_config)
 
-        # Update self.config from the current state of all UI widgets
+        # Update working_config from the current state of all UI widgets
         for key, widget in self.input_widgets.items():
-            original_value = self.original_config.get(key)
+            original_value = original_config.get(key)
 
             if isinstance(widget, QLineEdit):
                 new_text = widget.text().strip()
@@ -655,7 +747,7 @@ class SettingsWindow(QMainWindow):
                     # Single Value
                     try:
                         new_value = int(new_text)
-                        self.config[key] = 1 if new_value == 0 else new_value
+                        working_config[key] = 1 if new_value == 0 else new_value
                     # Range Value
                     except ValueError:
                         if "-" in new_text:
@@ -663,58 +755,59 @@ class SettingsWindow(QMainWindow):
                                 first_val, second_val = map(int, new_text.split("-", 1))
                                 low = min(first_val, second_val)
                                 high = max(first_val, second_val)
-                                self.config[key] = f"{low}-{high}"
+                                working_config[key] = f"{low}-{high}"
                             except ValueError:
-                                self.config[key] = 2
+                                working_config[key] = original_value
                         else:
                             # Cannot decode input – fallback
-                            self.config[key] = original_value
+                            working_config[key] = original_value
 
                 # Standard handling for other settings
                 elif type(original_value) is int:
                     try:
-                        self.config[key] = int(new_text)
+                        working_config[key] = int(new_text)
                     except ValueError:
-                        self.config[key] = original_value
+                        working_config[key] = original_value
                 elif type(original_value) is float:
                     try:
-                        self.config[key] = float(new_text)
+                        working_config[key] = float(new_text)
                     except ValueError:
-                        self.config[key] = original_value
+                        working_config[key] = original_value
                 else:
-                    self.config[key] = str(new_text)
+                    working_config[key] = str(new_text)
             elif isinstance(widget, QButtonGroup):
-                self.config[key] = widget.checkedId() == 1
+                working_config[key] = widget.checkedId() == 1
             elif isinstance(widget, QComboBox):
-                self.config[key] = widget.currentData()
+                working_config[key] = widget.currentData()
+
         # --- Enforce bounds for cash rewards ---
         has_adjustments = False
         adjustment_msg = ""
 
         # 1. Validate Interval
-        if "trainer.cash_reward_interval" in self.config:
+        if "trainer.cash_reward_interval" in working_config:
             try:
-                orig_val = int(self.config["trainer.cash_reward_interval"])
+                orig_val = int(working_config["trainer.cash_reward_interval"])
                 new_val = max(5, min(100, orig_val))
                 if new_val != orig_val:
-                    self.config["trainer.cash_reward_interval"] = new_val
+                    working_config["trainer.cash_reward_interval"] = new_val
                     has_adjustments = True
                     adjustment_msg += (
                         f"- Reward Interval: Adjusted to {new_val} (Range: 5-100)\n"
                     )
             except (ValueError, TypeError):
-                self.config["trainer.cash_reward_interval"] = 10
+                working_config["trainer.cash_reward_interval"] = 10
 
         # 2. Validate Amount & Cheat Threshold
-        if "trainer.cash_reward_amount" in self.config:
+        if "trainer.cash_reward_amount" in working_config:
             try:
-                orig_amount = int(self.config["trainer.cash_reward_amount"])
+                orig_amount = int(working_config["trainer.cash_reward_amount"])
                 # Hard bounds
                 new_amount = max(10, min(400, orig_amount))
 
                 # Cheat Threshold
-                interval = int(self.config.get("trainer.cash_reward_interval", 10))
-                daily_average = int(self.config.get("battle.daily_average", 100))
+                interval = int(working_config.get("trainer.cash_reward_interval", 10))
+                daily_average = int(working_config.get("battle.daily_average", 100))
                 if daily_average <= 0:
                     daily_average = 100
                 max_per_card = 400.0 / daily_average
@@ -729,9 +822,9 @@ class SettingsWindow(QMainWindow):
                         f"- Reward Amount: Adjusted to {new_amount}¥ (Range: 10-400)\n"
                     )
 
-                self.config["trainer.cash_reward_amount"] = new_amount
+                working_config["trainer.cash_reward_amount"] = new_amount
             except (ValueError, TypeError):
-                self.config["trainer.cash_reward_amount"] = 100
+                working_config["trainer.cash_reward_amount"] = 100
 
         if has_adjustments:
             # Update UI widgets to reflect capped values
@@ -739,7 +832,7 @@ class SettingsWindow(QMainWindow):
                 if key in self.input_widgets and isinstance(
                     self.input_widgets[key], QLineEdit
                 ):
-                    self.input_widgets[key].setText(str(self.config[key]))
+                    self.input_widgets[key].setText(str(working_config[key]))
 
             QMessageBox.warning(
                 self,
@@ -749,7 +842,7 @@ class SettingsWindow(QMainWindow):
 
         # Check if all generations are disabled
         gen_keys = [f"misc.gen{i}" for i in range(1, 10)]
-        all_gens_disabled = all(self.config.get(key) is False for key in gen_keys)
+        all_gens_disabled = all(working_config.get(key) is False for key in gen_keys)
 
         if all_gens_disabled:
             showWarning(
@@ -757,75 +850,112 @@ class SettingsWindow(QMainWindow):
             )
             for key in gen_keys:
                 # Revert logic
-                self.config[key] = self.original_config.get(key, True)
+                working_config[key] = original_config.get(key, True)
                 # Update UI widgets
                 if key in self.input_widgets and isinstance(
                     self.input_widgets[key], QButtonGroup
                 ):
                     group = self.input_widgets[key]
                     for button in group.buttons():
-                        if button.text() == "Enabled" and self.config[key]:
+                        if button.text() == "Enabled" and working_config[key]:
                             button.setChecked(True)
-                        elif button.text() == "Disabled" and not self.config[key]:
+                        elif button.text() == "Disabled" and not working_config[key]:
                             button.setChecked(True)
 
-        # Now that self.config is up-to-date, call the save callback
-        self.save_config_callback(self.config)
+        # Preserve HUD toggles explicitly changed by the user in this save.
+        # This avoids overwriting manual overrides when the Show Sprites setting
+        # also triggers automatic sync behavior.
+        explicit_overrides = set(self.explicit_hud_toggle_overrides)
 
-        # Refresh the reviewer UI so hotkey changes (incl. team-cycle) take
-        # effect without a restart. Reviewer builds that support team cycling
-        # take a 4th argument; detect that by signature arity rather than by
-        # calling and catching TypeError — an *internal* TypeError would also
-        # trigger such a fallback, re-running the setup and double-wrapping
-        # Reviewer._shortcutKeys.
-        try:
-            from ..reviewer_ui import setup_reviewer_ui
+        # Only persist if there are actual changes
+        changed = any(
+            working_config.get(key) != original_config.get(key)
+            for key in working_config
+        )
 
-            catch_key = self.config.get("controls.catch_key", "6")
-            defeat_key = self.config.get("controls.defeat_key", "5")
-            pokemon_buttons = self.config.get("controls.pokemon_buttons", True)
-            team_cycle_key = self.config.get("controls.team_cycle_key", "9")
-            if len(inspect.signature(setup_reviewer_ui).parameters) >= 4:
-                setup_reviewer_ui(
-                    catch_key, defeat_key, pokemon_buttons, team_cycle_key
-                )
-            else:
-                setup_reviewer_ui(catch_key, defeat_key, pokemon_buttons)
-        except Exception as e:
-            print(f"Ankimon: Failed to refresh hotkeys: {e}")
+        if changed:
+            self.save_config_callback(working_config, explicit_overrides)
+            self.explicit_hud_toggle_overrides.clear()
+            # Reload the final config state from the live settings object
+            self.config = self.load_config()
+            self._refresh_widgets()
 
-        # The rest is for showing the confirmation message
-        excluded_patterns = {
-            "mypokemon",
-            "mainpokemon",
-            "pokemon_collection",
-            "trainer.cash",
-            "misc.last_tip_index",
-            "trainer.xp_share",
-        }
-        changed_settings = {
-            key: self.config[key]
-            for key in self.config
-            if not any(pattern in key for pattern in excluded_patterns)
-            and (
-                self.config[key] != self.original_config.get(key)
-                or type(self.config[key]) is not type(self.original_config.get(key))
-            )
-        }
+            # Refresh the reviewer UI so hotkey changes (incl. team-cycle) take
+            # effect without a restart. Reviewer builds that support team cycling
+            # take a 4th argument; detect that by signature arity rather than by
+            # calling and catching TypeError — an *internal* TypeError would also
+            # trigger such a fallback, re-running the setup and double-wrapping
+            # Reviewer._shortcutKeys.
+            try:
+                from ..reviewer_ui import setup_reviewer_ui
 
-        if changed_settings:
-            friendly_changed = {
-                self.friendly_names.get(k, k): v for k, v in changed_settings.items()
+                catch_key = self.config.get("controls.catch_key", "6")
+                defeat_key = self.config.get("controls.defeat_key", "5")
+                pokemon_buttons = self.config.get("controls.pokemon_buttons", True)
+                team_cycle_key = self.config.get("controls.team_cycle_key", "9")
+                if len(inspect.signature(setup_reviewer_ui).parameters) >= 4:
+                    setup_reviewer_ui(
+                        catch_key, defeat_key, pokemon_buttons, team_cycle_key
+                    )
+                else:
+                    setup_reviewer_ui(catch_key, defeat_key, pokemon_buttons)
+            except Exception as e:
+                print(f"Ankimon: Failed to refresh hotkeys: {e}")
+
+            # Emit a shared settings-change notification for diagnostics only.
+            try:
+                from ..events import events
+                # Pass a detached copy so buffered events retain values from each save
+                events.emit("settings_changed", config=dict(self.config))
+            except Exception as e:
+                # Best-effort — settings still saved even if the event fails.
+                print(f"Ankimon: Failed to emit settings_changed event: {e}")
+
+            # Refresh already-open native windows that depend on sprite visibility.
+            self._refresh_live_windows()
+
+            # Show confirmation message using the original_config baseline
+            excluded_patterns = {
+                "mypokemon",
+                "mainpokemon",
+                "pokemon_collection",
+                "trainer.cash",
+                "misc.last_tip_index",
+                "trainer.xp_share",
             }
-            changed_message = "\n".join(
-                [f"{key}: {value}" for key, value in friendly_changed.items()]
-            )
-            QMessageBox.information(
-                self, "Settings Saved", "Your settings have been saved successfully."
-            )
-            QMessageBox.information(
-                self, "Config changes", f"Changed settings:\n{changed_message}"
-            )
-            self.original_config = self.config.copy()
+            changed_settings = {
+                key: self.config[key]
+                for key in self.config
+                if not any(pattern in key for pattern in excluded_patterns)
+                and (
+                    self.config[key] != original_config.get(key)
+                    or type(self.config[key]) is not type(original_config.get(key))
+                )
+            }
+
+            if changed_settings:
+                from ..ankimon_items_web.settings_schema import display_setting_value
+
+                friendly_changed = {
+                    self.friendly_names.get(k, k): display_setting_value(k, v)
+                    for k, v in changed_settings.items()
+                }
+                changed_message = "\n".join(
+                    [f"{key}: {value}" for key, value in friendly_changed.items()]
+                )
+                QMessageBox.information(
+                    self, "Settings Saved", "Your settings have been saved successfully."
+                )
+                QMessageBox.information(
+                    self, "Config changes", f"Changed settings:\n{changed_message}"
+                )
+                # Update baseline only after successful comparison
+                self.original_config = self.config.copy()
+            else:
+                QMessageBox.information(self, "No Changes", "No settings were changed.")
+                # Still update baseline if no changes were detected
+                self.original_config = self.config.copy()
         else:
+            # Clear stale HUD override keys when the user restores a toggle before saving
+            self.explicit_hud_toggle_overrides.clear()
             QMessageBox.information(self, "No Changes", "No settings were changed.")

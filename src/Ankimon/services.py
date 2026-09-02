@@ -98,6 +98,14 @@ class Services:
         # The Anki collection (``mw.col``) when running inside Anki; None headless.
         self.col = None
 
+        # Developer hot-reload lifecycle. The registry survives module purges,
+        # so these flags coordinate the old startup worker with the new import.
+        self._startup_in_progress = False
+        self._is_reloading = False
+        # Re-entrancy guard for restart_ankimon itself: its wait loop pumps the
+        # Qt event queue, which can re-trigger the reload shortcut mid-teardown.
+        self._reload_in_progress = False
+
     def populate(
         self,
         *,
@@ -171,6 +179,9 @@ class Services:
         self.pokemon_pc = None
         self.reviewer = None
         self.col = None
+        self._startup_in_progress = False
+        self._is_reloading = False
+        self._reload_in_progress = False
 
 
 # The single shared registry instance. Import this, not the class.

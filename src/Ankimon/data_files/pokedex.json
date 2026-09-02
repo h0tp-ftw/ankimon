@@ -21112,8 +21112,8 @@
     "weightkg": 340,
     "color": "Gray",
     "prevo": "Nosepass",
-    "evoType": "levelExtra",
-    "evoCondition": "near a special magnetic field",
+    "evoType": "useItem",
+    "evoItem": "Thunder Stone",
     "eggGroups": [
       "Mineral"
     ],
@@ -41614,8 +41614,8 @@
     "weightkg": 95.1,
     "color": "Gray",
     "prevo": "Stantler",
-    "evoType": "other",
-    "evoCondition": "Use Agile style Psyshield Bash 20 times",
+    "evoType": "levelMove",
+    "evoMove": "Psyshield Bash",
     "eggGroups": [
       "Field"
     ],
@@ -41857,8 +41857,8 @@
     "weightkg": 60.5,
     "color": "Black",
     "prevo": "Qwilfish-Hisui",
-    "evoType": "other",
-    "evoCondition": "Use Strong style Barb Barrage 20 times",
+    "evoType": "levelMove",
+    "evoMove": "Barb Barrage",
     "eggGroups": [
       "Water 2"
     ],
@@ -44695,8 +44695,8 @@
     "weightkg": 56,
     "color": "Gray",
     "prevo": "Primeape",
-    "evoType": "other",
-    "evoCondition": "Use Rage Fist 20 times and level-up",
+    "evoType": "levelMove",
+    "evoMove": "Rage Fist",
     "eggGroups": [
       "Field"
     ],

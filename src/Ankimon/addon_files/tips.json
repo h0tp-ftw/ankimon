@@ -24,7 +24,7 @@
     "Go to Ankimon -> Profile -> Trainer Card to see your trainer profile!",
     "Ankimon is Free and Open Source Software (FOSS)! You can join our development team through the Ankimon Discord.",
     "Want to see your Pokémon collection come alive? Enable 'GIF in Collection' to display animated sprites!",
-    "You can add some flair to the reviewer by enabling 'Styling in Reviewer'. This will add custom styling to the Ankimon elements!",
+    "You can add some flair to the reviewer by enabling 'Styling' in HUD Element Toggles. This will add custom styling to the Ankimon elements!",
     "Customize the look of the HP bar in the reviewer! You can toggle it on or off with the 'HP Bar' setting.",
     "Want a confirmation pop-up when you defeat a Pokémon? You can enable this with the 'Pop-up on Defeat' setting!",
     "You can adjust the thickness of the HP bar in the reviewer to make it more visible. Check out the 'Reviewer HP Bar Thickness' setting!",

@@ -53,6 +53,7 @@ LEAF_MODULES = [
     "Ankimon.functions.trainer_functions",
     "Ankimon.functions.update_main_pokemon",
     "Ankimon.functions.drawing_utils",
+    "Ankimon.functions.discord_function",
     # the big IO helper module
     "Ankimon.utils",
 ]

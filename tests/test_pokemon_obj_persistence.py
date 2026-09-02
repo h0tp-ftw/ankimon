@@ -18,6 +18,7 @@ Runs Qt-free (venv_t1); heavy/aqt dependencies are stubbed in ``sys.modules``.
 
 import csv
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -128,6 +129,18 @@ def _make_pokemon(PokemonObject, **overrides):
     )
     base.update(overrides)
     return PokemonObject(**base)
+
+
+@pytest.mark.parametrize("hp", [None, 0, 7])
+def test_pokemon_object_normalizes_explicit_hp(hp):
+    services, _AnkimonDB, PokemonObject = _load_seam_and_pokemon_obj()
+    services.reset()
+
+    pokemon = _make_pokemon(PokemonObject, hp=hp, current_hp=hp)
+    expected_hp = pokemon.max_hp if hp is None else hp
+
+    assert pokemon.hp == expected_hp
+    assert pokemon.current_hp == expected_hp
 
 
 # --------------------------------------------------------------------------- #
@@ -462,7 +475,7 @@ def test_save_fossil_safe_int_hp_no_crash_on_missing_hp():
 # --------------------------------------------------------------------------- #
 
 
-def _load_update_main_pokemon(main_record, name_lookup):
+def _load_update_main_pokemon(main_record, name_lookup, *, migrated=True):
     _stub_aqt()
     _register_packages()
     sys.modules["Ankimon.resources"] = _MockResources()
@@ -498,9 +511,10 @@ def _load_update_main_pokemon(main_record, name_lookup):
     services.reset()
 
     fake_db = MagicMock()
-    fake_db.is_migrated.return_value = True
+    fake_db.is_migrated.return_value = migrated
     fake_db.get_main_pokemon.return_value = dict(main_record)
     services.populate(db=fake_db)
+    calls["db"] = fake_db
 
     ump = _force_load(
         "Ankimon.functions.update_main_pokemon",
@@ -539,5 +553,80 @@ def test_update_main_pokemon_falls_back_to_id_lookup():
     try:
         ump.update_main_pokemon()
         assert calls["by_id"] == 1  # id-based lookup used as fallback
+    finally:
+        services.reset()
+
+
+def test_update_main_pokemon_repairs_none_hp_values():
+    record = {
+        "id": 25,
+        "name": "pikachu",
+        "level": 5,
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "iv": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "hp": None,
+        "current_hp": None,
+        "max_hp": None,
+    }
+    ump, services, calls = _load_update_main_pokemon(record, name_lookup="pikachu")
+    try:
+        pokemon, is_empty = ump.update_main_pokemon()
+
+        assert is_empty is False
+        assert pokemon.hp == pokemon.max_hp
+        assert pokemon.current_hp == pokemon.max_hp
+        saved = calls["db"].save_main_pokemon.call_args.args[0]
+        assert saved["hp"] == pokemon.max_hp
+        assert saved["current_hp"] == pokemon.max_hp
+    finally:
+        services.reset()
+
+
+def test_update_main_pokemon_preserves_zero_hp():
+    record = {
+        "id": 25,
+        "name": "pikachu",
+        "level": 5,
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "iv": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "hp": 0,
+        "current_hp": 0,
+    }
+    ump, services, _calls = _load_update_main_pokemon(record, name_lookup="pikachu")
+    try:
+        pokemon, _is_empty = ump.update_main_pokemon()
+        assert pokemon.hp == 0
+        assert pokemon.current_hp == 0
+    finally:
+        services.reset()
+
+
+def test_legacy_json_hp_is_normalized_before_database_save(tmp_path):
+    record = {
+        "id": 25,
+        "name": "pikachu",
+        "level": 5,
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "iv": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "stats": {"hp": 35},
+        "hp": None,
+        "current_hp": None,
+    }
+    ump, services, calls = _load_update_main_pokemon(
+        {}, name_lookup="pikachu", migrated=False
+    )
+    legacy_path = tmp_path / "mainpokemon.json"
+    legacy_path.write_text(json.dumps([record]), encoding="utf-8")
+    ump.mainpokemon_path = legacy_path
+
+    try:
+        pokemon, is_empty = ump.update_main_pokemon()
+
+        assert is_empty is False
+        assert pokemon.hp == pokemon.max_hp
+        assert pokemon.current_hp == pokemon.max_hp
+        saved = calls["db"].save_main_pokemon.call_args.args[0]
+        assert saved["hp"] == pokemon.max_hp
+        assert saved["current_hp"] == pokemon.max_hp
     finally:
         services.reset()

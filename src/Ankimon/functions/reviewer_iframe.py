@@ -42,7 +42,9 @@ def create_iframe_html(main_pokemon, enemy_pokemon, settings_obj, textmsg):
     mainpokemon_attack = False
     enemypokemon_attack = False
     experience_for_next_lvl = int(find_experience_for_level(f"{main_pokemon.growth_rate}", int(main_pokemon.level), settings_obj))
-    xp_bar_width = int((int(main_pokemon.xp or 0) / experience_for_next_lvl) * 100)
+    # Guard the divisor: a 0 out of the exp-table lookup would raise a
+    # ZeroDivisionError out of the HUD, so render an empty bar (issue #101).
+    xp_bar_width = int((int(main_pokemon.xp or 0) / experience_for_next_lvl) * 100) if experience_for_next_lvl else 0
     ankimon_package = mw.addonManager.addonFromModule(__name__)
     general_url = f"""/_addons/{ankimon_package}/web/"""
     sprites_url = f"""/_addons/{ankimon_package}/user_files/sprites/"""

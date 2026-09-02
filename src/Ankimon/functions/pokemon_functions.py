@@ -96,7 +96,7 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
         if row:
             experience = safe_int(row.get(growth_rate, 0))
 
-        return experience
+        return max(1, experience)
     elif level > 99:
         # Default to the medium(-fast) curve for unknown growth rates,
         # matching get_growth_rate's 'medium' fallback and preventing
@@ -108,7 +108,7 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
             elif 50 <= level < 68:
                 experience = (((level+1) ** 3) * (150 - (level+1)) // 100) - ((level ** 3) * (150 - level) // 100)
             elif 68 <= level:
-                experience = (((level+1) ** 3) * (1911 - 10 * (level+1)) // 500) - ((level ** 3) * (1911 - 10 * level) // 500)
+                experience = (((level+1) ** 3) * max(911, 1911 - 10 * (level+1)) // 500) - ((level ** 3) * max(911, 1911 - 10 * level) // 500)
             else:
                 experience = (((level+1) ** 3) * (160 - (level+1)) // 100) - ((level ** 3) * (160 - level) // 100)
         elif group_growth_rate == "fluctuating":
@@ -128,7 +128,7 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
             experience = ((6 * ((level+1) ** 3)) // 5 - 15 * ((level+1) ** 2) + 100 * (level+1) - 140) - ((6 * (level ** 3)) // 5 - 15 * (level ** 2) + 100 * level - 140)
         elif group_growth_rate == "slow":
             experience = ((5 * ((level+1) ** 3)) // 4) - ((5 * (level ** 3)) // 4)
-        return experience
+        return max(1, experience)
 
 def shiny_chance():
     # Shiny Pokémon probability (1 in 4096 chance)

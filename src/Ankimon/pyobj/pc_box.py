@@ -564,6 +564,7 @@ def _refresh_open_item_windows():
     (never constructing a window just to refresh it), mirroring
     ``singletons.swap_ankimon_account``.
     """
+    # Lazy import to avoid circular dependency at module load time
     from .. import singletons
 
     item_win = singletons._WINDOW_CACHE.get("item_window")
@@ -643,6 +644,9 @@ class PokemonPC(QDialog):
         self.n_rows = 6
         self.current_box_idx = 0  # Index of current displayed box
         self.gif_in_collection = settings.get("gui.gif_in_collection")
+        self.show_sprites_across_ankimon = settings.get(
+            "gui.show_sprites_across_ankimon", True
+        )
 
         self.slot_size = 75  # Side length in pixels of a PC slot
 
@@ -1288,17 +1292,24 @@ class PokemonPC(QDialog):
         layout.setContentsMargins(40, 20, 40, 20)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Pokéball Icon
+        # Pokéball Icon - only show if sprites are enabled
         icon_label = QLabel()
-        pixmap = QPixmap(str(icon_path))
-        if not pixmap.isNull():
-            scaled_pixmap = pixmap.scaled(
-                180,
-                180,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            icon_label.setPixmap(scaled_pixmap)
+        show_sprites = self.settings.get("gui.show_sprites_across_ankimon", True)
+        
+        if not show_sprites:
+            # When sprites are disabled, use an empty label with the same fixed size
+            # to maintain layout stability
+            icon_label.setFixedSize(180, 180)
+        else:
+            pixmap = QPixmap(str(icon_path))
+            if not pixmap.isNull():
+                scaled_pixmap = pixmap.scaled(
+                    180,
+                    180,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                icon_label.setPixmap(scaled_pixmap)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Main Prompt
@@ -1325,8 +1336,24 @@ class PokemonPC(QDialog):
         return widget
 
     def _show_placeholder_details(self):
-        """Switches the details panel to placeholder mode."""
+        """
+        Switches the details panel to placeholder mode and recreates the placeholder
+        widget to reflect the current sprite visibility setting.
+        """
         if hasattr(self, "details_panel_stack"):
+            # Remove the old placeholder widget if it exists
+            if hasattr(self, "_placeholder_widget"):
+                # Check if the widget is still in the stack
+                index = self.details_panel_stack.indexOf(self._placeholder_widget)
+                if index >= 0:
+                    self.details_panel_stack.removeWidget(self._placeholder_widget)
+                self._placeholder_widget.deleteLater()
+                self._placeholder_widget = None
+            
+            # Create a fresh placeholder with the current sprite setting
+            self._placeholder_widget = self._create_placeholder_widget()
+            # Insert at index 0 (placeholder slot)
+            self.details_panel_stack.insertWidget(0, self._placeholder_widget)
             self.details_panel_stack.setCurrentIndex(0)
         self._selected_individual_id = None
         self._refresh_slot_selection()
@@ -1341,6 +1368,9 @@ class PokemonPC(QDialog):
         self._pokemon_cache = None  # Invalidate database cache
         clear_layout(self.pokemon_grid)
         self.gif_in_collection = self.settings.get("gui.gif_in_collection")
+        self.show_sprites_across_ankimon = self.settings.get(
+            "gui.show_sprites_across_ankimon", True
+        )
 
         # The day/night clock and badges are part of the friendship/time feature
         friendship_time_enabled = self.settings.get(
@@ -1448,7 +1478,7 @@ class PokemonPC(QDialog):
                     pokemon_button, row, col, alignment=Qt.AlignmentFlag.AlignCenter
                 )
 
-                if self.gif_in_collection:
+                if self.gif_in_collection and self.show_sprites_across_ankimon:
                     scaled_movie_label = ScaledMovieLabel(
                         pkmn_image_path,
                         self.slot_size - 10,
@@ -1464,7 +1494,7 @@ class PokemonPC(QDialog):
                         col,
                         alignment=Qt.AlignmentFlag.AlignCenter,
                     )
-                else:
+                elif self.show_sprites_across_ankimon:
                     pokemon_button.setIcon(QIcon(pkmn_image_path))
                     pokemon_button.setIconSize(
                         QSize(self.slot_size - 10, self.slot_size - 10)
@@ -1663,17 +1693,41 @@ class PokemonPC(QDialog):
 
     def refresh_gui(self):
         """
-        Refreshes the user interface by populating the grid.
-        Avoids calling create_gui() to prevent full layout rebuilds.
+        Refreshes the user interface by populating the grid and updating the details panel
+        to reflect the current sprite visibility setting.
+
+        This method reloads the sprite visibility settings, refreshes the Pokémon grid,
+        and ensures that both the selected Pokémon details and the placeholder widget
+        reflect the updated setting. This allows the user to toggle sprites on/off
+        and see the change immediately without restarting Anki.
         """
         self._pokemon_cache = None  # Invalidate database cache
+        
+        # Reload the sprite visibility setting to ensure it's current
+        self.show_sprites_across_ankimon = self.settings.get(
+            "gui.show_sprites_across_ankimon", True
+        )
+        self.gif_in_collection = self.settings.get("gui.gif_in_collection")
+        
         if not self.layout():
             self.create_gui()
         else:
             self.refresh_pokemon_grid()
-            # If no Pokémon is selected (e.g. after account swap), refresh the placeholder
-            if self._selected_individual_id is None:
+            
+            # If a Pokémon is selected, refresh its details to apply the new sprite setting
+            if self._selected_individual_id is not None:
+                # Re-fetch the Pokémon data and show details with updated sprites
+                selected_pokemon = services.db.get_pokemon(self._selected_individual_id)
+                if selected_pokemon:
+                    self.show_pokemon_details(selected_pokemon)
+                else:
+                    # The selected Pokémon no longer exists - clear stale state and show placeholder
+                    self._selected_individual_id = None
+                    self._show_placeholder_details()
+            else:
+                # If no Pokémon is selected, refresh the placeholder to apply the new setting
                 self._show_placeholder_details()
+                
         self.layout().invalidate()
         self.layout().activate()
 
@@ -2157,6 +2211,7 @@ class PokemonPC(QDialog):
             friendship_time_enabled=self.settings.get(
                 "evolution.friendship_time_enabled", True
             ),
+            show_sprites=self.settings.get("gui.show_sprites_across_ankimon", True),
         )
 
         self._last_pokemon_stats = current_stats
@@ -2518,11 +2573,22 @@ class PokemonPC(QDialog):
             "cp",
         }
 
+        # Imported here rather than at module scope: this is the only call
+        # site, and pc_box's module-level import of ``business`` is widely
+        # stubbed by the test-suite, so a new top-level name would break
+        # unrelated modules that never reach this method.
+        from ..business import pokemon_cp_is_stale
+
+        # A row needs repair if a default field is missing *or* its persisted
+        # ``cp`` no longer matches the current formula. Without the staleness
+        # arm, a save whose fields are all present short-circuits here and
+        # never reaches the "Always recalculate CP" pass below — which is
+        # exactly the population carrying pre-retune CP values.
         is_migration_needed = any(
-            key not in pokemon
+            any(key not in pokemon for key in default_keys)
+            or pokemon_cp_is_stale(pokemon)
             for pokemon in pokemon_list
             if isinstance(pokemon, dict)
-            for key in default_keys
         )
 
         if not is_migration_needed:
@@ -2557,9 +2623,14 @@ class PokemonPC(QDialog):
             if not isinstance(pokemon, dict):
                 continue
 
-            # Always recalculate CP to ensure it matches the current formula in business.py
+            # Always recalculate CP to ensure it matches the current formula in business.py.
+            # This runs for every row on PC-box open, so a single malformed
+            # legacy row must not take the whole window down with it.
             old_cp = pokemon.get("cp")
-            new_cp = calculate_cp_from_dict(pokemon)
+            try:
+                new_cp = calculate_cp_from_dict(pokemon)
+            except Exception:
+                new_cp = old_cp
             if old_cp != new_cp:
                 needs_update = True
                 pokemon_list[i]["cp"] = new_cp

@@ -76,15 +76,31 @@ PC box).
 mode**. Nothing is drawn, but the real widgets/memory/PC box are all live, which
 is what makes real-Qt glitches and "crash after N encounters" reproducible.
 
-It needs PyQt6 + native Qt libs. The setup is **sudo-free** (a venv with pip
-bootstrapped via get-pip.py, and the Qt `.deb`s *downloaded and extracted* into a
-local dir — nothing installed system-wide; `rm -rf .tier2` undoes it):
+Base Tier 2 needs PyQt6 and native Qt libs. Its setup scripts require a Linux
+userland because they use `apt-get`, `dpkg-deb`, Linux library paths, and `/proc`
+memory statistics. On Windows, run Tier 2 from **WSL**, not PowerShell or Git
+Bash; the checkout can remain on `C:` and be opened through `/mnt/c/...`.
+
+The setup is **sudo-free** (a venv with pip bootstrapped via get-pip.py, and the
+Qt `.deb`s *downloaded and extracted* into a local dir — nothing installed
+system-wide; `rm -rf .tier2` undoes it). These are harness-only dependencies and
+are never shipped in the `.ankiaddon`:
 
 ```bash
 bash harness/setup_tier2.sh        # one-time: builds .tier2/ (venv + local Qt libs)
 source .tier2/env.sh               # LD_LIBRARY_PATH + QT_QPA_PLATFORM=offscreen + venv
 python -m harness.checks.probe_real_boot   # real add-on boots; objects are the REAL classes
 python -m harness.checks.probe_real_play   # plays via real hooks: real windows, real battles
+```
+
+Real browser screens use the separate `PyQt6-WebEngine` package. Install it only
+when needed, then run the strict browser probe:
+
+```bash
+bash harness/setup_webengine.sh
+source .tier2/env.sh
+export LD_LIBRARY_PATH="$PWD/.tier2/we-libs/extract/usr/lib/$(uname -m)-linux-gnu:$LD_LIBRARY_PATH"
+python -m harness.checks.probe_real_webengine  # real Chromium Settings page + DOM save
 ```
 
 Drive it from Python (same action surface as Tier 1, via real hooks/windows):
@@ -124,8 +140,11 @@ After that, each Tier-2 session symlinks its `sprites/` dir to that cache, so th
 real windows load the real sprites (verified: e.g. `rhyhorn #111` ->
 `front_default/111.png`). Set `ANKIMON_SPRITE_CACHE` to point elsewhere.
 
-Note: the 3 WebEngine windows (pokedex/achievements/help) use lightweight stubs
-so the boot doesn't need the Chromium-based `PyQt6-WebEngine`.
+Normal Tier-2 boot/play probes still allow lightweight WebEngine stubs so they
+remain useful on machines without Chromium. The dedicated
+`probe_real_webengine` check is strict: it imports `PyQt6-WebEngine`, refuses to
+fall back, opens the real HTML Settings shell, edits Trainer Name through the
+DOM, clicks Save, and verifies the SQLite-backed Settings service changed.
 
 ## Drive it from Python
 

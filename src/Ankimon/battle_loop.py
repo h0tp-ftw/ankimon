@@ -85,6 +85,7 @@ def on_review_card(*args):
     # the seam — ``__init__``'s ``_on_review_card_gated`` forwards to this
     # function only once ``services.startup_finished`` is True (F32) — so this
     # body always runs against a fully-booted registry.
+    """Process a review event and advance the current battle state."""
     global _state
     s = _state
 
@@ -113,13 +114,17 @@ def on_review_card(*args):
             # Reward the item every time this trigger fires (main granted it
             # unconditionally). display_item() both rolls+grants the reward (via
             # random_item -> give_item) AND paints the popup; the grant is the
-            # actual reward, the QDialog is only the visual. Liveness guard (F24):
-            # the seam window may have been closed (its C++ object deleted) since
-            # boot. When it's dead we still roll+grant the reward directly via
-            # random_item() so it is never silently dropped — only the popup is
-            # skipped.
+            # actual reward, the QDialog is only the visual. Two reasons we may
+            # skip the popup: the user turned it off (it interrupts reviews), or
+            # the liveness guard (F24) found the seam window dead — it may have
+            # been closed (its C++ object deleted) since boot. In both cases we
+            # still roll+grant the reward directly via random_item() so it is
+            # never silently dropped; only the popup is skipped.
             item_window = services.test_window
-            if is_alive(item_window):
+            show_item_popup = settings_obj.get(
+                "gui.pop_up_dialog_message_on_item", True
+            )
+            if show_item_popup and is_alive(item_window):
                 try:
                     item_window.display_item()
                 except RuntimeError:

@@ -541,3 +541,179 @@ def test_commit_replay_mobile_cash_cap(monkeypatch):
     assert res.get("success") is True
     assert res.get("cash_gained") == 20
 
+
+def test_run_mobile_battles_no_companions_or_main_pokemon(mobile_db, monkeypatch):
+    """Verify that run_mobile_battles returns failure rather than crashing when no companion or main Pokémon is available."""
+    db, _ = mobile_db
+    
+    # Mock services.db.get_all_pokemon_ids inside load_collected_pokemon_ids
+    monkeypatch.setattr(db, "get_all_pokemon_ids", lambda: [])
+    
+    settings = _Settings({"mobile.inactive_companions": []})
+    
+    # Mode all
+    res_all = ms.run_mobile_battles(
+        reviews=[{"id": 1, "ease": 3}],
+        commit=True,
+        db=db,
+        settings_obj=settings,
+        tracker=None,
+        trainer_card=None,
+        main_pokemon=None
+    )
+    assert res_all.get("success") is False
+    assert "No active companion or main Pokémon" in res_all.get("error")
+
+    # Mode next (manual replay)
+    db.execute = MagicMock()
+    db.execute().fetchall.return_value = [(1, 100, 10, 3, 1000, 1, 12345)]
+    res_next = ms.run_mobile_battles(
+        reviews=None,
+        commit=True,
+        db=db,
+        settings_obj=settings,
+        tracker=None,
+        trainer_card=None,
+        main_pokemon=None,
+        mode="next"
+    )
+    assert res_next.get("success") is False
+    assert "No active companion or main Pokémon" in res_next.get("error")
+
+
+def test_make_safe_clone_does_not_mask_stats_property(monkeypatch):
+    """Verify load_active_team_clones clones safely without copying stats to __dict__, which would mask the dynamic stats property."""
+    import sys
+    import importlib
+    sys.modules.pop("Ankimon.pyobj.pokemon_obj", None)
+    importlib.invalidate_caches()
+    import Ankimon.pyobj.pokemon_obj
+    importlib.reload(Ankimon.pyobj.pokemon_obj)
+    PokemonObject = Ankimon.pyobj.pokemon_obj.PokemonObject
+
+    # Now patch calc_stat on the fresh, real class
+    monkeypatch.setattr(PokemonObject, "calc_stat", lambda stat, val, level, iv, ev, nature: 10 + ev)
+    
+    p = PokemonObject(
+        type=["Electric"], name="Pikachu", id=25, shiny=False, level=5,
+        ability="Run Away", gender="M", growth_rate="Medium", captured_date=None,
+        tier="Normal", individual_id="PIKA"
+    )
+    
+    clones = ms.load_active_team_clones(None, _Settings(), p)
+    p_clone = clones[0]
+    assert "stats" not in p_clone.__dict__
+    
+    # Changing EV should change stats property dynamically
+    old_hp_stat = p_clone.stats["hp"]
+    p_clone.ev["hp"] = 252
+    assert p_clone.stats["hp"] > old_hp_stat
+
+
+def test_base_stats_validator_rejects_impossible_values():
+    from Ankimon.functions.pokedex_functions import is_valid_base_stats
+
+    valid = {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90}
+    assert is_valid_base_stats(valid)
+
+    for invalid_value in (True, -1, float("nan"), float("inf"), "35", None):
+        candidate = valid.copy()
+        candidate["hp"] = invalid_value
+        assert not is_valid_base_stats(candidate)
+
+    partial = valid.copy()
+    partial.pop("spe")
+    assert not is_valid_base_stats(partial)
+
+
+def test_diagnostics_uses_shared_base_stats_validator(mobile_db, monkeypatch):
+    db, _ = mobile_db
+    malformed = {
+        "individual_id": "BAD-STATS",
+        "name": "pikachu",
+        "base_stats": {
+            "hp": "35", "atk": "55", "def": "40",
+            "spa": "50", "spd": "50", "spe": "90",
+        },
+    }
+    db.save_pokemon(malformed)
+
+    import importlib
+    monkeypatch.delitem(sys.modules, "Ankimon.pyobj.db_diagnostics", raising=False)
+    diagnostics = importlib.import_module("Ankimon.pyobj.db_diagnostics")
+    cursor = db._get_connection().cursor()
+
+    assert diagnostics._count_invalid_base_stats(db, cursor) == 1
+
+    malformed["base_stats"] = {
+        "hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90,
+    }
+    db.save_pokemon(malformed)
+    assert diagnostics._count_invalid_base_stats(db, cursor) == 0
+
+
+def test_load_active_team_clones_normalizes_malformed_ivs(mobile_db):
+    db, _ = mobile_db
+    pokemon_data = {
+        "individual_id": "BAD-IV",
+        "name": "pikachu",
+        "id": 25,
+        "shiny": False,
+        "level": 5,
+        "ability": "Static",
+        "type": ["Electric"],
+        "gender": "M",
+        "growth_rate": "medium-fast",
+        "captured_date": None,
+        "tier": "Normal",
+        "base_stats": {
+            "hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90,
+        },
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "iv": {
+            "hp": None,
+            "atk": "unknown",
+            "def": -4,
+            "spa": 99,
+            "spd": "12",
+            "spe": 4.8,
+        },
+    }
+    db.save_pokemon(pokemon_data)
+    db.save_team([{"individual_id": "BAD-IV"}])
+
+    clones = ms.load_active_team_clones(db, _Settings(), None)
+
+    assert len(clones) == 1
+    assert clones[0].iv == {
+        "hp": 15, "atk": 15, "def": 0, "spa": 31, "spd": 12, "spe": 4,
+    }
+
+
+def test_attribute_xp_and_evs_defaults_missing_iv_to_15_and_ev_to_0(mobile_db, monkeypatch):
+    """Verify that _attribute_xp_and_evs_to_companion defaults missing IVs to 15 and EVs to 0 instead of 0 for IVs."""
+    db, _ = mobile_db
+    pkmndata = {
+        "individual_id": "TEST", "name": "Pikachu", "id": 25, "level": 5, "xp": 0,
+        "base_stats": {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90},
+        "growth_rate": "medium-fast",
+    }
+    db.save_pokemon(pkmndata)
+    
+    import sys
+    import importlib
+    sys.modules.pop("Ankimon.pyobj.pokemon_obj", None)
+    importlib.invalidate_caches()
+    import Ankimon.pyobj.pokemon_obj
+    importlib.reload(Ankimon.pyobj.pokemon_obj)
+    PokemonObject = Ankimon.pyobj.pokemon_obj.PokemonObject
+
+    monkeypatch.setattr(PokemonObject, "calc_stat", lambda *args, **kwargs: 10)
+    
+    ms._attribute_xp_and_evs_to_companion("TEST", 10, {}, _Settings(), db=db)
+    
+    updated = db.get_pokemon("TEST")
+    assert updated["iv"] == {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
+    assert updated["ev"] == {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+
+

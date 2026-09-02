@@ -12,7 +12,6 @@ from aqt.utils import qconnect
 
 from .gui_classes.check_files import FileCheckerApp
 from .pyobj.download_sprites import show_agreement_and_download_dialog
-from .pyobj.ankimon_leaderboard import show_api_key_dialog
 from .pyobj.settings import Settings
 from .pyobj.translator import Translator
 from .pyobj.InfoLogger import ShowInfoLogger
@@ -487,11 +486,7 @@ def create_menu_actions(
     file_check_action.triggered.connect(lambda: FileCheckerApp().exec())
     help_menu.addAction(file_check_action)
 
-    file_check_action = QAction(mw.translator.translate("ankimon_leaderboard_credentials_button"), mw)
-    file_check_action.setMenuRole(QAction.MenuRole.NoRole)
-    file_check_action.triggered.connect(show_api_key_dialog)
-    mw.pokemenu.addAction(file_check_action)
-
+    # Leaderboard credentials moved to Settings → Leaderboard.
     downloader_action = QAction(mw.translator.translate("download_resources_button"), mw)
     downloader_action.setMenuRole(QAction.MenuRole.NoRole)
     downloader_action.triggered.connect(show_agreement_and_download_dialog)

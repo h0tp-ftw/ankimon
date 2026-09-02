@@ -1,23 +1,46 @@
+from __future__ import annotations
+
 import threading
 import random
 import time
+from typing import TYPE_CHECKING
 
-from ..pyobj.ankimon_tracker import AnkimonTracker
 from ..addon_files.lib.pypresence import Presence
-from aqt.utils import showWarning, tooltip
-from aqt import mw
-from ..pyobj.error_handler import show_warning_with_traceback
-logger = mw.logger
+from ..events import events
+
+if TYPE_CHECKING:
+    from ..pyobj.ankimon_tracker import AnkimonTracker
+
+
+def _show_discord_error(message: str) -> None:
+    events.emit("tooltip", message=message)
+    try:
+        from aqt import mw
+        from aqt.utils import tooltip
+
+        mw.taskman.run_on_main(lambda: tooltip(message))
+    except Exception:
+        # The notification is best-effort during headless runs and shutdown.
+        return
+
 
 class DiscordPresence:
-    def __init__(self, client_id, large_image_url, ankimon_tracker, logger, settings_obj, parent=mw):
+    def __init__(
+        self,
+        client_id,
+        large_image_url,
+        ankimon_tracker,
+        logger,
+        settings_obj,
+        parent=None,
+    ):
         self.loop = False
+        self.logger_obj = logger
         try:
             self.RPC = Presence(client_id)
             self.RPC.connect()
             self.large_image_url = large_image_url
             self.ankimon_tracker: AnkimonTracker = ankimon_tracker
-            self.logger_obj = mw.logger
             self.settings = settings_obj
             self.start_time = time.time()
             self.thread = None
@@ -38,11 +61,11 @@ class DiscordPresence:
             conflicting_addons = check_conflicting_discord_addons()
             if conflicting_addons:
                 conflict_list = ', '.join(conflicting_addons)
-                logger.log_and_showinfo("warning", f"⚠️ Conflicting Discord Rich Presence addons detected: \n{conflict_list}\n\nPlease remove them to avoid issues with Ankimon's Discord status, or turn off Discord Rich Presence in Ankimon settings :) ")
+                self.logger_obj.log_and_showinfo("warning", f"⚠️ Conflicting Discord Rich Presence addons detected: \n{conflict_list}\n\nPlease remove them to avoid issues with Ankimon's Discord status, or turn off Discord Rich Presence in Ankimon settings :) ")
 
         except Exception as e:
-            logger.log("error",f"Error with Discord setup: {e}")
-            tooltip("Error with Discord setup. Is Discord running?")
+            self.logger_obj.log("error",f"Error with Discord setup: {e}")
+            _show_discord_error("Error with Discord setup. Is Discord running?")
 
     def _get_special_quotes(self):
         return [
@@ -80,8 +103,10 @@ class DiscordPresence:
                 )
                 time.sleep(30)  # Sleep for 30 seconds before updating again
         except Exception as e:
-            logger.log("error",f"Error with Discord Rich Presence: {e}")
-            tooltip("Error with Discord Rich Presence. Is Discord running?")
+            self.logger_obj.log("error",f"Error with Discord Rich Presence: {e}")
+            _show_discord_error(
+                "Error with Discord Rich Presence. Is Discord running?"
+            )
 
     def start(self):
         """
@@ -93,8 +118,10 @@ class DiscordPresence:
                 self.thread = threading.Thread(target=self.update_presence, daemon=True)
                 self.thread.start()
         except Exception as e:
-            logger.log("error",f"Error starting Discord Rich Presence: {e}")
-            tooltip("Error starting Discord Rich Presence. Is Discord running?")
+            self.logger_obj.log("error",f"Error starting Discord Rich Presence: {e}")
+            _show_discord_error(
+                "Error starting Discord Rich Presence. Is Discord running?"
+            )
 
     def stop(self):
         """
@@ -107,8 +134,10 @@ class DiscordPresence:
                 self.thread = None  # Reset the thread
             self.RPC.clear()
         except Exception as e:
-            logger.log("error",f"Error clearing Discord Rich Presence: {e}")
-            tooltip("Error clearing Discord Rich Presence. Please check Logger for info.")
+            self.logger_obj.log("error",f"Error clearing Discord Rich Presence: {e}")
+            _show_discord_error(
+                "Error clearing Discord Rich Presence. Please check Logger for info."
+            )
 
     def stop_presence(self):
         """
@@ -122,8 +151,10 @@ class DiscordPresence:
                     large_image=self.large_image_url
                 )
         except Exception as e:
-            logger.log("error",f"Error stopping Discord Rich Presence: {e}")
-            tooltip("Error stopping Discord Rich Presence. Please check Logger for info.")
+            self.logger_obj.log("error",f"Error stopping Discord Rich Presence: {e}")
+            _show_discord_error(
+                "Error stopping Discord Rich Presence. Please check Logger for info."
+            )
 
 def check_conflicting_discord_addons():
     """
@@ -188,6 +219,13 @@ def check_conflicting_discord_addons():
 
     except Exception as e:
         # Return empty list if checking fails entirely
-        if hasattr(mw, 'logger') and mw.logger:
-            mw.logger.log("error", f"Error checking for conflicting Discord addons: {e}")
+        try:
+            from ..services import services
+
+            if services.logger is not None:
+                services.logger.log(
+                    "error", f"Error checking for conflicting Discord addons: {e}"
+                )
+        except Exception:
+            pass
         return []

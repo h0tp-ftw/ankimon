@@ -5,6 +5,7 @@ from aqt.qt import QDialog, QLabel,Qt, QVBoxLayout
 from PyQt6.QtWidgets import QDialog, QLabel, QPushButton, QVBoxLayout, QLineEdit
 
 from ..functions.pokedex_functions import search_pokedex
+from ..functions.url_functions import open_browser_window
 
 from ..utils import save_error_code
 
@@ -21,13 +22,16 @@ def export_to_pkmn_showdown():
     # EV dict was mutated in place; __setattr__ doesn't catch dict-item
     # changes, so drop the cached CP manually.
     main_pokemon.invalidate_cp_cache()
+
+    pokemon_type_text = ' '.join(t.capitalize() for t in main_pokemon.type)
+
     # Format the Pokemon info
-    pokemon_info = "{} ({})\nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\n IVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe ".format(
+    pokemon_info = "{} ({})\nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\nIVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe ".format(
         main_pokemon.name,
         main_pokemon.gender,
         main_pokemon.ability,
         main_pokemon.level,
-        main_pokemon.type,
+        pokemon_type_text,
         main_pokemon.ev["hp"],
         main_pokemon.ev["atk"],
         main_pokemon.ev["def"],
@@ -99,11 +103,7 @@ def export_all_pkmn_showdown():
                 pokemon_level = pokemon['level']
                 pokemon_ability = pokemon['ability']
                 pokemon_type = pokemon['type']
-                pokemon_type_text = pokemon_type[0].capitalize()
-                if len(pokemon_type) > 1:
-                    pokemon_type_text = ""
-                    pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                    pokemon_type_text += f" {pokemon_type[1].capitalize()}"
+                pokemon_type_text = ' '.join(t.capitalize() for t in pokemon_type)
                 pokemon_attacks = pokemon['attacks']
                 pokemon_ev = pokemon['ev']
                 pokemon_iv = pokemon['iv']
@@ -197,11 +197,7 @@ def flex_pokemon_collection():
                 pokemon_level = pokemon['level']
                 pokemon_ability = pokemon['ability']
                 pokemon_type = pokemon['type']
-                pokemon_type_text = pokemon_type[0].capitalize()
-                if len(pokemon_type) > 1:
-                    pokemon_type_text = ""
-                    pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                    pokemon_type_text += f" {pokemon_type[1].capitalize()}"
+                pokemon_type_text = ' '.join(t.capitalize() for t in pokemon_type)
                 pokemon_attacks = pokemon['attacks']
                 pokemon_ev = pokemon['ev']
                 pokemon_iv = pokemon['iv']

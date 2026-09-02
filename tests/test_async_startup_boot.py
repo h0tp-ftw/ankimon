@@ -259,6 +259,14 @@ def startup_env(monkeypatch, tmp_path):
     )
     monkeypatch.setitem(
         sys.modules,
+        "Ankimon.functions.pokedex_functions",
+        _stub_module(
+            "Ankimon.functions.pokedex_functions",
+            warm_evolution_caches=rec("warm_evolution_caches", 507),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
         "Ankimon.functions.badges_functions",
         _stub_module(
             "Ankimon.functions.badges_functions",
@@ -377,6 +385,61 @@ def test_background_checks_do_no_ui_work_and_return_contract(startup_env):
     assert _called(env, "run_backup")
     assert _called(env, "generate_random_pokemon")
     assert _called(env, "count_items_and_rewrite")
+    assert _called(env, "warm_evolution_caches")
+
+
+def test_background_checks_warm_the_evolution_table(startup_env):
+    """``pokemon_evolution.csv`` must be parsed HERE, not by the first level-up.
+
+    Every consumer of the evolution rows (the gender gate, the friendship and
+    level-up lookups) runs inside ``on_review_card``, and the lazy loaders let
+    whichever caller arrives first pay the ~500-row parse — synchronous disk
+    I/O mid-review, which AGENTS.md forbids. Warming on the boot thread is what
+    makes that impossible for the session: reviews are gated on
+    ``services.startup_finished``, which flips only once this half has
+    returned, so no review can precede the warm.
+    """
+    env = startup_env
+    env.mod.run_startup_background_checks()
+
+    assert len(_called(env, "warm_evolution_caches")) == 1
+
+
+def test_evolution_table_is_warmed_even_when_assets_are_missing(startup_env):
+    """The evolution CSV ships inside the add-on, so it is warmable whether or
+    not the player's sprite folders are complete. Hanging the warm off
+    ``database_complete`` (as the first-enemy step is) would leave the table
+    cold for exactly the players whose next boot step is a download dialog."""
+    env = startup_env
+    env.folders_exist = False
+
+    results = env.mod.run_startup_background_checks()
+
+    assert results["database_complete"] is False
+    assert len(_called(env, "warm_evolution_caches")) == 1
+
+
+def test_a_failing_warm_cannot_fail_the_boot(startup_env, monkeypatch):
+    """The warm rides on a QueryOp with no recovery: a raise here skips
+    ``on_startup_complete`` entirely, so ``services.startup_finished`` stays
+    False and every answered card is silently dropped for the session. Failing
+    to pre-parse a CSV must never cost the player the whole add-on."""
+    env = startup_env
+
+    def boom():
+        raise OSError("data_files unreadable")
+
+    monkeypatch.setattr(env.mod, "warm_evolution_caches", boom)
+
+    results = env.mod.run_startup_background_checks()
+
+    # The boot completed and the rest of the background work still ran.
+    assert results["database_complete"] is True
+    assert _called(env, "count_items_and_rewrite")
+    assert any(
+        call[0] == "log" and call[1] == "error" and "data_files unreadable" in call[2]
+        for call in env.calls
+    )
 
 
 def test_background_checks_flag_starter_and_rating(startup_env):
@@ -476,6 +539,28 @@ def test_dev_mode_auto_backup_uses_passed_manager(startup_env):
     assert manager.create_calls == [False]
     # No second manager was constructed inside the background half.
     assert FakeBackupManager.instances == [manager]
+
+
+def test_hot_reload_skips_both_background_backups(startup_env, monkeypatch):
+    env = startup_env
+    env.settings.config["misc.developer_mode"] = True
+    services = sys.modules["Ankimon.services"].services
+    monkeypatch.setattr(services, "_is_reloading", True, raising=False)
+
+    manager = FakeBackupManager(env.logger, env.settings)
+    results = env.mod.run_startup_background_checks(manager)
+
+    assert results["backup_manager"] is manager
+    assert _called(env, "run_backup") == []
+    assert manager.create_calls == []
+    assert (
+        "log",
+        "info",
+        "Skipping background backups during hot-reload.",
+    ) in env.calls
+    # The remainder of startup still runs normally.
+    assert _called(env, "generate_random_pokemon")
+    assert _called(env, "count_items_and_rewrite")
 
 
 def test_auto_catch_migration_folds_legacy_key_once(startup_env):
@@ -722,9 +807,7 @@ def boot_env(monkeypatch):
             "PyQt6.QtGui",
             QKeySequence=lambda *args: None,
             QShortcut=lambda *args, **kwargs: SimpleNamespace(
-                activated=SimpleNamespace(
-                    connect=rec("QShortcut.activated.connect")
-                ),
+                activated=SimpleNamespace(connect=rec("QShortcut.activated.connect")),
                 setEnabled=rec("QShortcut.setEnabled"),
             ),
         ),
@@ -860,6 +943,98 @@ def test_boot_ordering_background_then_ui_then_menu(boot_env):
     # The QueryOp ran collection-free.
     assert len(SyncQueryOp.instances) == 1
     assert SyncQueryOp.instances[0].without_collection_called is True
+    assert boot_env.services._startup_in_progress is False
+    assert boot_env.services._is_reloading is False
+
+
+def test_startup_failure_clears_reload_lifecycle_flags(boot_env):
+    observed_startup_flags = []
+
+    def fail_background_startup(backup_manager=None):
+        observed_startup_flags.append(boot_env.services._startup_in_progress)
+        raise RuntimeError("startup boom")
+
+    sys.modules[
+        "Ankimon.startup"
+    ].run_startup_background_checks = fail_background_startup
+    boot_env.services._is_reloading = True
+
+    boot_env.exec_init()
+
+    assert observed_startup_flags == [True]
+    assert boot_env.services._startup_in_progress is False
+    assert boot_env.services._is_reloading is False
+
+
+def test_success_callback_failure_clears_reload_lifecycle_flags(boot_env):
+    """QueryOp routes only *op* exceptions to .failure(); a raising success
+    callback propagates instead, so the flag reset has to be a finally."""
+
+    observed = []
+
+    def fail_ui_startup(results):
+        observed.append(
+            (
+                boot_env.services._startup_in_progress,
+                boot_env.services._is_reloading,
+            )
+        )
+        raise RuntimeError("qt half boom")
+
+    sys.modules["Ankimon.startup"].run_startup_ui_callbacks = fail_ui_startup
+    boot_env.services._is_reloading = True
+
+    with pytest.raises(RuntimeError, match="qt half boom"):
+        boot_env.exec_init()
+
+    # Pin the *transition*: both flags were still set when the callback blew
+    # up, so the final False below can only come from the finally.
+    assert observed == [(True, True)]
+    # Left set, restart_ankimon() would block on _startup_in_progress until its
+    # timeout on every later Ctrl+Shift+R, and backups would stay suppressed.
+    assert boot_env.services._startup_in_progress is False
+    assert boot_env.services._is_reloading is False
+
+
+def test_unschedulable_queryop_clears_reload_lifecycle_flags(boot_env):
+    """If run_in_background() raises, neither callback ever runs."""
+    real_run_in_background = SyncQueryOp.run_in_background
+    observed = []
+
+    def fail_to_schedule(self):
+        observed.append(
+            (
+                boot_env.services._startup_in_progress,
+                boot_env.services._is_reloading,
+            )
+        )
+        raise RuntimeError("taskman gone")
+
+    SyncQueryOp.run_in_background = fail_to_schedule
+    boot_env.services._is_reloading = True
+    try:
+        with pytest.raises(RuntimeError, match="taskman gone"):
+            boot_env.exec_init()
+    finally:
+        SyncQueryOp.run_in_background = real_run_in_background
+
+    assert observed == [(True, True)]
+    assert boot_env.services._startup_in_progress is False
+    assert boot_env.services._is_reloading is False
+
+
+def test_services_declares_and_resets_the_hot_reload_flags(boot_env):
+    """The registry is what survives _purge_addon_modules, so the hot-reload
+    flags have to live there and come back false on a profile-level reset."""
+    services = boot_env.services
+    for attr in ("_startup_in_progress", "_is_reloading", "_reload_in_progress"):
+        assert getattr(services, attr) is False
+        setattr(services, attr, True)
+
+    services.reset()
+
+    for attr in ("_startup_in_progress", "_is_reloading", "_reload_in_progress"):
+        assert getattr(services, attr) is False
 
 
 def test_changelog_keeps_real_connectivity(boot_env):

@@ -46,10 +46,20 @@ class MovieSplashLabel(QLabel):
         self.movie.frameChanged.connect(self.repaint)
 
     def showEvent(self, event):
-        self.movie.start()
+        # During widget/interpreter teardown the QMovie's underlying C++ object can
+        # already be deleted when a show/hide event fires, which raises
+        # "wrapped C/C++ object of type QMovie has been deleted" and aborts on
+        # Anki shutdown. Guard both so a normal close is clean.
+        try:
+            self.movie.start()
+        except RuntimeError:
+            pass
 
     def hideEvent(self, event):
-        self.movie.stop()
+        try:
+            self.movie.stop()
+        except RuntimeError:
+            pass
 
 
 class UpdateNotificationWindow(QDialog):

@@ -39,6 +39,10 @@
       <td align="center" valign="top" width="20%"><a href="https://github.com/mathieulabs"><img src="https://github.com/mathieulabs.png?s=80" width="80px;" alt="mathieulabs"/><br /><sub><b>mathieulabs</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=mathieulabs" title="Code">💻</a></td>
       <td align="center" valign="top" width="20%"><a href="https://github.com/jupiterslegacy"><img src="https://github.com/jupiterslegacy.png?s=80" width="80px;" alt="jupiterslegacy"/><br /><sub><b>jupiterslegacy</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=jupiterslegacy" title="Code">💻</a></td>
     </tr>
+    <tr>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/Nut2026"><img src="https://github.com/Nut2026.png?s=80" width="80px;" alt="Nut2026"/><br /><sub><b>Nut2026</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=Nut2026" title="Code">💻</a></td>
+      <td align="center" valign="top" width="20%"><a href="https://github.com/slager2"><img src="https://github.com/slager2.png?s=80" width="80px;" alt="slager2"/><br /><sub><b>slager2</b></sub></a><br /><a href="https://github.com/h0tp-ftw/ankimon/commits?author=slager2" title="Code">💻</a></td>
+    </tr>
   </tbody>
 </table>
 

@@ -92,18 +92,34 @@ def check_file_exists(folder, filename):
 
 def test_online_connectivity(
     url="https://raw.githubusercontent.com/Unlucky-Life/ankimon/main/update_txt.md",
-    timeout=5,
+    timeout=1,
 ):
-    try:
-        # Attempt to get the URL
-        response = requests.get(url, timeout=timeout)
+    import socket
+    from urllib.parse import urlparse
 
-        # Check if the response status code is 200 (OK)
-        if response.status_code == 200:
-            return True
-    except:
-        # Connection error means no internet connectivity
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return False
+        port = parsed.port or (80 if parsed.scheme == "http" else 443)
+    except ValueError:
         return False
+
+    try:
+        with socket.create_connection((parsed.hostname, port), timeout=timeout):
+            return True
+    except OSError:
+        # Direct sockets can be blocked on proxy-only networks. Fall back to the
+        # configured requests transport without downloading the response body.
+        response = None
+        try:
+            response = requests.get(url, timeout=timeout, stream=True)
+            return response.status_code == 200
+        except requests.RequestException:
+            return False
+        finally:
+            if response is not None:
+                response.close()
 
 
 # Define the hook function
@@ -330,14 +346,27 @@ USELESS_ITEMS = {
     "max-ether",
     "elixir",
     "ether",
+    # Deprecated / Functional as UI mechanic instead
+    "exp-share",
 }
 
 
-def random_item():
+def random_item() -> Optional[str]:
+    """Grant and return a random item with an available sprite.
+
+    A fresh/partial asset installation may have no item sprite directory, or all
+    present files may be filtered out. In that case there is no renderable reward,
+    so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
+    """
     item_names: list[str] = []
 
+    try:
+        files = os.listdir(items_path)
+    except OSError:
+        return None
+
     # Iterate over each file in the directory
-    for file in os.listdir(items_path):
+    for file in files:
         # Check if the file is a .png file
         if not file.endswith(".png"):
             continue
@@ -363,6 +392,9 @@ def random_item():
             continue
 
         item_names.append(name)
+
+    if not item_names:
+        return None
 
     item_name = random.choice(item_names)
     # add item to item list

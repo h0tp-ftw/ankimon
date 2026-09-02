@@ -3,6 +3,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 # Stub Ankimon packages so we can import business.py without triggering __init__.py
 _src = Path(__file__).parent.parent / "src"
 for _pkg in ("Ankimon", "Ankimon.functions", "Ankimon.pyobj"):
@@ -36,6 +38,7 @@ from Ankimon.business import (
     type_compatibility_multiplier,
     calculate_cp_from_dict,
     cp_breakdown_tooltip,
+    pokemon_cp_is_stale,
     _load_type_chart,
 )
 
@@ -358,3 +361,73 @@ class TestFormatCompactNumber:
 
     def test_float_input_truncates_like_int(self):
         assert format_compact_number(2564.9) == "2,564"
+
+
+class TestPokemonCpIsStale:
+    """``cp`` is derived but persisted, so it can drift from the formula."""
+
+    _ROW = {
+        "level": 100,
+        "stats": {"hp": 106, "atk": 110, "def": 90, "spa": 154, "spd": 90, "spe": 130},
+        "iv": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+    }
+
+    def _row(self, **overrides):
+        row = {k: (dict(v) if isinstance(v, dict) else v) for k, v in self._ROW.items()}
+        row.update(overrides)
+        return row
+
+    def test_matching_cp_is_not_stale(self):
+        row = self._row()
+        row["cp"] = calculate_cp_from_dict(row)
+        assert pokemon_cp_is_stale(row) is False
+
+    def test_value_from_superseded_formula_is_stale(self):
+        # 1460 is what the pre-retune 0.84/20 CPM produced for this Pokemon.
+        assert pokemon_cp_is_stale(self._row(cp=1460)) is True
+
+    def test_missing_cp_is_stale(self):
+        assert pokemon_cp_is_stale(self._row()) is True
+
+    def test_uncomputable_row_reports_stale_rather_than_raising(self):
+        # Callers repair what they can; the check must never be the thing
+        # that takes down a PC-box open.
+        assert pokemon_cp_is_stale({"cp": 1, "stats": "not-a-dict"}) is True
+
+    def test_non_dict_is_not_stale(self):
+        assert pokemon_cp_is_stale(None) is False
+
+
+class TestLevelCoercion:
+    """Rows restored from JSON can carry ``level`` as a string."""
+
+    _ROW = {
+        "stats": {"hp": 50, "atk": 80, "def": 60, "spa": 100, "spd": 70, "spe": 90},
+        "iv": {"hp": 10, "atk": 15, "def": 10, "spa": 15, "spd": 10, "spe": 15},
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+    }
+
+    def test_string_level_matches_int_level(self):
+        as_int = calculate_cp_from_dict({**self._ROW, "level": 50})
+        as_str = calculate_cp_from_dict({**self._ROW, "level": "50"})
+        assert as_str == as_int
+
+    def test_none_level_is_treated_as_one(self):
+        as_none = calculate_cp_from_dict({**self._ROW, "level": None})
+        as_one = calculate_cp_from_dict({**self._ROW, "level": 1})
+        assert as_none == as_one
+
+    def test_non_numeric_level_falls_back_to_one(self):
+        # A level that is not a number at all is meaningless; it must not
+        # take down the CP read for every consumer of the row.
+        as_garbage = calculate_cp_from_dict({**self._ROW, "level": "???"})
+        as_one = calculate_cp_from_dict({**self._ROW, "level": 1})
+        assert as_garbage == as_one
+
+    def test_malformed_stats_still_raise(self):
+        # Deliberately NOT swallowed: callers that repair rows must be able
+        # to tell "cannot compute" from "computed the floor value", or the
+        # migration pass would overwrite good CP with the minimum clamp.
+        with pytest.raises(Exception):
+            calculate_cp_from_dict({**self._ROW, "level": 50, "stats": "corrupt"})

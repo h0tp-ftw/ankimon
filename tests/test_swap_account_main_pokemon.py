@@ -19,6 +19,7 @@ sibling modules, exec the REAL singletons module, drive swap_ankimon_account().
 
 import importlib.util
 import sys
+import threading
 import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -59,9 +60,10 @@ class _FakeShopManager:
 def swap_env(monkeypatch):
     """A fully-stubbed singletons module plus captured swap-dependency spies."""
     mw = SimpleNamespace()
+    tooltip = MagicMock()
     monkeypatch.setitem(sys.modules, "aqt", _stub_module("aqt", mw=mw))
     monkeypatch.setitem(
-        sys.modules, "aqt.utils", _stub_module("aqt.utils", tooltip=MagicMock())
+        sys.modules, "aqt.utils", _stub_module("aqt.utils", tooltip=tooltip)
     )
 
     def is_alive(obj):
@@ -155,6 +157,15 @@ def swap_env(monkeypatch):
             clear_encounter_cache=MagicMock(),
         ),
     )
+    mobile_sync_lock = threading.Lock()
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.functions.mobile_sync",
+        _stub_module(
+            "Ankimon.functions.mobile_sync",
+            _mobile_sync_lock=mobile_sync_lock,
+        ),
+    )
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.reviewer_ui",
@@ -184,6 +195,8 @@ def swap_env(monkeypatch):
         services=services,
         main_pokemon=main_pokemon,
         update_main_pokemon=update_main_pokemon,
+        mobile_sync_lock=mobile_sync_lock,
+        tooltip=tooltip,
     )
 
     sys.modules.pop("Ankimon.singletons", None)
@@ -209,3 +222,17 @@ def test_swap_does_not_double_apply_when_mutated_in_place(swap_env):
     swap_env.singletons.swap_ankimon_account()
 
     swap_env.main_pokemon.update_stats.assert_not_called()
+
+
+def test_swap_aborts_while_mobile_resolution_holds_lock(swap_env):
+    swap_env.mobile_sync_lock.acquire()
+    try:
+        swap_env.singletons.swap_ankimon_account()
+    finally:
+        swap_env.mobile_sync_lock.release()
+
+    swap_env.services.db.switch_database.assert_not_called()
+    swap_env.update_main_pokemon.assert_not_called()
+    swap_env.tooltip.assert_called_once_with(
+        "Cannot switch accounts while mobile battles are resolving."
+    )

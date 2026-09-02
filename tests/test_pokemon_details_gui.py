@@ -533,6 +533,37 @@ def test_status_text_requirement_line_is_shown_when_not_ready(details):
     assert any("40 friendship to evolve into Raichu" in t for t in _labels(header))
 
 
+@pytest.mark.parametrize(
+    ("method", "status_text"),
+    [
+        ("friendship", "40 friendship to evolve into Raichu"),
+        ("level", "Evolves into Raichu at Lv20"),
+    ],
+)
+def test_callback_path_keeps_requirement_text_when_not_ready(
+    details, method, status_text
+):
+    """A caller-owned evolve button must not suppress unmet requirements."""
+    details._test_readiness.update(
+        {
+            "evolvable": True,
+            "ready": False,
+            "method": method,
+            "evo_id": 26,
+            "evo_name": "Raichu",
+            "status_text": status_text,
+        }
+    )
+    header, _, _, _ = details.PokemonCollectionDetailsSplit(
+        **_details_kwargs(trigger_evo_callback=lambda method: None)
+    )
+
+    assert status_text in _labels(header)
+    assert not any(
+        b.objectName() == "evolveNowButton" for b in _buttons(header)
+    )
+
+
 def test_callback_path_renders_button_and_invokes_callback(details):
     _make_ready(details, method="level")
     calls = []

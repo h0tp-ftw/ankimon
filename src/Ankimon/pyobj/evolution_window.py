@@ -1,4 +1,3 @@
-import json
 import random
 from typing import Optional
 
@@ -80,6 +79,15 @@ class EvoWindow(QWidget):
     def open_dynamic_window(self):
         self.show()
 
+    def _should_show_sprites(self) -> bool:
+        """Check if sprites should be shown based on the global setting."""
+        if self.settings_obj is None:
+            return True
+        try:
+            return self.settings_obj.get("gui.show_sprites_across_ankimon", True)
+        except Exception:
+            return True
+
     def display_evo_complete(self, prevo_id: int, evo_id: int):
         """
         Displays the GUI notification that the given Pokemon has evolved.
@@ -126,12 +134,6 @@ class EvoWindow(QWidget):
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(bckgimage_path))
 
-        # Display the Pokémon image
-        image_path = frontdefault / f"{evo_id}.png"
-        image_pixmap = QPixmap()
-        image_pixmap.load(str(image_path))
-        image_pixmap = resize_pixmap_img(image_pixmap, 250)
-
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
         merged_pixmap.fill(
@@ -143,7 +145,16 @@ class EvoWindow(QWidget):
 
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(125, 10, image_pixmap)
+        
+        # Only load and draw the Pokémon sprite if sprites are enabled
+        show_sprites = self._should_show_sprites()
+        if show_sprites:
+            # Display the Pokémon image
+            image_path = frontdefault / f"{evo_id}.png"
+            image_pixmap = QPixmap()
+            image_pixmap.load(str(image_path))
+            image_pixmap = resize_pixmap_img(image_pixmap, 250)
+            painter.drawPixmap(125, 10, image_pixmap)
 
         # custom font
         custom_font = load_custom_font(20, int(self.settings_obj.get("misc.language")))
@@ -223,34 +234,12 @@ class EvoWindow(QWidget):
         prevo_name = return_name_for_id(prevo_id)
         evo_name = return_name_for_id(evo_id)
 
-        # Display the Pokémon image
-        pkmnimage_path = frontdefault / f"{prevo_id}.png"
-        pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
-        pkmnpixmap = QPixmap()
-        pkmnpixmap.load(str(pkmnimage_path))
-        pkmnpixmap2 = QPixmap()
-        pkmnpixmap2.load(str(pkmnimage_path2))
+        # Check if sprites should be shown
+        show_sprites = self._should_show_sprites()
+
+        # Load the background image
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(evolve_image_path))
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 200
-        original_width = pkmnpixmap.width()
-        original_height = pkmnpixmap.height()
-
-        if original_width > max_width:
-            new_width = max_width
-            new_height = (original_height * max_width) // original_width
-            pkmnpixmap = pkmnpixmap.scaled(new_width, new_height)
-
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 200
-        original_width = pkmnpixmap.width()
-        original_height = pkmnpixmap.height()
-
-        if original_width > max_width:
-            new_width = max_width
-            new_height = (original_height * max_width) // original_width
-            pkmnpixmap2 = pkmnpixmap2.scaled(new_width, new_height)
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -261,8 +250,41 @@ class EvoWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
         painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(255, 70, pkmnpixmap)
-        painter.drawPixmap(255, 285, pkmnpixmap2)
+        
+        # Only load, resize, and draw Pokémon sprites if sprites are enabled
+        if show_sprites:
+            # Display the Pokémon image
+            pkmnimage_path = frontdefault / f"{prevo_id}.png"
+            pkmnpixmap = QPixmap()
+            pkmnpixmap.load(str(pkmnimage_path))
+            
+            pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
+            pkmnpixmap2 = QPixmap()
+            pkmnpixmap2.load(str(pkmnimage_path2))
+
+            # Calculate the new dimensions to maintain the aspect ratio
+            max_width = 200
+            original_width = pkmnpixmap.width()
+            original_height = pkmnpixmap.height()
+
+            if original_width > max_width:
+                new_width = max_width
+                new_height = (original_height * max_width) // original_width
+                pkmnpixmap = pkmnpixmap.scaled(new_width, new_height)
+
+            # Calculate the new dimensions to maintain the aspect ratio
+            max_width = 200
+            original_width = pkmnpixmap2.width()
+            original_height = pkmnpixmap2.height()
+
+            if original_width > max_width:
+                new_width = max_width
+                new_height = (original_height * max_width) // original_width
+                pkmnpixmap2 = pkmnpixmap2.scaled(new_width, new_height)
+
+            painter.drawPixmap(255, 70, pkmnpixmap)
+            painter.drawPixmap(255, 285, pkmnpixmap2)
+        
         # Draw the text on top of the image
         font = QFont()
         font.setPointSize(12)  # Adjust the font size as needed
@@ -353,11 +375,19 @@ class EvoWindow(QWidget):
             # Persist the pre-evolved species as caught before the id changes so
             # the Pokédex keeps crediting the earlier form (no-op on stores that
             # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
+            # Logged as an error, not a warning: unlike a failed mark on an
+            # ordinary save, this one is NOT recoverable. Once the id below is
+            # overwritten the pre-evolution is gone from captured_pokemon, so
+            # _reconcile_pokedex_history has nothing left to re-derive it from.
             if hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
                 except Exception as e:
-                    self.logger.log("warning", f"Failed to mark prevo as caught: {e}")
+                    self.logger.log(
+                        "error",
+                        f"Failed to mark pre-evolution {prevo_id} as caught; it will "
+                        f"be missing from the Pokedex: {e}",
+                    )
 
             pokemon["name"] = evo_name.capitalize()
             pokemon["id"] = evo_id
@@ -471,14 +501,10 @@ class EvoWindow(QWidget):
             # the auto prompt resumes for the new form's future evolutions.
             pokemon["evolution_rejected"] = False
 
-            # Save to database
-            db.save_pokemon(pokemon)
-            self.logger.log_and_showinfo(
-                "info",
-                self.translator.translate(
-                    "mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name
-                ),
-            )
+            # Save to database before awarding any evolution achievements.
+            if not db.save_pokemon(pokemon):
+                self.logger.log("error", f"Failed to save evolved pokemon {individual_id}")
+                return
 
             # Consume the evolution stone (if this evolution was item-triggered)
             # and refresh any open item windows so the count updates live.
@@ -493,11 +519,35 @@ class EvoWindow(QWidget):
                 web_item_w = get_items_window()
                 if web_item_w is not None and is_alive(web_item_w):
                     web_item_w.update_ui_data()
+
+            # Award Badge 19 (Fossil) immediately after successful persistence
+            # and item consumption, before any UI notifications that could fail
+            # and skip the achievement.
+            try:
+                from ..resources import POKEMON_TIERS
+                if int(evo_id) in POKEMON_TIERS.get("Fossil", []):
+                    check_fossil = check_for_badge(self.achievements, 19)
+                    if check_fossil is False:
+                        # receive_badge sets the in-memory achievement only after
+                        # save_badges succeeds, so a persistence failure will not
+                        # leave achievements marked as awarded.
+                        receive_badge(19, self.achievements)
+            except Exception as e:
+                self.logger.log("error", f"Error checking Badge 19 (Fossil): {e}")
+
+            self.logger.log_and_showinfo(
+                "info",
+                self.translator.translate(
+                    "mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name
+                ),
+            )
+
         except Exception as e:
             show_warning_with_traceback(
-                parent=mw, exception=e, message=f"Error occured in evolving pokemon"
+                parent=mw, exception=e, message="Error occured in evolving pokemon"
             )
             self.logger.log("error", f"{e}")
+            return
 
         try:  # Update Main Pokemon Object and sync with file
             if main_pokemon is not None and main_pokemon.individual_id == individual_id:
@@ -517,7 +567,7 @@ class EvoWindow(QWidget):
             show_warning_with_traceback(
                 parent=mw,
                 exception=e,
-                message=f"Error occured in updating main_pokemon obj",
+                message="Error occured in updating main_pokemon obj",
             )
         self.display_evo_complete(prevo_id, evo_id)
         check = check_for_badge(self.achievements, 16)

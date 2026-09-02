@@ -223,10 +223,6 @@ class StarterWindow(QWidget):
         self.show()
         self.starter = True
         self.logger.log_and_showinfo("info","You have chosen your Starter Pokemon ! \n You can now close this window ! \n Please restart your Anki to restart your Pokemon Journey!")
-        #global achievments
-        #check = check_for_badge(achievements, 7)
-        #if check is False:
-        #    receive_badge(7, achievements)
 
     def display_fossil_pokemon(self, fossil_id, fossil_name):
         self.clear_layout(self.layout())
@@ -240,10 +236,6 @@ class StarterWindow(QWidget):
         self.show()
         self.starter = True
         self.logger.log_and_showinfo("info","You have received your Fossil Pokemon ! \n You can now close this window !")
-        global achievments
-        #check = check_for_badge(achievements, 19)
-        #if check is False:
-        #    receive_badge(19, achievements)
 
     def pokemon_display_starter_buttons(self, water_start, fire_start, grass_start):
         # Create buttons for catching and killing the Pokémon
@@ -269,6 +261,21 @@ class StarterWindow(QWidget):
 
         return water_starter_button, fire_starter_button, grass_start_button
 
+    def _load_sprite(self, path):
+        """Load a Pokémon sprite, falling back to the substitute.
+
+        ``QPixmap.load`` returns False for a missing file rather than raising,
+        so a sprite that never downloaded would otherwise be drawn blank — and
+        used to crash the screen outright in the aspect-ratio maths (issue
+        #101). Every screen in this window loads its sprite through here so the
+        substitute shows consistently: previously the preview screen fell back
+        but the confirmation and fossil screens still went blank.
+        """
+        pixmap = QPixmap()
+        if not pixmap.load(str(path)):
+            pixmap.load(str(frontdefault / "substitute.png"))
+        return pixmap
+
     def pokemon_display_starter(self, water_start, fire_start, grass_start):
         bckgimage_path = addon_dir / "addon_sprites" / "starter_screen" / "bckg.png"
         water_id = int(search_pokedex(water_start, "species_id"))
@@ -280,35 +287,23 @@ class StarterWindow(QWidget):
         pixmap_bckg.load(str(bckgimage_path))
 
         # Display the Pokémon image
-        water_path = frontdefault / f"{water_id}.png"
         water_label = QLabel()
-        water_pixmap = QPixmap()
-        water_pixmap.load(str(water_path))
+        water_pixmap = self._load_sprite(frontdefault / f"{water_id}.png")
 
         # Display the Pokémon image
-        fire_path = frontdefault / f"{fire_id}.png"
         fire_label = QLabel()
-        fire_pixmap = QPixmap()
-        fire_pixmap.load(str(fire_path))
+        fire_pixmap = self._load_sprite(frontdefault / f"{fire_id}.png")
 
         # Display the Pokémon image
-        grass_path = frontdefault / f"{grass_id}.png"
         grass_label = QLabel()
-        grass_pixmap = QPixmap()
-        grass_pixmap.load(str(grass_path))
+        grass_pixmap = self._load_sprite(frontdefault / f"{grass_id}.png")
 
-        def resize_pixmap_img(pixmap):
-            max_width = 150
-            original_width = pixmap.width()
-            original_height = pixmap.height()
-            new_width = max_width
-            new_height = (original_height * max_width) // original_width
-            pixmap2 = pixmap.scaled(new_width, new_height)
-            return pixmap2
-
-        water_pixmap = resize_pixmap_img(water_pixmap)
-        fire_pixmap = resize_pixmap_img(fire_pixmap)
-        grass_pixmap = resize_pixmap_img(grass_pixmap)
+        # Use the shared helper: the local copy that lived here shadowed it and
+        # lacked its null-pixmap guard, so a starter sprite that never
+        # downloaded crashed the starter screen (issue #101).
+        water_pixmap = resize_pixmap_img(water_pixmap, 150)
+        fire_pixmap = resize_pixmap_img(fire_pixmap, 150)
+        grass_pixmap = resize_pixmap_img(grass_pixmap, 150)
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -351,10 +346,8 @@ class StarterWindow(QWidget):
         pixmap_bckg.load(str(bckgimage_path))
 
         # Display the Pokémon image
-        image_path = frontdefault / f"{id}.png"
         image_label = QLabel()
-        image_pixmap = QPixmap()
-        image_pixmap.load(str(image_path))
+        image_pixmap = self._load_sprite(frontdefault / f"{id}.png")
         image_pixmap = resize_pixmap_img(image_pixmap, 250)
 
         # Merge the background image and the Pokémon image
@@ -391,10 +384,8 @@ class StarterWindow(QWidget):
         pixmap_bckg.load(str(bckgimage_path))
 
         # Display the Pokémon image
-        image_path = frontdefault / f"{id}.png"
         image_label = QLabel()
-        image_pixmap = QPixmap()
-        image_pixmap.load(str(image_path))
+        image_pixmap = self._load_sprite(frontdefault / f"{id}.png")
         image_pixmap = resize_pixmap_img(image_pixmap, 250)
 
         # Merge the background image and the Pokémon image

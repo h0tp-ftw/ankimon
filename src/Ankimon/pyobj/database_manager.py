@@ -12,8 +12,9 @@ import uuid
 import weakref
 import gc
 import time
+import contextlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import csv
 from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpokemon_path, items_path, badges_path, team_pokemon_path as team_path
@@ -28,6 +29,59 @@ from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpoke
 # thread" when there is no QApplication). Backward compatible: on the GUI thread
 # callers get the same single shared connection they always did, now WAL-mode.
 
+class CursorWrapper:
+    """Wraps a sqlite3.Cursor, proxying everything, holding a connection lease
+    during its lifetime to prevent connection closure during in-flight operations."""
+
+    def __init__(self, cursor, conn_wrapper, *, lease_acquired=False):
+        self._cursor = cursor
+        self._conn_wrapper = conn_wrapper
+        self._lease_released = False
+        if not lease_acquired:
+            self._conn_wrapper.acquire_lease()
+
+    def release_lease(self):
+        if not self._lease_released:
+            self._lease_released = True
+            try:
+                self._conn_wrapper.release_lease()
+            except Exception:
+                pass
+
+    def __del__(self):
+        self.release_lease()
+
+    def close(self):
+        try:
+            self._cursor.close()
+        finally:
+            self.release_lease()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+
+    def execute(self, *args, **kwargs):
+        self._cursor.execute(*args, **kwargs)
+        return self
+
+    def executemany(self, *args, **kwargs):
+        self._cursor.executemany(*args, **kwargs)
+        return self
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._cursor)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
 class ConnectionWrapper:
     """Wraps a sqlite3.Connection, proxying everything, with a re-entrant
     ``with conn:`` transaction and an opt-out commit flag (used by bulk paths)."""
@@ -36,85 +90,216 @@ class ConnectionWrapper:
         self._conn = conn
         self._disable_commit = False
         self._db_mgr = db_mgr
+        self._lease_lock = threading.Lock()
+        self._lease_count = 0
+        self._close_pending = False
+        self._closed = False
+
+    def acquire_lease(self):
+        with self._lease_lock:
+            self._lease_count += 1
+
+    def release_lease(self):
+        with self._lease_lock:
+            self._lease_count = max(0, self._lease_count - 1)
+            if self._lease_count == 0 and self._close_pending and not self._closed:
+                try:
+                    self._conn.close()
+                    self._closed = True
+                except Exception:
+                    pass
+
+    def cancel_close(self):
+        """Cancel a deferred close after the manager's drain attempt times out."""
+        with self._lease_lock:
+            if not self._closed:
+                self._close_pending = False
 
     def commit(self):
         # NOTE: Direct raw cursor execution (conn.cursor().execute(...)) bypasses wrapper-level auto-healing.
-        if not self._disable_commit:
-            try:
-                self._conn.commit()
-            except sqlite3.DatabaseError as e:
-                if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
-                    self._db_mgr.repair_database()
-                    self._conn = self._db_mgr._get_connection()._conn
+        self.acquire_lease()
+        lease_released = False
+        try:
+            if not self._disable_commit:
+                try:
                     self._conn.commit()
-                    return
-                raise
+                except sqlite3.DatabaseError as e:
+                    msg = str(e).lower()
+                    # NOTE: Deliberately NO retry that reports success here. Unlike
+                    # execute()/executemany(), commit() has nothing to replay, so
+                    # committing a *different* connection is a no-op that reports
+                    # success for a write that no longer exists. That holds for both
+                    # failures we know how to recognise:
+                    #
+                    #   "closed database" -- sqlite rolled this connection's
+                    #   transaction back when the connection was closed.
+                    #
+                    #   "malformed"/"disk image" -- repair_database() rebuilds the
+                    #   file from a *separate* connection's iterdump(), which cannot
+                    #   see this connection's uncommitted rows, then quiesces every
+                    #   registered connection and swaps the rebuilt file into place.
+                    #   The pending transaction does not survive either step.
+                    #
+                    # So heal the file -- leaving it corrupt helps nobody -- but let
+                    # the original failure propagate. Callers such as consume_item
+                    # hand out an effect on the strength of a successful commit: a
+                    # heal, a revived fossil. Reporting success for a decrement that
+                    # the repair threw away is exactly the free-heal those callers
+                    # exist to prevent. See the __exit__ comment below.
+                    if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+                        self.release_lease()
+                        lease_released = True
+                        try:
+                            self._db_mgr.repair_database()
+                        except Exception:
+                            # repair_database() logs its own failure. Whether it
+                            # healed or not, the caller's transaction is gone; the
+                            # commit error is the one it needs to see.
+                            pass
+                    raise
+        finally:
+            if not lease_released:
+                self.release_lease()
 
     def rollback(self):
-        self._conn.rollback()
+        self.acquire_lease()
+        try:
+            self._conn.rollback()
+        finally:
+            self.release_lease()
 
-    def close(self):
-        self._conn.close()
+    def close(self, wait_seconds: float = 0.0) -> bool:
+        """Close when leases drain; return ``False`` if the deadline expires."""
+        deadline = time.monotonic() + max(0.0, wait_seconds)
+        while True:
+            with self._lease_lock:
+                self._close_pending = True
+                if self._closed:
+                    return True
+                if self._lease_count == 0:
+                    try:
+                        self._conn.close()
+                        self._closed = True
+                        return True
+                    except Exception:
+                        return False
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.01)
 
     def execute(self, *args, **kwargs):
         # NOTE: Direct raw cursor execution (conn.cursor().execute(...)) bypasses wrapper-level auto-healing.
+        self.acquire_lease()
+        lease_released = False
         try:
-            return self._conn.execute(*args, **kwargs)
+            res = self._conn.execute(*args, **kwargs)
+            return CursorWrapper(res, self)
         except sqlite3.DatabaseError as e:
-            if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
+            msg = str(e).lower()
+            if self._db_mgr and isinstance(e, sqlite3.ProgrammingError) and "closed database" in msg:
+                self.release_lease()
+                lease_released = True
+                fresh = self._db_mgr._get_connection()
+                return fresh.execute(*args, **kwargs)
+            if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+                self.release_lease()
+                lease_released = True
                 self._db_mgr.repair_database()
-                self._conn = self._db_mgr._get_connection()._conn
-                return self._conn.execute(*args, **kwargs)
+                fresh = self._db_mgr._get_connection()
+                return fresh.execute(*args, **kwargs)
             raise
+        finally:
+            if not lease_released:
+                self.release_lease()
 
     def executemany(self, *args, **kwargs):
         # NOTE: Direct raw cursor execution (conn.cursor().execute(...)) bypasses wrapper-level auto-healing.
+        self.acquire_lease()
+        lease_released = False
         try:
-            return self._conn.executemany(*args, **kwargs)
+            res = self._conn.executemany(*args, **kwargs)
+            return CursorWrapper(res, self)
         except sqlite3.DatabaseError as e:
-            if self._db_mgr and ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._db_mgr._is_repairing:
+            msg = str(e).lower()
+            if self._db_mgr and isinstance(e, sqlite3.ProgrammingError) and "closed database" in msg:
+                self.release_lease()
+                lease_released = True
+                fresh = self._db_mgr._get_connection()
+                return fresh.executemany(*args, **kwargs)
+            if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+                self.release_lease()
+                lease_released = True
                 self._db_mgr.repair_database()
-                self._conn = self._db_mgr._get_connection()._conn
-                return self._conn.executemany(*args, **kwargs)
+                fresh = self._db_mgr._get_connection()
+                return fresh.executemany(*args, **kwargs)
             raise
+        finally:
+            if not lease_released:
+                self.release_lease()
 
     def cursor(self, *args, **kwargs):
-        return self._conn.cursor(*args, **kwargs)
+        self.acquire_lease()
+        try:
+            raw_cursor = self._conn.cursor(*args, **kwargs)
+            return CursorWrapper(raw_cursor, self, lease_acquired=True)
+        except sqlite3.DatabaseError as e:
+            self.release_lease()
+            msg = str(e).lower()
+            if self._db_mgr and isinstance(e, sqlite3.ProgrammingError) and "closed database" in msg:
+                fresh = self._db_mgr._get_connection()
+                return fresh.cursor(*args, **kwargs)
+            if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+                self._db_mgr.repair_database()
+                fresh = self._db_mgr._get_connection()
+                return fresh.cursor(*args, **kwargs)
+            raise
+        except Exception:
+            self.release_lease()
+            raise
 
     def __getattr__(self, name):
         return getattr(self._conn, name)
 
     def __enter__(self):
-        if getattr(self, "_txn_depth", 0) == 0:
-            self._conn.execute("BEGIN")
-        self._txn_depth = getattr(self, "_txn_depth", 0) + 1
-        return self
+        self.acquire_lease()
+        try:
+            if getattr(self, "_txn_depth", 0) == 0:
+                self._conn.execute("BEGIN")
+            self._txn_depth = getattr(self, "_txn_depth", 0) + 1
+            return self
+        except Exception:
+            self.release_lease()
+            raise
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._txn_depth = getattr(self, "_txn_depth", 1) - 1
-        if self._txn_depth == 0:
-            if exc_type is not None:
-                try:
-                    self._conn.rollback()
-                except Exception:
-                    pass
-            else:
-                # Do NOT swallow a commit failure: eating it here makes a lost
-                # write (disk full, or the busy_timeout expiring under write
-                # contention) look like success, so callers such as
-                # queue_mobile_battles / add_mobile_history_entries_batch /
-                # set_mobile_watermark return their success flag while nothing
-                # was persisted. Roll back and let the error propagate so the
-                # caller's error path (and the user) actually see it.
-                try:
-                    self._conn.commit()
-                except Exception:
+        try:
+            self._txn_depth = getattr(self, "_txn_depth", 1) - 1
+            if self._txn_depth == 0:
+                if exc_type is not None:
                     try:
                         self._conn.rollback()
                     except Exception:
                         pass
-                    raise
-        return False
+                else:
+                    # Do NOT swallow a commit failure: eating it here makes a lost
+                    # write (disk full, or the busy_timeout expiring under write
+                    # contention) look like success, so callers such as
+                    # queue_mobile_battles / add_mobile_history_entries_batch /
+                    # set_mobile_watermark return their success flag while nothing
+                    # was persisted. Roll back and let the error propagate so the
+                    # caller's error path (and the user) actually see it.
+                    try:
+                        self._conn.commit()
+                    except Exception:
+                        try:
+                            self._conn.rollback()
+                        except Exception:
+                            pass
+                        raise
+            return False
+        finally:
+            self.release_lease()
+
 
 
 def _is_main_thread() -> bool:
@@ -165,14 +350,22 @@ class AnkimonDB:
         self._connection: Optional[ConnectionWrapper] = None       # GUI-thread connection
         self._local_conn = threading.local()                       # per-background-thread
         self._all_connections = []
-        self._conn_lock = threading.Lock()
+        self._conn_lock = threading.RLock()
+        # Serialises the read-modify-write of the pokedex_caught / pokedex_seen
+        # user_data lists. save_pokemon() runs on the background mobile-sync
+        # thread as well as the GUI thread, and those two lists are rewritten
+        # wholesale, so without this an interleaved save loses an id.
+        self._pokedex_lock = threading.Lock()
         self._is_repairing = False
         # When non-None, mark_mobile_battle_resolved defers the mirror-DB sync
         # (which commits on a separate connection, escaping any outer transaction)
         # and collects the revlog ids here to be flushed after the caller's bulk
         # transaction commits. See begin/flush/discard_deferred_mirror_sync.
         self._deferred_mirror_revlog_ids: Optional[list] = None
+        self._connection_epoch = 0
+        self._connection_epoch_gui = -1
         self._setup_database()
+        self._reconcile_pokedex_history_safely()
 
     def _prepare_connection(self, conn):
         """Apply row factory, a generous busy-timeout, and (only when opted in)
@@ -215,63 +408,111 @@ class AnkimonDB:
 
     # --- Connection Management ---
 
+    @contextlib.contextmanager
+    def lease_connection(self):
+        """Lease a connection wrapper, ensuring it won't be closed until the lease is released."""
+        conn = self._get_connection()
+        conn.acquire_lease()
+        try:
+            yield conn
+        finally:
+            conn.release_lease()
+
     def _get_connection(self) -> ConnectionWrapper:
         """Gets or creates a database connection for the CURRENT thread.
 
-        GUI thread: the single shared ``self._connection`` (as before, now WAL).
-        Background threads: a dedicated per-thread connection (``check_same_thread``
-        is disabled so a connection may be created off the GUI thread safely, and
-        each thread keeps its own so they never share a cursor)."""
-        if not _is_main_thread():
-            local = self._local_conn
-            if (not hasattr(local, "conn") or local.conn is None
-                    or getattr(local, "db_path", None) != self.db_path):
-                if getattr(local, "conn", None) is not None:
+        Connection creation and registration share the lifecycle lock with
+        shutdown, so a raw SQLite handle cannot appear between a close snapshot
+        and the file transition that follows it.
+        """
+        with self._conn_lock:
+            epoch = self._connection_epoch
+            if not _is_main_thread():
+                local = self._local_conn
+                if (not hasattr(local, "conn") or local.conn is None
+                        or getattr(local.conn, "_closed", False)
+                        or getattr(local, "db_path", None) != self.db_path
+                        or getattr(local, "epoch", -1) != epoch):
+                    if getattr(local, "conn", None) is not None:
+                        try:
+                            local.conn.close()
+                        except Exception:
+                            pass
+                    conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+                    local.conn = self._prepare_connection(conn)
+                    local.db_path = self.db_path
+                    local.epoch = epoch
+                elif not isinstance(local.conn, ConnectionWrapper):
+                    local.conn = ConnectionWrapper(local.conn, self)
+                    local.db_path = self.db_path
+                    local.epoch = epoch
+                return local.conn
+
+            if (self._connection is None
+                    or getattr(self._connection, "_closed", False)
+                    or self._connection_epoch_gui != epoch):
+                if self._connection:
                     try:
-                        local.conn.close()
+                        self._connection.close()
                     except Exception:
                         pass
                 conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-                local.conn = self._prepare_connection(conn)
-                local.db_path = self.db_path
-            elif not isinstance(local.conn, ConnectionWrapper):
-                local.conn = ConnectionWrapper(local.conn, self)
-                local.db_path = self.db_path
-            return local.conn
+                self._connection = self._prepare_connection(conn)
+                self._connection_epoch_gui = epoch
+            elif not isinstance(self._connection, ConnectionWrapper):
+                self._connection = ConnectionWrapper(self._connection, self)
+            return self._connection
 
-        if self._connection is None:
-            conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-            self._connection = self._prepare_connection(conn)
-        elif not isinstance(self._connection, ConnectionWrapper):
-            self._connection = ConnectionWrapper(self._connection, self)
-        return self._connection
+    def _close_locked(self, wait_seconds: float) -> bool:
+        """Drain and invalidate the current generation with ``_conn_lock`` held."""
+        deadline = time.monotonic() + max(0.0, wait_seconds)
+        wrappers = []
+        seen = set()
 
-    def close(self):
-        """Closes all database connections across all threads."""
+        def add_wrapper(conn):
+            if conn is not None and id(conn) not in seen:
+                seen.add(id(conn))
+                wrappers.append(conn)
+
+        add_wrapper(self._connection)
+        for conn_ref in self._all_connections:
+            add_wrapper(conn_ref())
+        if hasattr(self, "_local_conn"):
+            add_wrapper(getattr(self._local_conn, "conn", None))
+
+        closed_all = True
+        for conn in wrappers:
+            remaining = max(0.0, deadline - time.monotonic())
+            try:
+                closed_all = conn.close(remaining) and closed_all
+            except Exception:
+                closed_all = False
+
+        if not closed_all:
+            for conn in wrappers:
+                try:
+                    conn.cancel_close()
+                except Exception:
+                    pass
+            return False
+
+        self._connection_epoch += 1
+        self._connection = None
+        self._all_connections.clear()
+        if hasattr(self, "_local_conn"):
+            self._local_conn.conn = None
+        return True
+
+    def close(self, wait_seconds: float = 0.0) -> bool:
+        """Close the current generation within one shared deadline."""
         with self._conn_lock:
-            if self._connection:
-                try:
-                    self._connection.close()
-                except Exception:
-                    pass
-                self._connection = None
-            
-            for conn_ref in self._all_connections:
-                conn = conn_ref()
-                if conn is not None:
-                    try:
-                        conn.close()
-                    except Exception:
-                        pass
-            self._all_connections.clear()
-            
-            if hasattr(self, "_local_conn"):
-                try:
-                    if getattr(self._local_conn, "conn", None) is not None:
-                        self._local_conn.conn.close()
-                except Exception:
-                    pass
-                self._local_conn.conn = None
+            return self._close_locked(wait_seconds)
+
+    @contextlib.contextmanager
+    def quiesce(self, wait_seconds: float = 0.0):
+        """Hold the lifecycle barrier after draining all registered connections."""
+        with self._conn_lock:
+            yield self._close_locked(wait_seconds)
 
     def repair_database(self):
         """Repair a corrupted/malformed database out-of-place."""
@@ -387,6 +628,31 @@ class AnkimonDB:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)")
+
+            # Normalize base stats in the temp db during repair
+            try:
+                from ..functions.pokedex_functions import is_valid_base_stats, search_pokedex
+                cursor.execute("SELECT individual_id, data FROM captured_pokemon")
+                rows = cursor.fetchall()
+                updates = []
+                for row in rows:
+                    ind_id, obfuscated_data = row
+                    pokemon_data = self._deobfuscate(obfuscated_data)
+                    if not pokemon_data:
+                        continue
+                    
+                    base_stats = pokemon_data.get("base_stats")
+                    if not is_valid_base_stats(base_stats):
+                        base_stats = search_pokedex(pokemon_data.get("name", ""), "baseStats") or {}
+                        if is_valid_base_stats(base_stats):
+                            pokemon_data["base_stats"] = base_stats
+                            new_obfuscated = self._obfuscate(pokemon_data)
+                            updates.append((new_obfuscated, ind_id))
+                
+                if updates:
+                    cursor.executemany("UPDATE captured_pokemon SET data = ? WHERE individual_id = ?", updates)
+            except Exception as e:
+                self._log("error", f"Failed to normalize base_stats in repair: {e}")
             
             # Rebuild index and verify
             cursor.execute("REINDEX")
@@ -397,55 +663,61 @@ class AnkimonDB:
                 dest_conn.commit()
                 dest_conn.close()
                 
-                # Close all connections completely to drop locks
-                self.close()
-                
-                # Clean up existing corrupted backup
-                if backup_db.exists():
+                # Keep connection creation blocked until the repaired file is in
+                # place; otherwise a new raw handle can appear after close() but
+                # before either rename.
+                with self.quiesce(2.0) as closed:
+                    if not closed:
+                        raise RuntimeError(
+                            "Database repair aborted because active operations did not finish"
+                        )
+
+                    # Clean up existing corrupted backup
+                    if backup_db.exists():
+                        try:
+                            backup_db.unlink()
+                        except Exception:
+                            pass
                     try:
-                        backup_db.unlink()
+                        for attempt in range(3):
+                            try:
+                                db_file.replace(backup_db)
+                                break
+                            except Exception as e:
+                                if attempt == 2:
+                                    self._log("warning", f"Failed to backup corrupt database: {e}")
+                                    break
+                                time.sleep(0.1)
+                                gc.collect()
                     except Exception:
                         pass
-                try:
-                    for attempt in range(3):
-                        try:
-                            db_file.replace(backup_db)
-                            break
-                        except Exception as e:
-                            if attempt == 2:
-                                self._log("warning", f"Failed to backup corrupt database: {e}")
+
+                    # Swap in repaired file and clean WAL/SHM sidecars
+                    try:
+                        for attempt in range(3):
+                            try:
+                                tmp_db.replace(db_file)
                                 break
-                            time.sleep(0.1)
-                            gc.collect()
-                except Exception:
-                    pass
-                    
-                # Swap in repaired file and clean WAL/SHM sidecars
-                try:
-                    for attempt in range(3):
-                        try:
-                            tmp_db.replace(db_file)
-                            break
-                        except Exception:
-                            if attempt == 2:
-                                raise
-                            time.sleep(0.1)
-                            gc.collect()
-                    for sidecar in ("-wal", "-shm"):
-                        sidecar_file = db_file.with_name(db_file.name + sidecar)
-                        try:
-                            if sidecar_file.exists():
-                                sidecar_file.unlink()
-                        except Exception:
-                            pass
-                    self._log("info", "SQLite self-healing completed successfully! Database index repaired.")
-                except Exception as e:
-                    self._log("error", f"Failed to swap repaired database: {e}")
-                    if backup_db.exists() and not db_file.exists():
-                        try:
-                            backup_db.replace(db_file)
-                        except Exception:
-                            pass
+                            except Exception:
+                                if attempt == 2:
+                                    raise
+                                time.sleep(0.1)
+                                gc.collect()
+                        for sidecar in ("-wal", "-shm"):
+                            sidecar_file = db_file.with_name(db_file.name + sidecar)
+                            try:
+                                if sidecar_file.exists():
+                                    sidecar_file.unlink()
+                            except Exception:
+                                pass
+                        self._log("info", "SQLite self-healing completed successfully! Database index repaired.")
+                    except Exception as e:
+                        self._log("error", f"Failed to swap repaired database: {e}")
+                        if backup_db.exists() and not db_file.exists():
+                            try:
+                                backup_db.replace(db_file)
+                            except Exception:
+                                pass
             else:
                 dest_conn.rollback()
                 dest_conn.close()
@@ -465,16 +737,43 @@ class AnkimonDB:
             except Exception:
                 pass
 
-    def switch_database(self, db_filename: str):
-        """Close current connections and reopen against a different profile DB file.
+    def switch_database(self, db_filename: str, wait_seconds: float = 2.0) -> bool:
+        """Close the active profile and reopen against ``db_filename``.
 
-        The multi-profile / account-switch primitive (DB layer only). The
-        account-switch menu action that calls this is a deferred Stage-B leaf."""
-        self.close()
-        self.db_path = user_path / db_filename
-        self._connection = None
-        self._setup_database()
-        self._log("info", f"Switched database to {db_filename}")
+        Refuse to mutate ``db_path`` while any operation still holds a lease; a
+        partial switch can route one transaction's writes across two accounts.
+        """
+        old_path = self.db_path
+        with self.quiesce(wait_seconds) as closed:
+            if not closed:
+                raise RuntimeError(
+                    "Database switch aborted because active operations did not finish"
+                )
+
+            self.db_path = user_path / db_filename
+            self._connection = None
+            try:
+                self._setup_database()
+            except Exception:
+                self.db_path = old_path
+                self._connection = None
+                try:
+                    self._setup_database()
+                except Exception as restore_error:
+                    self._log(
+                        "error",
+                        f"Failed to restore previous database after switch error: {restore_error}",
+                    )
+                raise
+
+            self._log("info", f"Switched database to {db_filename}")
+
+        # Deliberately outside ``quiesce``: that holds ``_conn_lock`` for the whole
+        # block, and the sweep takes ``_pokedex_lock`` and *then* a connection
+        # (i.e. ``_conn_lock``). Running it in there would invert the order every
+        # mark_as_caught uses and could deadlock against a concurrent save.
+        self._reconcile_pokedex_history_safely()
+        return True
 
     # --- Obfuscation / De-obfuscation ---
 
@@ -652,6 +951,51 @@ class AnkimonDB:
 
         conn.commit()
         self._log("info", "AnkimonDB: Database schema initialized.")
+        try:
+            cursor.execute(
+                "SELECT value FROM metadata WHERE key = 'base_stats_normalized'"
+            )
+            marker = cursor.fetchone()
+            if marker is None or marker[0] != "true":
+                self._normalize_pokemon_base_stats()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO metadata (key, value) "
+                    "VALUES ('base_stats_normalized', 'true')"
+                )
+                conn.commit()
+        except Exception as e:
+            self._log("error", f"Failed to run base_stats normalization on startup: {e}")
+
+    def _normalize_pokemon_base_stats(self):
+        """Sweeps all captured pokemon to ensure base_stats is populated (for older databases)."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT individual_id, data FROM captured_pokemon")
+        rows = cursor.fetchall()
+        
+        from ..functions.pokedex_functions import is_valid_base_stats, search_pokedex
+        updates = []
+        for row in rows:
+            ind_id, obfuscated_data = row
+            pokemon_data = self._deobfuscate(obfuscated_data)
+            if not pokemon_data:
+                continue
+            
+            base_stats = pokemon_data.get("base_stats")
+
+            # If base_stats is completely missing or empty/lacking stat keys or invalid values
+            if not is_valid_base_stats(base_stats):
+                base_stats = search_pokedex(pokemon_data.get("name", ""), "baseStats") or {}
+                if is_valid_base_stats(base_stats):
+                    pokemon_data["base_stats"] = base_stats
+                    new_obfuscated = self._obfuscate(pokemon_data)
+                    updates.append((new_obfuscated, ind_id))
+
+        if updates:
+            self._log("info", f"Normalizing base_stats for {len(updates)} legacy pokemon records...")
+            cursor.executemany("UPDATE captured_pokemon SET data = ? WHERE individual_id = ?", updates)
+            conn.commit()
+            self._clear_reviewer_ownership_cache()
 
     # --- Captured Pokemon Operations ---
 
@@ -684,6 +1028,18 @@ class AnkimonDB:
             )
         conn.commit()
         self._clear_reviewer_ownership_cache()
+
+        # Automatically mark the pokemon as caught. The row is already committed,
+        # so a failure here must not fail the save -- but it is logged as an error
+        # (not a warning) because it means the Pokedex is now behind the
+        # collection until _reconcile_pokedex_history heals it on the next launch.
+        pokemon_id = pokemon_data.get("id")
+        if pokemon_id:
+            try:
+                self.mark_as_caught(int(pokemon_id))
+            except Exception as e:
+                self._log("error", f"Failed to mark saved pokemon as caught: {e}")
+
         return True
 
     def get_pokemon(self, individual_id: str) -> Optional[Dict[str, Any]]:
@@ -807,22 +1163,21 @@ class AnkimonDB:
         cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon WHERE shiny = 1")
         return cursor.fetchone()[0]
 
-    def execute(self, query: str, parameters: tuple = ()) -> sqlite3.Cursor:
-        """Executes a custom SQL query and returns the cursor. 
-        Useful for caller-specific fast-path queries without cluttering the manager."""
+    def execute(self, query: str, parameters: tuple = ()) -> "CursorWrapper":
+        """Execute custom SQL and return a lease-holding cursor wrapper."""
         try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(query, parameters)
-            return cursor
+            with self.lease_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, parameters)
+                return cursor
         except sqlite3.DatabaseError as e:
             if ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._is_repairing:
                 self.repair_database()
                 # Retry once after repair
-                conn = self._get_connection()
-                cursor = conn.cursor()
-                cursor.execute(query, parameters)
-                return cursor
+                with self.lease_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(query, parameters)
+                    return cursor
             raise e
 
     def get_pokemons_by_individual_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
@@ -866,6 +1221,17 @@ class AnkimonDB:
         )
         conn.commit()
         self._clear_reviewer_ownership_cache()
+
+        # Automatically mark the pokemon as caught (see save_pokemon: logged as an
+        # error because the Pokedex is left behind the collection until the next
+        # _reconcile_pokedex_history sweep).
+        pokemon_id = pokemon_data.get("id")
+        if pokemon_id:
+            try:
+                self.mark_as_caught(int(pokemon_id))
+            except Exception as e:
+                self._log("error", f"Failed to mark saved main pokemon as caught: {e}")
+
         return True
 
     def get_main_pokemon(self) -> Optional[Dict[str, Any]]:
@@ -1037,6 +1403,71 @@ class AnkimonDB:
         conn.commit()
         return new_qty
 
+    def consume_item(self, item_name: str, count: int = 1) -> bool:
+        """Spend ``count`` units of ``item_name``. Returns whether they were.
+
+        ``update_item_quantity`` cannot answer "did I actually pay for this?":
+        it reads the quantity and writes it back in two steps, and its return
+        value collapses "the row was gone" and "you just spent your last one"
+        into the same 0. A caller that hands out an effect on the strength of
+        that -- a heal, a revived fossil -- can hand it out for free.
+
+        The decrement here is one conditional statement, so the row cannot
+        change between the check and the write: sqlite reports through
+        ``rowcount`` whether the ``quantity >= count`` guard actually matched.
+        The follow-up DELETE only tidies an emptied row and is idempotent;
+        both share the one transaction below.
+
+        Roll back if the commit fails, mirroring ``ConnectionWrapper.__exit__``.
+        A failed commit -- the busy_timeout expiring under write contention,
+        a full disk -- does not necessarily end sqlite's transaction, so the
+        decrement stays pending on this thread's connection. Nobody is paid:
+        ``consume_item`` never returns True, so ``Check_Heal_Item`` refuses the
+        heal. But the next unrelated write on the same connection commits, and
+        the pending decrement rides along with it -- the potion is gone and the
+        HP was never granted, which is precisely the half of the invariant this
+        method exists to hold. ``with conn:`` would also roll back, but its
+        ``__enter__`` issues an explicit BEGIN (which collides with exactly the
+        still-open transaction at issue) and its ``__exit__`` commits the raw
+        connection, ignoring the ``_disable_commit`` opt-out that mobile sync's
+        bulk resolve relies on. Roll back here instead and re-raise: a lost
+        write must not read as success.
+        """
+        if count <= 0:
+            self._log("warning", f"Refusing to consume {count} of '{item_name}'.")
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE items SET quantity = quantity - ? "
+                "WHERE item_name = ? AND quantity >= ?",
+                (count, item_name, count)
+            )
+            consumed = cursor.rowcount == 1
+            if consumed:
+                cursor.execute(
+                    "DELETE FROM items WHERE item_name = ? AND quantity <= 0",
+                    (item_name,)
+                )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                # Nothing better to do: the original failure is the one the
+                # caller needs, and a connection too broken to roll back has
+                # no pending decrement anybody can accidentally commit.
+                pass
+            raise
+        if not consumed:
+            self._log(
+                "warning",
+                f"Item '{item_name}' could not be consumed: fewer than {count} in inventory."
+            )
+        return consumed
+
     # --- Badge Operations ---
 
     def save_badge(self, badge_id: str, badge_data: Dict[str, Any]):
@@ -1162,6 +1593,179 @@ class AnkimonDB:
                 return val
         return default
 
+    @staticmethod
+    def _coerce_pokedex_id_list(raw: Any) -> List[int]:
+        """Normalises a stored pokedex id list to plain ints.
+
+        Legacy stores (and hand-edited/corrupt data) can hold string ids such as
+        ``"25"`` alongside ints, or entries that are not ids at all. Without
+        normalising, ``25 not in ["25"]`` is True (so the id is appended a
+        second time) and the resulting mixed set breaks both the Ankidex's
+        ``seen - caught`` subtraction and profile_data's ``search_pokedex_by_id``
+        lookup. Unhashable/garbage entries are dropped rather than allowed to
+        raise out of the getters.
+        """
+        if not isinstance(raw, list):
+            return []
+        ids: List[int] = []
+        for entry in raw:
+            try:
+                ids.append(int(entry))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    def _append_pokedex_ids(self, additions: Dict[str, Iterable[Any]]) -> Dict[str, int]:
+        """Append ids to the pokedex ``user_data`` lists in ONE transaction.
+
+        ``additions`` maps ``"pokedex_caught"`` / ``"pokedex_seen"`` to the ids
+        to record. Every key is read, merged and rewritten on the same
+        connection and committed exactly once, so the two lists cannot diverge:
+        either both land or neither does. Driving them through two
+        ``set_user_data`` calls instead (a commit each) can persist a caught id
+        whose matching seen id was lost to whatever failed in between — a disk
+        error, the busy-timeout expiring under write contention, or the process
+        going away — leaving the Ankidex with a species it counts as caught but
+        never saw, and no way to tell that happened.
+
+        The commit goes through the ConnectionWrapper rather than the raw
+        sqlite3 handle so a bulk mobile "Resolve All" (which sets
+        ``_disable_commit`` and holds one long write transaction) still folds
+        these writes into its outer transaction and rolls them back with it.
+
+        Callers must hold ``self._pokedex_lock``. Returns the number of ids
+        newly added per key.
+        """
+        conn = self._get_connection()
+        pending: List[tuple] = []
+        added: Dict[str, int] = {}
+
+        for key, ids in additions.items():
+            # De-duplicated on the way out as well as in: a list that a legacy
+            # write left holding "25" alongside 25 is stored back normalised
+            # once we have a reason to rewrite it.
+            known: set = set()
+            stored: List[int] = []
+            for pokemon_id in self._coerce_pokedex_id_list(self.get_user_data(key, [])):
+                if pokemon_id not in known:
+                    known.add(pokemon_id)
+                    stored.append(pokemon_id)
+
+            new_ids: List[int] = []
+            for raw_id in ids:
+                try:
+                    pokemon_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if pokemon_id not in known:
+                    known.add(pokemon_id)
+                    new_ids.append(pokemon_id)
+
+            added[key] = len(new_ids)
+            if new_ids:
+                pending.append((key, json.dumps(stored + new_ids)))
+
+        if pending:
+            with conn.cursor() as cursor:
+                cursor.executemany(
+                    "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
+                    pending,
+                )
+            conn.commit()
+        return added
+
+    def mark_as_caught(self, pokemon_id: int):
+        """Marks a pokemon as caught (and seen) in the pokedex history.
+
+        Raises if the write fails — callers on a save path swallow and log that,
+        but the failure must be visible rather than reported as a success.
+        """
+        try:
+            pokemon_id = int(pokemon_id)
+        except (TypeError, ValueError):
+            self._log("warning", f"Ignoring non-numeric pokedex id: {pokemon_id!r}")
+            return
+
+        # Both lists are rewritten wholesale, so hold the lock across the whole
+        # read-modify-write (save_pokemon also runs on the mobile-sync thread).
+        # Catching implies seeing, so both are recorded in the same transaction.
+        with self._pokedex_lock:
+            self._append_pokedex_ids(
+                {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
+            )
+
+    def _reconcile_pokedex_history_safely(self):
+        """``_reconcile_pokedex_history`` that can never stop the DB from opening."""
+        try:
+            self._reconcile_pokedex_history()
+        except Exception as e:
+            self._log("error", f"Failed to reconcile pokedex history: {e}")
+
+    def _reconcile_pokedex_history(self):
+        """Heal the caught/seen lists from the Pokemon the DB still knows about.
+
+        ``mark_as_caught`` is best-effort at every call site — ``save_pokemon``
+        and the evolution window log a failure and carry on rather than fail the
+        catch — so one locked or failed write would otherwise drop a species
+        from the Ankidex permanently once its ``captured_pokemon`` row is
+        overwritten by an evolution. This idempotent startup sweep re-derives
+        the lists from the rows that are still authoritative (every owned
+        Pokemon, plus every released one in ``pokemon_history``), so a missed
+        mark heals on the next launch instead of becoming silent data loss.
+
+        It doubles as the backfill for databases written before the caught list
+        existed: those start empty, and without this the list only ever covers
+        Pokemon saved after the upgrade.
+        """
+        ids: set = set()
+
+        try:
+            cursor = self.execute(
+                "SELECT DISTINCT pokedex_id FROM captured_pokemon "
+                "WHERE pokedex_id IS NOT NULL"
+            )
+            ids.update(
+                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
+            )
+        except Exception as e:
+            self._log("warning", f"Pokedex reconcile: could not read captured_pokemon: {e}")
+
+        # Released Pokemon: still caught for Pokedex purposes. Wrapped separately
+        # so an older DB without pokemon_history still reconciles the owned rows.
+        try:
+            cursor = self.execute(
+                "SELECT DISTINCT json_extract(data, '$.id') FROM pokemon_history"
+            )
+            ids.update(
+                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
+            )
+        except Exception as e:
+            self._log("warning", f"Pokedex reconcile: could not read pokemon_history: {e}")
+
+        if not ids:
+            return
+
+        sorted_ids = sorted(ids)
+        with self._pokedex_lock:
+            added = self._append_pokedex_ids(
+                {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
+            )
+        if any(added.values()):
+            self._log(
+                "info",
+                "Pokedex history reconciled from stored Pokemon: "
+                f"+{added.get('pokedex_caught', 0)} caught, "
+                f"+{added.get('pokedex_seen', 0)} seen.",
+            )
+
+    def get_caught_ids(self) -> set[int]:
+        """Returns a set of all pokemon IDs explicitly marked as caught."""
+        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", [])))
+
+    def get_seen_ids(self) -> set[int]:
+        """Returns a set of all pokemon IDs marked as seen."""
+        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_seen", [])))
+
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
         cursor = self.execute("SELECT key, value FROM user_data")
@@ -1174,6 +1778,53 @@ class AnkimonDB:
             except:
                 result[key] = val
         return result
+
+    def migrate_user_data_to_config(self, key_map: Dict[str, str]) -> Dict[str, str]:
+        """Move legacy ``user_data`` values into empty config keys atomically.
+
+        Existing config values always win. Legacy rows are retired only in the
+        same transaction that persists any missing replacements, so a failed
+        config write cannot destroy the user's original value.
+        """
+        migrated: Dict[str, str] = {}
+        conn = self._get_connection()
+        with conn:
+            with conn.cursor() as cursor:
+                for legacy_key, config_key in key_map.items():
+                    cursor.execute(
+                        "SELECT value FROM user_data WHERE key = ?", (legacy_key,)
+                    )
+                    legacy_row = cursor.fetchone()
+                    legacy_value = (
+                        ""
+                        if legacy_row is None or legacy_row["value"] is None
+                        else str(legacy_row["value"])
+                    )
+
+                    cursor.execute(
+                        "SELECT value FROM config WHERE key = ?", (config_key,)
+                    )
+                    config_row = cursor.fetchone()
+                    config_value = (
+                        ""
+                        if config_row is None or config_row["value"] is None
+                        else str(config_row["value"])
+                    )
+
+                    if not config_value and legacy_value:
+                        cursor.execute(
+                            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                            (config_key, legacy_value),
+                        )
+                        config_value = legacy_value
+                        migrated[config_key] = legacy_value
+
+                    if legacy_value and config_value:
+                        cursor.execute(
+                            "DELETE FROM user_data WHERE key = ?", (legacy_key,)
+                        )
+
+        return migrated
 
     # --- Config Operations (replaces config.obf) ---
 
@@ -1240,6 +1891,15 @@ class AnkimonDB:
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
             (key, str_value),
         )
+        conn.commit()
+        return True
+
+    def delete_config_value(self, key: str) -> bool:
+        """Removes a single config key. Settings migrations need this:
+        save_all_config only upserts, so a renamed key's old row would otherwise
+        outlive every save and be read back on the next load."""
+        conn = self._get_connection()
+        conn.execute("DELETE FROM config WHERE key = ?", (key,))
         conn.commit()
         return True
 

@@ -26,6 +26,28 @@ DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
 # updater out (older versions predate it), so pre-2.0 versions are filtered from
 # the release/tag pickers — going back would break the update feature itself.
 MIN_UPDATER_VERSION = (2, 0)
+# Refs that may be interpolated into an API path. Tags are version-shaped and
+# always match; branch names often do not (``add/foo``, ``agent/bar``), and are
+# deliberately refused rather than requested — the branch paths resolve a commit
+# SHA first, so rejecting the name only costs an undated install, never a wrong one.
+_SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def _is_safe_ref(ref: Optional[str]) -> bool:
+    """Whether ``ref`` may be interpolated into an API path.
+
+    The character class above still admits the dot segments ``.`` and ``..``,
+    which a URL normaliser resolves away *before* the request is sent — so
+    ``commits/..`` would address the repo endpoint rather than a commit. No real
+    Git ref can contain either (``git check-ref-format`` rejects a component
+    starting with ``.`` and any ``..``), so refusing them costs nothing and lets
+    the guard actually mean what it says: anything not plainly a ref fails
+    closed, and the install goes undated rather than mis-dated.
+    """
+    if not ref or not _SAFE_REF_RE.match(ref):
+        return False
+    return not ref.startswith(".") and ".." not in ref
+
 
 # Auto-update channels (user-selectable in the update dialog). "stable" and
 # "experimental" are release channels told apart by the tag suffix — an
@@ -318,6 +340,8 @@ def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
         "user_files/ankimon.db",
         "user_files/ankimonDEV.db",
         "user_files/update_state.json",
+        "user_files/sprites_update_state.json",
+        "user_files/sprites_local_manifest.json",
     ]
     for p in always_preserve:
         p = p.rstrip("/")
@@ -346,6 +370,9 @@ def fetch_releases() -> list[dict]:
             "name": r["tag_name"],
             "body": r.get("body", ""),
             "zipball_url": r["zipball_url"],
+            # When the release went public, which is the timestamp AnkiWeb's own
+            # listing is compared against. Not the same as the tag's commit date.
+            "published_at": r.get("published_at") or r.get("created_at"),
         }
         for r in data
         if _is_supported_version(r["tag_name"])
@@ -381,16 +408,35 @@ def fetch_branch_sha(branch: str) -> Optional[str]:
     return None
 
 
-def fetch_commit_date(sha: str) -> Optional[str]:
-    if not sha or len(sha) < 7 or not all(c in "0123456789abcdefABCDEF" for c in sha):
+def fetch_ref_date(ref: str) -> Optional[str]:
+    """Committer date (ISO 8601) of whatever ``ref`` resolves to — SHA or tag.
+
+    Deliberately narrow about what it will put in a URL: the tags and branches
+    the pickers offer are version-shaped, so anything stranger fails closed
+    (no date, hence no timestamp stamped) rather than being sent to the API.
+    """
+    if not _is_safe_ref(ref):
         return None
-    data = _api_get(f"commits/{sha}")
+    data = _api_get(f"commits/{ref}")
     commit = data.get("commit") if isinstance(data, dict) else None
     if isinstance(commit, dict):
         committer = commit.get("committer") or {}
         author = commit.get("author") or {}
         return committer.get("date") or author.get("date")
     return None
+
+
+def fetch_commit_date(sha: str) -> Optional[str]:
+    """Committer date (ISO 8601) of a commit SHA, or None.
+
+    Narrower than ``fetch_ref_date``: the argument must look like a SHA (hex,
+    at least the 7 characters GitHub's short form uses), so a branch or tag name
+    is refused here even though the endpoint would accept it. Callers that hold
+    a name rather than a SHA want ``fetch_ref_date``.
+    """
+    if not sha or len(sha) < 7 or not all(c in "0123456789abcdefABCDEF" for c in sha):
+        return None
+    return fetch_ref_date(sha)
 
 
 def fetch_branch_commits(branch: str, local_sha: Optional[str] = None) -> list[dict]:
@@ -421,6 +467,171 @@ def fetch_branch_commits(branch: str, local_sha: Optional[str] = None) -> list[d
 
 def get_update_state_path() -> Path:
     return addon_dir / "user_files" / "update_state.json"
+
+
+def get_meta_json_path() -> Path:
+    """Anki's metadata file for this add-on.
+
+    Anki's, not ours — it also holds ``config``, ``disabled`` and the rest, so
+    anything writing here edits only the key it owns. Indirected through a
+    function so tests can point it at a temp directory.
+    """
+    return addon_dir / "meta.json"
+
+
+def _write_json_atomic(path: Path, data: dict) -> None:
+    """Write ``data`` as JSON via temp file + ``os.replace``.
+
+    meta.json belongs to Anki, and a half-written file makes ``addonMeta()``
+    fall back to an empty dict, silently discarding ``config``, ``disabled`` and
+    ``mod``. Anki's own writer (``AddonManager.writeAddonMeta``) is a plain
+    truncating ``open(..., "w")``, so a crash mid-write can do exactly that;
+    replacing the file in one step means a reader sees either the old metadata
+    or the new one.
+    """
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+        raise
+
+
+def _parse_iso8601(value: Optional[str]) -> Optional[int]:
+    """GitHub's ``2026-08-08T11:02:30Z`` as epoch seconds, or None."""
+    if not value:
+        return None
+    try:
+        from datetime import datetime, timezone
+
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+        return int(parsed.replace(tzinfo=timezone.utc).timestamp())
+    except Exception:
+        return None
+
+
+def resolve_build_mtime(
+    source_type: Optional[str],
+    source_name: Optional[str],
+    commit_sha: Optional[str],
+    published_at: Optional[str] = None,
+) -> Optional[int]:
+    """Epoch seconds describing the build about to be installed.
+
+    A release — or a tag naming one — is dated by when that release went public,
+    because that is the timestamp AnkiWeb's listing is compared against. The
+    tag's own commit is typically minutes older, and under the AnkiWeb-first
+    release order that gap is enough for the AnkiWeb upload to land in between,
+    which would re-offer the identical version as an "update".
+
+    Anything else is dated by the commit it was built from, and *that* value is
+    capped at the present: a commit dated in the future (a skewed clock, or a
+    crafted committer date on a PR build) would otherwise be written to ``mod``
+    and, because the stamp never moves backwards, suppress AnkiWeb updates until
+    that date arrived. The cap is deliberately not applied to ``published_at`` —
+    that comes from GitHub's clock, not the committer's, so capping it against a
+    slow local clock could only corrupt a value that was already correct.
+
+    None means "could not tell", and the caller leaves ``mod`` alone.
+    """
+    import time
+
+    if source_type in ("release", "tag"):
+        published = _parse_iso8601(published_at)
+        if published:
+            return published
+    # commit_sha and source_name are the same string on the release and tag
+    # paths, so dedupe rather than repeat a request that already failed.
+    for ref in dict.fromkeys(r for r in (commit_sha, source_name) if r):
+        resolved = _parse_iso8601(fetch_ref_date(ref))
+        if resolved:
+            return min(resolved, int(time.time()))
+    return None
+
+
+def published_at_for_tag(tag: str, releases: list) -> Optional[str]:
+    """The publish date of the release this tag names, if we already have it.
+
+    Every tag the picker offers names a published release and installs
+    byte-identical code, so a tag install should be dated exactly like the
+    equivalent release install. Returns None when the tag names no release we
+    know about, and the caller falls back to the tag's commit date.
+    """
+    if not tag or not releases:
+        return None
+    for release in releases:
+        if isinstance(release, dict) and release.get("name") == tag:
+            return release.get("published_at")
+    return None
+
+
+def stamp_addon_mod(timestamp: int) -> bool:
+    """Record ``timestamp`` as meta.json's ``mod`` — the field Anki dates the
+    installed build by. Returns whether anything was written.
+
+    **Call this on Anki's main thread only.** meta.json is Anki's file, not
+    ours: ``writeConfig``, ``toggleEnabled`` and ``write_addon_meta`` all
+    read-modify-write the whole dict, and all of them run on the main thread.
+    This function does the same read-modify-write, so running it from the
+    updater worker would race them — the worker's snapshot, taken before a
+    concurrent ``config`` write, would be replaced over the top of that write
+    and silently revert it. Atomic replacement prevents a *torn* file; it does
+    nothing about a *stale* one. Being on the main thread is what makes the
+    read and the write one indivisible step relative to Anki's own. That is why
+    ``apply_update`` resolves the timestamp in the worker but hands it back for
+    the ``QueryOp`` success callback to stamp.
+
+    Anki's ``AddonManager.write_addon_meta`` is the obvious alternative and is
+    deliberately not used: it re-derives ``disabled``, ``conflicts``,
+    ``min_point_version``, ``max_point_version``, ``branch_index`` and
+    ``update_enabled`` from an ``AddonMeta`` dataclass, so it rewrites six
+    fields we have no business touching, and it writes non-atomically. Editing
+    the single key we own, atomically, on the same thread Anki writes from is
+    strictly narrower.
+
+    Anki decides an add-on is out of date with ``installed_at >= server_mtime``,
+    where ``installed_at`` is this key (``AddonMeta.is_latest``). Only
+    ``AddonManager.install()`` ever writes it, and the in-app updater bypasses
+    that machinery entirely — so left alone the value keeps describing whichever
+    build Anki last installed, and AnkiWeb's copy looks newer than a GitHub
+    build that is in fact ahead of it. That is the accidental-downgrade prompt.
+
+    Never moves ``mod`` backwards. Note what that does and does not buy: since
+    Anki compares ``installed_at >= server_mtime``, a *lower* ``mod`` is what
+    surfaces an AnkiWeb build, so refusing to lower it means a deliberate
+    downgrade keeps the build the user chose instead of having AnkiWeb's silently
+    offered back over the top. It also makes the stamp monotonic, so introducing
+    it can never leave a user worse off than the un-stamped behaviour they have
+    today. A meta.json that Anki did not create is left alone, as is one that no
+    longer parses as a JSON object.
+    """
+    try:
+        if not timestamp or timestamp <= 0:
+            return False
+        path = get_meta_json_path()
+        if not path.exists():
+            # No meta.json means Anki is not managing this install (git clone,
+            # hand-unzipped copy); inventing one would fabricate metadata.
+            return False
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        if not isinstance(data, dict):
+            return False
+        current = data.get("mod")
+        if isinstance(current, (int, float)) and timestamp <= current:
+            return False
+        data["mod"] = int(timestamp)
+        _write_json_atomic(path, data)
+        return True
+    except Exception as e:
+        print(f"Ankimon Updater: Failed to stamp meta.json mod: {e}")
+        return False
 
 
 def save_update_state(
@@ -549,6 +760,8 @@ def _get_gitignore_patterns() -> list[str]:
             "user_files/ankimon.db",
             "user_files/json/*",
             "user_files/sprites/",
+            "user_files/sprites_update_state.json",
+            "user_files/sprites_local_manifest.json",
             "meta.json",
             "*.pyc",
             "*.log",
@@ -665,8 +878,19 @@ def apply_update(
     source_type: Optional[str] = None,
     source_name: Optional[str] = None,
     commit_sha: Optional[str] = None,
+    published_at: Optional[str] = None,
     status_cb=None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, Optional[int]]:
+    """Install the downloaded build. Runs in the updater's ``QueryOp`` worker.
+
+    Returns ``(ok, message, pending_mod)``. ``pending_mod`` is the epoch second
+    the install should be dated by, for the caller to pass to
+    ``stamp_addon_mod`` *from the main thread* — see that function for why the
+    write cannot happen here. It is None whenever nothing should be stamped:
+    a failed or rolled-back install, or a build date that could not be
+    resolved.
+    """
+
     def log(msg):
         if status_cb:
             status_cb(msg)
@@ -684,11 +908,15 @@ def apply_update(
     # above addon_dir and is untouched, but the checkout is still clobbered.)
     if is_git_clone():
         cleanup()
-        return False, (
-            "Detected a git checkout of Ankimon. The in-app updater overwrites "
-            "the addon's files in place and would clobber your working tree "
-            "(you'd lose uncommitted changes). Update your clone with 'git pull' "
-            "instead."
+        return (
+            False,
+            (
+                "Detected a git checkout of Ankimon. The in-app updater overwrites "
+                "the addon's files in place and would clobber your working tree "
+                "(you'd lose uncommitted changes). Update your clone with 'git pull' "
+                "instead."
+            ),
+            None,
         )
 
     log("Fetching latest .gitignore from main...")
@@ -700,11 +928,11 @@ def apply_update(
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
             if not names:
-                return False, "ZIP archive is empty."
+                return False, "ZIP archive is empty.", None
 
             src_prefix = _find_src_prefix(names)
             if not src_prefix:
-                return False, "Could not find src/Ankimon/ in the archive."
+                return False, "Could not find src/Ankimon/ in the archive.", None
 
             new_files = {}
             for name in names:
@@ -718,7 +946,7 @@ def apply_update(
                 new_files[rel_path] = name
 
             if not new_files:
-                return False, "No addon files found in the archive."
+                return False, "No addon files found in the archive.", None
 
             log(f"Archive validated: {len(new_files)} files to install.")
 
@@ -795,7 +1023,34 @@ def apply_update(
             except Exception:
                 pass
 
-            return True, "Update applied successfully. Please restart Anki."
+            # Work out the date to stamp meta.json with, so Anki stops treating
+            # whichever build it last installed as the newer copy. Resolving it
+            # needs the network, which is why it happens here in the worker; the
+            # write itself does not happen here at all — it is handed back for
+            # the caller's main-thread success callback, because meta.json is
+            # Anki's file and Anki read-modify-writes it from the main thread.
+            # See stamp_addon_mod for the full argument.
+            #
+            # Deliberately resolved last, after every statement that could still
+            # raise into the rollback handler below, and returned only on this
+            # success path. A rolled-back install must report None: stamping a
+            # restored old build as the new one would make Anki believe the
+            # rollback is current and suppress the very update that repairs it.
+            # The lookup is guarded separately so a GitHub hiccup cannot fail an
+            # install that has already finished.
+            pending_mod = None
+            try:
+                pending_mod = resolve_build_mtime(
+                    source_type, source_name, commit_sha, published_at
+                )
+            except Exception as e:
+                print(f"Ankimon Updater: Could not date the install: {e}")
+
+            return (
+                True,
+                "Update applied successfully. Please restart Anki.",
+                pending_mod,
+            )
 
     except Exception as e:
         # --- Rollback ---
@@ -821,4 +1076,4 @@ def apply_update(
                 pass
 
         cleanup()
-        return False, f"Update failed and was rolled back: {e}"
+        return False, f"Update failed and was rolled back: {e}", None

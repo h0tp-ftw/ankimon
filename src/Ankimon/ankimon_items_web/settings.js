@@ -7,6 +7,7 @@
     const state = {
         data: null,           // raw payload from Python
         edits: {},            // key → new value (only present if dirty)
+        explicitHudOverrides: new Set(),
         search: '',
         activeGroup: null,    // currently scrolled-into-view group label
     };
@@ -14,6 +15,17 @@
     let bridge = null;
     let nav = null;
     let unsavedGuardOpen = false;
+
+    const HUD_TOGGLE_AUTO_SYNC_KEYS = [
+        'gui.hud_player_sprite',
+        'gui.hud_enemy_sprite',
+        'gui.hud_xp_bar',
+        'gui.hud_hp_bars',
+        'gui.hud_status_badge',
+        'gui.hud_owned_indicator',
+        'gui.hud_enemy_shiny_indicator',
+        'gui.hud_player_shiny_indicator',
+    ];
 
     function initChannel(cb) {
         if (typeof qt === 'undefined' || !qt.webChannelTransport) {
@@ -33,6 +45,7 @@
     window.initializeSettings = function (data) {
         state.data = data || {groups: []};
         state.edits = {};  // fresh data resets dirty state
+        state.explicitHudOverrides.clear();
         renderAll();
     };
 
@@ -173,9 +186,43 @@
                 return buildChipGroup(setting);
             case 'wishlist':
                 return buildWishlistControl(setting);
+            case 'password':
+                return buildPasswordInput(setting);
             default:
                 return buildTextInput(setting);
         }
+    }
+
+    /**
+     * Builds a password input field for sensitive credential settings.
+     *
+     * Creates a masked input field with placeholder text and change tracking.
+     *
+     * @param {Object} setting - The setting configuration object.
+     * @returns {HTMLElement} The password input element.
+     */
+    function buildPasswordInput(setting) {
+        const input = document.createElement('input');
+        const savedPlaceholder = setting.secret_placeholder || '';
+        input.type = 'password';
+        input.className = 'setting-input';
+        input.value = currentValue(setting) ?? '';
+        input.placeholder = setting.secret_configured
+            ? 'API key saved — type to replace it'
+            : 'Enter your API key';
+        input.autocomplete = 'new-password';
+        input.spellcheck = false;
+        input.addEventListener('focus', () => {
+            if (setting.secret_configured && input.value === savedPlaceholder) {
+                input.select();
+            }
+        });
+        input.addEventListener('input', () => {
+            setEdit(setting.key, input.value);
+            updateDirtyUI();
+            markRowDirty(setting.key);
+        });
+        return input;
     }
 
     function buildWishlistControl(setting) {
@@ -539,12 +586,40 @@
             btn.className = 'setting-toggle-option' + (isOn ? ' active' : '') + (i === 1 ? ' off' : '');
             btn.textContent = label;
             btn.addEventListener('click', () => {
-                setEdit(setting.key, i === 0);
+                const nextValue = i === 0;
+                if (setting.key === 'gui.show_sprites_across_ankimon') {
+                    // A new master-toggle action starts a new sync transaction.
+                    // HUD choices only count as overrides when the user reselects
+                    // them after this automatic synchronization.
+                    state.explicitHudOverrides.clear();
+                    setEdit(setting.key, nextValue);
+                    syncHudTogglesForSpriteVisibility();
+                } else {
+                    if (HUD_TOGGLE_AUTO_SYNC_KEYS.includes(setting.key)) {
+                        state.explicitHudOverrides.add(setting.key);
+                    }
+                    setEdit(setting.key, nextValue);
+                }
                 renderAll();  // refresh control + dirty pip
             });
             wrap.appendChild(btn);
         });
         return wrap;
+    }
+
+    function syncHudTogglesForSpriteVisibility() {
+        const mainKey = 'gui.show_sprites_across_ankimon';
+        const mainValue = getSettingValue(mainKey);
+        if (mainValue === undefined) return;
+
+        HUD_TOGGLE_AUTO_SYNC_KEYS.forEach((key) => {
+            if (getSettingValue(key) !== mainValue) {
+                // Programmatic synchronization changes dirty state but must not
+                // mark the HUD key as an explicit user override. setEdit also
+                // correctly removes the edit if sync restores the saved value.
+                setEdit(key, mainValue);
+            }
+        });
     }
 
     function buildSelect(setting) {
@@ -623,14 +698,32 @@
         for (const g of (state.data.groups || [])) {
             for (const s of (g.settings || [])) {
                 if (s.key === key) return s;
+                if (s.type === 'chips') {
+                    for (const chip of (s.chips || [])) {
+                        if (chip.key === key) return chip;
+                    }
+                }
             }
             for (const sub of (g.subgroups || [])) {
                 for (const s of (sub.settings || [])) {
                     if (s.key === key) return s;
+                    if (s.type === 'chips') {
+                        for (const chip of (s.chips || [])) {
+                            if (chip.key === key) return chip;
+                        }
+                    }
                 }
             }
         }
         return null;
+    }
+
+    function getSettingValue(key) {
+        if (Object.prototype.hasOwnProperty.call(state.edits, key)) {
+            return state.edits[key];
+        }
+        const setting = findSetting(key);
+        return setting ? setting.value : undefined;
     }
 
     function deepEqual(a, b) {
@@ -710,8 +803,12 @@
         // callers like the unsaved-changes guard can chain navigation.
         const done = typeof onDone === 'function' ? onDone : null;
         if (!bridge) { if (done) done(); return; }
-        const payload = {...state.edits};
-        if (Object.keys(payload).length === 0) { if (done) done(); return; }
+        const edits = {...state.edits};
+        if (Object.keys(edits).length === 0) { if (done) done(); return; }
+        const payload = {
+            values: edits,
+            explicit_hud_overrides: Array.from(state.explicitHudOverrides),
+        };
         // Stringify so the bridge sees a stable `str` parameter — see the
         // SettingsBridge.saveSettings comment for why we avoid passing the
         // dict directly through QVariant.
@@ -795,6 +892,7 @@
         discardBtn.textContent = 'Discard & Leave';
         discardBtn.addEventListener('click', () => {
             state.edits = {};
+            state.explicitHudOverrides.clear();
             renderAll();
             close();
             proceed();
@@ -824,6 +922,7 @@
     function onDiscard() {
         if (Object.keys(state.edits).length === 0) return;
         state.edits = {};
+        state.explicitHudOverrides.clear();
         renderAll();
         showToast('Changes discarded');
     }

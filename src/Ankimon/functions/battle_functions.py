@@ -612,6 +612,10 @@ def validate_pokemon_status(pokemon):
     if hasattr(pokemon, "hp") and pokemon.hp <= 0 and current_status != "fainted":
         return "fainted"
 
+    # If Pokemon has HP > 0 but status is fainted, revert to fighting
+    if hasattr(pokemon, "hp") and pokemon.hp > 0 and current_status == "fainted":
+        return "fighting"
+
     return current_status
 
 
@@ -765,7 +769,5 @@ def calculate_hp(base_stat_hp, level, ev, iv):
     ev_value = ev["hp"] / 4
     iv_value = iv["hp"]
     # hp = int(((iv + 2 * (base_stat_hp + ev) + 100) * level) / 100 + 10)
-    hp = int(
-        ((((2 * base_stat_hp) + iv_value + ev_value) * level) / 100) + level + 10
-    )
+    hp = int(((((2 * base_stat_hp) + iv_value + ev_value) * level) / 100) + level + 10)
     return hp

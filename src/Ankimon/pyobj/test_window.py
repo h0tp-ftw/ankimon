@@ -51,6 +51,7 @@ from .error_handler import show_warning_with_traceback
 from ..business import (
     calculate_present_power,
     format_compact_number,
+    resize_pixmap_img,
     type_compatibility_multiplier,
 )
 
@@ -125,6 +126,12 @@ class TestWindow(QWidget):
         layout = self.layout()
         self.clear_layout(layout)
 
+        # The battle scene is a full-bleed backdrop, not a widget on a page, so
+        # the layout keeps no contents margins: QVBoxLayout's default 11px inset
+        # left only 534px for a 556px-wide scene, silently cropping 11px off
+        # each side (the window is sized to the scene, see setFixedWidth below).
+        layout.setContentsMargins(0, 0, 0, 0)
+
         # Main label that will persist and show everything (Logo, Battle, Death)
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -153,7 +160,15 @@ class TestWindow(QWidget):
         self.setStyleSheet("background-color: rgb(44,44,44);")
         self._reset_window_title()
         self.setWindowIcon(QIcon(str(icon_path)))
-        self.setFixedSize(556, 300)
+        # Pin the width to the battle scenes' own width (the art is 556x371 with
+        # the dialog box, 555x258 without) and let the layout own the height.
+        # A fixed 556x300 cropped every view: the scene with its dialog box needs
+        # 371, so the message bar at its foot was cut off, and the death screen
+        # needs 297 for the pokedex card plus the catch/defeat row. Heights vary
+        # per view, and Qt only ever raises a shown top-level window's minimum,
+        # so the window grows to whichever view needs the most and then holds
+        # steady — no per-view resize flicker.
+        self.setFixedWidth(556)
 
     def open_dynamic_window(self):
         # Create and show the dynamic window
@@ -363,6 +378,26 @@ class TestWindow(QWidget):
 
         return image_label
 
+    def _load_sprite(self, pokemon, side):
+        """Load a Pokémon's sprite, falling back to the substitute.
+
+        ``QPixmap.load`` reports failure by *returning False*, not by raising,
+        so the ``try/except`` this replaces never fired: a sprite the user
+        never downloaded left a null pixmap behind and the window died in the
+        aspect-ratio maths (issue #101). Check the return value instead.
+
+        ``get_sprite_path`` stays inside the ``try`` so a raising lookup still
+        reaches the substitute, exactly as before.
+        """
+        pixmap = QPixmap()
+        try:
+            loaded = pixmap.load(str(pokemon.get_sprite_path(side, "png")))
+        except Exception:
+            loaded = False
+        if not loaded:
+            pixmap.load(str(self.default_path))
+        return pixmap
+
     def window_show(self, bckgimage_path, lang_name):
         ui_path = battle_ui_path
 
@@ -375,38 +410,19 @@ class TestWindow(QWidget):
 
         # Display the Pokémon image
         image_label = QLabel()
-        pixmap = QPixmap()
-
-        try:
-            pixmap.load(str(self.enemy_pokemon.get_sprite_path("front", "png")))
-        except:
-            pixmap.load(str(self.default_path))
+        pixmap = self._load_sprite(self.enemy_pokemon, "front")
 
         # Display the Main Pokémon image
-        pixmap2 = QPixmap()
+        pixmap2 = self._load_sprite(self.main_pokemon, "back")
 
-        try:
-            pixmap2.load(str(self.main_pokemon.get_sprite_path("back", "png")))
-        except:
-            pixmap2.load(str(self.default_path))
+        # Scale both to a fixed width, keeping the aspect ratio. Reading the
+        # dimensions back off the scaled pixmaps keeps the draw offsets correct
+        # even when a sprite is missing and cannot be scaled at all.
+        pixmap = resize_pixmap_img(pixmap, 150)
+        pixmap2 = resize_pixmap_img(pixmap2, 150)
 
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 150
-        original_width = pixmap.width()
-        original_height = pixmap.height()
-        new_width = max_width
-        new_height = (original_height * max_width) // original_width
-
-        pixmap = pixmap.scaled(new_width, new_height)
-
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 150
-        original_width2 = pixmap2.width()
-        original_height2 = pixmap2.height()
-        new_width2 = max_width
-        new_height2 = (original_height2 * max_width) // original_width2
-
-        pixmap2 = pixmap2.scaled(new_width2, new_height2)
+        new_width, new_height = pixmap.width(), pixmap.height()
+        new_width2, new_height2 = pixmap2.width(), pixmap2.height()
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -425,12 +441,19 @@ class TestWindow(QWidget):
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
 
+        enemy_hp, enemy_max_hp = self._safe_hp_pair(
+            self.enemy_pokemon.hp, self.enemy_pokemon.max_hp
+        )
+        main_hp, main_max_hp = self._safe_hp_pair(
+            self.main_pokemon.hp, self.main_pokemon.max_hp
+        )
+
         painter = self.draw_hp_bar(
-            118, 76, 8, 116, self.enemy_pokemon.hp, self.enemy_pokemon.max_hp, painter
+            118, 76, 8, 116, enemy_hp, enemy_max_hp, painter
         )  # enemy pokemon hp_bar
 
         painter = self.draw_hp_bar(
-            401, 208, 8, 116, self.main_pokemon.hp, self.main_pokemon.max_hp, painter
+            401, 208, 8, 116, main_hp, main_max_hp, painter
         )  # main pokemon hp_bar
 
         painter.drawPixmap(0, 0, pixmap_ui)
@@ -455,7 +478,12 @@ class TestWindow(QWidget):
         )
 
         mainxp_bar_width = 5
-        mainpokemon_xp_value = int(((self.main_pokemon.xp or 0) / experience) * 148)
+        # Guard the divisor: a 0 out of the exp-table lookup would take the
+        # whole render down with a ZeroDivisionError, so draw an empty bar
+        # instead (issue #101).
+        mainpokemon_xp_value = (
+            int(((self.main_pokemon.xp or 0) / experience) * 148) if experience else 0
+        )
 
         # Paint XP Bar
         painter.setBrush(QColor(58, 155, 220))
@@ -498,13 +526,11 @@ class TestWindow(QWidget):
         # painter.drawText(55, 85, gender_text)
         painter.drawText(490, 199, f"{self.main_pokemon.level}")
 
-        hp_x = 442 if int(self.main_pokemon.hp) < 100 else 430  # Shift left if 3 digits
-        max_hp_x = (
-            487 if int(self.main_pokemon.max_hp) < 100 else 480
-        )  # Shift left if 3 digits
+        hp_x = 442 if main_hp < 100 else 430  # Shift left if 3 digits
+        max_hp_x = 487 if main_max_hp < 100 else 480  # Shift left if 3 digits
 
-        painter.drawText(max_hp_x, 238, str(int(self.main_pokemon.max_hp)))
-        painter.drawText(hp_x, 238, str(int(self.main_pokemon.hp)))
+        painter.drawText(max_hp_x, 238, str(main_max_hp))
+        painter.drawText(hp_x, 238, str(main_hp))
 
         painter.setFont(msg_font)
         painter.setPen(QColor(240, 240, 208))  # Text color
@@ -513,21 +539,17 @@ class TestWindow(QWidget):
 
         painter.setFont(hp_enemy_text_font)
         painter.setPen(QColor(31, 31, 39))  # Text color
-        enemy_hp_x = (
-            41 if int(self.enemy_pokemon.max_hp) < 100 else 40
-        )  # Shift left if 3 digits
-        enemy_max_hp_x = (
-            64 if int(self.enemy_pokemon.max_hp) < 100 else 56
-        )  # Shift left if 3 digits
+        enemy_hp_x = 41 if enemy_max_hp < 100 else 40  # Shift left if 3 digits
+        enemy_max_hp_x = 64 if enemy_max_hp < 100 else 56  # Shift left if 3 digits
         painter.drawText(
             enemy_hp_x,
-            84 if int(self.enemy_pokemon.max_hp) < 100 else 80,
-            str(int(self.enemy_pokemon.hp)) + "/",
+            84 if enemy_max_hp < 100 else 80,
+            str(enemy_hp) + "/",
         )
         painter.drawText(
             enemy_max_hp_x,
-            84 if int(self.enemy_pokemon.max_hp) < 100 else 88,
-            str(int(self.enemy_pokemon.max_hp)),
+            84 if enemy_max_hp < 100 else 88,
+            str(enemy_max_hp),
         )
 
         self._draw_cp_pp(painter)
@@ -539,9 +561,28 @@ class TestWindow(QWidget):
 
         return image_label, msg_font
 
+    @staticmethod
+    def _safe_hp_pair(hp, max_hp):
+        """Return numeric HP values that are safe for rendering."""
+        try:
+            safe_hp = int(hp) if hp is not None else 0
+        except (TypeError, ValueError, OverflowError):
+            safe_hp = 0
+
+        try:
+            safe_max_hp = int(max_hp) if max_hp is not None else 1
+        except (TypeError, ValueError, OverflowError):
+            safe_max_hp = 1
+
+        safe_max_hp = max(1, safe_max_hp)
+        safe_hp = min(max(0, safe_hp), safe_max_hp)
+        return safe_hp, safe_max_hp
+
     def draw_hp_bar(self, x, y, h, w, hp, max_hp, painter):
-        pokemon_hp_percent = int((hp / max_hp) * 100)
-        hp_bar_value = int(w * (hp / max_hp))
+        hp, max_hp = self._safe_hp_pair(hp, max_hp)
+        hp_ratio = max(0, min(hp / max_hp, 1))
+        pokemon_hp_percent = int(hp_ratio * 100)
+        hp_bar_value = int(w * hp_ratio)
 
         # Draw the HP bar
         if pokemon_hp_percent < 25:
@@ -581,38 +622,19 @@ class TestWindow(QWidget):
         image_label = QLabel()
 
         # Display the Pokémon image
-        pixmap = QPixmap()
-
-        try:
-            pixmap.load(str(self.enemy_pokemon.get_sprite_path("front", "png")))
-        except:
-            pixmap.load(str(self.default_path))
+        pixmap = self._load_sprite(self.enemy_pokemon, "front")
 
         # Display the Main Pokémon image
-        pixmap2 = QPixmap()
+        pixmap2 = self._load_sprite(self.main_pokemon, "back")
 
-        try:
-            pixmap2.load(str(self.main_pokemon.get_sprite_path("back", "png")))
-        except:
-            pixmap2.load(str(self.default_path))
+        # Scale both to a fixed width, keeping the aspect ratio. Reading the
+        # dimensions back off the scaled pixmaps keeps the draw offsets correct
+        # even when a sprite is missing and cannot be scaled at all.
+        pixmap = resize_pixmap_img(pixmap, 150)
+        pixmap2 = resize_pixmap_img(pixmap2, 150)
 
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 150
-        original_width = pixmap.width()
-        original_height = pixmap.height()
-        new_width = max_width
-        new_height = (original_height * max_width) // original_width
-
-        pixmap = pixmap.scaled(new_width, new_height)
-
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 150
-        original_width2 = pixmap2.width()
-        original_height2 = pixmap2.height()
-        new_width2 = max_width
-        new_height2 = (original_height2 * max_width) // original_width2
-
-        pixmap2 = pixmap2.scaled(new_width2, new_height2)
+        new_width, new_height = pixmap.width(), pixmap.height()
+        new_width2, new_height2 = pixmap2.width(), pixmap2.height()
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -632,12 +654,19 @@ class TestWindow(QWidget):
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
 
+        enemy_hp, enemy_max_hp = self._safe_hp_pair(
+            self.enemy_pokemon.hp, self.enemy_pokemon.max_hp
+        )
+        main_hp, main_max_hp = self._safe_hp_pair(
+            self.main_pokemon.hp, self.main_pokemon.max_hp
+        )
+
         painter = self.draw_hp_bar(
-            118, 76, 8, 116, self.enemy_pokemon.hp, self.enemy_pokemon.max_hp, painter
+            118, 76, 8, 116, enemy_hp, enemy_max_hp, painter
         )  # enemy pokemon hp_bar
 
         painter = self.draw_hp_bar(
-            401, 208, 8, 116, self.main_pokemon.hp, self.main_pokemon.max_hp, painter
+            401, 208, 8, 116, main_hp, main_max_hp, painter
         )  # main pokemon hp_bar
 
         painter.drawPixmap(0, 0, pixmap_ui)
@@ -663,7 +692,12 @@ class TestWindow(QWidget):
         )
 
         mainxp_bar_width = 5
-        mainpokemon_xp_value = int(((self.main_pokemon.xp or 0) / experience) * 148)
+        # Guard the divisor: a 0 out of the exp-table lookup would take the
+        # whole render down with a ZeroDivisionError, so draw an empty bar
+        # instead (issue #101).
+        mainpokemon_xp_value = (
+            int(((self.main_pokemon.xp or 0) / experience) * 148) if experience else 0
+        )
 
         # Paint XP Bar
         painter.setBrush(QColor(58, 155, 220))
@@ -705,13 +739,11 @@ class TestWindow(QWidget):
         painter.drawText(208, 67, f"{self.enemy_pokemon.level}")
         painter.drawText(490, 199, f"{self.main_pokemon.level}")
 
-        hp_x = 442 if int(self.main_pokemon.hp) < 100 else 430  # Shift left if 3 digits
-        max_hp_x = (
-            487 if int(self.main_pokemon.max_hp) < 100 else 480
-        )  # Shift left if 3 digits
+        hp_x = 442 if main_hp < 100 else 430  # Shift left if 3 digits
+        max_hp_x = 487 if main_max_hp < 100 else 480  # Shift left if 3 digits
 
-        painter.drawText(max_hp_x, 238, str(int(self.main_pokemon.max_hp)))
-        painter.drawText(hp_x, 238, str(int(self.main_pokemon.hp)))
+        painter.drawText(max_hp_x, 238, str(main_max_hp))
+        painter.drawText(hp_x, 238, str(main_hp))
 
         painter.setFont(msg_font)
         painter.setPen(QColor(31, 31, 39))  # Text color
@@ -719,21 +751,17 @@ class TestWindow(QWidget):
         # Drawing enemy pokemon hp
         painter.setFont(hp_enemy_text_font)
         painter.setPen(QColor(31, 31, 39))  # Text color
-        enemy_hp_x = (
-            41 if int(self.enemy_pokemon.max_hp) < 100 else 40
-        )  # Shift left if 3 digits
-        enemy_max_hp_x = (
-            64 if int(self.enemy_pokemon.max_hp) < 100 else 56
-        )  # Shift left if 3 digits
+        enemy_hp_x = 41 if enemy_max_hp < 100 else 40  # Shift left if 3 digits
+        enemy_max_hp_x = 64 if enemy_max_hp < 100 else 56  # Shift left if 3 digits
         painter.drawText(
             enemy_hp_x,
-            84 if int(self.enemy_pokemon.max_hp) < 100 else 80,
-            str(int(self.enemy_pokemon.hp)) + "/",
+            84 if enemy_max_hp < 100 else 80,
+            str(enemy_hp) + "/",
         )
         painter.drawText(
             enemy_max_hp_x,
-            84 if int(self.enemy_pokemon.max_hp) < 100 else 88,
-            str(int(self.enemy_pokemon.max_hp)),
+            84 if enemy_max_hp < 100 else 88,
+            str(enemy_max_hp),
         )
 
         self._draw_cp_pp(painter)
@@ -758,22 +786,7 @@ class TestWindow(QWidget):
         item_pixmap = QPixmap()
         item_pixmap.load(str(item_path))
 
-        def resize_pixmap_img(pixmap):
-            max_width = 100
-            original_width = pixmap.width()
-            original_height = pixmap.height()
-
-            if original_width == 0:
-                return pixmap  # Avoid division by zero
-
-            new_width = max_width
-            new_height = (original_height * max_width) // original_width
-
-            pixmap2 = pixmap.scaled(new_width, new_height)
-
-            return pixmap2
-
-        item_pixmap = resize_pixmap_img(item_pixmap)
+        item_pixmap = resize_pixmap_img(item_pixmap, 100)
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -855,22 +868,7 @@ class TestWindow(QWidget):
             item_pixmap = QPixmap()
             item_pixmap.load(str(badge_path))
 
-            def resize_pixmap_img(pixmap):
-                max_width = 100
-                original_width = pixmap.width()
-                original_height = pixmap.height()
-
-                if original_width == 0:
-                    return pixmap  # Avoid division by zero
-
-                new_width = max_width
-                new_height = (original_height * max_width) // original_width
-
-                pixmap2 = pixmap.scaled(new_width, new_height)
-
-                return pixmap2
-
-            item_pixmap = resize_pixmap_img(item_pixmap)
+            item_pixmap = resize_pixmap_img(item_pixmap, 100)
 
             # Merge the background image and the Pokémon image
             merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -1085,10 +1083,14 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_item(self):
+        item_name = random_item()
+        if item_name is None:
+            return
+
         Receive_Window = QDialog(mw)
         layout = QHBoxLayout()
 
-        item_widget = self.pokemon_display_item(random_item())
+        item_widget = self.pokemon_display_item(item_name)
 
         layout.addWidget(item_widget)
 

@@ -80,7 +80,7 @@ def _seed_assets(user_path):
 
 
 def start_real_session(user_path=None, settings_overrides=None, neuter_network=True,
-                       first_run=False, webengine=False):
+                       first_run=False, webengine=False, require_webengine=False):
     """Boot the real add-on and return handles (app, aqt, services, events).
 
     first_run=True seeds the sprite assets BEFORE the import, so startup's
@@ -112,7 +112,11 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
             pass
 
     # Real WebEngine (to render the Pokedex / HUD) MUST be imported before the
-    # QApplication exists. Only when requested + importable; else fall back to the stub.
+    # QApplication exists. Ordinary Tier 2 may fall back to the lightweight stub;
+    # dedicated browser probes set require_webengine=True so missing Chromium
+    # bindings fail loudly instead of producing a misleading green check.
+    if require_webengine and not webengine:
+        raise ValueError("require_webengine=True requires webengine=True")
     if webengine:
         os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
         os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
@@ -120,7 +124,11 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
                               "--in-process-gpu --single-process")
         try:
             import PyQt6.QtWebEngineWidgets  # noqa: F401  (must precede QApplication)
-        except Exception:
+        except Exception as exc:
+            if require_webengine:
+                raise RuntimeError(
+                    "Real QtWebEngine was required but PyQt6-WebEngine could not be imported"
+                ) from exc
             webengine = False
 
     # Real PyQt6 first (needs the offscreen platform + native libs already loadable).

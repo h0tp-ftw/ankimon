@@ -64,6 +64,7 @@ def run_node_json(script):
         [NODE, "-e", script],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=10,
     )
     assert result.returncode == 0, f"node script failed:\n{result.stderr}"

@@ -1,0 +1,4 @@
+# Extra developer/CI dependencies for Chromium-backed Tier 2 probes.
+# This file is never packaged with the Ankimon add-on.
+-r requirements-tier2.txt
+PyQt6-WebEngine

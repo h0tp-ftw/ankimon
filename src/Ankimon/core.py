@@ -88,6 +88,14 @@ def build_core() -> SimpleNamespace:
     settings_obj = Settings()
     services.populate(settings=settings_obj)
 
+    # Run before TrainerCard construction, whose initializer can sync stats.
+    try:
+        from .pyobj.ankimon_leaderboard import migrate_credentials_from_db
+
+        migrate_credentials_from_db()
+    except Exception as e:
+        print(f"Ankimon: Error during leaderboard credentials migration: {e}")
+
     translator = Translator(language=int(settings_obj.get("misc.language")))
     services.populate(translator=translator)
 

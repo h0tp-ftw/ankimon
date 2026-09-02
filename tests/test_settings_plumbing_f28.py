@@ -329,3 +329,70 @@ def test_friendship_time_enabled_is_a_real_toggle(isolated_env):
     assert settings.get("evolution.friendship_time_enabled") is True
     settings.set("evolution.friendship_time_enabled", False)
     assert settings.get("evolution.friendship_time_enabled") is False
+
+
+def test_sprite_visibility_default_migration_preserves_existing_hud_preferences(
+    isolated_env,
+):
+    env = isolated_env
+    db = _FakeDB(
+        {
+            "gui.hud_player_sprite": False,
+            "gui.hud_enemy_sprite": True,
+        }
+    )
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["gui.show_sprites_across_ankimon"] is True
+    assert settings.config["gui.hud_player_sprite"] is False
+    assert db.saved["gui.hud_player_sprite"] is False
+
+
+def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_env):
+    settings_mod = isolated_env["settings_mod"]
+    settings = object.__new__(settings_mod.Settings)
+    player_key = "gui.hud_player_sprite"
+    config = {
+        "gui.show_sprites_across_ankimon": False,
+        **{key: True for key in settings_mod.HUD_TOGGLE_AUTO_SYNC_KEYS},
+    }
+
+    changed = settings._apply_hud_toggle_autosync(
+        config,
+        previous_value=True,
+        explicit_overrides={player_key},
+    )
+
+    assert config[player_key] is True
+    assert player_key not in changed
+    for key in settings_mod.HUD_TOGGLE_AUTO_SYNC_KEYS:
+        if key != player_key:
+            assert config[key] is False
+
+
+def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
+    settings_js = (
+        _src / "Ankimon" / "ankimon_items_web" / "settings.js"
+    ).read_text(encoding="utf-8")
+    shop_obj = (
+        _src / "Ankimon" / "ankimon_items_web" / "shop_obj.py"
+    ).read_text(encoding="utf-8")
+
+    assert "explicitHudOverrides: new Set()" in settings_js
+    assert (
+        "explicit_hud_overrides: Array.from(state.explicitHudOverrides)"
+        in settings_js
+    )
+    assert "state.explicitHudOverrides.add(setting.key)" in settings_js
+
+    allowlist = shop_obj.split("SPRITE_VISIBILITY_SCREENS = (", 1)[1].split(
+        ")", 1
+    )[0]
+    assert "SCREEN_ITEMS" in allowlist
+    assert "SCREEN_ANKIDEX" in allowlist
+    assert "SCREEN_PROFILE" in allowlist
+    assert "SCREEN_TEAM" in allowlist
+    assert "SCREEN_MOBILE" not in allowlist
+    assert "SCREEN_HISTORY" not in allowlist

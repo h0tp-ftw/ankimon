@@ -10,6 +10,18 @@ from ..services import services
 from .pokemon_obj import PokemonObject
 
 
+def _anki_night_mode():
+    """Anki's resolved night-mode flag, or False if the theme layer is
+    unavailable (older Anki, or a headless context without a theme manager).
+    The HUD only uses it to pick a class, so degrading to light is harmless."""
+    try:
+        from aqt.theme import theme_manager
+
+        return bool(theme_manager.night_mode)
+    except Exception:
+        return False
+
+
 class Reviewer_Manager:
     def __init__(self, settings_obj, main_pokemon, enemy_pokemon, ankimon_tracker):
         self.settings = settings_obj
@@ -41,6 +53,14 @@ class Reviewer_Manager:
         _handlers = (
             (gui_hooks.reviewer_will_end, self.reviewer_reset_life_bar_inject),
             (gui_hooks.reviewer_did_answer_card, self.update_life_bar),
+            # Anki announces a theme flip by toggling classes on <html>/<body>
+            # (aqt.webview.on_theme_did_change); it never reloads the page.
+            # That signal cannot cross the HUD's closed shadow boundary, so the
+            # HUD has to repaint itself or it keeps the old palette until the
+            # next answered card. The same hook covers an OS flip while Anki is
+            # set to "Automatic" -- theme_manager fires it either way -- which
+            # is what @media (prefers-color-scheme: dark) used to handle live.
+            (gui_hooks.theme_did_change, self.refresh_hud),
         )
         for _hook, _handler in _handlers:
             _hook.append(_handler)
@@ -146,6 +166,23 @@ class Reviewer_Manager:
                 pass
         return addon_package or "1908235722"
 
+    @staticmethod
+    def _safe_hp_pair(hp, max_hp):
+        """Return numeric HP values that are safe for HUD rendering."""
+        try:
+            safe_hp = int(hp) if hp is not None else 0
+        except (TypeError, ValueError, OverflowError):
+            safe_hp = 0
+
+        try:
+            safe_max_hp = int(max_hp) if max_hp is not None else 1
+        except (TypeError, ValueError, OverflowError):
+            safe_max_hp = 1
+
+        safe_max_hp = max(1, safe_max_hp)
+        safe_hp = min(max(0, safe_hp), safe_max_hp)
+        return safe_hp, safe_max_hp
+
     def update_life_bar(self, reviewer, card, ease):
         # GUARD: only repaint on direct calls (refresh_hud / battle_loop pass
         # card=0, ease=0). The reviewer_did_answer_card hook fires with a real
@@ -156,10 +193,21 @@ class Reviewer_Manager:
         if card is not None and not isinstance(card, int):
             return  # Hook received a Card object
 
+        if self.enemy_pokemon is None or self.main_pokemon is None:
+            self._last_state = None
+            return
+
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 3:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
             self._last_state = None
             return
+
+        enemy_hp, enemy_max_hp = self._safe_hp_pair(
+            self.enemy_pokemon.hp, self.enemy_pokemon.max_hp
+        )
+        main_hp, main_max_hp = self._safe_hp_pair(
+            self.main_pokemon.hp, self.main_pokemon.max_hp
+        )
 
         # 1. Ownership cache (avoid a DB query on every repaint of the same enemy).
         is_pokemon_owned = self._ownership_cache.get(self.enemy_pokemon.id)
@@ -242,19 +290,19 @@ class Reviewer_Manager:
 
         current_state = (
             self.enemy_pokemon.id,
-            self.enemy_pokemon.hp,
-            self.enemy_pokemon.max_hp,
+            enemy_hp,
+            enemy_max_hp,
             self.enemy_pokemon.battle_status,
             self.main_pokemon.id,
-            self.main_pokemon.hp,
-            self.main_pokemon.max_hp,
+            main_hp,
+            main_max_hp,
             self.main_pokemon.xp,
             self.settings.get("gui.show_mainpkmn_in_reviewer"),
             self.settings.get("gui.reviewer_image_gif"),
             self.settings.get("misc.language"),
             _boost_snapshot(self.enemy_pokemon),
             _boost_snapshot(self.main_pokemon),
-            self.settings.get("gui.styling_in_reviewer"),
+            self.settings.get("gui.hud_styling", True),
             self.settings.get("gui.hud_player_sprite"),
             self.settings.get("gui.hud_enemy_sprite"),
             self.settings.get("gui.hud_xp_bar"),
@@ -269,6 +317,10 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_enemy_shiny_indicator"),
             self.settings.get("gui.hud_player_shiny_indicator"),
             self.settings.get("gui.reviewer_text_message_box"),
+            # Anki's theme drives a class on the HUD, so a theme flip has to
+            # invalidate the repaint cache or the HUD keeps the old palette
+            # until some other piece of state happens to change.
+            _anki_night_mode(),
         )
         if self._last_state == current_state and card is not None:
             return  # No changes, skip update
@@ -304,33 +356,24 @@ class Reviewer_Manager:
                 side = "back"
             main_pkmn_sprite_url = get_sprite_url(self.main_pokemon, side)
 
-        pokemon_hp_percent = (
-            int((self.enemy_pokemon.hp / self.enemy_pokemon.max_hp) * 50)
-            if self.enemy_pokemon.max_hp > 0
-            else 0
-        )
+        pokemon_hp_percent = int((enemy_hp / enemy_max_hp) * 50)
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
-            mainpkmn_hp_percent = (
-                int((self.main_pokemon.hp / self.main_pokemon.max_hp) * 50)
-                if self.main_pokemon.max_hp > 0
-                else 0
-            )
+            mainpkmn_hp_percent = int((main_hp / main_max_hp) * 50)
         else:
             mainpkmn_hp_percent = 0  # Not used in this mode
 
-        enemy_hp_true_percent = (
-            (self.enemy_pokemon.hp / self.enemy_pokemon.max_hp) * 100
-            if self.enemy_pokemon.max_hp > 0
-            else 0
-        )
-        main_hp_true_percent = (
-            (self.main_pokemon.hp / self.main_pokemon.max_hp) * 100
-            if self.main_pokemon.max_hp > 0
-            else 0
-        )
+        enemy_hp_true_percent = (enemy_hp / enemy_max_hp) * 100
+        main_hp_true_percent = (main_hp / main_max_hp) * 100
 
-        # Build hud_html
-        hud_html = '<div id="ankimon-hud">'
+        # Build hud_html. The HUD carries Anki's theme as its own class: its
+        # stylesheet lives in a closed shadow root, so it cannot see the
+        # night-mode class Anki sets on <body>. theme_manager.night_mode is the
+        # resolved value, so "Automatic" follows the OS correctly.
+        hud_html = (
+            '<div id="ankimon-hud" class="night_mode">'
+            if _anki_night_mode()
+            else '<div id="ankimon-hud">'
+        )
         if self.settings.get("gui.hud_hp_bars"):
             hud_html += '<div id="life-bar" class="Ankimon"></div>'
         if self.settings.get("gui.hud_xp_bar"):
@@ -361,7 +404,7 @@ class Reviewer_Manager:
             )
             hud_html += f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
 
-        if self.enemy_pokemon.hp > 0:
+        if enemy_hp > 0:
             hud_html += create_status_html(
                 f"{self.enemy_pokemon.battle_status}",
                 self.settings,
@@ -374,7 +417,7 @@ class Reviewer_Manager:
             )
 
         if self.settings.get("gui.hud_hp_text"):
-            hud_html += f'<div id="hp-display" class="Ankimon">HP: {int(self.enemy_pokemon.hp)}/{int(self.enemy_pokemon.max_hp)}</div>'
+            hud_html += f'<div id="hp-display" class="Ankimon">HP: {enemy_hp}/{enemy_max_hp}</div>'
 
         if self.settings.get("gui.hud_enemy_sprite"):
             enemy_poke_animation_style = (
@@ -427,14 +470,14 @@ class Reviewer_Manager:
                 )
                 hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
             if self.settings.get("gui.hud_hp_text"):
-                hud_html += f'<div id="myhp-display" class="Ankimon">HP: {int(self.main_pokemon.hp)}/{int(self.main_pokemon.max_hp)}</div>'
+                hud_html += f'<div id="myhp-display" class="Ankimon">HP: {main_hp}/{main_max_hp}</div>'
             if self.settings.get("gui.hud_hp_bars"):
                 hud_html += '<div id="mylife-bar" class="Ankimon"></div>'
 
         hud_html += "</div>"
 
         # Build hud_css
-        if self.settings.get("gui.styling_in_reviewer"):
+        if self.settings.get("gui.hud_styling", True):
             hud_css = create_css_for_reviewer(
                 int(self.settings.get("gui.show_mainpkmn_in_reviewer")),
                 pokemon_hp_percent,
@@ -459,8 +502,18 @@ class Reviewer_Manager:
                 enemy_hp_true_percent,
                 main_hp_true_percent,
             )
+            # Theme selectors are anchored on #ankimon-hud itself (see the
+            # ``night_mode`` class added in hud_html above), never on an
+            # ancestor such as ``.night_mode``/``html.dark``. The HUD lives in
+            # a closed shadow root whose host is appended to <html>, so a class
+            # Anki sets on <body> is neither reachable across the shadow
+            # boundary nor an ancestor of the host — those rules never matched.
+            #
+            # #xp_text is deliberately absent here: create_css_for_reviewer
+            # gives it its own cyan-on-black pill matching the XP bar, and
+            # listing it in these groups overrode that with a plain pill.
             hud_css += """
-            #ankimon-hud #name-display, #ankimon-hud #myname-display, #ankimon-hud #hp-display, #ankimon-hud #myhp-display, #ankimon-hud #xp_text {
+            #ankimon-hud #name-display, #ankimon-hud #myname-display, #ankimon-hud #hp-display, #ankimon-hud #myhp-display {
                 font-family: Arial, sans-serif;
                 background: white !important;
                 color: var(--text-fg, #6D6D6E);
@@ -468,29 +521,18 @@ class Reviewer_Manager:
                 padding: 4px 8px !important;
             }
 
-            @media (prefers-color-scheme: dark) {
-                #ankimon-hud #name-display, #ankimon-hud #myname-display, #ankimon-hud #hp-display, #ankimon-hud #myhp-display, #ankimon-hud #xp_text {
-                    font-family: Arial, sans-serif;
-                    background: #1f1f1f !important;
-                    color: white !important;
-                    border-radius: 5px !important;
-                    padding: 4px 8px !important;
-                }
-            }
-
-            .night_mode #ankimon-hud #name-display, .night_mode #ankimon-hud #myname-display, .night_mode #ankimon-hud #hp-display,
-            .night_mode #ankimon-hud #myhp-display, .night_mode #ankimon-hud{
+            /* Dark mode keys off Anki's own theme, not the OS. There is no
+               @media (prefers-color-scheme: dark) rule here on purpose:
+               theme_manager.night_mode already resolves Anki's "Automatic"
+               setting against the OS, so a media query adds nothing when the
+               two agree and actively contradicts Anki when they differ — a
+               user on a dark OS who deliberately runs Anki in light mode got
+               dark HUD pills. */
+            #ankimon-hud.night_mode #name-display, #ankimon-hud.night_mode #myname-display,
+            #ankimon-hud.night_mode #hp-display, #ankimon-hud.night_mode #myhp-display {
                 font-family: Arial, sans-serif;
                 background: #1f1f1f !important;
                 color: white !important;
-                border-radius: 5px !important;
-                padding: 4px 8px !important;
-            }
-
-            .night_mode #xp_text {
-                font-color: rgba(0, 191, 255, 0.85)
-                font-family: Arial, sans-serif;
-                background: #1f1f1f !important;
                 border-radius: 5px !important;
                 padding: 4px 8px !important;
             }

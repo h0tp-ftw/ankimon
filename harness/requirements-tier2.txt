@@ -1,0 +1,5 @@
+# Developer/CI dependencies for the real-Qt Tier 2 harness.
+# This file is never packaged with the Ankimon add-on.
+PyQt6
+requests
+markdown

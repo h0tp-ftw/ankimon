@@ -9,6 +9,7 @@ its heavy imports (markdown, Qt dialogs) lazy so importing ``changelog`` and
 
 import sys
 import time
+import types
 from unittest.mock import MagicMock, patch
 
 # Mock aqt/anki namespaces if not already mocked by conftest
@@ -352,29 +353,38 @@ def test_fetch_helpers_tolerate_malformed_api_shapes(mock_api_get):
 
 @patch("Ankimon.changelog.check_for_update")
 def test_schedule_branch_update_check_uses_profile_open_hook(mock_check):
-    """The boot wiring registers on gui_hooks.profile_did_open and only polls
-    when a connection was available at boot (main re-fit of exp's
-    profile-open call site)."""
+    """Branch polling stays gated, while sprite checks handle connectivity themselves."""
     registered = []
-    with patch.object(
-        changelog.gui_hooks.profile_did_open, "append", side_effect=registered.append
-    ):
-        changelog.schedule_branch_update_check(True, True)
-    assert len(registered) == 1
+    sprite_check = MagicMock()
+    sprite_module = types.ModuleType("Ankimon.pyobj.sprite_updater")
+    sprite_module.trigger_sprites_update_check = sprite_check
 
-    # Hook fires after the profile opens -> the poll runs.
-    registered[0]()
-    mock_check.assert_called_once_with(True, True)
+    with patch.dict(sys.modules, {"Ankimon.pyobj.sprite_updater": sprite_module}):
+        with patch.object(
+            changelog.gui_hooks.profile_did_open,
+            "append",
+            side_effect=registered.append,
+        ):
+            changelog.schedule_branch_update_check(True, True)
+        assert len(registered) == 1
 
-    # Offline boot: the hook is registered but never polls.
-    mock_check.reset_mock()
-    registered.clear()
-    with patch.object(
-        changelog.gui_hooks.profile_did_open, "append", side_effect=registered.append
-    ):
-        changelog.schedule_branch_update_check(False, True)
-    registered[0]()
-    mock_check.assert_not_called()
+        registered[0]()
+        mock_check.assert_called_once_with(True, True)
+        sprite_check.assert_called_once_with(parent=changelog.mw, silent=True)
+
+        # Offline boot: branch polling stays gated, but the sprite worker still runs.
+        mock_check.reset_mock()
+        sprite_check.reset_mock()
+        registered.clear()
+        with patch.object(
+            changelog.gui_hooks.profile_did_open,
+            "append",
+            side_effect=registered.append,
+        ):
+            changelog.schedule_branch_update_check(False, True)
+        registered[0]()
+        mock_check.assert_not_called()
+        sprite_check.assert_called_once_with(parent=changelog.mw, silent=True)
 
 
 # --- check_for_update: channel dispatch (F: user-selectable update channel) ---

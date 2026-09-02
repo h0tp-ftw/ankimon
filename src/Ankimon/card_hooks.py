@@ -1,8 +1,12 @@
 from aqt import gui_hooks, mw, utils
 from aqt.utils import tooltip
+import logging
 
 from .services import services
 from .singletons import ankimon_tracker_obj, reviewer_obj
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 
 def on_show_question(Card):
@@ -49,7 +53,25 @@ def answerCard_after(rev, card, ease):
         record_desktop_review(revlog_id, card_id=card.id)
     except Exception:
         pass
-
+    
+    # Check for Badge 11 on card review
+    # If this card was previously unsuspended OR had its leech tag removed,
+    # and is now being reviewed, award Badge 11
+    try:
+        from .functions.badges_functions import update_leech_tracking_on_review
+        update_leech_tracking_on_review(
+            rev.mw.col,
+            services.db,
+            getattr(services, 'achievements', None),
+            card.id
+        )
+    except Exception as e:
+        # Preserve review-flow protection by not raising exceptions
+        # Log the error for diagnosability
+        logger.error(
+            f"Failed to update leech tracking for card {card.id}: {e}",
+            exc_info=True
+        )
 
 # Reload safety (F31): a second boot in the same session must not leave the
 # reviewer hooks registered twice, or every review would be double-counted.
