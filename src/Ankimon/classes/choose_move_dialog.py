@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel
 from PyQt6.QtGui import QFont, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent, QObject
 from ..functions.pokedex_functions import find_details_move
 from ..move_names import format_move_name
 import random
@@ -66,3 +66,30 @@ class MoveSelectionDialog(QDialog):
         """Handle move selection and close the dialog."""
         self.selected_move = self.mainpokemon_attacks[index]
         self.accept()
+
+    def keyPressEvent(self, event):
+        """Fallback: handle keyboard shortcuts if focused normally."""
+        key = event.key()
+        if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+            move_index = key - Qt.Key.Key_1  # Convert key to list index
+            if 0 <= move_index < len(self.mainpokemon_attacks):
+                self.select_move(move_index)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        """Global intercept for all key presses in the application."""
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+                move_index = key - Qt.Key.Key_1
+                if 0 <= move_index < len(self.mainpokemon_attacks):
+                    self.select_move(move_index)
+                    return True # Consume event
+        return super().eventFilter(obj, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        QApplication.instance().installEventFilter(self)
+
+    def hideEvent(self, event):
+        QApplication.instance().removeEventFilter(self)
+        super().hideEvent(event)
