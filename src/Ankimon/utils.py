@@ -14,7 +14,11 @@ from .pyobj.settings import Settings
 from .pyobj.InfoLogger import ShowInfoLogger
 
 from .functions.battle_functions import calculate_hp
-from .functions.pokedex_functions import find_details_move, search_pokedex
+from .functions.pokedex_functions import (
+    find_details_move,
+    normalize_item_identifier,
+    search_pokedex,
+)
 
 from .pyobj.error_handler import show_warning_with_traceback
 from .resources import (
@@ -475,8 +479,12 @@ def get_item_price(item_name, file_path=csv_file_items_cost):
     try:
         with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
+            # Both sides folded so display names ("King's Rock", "Poke Ball")
+            # reach the CSV identifiers, which are lowercase and hyphenated and
+            # in nine rows carry a typographic apostrophe or an accent.
+            wanted = normalize_item_identifier(item_name)
             for row in reader:
-                if row["identifier"] == item_name:
+                if normalize_item_identifier(row["identifier"]) == wanted:
                     cost = row["cost"]
                     return int(cost)
     except FileNotFoundError:
@@ -507,8 +515,9 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
     try:
         with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
+            wanted = normalize_item_identifier(item_name)
             for row in reader:
-                if row["identifier"] == item_name:
+                if normalize_item_identifier(row["identifier"]) == wanted:
                     id = row["id"]
                     return int(id)
     except (OSError, KeyError) as e:

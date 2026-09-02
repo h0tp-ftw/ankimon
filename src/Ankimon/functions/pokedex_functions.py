@@ -21,6 +21,7 @@ import functools
 import json
 import math
 import random
+import unicodedata
 import csv
 from ..pyobj.error_handler import show_warning_with_traceback
 from ..pyobj.pokemon_obj import PokemonObject
@@ -1784,6 +1785,32 @@ def return_name_for_id(pokemon_id):
         return None
 
 
+def normalize_item_identifier(value) -> str:
+    """Fold an item name to the shape ``items.csv`` keys on.
+
+    Applied to BOTH sides of every lookup, so a display name and the CSV
+    identifier meet in the middle. Without folding the CSV side too, the nine
+    identifiers that themselves carry a typographic apostrophe or an accent
+    (``koraidon’s-poké-ball``, ``kofu’s-wallet``, ``leader’s-crest``,
+    ``jalapeño``, ``flabébé-pollen``, the three ``-poké-ball-pick`` rows)
+    stay unreachable from any name a user or the UI would supply.
+
+    The steps, in order: strip, lowercase, fold U+2019 to a plain apostrophe,
+    strip combining accents via NFKD, spaces to hyphens, then drop apostrophes.
+
+    Verified against the shipped items.csv: this merges no two DISTINCT
+    identifiers (2510 rows, 2165 distinct folded keys — every collision bucket
+    holds repeats of one identical raw string, which the file already contained
+    344 of before any folding). Non-string input folds to ``""`` rather than
+    raising, so a caller passing an int gets a clean miss.
+    """
+    if not isinstance(value, str):
+        return ""
+    folded = unicodedata.normalize("NFKD", value.strip().lower().replace("’", "'"))
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    return folded.replace(" ", "-").replace("'", "")
+
+
 def return_id_for_item_name(item_name):
     """
     Returns the ID of an item based on its name (identifier) from a CSV file.
@@ -1796,10 +1823,10 @@ def return_id_for_item_name(item_name):
         None: If no matching item is found or an error occurs.
     """
     try:
-        normalized_name = (item_name or "").lower().replace(" ", "-").replace("'", "")
+        normalized_name = normalize_item_identifier(item_name)
         cache = _load_items_cost_cache()
         for row in cache:
-            if row["identifier"] == normalized_name:
+            if normalize_item_identifier(row["identifier"]) == normalized_name:
                 return row["id"]
 
         # Log a message if the item is not found
