@@ -1455,12 +1455,7 @@ def return_id_for_item_name(item_name):
         None: If no matching item is found or an error occurs.
     """
     try:
-        normalized_name = (
-            (item_name or "")
-            .lower()
-            .replace(" ", "-")
-            .replace("'", "")
-        )
+        normalized_name = (item_name or "").lower().replace(" ", "-").replace("'", "")
         cache = _load_items_cost_cache()
         for row in cache:
             if row["identifier"] == normalized_name:
