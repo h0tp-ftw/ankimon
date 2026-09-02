@@ -408,7 +408,7 @@ POKEMON_TIERS = {
   10022, 10023, # kyurem-black, kyurem-white
   # Gen 6
   716, 717, 718,
-  10118, 10119, 10120, # zygarde forms
+  10119, 10120, # zygarde forms
   # Gen 7
   772, 773, 785, 786, 787, 788, 789, 790, 791, 792, 800,
   10155, 10156, 10157, # necrozma forms
@@ -436,8 +436,6 @@ POKEMON_TIERS = {
   1022,  # iron-boulder
   1023,  # iron-crown
   1024,  # terapagos
-  10264, 10265, 10266, 10267, # koraidon forms
-  10268, 10269, 10270, 10271, # miraidon forms
   10273, 10274, 10275, # ogerpon forms
   10276, 10277, # terapagos forms
   10245, 10246,  # dialgaorigin, palkiaorigin
