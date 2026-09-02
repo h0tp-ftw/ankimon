@@ -1966,6 +1966,8 @@ class AnkimonDB:
                     with open(mypokemon_path, 'r', encoding='utf-8') as f:
                         pokemon_list = json.load(f)
                     for pokemon in pokemon_list:
+                        if isinstance(pokemon, str):
+                            continue
                         if self.save_pokemon(pokemon):
                             stats["pokemon"] += 1
                     self._log("info", f"Migrated {stats['pokemon']} pokemon from mypokemon.json")
@@ -1980,8 +1982,9 @@ class AnkimonDB:
                     if main_data:
                         # mainpokemon.json is a list with one item
                         main_pokemon = main_data[0] if isinstance(main_data, list) else main_data
-                        if self.save_main_pokemon(main_pokemon):
-                            stats["main"] = 1
+                        if not isinstance(main_pokemon, str):
+                            if self.save_main_pokemon(main_pokemon):
+                                stats["main"] = 1
                     self._log("info", "Migrated main pokemon from mainpokemon.json")
                 except Exception as e:
                     self._log("error", f"Failed to migrate mainpokemon.json: {e}")
@@ -1994,11 +1997,19 @@ class AnkimonDB:
                     
                     for item in items_list:
                         if not item: continue
-                        # Support multiple legacy keys for item name
-                        item_name = item.get("item") or item.get("name") or item.get("item_name")
-                        quantity = item.get("quantity", item.get("amount", 1))
+
+                        if isinstance(item, str):
+                            item_name = item
+                            quantity = 1
+                        else:
+                            # Support multiple legacy keys for item name
+                            item_name = item.get("item") or item.get("name") or item.get("item_name")
+                            quantity = item.get("quantity", item.get("amount", 1))
+
                         if item_name:
-                            if self.add_item(item_name, quantity, extra_data=item, commit=False):
+                            # if it's a string, we don't have extra_data to pass
+                            extra_data = item if isinstance(item, dict) else None
+                            if self.add_item(item_name, quantity, extra_data=extra_data, commit=False):
                                 stats["items"] += 1
                     
                     self._get_connection().commit()
