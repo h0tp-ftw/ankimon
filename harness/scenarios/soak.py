@@ -15,6 +15,7 @@ would be a false positive.
 import sys
 import gc
 import time
+import random
 import pathlib
 from collections import Counter
 
@@ -33,7 +34,10 @@ def _rss_mb():
     return -1.0
 
 
-def run(n=10000, tier="real", sample=1000, verbose=True):
+def run(n=10000, tier="real", sample=1000, verbose=True, seed=0):
+    if seed is not None:
+        random.seed(seed)
+
     overrides = {
         "battle.cards_per_round": 1,
         "battle.automatic_battle": 2,   # auto-resolve on faint -> encounters cycle
@@ -78,7 +82,7 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
     rss_end = rows[-1][1]
     growth = rss_end - rss0
     result = {
-        "tier": tier, "reviews": n, "seconds": round(dt, 1),
+        "tier": tier, "seed": seed, "reviews": n, "seconds": round(dt, 1),
         "reviews_per_sec": round(n / dt),
         "rss_start_mb": round(rss0, 1), "rss_end_mb": round(rss_end, 1),
         "growth_mb": round(growth, 1), "mb_per_1k_reviews": round(growth / n * 1000, 3),
@@ -96,4 +100,5 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
 if __name__ == "__main__":
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
     tier = "fast" if (len(sys.argv) > 2 and sys.argv[2].startswith("tier1")) else "real"
-    print("soak: OK", run(n, tier=tier))
+    seed = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    print("soak: OK", run(n, tier=tier, seed=seed))
