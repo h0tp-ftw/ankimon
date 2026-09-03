@@ -1,381 +1,697 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ankimon — Mobile Battles</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ankimon — Mobile Battles</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
 
-  <link rel="stylesheet" href="../ankimon_items_web/shop.css">
-  <link rel="stylesheet" href="../ankimon_items_web/nav-switcher.css">
-  <link rel="stylesheet" href="mobile.css">
-</head>
-<body class="dark-mode shell-mode">
-  <div class="app-container">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div id="nav-switcher" class="nav-switcher">
-          <button id="nav-trigger" class="nav-trigger" type="button" aria-haspopup="true" aria-expanded="false">
-            <img src="../user_files/sprites/items/elixir.png" class="app-logo icon-item-sprite" alt="">
-            <h1>MOBILE</h1>
-            <span class="nav-chevron">▾</span>
-          </button>
-          <div id="nav-menu" class="nav-menu hidden" role="menu">
-            <button class="nav-menu-item" role="menuitem" data-screen="items">
-              <span class="nav-menu-icon"><img src="../user_files/sprites/items/max-potion.png" class="icon-item-sprite" alt=""></span>
-              <div class="nav-menu-text">
-                <span class="nav-menu-title">Items</span>
-                <span class="nav-menu-desc">Your inventory and today's Mart</span>
-              </div>
+    <link rel="stylesheet" href="../ankimon_items_web/shop.css" />
+    <link rel="stylesheet" href="../ankimon_items_web/nav-switcher.css" />
+    <link rel="stylesheet" href="mobile.css" />
+  </head>
+  <body class="dark-mode shell-mode">
+    <div class="app-container">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div id="nav-switcher" class="nav-switcher">
+            <button
+              id="nav-trigger"
+              class="nav-trigger"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <img
+                src="../user_files/sprites/items/elixir.png"
+                class="app-logo icon-item-sprite"
+                alt=""
+              />
+              <h1>MOBILE</h1>
+              <span class="nav-chevron">▾</span>
             </button>
-            <button class="nav-menu-item" role="menuitem" data-screen="ankidex">
-              <span class="nav-menu-icon"><img src="../user_files/sprites/items/poke-ball.png" alt=""></span>
-              <div class="nav-menu-text">
-                <span class="nav-menu-title">Ankidex</span>
-                <span class="nav-menu-desc">Browse caught Pokémon</span>
-              </div>
-            </button>
-            <button class="nav-menu-item" role="menuitem" data-screen="team">
-              <span class="nav-menu-icon"><img src="../user_files/sprites/items/great-ball.png" class="icon-item-sprite" alt=""></span>
-              <div class="nav-menu-text">
-                <span class="nav-menu-title">Team</span>
-                <span class="nav-menu-desc">Your active 6 Pokémon</span>
-              </div>
-            </button>
-            <button class="nav-menu-item" role="menuitem" data-screen="profile">
-              <span class="nav-menu-icon"><img src="../user_files/sprites/items/water-gem.png" class="icon-item-sprite" alt=""></span>
-              <div class="nav-menu-text">
-                <span class="nav-menu-title">Profile</span>
-                <span class="nav-menu-desc">Card, badges &amp; avatar</span>
-              </div>
-            </button>
-            <button class="nav-menu-item" role="menuitem" data-screen="settings">
-              <span class="nav-menu-icon"><img src="../user_files/sprites/items/x-speed.png" class="icon-item-sprite" alt=""></span>
-              <div class="nav-menu-text">
-                <span class="nav-menu-title">Settings</span>
-                <span class="nav-menu-desc">Configure Ankimon</span>
-              </div>
-            </button>
-            <button class="nav-menu-item active" role="menuitem" data-screen="mobile">
-              <span class="nav-menu-icon"><img src="../user_files/sprites/items/elixir.png" class="icon-item-sprite" alt=""></span>
-              <div class="nav-menu-text">
-                <span class="nav-menu-title">Mobile & Web Reviews</span>
-                <span class="nav-menu-desc">Pending mobile/web battles</span>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-      <!-- Mode list or status inside sidebar -->
-      <nav class="sidebar-nav">
-        <div class="nav-group">
-          <label>Navigation</label>
-          <button class="nav-item active" onclick="goToMobileReviews()">
-            <span class="nav-icon" style="color: var(--accent-blue)">●</span>Mobile & Web Reviews
-          </button>
-          <button class="nav-item" onclick="goToHistory()">
-            <span class="nav-icon" style="color: var(--accent-gold)">●</span>Battle History
-          </button>
-        </div>
-      </nav>
-    </aside>
-
-    <!-- Main Content Area -->
-    <main class="main-content">
-      <!-- Persistent Header Top Bar -->
-      <header class="top-bar">
-        <div class="top-bar-titles">
-          <h2>Mobile &amp; Web Battles</h2>
-          <span class="top-bar-sub">Resolve card reviews performed on your mobile or web device</span>
-        </div>
-        <div class="top-actions">
-          <span id="top-count-display" class="badge-count hidden">0 / 10000</span>
-          <button class="btn btn-secondary btn-refresh" onclick="refreshStatus()">
-            <span class="spin-icon">↻</span> Sync &amp; Refresh
-          </button>
-        </div>
-      </header>
-
-      <!-- Scrollable content area -->
-      <div class="content-scroll">
-        <div id="loading" class="loading-state">
-          <div class="spinner-box">
-            <div class="spinner"></div>
-          </div>
-          <span>Syncing reviews and loading battles...</span>
-        </div>
-
-        <div id="app">
-          <!-- State 1: Empty -->
-          <div id="state-empty" class="state-container">
-            <div class="empty-content">
-              <div class="pokeball-icon-container">
-                <svg class="pokeball-icon" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="48" fill="none" stroke="var(--border-main)" stroke-width="4"/>
-                  <path d="M2 50 H98" stroke="var(--border-main)" stroke-width="4"/>
-                  <circle cx="50" cy="50" r="15" fill="var(--bg-card)" stroke="var(--border-main)" stroke-width="4"/>
-                  <circle cx="50" cy="50" r="7" fill="none" stroke="var(--border-main)" stroke-width="2"/>
-                </svg>
-              </div>
-              <h2>No battles pending</h2>
-              <p>Review cards on mobile or web, sync your collection, and your pending battles will appear here.</p>
-            </div>
-          </div>
-
-          <!-- State 2: Pending -->
-          <div id="state-pending" class="state-container">
-            <div class="pending-layout">
-              <!-- Left Column: Breakdown & Estimates -->
-              <div class="info-column">
-                <div class="card card-breakdown">
-                  <h3>Review Breakdown</h3>
-                  <div class="breakdown-grid">
-                    <div class="breakdown-item breakdown-again">
-                      <span class="breakdown-label">Again</span>
-                      <span id="ease-again" class="breakdown-val ease-again">0</span>
-                    </div>
-                    <div class="breakdown-item breakdown-hard">
-                      <span class="breakdown-label">Hard</span>
-                      <span id="ease-hard" class="breakdown-val ease-hard">0</span>
-                    </div>
-                    <div class="breakdown-item breakdown-good">
-                      <span class="breakdown-label">Good</span>
-                      <span id="ease-good" class="breakdown-val ease-good">0</span>
-                    </div>
-                    <div class="breakdown-item breakdown-easy">
-                      <span class="breakdown-label">Easy</span>
-                      <span id="ease-easy" class="breakdown-val ease-easy">0</span>
-                    </div>
-                  </div>
+            <div id="nav-menu" class="nav-menu hidden" role="menu">
+              <button class="nav-menu-item" role="menuitem" data-screen="items">
+                <span class="nav-menu-icon"
+                  ><img
+                    src="../user_files/sprites/items/max-potion.png"
+                    class="icon-item-sprite"
+                    alt=""
+                /></span>
+                <div class="nav-menu-text">
+                  <span class="nav-menu-title">Items</span>
+                  <span class="nav-menu-desc"
+                    >Your inventory and today's Mart</span
+                  >
                 </div>
-
-                <div class="card card-estimates" style="position: relative;">
-                  <div id="estimates-loader" class="estimates-loader-overlay hidden">
-                    <img class="pokeball-spinner" src="../user_files/sprites/items/poke-ball.png" alt="Loading">
-                    <span>Calculating estimates...</span>
-                  </div>
-                  <h3>Auto-Resolve Preview</h3>
-                  <p class="estimates-intro">Outcomes based on current settings:</p>
-                  <div class="estimates-grid">
-                    <div class="estimate-item">
-                      <span class="est-label">Total XP Gained</span>
-                      <span id="est-xp" class="est-val">+0</span>
-                    </div>
-                    <div class="estimate-item">
-                      <span class="est-label">Total Encounters</span>
-                      <span id="est-encounters" class="est-val">0</span>
-                    </div>
-                    <div class="estimate-item">
-                      <span class="est-label">Total Catches</span>
-                      <span id="est-catches" class="est-val">0</span>
-                    </div>
-                    <div class="estimate-item">
-                      <div style="display: flex; align-items: center; gap: 4px;">
-                        <span class="est-label">Est. Cash Reward</span>
-                        <span class="info-indicator" data-tooltip="A daily max of 400 cash can be earned from mobile reviews. This estimate does not reflect the daily hard cap.">ⓘ</span>
-                      </div>
-                      <span id="est-cash" class="est-val">+0</span>
-                    </div>
-                  </div>
-                  <div class="estimates-footer">
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      Auto-Battle: <span id="auto-battle-status" class="status-val">OFF</span>
-                      <span class="info-indicator" data-tooltip="This shows your current automated battle setting. You can change this behavior in the Settings tab.">ⓘ</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      Rare Catch: <span id="rare-catch-status" class="status-val">OFF</span>
-                      <span class="info-indicator tooltip-right" data-tooltip="This shows if you have configured any auto-catch settings. You can change this behavior in the Settings tab.">ⓘ</span>
-                    </div>
-                  </div>
-                  <div id="caught-list-container" class="caught-list-container">
-                    <h4>Captures Preview:</h4>
-                    <div id="caught-list" class="caught-list">
-                      <!-- Caught pokemon items will be dynamically inserted here -->
-                    </div>
-                  </div>
+              </button>
+              <button
+                class="nav-menu-item"
+                role="menuitem"
+                data-screen="ankidex"
+              >
+                <span class="nav-menu-icon"
+                  ><img src="../user_files/sprites/items/poke-ball.png" alt=""
+                /></span>
+                <div class="nav-menu-text">
+                  <span class="nav-menu-title">Ankidex</span>
+                  <span class="nav-menu-desc">Browse caught Pokémon</span>
                 </div>
-              </div>
-
-              <!-- Right Column: Active Pokemon Preview & Action buttons -->
-              <div class="action-column">
-                <div class="card card-team-grid">
-                  <h3>Battle Team</h3>
-                  <div class="team-grid" id="team-grid">
-                    <!-- Team members populated dynamically -->
-                  </div>
+              </button>
+              <button class="nav-menu-item" role="menuitem" data-screen="team">
+                <span class="nav-menu-icon"
+                  ><img
+                    src="../user_files/sprites/items/great-ball.png"
+                    class="icon-item-sprite"
+                    alt=""
+                /></span>
+                <div class="nav-menu-text">
+                  <span class="nav-menu-title">Team</span>
+                  <span class="nav-menu-desc">Your active 6 Pokémon</span>
                 </div>
-
-                <div class="actions-box">
-                  <button class="btn btn-primary btn-block" onclick="startReplay()">Start Replay</button>
-                  <button class="btn btn-warning btn-block" onclick="resolveAll()">Auto-Resolve All</button>
-                  <button class="btn btn-danger btn-block" onclick="dismissAll()">Dismiss All</button>
+              </button>
+              <button
+                class="nav-menu-item"
+                role="menuitem"
+                data-screen="profile"
+              >
+                <span class="nav-menu-icon"
+                  ><img
+                    src="../user_files/sprites/items/water-gem.png"
+                    class="icon-item-sprite"
+                    alt=""
+                /></span>
+                <div class="nav-menu-text">
+                  <span class="nav-menu-title">Profile</span>
+                  <span class="nav-menu-desc">Card, badges &amp; avatar</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-
-
-          <!-- State 4: Replay (single-battle animated view) -->
-          <div id="state-replay" class="state-container">
-            <div class="replay-header">
-              <h2>Mobile/Web Battle <span id="replay-battle-counter" class="battle-counter"></span></h2>
-              <button class="btn btn-secondary btn-sm" onclick="pauseReplay()">Pause &amp; Save</button>
-            </div>
-
-
-            <!-- Compact Team Selector for Replay Override -->
-            <div id="replay-team-selector-container" class="replay-team-selector-container">
-              <span class="selector-label">Select Active Attacker:</span>
-              <div id="replay-team-selector" class="replay-team-selector"></div>
-            </div>
-
-            <div class="battle-scene">
-              <!-- Player side -->
-              <div class="battle-side player-side">
-                <div class="replay-card">
-                  <div class="battle-info-bar">
-                    <span id="replay-player-name" class="pkmn-name"></span>
-                    <span id="replay-player-level" class="pkmn-level"></span>
-                  </div>
-                  <div class="sprite-stage player-sprite-stage">
-                    <img id="replay-player-sprite" src="" alt="Companion" class="battle-sprite player-battle-sprite"
-                         onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='../user_files/sprites/front_default/0.png'; }">
-                  </div>
-                  <div class="hp-bar-wrap">
-                    <span class="hp-bar-label">HP</span>
-                    <div class="hp-bar-track">
-                      <div id="replay-player-hp" class="hp-bar-fill player-hp"></div>
-                    </div>
-                  </div>
+              </button>
+              <button
+                class="nav-menu-item"
+                role="menuitem"
+                data-screen="settings"
+              >
+                <span class="nav-menu-icon"
+                  ><img
+                    src="../user_files/sprites/items/x-speed.png"
+                    class="icon-item-sprite"
+                    alt=""
+                /></span>
+                <div class="nav-menu-text">
+                  <span class="nav-menu-title">Settings</span>
+                  <span class="nav-menu-desc">Configure Ankimon</span>
                 </div>
-              </div>
-
-              <!-- VS divider -->
-              <div class="vs-divider">
-                <span class="vs-text">VS</span>
-              </div>
-
-              <!-- Enemy side -->
-              <div class="battle-side enemy-side">
-                <div class="replay-card">
-                  <div class="battle-info-bar">
-                    <span id="replay-enemy-name" class="pkmn-name"></span>
-                    <span id="replay-enemy-level" class="pkmn-level"></span>
-                    <span id="replay-enemy-tier" class="tier-badge-inline"></span>
-                  </div>
-                  <div class="sprite-stage enemy-sprite-stage">
-                    <img id="replay-enemy-sprite" src="" alt="Enemy" class="battle-sprite enemy-battle-sprite"
-                         onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='../user_files/sprites/front_default/0.png'; }">
-                    <div id="replay-catch-flash" class="catch-flash hidden"></div>
-                  </div>
-                  <div class="hp-bar-wrap">
-                    <span class="hp-bar-label">HP</span>
-                    <div class="hp-bar-track">
-                      <div id="replay-enemy-hp" class="hp-bar-fill"></div>
-                    </div>
-                  </div>
+              </button>
+              <button
+                class="nav-menu-item active"
+                role="menuitem"
+                data-screen="mobile"
+              >
+                <span class="nav-menu-icon"
+                  ><img
+                    src="../user_files/sprites/items/elixir.png"
+                    class="icon-item-sprite"
+                    alt=""
+                /></span>
+                <div class="nav-menu-text">
+                  <span class="nav-menu-title">Mobile & Web Reviews</span>
+                  <span class="nav-menu-desc">Pending mobile/web battles</span>
                 </div>
-              </div>
-            </div>
-
-            <!-- Narration box -->
-            <div class="narration-box">
-              <div id="narration-text" class="narration-text"></div>
-            </div>
-
-            <!-- Action controls -->
-            <div class="replay-controls">
-              <div id="replay-choice-controls" class="replay-choice-box hidden">
-                <button id="replay-catch-btn" class="btn btn-success" onclick="chooseOutcome('catch')">
-                  Catch
-                </button>
-                <button id="replay-defeat-btn" class="btn btn-danger" onclick="chooseOutcome('defeat')">
-                  Defeat
-                </button>
-              </div>
-              <button id="replay-next-btn" class="btn btn-primary hidden" onclick="nextReplayBattle()">
-                Next Battle
               </button>
             </div>
           </div>
         </div>
-      </div>
-    </main>
-  </div>
+        <!-- Mode list or status inside sidebar -->
+        <nav class="sidebar-nav">
+          <div class="nav-group">
+            <label>Navigation</label>
+            <button class="nav-item active" onclick="goToMobileReviews()">
+              <span class="nav-icon" style="color: var(--accent-blue)">●</span
+              >Mobile & Web Reviews
+            </button>
+            <button class="nav-item" onclick="goToHistory()">
+              <span class="nav-icon" style="color: var(--accent-gold)">●</span
+              >Battle History
+            </button>
+          </div>
+        </nav>
+      </aside>
 
-  <!-- Auto-Resolve Summary Modal -->
-  <div id="summary-modal" class="modal-overlay hidden">
-    <div class="modal summary-modal-content">
-      <div class="modal-head">
-        <h3>Auto-Resolve Results</h3>
-        <button class="icon-btn" onclick="closeSummaryModal()">&times;</button>
-      </div>
+      <!-- Main Content Area -->
+      <main class="main-content">
+        <!-- Persistent Header Top Bar -->
+        <header class="top-bar">
+          <div class="top-bar-titles">
+            <h2>Mobile &amp; Web Battles</h2>
+            <span class="top-bar-sub"
+              >Resolve card reviews performed on your mobile or web device</span
+            >
+          </div>
+          <div class="top-actions">
+            <span id="top-count-display" class="badge-count hidden"
+              >0 / 10000</span
+            >
+            <button
+              class="btn btn-secondary btn-refresh"
+              onclick="refreshStatus()"
+            >
+              <span class="spin-icon">↻</span> Sync &amp; Refresh
+            </button>
+          </div>
+        </header>
 
-      <div class="modal-body">
-        <div class="summary-stats-banner">
-          <div class="summary-stat-box">
-            <span class="stat-box-label">Companion XP</span>
-            <span id="modal-summary-xp" class="stat-box-val accent-green">+0</span>
+        <!-- Scrollable content area -->
+        <div class="content-scroll">
+          <div id="loading" class="loading-state">
+            <div class="spinner-box">
+              <div class="spinner"></div>
+            </div>
+            <span>Syncing reviews and loading battles...</span>
           </div>
-          <div class="summary-stat-box">
-            <span class="stat-box-label">Cash Earned</span>
-            <span id="modal-summary-cash" class="stat-box-val accent-gold">+0¥</span>
-          </div>
-          <div class="summary-stat-box">
-            <span class="stat-box-label">Encounters</span>
-            <span id="modal-summary-encounters" class="stat-box-val accent-blue">0</span>
-          </div>
-          <div class="summary-stat-box">
-            <span class="stat-box-label">Trainer XP</span>
-            <span id="modal-summary-trainer-xp" class="stat-box-val">+0</span>
+
+          <div id="app">
+            <!-- State 1: Empty -->
+            <div id="state-empty" class="state-container">
+              <div class="empty-content">
+                <div class="pokeball-icon-container">
+                  <svg class="pokeball-icon" viewBox="0 0 100 100">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="48"
+                      fill="none"
+                      stroke="var(--border-main)"
+                      stroke-width="4"
+                    />
+                    <path
+                      d="M2 50 H98"
+                      stroke="var(--border-main)"
+                      stroke-width="4"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="15"
+                      fill="var(--bg-card)"
+                      stroke="var(--border-main)"
+                      stroke-width="4"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="7"
+                      fill="none"
+                      stroke="var(--border-main)"
+                      stroke-width="2"
+                    />
+                  </svg>
+                </div>
+                <h2>No battles pending</h2>
+                <p>
+                  Review cards on mobile or web, sync your collection, and your
+                  pending battles will appear here.
+                </p>
+              </div>
+            </div>
+
+            <!-- State 2: Pending -->
+            <div id="state-pending" class="state-container">
+              <div class="pending-layout">
+                <!-- Left Column: Breakdown & Estimates -->
+                <div class="info-column">
+                  <div class="card card-breakdown">
+                    <h3>Review Breakdown</h3>
+                    <div class="breakdown-grid">
+                      <div class="breakdown-item breakdown-again">
+                        <span class="breakdown-label">Again</span>
+                        <span id="ease-again" class="breakdown-val ease-again"
+                          >0</span
+                        >
+                      </div>
+                      <div class="breakdown-item breakdown-hard">
+                        <span class="breakdown-label">Hard</span>
+                        <span id="ease-hard" class="breakdown-val ease-hard"
+                          >0</span
+                        >
+                      </div>
+                      <div class="breakdown-item breakdown-good">
+                        <span class="breakdown-label">Good</span>
+                        <span id="ease-good" class="breakdown-val ease-good"
+                          >0</span
+                        >
+                      </div>
+                      <div class="breakdown-item breakdown-easy">
+                        <span class="breakdown-label">Easy</span>
+                        <span id="ease-easy" class="breakdown-val ease-easy"
+                          >0</span
+                        >
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="card card-estimates" style="position: relative">
+                    <div
+                      id="estimates-loader"
+                      class="estimates-loader-overlay hidden"
+                    >
+                      <img
+                        class="pokeball-spinner"
+                        src="../user_files/sprites/items/poke-ball.png"
+                        alt="Loading"
+                      />
+                      <span>Calculating estimates...</span>
+                    </div>
+                    <h3>Auto-Resolve Preview</h3>
+                    <p class="estimates-intro">
+                      Outcomes based on current settings:
+                    </p>
+                    <div class="estimates-grid">
+                      <div class="estimate-item">
+                        <span class="est-label">Total XP Gained</span>
+                        <span id="est-xp" class="est-val">+0</span>
+                      </div>
+                      <div class="estimate-item">
+                        <span class="est-label">Total Encounters</span>
+                        <span id="est-encounters" class="est-val">0</span>
+                      </div>
+                      <div class="estimate-item">
+                        <span class="est-label">Total Catches</span>
+                        <span id="est-catches" class="est-val">0</span>
+                      </div>
+                      <div class="estimate-item">
+                        <div
+                          style="display: flex; align-items: center; gap: 4px"
+                        >
+                          <span class="est-label">Est. Cash Reward</span>
+                          <span
+                            class="info-indicator"
+                            data-tooltip="A daily max of 400 cash can be earned from mobile reviews. This estimate does not reflect the daily hard cap."
+                            >ⓘ</span
+                          >
+                        </div>
+                        <span id="est-cash" class="est-val">+0</span>
+                      </div>
+                    </div>
+                    <div class="estimates-footer">
+                      <div style="display: flex; align-items: center; gap: 4px">
+                        Auto-Battle:
+                        <span id="auto-battle-status" class="status-val"
+                          >OFF</span
+                        >
+                        <span
+                          class="info-indicator"
+                          data-tooltip="This shows your current automated battle setting. You can change this behavior in the Settings tab."
+                          >ⓘ</span
+                        >
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 4px">
+                        Rare Catch:
+                        <span id="rare-catch-status" class="status-val"
+                          >OFF</span
+                        >
+                        <span
+                          class="info-indicator tooltip-right"
+                          data-tooltip="This shows if you have configured any auto-catch settings. You can change this behavior in the Settings tab."
+                          >ⓘ</span
+                        >
+                      </div>
+                    </div>
+                    <div
+                      id="caught-list-container"
+                      class="caught-list-container"
+                    >
+                      <h4>Captures Preview:</h4>
+                      <div id="caught-list" class="caught-list">
+                        <!-- Caught pokemon items will be dynamically inserted here -->
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Right Column: Active Pokemon Preview & Action buttons -->
+                <div class="action-column">
+                  <div class="card card-team-grid">
+                    <h3>Battle Team</h3>
+                    <div class="team-grid" id="team-grid">
+                      <!-- Team members populated dynamically -->
+                    </div>
+                  </div>
+
+                  <div class="actions-box">
+                    <button
+                      class="btn btn-primary btn-block"
+                      onclick="startReplay()"
+                    >
+                      Start Replay
+                    </button>
+                    <button
+                      class="btn btn-warning btn-block"
+                      onclick="resolveAll()"
+                    >
+                      Auto-Resolve All
+                    </button>
+                    <button
+                      class="btn btn-danger btn-block"
+                      onclick="dismissAll()"
+                    >
+                      Dismiss All
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- State 4: Replay (single-battle animated view) -->
+            <div id="state-replay" class="state-container">
+              <div class="replay-header">
+                <h2>
+                  Mobile/Web Battle
+                  <span
+                    id="replay-battle-counter"
+                    class="battle-counter"
+                  ></span>
+                </h2>
+                <button
+                  class="btn btn-secondary btn-sm"
+                  onclick="pauseReplay()"
+                >
+                  Pause &amp; Save
+                </button>
+              </div>
+
+              <!-- Compact Team Selector for Replay Override -->
+              <div
+                id="replay-team-selector-container"
+                class="replay-team-selector-container"
+              >
+                <span class="selector-label">Select Active Attacker:</span>
+                <div
+                  id="replay-team-selector"
+                  class="replay-team-selector"
+                ></div>
+              </div>
+
+              <div class="battle-scene">
+                <!-- Player side -->
+                <div class="battle-side player-side">
+                  <div class="replay-card">
+                    <div class="battle-info-bar">
+                      <span id="replay-player-name" class="pkmn-name"></span>
+                      <span id="replay-player-level" class="pkmn-level"></span>
+                    </div>
+                    <div class="sprite-stage player-sprite-stage">
+                      <img
+                        id="replay-player-sprite"
+                        src=""
+                        alt="Companion"
+                        class="battle-sprite player-battle-sprite"
+                        onerror="
+                          if (this.src.indexOf('_gif') !== -1) {
+                            this.src = this.src
+                              .replace('_gif', '')
+                              .replace('.gif', '.png');
+                          } else {
+                            this.onerror = null;
+                            this.src =
+                              '../user_files/sprites/front_default/0.png';
+                          }
+                        "
+                      />
+                    </div>
+                    <div class="hp-bar-wrap">
+                      <span class="hp-bar-label">HP</span>
+                      <div class="hp-bar-track">
+                        <div
+                          id="replay-player-hp"
+                          class="hp-bar-fill player-hp"
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- VS divider -->
+                <div class="vs-divider">
+                  <span class="vs-text">VS</span>
+                </div>
+
+                <!-- Enemy side -->
+                <div class="battle-side enemy-side">
+                  <div class="replay-card">
+                    <div class="battle-info-bar">
+                      <span
+                        id="replay-enemy-caught-icon"
+                        style="
+                          display: none;
+                          margin-right: 4px;
+                          filter: grayscale(100%);
+                          opacity: 0.5;
+                        "
+                      >
+                        <img
+                          src="../web/images/pokeball.png"
+                          alt="Caught"
+                          style="width: 12px; height: 12px"
+                        />
+                      </span>
+                      <span id="replay-enemy-name" class="pkmn-name"></span>
+                      <span id="replay-enemy-level" class="pkmn-level"></span>
+                      <span
+                        id="replay-enemy-tier"
+                        class="tier-badge-inline"
+                      ></span>
+                    </div>
+                    <div class="sprite-stage enemy-sprite-stage">
+                      <img
+                        id="replay-enemy-sprite"
+                        src=""
+                        alt="Enemy"
+                        class="battle-sprite enemy-battle-sprite"
+                        onerror="
+                          if (this.src.indexOf('_gif') !== -1) {
+                            this.src = this.src
+                              .replace('_gif', '')
+                              .replace('.gif', '.png');
+                          } else {
+                            this.onerror = null;
+                            this.src =
+                              '../user_files/sprites/front_default/0.png';
+                          }
+                        "
+                      />
+                      <div
+                        id="replay-catch-flash"
+                        class="catch-flash hidden"
+                      ></div>
+                    </div>
+                    <div class="hp-bar-wrap">
+                      <span class="hp-bar-label">HP</span>
+                      <div class="hp-bar-track">
+                        <div id="replay-enemy-hp" class="hp-bar-fill"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Narration box -->
+              <div class="narration-box">
+                <div id="narration-text" class="narration-text"></div>
+              </div>
+
+              <!-- Action controls -->
+              <div class="replay-controls">
+                <div
+                  id="replay-choice-controls"
+                  class="replay-choice-box hidden"
+                >
+                  <button
+                    id="replay-catch-btn"
+                    class="btn btn-success"
+                    onclick="chooseOutcome('catch')"
+                  >
+                    Catch
+                  </button>
+                  <button
+                    id="replay-defeat-btn"
+                    class="btn btn-danger"
+                    onclick="chooseOutcome('defeat')"
+                  >
+                    Defeat
+                  </button>
+                </div>
+                <button
+                  id="replay-next-btn"
+                  class="btn btn-primary hidden"
+                  onclick="nextReplayBattle()"
+                >
+                  Next Battle
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-        
-        <div class="modal-caught-section">
-          <h4>Caught Pokémon (<span id="modal-summary-catches">0</span>)</h4>
-          <div id="modal-summary-caught-list" class="caught-list scrollable-caught-list">
-            <!-- Dynamically populated -->
+      </main>
+    </div>
+
+    <!-- Auto-Resolve Summary Modal -->
+    <div id="summary-modal" class="modal-overlay hidden">
+      <div class="modal summary-modal-content">
+        <div class="modal-head">
+          <h3>Auto-Resolve Results</h3>
+          <button class="icon-btn" onclick="closeSummaryModal()">
+            &times;
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <div class="summary-stats-banner">
+            <div class="summary-stat-box">
+              <span class="stat-box-label">Companion XP</span>
+              <span id="modal-summary-xp" class="stat-box-val accent-green"
+                >+0</span
+              >
+            </div>
+            <div class="summary-stat-box">
+              <span class="stat-box-label">Cash Earned</span>
+              <span id="modal-summary-cash" class="stat-box-val accent-gold"
+                >+0¥</span
+              >
+            </div>
+            <div class="summary-stat-box">
+              <span class="stat-box-label">Encounters</span>
+              <span
+                id="modal-summary-encounters"
+                class="stat-box-val accent-blue"
+                >0</span
+              >
+            </div>
+            <div class="summary-stat-box">
+              <span class="stat-box-label">Trainer XP</span>
+              <span id="modal-summary-trainer-xp" class="stat-box-val">+0</span>
+            </div>
+          </div>
+
+          <div class="modal-caught-section">
+            <h4>Caught Pokémon (<span id="modal-summary-catches">0</span>)</h4>
+            <div
+              id="modal-summary-caught-list"
+              class="caught-list scrollable-caught-list"
+            >
+              <!-- Dynamically populated -->
+            </div>
           </div>
         </div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-primary btn-block" onclick="closeSummaryModal()">Done</button>
+        <div class="modal-foot">
+          <button
+            class="btn btn-primary btn-block"
+            onclick="closeSummaryModal()"
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-  <!-- Auto-Resolve Progress Modal -->
-  <div id="resolve-progress-modal" class="modal-overlay hidden">
-    <div class="modal" style="max-width: 400px; max-height: auto;">
-      <div class="modal-head">
-        <h3>Auto-Resolving Battles</h3>
-      </div>
-      <div class="modal-body" style="padding: 24px 20px; display: flex; flex-direction: column; gap: 15px; align-items: center;">
-        <div id="resolve-progress-text" style="font-size: 0.95rem; color: var(--text-main); text-align: center; font-weight: 500;">
-          Processed reviews: 0 / 0 (0%)
+    <!-- Auto-Resolve Progress Modal -->
+    <div id="resolve-progress-modal" class="modal-overlay hidden">
+      <div class="modal" style="max-width: 400px; max-height: auto">
+        <div class="modal-head">
+          <h3>Auto-Resolving Battles</h3>
         </div>
-        <div id="resolve-progress-encounters" style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">
-          Encounters resolved: 0
-        </div>
-        <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.08); border-radius: 5px; overflow: hidden; border: 1px solid var(--border-main);">
-          <div id="resolve-progress-bar-fill" style="width: 0%; height: 100%; background: var(--accent-green); transition: width 0.1s ease; border-radius: 5px;"></div>
-        </div>
-        <div style="font-size: 0.82rem; color: #ff5555; text-align: center; font-weight: 600; margin-top: 5px; line-height: 1.3;">
-          ⚠️ WARNING: Do not review cards on desktop while auto-resolve is active or you risk losing your progress!
-        </div>
-        <div style="display: flex; gap: 10px; width: 100%; margin-top: 10px;">
-          <button id="resolve-pause-btn" class="btn btn-warning" style="flex: 1;" onclick="togglePauseResolve()">Pause</button>
-          <button class="btn btn-danger" style="flex: 1;" onclick="stopResolve()">Stop</button>
+        <div
+          class="modal-body"
+          style="
+            padding: 24px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+          "
+        >
+          <div
+            id="resolve-progress-text"
+            style="
+              font-size: 0.95rem;
+              color: var(--text-main);
+              text-align: center;
+              font-weight: 500;
+            "
+          >
+            Processed reviews: 0 / 0 (0%)
+          </div>
+          <div
+            id="resolve-progress-encounters"
+            style="
+              font-size: 0.85rem;
+              color: var(--text-muted);
+              text-align: center;
+            "
+          >
+            Encounters resolved: 0
+          </div>
+          <div
+            style="
+              width: 100%;
+              height: 10px;
+              background: rgba(255, 255, 255, 0.08);
+              border-radius: 5px;
+              overflow: hidden;
+              border: 1px solid var(--border-main);
+            "
+          >
+            <div
+              id="resolve-progress-bar-fill"
+              style="
+                width: 0%;
+                height: 100%;
+                background: var(--accent-green);
+                transition: width 0.1s ease;
+                border-radius: 5px;
+              "
+            ></div>
+          </div>
+          <div
+            style="
+              font-size: 0.82rem;
+              color: #ff5555;
+              text-align: center;
+              font-weight: 600;
+              margin-top: 5px;
+              line-height: 1.3;
+            "
+          >
+            ⚠️ WARNING: Do not review cards on desktop while auto-resolve is
+            active or you risk losing your progress!
+          </div>
+          <div style="display: flex; gap: 10px; width: 100%; margin-top: 10px">
+            <button
+              id="resolve-pause-btn"
+              class="btn btn-warning"
+              style="flex: 1"
+              onclick="togglePauseResolve()"
+            >
+              Pause
+            </button>
+            <button
+              class="btn btn-danger"
+              style="flex: 1"
+              onclick="stopResolve()"
+            >
+              Stop
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <div id="toast" class="toast"></div>
+    <div id="toast" class="toast"></div>
 
-  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
-  <script src="../ankimon_items_web/nav-switcher.js"></script>
-  <script src="mobile.js"></script>
-</body>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="../ankimon_items_web/nav-switcher.js"></script>
+    <script src="mobile.js"></script>
+  </body>
 </html>

@@ -986,6 +986,15 @@ def _run_mobile_battles_impl(
             gained_cash = 0
 
         from .sprite_functions import get_relative_sprite_path
+
+        # Check if already caught
+        is_caught = False
+        try:
+            caught_ids = db.get_user_data().get("pokedex_caught", [])
+            is_caught = str(current_enemy_pokemon.id) in caught_ids
+        except Exception:
+            pass
+
         last_result_data = {
             "done": False,
             "enemy_name": current_enemy_pokemon.display_name,
@@ -993,6 +1002,7 @@ def _run_mobile_battles_impl(
             "enemy_level": current_enemy_pokemon.level,
             "enemy_shiny": current_enemy_pokemon.shiny,
             "enemy_tier": current_enemy_pokemon.tier,
+            "enemy_caught": is_caught,
             "enemy_sprite": get_relative_sprite_path(
                 current_enemy_pokemon.id,
                 current_enemy_pokemon.shiny,
