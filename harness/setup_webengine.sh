@@ -34,7 +34,8 @@ cd "$WE/debs"
 # libs reported missing by `ldd libQt6WebEngineCore.so` (+ their transitive deps).
 PKGS="libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxtst6 liblcms2-2 \
       libopus0 libsnappy1v5 libwebp7 libwebpdemux2 libwebpmux3 libxcb-dri3-0 \
-      libxkbfile1 libasound2t64 libminizip1t64 libxrender1 libsharpyuv0"
+      libxkbfile1 libasound2t64 libminizip1t64 libxrender1 libsharpyuv0 \
+      libnspr4 libnss3"
 
 for p in $PKGS; do
   apt-get download "$p" 2>/dev/null || echo "warn: could not fetch $p (name may differ on your release)"
