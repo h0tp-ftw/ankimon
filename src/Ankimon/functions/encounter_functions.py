@@ -740,6 +740,9 @@ def check_id_ok(id_num: Union[int, list[int]]):
     # Mega/Gmax forms have actual_ids >= 10000, which fall outside
     # the normal gen ranges. Resolve to base species for generation check.
     if id_num >= 10000:
+        if id_num in encounter_data.MEGA and not settings_obj.get("misc.enable_megas", True):
+            return False
+
         name = search_pokedex_by_id(id_num)
         if not name or name == "Pokémon not found":
             return True  # fallback

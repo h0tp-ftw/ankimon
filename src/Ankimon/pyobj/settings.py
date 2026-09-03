@@ -73,6 +73,7 @@ DEFAULT_CONFIG = {
     "misc.gen8": True,
     "misc.gen9": False,
     "misc.active_region": None,
+    "misc.enable_megas": True,
     "misc.remove_level_cap": False,
     "misc.language": 9,
     "misc.ssh": True,

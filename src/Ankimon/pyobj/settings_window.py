@@ -378,6 +378,7 @@ class SettingsWindow(QMainWindow):
                     "Always Catch: Mega Evolution",
                     "Always Catch: Gigantamax",
                     "Always Catch: Regional Form",
+                    "Enable Mega Evolutions",
                     "Cards per Round",
                     "Review Based Damage",
                     "Friendship & Time Evolution",

@@ -7,18 +7,19 @@
     "battle.auto_catch_mega": true,
     "battle.auto_catch_gmax": true,
     "battle.auto_catch_regional": true,
-    "battle.auto_catch_wishlist": [25, 133],
+    "battle.auto_catch_wishlist": [
+        25,
+        133
+    ],
     "battle.cards_per_round": 2,
     "battle.daily_average": 100,
     "battle.card_max_time": 60,
-
     "controls.pokemon_buttons": true,
     "controls.defeat_key": "5",
     "controls.catch_key": "6",
     "controls.team_cycle_key": "9",
     "controls.key_for_opening_closing_ankimon": "Ctrl+N",
     "controls.allow_to_choose_moves": false,
-
     "gui.animate_time": true,
     "gui.gif_in_collection": true,
     "gui.show_sprites_across_ankimon": true,
@@ -47,11 +48,9 @@
     "gui.hud_owned_indicator": true,
     "gui.hud_enemy_shiny_indicator": true,
     "gui.hud_player_shiny_indicator": true,
-
     "audio.sound_effects": false,
     "audio.sounds": true,
     "audio.battle_sounds": false,
-
     "misc.gen1": true,
     "misc.gen2": true,
     "misc.gen3": true,
@@ -62,6 +61,7 @@
     "misc.gen8": false,
     "misc.gen9": false,
     "misc.active_region": null,
+    "misc.enable_megas": true,
     "misc.remove_level_cap": false,
     "misc.leaderboard": false,
     "misc.language": 9,
@@ -71,7 +71,6 @@
     "misc.discord_rich_presence_text": 1,
     "misc.show_tip_on_startup": true,
     "misc.last_tip_index": 0,
-
     "trainer.name": "Ash",
     "trainer.sprite": "ash",
     "trainer.id": 0,

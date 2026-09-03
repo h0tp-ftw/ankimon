@@ -14,6 +14,10 @@ If you want to play with Pokemon from a certain generation, set them as True
 - `Generation8` [True/False]
 - `Generation9` [True/False]
 
+Special Evolutions:
+You can decide if you want Mega Evolutions and similar special forms to spawn in the wild
+- `Enable Mega Evolutions` [True/False]
+
 Pokemon Gif Animations:
 You can decide if you want the Gif Animations in the anki reviewer
 - `reviewer_image_gif` [True/False]
@@ -96,7 +100,7 @@ Setting `catch_key` to a letter allows you to catch pokemons inside of the revie
 Setting `defeat_key` to a letter allows you to defeat pokemons inside of the reviewer when their hp reaches 0 by pressing control and your letter - default is F.
 - `defeat_key` [A - Z]
 
-`review_hp_bar_thickness` sets the pixel thickness of the HP bar in the reviewer. 
+`review_hp_bar_thickness` sets the pixel thickness of the HP bar in the reviewer.
 - Setting it to `2` will result in an 8px thickness.
 - Setting it to `3` will result in a 12px thickness.
 - Setting it to `4` will result in a 16px thickness.
