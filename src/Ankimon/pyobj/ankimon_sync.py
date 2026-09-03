@@ -1104,7 +1104,7 @@ class AnkimonDataSync:
             # Profile not loaded yet
             return []
 
-    def get_file_differences(self) -> Dict[str, Dict]:
+    def get_file_differences(self, strict_mtime: bool = False) -> Dict[str, Dict]:
         """
         Compare local files with media files and return differences.
         Returns dict with file differences for UI display.
@@ -1134,7 +1134,7 @@ class AnkimonDataSync:
                 # Check if the media file (from AnkiWeb) is strictly newer than the local file
                 # If the local file is newer, it just means we haven't synced yet, which is not a conflict.
                 if file_diff['local_exists'] and file_diff['media_exists']:
-                    if os.path.getmtime(media_file) > os.path.getmtime(source_file):
+                    if not strict_mtime or os.path.getmtime(media_file) > os.path.getmtime(source_file):
                         file_diff['files_differ'] = not filecmp.cmp(source_file, media_file, shallow=False)
                 elif file_diff['local_exists'] or file_diff['media_exists']:
                     file_diff['files_differ'] = True
@@ -1313,7 +1313,7 @@ def check_and_sync_pokemon_data(settings_obj, logger):
 
     try:
         sync_handler = AnkimonDataSync()
-        differences = sync_handler.get_file_differences()
+        differences = sync_handler.get_file_differences(strict_mtime=True)
 
         if differences:
             # Show the sync dialog only if there are differences
