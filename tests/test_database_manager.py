@@ -1092,3 +1092,136 @@ def test_user_data_to_config_migration_rolls_back_on_write_failure(temp_env):
     assert db.get_user_data("username") == "legacy-user"
     assert db.get_user_data("api_key") == "legacy-key"
 
+
+
+def test_clear_main_pokemon_drops_the_is_main_flag(temp_env):
+    """clear_main_pokemon() leaves no Pokémon flagged as main — used when the
+    Active Companion selection on the team screen is explicitly cleared, so a
+    stale is_main=1 row can't resurface for a Pokémon no longer on the team."""
+    db, _ = temp_env
+    db.save_pokemon({"individual_id": "uuid-a", "name": "pikachu", "id": 25, "level": 5})
+    db.set_main_pokemon("uuid-a")
+    assert db.get_main_pokemon() is not None
+
+    db.clear_main_pokemon()
+
+    assert db.get_main_pokemon() is None
+
+
+def test_clear_main_pokemon_is_a_safe_no_op_when_nothing_is_main(temp_env):
+    db, _ = temp_env
+    db.save_pokemon({"individual_id": "uuid-a", "name": "pikachu", "id": 25, "level": 5})
+    assert db.get_main_pokemon() is None
+
+    db.clear_main_pokemon()  # must not raise
+
+    assert db.get_main_pokemon() is None
+
+
+# --- set_main_pokemon() must never leave the save with no main -------------
+
+
+def test_set_main_pokemon_on_a_missing_row_keeps_the_incumbent(temp_env):
+    """A target that does not exist must be a no-op, NOT a cleared main.
+
+    The old implementation checked existence with a separate SELECT, then
+    cleared the old main and set the new one with no rowcount check, so a
+    target released between the two left zero is_main=1 rows while still
+    returning True. The next load then fell through update_main_pokemon() to
+    the level-5 "Please Restart Anki" Ditto.
+    """
+    db, _ = temp_env
+    db.save_pokemon({"individual_id": "uuid-a", "name": "pikachu", "id": 25, "level": 5})
+    db.set_main_pokemon("uuid-a")
+    assert db.get_main_pokemon()["individual_id"] == "uuid-a"
+
+    assert db.set_main_pokemon("does-not-exist") is False
+
+    still_main = db.get_main_pokemon()
+    assert still_main is not None, "the save was left with NO main Pokemon"
+    assert still_main["individual_id"] == "uuid-a"
+
+
+def test_set_main_pokemon_moves_the_flag_and_leaves_exactly_one(temp_env):
+    db, _ = temp_env
+    for iid in ("uuid-a", "uuid-b", "uuid-c"):
+        db.save_pokemon({"individual_id": iid, "name": "pikachu", "id": 25, "level": 5})
+
+    assert db.set_main_pokemon("uuid-a") is True
+    assert db.set_main_pokemon("uuid-b") is True
+
+    cursor = db.execute("SELECT individual_id FROM captured_pokemon WHERE is_main = 1")
+    mains = [r[0] for r in cursor.fetchall()]
+    assert mains == ["uuid-b"], f"expected exactly one main, got {mains}"
+
+
+def test_set_main_pokemon_is_idempotent_for_the_current_main(temp_env):
+    """Re-selecting the Pokemon that is already the companion must not clear it
+    (the clear-others UPDATE excludes the target for exactly this reason)."""
+    db, _ = temp_env
+    db.save_pokemon({"individual_id": "uuid-a", "name": "pikachu", "id": 25, "level": 5})
+    db.set_main_pokemon("uuid-a")
+
+    assert db.set_main_pokemon("uuid-a") is True
+
+    cursor = db.execute("SELECT individual_id FROM captured_pokemon WHERE is_main = 1")
+    assert [r[0] for r in cursor.fetchall()] == ["uuid-a"]
+
+
+def test_set_main_pokemon_survives_the_target_vanishing_mid_call(temp_env, monkeypatch):
+    """The actual race: the target exists when checked, then another writer
+    releases it before the flag is moved.
+
+    The old implementation checked existence with a SELECT, then cleared the
+    incumbent and set the target with no rowcount check -- so this interleaving
+    committed ZERO is_main=1 rows and still returned True. Whatever this call
+    decides, the save must never be left with no main Pokemon.
+    """
+    db, _ = temp_env
+    db.save_pokemon({"individual_id": "uuid-a", "name": "pikachu", "id": 25, "level": 5})
+    db.save_pokemon({"individual_id": "uuid-b", "name": "eevee", "id": 133, "level": 5})
+    db.set_main_pokemon("uuid-a")
+    assert db.get_main_pokemon()["individual_id"] == "uuid-a"
+
+    wrapper_cls = type(db._get_connection())
+    original_cursor = wrapper_cls.cursor
+    state = {"raced": False}
+
+    def racing_cursor(self, *args, **kwargs):
+        cur = original_cursor(self, *args, **kwargs)
+        original_execute = cur.execute
+
+        def execute(sql, parameters=()):
+            # Let any existence check see the row, THEN delete it -- exactly the
+            # window the old code left open between its SELECT and its UPDATEs.
+            if (
+                not state["raced"]
+                and sql.strip().upper().startswith("SELECT")
+                and "captured_pokemon" in sql
+            ):
+                state["raced"] = True
+                result = original_execute(sql, parameters)
+                # A SEPARATE cursor: issuing the delete on `cur` would reset the
+                # result set the caller is about to fetch from, which would make
+                # the existence check simply fail instead of reproducing the race.
+                other = original_cursor(self)
+                other.execute(
+                    "DELETE FROM captured_pokemon WHERE individual_id = ?", ("uuid-b",)
+                )
+                return result
+            return original_execute(sql, parameters)
+
+        cur.execute = execute
+        return cur
+
+    monkeypatch.setattr(wrapper_cls, "cursor", racing_cursor)
+
+    db.set_main_pokemon("uuid-b")
+
+    monkeypatch.undo()
+    cursor = db.execute("SELECT individual_id FROM captured_pokemon WHERE is_main = 1")
+    mains = [r[0] for r in cursor.fetchall()]
+    assert len(mains) == 1, (
+        f"save left with {len(mains)} main Pokemon; zero means the next load "
+        f'falls through to the "Please Restart Anki" Ditto'
+    )

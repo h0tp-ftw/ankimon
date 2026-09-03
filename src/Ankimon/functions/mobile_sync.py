@@ -2135,7 +2135,376 @@ def _resolve_internal(mode="all", companion_id="", limit=None, db=None, settings
             utils.in_bulk_resolve = False
 
 
+# Move-replacement decisions that could not be put to the player when they
+# came up.
+#
+# _attribute_xp_and_evs_to_companion runs on a QueryOp worker thread on every
+# real mobile sync (resolve_next's run_sim, commit_replay_outcome's do_db_work),
+# and a QDialog cannot be constructed or exec()'d off Qt's GUI thread. Simply
+# skipping the prompt there threw the learned move away silently: the companion
+# kept its old four moves with no tooltip, no log line and nothing queued, so
+# the player was never told a move had been learned and lost. Park the decision
+# here instead and replay it on the GUI thread — see _schedule_move_learn_flush.
+def _row_attacks(pkmndata) -> list:
+    """The move list on a captured_pokemon row, normalized to a plain list.
+
+    Rows persist ``attacks`` as either a JSON string or a list depending on
+    which write path last touched them, so every reader has to cope with both.
+    """
+    attacks = (pkmndata or {}).get("attacks", [])
+    if isinstance(attacks, str):
+        try:
+            attacks = json.loads(attacks)
+        except Exception:
+            attacks = []
+    return list(attacks or [])
+
+
+_pending_move_learns = []
+_pending_move_learns_lock = threading.Lock()
+
+# A replay that RAISES (locked DB, collection closing mid-flush) is retried, but
+# only a bounded number of times: a row that fails every attempt would otherwise
+# bounce between the queue and a self-rescheduled flush forever. This counts
+# TOTAL attempts (the first pass plus retries); once a row has failed this many
+# times it is dropped with an error log rather than retried again.
+_MOVE_LEARN_MAX_ATTEMPTS = 3
+# Delay before a failure-triggered retry, so a transiently locked DB has a moment
+# to free up instead of the retry racing straight back into the same lock.
+_MOVE_LEARN_RETRY_DELAY_MS = 2000
+
+
+def _queue_move_learn_prompt(individual_id, name, new_attack, db=None) -> None:
+    """Park one deferred move-replacement decision. Safe off the GUI thread.
+
+    The decision is written to the ``pending_move_learns`` table as well as the
+    in-memory queue. The table is what makes the move survivable: the in-memory
+    queue alone lost it outright whenever the process went away before the GUI
+    callback ran -- Anki quit or crashed after the XP was committed, the profile
+    closed with a decision pending, or the database stayed locked through the
+    retry window. The mobile battle is already resolved by then, so there is
+    nothing left to reconstruct it from. When the caller is inside a bulk
+    transaction this INSERT joins it, landing atomically with the level/XP write
+    the move came from.
+    """
+    if not individual_id or not new_attack:
+        return
+    if db is not None:
+        try:
+            db.add_pending_move_learn(individual_id, name, new_attack)
+        except Exception:
+            # Durability is best-effort: never let a failed park abort the
+            # attribution that produced it. The in-memory queue below still
+            # carries the decision for this session.
+            pass
+    with _pending_move_learns_lock:
+        for pending in _pending_move_learns:
+            if (pending["individual_id"], pending["new_attack"]) == (
+                individual_id,
+                new_attack,
+            ):
+                return  # already queued — a bulk resolve can re-learn the same move
+        _pending_move_learns.append(
+            {
+                "individual_id": individual_id,
+                "name": name,
+                "new_attack": new_attack,
+                "retries": 0,
+            }
+        )
+
+
+def _hydrate_pending_move_learns(db) -> None:
+    """Pull durably-parked decisions back into the in-memory queue.
+
+    This is what recovers a move across a restart: rows survive in
+    ``pending_move_learns`` when the process went away before the prompt could
+    be shown, and this puts them back in front of the player. Entries already
+    queued in memory are left alone so an in-flight retry count is not reset.
+    """
+    if db is None:
+        return
+    try:
+        rows = db.get_pending_move_learns()
+    except Exception:
+        return
+    if not rows:
+        return
+    with _pending_move_learns_lock:
+        known = {
+            (p["individual_id"], p["new_attack"]) for p in _pending_move_learns
+        }
+        for row in rows:
+            key = (row["individual_id"], row["new_attack"])
+            if key in known:
+                continue
+            _pending_move_learns.append(
+                {
+                    "individual_id": row["individual_id"],
+                    "name": row["name"],
+                    "new_attack": row["new_attack"],
+                    "retries": 0,
+                }
+            )
+
+
+def _settle_move_learn(db, individual_id, new_attack) -> None:
+    """Drop the durable row for a decision that is finished -- learned,
+    declined, or moot. Never called for a transient failure."""
+    if db is None:
+        return
+    try:
+        db.delete_pending_move_learn(individual_id, new_attack)
+    except Exception:
+        pass
+
+
+def flush_pending_move_learns(db=None, logger=None) -> None:
+    """Replay every deferred move-replacement prompt. GUI thread only.
+
+    Each Pokémon is re-read from the DB rather than trusting the snapshot the
+    worker thread took: after parking the decision that worker went on to write
+    level/XP/EV/stat changes for the same row, so the authoritative move list is
+    whatever landed there — and a slot may even have opened up in the meantime,
+    in which case there is nothing to ask about and the move is just learned.
+
+    An entry whose replay RAISES is put back on the queue AND a delayed retry is
+    scheduled onto the GUI thread — a failure with no other mobile-sync
+    attribution behind it (the common case at shutdown) would otherwise sit in
+    memory with nothing left to ever drain it. In-session retries are bounded by
+    ``_MOVE_LEARN_MAX_ATTEMPTS`` so this cannot loop forever -- but hitting that
+    ceiling only stops retrying NOW; the durable ``pending_move_learns`` row is
+    left in place and re-offered on the next sync or launch. Nothing here
+    discards a move because a write failed.
+
+    The durable row is deleted only once the decision is genuinely settled:
+    learned, declined by the player, or moot (the row is gone, or the move is
+    already known). Those are decisions, not failures, so they are not requeued
+    either.
+    """
+    from ..services import services
+    from .drawing_utils import tooltipWithColour
+
+    if db is None:
+        db = services.db
+
+    # Recover anything parked durably by a previous session before draining, so
+    # a move stranded by a crash/quit is re-offered rather than lost.
+    _hydrate_pending_move_learns(db)
+
+    with _pending_move_learns_lock:
+        pending = list(_pending_move_learns)
+        del _pending_move_learns[:]
+    if not pending:
+        return
+    # Fall back to the shared logger rather than letting a caller that passed
+    # logger=None (the common case: _attribute_xp_and_evs_to_companion's own
+    # default) swallow a failure silently.
+    if logger is None:
+        logger = getattr(services, "logger", None)
+    ui = getattr(services, "ui", None)
+    main_pokemon_singleton = services.main_pokemon
+    failed = []
+
+    for entry in pending:
+        individual_id = entry["individual_id"]
+        new_attack = entry["new_attack"]
+        try:
+            pkmndata = db.get_pokemon(individual_id) if db is not None else None
+            if not pkmndata:
+                # The Pokemon is gone (released/traded). Moot, not a failure.
+                _settle_move_learn(db, individual_id, new_attack)
+                continue
+
+            attacks = _row_attacks(pkmndata)
+            if new_attack in attacks:
+                _settle_move_learn(db, individual_id, new_attack)  # already knows it
+                continue
+
+            name = str(entry.get("name") or pkmndata.get("name") or "Pokemon").capitalize()
+
+            if len(attacks) < 4:
+                attacks.append(new_attack)
+            elif ui is not None:
+                selected_attack = ui.choose_attack_to_replace(attacks, new_attack)
+                if selected_attack not in attacks:
+                    # The player chose to keep the current move set. That is a
+                    # decision, so the parked row is finished.
+                    _settle_move_learn(db, individual_id, new_attack)
+                    continue
+
+                # choose_attack_to_replace() runs AttackDialog.exec() -- an
+                # open-ended modal wait. On its own connection a sync QueryOp
+                # worker can, while it is open, finish
+                # _attribute_xp_and_evs_to_companion for this same row (new
+                # level / xp / EV / friendship) or change its moves outright.
+                # save_pokemon() below writes the WHOLE row, so re-read it and
+                # re-apply the player's choice to the CURRENT move list --
+                # writing back the pre-dialog snapshot would silently revert
+                # every one of those fields.
+                fresh = db.get_pokemon(individual_id) if db is not None else None
+                if fresh:
+                    pkmndata = fresh
+                    attacks = _row_attacks(pkmndata)
+                    if new_attack in attacks:
+                        continue  # something else taught it while we waited
+
+                if len(attacks) < 4:
+                    attacks.append(new_attack)  # a slot opened up during the wait
+                elif selected_attack in attacks:
+                    attacks[attacks.index(selected_attack)] = new_attack
+                else:
+                    # The move the player chose to discard is no longer on the
+                    # row, so their decision cannot be applied as given. Ask
+                    # again against the moves that are actually there rather
+                    # than guessing which one they would drop now.
+                    selected_attack = ui.choose_attack_to_replace(attacks, new_attack)
+                    if selected_attack not in attacks:
+                        _settle_move_learn(db, individual_id, new_attack)
+                        continue
+                    attacks[attacks.index(selected_attack)] = new_attack
+            else:
+                # Nothing can put the choice to the player. Tell them what was
+                # learned and where to act on it, rather than dropping the move
+                # on the floor without a trace the way the guard this replaces
+                # did.
+                # NOT settled: the parked row stays, so the next pass that has
+                # a UI can still put the choice to the player.
+                tooltipWithColour(
+                    f"{name} learned {new_attack}, but already knows four moves — "
+                    "swap it in from Pokémon Details.",
+                    "#6A4DAC",
+                )
+                if logger:
+                    logger.log(
+                        "warning",
+                        f"{name} learned {new_attack} during mobile sync, but no UI "
+                        "was available to choose which move it replaces.",
+                    )
+                continue
+
+            pkmndata["attacks"] = attacks
+            db.save_pokemon(pkmndata)
+            if (
+                main_pokemon_singleton is not None
+                and getattr(main_pokemon_singleton, "individual_id", None) == individual_id
+            ):
+                main_pokemon_singleton.attacks = list(attacks)
+            _settle_move_learn(db, individual_id, new_attack)
+            tooltipWithColour(f"{name} learned {new_attack}!", "#6A4DAC")
+        except Exception as e:
+            attempts = int(entry.get("retries", 0)) + 1
+            if attempts >= _MOVE_LEARN_MAX_ATTEMPTS:
+                # Stop retrying in THIS session -- but the durable row stays put.
+                # The move is not discarded: _hydrate_pending_move_learns() picks
+                # it up again on the next sync or the next launch. A locked
+                # database has to delay the decision, never destroy it.
+                if logger:
+                    logger.log(
+                        "error",
+                        f"Deferred move-learn prompt for {individual_id} failed "
+                        f"{attempts} times; leaving it parked for a later pass: {e}",
+                    )
+                # Own try: a tooltip failure here must not abort the entries
+                # still to be processed in this loop.
+                try:
+                    name = str(entry.get("name") or "A Pokémon")
+                    tooltipWithColour(
+                        f"{name} learned {new_attack}, but the swap couldn't be "
+                        "saved right now — Ankimon will ask again later.",
+                        "#E12939",
+                    )
+                except Exception:
+                    pass
+            else:
+                entry["retries"] = attempts
+                failed.append(entry)
+                if logger:
+                    logger.log(
+                        "error",
+                        f"Deferred move-learn prompt failed for {individual_id} "
+                        f"(attempt {attempts}): {e}",
+                    )
+
+    if not failed:
+        return
+
+    # Requeue AFTER the loop, never inside it: the lock is shared and re-adding
+    # mid-drain could hand a concurrent flush an entry this one is still working
+    # on. Preserve the retry count rather than routing back through
+    # _queue_move_learn_prompt, which would reset it to 0.
+    with _pending_move_learns_lock:
+        for entry in failed:
+            if not any(
+                (p["individual_id"], p["new_attack"])
+                == (entry["individual_id"], entry["new_attack"])
+                for p in _pending_move_learns
+            ):
+                _pending_move_learns.append(entry)
+
+    # A raised replay has no other attribution event guaranteed behind it, so
+    # schedule our own bounded retry instead of waiting for the next mobile sync.
+    try:
+        from aqt.qt import QTimer
+
+        # singleShot fires on the GUI thread (this whole function is GUI-thread
+        # only), so it can call the flush directly.
+        QTimer.singleShot(
+            _MOVE_LEARN_RETRY_DELAY_MS,
+            lambda: flush_pending_move_learns(db=db, logger=logger),
+        )
+    except Exception:
+        # Headless / no Anki: the entries stay queued for the next main-thread
+        # pass. Logged, because "stays queued" can still mean "gone at exit".
+        if logger:
+            logger.log(
+                "warning",
+                "Move-learn retry could not be scheduled: no GUI thread available.",
+            )
+
+
+def _schedule_move_learn_flush(db=None, logger=None) -> None:
+    """Get flush_pending_move_learns() onto the GUI thread.
+
+    Only ever called AFTER this companion's db.save_pokemon(), so the worker's
+    own write cannot land on top of the move swap the flush persists.
+    """
+    with _pending_move_learns_lock:
+        if not _pending_move_learns:
+            return
+
+    # Deliberately the SAME predicate the enqueue above uses. utils.is_main_thread()
+    # would be wrong here: it answers True whenever Qt isn't loaded or there is no
+    # QApplication yet, so the two could disagree and the flush would open
+    # AttackDialog on the very worker thread this whole mechanism exists to keep
+    # dialogs off.
+    if threading.current_thread() is threading.main_thread():
+        flush_pending_move_learns(db=db, logger=logger)
+        return
+
+    try:
+        from aqt import mw
+
+        mw.taskman.run_on_main(lambda: flush_pending_move_learns(db=db, logger=logger))
+    except Exception:
+        # No Anki to marshal onto (harness, headless callers). The entries stay
+        # queued for the next main-thread pass rather than being lost — and it
+        # is logged, because "stays queued" can still mean "gone at exit".
+        active_logger = logger
+        if active_logger is None:
+            from ..services import services
+
+            active_logger = getattr(services, "logger", None)
+        if active_logger:
+            active_logger.log(
+                "warning",
+                "Move-replacement prompt deferred: no GUI thread available to show it.",
+            )
+
+
 def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yield_gained: dict, settings_obj, battles_fought=1, db=None, logger=None) -> None:
+    """Apply mobile-battle XP/EVs to one companion, leveling/evolving it and
+    prompting for a move replacement when it outgrows its 4 known moves."""
     if xp_gained <= 0 and not any(ev_yield_gained.values()) and battles_fought <= 0:
         return
 
@@ -2180,6 +2549,10 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
     color = "#6A4DAC"
 
     levels_gained = 0
+    # Move-replacement decisions this call has to defer to the GUI thread.
+    # Held here and only published to the shared queue once this companion's
+    # row has been saved — see the enqueue site below for why.
+    deferred_move_learns = []
     # level-ups
     while int(find_experience_for_level(growth_rate, level, remove_cap)) < xp and (level_cap is None or level < level_cap):
         if levels_gained >= 10:
@@ -2229,15 +2602,49 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
                         msg_learn = f"{pkmndata.get('name', '').capitalize()} learned {new_attack}!"
                         tooltipWithColour(msg_learn, color)
                 elif new_attack not in attacks:
+                    # This function is reachable from a QueryOp worker thread
+                    # (resolve_next's run_sim / commit_replay_outcome's
+                    # do_db_work both call it off the main thread in
+                    # production), and constructing or .exec()'ing a QDialog
+                    # off the GUI thread is undefined behavior in Qt. So the
+                    # prompt runs inline only when this call actually landed
+                    # on the main thread (the PYTEST_CURRENT_TEST synchronous
+                    # path, or any future main-thread caller); otherwise the
+                    # decision is parked and replayed on the GUI thread once
+                    # this companion's row has been written — never dropped.
+                    #
+                    # The prompt goes through the services.ui presenter port
+                    # (the same seam pokemon_details.py / gui_presenter.py
+                    # use) rather than constructing AttackDialog directly:
+                    # keeps this module aqt-free at import time and testable
+                    # against HeadlessPresenter, while production's QtPresenter
+                    # still shows the identical parent=mw dialog. Guarded on
+                    # services.ui being present so a sparse/partial services
+                    # object (an incomplete test double, a mid-reload state)
+                    # queues instead of raising here — an uncaught exception
+                    # would lose the whole XP/EV grant for the turn, not just
+                    # the move choice.
                     if is_active and not in_bulk:
-                        from ..pyobj.attack_dialog import AttackDialog
-                        from PyQt6.QtWidgets import QDialog
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
-                            selected_attack = dialog.selected_attack
+                        if (
+                            threading.current_thread() is threading.main_thread()
+                            and getattr(services, "ui", None) is not None
+                        ):
+                            selected_attack = services.ui.choose_attack_to_replace(
+                                attacks, new_attack
+                            )
                             if selected_attack in attacks:
                                 idx = attacks.index(selected_attack)
                                 attacks[idx] = new_attack
+                        else:
+                            # Parked LOCALLY, not on the global queue, until
+                            # this row is written further down. The queue is
+                            # process-wide and every flush drains all of it,
+                            # so publishing here would let an earlier
+                            # companion's already-scheduled run_on_main
+                            # callback pick this entry up, save the move
+                            # swap, and then have our own save_pokemon()
+                            # below overwrite it with this pre-swap snapshot.
+                            deferred_move_learns.append(new_attack)
             pkmndata["attacks"] = attacks
 
     pkmndata["level"] = level
@@ -2348,4 +2755,16 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
         if "attacks" in pkmndata:
             mp.attacks = list(pkmndata["attacks"])
         mp.invalidate_cp_cache()
+
+    # Only now — the row this function owns is written, so the flush's own
+    # save_pokemon() for a move swap can no longer be clobbered by it. Both
+    # steps belong here for the same reason: publishing only after the save
+    # is what keeps the process-wide queue free of decisions whose row is
+    # still in flight, so a flush scheduled by an earlier grant can drain it
+    # at any point without racing this one.
+    for pending_attack in deferred_move_learns:
+        _queue_move_learn_prompt(
+            companion_id, pkmndata.get("name", ""), pending_attack, db=db
+        )
+    _schedule_move_learn_flush(db=db, logger=logger)
 

@@ -397,6 +397,18 @@ body {
   transform: scale(0.98);
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  filter: grayscale(0.6);
+  transform: none;
+}
+.btn:disabled:hover,
+.btn:disabled:active {
+  filter: grayscale(0.6);
+  transform: none;
+}
+
 .btn-primary {
   background: var(--accent-blue);
   color: #06111f;

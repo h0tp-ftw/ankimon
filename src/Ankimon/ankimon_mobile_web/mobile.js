@@ -710,8 +710,17 @@ function renderReplayBattle(result) {
     enemySprite.className = 'battle-sprite enemy-battle-sprite'; // remove caught/fainted fade classes
 
     const playerSprite = document.getElementById('replay-player-sprite');
-    if (playerSprite && result.companion_sprite) {
-        playerSprite.src = result.companion_sprite;
+    if (playerSprite) {
+        if (result.companion_sprite) {
+            playerSprite.src = result.companion_sprite;
+        }
+        // Remove any leftover 'fainted-fade' from a PREVIOUS lost battle —
+        // that class's animation ends with opacity:0 (forwards-filled), so
+        // without this reset the companion sprite stays invisible for every
+        // battle after the first loss, even though the fight itself
+        // continues normally (narration, HP bars, attacks all still work —
+        // only the sprite is gone).
+        playerSprite.className = 'battle-sprite player-battle-sprite';
     }
 
     document.getElementById('replay-enemy-name').textContent = result.enemy_name || '???';

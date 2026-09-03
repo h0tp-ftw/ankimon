@@ -82,6 +82,14 @@ class CursorWrapper:
         return getattr(self._cursor, name)
 
 
+class _MainPokemonVanished(Exception):
+    """Internal: the target row of set_main_pokemon() does not exist.
+
+    Raised inside the transaction purely to trigger its rollback, and caught
+    by set_main_pokemon() itself -- it never escapes this module.
+    """
+
+
 class ConnectionWrapper:
     """Wraps a sqlite3.Connection, proxying everything, with a re-entrant
     ``with conn:`` transaction and an opt-out commit flag (used by bulk paths)."""
@@ -949,6 +957,27 @@ class AnkimonDB:
             )
         """)
 
+        # A level-up move that needs the player to pick which of four moves it
+        # replaces. The decision cannot be taken on a QueryOp worker thread (a
+        # QDialog is GUI-thread-only), so it is parked here and replayed on the
+        # GUI thread. This table exists because parking it in memory ALONE lost
+        # the move outright whenever the process went away first -- Anki quit or
+        # crashed after the XP was committed, the profile closed with a decision
+        # pending, or the database stayed locked through the retry window. The
+        # mobile battle is already marked resolved by then, so nothing can
+        # reconstruct it. A row is deleted only once the move is genuinely
+        # settled: learned, declined by the player, or moot (already known, or
+        # the Pokemon is gone).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pending_move_learns (
+                individual_id TEXT NOT NULL,
+                name          TEXT,
+                new_attack    TEXT NOT NULL,
+                created_at    INTEGER NOT NULL,
+                PRIMARY KEY (individual_id, new_attack)
+            )
+        """)
+
         conn.commit()
         self._log("info", "AnkimonDB: Database schema initialized.")
         try:
@@ -1243,21 +1272,125 @@ class AnkimonDB:
         return None
 
     def set_main_pokemon(self, individual_id: str) -> bool:
-        """Sets a pokemon as the main pokemon by individual_id. Returns False if pokemon not found."""
+        """Make one Pokemon the main/active companion, atomically.
+
+        Returns False -- having changed NOTHING -- when ``individual_id`` has
+        no captured_pokemon row.
+
+        Both UPDATEs run inside one transaction, and the new main is set
+        FIRST, so this can never leave the save with zero ``is_main = 1``
+        rows. The previous version checked existence with a separate SELECT,
+        then cleared the old main and set the new one with no rowcount check
+        and no transaction, so:
+
+            this call                     another writer
+            ---------                     --------------
+            SELECT target -> exists
+                                          release/delete target
+            UPDATE ... is_main = 0        (old main cleared)
+            UPDATE ... is_main = 1        (0 rows matched)
+            commit; return True
+
+        left the database with NO main Pokemon while reporting success. The
+        next load then fell through update_main_pokemon() to
+        MAIN_POKEMON_DEFAULT -- the level-5 Ditto named "Please Restart Anki".
+        Ordering the writes this way means the failure mode is "the main
+        Pokemon did not change", never "there is no main Pokemon".
+        """
+        conn = self._get_connection()
+        try:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE captured_pokemon SET is_main = 1 WHERE individual_id = ?",
+                    (individual_id,),
+                )
+                if cursor.rowcount != 1:
+                    # No such row (or it vanished mid-flight). Roll back before
+                    # anything has cleared the incumbent main.
+                    raise _MainPokemonVanished(individual_id)
+                cursor.execute(
+                    "UPDATE captured_pokemon SET is_main = 0 "
+                    "WHERE is_main = 1 AND individual_id != ?",
+                    (individual_id,),
+                )
+        except _MainPokemonVanished:
+            return False
+        return True
+
+    def clear_main_pokemon(self) -> None:
+        """Clears the is_main flag from whichever Pokémon currently holds it,
+        leaving no main Pokémon persisted.
+
+        Deliberately does not touch the live in-memory main_pokemon singleton
+        for the current session — this only affects what the NEXT load reads
+        back, the same way get_main_pokemon() already tolerates returning
+        None (a brand-new save with no starter picked yet is this exact
+        state).
+
+        NOTE: nothing in the add-on calls this today. It used to back the Team
+        screen's "companion cleared" case, but leaving zero is_main=1 rows
+        makes the next load fall through update_main_pokemon() to
+        MAIN_POKEMON_DEFAULT — the level-5 Ditto named "Please Restart Anki" —
+        so handle_save_team now promotes another team member (or leaves the
+        existing row alone when it can't) instead. Kept as a primitive; think
+        hard about that fallback before wiring it to anything."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
-        # Check if pokemon exists
-        cursor.execute("SELECT individual_id FROM captured_pokemon WHERE individual_id = ?", (individual_id,))
-        if not cursor.fetchone():
-            return False
-        
-        # Clear old main
         cursor.execute("UPDATE captured_pokemon SET is_main = 0 WHERE is_main = 1")
-        # Set new main
-        cursor.execute("UPDATE captured_pokemon SET is_main = 1 WHERE individual_id = ?", (individual_id,))
+        conn.commit()
+
+    # --- Pending move-learn decisions (durable) ---
+
+    def add_pending_move_learn(self, individual_id: str, name: str, new_attack: str) -> bool:
+        """Durably park one move-replacement decision.
+
+        Idempotent on (individual_id, new_attack): re-queuing the same move for
+        the same Pokemon keeps the original ``created_at`` rather than stacking
+        duplicate prompts. Does NOT commit when a caller already holds a
+        transaction (``conn._disable_commit``), so this can join the same
+        transaction that writes the level/XP the move came from.
+        """
+        if not individual_id or not new_attack:
+            return False
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO pending_move_learns "
+            "(individual_id, name, new_attack, created_at) VALUES (?, ?, ?, ?)",
+            (str(individual_id), str(name or ""), str(new_attack), int(time.time())),
+        )
         conn.commit()
         return True
+
+    def get_pending_move_learns(self) -> List[Dict[str, Any]]:
+        """Every parked move-replacement decision, oldest first."""
+        cursor = self.execute(
+            "SELECT individual_id, name, new_attack, created_at "
+            "FROM pending_move_learns ORDER BY created_at ASC, rowid ASC"
+        )
+        return [
+            {
+                "individual_id": row[0],
+                "name": row[1],
+                "new_attack": row[2],
+                "created_at": row[3],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def delete_pending_move_learn(self, individual_id: str, new_attack: str) -> bool:
+        """Drop one parked decision. Call ONLY once the move is settled --
+        learned, declined, or moot. A transient failure (locked database, no UI
+        available) must leave the row in place so the next pass can retry it."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM pending_move_learns WHERE individual_id = ? AND new_attack = ?",
+            (str(individual_id), str(new_attack)),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
 
     # --- Item Operations ---
 

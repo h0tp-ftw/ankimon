@@ -717,3 +717,697 @@ def test_attribute_xp_and_evs_defaults_missing_iv_to_15_and_ev_to_0(mobile_db, m
     assert updated["ev"] == {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
 
 
+
+
+# --- deferred move-replacement prompts (off the GUI thread) ------------------
+#
+# _attribute_xp_and_evs_to_companion runs on a QueryOp worker thread on every
+# real mobile sync, and a QDialog cannot be built or exec()'d there. The guard
+# that recognised this used to just skip the prompt, which silently threw the
+# learned move away: the companion kept its old four moves with no tooltip, no
+# log line and nothing queued. The decision is now parked and replayed on the
+# GUI thread instead.
+
+import threading as _threading
+
+
+@pytest.fixture(autouse=True)
+def _drain_pending_move_learns():
+    """Never leak a parked decision into the next test."""
+    with ms._pending_move_learns_lock:
+        del ms._pending_move_learns[:]
+    yield
+    with ms._pending_move_learns_lock:
+        del ms._pending_move_learns[:]
+
+
+def _run_off_thread(fn, *args, **kwargs):
+    box = {}
+
+    def _target():
+        try:
+            box["value"] = fn(*args, **kwargs)
+        except BaseException as exc:  # surfaced on the calling thread below
+            box["error"] = exc
+
+    # daemon so a deadlocked fn cannot keep the interpreter alive at exit —
+    # the join(timeout) below already gave up on it, and a live non-daemon
+    # thread would hang the whole suite on shutdown anyway.
+    worker = _threading.Thread(target=_target, daemon=True)
+    worker.start()
+    worker.join(timeout=30)
+    assert not worker.is_alive(), "worker thread hung"
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
+def _full_moveset_row(individual_id="OFFTHREAD"):
+    return {
+        "individual_id": individual_id,
+        "name": "Pikachu",
+        "id": 25,
+        "level": 5,
+        "xp": 0,
+        "attacks": ["tackle", "growl", "quick-attack", "thunder-shock"],
+        "base_stats": {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90},
+        "growth_rate": "medium-fast",
+    }
+
+
+def _full_moveset_companion(db, individual_id="OFFTHREAD"):
+    pkmndata = _full_moveset_row(individual_id)
+    db.save_pokemon(pkmndata)
+    return pkmndata
+
+
+class _FakeCompanionDB:
+    """Just the two accessors _attribute_xp_and_evs_to_companion touches."""
+
+    def __init__(self, *rows):
+        self.rows = {row["individual_id"]: dict(row) for row in rows}
+
+    def get_pokemon(self, individual_id):
+        row = self.rows.get(individual_id)
+        return dict(row) if row else None
+
+    def save_pokemon(self, pkmndata):
+        self.rows[pkmndata["individual_id"]] = dict(pkmndata)
+
+
+class _FakeCompanionSingleton:
+    def __init__(self, individual_id):
+        self.individual_id = individual_id
+        self.attacks = []
+        self.xp = 0
+        self.level = 1
+        self.ev = {}
+        self.friendship = 0
+        self.pokemon_defeated = 0
+
+    def invalidate_cp_cache(self):
+        pass
+
+
+def test_off_main_thread_move_learn_is_queued_not_dropped(monkeypatch):
+    """The regression: off the GUI thread the learned move used to vanish.
+
+    The production path this stands in for: resolve_next (mode="next", which
+    unlike resolve_all never sets utils.in_bulk_resolve) -> run_mobile_battles'
+    XP-Share grant, when the XP Share holder IS the main Pokemon — that is the
+    one call reaching this branch with is_active True and in_bulk False, and it
+    runs on a QueryOp worker thread.
+
+    Driven against a fake DB and a pinned level-up table so it stays hermetic —
+    several other files in this suite leave stubs for the pokedex/pokemon
+    modules in ``sys.modules``, and the point here is the thread guard, not the
+    XP curve.
+    """
+    from Ankimon import utils as _utils
+
+    # The real submodule object mobile_sync's function-local
+    # ``from .pokemon_functions import ...`` resolves — NOT
+    # ``Ankimon.functions.pokemon_functions`` as an attribute of the package,
+    # which other test files in this suite replace with a MagicMock.
+    _pf = sys.modules["Ankimon.functions.pokemon_functions"]
+    monkeypatch.setattr(
+        _pf, "find_experience_for_level", lambda *a, **k: 50, raising=False
+    )
+    monkeypatch.setattr(
+        _pf,
+        "get_levelup_move_for_pokemon",
+        lambda name, level: ["thunderbolt"],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services, "main_pokemon", _FakeCompanionSingleton("OFFTHREAD"), raising=False
+    )
+    # This is about the GUI-thread guard, not bulk mode — and in_bulk_resolve is
+    # module-level state a failed resolve_all elsewhere in the suite can leave
+    # set, which would suppress the prompt for an unrelated reason.
+    monkeypatch.setattr(_utils, "in_bulk_resolve", False, raising=False)
+    # Assert on the queue itself, not on whatever the scheduler manages to do
+    # with it in a stubbed-Qt test environment.
+    monkeypatch.setattr(ms, "_schedule_move_learn_flush", lambda **kw: None)
+
+    db = _FakeCompanionDB(_full_moveset_row("OFFTHREAD"))
+
+    _run_off_thread(
+        ms._attribute_xp_and_evs_to_companion,
+        "OFFTHREAD",
+        100,
+        {},
+        _Settings(),
+        db=db,
+    )
+
+    with ms._pending_move_learns_lock:
+        parked = list(ms._pending_move_learns)
+
+    assert [(p["individual_id"], p["new_attack"]) for p in parked] == [
+        ("OFFTHREAD", "thunderbolt")
+    ]
+    # The level-up itself still landed...
+    assert db.rows["OFFTHREAD"]["level"] == 6
+    # ...and the existing four moves are untouched until the player chooses.
+    assert db.rows["OFFTHREAD"]["attacks"] == [
+        "tackle", "growl", "quick-attack", "thunder-shock",
+    ]
+
+
+def test_flush_landing_mid_attribution_cannot_lose_the_move(monkeypatch):
+    """A queued decision must not be drained before its own row is written.
+
+    The queue is process-wide and every flush drains all of it, but each
+    attribution only schedules its flush after its own ``save_pokemon()``. A
+    grant earlier in the same batch can therefore have a ``run_on_main``
+    callback already in flight when the worker reaches the next grant — and
+    that callback lands on the GUI thread whenever Anki gets round to it,
+    including in the window between this grant queuing its decision and
+    writing its row. Draining there means the flush saves the swap and this
+    grant's in-flight ``save_pokemon()`` immediately overwrites it with the
+    pre-swap snapshot: the move is gone, with the queue empty and nothing
+    logged. The decision is held locally until the row is written instead.
+
+    The interleave is forced deterministically (no second thread, no sleeps)
+    by flushing from inside ``save_pokemon`` — exactly the moment that is
+    unsafe.
+    """
+    from Ankimon import utils as _utils
+
+    # Same submodule object mobile_sync's function-local import resolves; the
+    # explicit import keeps this test runnable on its own (``-k`` a single
+    # name), not just after whichever earlier test happened to pull it in.
+    import Ankimon.functions.pokemon_functions  # noqa: F401
+
+    _pf = sys.modules["Ankimon.functions.pokemon_functions"]
+    monkeypatch.setattr(
+        _pf, "find_experience_for_level", lambda *a, **k: 50, raising=False
+    )
+    monkeypatch.setattr(
+        _pf,
+        "get_levelup_move_for_pokemon",
+        lambda name, level: ["thunderbolt"],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        services, "main_pokemon", _FakeCompanionSingleton("RACE"), raising=False
+    )
+    monkeypatch.setattr(_utils, "in_bulk_resolve", False, raising=False)
+    # The flush under test is the interleaved one below, not whatever the
+    # scheduler would manage in a stubbed-Qt environment.
+    monkeypatch.setattr(ms, "_schedule_move_learn_flush", lambda **kw: None)
+
+    class _InterleavingDB(_FakeCompanionDB):
+        """Stands in for the earlier grant's GUI callback firing mid-save."""
+
+        def __init__(self, *rows):
+            super().__init__(*rows)
+            self.interleaved = False
+
+        def save_pokemon(self, pkmndata):
+            if not self.interleaved:
+                self.interleaved = True  # set first: flush saves through here too
+                ms.flush_pending_move_learns(db=self, logger=_Logger())
+            super().save_pokemon(pkmndata)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+
+    db = _InterleavingDB(_full_moveset_row("RACE"))
+
+    _run_off_thread(
+        ms._attribute_xp_and_evs_to_companion,
+        "RACE",
+        100,
+        {},
+        _Settings(),
+        db=db,
+    )
+
+    assert db.interleaved, "the mid-save flush never ran — test proves nothing"
+
+    # The next GUI-thread pass, now that the row is written.
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert db.rows["RACE"]["attacks"] == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    with ms._pending_move_learns_lock:
+        assert ms._pending_move_learns == []
+
+
+def test_queued_move_learns_are_deduped(mobile_db):
+    ms._queue_move_learn_prompt("A", "Pikachu", "thunderbolt")
+    ms._queue_move_learn_prompt("A", "Pikachu", "thunderbolt")
+    ms._queue_move_learn_prompt("A", "Pikachu", "iron-tail")
+    ms._queue_move_learn_prompt("", "Pikachu", "thunderbolt")  # no id -> ignored
+
+    with ms._pending_move_learns_lock:
+        parked = [(p["individual_id"], p["new_attack"]) for p in ms._pending_move_learns]
+
+    assert parked == [("A", "thunderbolt"), ("A", "iron-tail")]
+
+
+def test_flush_prompts_persists_the_swap_and_syncs_the_singleton(mobile_db, monkeypatch):
+    db, _ = mobile_db
+    _full_moveset_companion(db, "FLUSH")
+    singleton = _FakeCompanionSingleton("FLUSH")
+    monkeypatch.setattr(services, "main_pokemon", singleton, raising=False)
+
+    asked = []
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            asked.append((list(attacks), new_attack))
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms._queue_move_learn_prompt("FLUSH", "Pikachu", "thunderbolt")
+
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert asked == [
+        (["tackle", "growl", "quick-attack", "thunder-shock"], "thunderbolt")
+    ]
+    assert db.get_pokemon("FLUSH")["attacks"] == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    assert singleton.attacks == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    with ms._pending_move_learns_lock:
+        assert ms._pending_move_learns == []  # drained
+
+
+def test_flush_declined_prompt_keeps_the_current_moves(mobile_db, monkeypatch):
+    db, _ = mobile_db
+    _full_moveset_companion(db, "DECLINE")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return None  # player closed the dialog
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms._queue_move_learn_prompt("DECLINE", "Pikachu", "thunderbolt")
+
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert db.get_pokemon("DECLINE")["attacks"] == [
+        "tackle", "growl", "quick-attack", "thunder-shock",
+    ]
+
+
+def test_flush_rereads_the_db_and_just_learns_when_a_slot_opened_up(mobile_db, monkeypatch):
+    """The worker wrote more rows after parking the decision, and the player may
+    have freed a slot in between — re-read rather than trusting the snapshot."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "SLOT")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    asked = []
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            asked.append(new_attack)
+            return attacks[0]
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms._queue_move_learn_prompt("SLOT", "Pikachu", "thunderbolt")
+
+    # The player drops a move from Pokémon Details before the flush runs.
+    pkmndata = db.get_pokemon("SLOT")
+    pkmndata["attacks"] = ["tackle", "growl", "quick-attack"]
+    db.save_pokemon(pkmndata)
+
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert asked == []  # nothing to choose between
+    assert db.get_pokemon("SLOT")["attacks"] == [
+        "tackle", "growl", "quick-attack", "thunderbolt",
+    ]
+
+
+def test_flush_without_a_presenter_reports_instead_of_silently_dropping(mobile_db, monkeypatch):
+    db, _ = mobile_db
+    _full_moveset_companion(db, "NOUI")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+    monkeypatch.setattr(services, "ui", None, raising=False)
+
+    from Ankimon.functions import drawing_utils as _drawing_utils
+
+    seen = []
+    monkeypatch.setattr(
+        _drawing_utils, "tooltipWithColour", lambda msg, *a, **k: seen.append(msg)
+    )
+
+    warnings = []
+
+    class _WarnLogger(_Logger):
+        def log(self, level, msg, *a, **k):
+            warnings.append((level, msg))
+
+    ms._queue_move_learn_prompt("NOUI", "Pikachu", "thunderbolt")
+    ms.flush_pending_move_learns(db=db, logger=_WarnLogger())
+
+    assert any("thunderbolt" in msg for msg in seen)
+    assert any(level == "warning" and "thunderbolt" in msg for level, msg in warnings)
+    # Nothing guessed on the player's behalf.
+    assert db.get_pokemon("NOUI")["attacks"] == [
+        "tackle", "growl", "quick-attack", "thunder-shock",
+    ]
+
+
+def test_flush_requeues_an_entry_whose_save_blew_up(mobile_db, monkeypatch):
+    """A failed replay must stay pending, not vanish.
+
+    flush drains the whole queue up front, so before this every exception below
+    the drain took the parked decision with it: the player was told nothing, the
+    move was never written, and there was no entry left for a later pass to
+    retry — the same silent loss the deferral mechanism exists to prevent, just
+    moved one step later.
+    """
+    db, _ = mobile_db
+    _full_moveset_companion(db, "BOOM")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+
+    def _explode(_pkmndata):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setattr(db, "save_pokemon", _explode)
+
+    errors = []
+
+    class _ErrLogger(_Logger):
+        def log(self, level, msg, *a, **k):
+            errors.append((level, msg))
+
+    ms._queue_move_learn_prompt("BOOM", "Pikachu", "thunderbolt")
+    ms.flush_pending_move_learns(db=db, logger=_ErrLogger())
+
+    assert any(level == "error" and "BOOM" in msg for level, msg in errors)
+    with ms._pending_move_learns_lock:
+        parked = [(p["individual_id"], p["new_attack"]) for p in ms._pending_move_learns]
+    assert parked == [("BOOM", "thunderbolt")], "the failed entry was dropped"
+
+
+def test_flush_retries_a_requeued_entry_on_the_next_pass(mobile_db, monkeypatch):
+    """Requeueing is only worth anything if the retry actually lands."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "RETRY")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+
+    real_save = db.save_pokemon
+    calls = []
+
+    def _fail_once(pkmndata):
+        calls.append(pkmndata["individual_id"])
+        if len(calls) == 1:
+            raise RuntimeError("database is locked")
+        return real_save(pkmndata)
+
+    monkeypatch.setattr(db, "save_pokemon", _fail_once)
+
+    ms._queue_move_learn_prompt("RETRY", "Pikachu", "thunderbolt")
+    ms.flush_pending_move_learns(db=db, logger=_Logger())   # fails, requeues
+    ms.flush_pending_move_learns(db=db, logger=_Logger())   # succeeds
+
+    assert db.get_pokemon("RETRY")["attacks"] == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    with ms._pending_move_learns_lock:
+        assert ms._pending_move_learns == []  # drained for good this time
+
+
+def test_flush_schedules_its_own_retry_after_a_failure(mobile_db, monkeypatch):
+    """A raised replay has no other attribution event guaranteed behind it, so
+    the flush must arrange its own bounded retry rather than leave the entry to
+    rot in memory until shutdown."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "SELFRETRY")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    from Ankimon.functions import drawing_utils as _du
+
+    monkeypatch.setattr(_du, "tooltipWithColour", lambda *a, **k: None)
+
+    scheduled = []
+    fake_qt = types.ModuleType("aqt.qt")
+    fake_qt.QTimer = types.SimpleNamespace(
+        singleShot=lambda ms_delay, cb: scheduled.append((ms_delay, cb))
+    )
+    monkeypatch.setitem(sys.modules, "aqt.qt", fake_qt)
+
+    fail = {"on": True}
+    real_save = db.save_pokemon
+
+    def _save(pkmndata):
+        if fail["on"]:
+            raise RuntimeError("database is locked")
+        return real_save(pkmndata)
+
+    monkeypatch.setattr(db, "save_pokemon", _save)
+
+    ms._queue_move_learn_prompt("SELFRETRY", "Pikachu", "thunderbolt")
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    # Entry kept AND a retry queued onto the GUI-thread timer.
+    with ms._pending_move_learns_lock:
+        assert [e["individual_id"] for e in ms._pending_move_learns] == ["SELFRETRY"]
+    assert len(scheduled) == 1
+    assert scheduled[0][0] == ms._MOVE_LEARN_RETRY_DELAY_MS
+
+    # Let the scheduled retry run against a now-healthy DB: it lands.
+    fail["on"] = False
+    scheduled[0][1]()
+    assert db.get_pokemon("SELFRETRY")["attacks"] == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    with ms._pending_move_learns_lock:
+        assert ms._pending_move_learns == []
+
+
+def test_flush_stops_retrying_at_the_ceiling_but_keeps_the_move(mobile_db, monkeypatch):
+    """Hitting the retry ceiling must stop retrying, NOT discard the move.
+
+    The in-memory queue alone used to drop the entry here, telling the player
+    the move "was discarded" -- with the mobile battle already resolved there
+    was nothing left to reconstruct it from. The durable pending_move_learns
+    row must survive so a later pass can still offer the swap.
+    """
+    db, _ = mobile_db
+    _full_moveset_companion(db, "DOOMED")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+
+    scheduled = []
+    monkeypatch.setitem(
+        sys.modules,
+        "aqt.qt",
+        types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(
+                singleShot=lambda delay, cb: scheduled.append((delay, cb))
+            )
+        ),
+    )
+    working_save = db.save_pokemon
+    monkeypatch.setattr(
+        db, "save_pokemon", lambda *_a: (_ for _ in ()).throw(RuntimeError("locked"))
+    )
+
+    records = []
+
+    class _CapturingLogger:
+        def log(self, *args, **kwargs):
+            records.append(args)
+
+    ms._queue_move_learn_prompt("DOOMED", "Pikachu", "thunderbolt", db=db)
+    for _ in range(ms._MOVE_LEARN_MAX_ATTEMPTS):
+        ms.flush_pending_move_learns(db=db, logger=_CapturingLogger())
+
+    # The in-memory queue is drained (no unbounded loop) and no further retry
+    # is scheduled once the ceiling is hit.
+    with ms._pending_move_learns_lock:
+        assert ms._pending_move_learns == []
+    assert len(scheduled) == ms._MOVE_LEARN_MAX_ATTEMPTS - 1
+    assert all(delay == ms._MOVE_LEARN_RETRY_DELAY_MS for delay, _ in scheduled)
+    assert any(
+        "DOOMED" in str(rec) and "parked" in str(rec) for rec in records
+    ), records
+
+    # THE POINT: the decision is still on disk, so the move is not lost.
+    parked = db.get_pending_move_learns()
+    assert [(r["individual_id"], r["new_attack"]) for r in parked] == [
+        ("DOOMED", "thunderbolt")
+    ]
+
+    # A later pass, once the database is writable again, still lands the swap.
+    monkeypatch.setattr(db, "save_pokemon", working_save)
+    ms.flush_pending_move_learns(db=db, logger=_CapturingLogger())
+
+    assert db.get_pokemon("DOOMED")["attacks"] == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    assert db.get_pending_move_learns() == []  # settled, so the row is gone
+
+
+def test_a_move_parked_before_a_crash_is_recovered_on_the_next_flush(
+    mobile_db, monkeypatch
+):
+    """The crash case: the process goes away between parking the decision and
+    showing the prompt, so the in-memory queue is gone. The durable row must
+    bring it back."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "CRASHED")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    ms._queue_move_learn_prompt("CRASHED", "Pikachu", "thunderbolt", db=db)
+
+    # Simulate the restart: everything in RAM is gone, the DB row is not.
+    with ms._pending_move_learns_lock:
+        del ms._pending_move_learns[:]
+    assert len(db.get_pending_move_learns()) == 1
+
+    asked = []
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            asked.append(new_attack)
+            return "growl"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert asked == ["thunderbolt"], "the parked decision was never re-offered"
+    assert db.get_pokemon("CRASHED")["attacks"] == [
+        "tackle", "thunderbolt", "quick-attack", "thunder-shock",
+    ]
+    assert db.get_pending_move_learns() == []
+
+
+def test_no_ui_available_keeps_the_decision_parked(mobile_db, monkeypatch):
+    """With nothing able to show the dialog the move is NOT settled -- the row
+    stays so a later pass with a UI can still put the choice to the player."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "NOUI")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+    monkeypatch.setattr(services, "ui", None, raising=False)
+
+    ms._queue_move_learn_prompt("NOUI", "Pikachu", "thunderbolt", db=db)
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert [r["new_attack"] for r in db.get_pending_move_learns()] == ["thunderbolt"]
+
+
+def test_flush_does_not_requeue_a_declined_prompt(mobile_db, monkeypatch):
+    """Declining is a DECISION, not a failure — re-asking every pass would nag."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "NONAG")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            return None  # player closed the dialog
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms._queue_move_learn_prompt("NONAG", "Pikachu", "thunderbolt")
+
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    with ms._pending_move_learns_lock:
+        assert ms._pending_move_learns == []
+
+
+# --- The move choice must be applied to the CURRENT row, not a stale snapshot -
+#
+# choose_attack_to_replace() blocks on a modal, during which a sync worker on
+# its own connection can change the same row -- including its moves. Re-reading
+# the row is not enough on its own: the pre-dialog move list must not be written
+# back over it.
+
+
+def test_moves_changed_during_the_dialog_are_not_clobbered(mobile_db, monkeypatch):
+    db, _ = mobile_db
+    _full_moveset_companion(db, "RACE")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    prompts = []
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            prompts.append(list(attacks))
+            if len(prompts) == 1:
+                # A sync worker commits a different move set (and a level bump)
+                # for this same row while the modal is open.
+                row = db.get_pokemon("RACE")
+                row["attacks"] = ["surf", "growl", "quick-attack", "thunder-shock"]
+                row["level"] = 9
+                db.save_pokemon(row)
+                return "tackle"  # no longer on the row by the time we save
+            return "surf"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms._queue_move_learn_prompt("RACE", "Pikachu", "thunderbolt")
+
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    # The stale choice is re-put to the player against the CURRENT moves.
+    assert len(prompts) == 2, "a selection that vanished must trigger a re-prompt"
+    assert prompts[1] == ["surf", "growl", "quick-attack", "thunder-shock"]
+
+    row = db.get_pokemon("RACE")
+    # The worker's move rewrite survived -- "tackle" was not resurrected.
+    assert row["attacks"] == ["thunderbolt", "growl", "quick-attack", "thunder-shock"]
+    assert row["level"] == 9, "the concurrent level write must not be reverted"
+
+
+def test_a_slot_freed_during_the_dialog_just_learns_the_move(mobile_db, monkeypatch):
+    """If the worker dropped a move while the modal was open there is now room,
+    so the replacement the player picked is not needed at all."""
+    db, _ = mobile_db
+    _full_moveset_companion(db, "FREED")
+    monkeypatch.setattr(services, "main_pokemon", None, raising=False)
+
+    prompts = []
+
+    class _Presenter:
+        def choose_attack_to_replace(self, attacks, new_attack):
+            prompts.append(list(attacks))
+            row = db.get_pokemon("FREED")
+            row["attacks"] = ["tackle", "growl"]
+            db.save_pokemon(row)
+            return "tackle"
+
+    monkeypatch.setattr(services, "ui", _Presenter(), raising=False)
+    ms._queue_move_learn_prompt("FREED", "Pikachu", "thunderbolt")
+
+    ms.flush_pending_move_learns(db=db, logger=_Logger())
+
+    assert len(prompts) == 1, "no re-prompt is needed once a slot is free"
+    assert db.get_pokemon("FREED")["attacks"] == ["tackle", "growl", "thunderbolt"]
