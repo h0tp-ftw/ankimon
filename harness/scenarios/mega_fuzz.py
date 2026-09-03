@@ -215,7 +215,11 @@ def _run(seed, steps, journal_path, world=None, verbose=False):
         app.processEvents()
         for ev in list(ret or []) + d.events.drain():
             if isinstance(ev, dict) and ev.get("type") == "error":
-                log("  CAUGHT error event: %s" % (ev.get("message") or ev.get("exception")))
+                message = ev.get("message") or "error"
+                exception = ev.get("exception")
+                if exception and exception not in message:
+                    message = "%s %s" % (message, exception)
+                log("  CAUGHT error event: %s" % message)
 
     # Worlds with a populated box: open the PC box once up front so its slots are
     # live for right-click AND so a corrupt row is actually LOADED/rendered — else
