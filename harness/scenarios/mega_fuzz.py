@@ -294,8 +294,29 @@ def _run(seed, steps, journal_path, world=None, verbose=False):
             log("  CAUGHT exception: %s: %s" % (type(ex).__name__, str(ex)[:160]))
     rssN = _rss_mb()
     log("RSS final: %.1f MB (delta %+.1f over %d steps)" % (rssN, rssN - rss0, steps))
+
+    # Do not leave QtWebEngine cleanup to Python interpreter finalization: pages
+    # can outlive their profiles there and segfault after every action survived.
+    # Use the add-on's real hot-reload teardown so shutdown itself is exercised
+    # and journaled as a reproducible final action.
+    log("teardown: close Ankimon windows and flush deferred Qt deletes")
+    try:
+        from Ankimon.reloader import teardown_ankimon
+
+        teardown_ankimon("Ankimon")
+        app.processEvents()
+    except Exception as ex:
+        log("  CAUGHT exception in teardown: %s: %s" % (type(ex).__name__, str(ex)[:160]))
+
     log("SURVIVED all %d steps" % steps)
     j.close()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    # QtWebEngine can segfault during CPython's nondeterministic global-object
+    # destruction even after every page/window was explicitly torn down. The
+    # child has no state left to preserve, so exit without running those unsafe
+    # interpreter-finalization destructors.
+    os._exit(0)
 
 
 def _fuzz_value(rng, default):
