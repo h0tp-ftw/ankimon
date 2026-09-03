@@ -119,6 +119,14 @@ Tier-2 scenarios (drive + see the real windows):
 python -m harness.scenarios.pc_box_moves   # open the real PC box, change a caught
                                            # Pokemon's moves (persists to DB) + screenshot
 python -m harness.scenarios.screenshots    # PNGs of the real battle window + PC box
+python -m harness.scenarios.soak 10000     # sustained real-Qt review/RSS soak
+```
+
+The whole-add-on `mega_fuzz` scenario also opens browser-backed menu screens, so
+run `setup_webengine.sh` and export its native-library path as shown above first:
+
+```bash
+python harness/scenarios/mega_fuzz.py --seeds 12 --steps 100 --parallel 2
 ```
 
 `harness/screenshot.py` (`grab(widget, path)`) renders any real widget to a PNG via

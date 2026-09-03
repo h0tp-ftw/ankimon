@@ -28,7 +28,9 @@ C++ Qt abort uncatchable from Python):
 
 This FINDS bugs; it does not fix them. Expect a lot — that's the point.
 
+    bash harness/setup_webengine.sh                           # one-time; real browser screens are required
     source .tier2/env.sh
+    export LD_LIBRARY_PATH="$PWD/.tier2/we-libs/extract/usr/lib/$(uname -m)-linux-gnu:$LD_LIBRARY_PATH"
     python3 harness/scenarios/mega_fuzz.py                    # sweep seeds (random worlds), report crashers
     python3 harness/scenarios/mega_fuzz.py --world corrupt    # sweep, forcing the corrupt-save world
     python3 harness/scenarios/mega_fuzz.py --replay 7 80      # re-run one seed, verbose, to watch it
@@ -181,7 +183,12 @@ def _run(seed, steps, journal_path, world=None, verbose=False):
 
     # Boot the genuine add-on into the chosen world.
     has_assets = world != "blank"                    # blank = the user who denied the sprite download
-    d = RealDriver(first_run=has_assets, first_encounter=has_assets)
+    d = RealDriver(
+        first_run=has_assets,
+        first_encounter=has_assets,
+        webengine=True,
+        require_webengine=True,
+    )
     import Ankimon.utils as u
     u.close_anki = lambda *a, **k: None              # the monkey must not quit the process
     app = QApplication.instance()
