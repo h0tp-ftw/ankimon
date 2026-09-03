@@ -37,7 +37,18 @@ PKGS="libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libxtst6 liblcms2-2 \
       libxkbfile1 libasound2t64 libminizip1t64 libxrender1 libsharpyuv0"
 
 for p in $PKGS; do
-  apt-get download "$p" 2>/dev/null || echo "warn: could not fetch $p (name may differ on your release)"
+  if apt-get download "$p" 2>/dev/null; then
+    continue
+  fi
+
+  # A stale, unprivileged apt index may point at an update revision already
+  # removed from the mirror. Fall back to the oldest indexed release version.
+  base_version="$(apt-cache madison "$p" 2>/dev/null | tail -n 1 | awk '{print $3}')"
+  if [ -n "$base_version" ] && apt-get download "$p=$base_version" 2>/dev/null; then
+    echo "    got $p base release ($base_version)"
+  else
+    echo "warn: could not fetch $p (name may differ on your release)"
+  fi
 done
 
 n=0
