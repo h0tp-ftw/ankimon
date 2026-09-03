@@ -194,6 +194,7 @@ _stats_csv_cache = None
 _poke_evo_cache = None
 _moves_cache = None
 _items_cost_cache = None
+_items_cost_index = None
 
 
 def _load_pokemon_csv_cache():
@@ -364,6 +365,36 @@ def _load_items_cost_cache():
             print(f"Error loading items cost CSV cache: {e}")
             _items_cost_cache = []
     return _items_cost_cache
+
+
+def load_items_cost_index():
+    """Build ``{folded identifier: row}`` over items.csv for O(1) item lookups.
+
+    The three item lookups fold BOTH sides of the comparison (see
+    :func:`normalize_item_identifier`), and folding the stored identifier is the
+    expensive half: done per row per call it re-folds all 2510 rows on every
+    lookup, which turned one shop build (``utils.daily_item_list``, two price
+    lookups per item over the sprite directory) into ~0.5s of pure NFKD.
+
+    Folding once at load leaves the ANSWER identical. The first row for a folded
+    key wins, exactly as the linear scan returned the first match — which
+    matters, because items.csv holds 345 surplus duplicate rows and five
+    identifiers whose duplicates disagree (``metronome`` is id 254/cost 4000 at
+    its first row and id 20118/cost 1000 later).
+
+    A row whose identifier folds to ``""`` is skipped, so a malformed blank
+    identifier cell cannot answer a lookup; callers pair this with rejecting an
+    empty folded name, since both sides fold to the same ``""``.
+    """
+    global _items_cost_index
+    if _items_cost_index is None:
+        index = {}
+        for row in _load_items_cost_cache():
+            folded = normalize_item_identifier(row.get("identifier"))
+            if folded and folded not in index:
+                index[folded] = row
+        _items_cost_index = index
+    return _items_cost_index
 
 
 # === POKEMON NAME & DESCRIPTION CACHES ===
@@ -1799,10 +1830,12 @@ def normalize_item_identifier(value) -> str:
     strip combining accents via NFKD, spaces to hyphens, then drop apostrophes.
 
     Verified against the shipped items.csv: this merges no two DISTINCT
-    identifiers (2510 rows, 2165 distinct folded keys — every collision bucket
-    holds repeats of one identical raw string, which the file already contained
-    344 of before any folding). Non-string input folds to ``""`` rather than
-    raising, so a caller passing an int gets a clean miss.
+    identifiers — 2165 distinct raw identifiers over 2510 rows fold to exactly
+    2165 distinct keys, so every collision bucket holds repeats of one identical
+    raw string (the file already contained 344 such repeated identifiers before
+    any folding). Non-string input folds to ``""`` rather than raising, so a
+    caller passing an int gets a clean miss; callers must treat that ``""`` as a
+    miss outright rather than a key to match on.
     """
     if not isinstance(value, str):
         return ""
@@ -1824,9 +1857,9 @@ def return_id_for_item_name(item_name):
     """
     try:
         normalized_name = normalize_item_identifier(item_name)
-        cache = _load_items_cost_cache()
-        for row in cache:
-            if normalize_item_identifier(row["identifier"]) == normalized_name:
+        if normalized_name:
+            row = load_items_cost_index().get(normalized_name)
+            if row is not None:
                 return row["id"]
 
         # Log a message if the item is not found

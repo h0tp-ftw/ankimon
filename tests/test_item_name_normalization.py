@@ -58,3 +58,92 @@ def test_utils_item_lookups_accept_display_names():
     # priced item; exp-share is priced 0 and is excluded from the shop by that.
     assert utils.get_item_price("Potion") == utils.get_item_price("potion")
     assert utils.get_item_price("Potion") > 0
+
+
+def test_item_lookups_reject_names_and_rows_that_fold_to_empty(tmp_path):
+    """A blank identifier cell must not answer for a blank/non-string name.
+
+    Both sides fold, and both a blank name and a blank identifier fold to "",
+    so a malformed row would otherwise match every degenerate lookup. The
+    shipped items.csv has no such row — this pins the guard, not the data.
+    """
+    import Ankimon.utils as utils
+
+    malformed = tmp_path / "items.csv"
+    malformed.write_text(
+        "id,identifier,category_id,cost,fling_power,fling_effect_id\n"
+        "9999,,1,7777,,\n"
+        "4,poke-ball,34,200,,\n",
+        encoding="utf-8",
+    )
+
+    for bad in (None, "", "   ", 301):
+        assert utils.get_item_price(bad, malformed) is None
+        assert utils.get_item_id(bad, malformed) is None
+    # A real row in the same file still resolves, so the guard rejects the
+    # empty key rather than the whole file.
+    assert utils.get_item_price("Poke Ball", malformed) == 200
+    assert utils.get_item_id("Poke Ball", malformed) == 4
+
+
+def test_bundled_lookups_miss_cleanly_on_empty_and_non_string_names():
+    from Ankimon.functions.pokedex_functions import return_id_for_item_name
+    import Ankimon.utils as utils
+
+    for bad in (None, "", "   ", 301, "’"):
+        assert return_id_for_item_name(bad) is None
+        assert utils.get_item_price(bad) is None
+        assert utils.get_item_id(bad) is None
+
+
+def test_items_cost_index_keeps_the_first_row_for_a_folded_key():
+    """items.csv repeats identifiers, and five repeats disagree on id/cost.
+
+    The lookups scanned the file and returned the FIRST match; the index must
+    answer the same. ``metronome`` is the sharp case: id 254/cost 4000 on its
+    first row, id 20118/cost 1000 on the two later ones.
+    """
+    from Ankimon.functions.pokedex_functions import (
+        load_items_cost_index,
+        return_id_for_item_name,
+    )
+    import Ankimon.utils as utils
+
+    assert load_items_cost_index()["metronome"]["id"] == "254"
+    assert return_id_for_item_name("Metronome") == "254"
+    assert utils.get_item_id("Metronome") == 254
+    assert utils.get_item_price("Metronome") == 4000
+
+
+def test_items_cost_index_answers_exactly_like_the_linear_scan():
+    """Equivalence over the whole shipped file, not a sampled few.
+
+    Guards the optimization itself: for every identifier in items.csv the index
+    must return the same row the old first-match scan did, and no identifier may
+    fold onto another's key.
+    """
+    import csv
+
+    from Ankimon.functions.pokedex_functions import (
+        load_items_cost_index,
+        normalize_item_identifier,
+        return_id_for_item_name,
+    )
+    from Ankimon.resources import csv_file_items_cost
+
+    with open(csv_file_items_cost, mode="r", encoding="utf-8") as csvfile:
+        rows = list(csv.DictReader(csvfile))
+
+    first_match = {}
+    for row in rows:
+        first_match.setdefault(row["identifier"], row["id"])
+
+    index = load_items_cost_index()
+    for identifier, expected_id in first_match.items():
+        assert index[normalize_item_identifier(identifier)]["id"] == expected_id
+        assert return_id_for_item_name(identifier) == expected_id
+
+    # No two distinct identifiers share a folded key, which is what makes
+    # folding the stored side safe in the first place.
+    assert len(index) == len({normalize_item_identifier(i) for i in first_match})
+    assert len(index) == len(first_match)
