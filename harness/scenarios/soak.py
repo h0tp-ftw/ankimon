@@ -54,7 +54,7 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
     if app:
         app.processEvents()
     rss0 = _rss_mb()
-    t0 = time.time()
+    t0 = time.perf_counter()
     rows = [(0, rss0)]
 
     for i in range(1, n + 1):
@@ -71,10 +71,10 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
             rows.append((i, rss))
             if verbose:
                 print(f"  {i:6d} reviews | RSS {rss:7.1f} MB (+{rss - rss0:6.1f}) "
-                      f"| {i / (time.time() - t0):5.0f}/s | enc {kinds['encounter']} "
+                      f"| {i / (time.perf_counter() - t0):5.0f}/s | enc {kinds['encounter']} "
                       f"err {kinds['error']}", flush=True)
 
-    dt = time.time() - t0
+    dt = time.perf_counter() - t0
     rss_end = rows[-1][1]
     growth = rss_end - rss0
     result = {
