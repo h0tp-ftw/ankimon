@@ -57,7 +57,7 @@ class AnkimonTracker:
             "good": 0,
             "easy": 0,
         }
-        self.cards_until_calc_multiplier = 2
+        self.cards_until_calc_multiplier = self._get_cards_per_round()
 
         self.card_streak = 0  # Streak for follow up right cards
 
@@ -90,6 +90,13 @@ class AnkimonTracker:
 
         # Start the session timer when the object is initialized
         self.start_session_timer()
+
+    def _get_cards_per_round(self) -> int:
+        try:
+            from ..battle_loop import _get_cards_per_round
+            return max(1, _get_cards_per_round())
+        except Exception:
+            return 2
 
     def get_total_reviews(self):
         col = services.col
@@ -218,7 +225,7 @@ class AnkimonTracker:
         self.cards_until_calc_multiplier -= 1
         # After 2 cards - calculate multiplier
         if self.cards_until_calc_multiplier <= 0:
-            self.cards_until_calc_multiplier = 2
+            self.cards_until_calc_multiplier = self._get_cards_per_round()
             self.calc_multiply_card_rating()
 
     # def update_streak(self, new_day):
@@ -271,7 +278,10 @@ class AnkimonTracker:
     def calc_multiply_card_rating(self):
         """Calculate the multiplier based on recent card rating counts."""
 
-        max_points = 20
+        max_points = sum(self.multiplier_card_ratings_count.values()) * 10
+        if max_points == 0:
+            max_points = 20
+
         multiply_sum = (
             self.multiplier_card_ratings_count["easy"] * 20
             + self.multiplier_card_ratings_count["hard"] * 5
