@@ -14,7 +14,7 @@ import gc
 import time
 import contextlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import csv
 from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpokemon_path, items_path, badges_path, team_pokemon_path as team_path
@@ -125,19 +125,37 @@ class ConnectionWrapper:
                     self._conn.commit()
                 except sqlite3.DatabaseError as e:
                     msg = str(e).lower()
-                    # NOTE: Deliberately NO "closed database" retry here. Unlike
-                    # execute()/executemany(), commit() has nothing to replay:
-                    # sqlite rolled this connection's transaction back when it was
-                    # closed, so committing a *different* connection would be a
-                    # no-op that reports success for a write that no longer exists.
-                    # Let it raise -- see the __exit__ comment in database_manager.
+                    # NOTE: Deliberately NO retry that reports success here. Unlike
+                    # execute()/executemany(), commit() has nothing to replay, so
+                    # committing a *different* connection is a no-op that reports
+                    # success for a write that no longer exists. That holds for both
+                    # failures we know how to recognise:
+                    #
+                    #   "closed database" -- sqlite rolled this connection's
+                    #   transaction back when the connection was closed.
+                    #
+                    #   "malformed"/"disk image" -- repair_database() rebuilds the
+                    #   file from a *separate* connection's iterdump(), which cannot
+                    #   see this connection's uncommitted rows, then quiesces every
+                    #   registered connection and swaps the rebuilt file into place.
+                    #   The pending transaction does not survive either step.
+                    #
+                    # So heal the file -- leaving it corrupt helps nobody -- but let
+                    # the original failure propagate. Callers such as consume_item
+                    # hand out an effect on the strength of a successful commit: a
+                    # heal, a revived fossil. Reporting success for a decrement that
+                    # the repair threw away is exactly the free-heal those callers
+                    # exist to prevent. See the __exit__ comment below.
                     if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
                         self.release_lease()
                         lease_released = True
-                        self._db_mgr.repair_database()
-                        fresh = self._db_mgr._get_connection()
-                        fresh._conn.commit()
-                        return
+                        try:
+                            self._db_mgr.repair_database()
+                        except Exception:
+                            # repair_database() logs its own failure. Whether it
+                            # healed or not, the caller's transaction is gone; the
+                            # commit error is the one it needs to see.
+                            pass
                     raise
         finally:
             if not lease_released:
@@ -333,6 +351,11 @@ class AnkimonDB:
         self._local_conn = threading.local()                       # per-background-thread
         self._all_connections = []
         self._conn_lock = threading.RLock()
+        # Serialises the read-modify-write of the pokedex_caught / pokedex_seen
+        # user_data lists. save_pokemon() runs on the background mobile-sync
+        # thread as well as the GUI thread, and those two lists are rewritten
+        # wholesale, so without this an interleaved save loses an id.
+        self._pokedex_lock = threading.Lock()
         self._is_repairing = False
         # When non-None, mark_mobile_battle_resolved defers the mirror-DB sync
         # (which commits on a separate connection, escaping any outer transaction)
@@ -342,6 +365,7 @@ class AnkimonDB:
         self._connection_epoch = 0
         self._connection_epoch_gui = -1
         self._setup_database()
+        self._reconcile_pokedex_history_safely()
 
     def _prepare_connection(self, conn):
         """Apply row factory, a generous busy-timeout, and (only when opted in)
@@ -743,7 +767,13 @@ class AnkimonDB:
                 raise
 
             self._log("info", f"Switched database to {db_filename}")
-            return True
+
+        # Deliberately outside ``quiesce``: that holds ``_conn_lock`` for the whole
+        # block, and the sweep takes ``_pokedex_lock`` and *then* a connection
+        # (i.e. ``_conn_lock``). Running it in there would invert the order every
+        # mark_as_caught uses and could deadlock against a concurrent save.
+        self._reconcile_pokedex_history_safely()
+        return True
 
     # --- Obfuscation / De-obfuscation ---
 
@@ -998,6 +1028,18 @@ class AnkimonDB:
             )
         conn.commit()
         self._clear_reviewer_ownership_cache()
+
+        # Automatically mark the pokemon as caught. The row is already committed,
+        # so a failure here must not fail the save -- but it is logged as an error
+        # (not a warning) because it means the Pokedex is now behind the
+        # collection until _reconcile_pokedex_history heals it on the next launch.
+        pokemon_id = pokemon_data.get("id")
+        if pokemon_id:
+            try:
+                self.mark_as_caught(int(pokemon_id))
+            except Exception as e:
+                self._log("error", f"Failed to mark saved pokemon as caught: {e}")
+
         return True
 
     def get_pokemon(self, individual_id: str) -> Optional[Dict[str, Any]]:
@@ -1179,6 +1221,17 @@ class AnkimonDB:
         )
         conn.commit()
         self._clear_reviewer_ownership_cache()
+
+        # Automatically mark the pokemon as caught (see save_pokemon: logged as an
+        # error because the Pokedex is left behind the collection until the next
+        # _reconcile_pokedex_history sweep).
+        pokemon_id = pokemon_data.get("id")
+        if pokemon_id:
+            try:
+                self.mark_as_caught(int(pokemon_id))
+            except Exception as e:
+                self._log("error", f"Failed to mark saved main pokemon as caught: {e}")
+
         return True
 
     def get_main_pokemon(self) -> Optional[Dict[str, Any]]:
@@ -1350,6 +1403,71 @@ class AnkimonDB:
         conn.commit()
         return new_qty
 
+    def consume_item(self, item_name: str, count: int = 1) -> bool:
+        """Spend ``count`` units of ``item_name``. Returns whether they were.
+
+        ``update_item_quantity`` cannot answer "did I actually pay for this?":
+        it reads the quantity and writes it back in two steps, and its return
+        value collapses "the row was gone" and "you just spent your last one"
+        into the same 0. A caller that hands out an effect on the strength of
+        that -- a heal, a revived fossil -- can hand it out for free.
+
+        The decrement here is one conditional statement, so the row cannot
+        change between the check and the write: sqlite reports through
+        ``rowcount`` whether the ``quantity >= count`` guard actually matched.
+        The follow-up DELETE only tidies an emptied row and is idempotent;
+        both share the one transaction below.
+
+        Roll back if the commit fails, mirroring ``ConnectionWrapper.__exit__``.
+        A failed commit -- the busy_timeout expiring under write contention,
+        a full disk -- does not necessarily end sqlite's transaction, so the
+        decrement stays pending on this thread's connection. Nobody is paid:
+        ``consume_item`` never returns True, so ``Check_Heal_Item`` refuses the
+        heal. But the next unrelated write on the same connection commits, and
+        the pending decrement rides along with it -- the potion is gone and the
+        HP was never granted, which is precisely the half of the invariant this
+        method exists to hold. ``with conn:`` would also roll back, but its
+        ``__enter__`` issues an explicit BEGIN (which collides with exactly the
+        still-open transaction at issue) and its ``__exit__`` commits the raw
+        connection, ignoring the ``_disable_commit`` opt-out that mobile sync's
+        bulk resolve relies on. Roll back here instead and re-raise: a lost
+        write must not read as success.
+        """
+        if count <= 0:
+            self._log("warning", f"Refusing to consume {count} of '{item_name}'.")
+            return False
+
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE items SET quantity = quantity - ? "
+                "WHERE item_name = ? AND quantity >= ?",
+                (count, item_name, count)
+            )
+            consumed = cursor.rowcount == 1
+            if consumed:
+                cursor.execute(
+                    "DELETE FROM items WHERE item_name = ? AND quantity <= 0",
+                    (item_name,)
+                )
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                # Nothing better to do: the original failure is the one the
+                # caller needs, and a connection too broken to roll back has
+                # no pending decrement anybody can accidentally commit.
+                pass
+            raise
+        if not consumed:
+            self._log(
+                "warning",
+                f"Item '{item_name}' could not be consumed: fewer than {count} in inventory."
+            )
+        return consumed
+
     # --- Badge Operations ---
 
     def save_badge(self, badge_id: str, badge_data: Dict[str, Any]):
@@ -1474,6 +1592,179 @@ class AnkimonDB:
             except:
                 return val
         return default
+
+    @staticmethod
+    def _coerce_pokedex_id_list(raw: Any) -> List[int]:
+        """Normalises a stored pokedex id list to plain ints.
+
+        Legacy stores (and hand-edited/corrupt data) can hold string ids such as
+        ``"25"`` alongside ints, or entries that are not ids at all. Without
+        normalising, ``25 not in ["25"]`` is True (so the id is appended a
+        second time) and the resulting mixed set breaks both the Ankidex's
+        ``seen - caught`` subtraction and profile_data's ``search_pokedex_by_id``
+        lookup. Unhashable/garbage entries are dropped rather than allowed to
+        raise out of the getters.
+        """
+        if not isinstance(raw, list):
+            return []
+        ids: List[int] = []
+        for entry in raw:
+            try:
+                ids.append(int(entry))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    def _append_pokedex_ids(self, additions: Dict[str, Iterable[Any]]) -> Dict[str, int]:
+        """Append ids to the pokedex ``user_data`` lists in ONE transaction.
+
+        ``additions`` maps ``"pokedex_caught"`` / ``"pokedex_seen"`` to the ids
+        to record. Every key is read, merged and rewritten on the same
+        connection and committed exactly once, so the two lists cannot diverge:
+        either both land or neither does. Driving them through two
+        ``set_user_data`` calls instead (a commit each) can persist a caught id
+        whose matching seen id was lost to whatever failed in between — a disk
+        error, the busy-timeout expiring under write contention, or the process
+        going away — leaving the Ankidex with a species it counts as caught but
+        never saw, and no way to tell that happened.
+
+        The commit goes through the ConnectionWrapper rather than the raw
+        sqlite3 handle so a bulk mobile "Resolve All" (which sets
+        ``_disable_commit`` and holds one long write transaction) still folds
+        these writes into its outer transaction and rolls them back with it.
+
+        Callers must hold ``self._pokedex_lock``. Returns the number of ids
+        newly added per key.
+        """
+        conn = self._get_connection()
+        pending: List[tuple] = []
+        added: Dict[str, int] = {}
+
+        for key, ids in additions.items():
+            # De-duplicated on the way out as well as in: a list that a legacy
+            # write left holding "25" alongside 25 is stored back normalised
+            # once we have a reason to rewrite it.
+            known: set = set()
+            stored: List[int] = []
+            for pokemon_id in self._coerce_pokedex_id_list(self.get_user_data(key, [])):
+                if pokemon_id not in known:
+                    known.add(pokemon_id)
+                    stored.append(pokemon_id)
+
+            new_ids: List[int] = []
+            for raw_id in ids:
+                try:
+                    pokemon_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if pokemon_id not in known:
+                    known.add(pokemon_id)
+                    new_ids.append(pokemon_id)
+
+            added[key] = len(new_ids)
+            if new_ids:
+                pending.append((key, json.dumps(stored + new_ids)))
+
+        if pending:
+            with conn.cursor() as cursor:
+                cursor.executemany(
+                    "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
+                    pending,
+                )
+            conn.commit()
+        return added
+
+    def mark_as_caught(self, pokemon_id: int):
+        """Marks a pokemon as caught (and seen) in the pokedex history.
+
+        Raises if the write fails — callers on a save path swallow and log that,
+        but the failure must be visible rather than reported as a success.
+        """
+        try:
+            pokemon_id = int(pokemon_id)
+        except (TypeError, ValueError):
+            self._log("warning", f"Ignoring non-numeric pokedex id: {pokemon_id!r}")
+            return
+
+        # Both lists are rewritten wholesale, so hold the lock across the whole
+        # read-modify-write (save_pokemon also runs on the mobile-sync thread).
+        # Catching implies seeing, so both are recorded in the same transaction.
+        with self._pokedex_lock:
+            self._append_pokedex_ids(
+                {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
+            )
+
+    def _reconcile_pokedex_history_safely(self):
+        """``_reconcile_pokedex_history`` that can never stop the DB from opening."""
+        try:
+            self._reconcile_pokedex_history()
+        except Exception as e:
+            self._log("error", f"Failed to reconcile pokedex history: {e}")
+
+    def _reconcile_pokedex_history(self):
+        """Heal the caught/seen lists from the Pokemon the DB still knows about.
+
+        ``mark_as_caught`` is best-effort at every call site — ``save_pokemon``
+        and the evolution window log a failure and carry on rather than fail the
+        catch — so one locked or failed write would otherwise drop a species
+        from the Ankidex permanently once its ``captured_pokemon`` row is
+        overwritten by an evolution. This idempotent startup sweep re-derives
+        the lists from the rows that are still authoritative (every owned
+        Pokemon, plus every released one in ``pokemon_history``), so a missed
+        mark heals on the next launch instead of becoming silent data loss.
+
+        It doubles as the backfill for databases written before the caught list
+        existed: those start empty, and without this the list only ever covers
+        Pokemon saved after the upgrade.
+        """
+        ids: set = set()
+
+        try:
+            cursor = self.execute(
+                "SELECT DISTINCT pokedex_id FROM captured_pokemon "
+                "WHERE pokedex_id IS NOT NULL"
+            )
+            ids.update(
+                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
+            )
+        except Exception as e:
+            self._log("warning", f"Pokedex reconcile: could not read captured_pokemon: {e}")
+
+        # Released Pokemon: still caught for Pokedex purposes. Wrapped separately
+        # so an older DB without pokemon_history still reconciles the owned rows.
+        try:
+            cursor = self.execute(
+                "SELECT DISTINCT json_extract(data, '$.id') FROM pokemon_history"
+            )
+            ids.update(
+                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
+            )
+        except Exception as e:
+            self._log("warning", f"Pokedex reconcile: could not read pokemon_history: {e}")
+
+        if not ids:
+            return
+
+        sorted_ids = sorted(ids)
+        with self._pokedex_lock:
+            added = self._append_pokedex_ids(
+                {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
+            )
+        if any(added.values()):
+            self._log(
+                "info",
+                "Pokedex history reconciled from stored Pokemon: "
+                f"+{added.get('pokedex_caught', 0)} caught, "
+                f"+{added.get('pokedex_seen', 0)} seen.",
+            )
+
+    def get_caught_ids(self) -> set[int]:
+        """Returns a set of all pokemon IDs explicitly marked as caught."""
+        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", [])))
+
+    def get_seen_ids(self) -> set[int]:
+        """Returns a set of all pokemon IDs marked as seen."""
+        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_seen", [])))
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
@@ -1600,6 +1891,15 @@ class AnkimonDB:
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
             (key, str_value),
         )
+        conn.commit()
+        return True
+
+    def delete_config_value(self, key: str) -> bool:
+        """Removes a single config key. Settings migrations need this:
+        save_all_config only upserts, so a renamed key's old row would otherwise
+        outlive every save and be read back on the next load."""
+        conn = self._get_connection()
+        conn.execute("DELETE FROM config WHERE key = ?", (key,))
         conn.commit()
         return True
 

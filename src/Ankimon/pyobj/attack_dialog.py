@@ -4,8 +4,11 @@ from PyQt6.QtCore import Qt
 from ..utils import format_move_name
 
 class AttackDialog(QDialog):
-    def __init__(self, attacks, new_attack):
-        super().__init__()
+    def __init__(self, attacks, new_attack, parent=None):
+        """``parent`` should always be a real window: a parentless dialog
+        can spawn with no stacking/focus cue on some window managers, so
+        exec() blocks the calling flow on a dialog nobody can see."""
+        super().__init__(parent)
         self.attacks = attacks
         self.new_attack = new_attack
         self.selected_attack = None

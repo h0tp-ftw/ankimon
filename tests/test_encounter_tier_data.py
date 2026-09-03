@@ -17,6 +17,7 @@ the F22 encounter overhaul replaces that file — see its docstring.
 """
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,39 @@ MYTHICAL_NEW_FORMS = {
     10006,  # shayminsky
     10024,  # keldeoresolute
     10018,  # meloettapirouette
+}
+
+# Alternate forms of already-Legendary/Mythical species added alongside this file's
+# drift guard. Pinned so a partial revert of the resources.py lists is loud rather
+# than silent. Every ID here must resolve in pokedex.json — see
+# ``test_every_tier_id_resolves_in_pokedex``, which is what caught nine PokeAPI form
+# numbers (10118, 10264-10271) that this dataset does not carry.
+ALT_FORM_IDS = {
+    10077,
+    10078,  # kyogre-primal, groudon-primal
+    10022,
+    10023,  # kyurem-black, kyurem-white
+    10119,
+    10120,  # zygarde forms
+    10155,
+    10156,
+    10157,  # necrozma forms
+    10169,
+    10170,
+    10171,  # galar birds
+    10190,  # eternatus-eternamax
+    10188,
+    10189,  # zacian-crowned, zamazenta-crowned
+    10193,
+    10194,  # calyrex-ice, calyrex-shadow
+    10273,
+    10274,
+    10275,  # ogerpon forms
+    10276,
+    10277,  # terapagos forms
+    10086,  # hoopa-unbound
+    10147,  # magearna-original
+    10192,  # zarude-dada
 }
 
 PECHARUNT = 1025  # Gen 9 mythical, lives in "Mythical" (not "Ultra").
@@ -196,3 +230,54 @@ def test_encounter_data_agrees_with_pokemon_tiers_on_f38_ids():
     assert PECHARUNT not in legendary, (
         "Pecharunt must not remain in encounter_data.LEGENDARY once F22 lands"
     )
+
+
+# --- Data-integrity guard: every tier ID must be a species this build ships -------
+
+
+def _pokedex_ids():
+    """Every integer dex ID ``pokedex.json`` actually carries."""
+    pokedex_path = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "Ankimon"
+        / "data_files"
+        / "pokedex.json"
+    )
+    with open(pokedex_path, encoding="utf-8") as handle:
+        pokedex = json.load(handle)
+    ids = set()
+    for entry in pokedex.values():
+        for key in ("actual_id", "num", "species_id"):
+            value = entry.get(key)
+            if isinstance(value, int):
+                ids.add(value)
+    return ids
+
+
+def test_alt_form_ids_are_classified(resources):
+    """The alternate forms stay in a tier — a partial revert must fail loudly."""
+    classified = set()
+    for ids in resources.POKEMON_TIERS.values():
+        classified.update(i for i in ids if isinstance(i, int))
+    missing = sorted(ALT_FORM_IDS - classified)
+    assert not missing, f"alternate-form IDs dropped out of POKEMON_TIERS: {missing}"
+
+
+def test_every_tier_id_resolves_in_pokedex(resources):
+    """No tier may name a species this build does not ship.
+
+    ``utils.get_tier_by_id`` answers purely from membership, so an ID that exists
+    in no ``pokedex.json`` entry is never a crash — it is a confident wrong answer
+    for a species that cannot be encountered, caught, or shown. PokeAPI form
+    numbers differ from this dataset's (it numbers zygarde-10 as 10181, not 10118,
+    and has no separate koraidon/miraidon build forms at all), so IDs copied from
+    there look plausible and are wrong.
+    """
+    known = _pokedex_ids()
+    unknown = {}
+    for tier, ids in resources.POKEMON_TIERS.items():
+        missing = sorted(i for i in ids if isinstance(i, int) and i not in known)
+        if missing:
+            unknown[tier] = missing
+    assert not unknown, f"POKEMON_TIERS names IDs absent from pokedex.json: {unknown}"

@@ -12,25 +12,29 @@ class ShowInfoLogger:
 
         # Check if log file exists, and create it if it doesn't
         if not os.path.exists(self.log_file):
-            with open(self.log_file, 'w') as f:
-                f.write('')  # Create an empty file
+            with open(self.log_file, "w") as f:
+                f.write("")  # Create an empty file
 
         # Set up logging
         self.logger = logging.getLogger(name)
         if not self.logger.handlers:
             self.logger.setLevel(logging.DEBUG)
-            file_handler = logging.FileHandler(self.log_file, encoding='utf-8')  # Explicit UTF-8 encoding
+            file_handler = logging.FileHandler(
+                self.log_file, encoding="utf-8"
+            )  # Explicit UTF-8 encoding
             file_handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
 
         # Create a separate handler for the game log messages
         self.game_logger = logging.getLogger("GameLogger")
         if not self.game_logger.handlers:
-            game_file_handler = logging.FileHandler(self.log_file,encoding="utf-8")
+            game_file_handler = logging.FileHandler(self.log_file, encoding="utf-8")
             game_file_handler.setLevel(logging.DEBUG)
-            game_formatter = logging.Formatter('%(asctime)s - GAME - %(message)s')  # Custom format for game messages
+            game_formatter = logging.Formatter(
+                "%(asctime)s - GAME - %(message)s"
+            )  # Custom format for game messages
             game_file_handler.setFormatter(game_formatter)
             self.game_logger.addHandler(game_file_handler)
 
@@ -51,25 +55,41 @@ class ShowInfoLogger:
         except Exception:
             pass
 
-        if level == 'info':
+        if level == "info":
             self.logger.info(message)
-        elif level == 'warning':
+        elif level == "warning":
             self.logger.warning(message)
-        elif level == 'error':
+        elif level == "error":
             self.logger.error(message)
-        elif level == 'game':
+        elif level == "game":
             self.game_logger.info(message)
 
     def log_and_showinfo(self, level, message):
         # Log + emit always; show a blocking dialog only under a Qt GUI.
         self._record(level, message)
 
-        if level in ['info', 'warning', 'error']:
+        if level in ["info", "warning", "error"]:
             # Lazy, guarded import keeps this module loadable headless. When
             # there is no Qt runtime (the agent harness / tests), the structured
             # event above is the observable record instead of a popup.
             try:
-                from PyQt6.QtWidgets import QMessageBox
+                from PyQt6.QtWidgets import QApplication, QMessageBox
+
+                # The try/except alone is NOT enough, and this is the seam where
+                # that matters: PyQt6 being importable is not the same as an
+                # application running. Constructing a QWidget without a
+                # widget-capable QApplication makes Qt call abort() — a process
+                # death, not an exception — so a dev box that happens to have
+                # PyQt6 installed would kill the harness here rather than fall
+                # through to the event-only path this comment promises.
+                #
+                # isinstance, not `is None`: QApplication.instance() is inherited
+                # from QCoreApplication and hands back whatever application
+                # exists, so a console-only QCoreApplication reads as non-None
+                # and a QWidget built after it aborts just the same.
+                if not isinstance(QApplication.instance(), QApplication):
+                    return
+
                 msg_box = QMessageBox()
                 msg_box.setWindowTitle("Log Message")
                 msg_box.setText(message)
@@ -83,7 +103,7 @@ class ShowInfoLogger:
 
     def game_log(self, message):
         # Log a game-specific message with the GAME- prefix
-        self._record('game', message)
+        self._record("game", message)
 
     def toggle_log_window(self):
         # Imported lazily so the logger module never hard-depends on Qt.
@@ -114,7 +134,9 @@ class ShowInfoLogger:
 
             # Add a refresh button to reload the log content
             refresh_button = QPushButton("Refresh")
-            refresh_button.clicked.connect(lambda: text_edit.setPlainText(open(self.log_file).read()))
+            refresh_button.clicked.connect(
+                lambda: text_edit.setPlainText(open(self.log_file).read())
+            )
 
             # Add a clear button to clear the log file content
             clear_button = QPushButton("Clear")
@@ -132,12 +154,13 @@ class ShowInfoLogger:
 
     def clear_log_file(self):
         # Clear the log file
-        with open(self.log_file, 'w') as f:
-            f.write('')  # Empty the log file
+        with open(self.log_file, "w") as f:
+            f.write("")  # Empty the log file
 
         # Update the log viewer with the cleared content
         if self.log_dialog:
             from PyQt6.QtWidgets import QTextEdit
+
             text_edit = self.log_dialog.findChild(QTextEdit)
             if text_edit:
-                text_edit.setPlainText('')  # Clear the displayed content in the viewer
+                text_edit.setPlainText("")  # Clear the displayed content in the viewer

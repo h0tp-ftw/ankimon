@@ -459,6 +459,8 @@
   "bp_label": "PL",
   "combat_power": "Potenza di combattimento",
   "battle_power": "Potenza di lotta",
+  "level_label": "Liv. {level}",
+  "shiny_tooltip": "Pokémon cromatico",
   "friendship_label": "Amicizia",
   "friendship_tooltip": "Misura il legame tra te e il tuo Pokémon.",
   "bff_tooltip": "💖 Migliore Amico (Amicizia Massima)",

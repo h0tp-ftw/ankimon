@@ -549,3 +549,197 @@ def test_tier_fallback_degrades_straight_to_normal(monkeypatch):
 
     assert queried == ["Mega", "Normal"]
     assert "Legendary" not in queried  # no sideways cascade into other rare tiers
+
+
+def _run_victory_with_stored_row(stored_individual_id, main_individual_id):
+    """Drive one no-level-up victory and report what the checkers were handed.
+
+    Returns the ``attacks=`` kwarg ``check_friendship_evolution_for_pokemon``
+    received. ``None`` means the seed was declined and the checker falls back to
+    its own ``get_pokemon(individual_id)`` lookup.
+    """
+    import types
+
+    names = (
+        "settings_obj",
+        "translator",
+        "services",
+        "ankimon_db",
+        "find_experience_for_level",
+        "limit_ev_yield",
+        "check_friendship_evolution_for_pokemon",
+        "check_evolution_for_pokemon",
+    )
+    orig = {n: getattr(ef, n) for n in names}
+    try:
+        main_data = {
+            "individual_id": stored_individual_id,
+            "name": "Pikachu",
+            "attacks": ["Tackle", "Charm"],
+            "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+            "held_item": None,
+            "pokemon_defeated": 0,
+            "stats": {},
+            "level": 50,
+            "xp": 0,
+            "friendship": 300,
+        }
+        settings = mock.MagicMock()
+        settings.get = lambda k, d=None: {
+            "misc.remove_level_cap": False,
+            "gui.pop_up_dialog_message_on_defeat": False,
+        }.get(k, d)
+        ef.settings_obj = settings
+        ef.translator = mock.MagicMock()
+        ef.translator.translate = lambda *a, **k: "msg"
+        ef.services = mock.MagicMock()
+        ef.services.db.get_main_pokemon.return_value = main_data
+        ef.ankimon_db = mock.MagicMock()
+        # Never level up: this is the no-level-up victory the seed exists for.
+        ef.find_experience_for_level = lambda *a, **k: 10**9
+        ef.limit_ev_yield = lambda have, add: {
+            "hp": 0,
+            "attack": 0,
+            "defense": 0,
+            "special-attack": 0,
+            "special-defense": 0,
+            "speed": 0,
+        }
+        ef.check_friendship_evolution_for_pokemon = mock.MagicMock(return_value=None)
+        ef.check_evolution_for_pokemon = mock.MagicMock(return_value=None)
+
+        main = types.SimpleNamespace(
+            name="Pikachu",
+            growth_rate="medium",
+            level=50,
+            xp=0,
+            individual_id=main_individual_id,
+            id=25,
+            everstone=False,
+            friendship=300,
+            gender="F",
+            stats={},
+            ev={"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+            hp=100,
+            held_item=None,
+            pokemon_defeated=0,
+            tier="Normal",
+            is_favorite=False,
+            evolution_rejected=False,
+            invalidate_cp_cache=lambda: None,
+        )
+        enemy = types.SimpleNamespace(ev_yield={})
+
+        ef.save_main_pokemon_progress(
+            main, enemy, 5, {}, mock.MagicMock(), mock.MagicMock()
+        )
+
+        ef.check_friendship_evolution_for_pokemon.assert_called_once()
+        return ef.check_friendship_evolution_for_pokemon.call_args.kwargs.get("attacks")
+    finally:
+        for n, v in orig.items():
+            setattr(ef, n, v)
+
+
+def test_victory_seeds_the_moveset_when_the_stored_row_is_this_pokemon():
+    # The happy path the seed exists for: one fewer DB query per no-level-up
+    # victory, with the exact list the checker's own fallback would have read.
+    assert _run_victory_with_stored_row("iid", "iid") == ["Tackle", "Charm"]
+
+
+def test_victory_declines_the_seed_when_the_stored_row_is_another_pokemon():
+    """A mismatched is_main row must not feed its moveset to the checkers.
+
+    ``is_main`` has no uniqueness constraint and ``get_main_pokemon()``
+    ``fetchone()``s whatever it finds, so the stored row and the in-memory
+    ``main_pokemon`` can name different Pokemon — the level-up merge below the
+    seed guards itself against exactly that before touching the moveset. Seeding
+    past the same mismatch evaluates a ``levelMove`` / ``known_move_type`` gate
+    against ANOTHER Pokemon's moves (a Charm here would offer Sylveon to an Eevee
+    that knows no Fairy move). ``None`` restores the checker's own
+    ``get_pokemon(individual_id)`` lookup, which is keyed correctly.
+    """
+    assert _run_victory_with_stored_row("someone-else", "iid") is None
+
+
+def test_victory_declines_the_seed_when_the_stored_row_has_no_id():
+    # A row that cannot prove its identity is treated as a mismatch, not a match.
+    assert _run_victory_with_stored_row(None, "iid") is None
+
+
+def test_victory_declines_the_seed_when_neither_side_has_an_id():
+    # Two missing ids must not compare equal into a match: there is nothing to
+    # verify, which is precisely the case the check exists to refuse.
+    assert _run_victory_with_stored_row(None, None) is None
+
+
+def test_victory_seed_tolerates_int_vs_str_id_drift():
+    # individual_id is TEXT in the schema but callers have passed ints; the
+    # guard must not decline a genuine match over the type alone.
+    assert _run_victory_with_stored_row(7, "7") == ["Tackle", "Charm"]
+
+
+def test_new_pokemon_clears_the_players_volatile_status(monkeypatch):
+    """A new wild encounter must clear the PLAYER's volatiles, not just the enemy's.
+
+    ``new_pokemon`` rebuilds the enemy object from ``pokemon_data`` (which carries
+    a fresh ``volatile_status``), but ``main_pokemon`` survives between encounters.
+    Without this reset a confusion/leechseed from the battle that just ended is
+    still on the player at the start of the next one, and gets handed to the
+    engine on turn 1. The hooks-level reset cannot cover it: that runs only on the
+    ``state is not None`` path, and ``new_pokemon`` sets ``_state.new_state = None``.
+
+    ``generate_random_pokemon`` is stubbed to raise, which both keeps the test off
+    the heavy encounter-generation path and pins the reset as happening BEFORE it.
+    """
+
+    class _Stop(Exception):
+        pass
+
+    class _Player:
+        def __init__(self):
+            self.level = 50
+            self.volatile_status = {"confusion", "leechseed"}
+
+    player = _Player()
+    monkeypatch.setattr(ef, "main_pokemon", player)
+    monkeypatch.setattr(ef, "clear_auto_battle_override", lambda: None)
+
+    def _stop(*args, **kwargs):
+        raise _Stop()
+
+    monkeypatch.setattr(ef, "generate_random_pokemon", _stop)
+
+    try:
+        ef.new_pokemon(mock.MagicMock(), None, mock.MagicMock(), None)
+    except _Stop:
+        pass
+
+    assert player.volatile_status == set()
+
+
+def test_new_pokemon_tolerates_a_player_without_volatile_status(monkeypatch):
+    """The reset must not crash on a main_pokemon that predates the attribute."""
+
+    class _Stop(Exception):
+        pass
+
+    class _LegacyPlayer:
+        def __init__(self):
+            self.level = 50
+
+    player = _LegacyPlayer()
+    monkeypatch.setattr(ef, "main_pokemon", player)
+    monkeypatch.setattr(ef, "clear_auto_battle_override", lambda: None)
+
+    def _stop(*args, **kwargs):
+        raise _Stop()
+
+    monkeypatch.setattr(ef, "generate_random_pokemon", _stop)
+
+    try:
+        ef.new_pokemon(mock.MagicMock(), None, mock.MagicMock(), None)
+    except _Stop:
+        pass
+
+    assert not hasattr(player, "volatile_status")

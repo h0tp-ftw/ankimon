@@ -718,5 +718,82 @@
             "special-form": null,
             "evos": []
         }
+    },
+    {
+        "code": "MONTHLY-2026-09-WINGULL",
+        "month": "September 2026",
+        "description": "A breezy challenge for September 2026, featuring Wingull!",
+        "previous_challenge_individual_id": "25bde301-61bd-4655-9057-3afbfef6d9cb",
+        "defeat_threshold": 250,
+        "pokemon": {
+            "name": "Wingull",
+            "nickname": "",
+            "id": 278,
+            "level": 5,
+            "ability": "Keen Eye",
+            "type": [
+                "Water",
+                "Flying"
+            ],
+            "stats": {
+                "hp": 40,
+                "atk": 30,
+                "def": 30,
+                "spa": 55,
+                "spd": 30,
+                "spe": 85,
+                "xp": 0
+            },
+            "base_stats": {
+                "hp": 40,
+                "atk": 30,
+                "def": 30,
+                "spa": 55,
+                "spd": 30,
+                "spe": 85
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 5,
+                "atk": 30,
+                "def": 5,
+                "spa": 4,
+                "spd": 0,
+                "spe": 10
+            },
+            "attacks": [
+                "Quick attack",
+                "Supersonic",
+                "Growl",
+                "Water gun"
+            ],
+            "growth_rate": "medium",
+            "base_experience": 54,
+            "gender": "M",
+            "shiny": false,
+            "nature": "serious",
+            "xp": 0,
+            "current_hp": 40,
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "mega": false,
+            "special_form": null,
+            "special-form": null,
+            "tier": "Normal",
+            "captured_date": "2026-08-30 20:55:27",
+            "capture_date": "2026-08-30 20:55:27",
+            "individual_id": "c46ae93c-0368-4dfe-8f1f-90ad8a892fbb",
+            "is_favorite": false,
+            "held_item": null,
+            "evos": []
+        }
     }
 ]

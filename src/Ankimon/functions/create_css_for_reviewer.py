@@ -54,14 +54,19 @@ def create_css_for_reviewer(
   transform: scaleX(-1) !important;
 }
 
-/* Theme variables */
-:host, :root {
+/* Theme variables. Keyed off the night_mode class the HUD carries (set from
+   theme_manager.night_mode in reviewer_obj.py), not @media
+   (prefers-color-scheme: dark): the media query tracks the OS, so once the
+   pills started following Anki the outline was the one thing left following
+   the desktop -- a white pill ringed in #1F1F1F for anyone running Anki light
+   on a dark desktop, and a white ring around the black XP pill in the mirror
+   case. Every var(--ankimon-outline) consumer is a descendant of
+   #ankimon-hud, so defining it there still inherits to all of them. */
+#ankimon-hud {
   --ankimon-outline: #FFFFFF; /* Light mode outline */
 }
-@media (prefers-color-scheme: dark) {
-  :host, :root {
-    --ankimon-outline: #1F1F1F; /* Dark mode outline */
-  }
+#ankimon-hud.night_mode {
+  --ankimon-outline: #1F1F1F; /* Dark mode outline */
 }
 
 /* If any parent applies invert, force HUD back to normal colors */
@@ -84,37 +89,14 @@ def create_css_for_reviewer(
   background-position: bottom;
 }
 
-/* If a global inversion is applied above #ankimon-hud (e.g., body/html),
-   double-invert these to visually cancel it. This only takes effect if parent is inverted. */
-@supports (filter: invert(100%)) {
-  html[style*="invert("] #ankimon-hud #PokeImage,
-  html[style*="invert("] #ankimon-hud #MyPokeImage,
-  body[style*="invert("] #ankimon-hud #PokeImage,
-  body[style*="invert("] #ankimon-hud #MyPokeImage {
-    filter: invert(100%) hue-rotate(180deg) !important;
-  }
-}
-
-/* Also counter popular dark-mode classes some themes add */
-html.dark #ankimon-hud,
-body.dark #ankimon-hud,
-.night_mode #ankimon-hud,
-.theme-dark #ankimon-hud {
-  filter: none !important;
-  -webkit-filter: none !important;
-}
-html.dark #ankimon-hud #PokeImage,
-html.dark #ankimon-hud #MyPokeImage,
-body.dark #ankimon-hud #PokeImage,
-body.dark #ankimon-hud #MyPokeImage,
-.night_mode #ankimon-hud #PokeImage,
-.night_mode #ankimon-hud #MyPokeImage,
-.theme-dark #ankimon-hud #PokeImage,
-.theme-dark #ankimon-hud #MyPokeImage {
-  filter: none !important;
-  -webkit-filter: none !important;
-  mix-blend-mode: normal !important;
-}
+/* NOTE: there used to be ancestor-anchored dark-mode blocks here
+   (html.dark / body.dark / .night_mode / .theme-dark, and an
+   html[style*="invert("] @supports block). They could never match: this
+   stylesheet is injected into a closed shadow root whose host is appended to
+   <html>, so a class or inline style on <body> is neither visible across the
+   shadow boundary nor an ancestor of the host. They were also redundant --
+   the unconditional #ankimon-hud rules above already force filter: none, and
+   the portal applies its own counter-filter on the host element. */
 
 /* Shared pill style (more vivid than 25%, outlined, no glow) */
 #ankimon-hud .ankimon-pill {
@@ -461,7 +443,10 @@ body.dark #ankimon-hud #MyPokeImage,
   {xp_bar_location}: 2px;
   left: 15px;
   z-index: 9999;
-  font-color: rgba(0, 191, 255, 0.85);
+  color: rgba(0, 191, 255, 0.85);
+  /* The shadow root resets inherited styles, and #xp_text no longer shares the
+     display-pill rule in reviewer_obj.py, so it states its own font. */
+  font-family: Arial, sans-serif;
   font-size: 10px;
   font-weight: bold;
   text-align: center;

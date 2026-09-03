@@ -209,7 +209,19 @@ def start_asynchronous_startup():
     from aqt.operations import QueryOp
     from .startup import run_startup_background_checks, run_startup_ui_callbacks
 
-    def on_startup_complete(results):
+    services._startup_in_progress = True
+
+    def clear_startup_lifecycle_flags():
+        # Both flags gate the developer hot-reload: restart_ankimon() blocks on
+        # _startup_in_progress before purging modules, and _is_reloading tells
+        # run_startup_background_checks to skip backups for the reload's own
+        # startup. Leaving either one set after a failed boot would hang the
+        # next reload or silently suppress backups for the rest of the session,
+        # so every exit path below runs this.
+        services._startup_in_progress = False
+        services._is_reloading = False
+
+    def run_startup_ui_sequence(results):
         # 1. Qt half of the startup sequence (migration dialog, sprite
         #    downloader, first-enemy stat application, starter window, rate
         #    prompt).
@@ -325,6 +337,17 @@ def start_asynchronous_startup():
             except Exception:
                 pass
 
+    def on_startup_complete(results):
+        # QueryOp does not route an exception raised by its *success* callback
+        # to .failure() — it propagates to Anki's top-level handler instead. So
+        # the flag reset has to be a finally, or a single failing Qt-half step
+        # (a raising migration dialog, a missing singleton) would strand the
+        # lifecycle flags and wedge every later hot-reload.
+        try:
+            run_startup_ui_sequence(results)
+        finally:
+            clear_startup_lifecycle_flags()
+
     def on_startup_failed(exc):
         # QueryOp offers no automatic recovery: if the background half raises
         # (e.g. a locked/corrupt ankimon.db in one of the unguarded is_migrated /
@@ -345,11 +368,20 @@ def start_asynchronous_startup():
         except Exception:
             pass
 
-    QueryOp(
-        parent=mw,
-        op=lambda _col: run_startup_background_checks(backup_manager),
-        success=on_startup_complete,
-    ).failure(on_startup_failed).without_collection().run_in_background()
+        clear_startup_lifecycle_flags()
+
+    try:
+        QueryOp(
+            parent=mw,
+            op=lambda _col: run_startup_background_checks(backup_manager),
+            success=on_startup_complete,
+        ).failure(on_startup_failed).without_collection().run_in_background()
+    except Exception:
+        # The op never got scheduled, so neither callback will ever run. Clear
+        # the flags here too, otherwise the next hot-reload waits on a startup
+        # that will never finish.
+        clear_startup_lifecycle_flags()
+        raise
 
 
 # --- Discord integration ---

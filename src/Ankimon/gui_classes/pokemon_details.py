@@ -3,7 +3,7 @@ import json
 from typing import Any, Callable
 import re
 
-from aqt import qconnect
+from aqt import mw, qconnect
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor, QPolygonF, QPen, QBrush
 from PyQt6.QtCore import (
     Qt,
@@ -11,6 +11,7 @@ from PyQt6.QtCore import (
     QRectF,
     QPropertyAnimation,
     QEasingCurve,
+    QTimer,
     pyqtProperty,
 )
 from PyQt6.QtWidgets import QScrollArea
@@ -143,6 +144,10 @@ def PokemonCollectionDetailsSplit(
             "everstone": everstone,
             "attacks": attacks,
             "pokemon_defeated": pokemon_defeated,
+            # Needed for the CSV gender_id gate (Wormadam/Mothim, Vespiquen,
+            # Salazzle): without it this panel's status line would silently skip
+            # a gate the PC grid and the automatic level-up path both enforce.
+            "gender": gender,
         }
         readiness = evolution_readiness(pkmn_data_stub)
 
@@ -396,12 +401,11 @@ def PokemonCollectionDetailsSplit(
         attacks_label.setFixedWidth(230)
         attacks_label.setFixedHeight(80)
 
-        # Friendship-evolution UI (classic single-panel path): an actionable
-        # "Evolve now" button when the Pokémon is ready, otherwise the
-        # requirement line (e.g. "40 friendship to evolve into Espeon · needs
-        # Day"). Only shown when relevant, and only when the caller did not
-        # supply its own trigger_evo_callback (which renders the button in the
-        # right-hand column instead).
+        # Evolution UI: show the requirement line whenever the Pokémon is not
+        # ready (e.g. "40 friendship to evolve into Espeon · needs Day").
+        # When ready, the classic path renders its own "Evolve now" button only
+        # if the caller did not supply trigger_evo_callback; callback callers
+        # render their evolve button in the right-hand column instead.
         evolution_req_widget = None
         # A secondary note shown alongside the Evolve button when the user
         # previously rejected this evolution (soft state) — the manual button
@@ -414,8 +418,8 @@ def PokemonCollectionDetailsSplit(
         show_evolution_ui = readiness["method"] is not None and (
             readiness["method"] != "friendship" or friendship_time_enabled
         )
-        if trigger_evo_callback is None:
-            if show_evolution_ui and readiness["ready"]:
+        if show_evolution_ui:
+            if trigger_evo_callback is None and readiness["ready"]:
                 evo_name = readiness["evo_name"] or "the next form"
                 evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
                 evolve_now_button.setFont(custom_font)
@@ -451,14 +455,15 @@ def PokemonCollectionDetailsSplit(
                     evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     evolution_note_label.setStyleSheet("color: #FF69B4;")
                     evolution_note_widget = evolution_note_label
-            elif show_evolution_ui and readiness["status_text"]:
-                evolution_req_label = QLabel(readiness["status_text"])
-                evolution_req_label.setFont(custom_font)
-                evolution_req_label.setWordWrap(True)
-                evolution_req_label.setFixedWidth(230)
-                evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                evolution_req_label.setStyleSheet("color: #FF69B4;")
-                evolution_req_widget = evolution_req_label
+
+        if show_evolution_ui and not readiness["ready"] and readiness["status_text"]:
+            evolution_req_label = QLabel(readiness["status_text"])
+            evolution_req_label.setFont(custom_font)
+            evolution_req_label.setWordWrap(True)
+            evolution_req_label.setFixedWidth(230)
+            evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            evolution_req_label.setStyleSheet("color: #FF69B4;")
+            evolution_req_widget = evolution_req_label
 
         first_layout = QHBoxLayout()
         TopL_layout_Box = QVBoxLayout()
@@ -1440,8 +1445,19 @@ def remember_attack(
             msg += f"\n Your {pokemon_data['name'].capitalize()} has learned {new_attack} !"
             logger.log_and_showinfo("info", f"{msg}")
         else:
-            dialog = AttackDialog(attacks, new_attack)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog = AttackDialog(attacks, new_attack, parent=mw)
+            QTimer.singleShot(
+                0,
+                lambda: (
+                    dialog.raise_(),
+                    dialog.activateWindow(),
+                ),
+            )
+            try:
+                result = dialog.exec()
+            finally:
+                dialog.deleteLater()
+            if result == QDialog.DialogCode.Accepted:
                 selected_attack = dialog.selected_attack
                 try:
                     index_to_replace = attacks.index(selected_attack)

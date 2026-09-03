@@ -180,3 +180,78 @@ def test_leaderboard_request_skips_when_credentials_are_missing(monkeypatch):
     module.sync_data_to_leaderboard({"caughtPokemon": 12})
 
     assert started == []
+
+
+def _immediate_thread_module(module, monkeypatch):
+    class ImmediateThread:
+        def __init__(self, *, target, daemon):
+            assert daemon is True
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(module.threading, "Thread", ImmediateThread)
+
+
+def test_repeated_pushes_log_only_on_a_change_of_outcome(monkeypatch, capsys):
+    """The sync runs on the review path now, so it must not log a line a minute."""
+    values = {
+        "misc.leaderboard": True,
+        "leaderboard.username": "Nuz",
+        "leaderboard.api_key": "secret-key",
+    }
+    services = SimpleNamespace(
+        db=object(),
+        settings=SimpleNamespace(get=lambda key, default=None: values.get(key, default)),
+    )
+    module = _load_leaderboard(monkeypatch, services)
+    _immediate_thread_module(module, monkeypatch)
+
+    status = {"code": 200}
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda url, *, json, timeout: SimpleNamespace(status_code=status["code"]),
+    )
+
+    for _ in range(5):
+        module.sync_data_to_leaderboard({"caughtPokemon": 1})
+    first = capsys.readouterr().out
+    assert first.count("successfully") == 1, first
+
+    # A change of outcome is still reported, once.
+    status["code"] = 503
+    for _ in range(3):
+        module.sync_data_to_leaderboard({"caughtPokemon": 1})
+    second = capsys.readouterr().out
+    assert second.count("Status: 503") == 1, second
+
+    # ...and so is the recovery.
+    status["code"] = 200
+    module.sync_data_to_leaderboard({"caughtPokemon": 1})
+    assert capsys.readouterr().out.count("successfully") == 1
+
+
+def test_credentials_are_never_printed(monkeypatch, capsys):
+    values = {
+        "misc.leaderboard": True,
+        "leaderboard.username": "Nuz",
+        "leaderboard.api_key": "super-secret-key",
+    }
+    services = SimpleNamespace(
+        db=object(),
+        settings=SimpleNamespace(get=lambda key, default=None: values.get(key, default)),
+    )
+    module = _load_leaderboard(monkeypatch, services)
+    _immediate_thread_module(module, monkeypatch)
+
+    def boom(url, *, json, timeout):
+        raise module.requests.exceptions.RequestException(f"connection to {url} failed")
+
+    monkeypatch.setattr(module.requests, "post", boom)
+    module.sync_data_to_leaderboard({"caughtPokemon": 1})
+
+    out = capsys.readouterr().out
+    assert "super-secret-key" not in out
+    assert "Nuz" not in out
