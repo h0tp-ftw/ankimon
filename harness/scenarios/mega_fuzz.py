@@ -369,7 +369,8 @@ def sweep(n_seeds=12, steps=80, world=None, parallel=1):
                     delta = float(l.split("delta")[1].split("over")[0])
                 except Exception:
                     pass
-        survived = bool(lines) and lines[-1].startswith("SURVIVED")
+        journal_survived = bool(lines) and lines[-1].startswith("SURVIVED")
+        survived = journal_survived and rc == 0
         if survived:
             rc_count = sum(1 for l in lines if "RIGHT-CLICK" in l)
             ctx_count = sum(1 for l in lines if "CONTEXT-ACTION" in l)
@@ -379,7 +380,13 @@ def sweep(n_seeds=12, steps=80, world=None, parallel=1):
             print("  seed %3d [%-9s]: survived %d steps  (%d right-clicks, %d context-actions, %d soft errors)%s"
                   % (seed, w, steps, rc_count, ctx_count, len(caught), mem))
         else:
-            culprit = next((l for l in reversed(lines) if not l.startswith("RSS")), lines[-1] if lines else "(no journal written)")
+            if journal_survived:
+                culprit = "process crashed during Qt teardown after completing all actions"
+            else:
+                culprit = next(
+                    (l for l in reversed(lines) if not l.startswith("RSS")),
+                    lines[-1] if lines else "(no journal written)",
+                )
             crashers.append((seed, w, rc, culprit))
             print("  seed %3d [%-9s]: HARD CRASH (exit %d) — last action before death:\n           %s"
                   % (seed, w, rc, culprit))
