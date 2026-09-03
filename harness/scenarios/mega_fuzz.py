@@ -320,6 +320,15 @@ def _signature(caught_line):
     return s[:90]
 
 
+def _last_action(lines):
+    """Return the last journaled user/teardown action, not trailing diagnostics."""
+    prefixes = ("step ", "warmup:", "teardown:", "CONTEXT-ACTION")
+    for line in reversed(lines):
+        if line.strip().startswith(prefixes):
+            return line
+    return lines[-1] if lines else "(no journal written)"
+
+
 def _run_one(seed, steps, world):
     """Run ONE child subprocess and return (seed, rc, journal-lines)."""
     fd, jp = tempfile.mkstemp(prefix="megafuzz_%d_" % seed, suffix=".log")
@@ -379,7 +388,7 @@ def sweep(n_seeds=12, steps=80, world=None, parallel=1):
             print("  seed %3d [%-9s]: survived %d steps  (%d right-clicks, %d context-actions, %d soft errors)%s"
                   % (seed, w, steps, rc_count, ctx_count, len(caught), mem))
         else:
-            culprit = next((l for l in reversed(lines) if not l.startswith("RSS")), lines[-1] if lines else "(no journal written)")
+            culprit = _last_action(lines)
             crashers.append((seed, w, rc, culprit))
             print("  seed %3d [%-9s]: HARD CRASH (exit %d) — last action before death:\n           %s"
                   % (seed, w, rc, culprit))
