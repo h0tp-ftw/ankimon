@@ -302,6 +302,61 @@ def simulate_battle_with_poke_engine(
         main_pokemon_poke_engine = main_pokemon.to_poke_engine_Pokemon()
         enemy_pokemon_poke_engine = enemy_pokemon.to_poke_engine_Pokemon()
 
+        # Monkey-patch engine move functions since poke_engine is a submodule
+        from ..poke_engine.special_effects.moves import modify_move
+        import random
+        from ..poke_engine import constants
+        from ..poke_engine.data import all_move_json
+
+        def metronome(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+            valid_moves = [move_id for move_id, move_data in all_move_json.items()
+                           if not move_data.get(constants.FLAGS, {}).get("metronome")
+                           and move_id != "metronome"]
+
+            chosen_move_id = random.choice(valid_moves)
+            new_move = all_move_json[chosen_move_id].copy()
+
+            return modify_move.modify_attack_being_used(
+                attacking_side, new_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain
+            )
+
+        def sleeptalk(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+            if attacking_pokemon.status != constants.SLEEP:
+                return all_move_json[constants.DO_NOTHING_MOVE].copy()
+
+            valid_moves = [move["id"] for move in attacking_pokemon.moves
+                           if move["id"] != "sleeptalk"
+                           and not all_move_json[move["id"]].get(constants.FLAGS, {}).get("nosleeptalk")]
+
+            if not valid_moves:
+                return all_move_json[constants.DO_NOTHING_MOVE].copy()
+
+            chosen_move_id = random.choice(valid_moves)
+            new_move = all_move_json[chosen_move_id].copy()
+
+            return modify_move.modify_attack_being_used(
+                attacking_side, new_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain
+            )
+
+        def naturepower(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+            terrain_move_map = {
+                constants.ELECTRIC_TERRAIN: "thunderbolt",
+                constants.GRASSY_TERRAIN: "energyball",
+                constants.MISTY_TERRAIN: "moonblast",
+                constants.PSYCHIC_TERRAIN: "psychic"
+            }
+
+            chosen_move_id = terrain_move_map.get(terrain, "triattack")
+            new_move = all_move_json[chosen_move_id].copy()
+
+            return modify_move.modify_attack_being_used(
+                attacking_side, new_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain
+            )
+
+        modify_move.move_lookup['metronome'] = metronome
+        modify_move.move_lookup['sleeptalk'] = sleeptalk
+        modify_move.move_lookup['naturepower'] = naturepower
+
         # Default side_conditions with all needed keys
         side_conditions = defaultdict(
             int,
