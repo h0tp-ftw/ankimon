@@ -10,7 +10,7 @@
 #   source .tier2/env.sh
 #   export LD_LIBRARY_PATH="$PWD/.tier2/we-libs/extract/usr/lib/$(uname -m)-linux-gnu:$LD_LIBRARY_PATH"
 #   export QTWEBENGINE_DISABLE_SANDBOX=1
-#   export QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage --in-process-gpu --single-process"
+#   export QTWEBENGINE_CHROMIUM_FLAGS="--no-sandbox --disable-gpu --disable-dev-shm-usage"
 #   python3 -m harness.checks.probe_real_webengine
 #   python3 harness/scenarios/hud_render.py 150
 #

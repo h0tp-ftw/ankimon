@@ -119,9 +119,10 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
         raise ValueError("require_webengine=True requires webengine=True")
     if webengine:
         os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
-        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
-                              "--no-sandbox --disable-gpu --disable-dev-shm-usage "
-                              "--in-process-gpu --single-process")
+        os.environ.setdefault(
+            "QTWEBENGINE_CHROMIUM_FLAGS",
+            "--no-sandbox --disable-gpu --disable-dev-shm-usage",
+        )
         try:
             import PyQt6.QtWebEngineWidgets  # noqa: F401  (must precede QApplication)
         except Exception as exc:
