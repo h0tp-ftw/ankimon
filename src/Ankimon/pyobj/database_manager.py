@@ -377,11 +377,13 @@ def normalize_legacy_item(item: Any) -> Optional[Tuple[str, int, Optional[Dict[s
     """Return ``(item_name, quantity, extra_data)`` for one items.json entry, or None to skip it.
 
     Accepts the flat-string format (``"potion"``) and dict entries under any of
-    the legacy name/quantity keys. A dict with no quantity key defaults to 1; an
-    explicit invalid quantity skips the entry rather than writing junk to the DB.
+    the legacy name/quantity keys. Names are lowercased so ``"Potion"`` and
+    ``"potion"`` fold into one row and hit the items.csv identifier. A dict with
+    no quantity key defaults to 1; an explicit invalid quantity skips the entry
+    rather than writing junk to the DB.
     """
     if isinstance(item, str):
-        name = item.strip()
+        name = item.strip().lower()
         return (name, 1, None) if name else None
     if not isinstance(item, dict):
         return None
@@ -389,7 +391,7 @@ def normalize_legacy_item(item: Any) -> Optional[Tuple[str, int, Optional[Dict[s
     for key in _LEGACY_ITEM_NAME_KEYS:
         candidate = item.get(key)
         if isinstance(candidate, str) and candidate.strip():
-            name = candidate.strip()
+            name = candidate.strip().lower()
             break
     if not name:
         return None
@@ -2078,6 +2080,10 @@ class AnkimonDB:
         phase1_done = cursor.fetchone() is not None
 
         if not phase1_done:
+            # Any Phase 1 source that fails leaves the phase UNMARKED so the next
+            # run retries it; marking it would make a partial import permanent.
+            phase1_errors = []
+
             # Migrate mypokemon.json
             if mypokemon_path.is_file():
                 try:
@@ -2109,6 +2115,7 @@ class AnkimonDB:
                             stats["pokemon"] += 1
                     self._log("info", f"Migrated {stats['pokemon']} pokemon from mypokemon.json")
                 except Exception as e:
+                    phase1_errors.append(f"mypokemon.json: {e}")
                     self._log("error", f"Failed to migrate mypokemon.json: {e}")
 
             # Migrate mainpokemon.json
@@ -2132,6 +2139,7 @@ class AnkimonDB:
                                 stats["main"] = 1
                     self._log("info", "Migrated main pokemon from mainpokemon.json")
                 except Exception as e:
+                    phase1_errors.append(f"mainpokemon.json: {e}")
                     self._log("error", f"Failed to migrate mainpokemon.json: {e}")
 
             # Migrate items.json
@@ -2157,7 +2165,14 @@ class AnkimonDB:
                     self._get_connection().commit()
                     self._log("info", f"Migrated {stats['items']} items from items.json")
                 except Exception as e:
+                    phase1_errors.append(f"items.json: {e}")
                     self._log("error", f"Failed to migrate items.json: {e}")
+                    # Item rows are written with commit=False; drop the partial batch
+                    # so a retry starts from the pre-items state.
+                    try:
+                        self._get_connection().rollback()
+                    except Exception as rollback_error:
+                        self._log("error", f"Could not roll back partial items.json import: {rollback_error}")
 
             # Migrate badges.json - handles both [1, 2, 3] and [{"id": 1}, ...] formats
             if badges_path.is_file():
@@ -2182,8 +2197,17 @@ class AnkimonDB:
                             stats["badges"] += 1
                     self._log("info", f"Migrated {stats['badges']} badges from badges.json")
                 except Exception as e:
+                    phase1_errors.append(f"badges.json: {e}")
                     self._log("error", f"Failed to migrate badges.json: {e}")
-            
+
+            if phase1_errors:
+                stats["errors"] = phase1_errors
+                self._log(
+                    "error",
+                    f"Phase 1 migration incomplete; left unmarked so the next run retries it: {phase1_errors}",
+                )
+                return stats
+
             # Mark Phase 1 as done
             cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES ('migrated', 'true')")
 

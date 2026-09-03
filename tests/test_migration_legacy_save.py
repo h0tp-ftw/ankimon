@@ -89,6 +89,8 @@ def test_coerce_item_quantity(value, expected):
     [
         ("potion", ("potion", 1, None)),
         ("  pp-max ", ("pp-max", 1, None)),
+        ("Potion", ("potion", 1, None)),
+        ({"item": "PP-Max"}, ("pp-max", 1, {"item": "PP-Max"})),
         ("", None),
         ({"item": "potion", "quantity": "2"}, ("potion", 2, {"item": "potion", "quantity": "2"})),
         ({"name": "ether", "amount": 3}, ("ether", 3, {"name": "ether", "amount": 3})),
@@ -112,6 +114,11 @@ def test_aggregate_legacy_items_folds_duplicates_and_drops_junk():
     assert totals == {"potion": (3, {"item": "potion", "quantity": "2"}), "wide-lens": (2, None)}
     assert aggregate_legacy_items({"potion": 2}) == {}
     assert aggregate_legacy_items(None) == {}
+
+
+def test_aggregate_legacy_items_folds_case_variants():
+    totals = aggregate_legacy_items(["Potion", "potion", {"item": "POTION", "quantity": 2}])
+    assert totals == {"potion": (4, {"item": "POTION", "quantity": 2})}
 
 
 @pytest.mark.parametrize(
@@ -232,6 +239,50 @@ def test_migrate_from_json_flags_lost_item_quantity(tmp_path):
         stats = db.migrate_from_json(**paths)
 
     assert any(issue.startswith("items:") for issue in stats.get("integrity_issues", []))
+
+
+def test_migrate_from_json_case_variants_share_one_row(tmp_path):
+    db = AnkimonDB(db_path=tmp_path / "ankimon.db")
+    paths = _write_save(tmp_path, [], [], ["Potion", "potion", {"item": "POTION", "quantity": 2}], [])
+
+    stats = db.migrate_from_json(**paths)
+
+    assert db.get_item("potion")["quantity"] == 4
+    assert db.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+    assert "integrity_issues" not in stats
+
+
+def test_migrate_from_json_failed_items_step_leaves_phase1_unmarked(tmp_path):
+    """A failure inside Phase 1 must not write the marker, or Retry would skip the phase for good."""
+    db = AnkimonDB(db_path=tmp_path / "ankimon.db")
+    charizard = _pokemon("Charizard", 6, 59)
+    paths = _write_save(tmp_path, [charizard], [charizard], ["potion", "wide-lens"], [1])
+    original = db.add_item
+    calls = {"n": 0}
+
+    def flaky_add_item(item_name, quantity=1, extra_data=None, commit=True):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("disk full")
+        return original(item_name, quantity, extra_data=extra_data, commit=commit)
+
+    with patch.object(db, "add_item", side_effect=flaky_add_item):
+        stats = db.migrate_from_json(**paths)
+
+    assert any(err.startswith("items.json:") for err in stats["errors"])
+    assert not db.is_migrated_phase1()
+    assert not db.is_migrated()
+    assert db.get_item("potion") is None  # the partial batch was rolled back
+    assert db.get_pokemon_count() == 1  # committed sources stay put
+
+    stats = db.migrate_from_json(**paths)  # the retry
+
+    assert "errors" not in stats
+    assert db.is_migrated()
+    assert db.get_pokemon_count() == 1
+    assert db.get_main_pokemon()["name"] == "Charizard"
+    assert db.get_item("potion")["quantity"] == 1
+    assert db.get_item("wide-lens")["quantity"] == 1
 
 
 def test_migrate_from_json_retry_does_not_double_anything(tmp_path):
