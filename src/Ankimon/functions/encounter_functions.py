@@ -1409,6 +1409,7 @@ def save_main_pokemon_progress(
             )
         )
         main_pokemon.level += 1
+        main_pokemon.update_stats()
         events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
