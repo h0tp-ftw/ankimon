@@ -65,7 +65,7 @@ def test_a_failed_media_sync_does_not_settle_an_empty_folder(
     monkeypatch.setattr(st, "_mark_migration_done", marked)
 
     # The first media sync on a new device FAILS. Folder is still empty.
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     marked.assert_not_called()
 
@@ -73,7 +73,7 @@ def test_a_failed_media_sync_does_not_settle_an_empty_folder(
     _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
     ask.assert_called_once()
 
 
@@ -95,7 +95,7 @@ def test_corrupt_protected_copy_is_not_overwritten_by_a_stale_candidate(
     destination connection with "file is not a database". That accident is the
     entire protection the current code has.)
     """
-    protected = media / st.MEDIA_SAVE_NAME
+    protected = media / "_addons21_ankimon.db"
     _make_save(protected, pokemon=900, badges=40, history=700)
     raw = bytearray(protected.read_bytes())
     for i in range(1024, len(raw)):  # keep the header, shred the body
@@ -107,7 +107,7 @@ def test_corrupt_protected_copy_is_not_overwritten_by_a_stale_candidate(
     _make_save(media / "ankimon.db", pokemon=1)  # readable but STALE
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert protected.read_bytes() == before, (
         "a stale 1-pokemon candidate overwrote the protected 900-pokemon save"
@@ -220,7 +220,7 @@ def test_no_process_global_carries_sync_state_between_profiles(
     # --- profile A: a save is present, gets protected, rescue declined --------
     _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     # --- profile switch: B has its own, still-empty media folder -------------
     media_b = tmp_path / "profileB" / "collection.media"
@@ -231,7 +231,7 @@ def test_no_process_global_carries_sync_state_between_profiles(
     monkeypatch.setattr(st, "_mark_migration_done", marked)
 
     st.run_media_migration(MagicMock(), logger)  # B's profile_did_open scan
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     marked.assert_not_called()
 
@@ -239,7 +239,7 @@ def test_no_process_global_carries_sync_state_between_profiles(
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
     _make_save(media_b / "ankimon.db", pokemon=7, badges=3, history=11)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert len(_protected(media_b)) == 1
     ask.assert_called_once()
@@ -251,22 +251,19 @@ def test_no_process_global_carries_sync_state_between_profiles(
 def test_dev_save_does_not_land_in_the_normal_partitions_protected_name(
     media, tmp_path, logger, monkeypatch
 ):
-    """_find_media_saves partitions candidates, but run_media_migration then
-    hardcodes `protected = media_dir / MEDIA_SAVE_NAME` for EVERY target."""
+    """_find_media_saves partitions candidates, but the protect step once wrote
+    every target's copy under the NORMAL partition's name."""
     dev_active = _make_save(tmp_path / "ankimonDEV.db", pokemon=2)
     monkeypatch.setattr(st, "_active_db_path", lambda: dev_active)
     _make_save(media / "ankimonDEV.db", pokemon=500, badges=50, history=900)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
-    protected = media / st.MEDIA_SAVE_NAME
-    if protected.is_file():
-        stats = st.get_db_stats(protected)
-        assert stats is None or stats["pokemon"] != 500, (
-            "the developer save was written into the normal partition's "
-            "protected name (_ankimon_save.db)"
-        )
+    assert _protected(media) == [], (
+        "the developer save was written into the normal partition's prefix"
+    )
+    assert len(_protected(media, "ankimonDEV.db")) == 1
 
 
 def test_dev_contaminated_protected_name_is_not_offered_over_the_real_save(
@@ -284,7 +281,7 @@ def test_dev_contaminated_protected_name_is_not_offered_over_the_real_save(
     monkeypatch.setattr(st, "_active_db_path", lambda: dev_active)
     _make_save(media / "ankimonDEV.db", pokemon=500, badges=50, history=900)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     real_active = _make_save(tmp_path / "ankimon.db", pokemon=3, badges=1, history=2)
     monkeypatch.setattr(st, "_active_db_path", lambda: real_active)
@@ -292,7 +289,7 @@ def test_dev_contaminated_protected_name_is_not_offered_over_the_real_save(
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert not ask.called, (
         "a developer test save was offered as a rescue over the real save"
@@ -321,7 +318,7 @@ def test_migration_does_not_block_profile_open_on_a_locked_save(
 
     try:
         t0 = time.monotonic()
-        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.run_media_migration(MagicMock(), logger)
         elapsed = time.monotonic() - t0
         assert elapsed < 1.0, (
             f"profile-open path blocked for {elapsed:.1f}s on a locked media save"
@@ -342,7 +339,7 @@ def test_a_locked_local_save_is_not_ranked_or_settled_against(
 
     The rescue would then be offered against a side the dialog itself renders as
     "could not read this file", and a user who sensibly declined would fall
-    through to _settle(): the one-shot burned on a comparison that never
+    through to the settle: the one-shot burned on a comparison that never
     happened. Nothing may be concluded from a save that would not open.
     """
     import time
@@ -363,7 +360,7 @@ def test_a_locked_local_save_is_not_ranked_or_settled_against(
 
     try:
         t0 = time.monotonic()
-        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.run_media_migration(MagicMock(), logger)
         elapsed = time.monotonic() - t0
 
         ask.assert_not_called()  # never offered against an unreadable local
@@ -403,7 +400,7 @@ def test_a_large_unlocked_save_cannot_outrun_the_probe_budget(
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     # Over budget => unreadable => nothing concluded, nothing overwritten.
     marked.assert_not_called()
@@ -527,7 +524,7 @@ def test_a_stale_save_at_boot_does_not_settle_away_the_download(
 
     (folder / "ankimon.db").unlink()                      # ...the download lands
     _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     ask.assert_called_once()
     assert 42 in {st.get_db_stats(p)["pokemon"] for p in _protected(folder)}
@@ -549,7 +546,7 @@ def test_an_unchanged_folder_is_not_rescanned_or_re_asked(
     scanned = MagicMock(side_effect=st._find_media_saves)
     monkeypatch.setattr(st, "_find_media_saves", scanned)
     for _ in range(3):
-        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.run_media_migration(MagicMock(), logger)
 
     assert ask.call_count == 1
     scanned.assert_not_called()          # not even opened: the check is stat-only
@@ -588,12 +585,12 @@ def test_a_diverged_candidate_does_not_overwrite_the_protected_copy(
     Two devices that both played while the removed sync picked winners by mtime
     is the ORDINARY way to reach this, not a corner case.
     """
-    protected = media / st.MEDIA_SAVE_NAME
+    protected = media / "_addons21_ankimon.db"
     _make_save(protected, pokemon=5, badges=3, history=200)
     _make_save(media / "ankimon.db", pokemon=10, badges=0, history=50)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     kept = st.get_db_stats(protected)
     assert (kept["pokemon"], kept["badges"], kept["history"]) == (5, 3, 200)
@@ -617,12 +614,12 @@ def test_a_diverged_bare_save_is_protected_even_when_it_ranks_lower(
     history the protected copy does not, and the bare name is the only one in
     the partition that "Delete Unused Files" can take. Protecting the at-risk
     file cannot be conditional on it having won a ranking."""
-    protected = media / st.MEDIA_SAVE_NAME
+    protected = media / "_addons21_ankimon.db"
     _make_save(protected, pokemon=10, badges=0, history=50)
     _make_save(media / "ankimon.db", pokemon=5, badges=3, history=200)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     kept = st.get_db_stats(protected)
     assert (kept["pokemon"], kept["badges"], kept["history"]) == (10, 0, 50)
@@ -642,13 +639,13 @@ def test_a_diverged_media_save_is_never_offered_as_a_replacement(
     say what is true instead."""
     active = _make_save(tmp_path / "ankimon.db", pokemon=8, badges=3, history=200)
     monkeypatch.setattr(st, "_active_db_path", lambda: active)
-    _make_save(media / st.MEDIA_SAVE_NAME, pokemon=10, badges=0, history=50)
+    _make_save(media / "_addons21_ankimon.db", pokemon=10, badges=0, history=50)
     ask = MagicMock(return_value=True)     # the user would have said yes
     info = MagicMock()
     monkeypatch.setattr(st, "askUser", ask)
     monkeypatch.setattr(st, "showInfo", info)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     ask.assert_not_called()
     assert info.called and "DIVERGED" in info.call_args[0][0]
@@ -664,11 +661,11 @@ def test_a_media_save_that_really_is_ahead_is_still_offered(
     """
     active = _make_save(tmp_path / "ankimon.db", pokemon=8, badges=3, history=200)
     monkeypatch.setattr(st, "_active_db_path", lambda: active)
-    _make_save(media / st.MEDIA_SAVE_NAME, pokemon=10, badges=3, history=240)
+    _make_save(media / "_addons21_ankimon.db", pokemon=10, badges=3, history=240)
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     ask.assert_called_once()
 
@@ -691,8 +688,8 @@ def test_every_divergent_bare_save_gets_a_protected_home(
     that runs out of room.
     """
     occupied = {
-        st.MEDIA_SAVE_NAME: (5, 3, 200),
-        st.DIVERGED_MEDIA_SAVE_NAME: (10, 0, 50),
+        "_addons21_ankimon.db": (5, 3, 200),
+        "_src_ankimon.db": (10, 0, 50),
     }
     for name, (pokemon, badges, history) in occupied.items():
         _make_save(media / name, pokemon=pokemon, badges=badges, history=history)
@@ -704,7 +701,7 @@ def test_every_divergent_bare_save_gets_a_protected_home(
         (media / "ankimon.db").unlink(missing_ok=True)
         _make_save(media / "ankimon.db", pokemon=pokemon, badges=badges, history=history)
         monkeypatch.setattr(st, "_migration_done", lambda: False)
-        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.run_media_migration(MagicMock(), logger)
 
     held = {
         (s["pokemon"], s["badges"], s["history"])
@@ -722,11 +719,11 @@ def test_the_diverged_copy_is_not_rewritten_on_every_pass(
 ):
     """Once both sides are under underscore names they are both safe, so the
     steady state must be a no-op -- not a copy on every boot."""
-    _make_save(media / st.MEDIA_SAVE_NAME, pokemon=5, badges=3, history=200)
+    _make_save(media / "_addons21_ankimon.db", pokemon=5, badges=3, history=200)
     _make_save(media / "ankimon.db", pokemon=10, badges=0, history=50)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
     copies = _protected(media)
     assert len(copies) == 1
     diverged = copies[0]
@@ -736,7 +733,7 @@ def test_the_diverged_copy_is_not_rewritten_on_every_pass(
     # return at the _migration_done() guard and the assertion below would hold
     # no matter what a repeat scan does. Re-arm, so the scan really runs again.
     monkeypatch.setattr(st, "_migration_done", lambda: False)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert diverged.stat().st_mtime_ns == stamp
     assert _protected(media) == [diverged]      # and no second copy of it either
@@ -803,7 +800,7 @@ def test_a_request_arriving_mid_scan_is_coalesced_not_dropped(
 
     def _download_lands_mid_scan():
         _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
-        st.start_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.start_media_migration(MagicMock(), logger)
         assert len(taskman.queued) == 0                  # coalesced, not stacked
 
     taskman.run_next(mid_scan=_download_lands_mid_scan)  # boot scan completes
@@ -836,7 +833,7 @@ def test_a_download_landing_mid_scan_is_not_settled_away(
     def _download_lands_after_the_read():
         (folder / "ankimon.db").unlink()
         _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
-        st.start_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.start_media_migration(MagicMock(), logger)
 
     taskman.run_next(mid_scan=_download_lands_after_the_read)
 
@@ -860,7 +857,7 @@ def test_a_profile_switch_during_the_scan_discards_the_result(
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
     settled = MagicMock()
-    monkeypatch.setattr(st, "_settle", settled)
+    monkeypatch.setattr(st, "_mark_migration_done", settled)
 
     st.start_media_migration(MagicMock(), logger)
 
@@ -905,7 +902,7 @@ def test_an_interrupted_protect_does_not_destroy_the_protected_copy(
     straight over the protected copy means a full disk, a killed process or a
     power loss leaves that copy half-written -- and the one file this migration
     exists to keep safe is gone. Build into a temp and move it into place."""
-    protected = media / st.MEDIA_SAVE_NAME
+    protected = media / "_addons21_ankimon.db"
     _make_save(protected, pokemon=5, badges=3, history=20)
     before = protected.read_bytes()
     _make_save(media / "ankimon.db", pokemon=40, badges=9, history=90)
@@ -919,7 +916,7 @@ def test_an_interrupted_protect_does_not_destroy_the_protected_copy(
     monkeypatch.setattr(sync, "_atomic_write_over", _interrupted)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert protected.read_bytes() == before
     assert (media / "ankimon.db").is_file()             # the source is intact too
@@ -946,7 +943,7 @@ def test_an_unreadable_neighbour_does_not_re_ask_the_same_rescue_every_boot(
     monkeypatch.setattr(st, "askUser", ask)
 
     for _ in range(3):
-        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.run_media_migration(MagicMock(), logger)
 
     assert ask.call_count == 1
     assert not st._migration_done()          # still armed to retry the corrupt one
@@ -965,12 +962,12 @@ def test_a_changed_folder_asks_again_even_after_an_answer(
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
     assert ask.call_count == 1
 
     (folder / "ankimon.db").unlink()
     _make_save(folder / "ankimon.db", pokemon=90, badges=12, history=300)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert ask.call_count == 2
 
@@ -996,7 +993,7 @@ def test_a_dominating_but_disjoint_save_does_not_replace_a_protected_one(
     ``DELETE FROM captured_pokemon WHERE individual_id = ?`` from the Pokemon
     details window, and the duplicate prune drops rows too.
     """
-    protected = media / st.MEDIA_SAVE_NAME
+    protected = media / "_addons21_ankimon.db"
     _make_save(protected, pokemon=2, badges=2, history=100, ids="kept")
     before = protected.read_bytes()
     _make_save(media / "ankimon.db", pokemon=3, badges=2, history=101, ids="other")
@@ -1006,7 +1003,7 @@ def test_a_dominating_but_disjoint_save_does_not_replace_a_protected_one(
     ), "fixture no longer reproduces the dominating-but-disjoint shape"
 
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert protected.read_bytes() == before, (
         "a save holding none of the protected copy's Pokemon overwrote it"
@@ -1027,11 +1024,11 @@ def test_equal_counters_do_not_mean_the_save_is_already_preserved(
     returned without protecting the bare save. Two saves can agree on all three
     counts and share not one row, so the bare copy -- the only name a media
     check can delete -- was left exposed."""
-    _make_save(media / st.MEDIA_SAVE_NAME, pokemon=4, badges=2, history=30, ids="mine")
+    _make_save(media / "_addons21_ankimon.db", pokemon=4, badges=2, history=30, ids="mine")
     _make_save(media / "ankimon.db", pokemon=4, badges=2, history=30, ids="theirs")
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     copies = _protected(media)
     assert len(copies) == 1, "the equal-but-different bare save was left exposed"
@@ -1067,7 +1064,7 @@ def test_a_peers_content_addressed_copy_is_found_by_the_scan(
     a peer's preserved save is invisible to the ranking AND to the settle
     fingerprint -- which would re-open the stale-settle hole the fingerprint
     exists to close."""
-    peer = media / st._protected_copy_name("ankimon.db", "a" * st.MEDIA_SAVE_DIGEST_CHARS)
+    peer = media / st._protected_copy_name("ankimon.db", "a" * st._DIGEST_CHARS)
     _make_save(peer, pokemon=42, badges=8, history=99)
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
@@ -1075,7 +1072,7 @@ def test_a_peers_content_addressed_copy_is_found_by_the_scan(
     assert peer in st._media_candidate_paths(media, "ankimon.db")
     assert peer.name in st._media_fingerprint_entries(media, "ankimon.db")
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     ask.assert_called_once()                    # found, read and offered
     assert _protected(media) == [peer]          # and not copied again
@@ -1085,7 +1082,7 @@ def test_a_developer_content_addressed_copy_stays_in_its_own_partition(media):
     """``_ankimon_save_dev_<digest>.db`` spells no "ankimonDEV", and the normal
     partition's prefix is a prefix of the developer one -- so a substring test,
     or the wrong test order, hands developer saves to the normal scan."""
-    digest = "b" * st.MEDIA_SAVE_DIGEST_CHARS
+    digest = "b" * st._DIGEST_CHARS
     dev = media / st._protected_copy_name("ankimonDEV.db", digest)
     normal = media / st._protected_copy_name("ankimon.db", digest)
 
@@ -1184,7 +1181,7 @@ def test_an_aborted_probe_of_the_local_save_neither_prompts_nor_settles(
     monkeypatch.setattr(st, "askUser", ask)
     _interrupt_counts(monkeypatch, only_when=lambda uri: "collection.media" not in uri)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     ask.assert_not_called()
     marked.assert_not_called()
@@ -1195,14 +1192,14 @@ def test_an_aborted_probe_of_the_local_save_neither_prompts_nor_settles(
     {"ankimon.db": (3, 1, 2)},                          # identical to the local save
     {"ankimon.db": (99, 9, 99)},                        # strictly ahead
     {"ankimon.db": (1, 0, 0)},                          # strictly behind
-    {"ankimon.db": (10, 0, 50), st.MEDIA_SAVE_NAME: (5, 3, 200)},       # diverged
-    {"ankimon.db": (5, 3, 200), st.MEDIA_SAVE_NAME: (10, 0, 50)},       # the mirror
-    {"ankimon.db": (4, 2, 30), st.MEDIA_SAVE_NAME: (4, 2, 30)},         # equal counts
-    {"ankimon.db": (1, 9, 1), st.MEDIA_SAVE_NAME: (5, 3, 200),
-     st.DIVERGED_MEDIA_SAVE_NAME: (10, 0, 50)},                         # a third save
-    {"ankimon.db": (3, 2, 101), st.MEDIA_SAVE_NAME: (2, 2, 100)},       # "dominates"
-    {"ankimon.db": (10, 0, 50), st.MEDIA_SAVE_NAME: (5, 3, 200),
-     st.DIVERGED_MEDIA_SAVE_NAME: (2, 0, 10)},          # "dominates" the spare name
+    {"ankimon.db": (10, 0, 50), "_addons21_ankimon.db": (5, 3, 200)},       # diverged
+    {"ankimon.db": (5, 3, 200), "_addons21_ankimon.db": (10, 0, 50)},       # the mirror
+    {"ankimon.db": (4, 2, 30), "_addons21_ankimon.db": (4, 2, 30)},         # equal counts
+    {"ankimon.db": (1, 9, 1), "_addons21_ankimon.db": (5, 3, 200),
+     "_src_ankimon.db": (10, 0, 50)},                         # a third save
+    {"ankimon.db": (3, 2, 101), "_addons21_ankimon.db": (2, 2, 100)},       # "dominates"
+    {"ankimon.db": (10, 0, 50), "_addons21_ankimon.db": (5, 3, 200),
+     "_src_ankimon.db": (2, 0, 10)},          # "dominates" the spare name
     {"_1908235722_ankimon.db": (7, 3, 9)},              # a pre-2024 legacy name
 ])
 def test_no_file_already_in_the_media_folder_is_ever_modified(
@@ -1222,7 +1219,7 @@ def test_no_file_already_in_the_media_folder_is_ever_modified(
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
     monkeypatch.setattr(st, "showInfo", MagicMock())
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     for name, raw in before.items():
         assert (media / name).is_file(), f"{name} was deleted"

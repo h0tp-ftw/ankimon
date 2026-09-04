@@ -30,6 +30,10 @@ What replaces it here is deliberately explicit and one-directional at a time:
 Every destructive step is gated conjunctively: verified source, successful
 backup, explicit user confirmation, atomic replace. Any failure aborts with the
 local save byte-identical.
+
+Public surface: ``export_save`` / ``import_save`` (menu), ``get_db_stats``,
+``register_media_migration_hooks`` (profile open), and the two migration entry
+points ``start_media_migration`` / ``run_media_migration``.
 """
 
 from __future__ import annotations
@@ -50,167 +54,83 @@ from PyQt6.QtWidgets import QFileDialog
 from ..resources import user_path
 from ..utils import close_anki
 
-# The media copy is named with a LEADING UNDERSCORE on purpose. Anki's media
-# check reports a file as unused (and offers to delete it, propagating that
-# deletion to every other device) only when
-# ``!file.starts_with('_') && !references.contains_key(&file)`` — nothing in a
-# collection will ever reference a save file, so the underscore is the only
-# thing standing between it and "Delete Unused Files". The shipped code wrote
-# the bare name ``ankimon.db``, and ``_migrate_legacy_files`` actively moved
-# users from the protected legacy name TO that unprotected one.
+# Where the migration preserves a media save: ``<prefix><digest>.db``, one
+# prefix per partition (developer mode keeps its own ``ankimonDEV.db``, and the
+# old sync wrote both). The LEADING UNDERSCORE is the whole point: Anki's media
+# check offers to delete a file only when
+# ``!file.starts_with('_') && !references.contains_key(&file)``, and nothing in
+# a collection ever references a save, so the bare ``ankimon.db`` the removed
+# feature wrote is one "Delete Unused Files" away from being gone on every
+# device.
 #
-# READ-ONLY as of the content-addressed scheme below: earlier builds of this
-# migration wrote these fixed names, so they are still discovered, ranked and
-# offered — but nothing writes them any more, because a fixed name is a name
-# that eventually has to be overwritten.
-MEDIA_SAVE_NAME = "_ankimon_save.db"
+# CONTENT-ADDRESSED, because there is nothing else honest to key a name on. A
+# fixed name can hold one save, so a second one arriving forces a choice between
+# overwriting it and leaving the newcomer under the deletable bare name — and
+# the only evidence available for that choice is the progress counters, which
+# are aggregates: ``(3 pokemon, 2 badges, 101 history) >= (2, 2, 100)`` says
+# nothing about whether those three Pokemon INCLUDE the two, equal counters can
+# share no rows at all, and captures are not even monotone
+# (``AnkimonDB.delete_pokemon``). A digest of the file's own bytes gives every
+# distinct save its own name instead: dedupe is a ``stat``, the Nth divergent
+# save gets a home like the first, nothing is ever overwritten, and two devices
+# that receive one save through media sync converge on one filename. The cost —
+# one file per distinct save that ever passed through the folder — is the
+# user's own data, and the right side of the trade against deleting one.
+_SAVE_PREFIX = {"ankimon.db": "_ankimon_save_", "ankimonDEV.db": "_ankimon_save_dev_"}
 
-# Developer mode keeps its own ``ankimonDEV.db``, and it needs its own protected
-# name too. Sharing one destination let a developer-mode run write dev data into
-# _ankimon_save.db, which _target_db_for then reads back as a NORMAL-partition
-# candidate (the name carries no "ankimonDEV"), so a test save could be ranked
-# against — and offered over — the real one. collection.media syncs, so the
-# contaminated file reached other devices as well.
-DEV_MEDIA_SAVE_NAME = "_ankimon_save_dev.db"
-
-# ...but the two fixed names above are what EARLIER builds wrote. They are kept
-# only so those files are still FOUND — they already start with an underscore,
-# so they are already safe, and nothing below ever writes to them again.
-DIVERGED_MEDIA_SAVE_NAME = "_ankimon_save_diverged.db"
-DEV_DIVERGED_MEDIA_SAVE_NAME = "_ankimon_save_dev_diverged.db"
-
-# What this migration writes TODAY: ``_ankimon_save_<digest>.db``, where the
-# digest is of the preserved file's own bytes.
-#
-# CONTENT-ADDRESSED, because there is nothing else honest to key a name on.
-# A fixed name can hold one save, so a second one arriving forces a choice
-# between overwriting (destruction) and leaving the newcomer under the bare,
-# deletable name — and the only evidence available to make that choice is the
-# progress counters, which cannot make it: they are aggregates, so
-# ``(3 pokemon, 2 badges, 101 history) >= (2, 2, 100)`` says nothing about
-# whether those three Pokemon INCLUDE the two, and captures are not even
-# monotone (``AnkimonDB.delete_pokemon`` releases one; the duplicate prune drops
-# rows). Equal counters are just as uninformative — two saves can agree on all
-# three and share not a single row.
-#
-# So no aggregate ever authorises a write here. Identity is exact file content,
-# and a digest gives every distinct save its own name:
-#
-# * dedupe is a stat call — if ``_ankimon_save_<digest>.db`` exists, that exact
-#   save is already preserved, so a repeat scan is a no-op;
-# * the third, fourth and Nth divergent save each get a protected home, instead
-#   of the third being knowingly left under the name Anki's "Delete Unused
-#   Files" can take;
-# * nothing is ever overwritten, so no comparison can be wrong in a way that
-#   costs the user data;
-# * the name is derived from the bytes alone, so two devices that receive the
-#   same save through media sync compute the SAME filename and converge on one
-#   copy rather than multiplying them.
-#
-# The cost is that a folder can accumulate one file per distinct save that ever
-# passed through it. That is bounded by how many genuinely different saves the
-# user has, it is their own data, and it is the right side of the trade against
-# deleting one.
-MEDIA_SAVE_PREFIX = "_ankimon_save_"
-DEV_MEDIA_SAVE_PREFIX = "_ankimon_save_dev_"
-
-# Half a SHA-256, in hex. Long enough that an accidental collision between two
-# of a single user's saves is not a thing that happens; short enough to stay a
-# readable filename.
-MEDIA_SAVE_DIGEST_CHARS = 32
-
-# Bare names the removed feature (and its pre-SQLite ancestors) left behind in
-# collection.media. Only ``.db`` entries are candidates for rescue; the JSON
-# files predate the SQLite migration and are already imported into ankimon.db.
-LEGACY_MEDIA_DB_NAMES = ("ankimon.db", "ankimonDEV.db")
-
-# Config rows that are machine-local and must never ride along in an exported
-# save. The export exists to be carried to another computer (or handed to
-# someone else), and a full SQLite backup would otherwise take the user's
-# leaderboard credential with it. Only genuine secrets belong here — the
-# username is not one.
-EXPORT_EXCLUDED_CONFIG_KEYS = ("leaderboard.api_key",)
-
-# Set once per Anki PROFILE, not once per add-on install: ``user_files`` is
-# add-on-scoped and shared by every profile, while ``collection.media`` is
-# per-profile, so a single global flag would clean the first profile opened and
-# silently skip all the others. ``mw.pm.profile`` is itself per-profile, so
-# storing the flag there gives the right scoping for free — and it lives in
-# prefs21.db, outside the collection and outside user_files, so restoring a
-# backup of the save cannot rewind it and re-trigger the migration.
-_MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
-
-# The fingerprint of the folder whose comparison the user has already ANSWERED,
-# kept apart from the settle above because the two expire on different things.
-# A folder holding one save that will not open plus one readable save that is
-# ahead of the local one reaches a real comparison AND has to stay armed to
-# retry the unreadable file — and staying armed means never settling, so without
-# this the same rescue prompt greets the user on every single profile open.
-# Recording the answer separately suppresses only the repeated question; the
-# retry survives, and a folder that changes gets asked afresh.
-_MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
+# Half a SHA-256, in hex: collisions between one user's saves do not happen,
+# and the name stays readable.
+_DIGEST_CHARS = 32
 
 # SETTLE POLICY — the one rule this migration turns on.
 #
-# Settle (record the per-profile one-shot) ONLY on a positive resolution: every
-# candidate that was discovered could be read, and the rescue reached a terminal
-# answer — declined, not needed because the media copy is nowhere ahead of the
-# local save, or reported as a divergence only the user can resolve.
-#
-# Stay ARMED on every absence or uncertainty: an empty folder, a candidate that
-# would not open, an unreadable protected copy, an unreadable local save, or an
+# The per-profile flag (``mw.pm.profile``, so it is scoped to the profile that
+# owns ``collection.media`` rather than to the add-on install that every profile
+# shares, and lives in prefs21.db where restoring a save backup cannot rewind
+# it) is written ONLY on a positive resolution: every discovered candidate could
+# be read, and the rescue reached a terminal answer — declined, unnecessary, or
+# reported as a divergence. Every absence or uncertainty stays ARMED: an empty
+# folder, a candidate that would not open, an unreadable local save, or an
 # accepted rescue (which re-runs on the next boot and settles then).
 #
-# A settle is SCOPED TO WHAT WAS SEEN, never permanent. The flag stores a
-# FINGERPRINT of the partition's media files (name, size, mtime) instead of a
-# bare True, and ``_migration_done()`` agrees the profile is finished only while
-# that fingerprint still matches. That is what closes the second half of the
-# boot-ordering trap. profile_did_open fires one line before Anki starts its own
-# sync (aqt/main.py:568-569), so the boot scan can find a STALE save already
-# sitting in the folder — a leftover from the removed feature, or last week's
-# copy — judge it honestly against the local save, resolve, and settle seconds
-# before the peer's newer copy is downloaded on top of it. A bare one-shot could
-# never look at that folder again: the newer save would be protected by nobody
-# and offered to nobody, for exactly the two-device user the rescue exists to
-# serve. A fingerprint re-arms the moment the file changes, and the post-sync
-# pass picks it up.
+# A settle is SCOPED TO WHAT WAS SEEN, never permanent: the flag stores a
+# stat-only FINGERPRINT (name, size, mtime) of the partition's media files as
+# the scan examined them, and the profile counts as finished only while that
+# still matches. ``profile_did_open`` fires one line before Anki starts its own
+# sync (aqt/main.py:568-569), so a boot scan can honestly resolve a stale save
+# and settle seconds before the peer's newer copy lands on top of it; a
+# fingerprint re-arms the moment the file changes.
 #
-# There is deliberately no "a media sync finished, so the folder has had its
-# chance" signal, because Anki does not offer one. In aqt/mediasync.py:77-86:
-#
-#     gui_hooks.media_sync_did_start_or_stop(False)   # :80 — fires FIRST
-#     exc = future.exception()                        # :82 — inspected AFTER
-#
-# the hook fires before Anki looks at the future, so False means "the worker
-# stopped", never "it succeeded" — a dropped network, a user abort and a
-# media-sync-disabled profile all raise the identical signal. Settling an empty
-# folder on it burned the one-shot for exactly the two-device user the rescue
-# exists to serve, and the process-global that carried it also leaked across
-# profile switches (Anki does not re-import add-on modules on a switch), so
-# profile B inherited profile A's "a sync finished" and settled before its own
-# download had landed.
-#
-# Staying armed costs almost nothing: an empty folder is three stat calls and a
-# glob, with no SQLite opens at all — and a SETTLED profile costs less still,
-# because the fingerprint check is stat-only and short-circuits before any scan
-# is dispatched.
+# There is deliberately no "a media sync finished" signal, because Anki has
+# none: ``media_sync_did_start_or_stop(False)`` fires (aqt/mediasync.py:80)
+# BEFORE the future is inspected (:82), identically on success, a dropped
+# network, a user abort, and a profile with media sync off. It is a rescan
+# trigger, nothing more. Staying armed costs a few stat calls and a glob; a
+# settled profile costs less, because the fingerprint check short-circuits
+# before any scan is dispatched.
+_MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
 
-# How long the AUTOMATIC migration will wait on a locked file, and the
-# wall-clock budget for each statement it runs against a save. The scan no
-# longer runs on the profile-open stack — ``start_media_migration`` puts it on a
-# worker — but it stays short: a file that will not open this second is simply
-# rescanned on the next pass, so a long wait buys nothing, and while a scan is
-# in flight a post-sync rescan request is coalesced behind it, so every second
-# spent here is a second the rescan that matters arrives late. (The synchronous
-# fallback, ``run_media_migration``, does pay this on the calling thread; there
-# the old unset sqlite3 default of 5 s stalled a boot by 5.2 s measured on one
-# locked file.) User-initiated Export/Import keep the full 30 s, where waiting
-# out a passing lock is exactly what the user wants.
+# The fingerprint of the folder whose comparison the user already ANSWERED. Kept
+# apart from the settle because a folder holding one unreadable file beside a
+# readable save that is ahead of the local one must stay armed (to retry the
+# unreadable file) and yet not greet the user with the same rescue prompt on
+# every profile open. A folder that changes is asked afresh.
+_MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
+
+# How long the AUTOMATIC migration waits on a locked file, and the wall-clock
+# budget for each statement it runs against a save. The scan runs on a worker
+# but stays short: a file that will not open this second is rescanned on the
+# next pass, and a post-sync rescan request is coalesced behind an in-flight
+# scan, so every second spent here delays the rescan that matters. (The
+# synchronous fallback pays this on the calling thread, where sqlite3's unset
+# 5 s default once stalled a boot by 5.2 s on one locked file.) User-initiated
+# Export/Import keep the full 30 s, where waiting out a passing lock is exactly
+# what the user wants.
 MIGRATION_PROBE_TIMEOUT = 0.5
 
-# Reload safety, same pattern as the sync hook: the (hook, handler) pair this
-# module last registered, anchored on the services registry so it survives a
-# re-execution of this module and can be removed before re-appending.
+# Reload safety (F31): the (hook, handler) pair this module last registered,
+# anchored on the services registry so it survives a re-execution of this module
+# and can be removed before re-appending.
 _MIGRATION_HOOK_RECORD = "_ankimon_media_migration_handlers"
 
 
@@ -232,11 +152,9 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
     — the default 5 s is easy to exceed while the live connection is mid-write,
     and a timeout here would otherwise look like a corrupt file.
 
-    ``timeout`` is generous (30 s) for the user-initiated Export/Import, where
-    waiting out a passing lock is exactly what the user wants. The automatic
-    migration passes ``MIGRATION_PROBE_TIMEOUT`` instead: a file it cannot read
-    this second is rescanned on a later pass, so it fails fast rather than hold
-    the scan — and the rescan coalesced behind it — on a locked file.
+    ``timeout`` is generous (30 s) for the user-initiated Export/Import. The
+    automatic migration passes ``MIGRATION_PROBE_TIMEOUT`` instead: a file it
+    cannot read this second is rescanned on a later pass.
     """
     try:
         if not Path(db_path).is_file():
@@ -264,7 +182,6 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
         "history": 0,
     }
     try:
-        conn.row_factory = sqlite3.Row
         conn.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)};")
         tables = {
             r[0]
@@ -273,36 +190,36 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
             ).fetchall()
         }
 
-        def _fatal(exc: Exception) -> None:
-            """Re-raise the failures that mean the read was CUT SHORT.
+        def _scalar(sql: str, params=(), default=0):
+            """One value, tolerating a save written by an older schema.
 
-            The queries below are wrapped so that a save written by an older
-            schema — a missing column, a renamed table — still reports the
-            fields it does have instead of reading as unreadable. A statement
-            the progress handler ABORTED is not that: it says the probe budget
-            ran out mid-count, and swallowing it returns the ``default`` (0) for
-            a table that may hold thousands of rows. "Unknown" would then be
-            indistinguishable from "empty", which is the one thing this function
-            exists to keep apart — and a false (0, 0, 0) is dominated by every
-            real save, so it feeds straight into a comparison that can authorise
-            a rescue over the save that actually holds the progress.
-
-            The deadline is the primary test because it holds however SQLite
-            spells the abort; the message check catches an interruption raised
-            by some other means (``interrupt()``, a handler a test installed)
-            before the wall clock has run out.
+            A missing column or renamed table reports the fields the save does
+            have instead of reading as unreadable. A statement the progress
+            handler ABORTED is not that: it means the probe budget ran out
+            mid-count, and swallowing it would return 0 for a table that may
+            hold thousands of rows — "unknown" indistinguishable from "empty",
+            the one thing this function exists to keep apart, and a false
+            (0, 0, 0) feeds straight into a comparison that can authorise a
+            rescue over the save that actually holds the progress. So a
+            deadline overrun, or an interruption raised by other means
+            (``interrupt()``, a handler a test installed), is re-raised.
             """
-            if time.monotonic() > _deadline:
-                raise exc
-            if isinstance(exc, sqlite3.OperationalError) and "interrupt" in str(exc).lower():
-                raise exc
-
-        def _scalar(sql: str, default=0):
             try:
-                row = conn.execute(sql).fetchone()
+                row = conn.execute(sql, params).fetchone()
                 return row[0] if row and row[0] is not None else default
             except Exception as e:
-                _fatal(e)
+                if time.monotonic() > _deadline:
+                    raise
+                if isinstance(e, sqlite3.OperationalError) and "interrupt" in str(e).lower():
+                    raise
+                return default
+
+        def _as_int(value, default=0):
+            # Tolerates only the CONVERSION failing — a level stored as '' or
+            # 'None' by an older build — so _scalar's re-raise still stands.
+            try:
+                return int(value)
+            except Exception:
                 return default
 
         if "captured_pokemon" in tables:
@@ -321,29 +238,10 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
                 "WHERE achieved IN (1, 'true', 'True')"
             )
         if "config" in tables:
-            def _cfg(key, default):
-                try:
-                    row = conn.execute(
-                        "SELECT value FROM config WHERE key = ?", (key,)
-                    ).fetchone()
-                    return row[0] if row else default
-                except Exception as e:
-                    _fatal(e)
-                    return default
-
-            def _as_int(value, default=0):
-                # Tolerates only the CONVERSION failing — a level stored as ''
-                # or 'None' by an older build. Wrapping the _cfg call itself
-                # would put the swallow-everything back one level up and undo
-                # what _fatal is for.
-                try:
-                    return int(value)
-                except Exception:
-                    return default
-
-            stats["trainer_name"] = _cfg("trainer.name", "-")
-            stats["trainer_level"] = _as_int(_cfg("trainer.level", 0))
-            stats["trainer_cash"] = _as_int(_cfg("trainer.cash", 0))
+            cfg = "SELECT value FROM config WHERE key = ?"
+            stats["trainer_name"] = _scalar(cfg, ("trainer.name",), "-")
+            stats["trainer_level"] = _as_int(_scalar(cfg, ("trainer.level",)))
+            stats["trainer_cash"] = _as_int(_scalar(cfg, ("trainer.cash",)))
         return stats
     except Exception:
         return None
@@ -380,8 +278,7 @@ def _progress_key(stats: Optional[Dict[str, Any]]) -> tuple:
 
     A RANKING HEURISTIC, and nothing more. It has exactly two jobs: choose which
     media candidate to show the user, and decide whether a rescue is worth
-    OFFERING. It may not authorise a write, and neither may ``_dominates``,
-    which is built from it — see that function.
+    OFFERING. It may not authorise a write, and neither may ``_dominates``.
 
     Comparing the tuples directly compares them lexicographically, which invents
     a winner between two saves that merely diverged: (10, 0, 50) > (8, 3, 200)
@@ -401,9 +298,7 @@ def _dominates(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> bool
     NOT a containment test, and nothing destructive may be built on it. These
     are aggregate counts: three captures are not evidence of WHICH three, so
     ``(3, 2, 101) >= (2, 2, 100)`` is entirely consistent with two saves that
-    share no rows at all, and the counters are not monotone in the first place
-    (``delete_pokemon``). Equality is no better — same counts, possibly
-    disjoint contents.
+    share no rows at all, and equal counts may share none either.
 
     What it is good for is deciding whether a rescue is worth OFFERING. A media
     save that is behind or level on all three has nothing to give the user, so
@@ -482,15 +377,16 @@ def _is_same_file(a: Path, b: Path) -> bool:
     return False
 
 
-def _strip_local_secrets(db_path: Path, logger=None) -> None:
+def _strip_local_secrets(db_path: Path) -> None:
     """Remove machine-local credentials from a save that is about to travel.
 
     The export is a full SQLite backup, and Ankimon's settings live in the same
     database's ``config`` table (``settings.set`` → ``db.set_config_value``), so
     without this the user's leaderboard API key rides along in a file whose
     whole purpose is to be copied to another computer — or handed to someone
-    else. Runs on the temp copy, before verification, so the live save is never
-    touched and a failure discards the export rather than shipping the key.
+    else. Only genuine secrets are stripped; the username is not one. Runs on
+    the temp copy, before verification, so the live save is never touched and a
+    failure discards the export rather than shipping the key.
 
     The VACUUM is load-bearing, not tidiness. DELETE only unlinks the row; the
     bytes stay in the freed page until something reuses it, so ``strings`` on
@@ -508,10 +404,7 @@ def _strip_local_secrets(db_path: Path, logger=None) -> None:
         if "config" not in tables:
             return
         conn.execute("PRAGMA secure_delete = ON;")
-        conn.executemany(
-            "DELETE FROM config WHERE key = ?",
-            [(k,) for k in EXPORT_EXCLUDED_CONFIG_KEYS],
-        )
+        conn.execute("DELETE FROM config WHERE key = ?", ("leaderboard.api_key",))
         conn.commit()
         conn.execute("VACUUM;")
         conn.commit()
@@ -568,9 +461,6 @@ def export_save(parent=None) -> bool:
         fd, tmp_name = tempfile.mkstemp(prefix="ankimon-export-", suffix=".db", dir=str(dest.parent))
         os.close(fd)
         tmp = Path(tmp_name)
-        # mkstemp created an empty file; sqlite3 backup needs to write into it,
-        # which it does happily, but an existing zero-byte file is fine as a
-        # backup target.
         _sqlite_backup(source, tmp)
         _strip_local_secrets(tmp)
 
@@ -663,13 +553,12 @@ def _replace_active_save(source: Path, target: Path, what: str) -> bool:
     write, not only when it was chosen: Import checks its file a few lines
     before this, but the rescue checked its candidate on a worker thread and
     then waited for the user to read a dialog — a window in which Anki's media
-    sync can replace a bare or fixed-name media file underneath the offer.
-    Then the backup, and a failed backup REFUSES the replacement — never
-    overwrite the live save with no recovery path. The replace itself goes
-    through ``_atomic_replace``, which closes the live connection, writes a temp
-    on the same volume, ``os.replace``s it into place (retrying a transient
-    OneDrive/antivirus lock) and reaps stale ``-wal`` / ``-shm`` sidecars
-    belonging to the old file.
+    sync can replace a media file underneath the offer. Then the backup, and a
+    failed backup REFUSES the replacement — never overwrite the live save with
+    no recovery path. The replace itself goes through ``_atomic_replace``, which
+    closes the live connection, writes a temp on the same volume,
+    ``os.replace``s it into place (retrying a transient OneDrive/antivirus lock)
+    and reaps stale ``-wal`` / ``-shm`` sidecars belonging to the old file.
 
     Anki is closed afterwards, and that is deliberate rather than lazy: the next
     boot re-runs ``profile_did_open``, whose ``watermark == 0`` re-derivation
@@ -724,30 +613,36 @@ def _media_dir() -> Optional[Path]:
         return None
 
 
+def _profile_flag(key: str):
+    """A per-profile marker, or ``None`` when no profile is loaded."""
+    try:
+        return mw.pm.profile.get(key)
+    except Exception:
+        return None
+
+
+def _set_profile_flag(key: str, value: str) -> None:
+    try:
+        mw.pm.profile[key] = value
+        mw.pm.save()
+    except Exception:
+        pass
+
+
 def _migration_done() -> bool:
     """Is this profile finished — for the media folder AS IT IS RIGHT NOW?
 
     The stored value is a fingerprint of the partition's media files, not a bare
-    True, so "finished" expires the moment one of those files changes. See the
-    SETTLE POLICY note at the top of this module for why: profile_did_open runs
-    one line before Anki's own sync, so an honest resolution reached at boot can
-    be made stale by a download that lands seconds later, and a permanent
-    one-shot would never look again.
+    True, so "finished" expires the moment one of those files changes (see the
+    SETTLE POLICY note above). Absent — or the bare ``True`` an earlier build
+    wrote, which settled permanently — reads as not finished: one more pass, and
+    it re-settles with a fingerprint unless there is real work.
     """
-    try:
-        stored = mw.pm.profile.get(_MIGRATION_FLAG)
-    except Exception:
-        # No profile dict means no profile is loaded; treat as "not yet", the
-        # caller will simply run again next time.
-        return False
-    if not isinstance(stored, str) or not stored:
-        # Absent — or the bare ``True`` an earlier build of this migration
-        # wrote. That build settled permanently, including on a stale pre-sync
-        # save, so a profile still carrying one is re-armed for a single pass and
-        # re-settles with a fingerprint straight away unless there is real work.
+    stored = _profile_flag(_MIGRATION_FLAG)
+    if not stored:
         return False
     try:
-        return stored == _current_media_fingerprint()
+        return stored == _join_fingerprint(_current_fingerprint_entries())
     except Exception:
         return False
 
@@ -758,75 +653,38 @@ def _mark_migration_done(fingerprint: str) -> None:
     ``fingerprint`` comes from the scan that reached this resolution — it
     describes the folder AS EXAMINED, not as it stands now. Those differ: the
     scan runs on a worker while Anki's media sync is running, so a download can
-    land between the read and this call. Storing the folder's current state
-    there would settle on a file nothing ever looked at, which is the exact
-    failure the fingerprint exists to prevent.
-
-    A fingerprint that could not be computed is stored as the empty string,
-    which ``_migration_done`` reads as not-settled: the cost of that is one more
-    scan, where the cost of wrongly settling is a save nobody offers back.
+    land between the read and this call, and storing the folder's current state
+    would settle on a file nothing ever looked at. A fingerprint that could not
+    be computed is the empty string, which ``_migration_done`` reads as
+    not-settled: the cost is one more scan, where the cost of wrongly settling
+    is a save nobody offers back.
     """
-    try:
-        mw.pm.profile[_MIGRATION_FLAG] = fingerprint
-        mw.pm.save()
-    except Exception:
-        pass
+    _set_profile_flag(_MIGRATION_FLAG, fingerprint)
 
 
-def _comparison_answered(fingerprint: str) -> bool:
-    """Has the user already answered the comparison for THIS exact folder?"""
-    if not fingerprint:
-        return False
-    try:
-        return mw.pm.profile.get(_MIGRATION_ANSWERED_FLAG) == fingerprint
-    except Exception:
-        return False
+def _current_fingerprint_entries() -> Dict[str, str]:
+    media_dir = _media_dir()
+    if media_dir is None:
+        return {}
+    target = _active_db_path()
+    return _media_fingerprint_entries(media_dir, Path(target).name if target else "ankimon.db")
 
 
-def _remember_comparison_answered(fingerprint: str) -> None:
-    if not fingerprint:
-        return
-    try:
-        mw.pm.profile[_MIGRATION_ANSWERED_FLAG] = fingerprint
-        mw.pm.save()
-    except Exception:
-        pass
-
-
-def _current_media_fingerprint() -> str:
-    try:
-        target = _active_db_path()
-        return _media_fingerprint(
-            _media_dir(), Path(target).name if target else "ankimon.db"
-        )
-    except Exception:
-        return ""
-
-
-def _media_fingerprint(media_dir: Optional[Path], target_db: str) -> str:
-    """A stat-only signature of the partition's media saves.
+def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str]:
+    """``{filename: stat signature}`` for the partition's media saves.
 
     Deliberately cheap — no SQLite, no reads — because it runs on the
     profile-open stack before anything is dispatched. Size and mtime together
     are enough: Anki stamps a downloaded media file's mtime from the local clock
-    at the moment it writes it (``add_file_from_ankiweb``), so a save that
-    arrives from a peer always looks different from the one it replaced, and it
-    only downloads at all when the sha1 differs.
+    at the moment it writes it, so a save that arrives from a peer always looks
+    different from the one it replaced, and it only downloads at all when the
+    sha1 differs. A file that cannot be stat'ed is simply not part of the
+    signature, so the migration re-arms rather than settling on a folder it
+    could not read.
 
-    Every failure path yields a signature that will not match a stored one, so
-    the migration re-arms rather than settling on a folder it could not read.
-    """
-    if media_dir is None:
-        return ""
-    return _join_fingerprint(_media_fingerprint_entries(media_dir, target_db))
-
-
-def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str]:
-    """``{filename: signature}`` for the partition, so a caller can amend it.
-
-    The scan takes this before it touches anything and then replaces only the
-    entries for files it wrote ITSELF, which is what separates "the folder the
-    scan resolved" from "the folder as it stands after an unrelated download".
+    Returned as a dict so the scan can amend it with only the files it wrote
+    ITSELF — which is what separates "the folder the scan resolved" from "the
+    folder as it stands after an unrelated download".
     """
     entries: Dict[str, str] = {}
     for path in _media_candidate_paths(media_dir, target_db):
@@ -840,7 +698,7 @@ def _fingerprint_entry(path: Path) -> Optional[str]:
     try:
         stat = path.stat()
     except Exception:
-        return None         # absent, or unstattable: not part of the signature
+        return None
     return f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
 
 
@@ -853,48 +711,26 @@ def _target_db_for(candidate: Path) -> str:
 
     Developer mode keeps a separate ``ankimonDEV.db``, and the old sync wrote
     both under their own media names. Ranking them in one list would let a
-    developer save with more test captures be crowned "best", become the single
-    protected copy, and be offered as a rescue over the real save (or the
-    reverse, in developer mode). Compare like with like instead.
+    developer save with more test captures be crowned "best" and be offered as a
+    rescue over the real save (or the reverse, in developer mode). Compare like
+    with like instead.
+
+    Content-addressed copies carry no "ankimonDEV", and the normal prefix is a
+    prefix OF the developer one, so the developer test comes first. A digest can
+    never spell "dev_" (v is not a hex digit), so the two prefixes cannot be
+    confused in the other direction.
     """
     name = candidate.name
-    # The protected names are matched EXPLICITLY, before the substring test.
-    # None of them carries the string "ankimonDEV" — "_ankimon_save_dev.db" and
-    # "_ankimon_save_dev_diverged.db" spell it differently — so a substring check
-    # alone hands the developer partition's own files to the normal partition.
-    explicit = {
-        DEV_MEDIA_SAVE_NAME: "ankimonDEV.db",
-        DEV_DIVERGED_MEDIA_SAVE_NAME: "ankimonDEV.db",
-        MEDIA_SAVE_NAME: "ankimon.db",
-        DIVERGED_MEDIA_SAVE_NAME: "ankimon.db",
-    }
-    if name in explicit:
-        return explicit[name]
-    # Content-addressed copies carry no "ankimonDEV" either, and the normal
-    # prefix is a prefix OF the developer one, so the developer test has to come
-    # first. A digest can never spell "dev_" (v is not a hex digit), so the two
-    # prefixes cannot be confused in the other direction.
-    if name.startswith(DEV_MEDIA_SAVE_PREFIX):
+    if name.startswith(_SAVE_PREFIX["ankimonDEV.db"]):
         return "ankimonDEV.db"
-    if name.startswith(MEDIA_SAVE_PREFIX):
+    if name.startswith(_SAVE_PREFIX["ankimon.db"]):
         return "ankimon.db"
     return "ankimonDEV.db" if "ankimonDEV" in name else "ankimon.db"
 
 
-def _protected_copy_prefix(target_db: str) -> str:
-    """The content-addressed prefix belonging to ``target_db``'s partition.
-
-    Each partition gets its own, so a developer-mode run can never write test
-    progress into a name the normal-mode scan reads back.
-    """
-    return (
-        DEV_MEDIA_SAVE_PREFIX if target_db == "ankimonDEV.db" else MEDIA_SAVE_PREFIX
-    )
-
-
 def _protected_copy_name(target_db: str, digest: str) -> str:
     """Where a save with content ``digest`` is preserved in this partition."""
-    return f"{_protected_copy_prefix(target_db)}{digest}.db"
+    return f"{_SAVE_PREFIX[target_db]}{digest}.db"
 
 
 def _content_digest(path: Path) -> Optional[str]:
@@ -911,7 +747,7 @@ def _content_digest(path: Path) -> Optional[str]:
         with open(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 digest.update(chunk)
-        return digest.hexdigest()[:MEDIA_SAVE_DIGEST_CHARS]
+        return digest.hexdigest()[:_DIGEST_CHARS]
     except Exception:
         return None
 
@@ -924,22 +760,17 @@ def _media_candidate_paths(media_dir: Path, target_db: str) -> list:
     would have acted on — which silently re-opens the stale-settle hole the
     fingerprint exists to close.
 
-    The legacy underscore names are GLOBBED rather than reconstructed. The old
-    code built them from ``Path(__file__).parents[2].name``, which is
-    ``addons21`` in a normal install and ``src`` in a git checkout, and real
-    profiles have been seen carrying the numeric package id instead — so the
-    exact prefix cannot be computed after the fact, only matched.
+    Three kinds of name: the bare one the removed feature wrote; the
+    content-addressed copies this migration writes; and the pre-2024 legacy
+    names, which are GLOBBED rather than reconstructed. The old code built them
+    from ``Path(__file__).parents[2].name``, which is ``addons21`` in a normal
+    install and ``src`` in a git checkout, and real profiles have been seen
+    carrying the numeric package id instead — so the exact prefix cannot be
+    computed after the fact, only matched.
     """
-    if target_db == "ankimonDEV.db":
-        explicit = (DEV_MEDIA_SAVE_NAME, DEV_DIVERGED_MEDIA_SAVE_NAME, "ankimonDEV.db")
-        patterns = ("_*_ankimonDEV.db", DEV_MEDIA_SAVE_PREFIX + "*.db")
-    else:
-        explicit = (MEDIA_SAVE_NAME, DIVERGED_MEDIA_SAVE_NAME, "ankimon.db")
-        patterns = ("_*_ankimon.db", MEDIA_SAVE_PREFIX + "*.db")
-
-    paths = [media_dir / name for name in explicit]
+    paths = [media_dir / target_db]
     try:
-        for pattern in patterns:
+        for pattern in (f"_*_{target_db}", _SAVE_PREFIX[target_db] + "*.db"):
             for path in sorted(media_dir.glob(pattern)):
                 # The normal partition's glob deliberately over-matches — it
                 # catches the developer partition's content-addressed names too
@@ -977,8 +808,6 @@ def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
         # Bare names like ankimon.db are specific enough, but the check also
         # guards against a same-named file another tool put there.
         if not _verify_sqlite_integrity(path, timeout=MIGRATION_PROBE_TIMEOUT):
-            # Unreadable OR merely locked right now — either way this scan
-            # cannot judge it, so record that and let the caller stay armed.
             unreadable.append(path)
             continue
         seen.add(resolved)
@@ -1009,24 +838,6 @@ def _offer_rescue_later(protected: Path, target: Path) -> None:
         _go()
 
 
-def _settle(logger, fingerprint: str) -> None:
-    """Conclude the migration for this profile: notify, then record what was seen.
-
-    Called only from a genuine terminal state — every candidate readable and the
-    rescue answered (accepted, declined, unnecessary, or reported as a
-    divergence). What is recorded is a fingerprint of the media folder, so this
-    concludes the migration FOR THAT FOLDER and re-arms by itself if a different
-    save lands in it later. The paths that stay armed (an empty folder, an unreadable
-    candidate, an unreadable local or protected save) call
-    ``_notify_affected_user`` on its own instead: the users most likely to have
-    nothing left in media are also the most likely to have had the feature on,
-    and they still need to hear it is gone. That notice deletes the config row
-    it keys off, so running it on every pass cannot repeat it.
-    """
-    _notify_affected_user(logger)
-    _mark_migration_done(fingerprint)
-
-
 def _notify_affected_user(logger) -> None:
     """Tell the users who actually had the feature ON that it is gone.
 
@@ -1038,7 +849,8 @@ def _notify_affected_user(logger) -> None:
     The stored ``misc.ankiweb_sync`` row is the only reliable way to identify
     them. The key is gone from DEFAULT_CONFIG, but the row persists in the
     config table (writes were INSERT OR REPLACE only, nothing ever deleted), so
-    it can still be read here. It is deleted afterwards so this cannot re-fire.
+    it can still be read here. It is deleted afterwards, so this is safe to run
+    on every pass and cannot repeat.
     """
     try:
         from ..services import services
@@ -1108,11 +920,9 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     target_db = Path(target).name if target else "ankimon.db"
 
     # Taken BEFORE anything is read or written, and amended below with only the
-    # files this scan wrote itself. That is what makes the settle describe the
-    # folder this pass actually examined: Anki's media sync runs concurrently
-    # with this worker, so a peer's save can land between here and the settle,
-    # and recording it as "resolved" would bury it exactly as a permanent
-    # one-shot did.
+    # files this scan wrote itself, so the settle describes the folder this pass
+    # actually examined — a peer's save landing mid-scan is not recorded as
+    # resolved.
     entries = _media_fingerprint_entries(media_dir, target_db)
 
     saves, integrity_failures = _find_media_saves(media_dir, target_db)
@@ -1141,20 +951,15 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         return base
 
     if not saves:
-        # An absence is never a resolution. The folder may simply not have
-        # received the peer's save yet — Anki gives no trustworthy "the download
-        # finished" signal (see the SETTLE POLICY note above) — so stay armed and
-        # rescan on the next boot or media-sync event.
-        #
-        # The removal notice is independent of that and is safe to run on every
-        # pass: it fires only for users who had the feature ON, and it deletes
-        # the config row it keys off, so it cannot repeat.
+        # An absence is never a resolution: the folder may simply not have
+        # received the peer's save yet, so stay armed and rescan on the next
+        # boot or media-sync event. The removal notice is independent of that
+        # and safe to run on every pass.
         return _result("armed", notify=True)
 
-    # Read each candidate exactly ONCE. Every one of these is a SQLite open on
-    # a file that may be locked, so re-reading a path to re-compare it (which
-    # earlier cuts of this function did, three times for the protected copy)
-    # multiplies the worst case by the number of comparisons.
+    # Read each candidate exactly ONCE: every one is a SQLite open on a file
+    # that may be locked, so re-reading a path to re-compare it multiplies the
+    # worst case by the number of comparisons.
     stats: Dict[Path, Dict[str, Any]] = {}
     for path in saves:
         summary = get_db_stats(path, timeout=MIGRATION_PROBE_TIMEOUT)
@@ -1173,12 +978,9 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
 
     # PROTECT. Exactly ONE file in this partition can be taken by Anki's "Delete
     # Unused Files": the bare ``ankimon.db`` / ``ankimonDEV.db``. Every other
-    # candidate — the fixed names earlier builds wrote, the pre-2024 legacy
-    # names, the content-addressed copies — already begins with an underscore,
-    # and the media check only offers to delete a file when
-    # ``!file.starts_with('_')``. So the protect step has one job, on one file,
-    # and it is unconditional: it does not rank, does not compare, and does not
-    # write over anything. Nothing else in the folder is touched at all.
+    # candidate already begins with an underscore. So the protect step has one
+    # job, on one file, and it is unconditional: it does not rank, does not
+    # compare, and does not write over anything.
     at_risk = media_dir / target_db
     preserved = (
         _preserve(at_risk, media_dir, target_db, notes, unreadable, written)
@@ -1207,13 +1009,12 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     )
 
     # A save that will not open is UNKNOWN, never empty — the distinction the
-    # whole comparison rests on, and the one _progress_key cannot make on its
-    # own, since it floors an unreadable save to (-1, -1, -1). A local save
-    # merely locked this second — the OneDrive/antivirus case this
-    # add-on already has a lock ladder for — would otherwise lose to any readable
-    # media copy, be offered against a side the dialog itself renders as "could
-    # not read this file", and then, if the user sensibly declined, settle the
-    # profile on a comparison that never happened.
+    # whole comparison rests on, and one _progress_key cannot make on its own,
+    # since it floors an unreadable save to (-1, -1, -1). A local save merely
+    # locked this second would otherwise lose to any readable media copy, be
+    # offered against a side the dialog renders as "could not read this file",
+    # and then, if the user sensibly declined, settle the profile on a
+    # comparison that never happened.
     if target is not None and local_stats is None:
         notes.append((
             "info",
@@ -1270,9 +1071,8 @@ def _preserve(at_risk: Path, media_dir: Path, target_db: str,
     dest = None
     try:
         # Cheap path first: hash what is already on disk and see whether that
-        # save has a home. In the steady state — the folder settled, this pass
-        # armed only because something ELSE changed — that is one read and one
-        # stat, with no copy and no write at all.
+        # save has a home. In the steady state that is one read and one stat,
+        # with no copy and no write at all.
         probe = _content_digest(at_risk)
         if probe is not None:
             settled = media_dir / _protected_copy_name(target_db, probe)
@@ -1336,9 +1136,9 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
     media_stats = result.get("media_stats")
     local_stats = result.get("local_stats")
     fingerprint = result.get("fingerprint", "")
-    # A pass that must stay armed for an unreadable file never reaches _settle,
-    # so the answer is remembered on its own or the question repeats every boot.
-    answered = _comparison_answered(fingerprint)
+    # A pass that must stay armed for an unreadable file never settles, so the
+    # answer is remembered on its own or the question repeats every boot.
+    answered = bool(fingerprint) and _profile_flag(_MIGRATION_ANSWERED_FLAG) == fingerprint
 
     if target is not None and _dominates(media_stats, local_stats) and not answered:
         if askUser(
@@ -1371,9 +1171,9 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             return
         # Declined: remembered for this media folder, whether or not this pass
         # goes on to settle.
-        _remember_comparison_answered(fingerprint)
+        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, fingerprint)
     elif (
-        answered is False
+        not answered
         and target is not None
         and media_stats is not None
         and local_stats is not None
@@ -1398,7 +1198,7 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             "and load it with Ankimon → Import Save File… — your current save is "
             "backed up before it is replaced."
         )
-        _remember_comparison_answered(fingerprint)
+        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, fingerprint)
 
     if result.get("unreadable"):
         # Something in the folder exists but could not be judged this pass — a
@@ -1416,10 +1216,15 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             pass
         return
 
-    _settle(logger, result.get("fingerprint", ""))
+    # A genuine terminal state: every candidate readable and the rescue
+    # answered. The notice runs here too — the users most likely to have nothing
+    # left in media are the most likely to have had the feature on — and it
+    # cannot repeat, because it deletes the config row it keys off.
+    _notify_affected_user(logger)
+    _mark_migration_done(fingerprint)
 
 
-def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False) -> None:
+def run_media_migration(settings_obj, logger) -> None:
     """Protect, and offer to rescue, whatever the removed sync left in media.
 
     The SYNCHRONOUS form: scan and act on the calling thread. Used directly by
@@ -1428,18 +1233,10 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
     off the profile-open stack.
 
     Runs until it RESOLVES for a profile, and re-arms whenever the media folder
-    changes underneath a resolution — see ``_migration_done`` and the SETTLE
-    POLICY note at the top of this module.
-
-    Called from ``profile_did_open`` and again whenever the media-sync worker
-    stops (``after_media_sync=True``). That second signal is a RESCAN TRIGGER
-    only — Anki fires it before it inspects the future, so it says nothing about
-    whether the sync succeeded.
-
-    Any failure is logged and swallowed: this runs during profile open and must
-    never be able to stop Ankimon from loading.
+    changes underneath a resolution — see the SETTLE POLICY note at the top of
+    this module. Any failure is logged and swallowed: this runs during profile
+    open and must never be able to stop Ankimon from loading.
     """
-    del after_media_sync        # a rescan trigger; carries no success meaning
     try:
         if _migration_done():
             return
@@ -1461,17 +1258,16 @@ def run_media_migration(settings_obj, logger, *, after_media_sync: bool = False)
 _MIGRATION_SCAN_STATE = {"running": False, "rerun": False}
 
 
-def start_media_migration(settings_obj, logger, *, after_media_sync: bool = False) -> None:
+def start_media_migration(settings_obj, logger) -> None:
     """Run the migration without blocking the thread that asked for it.
 
     The scan opens SQLite databases: ``PRAGMA quick_check`` reads the whole file
     and a locked save waits out its busy timeout. Both callers — ``profile_did
     _open`` and the media-sync hook — are on Anki's main thread, where that time
     is a frozen UI, so the file work goes to ``mw.taskman.run_in_background`` and
-    only the decisions come back to the main thread.
-
-    The cheap guards stay here, ahead of the dispatch: a settled profile is a
-    handful of ``stat`` calls and starts no thread at all.
+    only the decisions come back to the main thread. The cheap guards stay here,
+    ahead of the dispatch: a settled profile is a handful of ``stat`` calls and
+    starts no thread at all.
 
     ``run_in_background`` rather than ``QueryOp`` on purpose — this is silent
     background housekeeping and must not raise a progress window over Anki's
@@ -1479,16 +1275,15 @@ def start_media_migration(settings_obj, logger, *, after_media_sync: bool = Fals
     that needs ``uses_collection=False``: the default executor is the single
     worker Anki's own collection sync and every ``QueryOp`` queue on, so a scan
     waiting out a locked file would hold the boot sync behind it, and the boot
-    sync would hold the post-sync rescan behind it. Its callback is safe
-    for the dialogs and the ``mw.pm`` write in ``_apply_migration_result``
-    because aqt wraps it (``aqt/taskman.py:86-88``)::
+    sync would hold the post-sync rescan behind it. Its callback is safe for
+    the dialogs and the ``mw.pm`` write in ``_apply_migration_result`` because
+    aqt wraps it (``aqt/taskman.py:86-88``)::
 
         if on_done is not None:
             fut.add_done_callback(
                 lambda future: self.run_on_main(lambda: on_done(future))
             )
     """
-    del after_media_sync        # a rescan trigger; carries no success meaning
     try:
         if _migration_done():
             return
@@ -1541,14 +1336,11 @@ def register_media_migration_hooks(settings_obj, logger) -> None:
     """Run the migration at profile open AND after every media sync.
 
     The post-sync pass is the load-bearing one: ``profile_did_open`` fires one
-    line before Anki starts its own sync (``aqt/main.py:568-569``), so the boot
-    scan on a second device runs against a media folder the peer's save has not
-    reached yet. ``media_sync_did_start_or_stop(False)`` is the only signal that
-    a download has actually landed.
-
-    That hook fires on failure and abort as well as success, and even fires
-    degenerately when media syncing is switched off in preferences — which is
-    fine here, because it is treated only as "rescan now", never as "it worked".
+    line before Anki starts its own sync, so the boot scan on a second device
+    runs against a media folder the peer's save has not reached yet. The
+    ``media_sync_did_start_or_stop(False)`` hook is treated only as "rescan
+    now", never as "it worked" — see the SETTLE POLICY note for why it cannot
+    mean more.
 
     A request that arrives while a scan is in flight is COALESCED into one more
     run rather than dropped, because the media-sync hook can fire during the
@@ -1559,10 +1351,6 @@ def register_media_migration_hooks(settings_obj, logger) -> None:
     exception-proof because Anki permanently unregisters a gui-hook callback
     that raises, which would silently disable the rescan for the rest of the
     session.
-
-    Both entry points go through ``start_media_migration``: this one is called
-    from ``profile_did_open`` and the other from a gui hook, so both are on the
-    main thread, where a locked or oversized save must not be waited on.
     """
     from aqt import gui_hooks
     from ..services import services
@@ -1575,9 +1363,8 @@ def register_media_migration_hooks(settings_obj, logger) -> None:
 
     def on_media_sync_state(running: bool) -> None:
         try:
-            if running:
-                return
-            start_media_migration(settings_obj, logger, after_media_sync=True)
+            if not running:
+                start_media_migration(settings_obj, logger)
         except Exception:
             pass
 

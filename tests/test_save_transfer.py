@@ -112,24 +112,16 @@ def _make_save(path: Path, *, pokemon=0, badges=0, history=0,
 def _protected(media: Path, target_db: str = "ankimon.db"):
     """The content-addressed protected copies the migration wrote, by name.
 
-    The migration no longer writes a FIXED protected name — a fixed name can
-    hold one save, so the second one to arrive forces a choice between
-    overwriting it and leaving the newcomer under the bare, deletable name, and
-    the progress counters cannot make that choice honestly. Each distinct save
-    is preserved as ``_ankimon_save_<digest of its bytes>.db`` instead, so tests
+    The migration never writes a FIXED protected name — a fixed name can hold
+    one save, so the second one to arrive forces a choice between overwriting
+    it and leaving the newcomer under the bare, deletable name, and the
+    progress counters cannot make that choice honestly. Each distinct save is
+    preserved as ``_ankimon_save_<digest of its bytes>.db`` instead, so tests
     ask what is protected rather than assuming one name.
     """
-    legacy = {
-        st.MEDIA_SAVE_NAME, st.DEV_MEDIA_SAVE_NAME,
-        st.DIVERGED_MEDIA_SAVE_NAME, st.DEV_DIVERGED_MEDIA_SAVE_NAME,
-    }
-    prefix = (
-        st.DEV_MEDIA_SAVE_PREFIX if target_db == "ankimonDEV.db"
-        else st.MEDIA_SAVE_PREFIX
-    )
     return sorted(
-        path for path in media.glob(prefix + "*.db")
-        if path.name not in legacy and st._target_db_for(path) == target_db
+        path for path in media.glob(st._SAVE_PREFIX[target_db] + "*.db")
+        if st._target_db_for(path) == target_db
     )
 
 
@@ -534,7 +526,7 @@ def test_peer_save_is_picked_up_on_the_post_sync_pass(media, live_db, logger, mo
     ask.assert_not_called()
 
     _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)   # download lands
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert len(_protected(media)) == 1                          # protected
     ask.assert_called_once()                                    # and offered
@@ -558,7 +550,7 @@ def test_empty_media_never_settles_however_many_syncs_have_finished(
     monkeypatch.setattr(st, "_mark_migration_done", marked)
 
     for _ in range(3):
-        st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+        st.run_media_migration(MagicMock(), logger)
 
     marked.assert_not_called()
 
@@ -576,7 +568,7 @@ def test_dev_and_normal_saves_are_not_ranked_against_each_other(media, tmp_path,
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     # The dev save is not what got preserved, and no rescue was offered from it.
     copies = _protected(media)
@@ -587,17 +579,17 @@ def test_dev_and_normal_saves_are_not_ranked_against_each_other(media, tmp_path,
 
 
 def test_a_readable_but_staler_candidate_does_not_replace_the_protected_copy(media, live_db, logger, monkeypatch):
-    """A save already sitting under a protected name is never a write target —
-    not for a stale candidate, and not for any other. _ankimon_save.db is what
-    earlier builds of this migration wrote, and those files are still out there
-    in real media folders, so they have to survive a scan untouched."""
-    fixed = media / st.MEDIA_SAVE_NAME
+    """A save already sitting under an underscore name is never a write target
+    — not for a stale candidate, and not for any other. A pre-2024 legacy name
+    is the ordinary way to have one: it is already safe from a media check, and
+    it has to survive a scan untouched."""
+    fixed = media / "_addons21_ankimon.db"
     _make_save(fixed, pokemon=80, badges=9, history=120)
     before = fixed.read_bytes()
     _make_save(media / "ankimon.db", pokemon=1)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert fixed.read_bytes() == before
     # ...and the stale bare save is still given a home of its own, because the
@@ -623,7 +615,7 @@ def test_rescue_is_deferred_off_the_profile_open_stack(media, live_db, logger, m
         lambda ms, fn, requires_collection=True: scheduled.append(fn),
     )
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     assert len(scheduled) == 1                       # deferred, not called inline
     assert st.get_db_stats(live_db)["pokemon"] == 3  # nothing replaced yet
@@ -655,7 +647,7 @@ def test_rescue_reverifies_the_media_file_at_the_moment_of_the_write(
     )
     before = Path(live_db).read_bytes()
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
     assert len(scheduled) == 1
 
     # A media download lands between the dialog and the deferred write: header
@@ -711,7 +703,7 @@ def test_users_who_had_sync_on_are_told_it_is_gone(media, live_db, logger, stub_
     info = MagicMock()
     monkeypatch.setattr(st, "showInfo", info)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     info.assert_called_once()
     assert "Export Save File" in info.call_args[0][0]
@@ -725,7 +717,7 @@ def test_users_who_never_enabled_sync_see_nothing(media, live_db, logger, stub_s
     info = MagicMock()
     monkeypatch.setattr(st, "showInfo", info)
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     info.assert_not_called()
     assert db.deleted == []
@@ -745,6 +737,6 @@ def test_the_notice_never_breaks_the_migration(media, live_db, logger, monkeypat
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
     _make_save(media / "ankimon.db", pokemon=1)   # a real, resolvable candidate
 
-    st.run_media_migration(MagicMock(), logger, after_media_sync=True)
+    st.run_media_migration(MagicMock(), logger)
 
     marked.assert_called_once()          # migration still completed
