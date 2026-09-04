@@ -2116,8 +2116,12 @@ class AnkimonItemsWeb(QDialog):
                                 # Normalize both sides by stripping spaces, hyphens and
                                 # apostrophes so pokedex.json display names (e.g.
                                 # "King's Rock") match items.csv identifiers (e.g.
-                                # "kings-rock"), which drop the apostrophe. Mirrors the
-                                # canonical logic in functions/pokedex_functions.py.
+                                # "kings-rock"), which drop the apostrophe. This is a
+                                # LOOSER fold than pokedex_functions.normalize_item_identifier:
+                                # it also strips hyphens (so "up-grade" and "upgrade" meet)
+                                # but does no NFKD or U+2019 folding. Deliberately separate —
+                                # it matches pokedex.json evoItem names, not items.csv keys —
+                                # so do not "unify" the two without checking both call sites.
                                 required_item = (
                                     (target_data.get("evoItem") or "")
                                     .lower()

@@ -16,7 +16,7 @@ from .pyobj.InfoLogger import ShowInfoLogger
 from .functions.battle_functions import calculate_hp
 from .functions.pokedex_functions import (
     find_details_move,
-    load_items_cost_index,
+    items_cost_index_for,
     normalize_item_identifier,
     search_pokedex,
 )
@@ -465,24 +465,6 @@ def give_item(item_name: str, item_type: Optional[str] = None):
     db.add_item(item_name, 1, extra_data)
 
 
-def _bundled_items_index(file_path):
-    """The folded items.csv index, but only for the bundled file.
-
-    Both lookups take a ``file_path`` for tests and callers that want another
-    file; nothing in the add-on passes one. For the bundled path the index makes
-    the lookup O(1) instead of re-folding all 2510 identifiers per call, and it
-    is built from the same rows in the same order, so first-match still wins.
-
-    Returns ``None`` for any other path AND for an index that came back empty —
-    an unreadable items.csv memoizes an empty cache, and sending the caller down
-    its own file scan is what still surfaces that as the historical warning-plus-
-    fallback rather than a silent miss.
-    """
-    if str(file_path) != str(csv_file_items_cost):
-        return None
-    return load_items_cost_index() or None
-
-
 # Function to return a cost of an item
 def get_item_price(item_name, file_path=csv_file_items_cost):
     """
@@ -498,20 +480,21 @@ def get_item_price(item_name, file_path=csv_file_items_cost):
     try:
         # Both sides folded so display names ("King's Rock", "Poke Ball") reach
         # the CSV identifiers, which are lowercase and hyphenated and in nine
-        # rows carry a typographic apostrophe or an accent. A name that folds to
-        # "" is a miss outright — a blank identifier cell folds to "" too, and
-        # must not answer for it.
+        # rows carry a typographic apostrophe or an accent. A blank identifier
+        # cell folds to "" as well, so an empty folded name must never match
+        # one — but that check stays INSIDE each branch rather than returning
+        # early, because returning early would skip the open() below and with it
+        # the warning an unreadable file still owes its caller.
         wanted = normalize_item_identifier(item_name)
-        if not wanted:
-            return None
-        index = _bundled_items_index(file_path)
+        index = items_cost_index_for(file_path)
         if index is not None:
-            row = index.get(wanted)
+            row = index.get(wanted) if wanted else None
             return int(row["cost"]) if row is not None else None
         with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                if normalize_item_identifier(row["identifier"]) == wanted:
+                folded = normalize_item_identifier(row["identifier"])
+                if folded and folded == wanted:
                     cost = row["cost"]
                     return int(cost)
     except FileNotFoundError:
@@ -541,16 +524,15 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
     """
     try:
         wanted = normalize_item_identifier(item_name)
-        if not wanted:
-            return None
-        index = _bundled_items_index(file_path)
+        index = items_cost_index_for(file_path)
         if index is not None:
-            row = index.get(wanted)
+            row = index.get(wanted) if wanted else None
             return int(row["id"]) if row is not None else None
         with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                if normalize_item_identifier(row["identifier"]) == wanted:
+                folded = normalize_item_identifier(row["identifier"])
+                if folded and folded == wanted:
                     id = row["id"]
                     return int(id)
     except (OSError, KeyError) as e:

@@ -397,6 +397,24 @@ def load_items_cost_index():
     return _items_cost_index
 
 
+def items_cost_index_for(file_path):
+    """:func:`load_items_cost_index`, but only when ``file_path`` IS items.csv.
+
+    The path comparison lives here rather than in the caller so that it cannot
+    disagree with the file the index was built from: a module that rebinds its
+    own ``csv_file_items_cost`` (a test patching the name, say) would otherwise
+    be handed the bundled index for a different file entirely.
+
+    ``None`` means "no index for this path" — either it is another file, or the
+    index came back empty because items.csv could not be read. Both send the
+    caller down its own file scan, which is what still surfaces an unreadable
+    file as that caller's warning-plus-fallback rather than a silent miss.
+    """
+    if str(file_path) != str(csv_file_items_cost):
+        return None
+    return load_items_cost_index() or None
+
+
 # === POKEMON NAME & DESCRIPTION CACHES ===
 _pokemon_names_cache = {}  # {(pokemon_id, language): name}
 _pokemon_descriptions_cache = {}  # {(species_id, language): description}
@@ -473,6 +491,11 @@ def clear_pokedex_caches():
     _pokedex_id_index = None
     _pokemon_names_cache = {}
     _pokemon_descriptions_cache = {}
+    # _items_cost_cache / _items_cost_index are deliberately NOT reset: items.csv
+    # is bundled static data, identical across profiles, so a profile switch has
+    # nothing to reload. If that ever changes they must be cleared as a PAIR —
+    # the index holds references into the rows the cache built, so clearing only
+    # the cache would leave the index answering from the pre-clear file.
 
 
 def _normalize_language_id(language):
