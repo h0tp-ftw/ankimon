@@ -400,16 +400,24 @@ POKEMON_TIERS = {
   243, 244, 245, 249, 250,
   # Gen 3
   377, 378, 379, 380, 381, 382, 383, 384,
+  10077, 10078, # kyogre-primal, groudon-primal
   # Gen 4
   480, 481, 482, 483, 484, 485, 486, 487, 488,
   # Gen 5
   638, 639, 640, 641, 642, 643, 644, 645, 646,
+  10022, 10023, # kyurem-black, kyurem-white
   # Gen 6
   716, 717, 718,
+  10119, 10120, # zygarde forms
   # Gen 7
   772, 773, 785, 786, 787, 788, 789, 790, 791, 792, 800,
+  10155, 10156, 10157, # necrozma forms
   # Gen 8
   888, 889, 890, 891, 892, 894, 895, 896, 897, 898,
+  10169, 10170, 10171, # galar birds
+  10190, # eternatus-eternamax
+  10188, 10189, # zacian-crowned, zamazenta-crowned
+  10193, 10194, # calyrex-ice, calyrex-shadow
   # Gen 9
   1001,  # wo-chien
   1002,  # chien-pao
@@ -428,6 +436,8 @@ POKEMON_TIERS = {
   1022,  # iron-boulder
   1023,  # iron-crown
   1024,  # terapagos
+  10273, 10274, 10275, # ogerpon forms
+  10276, 10277, # terapagos forms
   10245, 10246,  # dialgaorigin, palkiaorigin
   10007,         # giratinaorigin
   10019, 10020, 10021, 10249, # tornadustherian, thundurustherian, landorustherian, enamorustherian
@@ -451,10 +461,13 @@ POKEMON_TIERS = {
   10024, 10018,              # keldeoresolute, meloettapirouette
   # Gen 6
   719, 720, 721,             # Diancie, Hoopa, Volcanion
+  10086, # hoopa-unbound
   # Gen 7
   801, 802, 807, 808, 809,   # Magearna, Marshadow, Zeraora, Meltan, Melmetal
+  10147, # magearna-original
   # Gen 8
   893,                       # Zarude
+  10192, # zarude-dada
   # Gen 9
   1025                       # Pecharunt
 ]

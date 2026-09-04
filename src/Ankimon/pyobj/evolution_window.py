@@ -10,6 +10,7 @@ from aqt.qt import (
     QVBoxLayout,
     QWidget,
     QDialog,
+    QTimer,
     qconnect,
 )
 from PyQt6.QtGui import QColor, QPen
@@ -375,11 +376,19 @@ class EvoWindow(QWidget):
             # Persist the pre-evolved species as caught before the id changes so
             # the Pokédex keeps crediting the earlier form (no-op on stores that
             # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
+            # Logged as an error, not a warning: unlike a failed mark on an
+            # ordinary save, this one is NOT recoverable. Once the id below is
+            # overwritten the pre-evolution is gone from captured_pokemon, so
+            # _reconcile_pokedex_history has nothing left to re-derive it from.
             if hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
                 except Exception as e:
-                    self.logger.log("warning", f"Failed to mark prevo as caught: {e}")
+                    self.logger.log(
+                        "error",
+                        f"Failed to mark pre-evolution {prevo_id} as caught; it will "
+                        f"be missing from the Pokedex: {e}",
+                    )
 
             pokemon["name"] = evo_name.capitalize()
             pokemon["id"] = evo_id
@@ -393,8 +402,25 @@ class EvoWindow(QWidget):
                     if len(attacks) < 4:
                         attacks.append(new_attack)
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                        # Parent to the Anki main window, not this evolution
+                        # popup. EvoWindow is a separate top-level window that
+                        # gets torn down/hidden mid-flow; a child dialog of it
+                        # can lose its focus/taskbar cue or misbehave on macOS.
+                        # Let exec() establish modality before the timer raises
+                        # and activates the visible dialog.
+                        dialog = AttackDialog(attacks, new_attack, parent=mw)
+                        QTimer.singleShot(
+                            0,
+                            lambda: (
+                                dialog.raise_(),
+                                dialog.activateWindow(),
+                            ),
+                        )
+                        try:
+                            _accepted = dialog.exec() == QDialog.DialogCode.Accepted
+                        finally:
+                            dialog.deleteLater()
+                        if _accepted:
                             selected_attack = dialog.selected_attack
                             try:
                                 index_to_replace = attacks.index(selected_attack)
@@ -601,8 +627,25 @@ class EvoWindow(QWidget):
                     if len(attacks) < 4:
                         attacks.append(new_attack)
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                        # Parent to the Anki main window, not this evolution
+                        # popup. EvoWindow is a separate top-level window that
+                        # gets torn down/hidden mid-flow; a child dialog of it
+                        # can lose its focus/taskbar cue or misbehave on macOS.
+                        # Let exec() establish modality before the timer raises
+                        # and activates the visible dialog.
+                        dialog = AttackDialog(attacks, new_attack, parent=mw)
+                        QTimer.singleShot(
+                            0,
+                            lambda: (
+                                dialog.raise_(),
+                                dialog.activateWindow(),
+                            ),
+                        )
+                        try:
+                            _accepted = dialog.exec() == QDialog.DialogCode.Accepted
+                        finally:
+                            dialog.deleteLater()
+                        if _accepted:
                             selected_attack = dialog.selected_attack
                             try:
                                 index_to_replace = attacks.index(selected_attack)

@@ -21,6 +21,12 @@ from typing import Dict, Any
 import csv
 from ..utils import show_warning_with_traceback
 from ..resources import csv_file_items_cost, user_path
+from .database_manager import (
+    aggregate_legacy_items,
+    find_matching_captured,
+    is_valid_individual_id,
+    normalize_legacy_item,
+)
 
 
 class MigrationDialog(QDialog):
@@ -154,18 +160,31 @@ class MigrationDialog(QDialog):
                     
                     total = len(pokemon_list)
                     seen_ids = set()
+                    # A Retry re-reads the same JSON. Pokémon that carry no usable
+                    # individual_id would be inserted again under fresh UUIDs, so
+                    # hand each one the row an earlier pass already wrote for it.
+                    reusable_rows = [
+                        p for p in self.db.get_all_pokemon()
+                        if isinstance(p, dict) and is_valid_individual_id(p.get("individual_id"))
+                    ]
                     for i, pokemon in enumerate(pokemon_list):
                         if self.cancelled: break
                         if not isinstance(pokemon, dict):
                             continue
                         ind_id = pokemon.get("individual_id")
-                        if not ind_id or ind_id in seen_ids:
+                        if not is_valid_individual_id(ind_id):
+                            match = find_matching_captured(pokemon, reusable_rows)
+                            if match is not None:
+                                reusable_rows.remove(match)
+                                pokemon["individual_id"] = match["individual_id"]
+                            else:
+                                pokemon["individual_id"] = str(uuid.uuid4())
+                        elif ind_id in seen_ids:
                             new_uuid = str(uuid.uuid4())
-                            if ind_id:
-                                self.log_area.append(
-                                    f"  ⚠ Duplicate individual_id {ind_id}; assigned a new UUID (kept both copies)"
-                                )
-                                remapped_ids.setdefault(ind_id, []).append(new_uuid)
+                            self.log_area.append(
+                                f"  ⚠ Duplicate individual_id {ind_id}; assigned a new UUID (kept both copies)"
+                            )
+                            remapped_ids.setdefault(ind_id, []).append(new_uuid)
                             pokemon["individual_id"] = new_uuid
                         seen_ids.add(pokemon["individual_id"])
                         if self.db.save_pokemon(pokemon):
@@ -191,8 +210,14 @@ class MigrationDialog(QDialog):
                     if main_data:
                         main_pokemon = main_data[0] if isinstance(main_data, list) else main_data
                         if isinstance(main_pokemon, dict):
-                            if not main_pokemon.get("individual_id"):
-                                main_pokemon["individual_id"] = str(uuid.uuid4())
+                            if not is_valid_individual_id(main_pokemon.get("individual_id")):
+                                # Reuse the captured row's id so the starter is not
+                                # duplicated as a second captured Pokémon.
+                                match = find_matching_captured(main_pokemon, self.db.get_all_pokemon())
+                                if match and is_valid_individual_id(match.get("individual_id")):
+                                    main_pokemon["individual_id"] = match["individual_id"]
+                                else:
+                                    main_pokemon["individual_id"] = str(uuid.uuid4())
                             if self.db.save_main_pokemon(main_pokemon):
                                 stats["main"] = 1
                     self._update_progress(55, "✓ Migrated main Pokemon")
@@ -203,23 +228,21 @@ class MigrationDialog(QDialog):
                     with open(self.items_path, 'r', encoding='utf-8') as f:
                         items_list = json.load(f)
                     
-                    for item in items_list:
+                    # Fold duplicates and coerce quantities first, then upsert each
+                    # name once: Retry after a partial failure must not double
+                    # anyone's inventory.
+                    if not isinstance(items_list, list):
+                        self.log_area.append(
+                            f"  ⚠ Unexpected items.json format: {type(items_list).__name__}; skipped"
+                        )
+                        items_list = []
+                    item_totals = aggregate_legacy_items(items_list)
+                    skipped = sum(1 for entry in items_list if normalize_legacy_item(entry) is None)
+                    if skipped:
+                        self.log_area.append(f"  ⚠ Skipped {skipped} unreadable item entries")
+                    for item_name, (quantity, extra_data) in item_totals.items():
                         if self.cancelled: break
-                        if not item: continue
-                        
-                        if isinstance(item, str):
-                            item_name = item
-                            quantity = 1
-                            extra_data = None
-                        elif isinstance(item, dict):
-                            item_name = item.get("item") or item.get("item_name") or item.get("name")
-                            quantity = item.get("quantity", item.get("amount", 1))
-                            extra_data = item
-                        else:
-                            continue
-                        
-                        if item_name:
-                            self.db.add_item(item_name, quantity, extra_data=extra_data, commit=False)
+                        if self.db.add_item(item_name, quantity, extra_data=extra_data, commit=False):
                             stats["items"] += 1
                     
                     # Final commit for items

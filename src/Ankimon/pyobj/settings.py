@@ -34,7 +34,7 @@ DEFAULT_CONFIG = {
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
     "gui.show_sprites_across_ankimon": True,
-    "gui.styling_in_reviewer": True,
+    "gui.hud_styling": True,
     "gui.pop_up_dialog_message_on_defeat": False,
     "gui.pop_up_dialog_message_on_item": True,
     "gui.review_hp_bar_thickness": 2,
@@ -192,12 +192,21 @@ class Settings:
             if default is None and config.get(key) == "None":
                 config[key] = None
 
+        # gui.styling_in_reviewer was renamed to gui.hud_styling when the
+        # setting moved into the HUD Element Toggles group. Carry the stored
+        # value across once; the new key is authoritative from then on, so a
+        # legacy row that somehow reappears can never overwrite it.
+        styling_migrated = "gui.styling_in_reviewer" in config
+        if styling_migrated:
+            legacy_styling = config.pop("gui.styling_in_reviewer")
+            config.setdefault("gui.hud_styling", legacy_styling)
+
         # Ensure all default settings are present. A stored value of ``None``
         # is treated as "unset" and reseeded from the DEFAULT_CONFIG value —
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
-        modified = False
+        modified = styling_migrated
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None
@@ -210,6 +219,24 @@ class Settings:
             # side effects such as HUD autosync. Existing user HUD preferences
             # must survive the introduction of a new master visibility key.
             self.save_config(config, apply_hud_autosync=False)
+
+        # Drop the renamed key's row, but only once gui.hud_styling is really
+        # in the store. save_all_config upserts and never deletes, so a row left
+        # behind is read back on every load: it would re-seed the migration
+        # forever and revert the user's own Styling choice at every startup.
+        # save_config swallows a failed DB write, though, so "it returned" is
+        # not "it persisted" — deleting on a failed save would destroy the
+        # stored value outright, where leaving the row simply retries the
+        # migration on the next load.
+        if styling_migrated and services.db is not None:
+            try:
+                if services.db.get_config_value("gui.hud_styling") is not None:
+                    services.db.delete_config_value("gui.styling_in_reviewer")
+            except Exception as e:
+                print(
+                    "Ankimon: Failed to delete legacy config key "
+                    f"'gui.styling_in_reviewer': {e}"
+                )
 
         # Preserve the identity of ``self.config`` across (re)loads: external
         # holders of the dict keep observing updates instead of a stale rebind.

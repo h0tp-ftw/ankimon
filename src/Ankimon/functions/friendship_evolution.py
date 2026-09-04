@@ -19,11 +19,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, NamedTuple, Optional
 
 from .pokedex_functions import (
+    _LEVEL_EVO_TRIGGERS,
+    _csv_gender_id,
+    _evolution_row_gender_id,
+    _load_moves_cache,
+    evolution_rows_for_evolved_species,
+    filter_gender_split_forms,
+    gender_allows_evolution,
     pokemon_evolves_from_id,
     return_name_for_id,
-    rows_for_key_in_table,
 )
-from ..resources import poke_evo_path
 from ..services import services
 
 # Reference value for friendship progress bars: the bar reads "full" at this
@@ -41,12 +46,18 @@ class FriendshipEvolution(NamedTuple):
         evo_name: Capitalised display name of the evolved species.
         min_happiness: Friendship value required to evolve.
         time_of_day: ``"day"``, ``"night"``, or ``None`` (no time requirement).
+        known_move_type: Optional lower-case type name the Pokémon must know a
+            move of before this evolution becomes possible (e.g. ``"fairy"``).
+            Read from the CSV's ``known_move_type_id`` column via
+            :func:`_move_type_name`; only type 18 (Fairy) appears in the bundled
+            data today, but any id that resolves through the type table works.
     """
 
     evo_id: int
     evo_name: str
     min_happiness: int
     time_of_day: Optional[str]
+    known_move_type: Optional[str] = None
 
 
 class LevelEvolution(NamedTuple):
@@ -67,6 +78,38 @@ class LevelEvolution(NamedTuple):
     time_of_day: Optional[str] = None
 
 
+class _DefaultSettings:
+    """Answers every setting with the caller's default.
+
+    Stands in for an unbound ``services.settings``.
+    """
+
+    @staticmethod
+    def get(key, default=None):
+        return default
+
+
+_DEFAULT_SETTINGS = _DefaultSettings()
+
+
+def _settings():
+    """Return the settings seam, or a defaults-only stand-in when it is unset.
+
+    ``services.settings`` is ``None`` until the registry is populated — early
+    boot, a profile swap in flight, a partially-wired headless run — and a bare
+    ``services.settings.get(...)`` then raises ``AttributeError`` from
+    ``evolution_readiness`` / ``get_time_of_day``, both of which sit on render
+    and review paths that otherwise degrade rather than raise (they already
+    coerce junk ids, junk friendship and junk hours). Every setting read in this
+    module is a preference with a sensible default, so answering with that
+    default is strictly better than raising. Mirrors the explicit ``None``
+    check the sibling clock in ``pokedex_functions.get_time_of_day`` makes, and
+    the ``try/except`` in :func:`_active_region` below.
+    """
+    settings_obj = services.settings
+    return settings_obj if settings_obj is not None else _DEFAULT_SETTINGS
+
+
 def _now_in_configured_tz() -> datetime:
     """Return the current time in the user's configured time zone.
 
@@ -74,7 +117,7 @@ def _now_in_configured_tz() -> datetime:
     when ``evolution.timezone_auto`` is off, a fixed ``evolution.timezone_offset``
     (hours, clamped to ±14) is applied instead.
     """
-    settings_obj = services.settings  # registry-backed; no singletons/aqt import
+    settings_obj = _settings()  # registry-backed; no singletons/aqt import
 
     if settings_obj.get("evolution.timezone_auto", True):
         return datetime.now()
@@ -133,7 +176,7 @@ def get_time_of_day(now: Optional[datetime] = None) -> str:
     Returns:
         ``"day"`` or ``"night"``.
     """
-    settings_obj = services.settings  # registry-backed; no singletons/aqt import
+    settings_obj = _settings()  # registry-backed; no singletons/aqt import
 
     moment = now if now is not None else _now_in_configured_tz()
     hour = moment.hour
@@ -157,7 +200,7 @@ def current_time_label(now: Optional[datetime] = None) -> str:
         A short, emoji-prefixed label including the current ``HH:MM`` time (and
         the UTC offset when a manual time zone is configured).
     """
-    settings_obj = services.settings  # registry-backed; no singletons/aqt import
+    settings_obj = _settings()  # registry-backed; no singletons/aqt import
 
     moment = now if now is not None else _now_in_configured_tz()
     time_of_day = get_time_of_day(moment)
@@ -170,6 +213,47 @@ def current_time_label(now: Optional[datetime] = None) -> str:
         except (TypeError, ValueError):
             pass
     return label
+
+
+# Canonical Pokémon type ids, matching the ``known_move_type_id`` column of the
+# veekun-sourced ``pokemon_evolution.csv`` (standard in-game type ordering).
+# Only Fairy (18) appears in the bundled CSV today, but the full table costs
+# nothing and keeps any future move-type-gated evolution resolvable. Unknown /
+# junk ids resolve to None ("no requirement") rather than blocking evolutions.
+_MOVE_TYPE_NAMES = {
+    1: "normal",
+    2: "fighting",
+    3: "flying",
+    4: "poison",
+    5: "ground",
+    6: "rock",
+    7: "bug",
+    8: "ghost",
+    9: "steel",
+    10: "fire",
+    11: "water",
+    12: "grass",
+    13: "electric",
+    14: "psychic",
+    15: "ice",
+    16: "dragon",
+    17: "dark",
+    18: "fairy",
+}
+
+
+def _move_type_name(type_id) -> Optional[str]:
+    """Return the lower-case type name for a ``known_move_type_id``.
+
+    Maps the veekun-schema numeric type id through :data:`_MOVE_TYPE_NAMES`
+    into the lower-case keys used by ``moves.json`` entries (``move["type"]``).
+    Returns ``None`` when the id can't be resolved, so a data gap degrades to
+    "no move requirement" instead of blocking evolutions. Never raises.
+    """
+    try:
+        return _MOVE_TYPE_NAMES.get(int(type_id))
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_plain_level_row(row: dict) -> bool:
@@ -224,7 +308,7 @@ def get_friendship_evolutions_for_species(
         # scan them all and keep the one carrying a positive minimum_happiness.
         # check_key_in_table's first-match would miss e.g. Sylveon, whose blank
         # row precedes its friendship row in the CSV.
-        rows = rows_for_key_in_table("evolved_species_id", evo, poke_evo_path)
+        rows = evolution_rows_for_evolved_species(evo)
         # If this evolved species is also reachable by levelling up, leave it to
         # the level path instead of offering a friendship evolution. The bundled
         # CSV carries no Pokémon *form* data, so it conflates e.g. Kantonian
@@ -246,6 +330,17 @@ def get_friendship_evolutions_for_species(
             time_raw = (row.get("time_of_day") or "").strip().lower()
             time_of_day = time_raw if time_raw in ("day", "night") else None
 
+            # Optional move-type gate straight from the CSV (e.g. Sylveon's
+            # known_move_type_id=18 -> "fairy"). Unresolvable ids degrade to
+            # None ("no requirement") rather than blocking the evolution.
+            known_move_type = None
+            try:
+                raw_type_id = int(row.get("known_move_type_id", "") or 0)
+            except (TypeError, ValueError):
+                raw_type_id = 0
+            if raw_type_id > 0:
+                known_move_type = _move_type_name(raw_type_id)
+
             name = return_name_for_id(int(evo))
             evo_name = name.capitalize() if name else str(evo)
 
@@ -255,6 +350,7 @@ def get_friendship_evolutions_for_species(
                     evo_name=evo_name,
                     min_happiness=min_happiness,
                     time_of_day=time_of_day,
+                    known_move_type=known_move_type,
                 )
             )
             break  # one friendship row per evolved species is enough
@@ -367,7 +463,7 @@ def get_level_evolutions_for_species(
         # plain level-up row. An evolved species may carry several method rows
         # (e.g. a level-up row *and* a friendship row), so first-match would pick
         # the wrong one when the level row isn't listed first.
-        for row in rows_for_key_in_table("evolved_species_id", evo, poke_evo_path):
+        for row in evolution_rows_for_evolved_species(evo):
             # Level-up trigger only (item/trade/etc. evolutions are out of scope).
             try:
                 trigger_id = int(row.get("evolution_trigger_id", 0))
@@ -412,30 +508,182 @@ def get_level_evolutions_for_species(
     return tuple(evolutions)
 
 
+def _move_type_of(attack: Any) -> Optional[str]:
+    """Return the lower-case type of one move name, or ``None``.
+
+    A quiet lookup over the startup-loaded ``moves.json`` cache only.
+    Deliberately *not* :func:`find_details_move`, which answers unknown names
+    with the default "tackle" entry — that would misreport the type AND pop a
+    warning dialog through ``services.ui.warn`` mid-review. An unknown or junk
+    name simply carries no type evidence (None).
+    """
+    if not isinstance(attack, str):
+        return None
+    name = attack.strip()
+    if not name:
+        return None
+    try:
+        moves = _load_moves_cache() or {}
+    except Exception:
+        return None
+    # Same normalization ladder find_details_move uses, minus the fallback.
+    for candidate in (
+        name.lower(),
+        name.replace(" ", "").replace("-", "").lower(),
+        name.replace(" ", "").lower(),
+        name.replace("-", "").lower(),
+    ):
+        move_data = moves.get(candidate)
+        if isinstance(move_data, dict):
+            move_type = move_data.get("type")
+            if isinstance(move_type, str) and move_type.strip():
+                return move_type.strip().lower()
+    return None
+
+
+def _known_move_types(pokemon: Any) -> frozenset:
+    """Return the set of move types the Pokémon knows, lower-cased.
+
+    Accepts a dict or an object with an ``attacks`` attribute (the two shapes
+    :func:`evolution_readiness` supports). Move names resolve through the quiet
+    :func:`_move_type_of` cache lookup; unknown moves contribute nothing rather
+    than raising, so the result is best-effort by construction.
+    """
+    if pokemon is None:
+        return frozenset()
+    if isinstance(pokemon, dict):
+        attacks = pokemon.get("attacks") or []
+    else:
+        attacks = getattr(pokemon, "attacks", None) or []
+    types: set = set()
+    for attack in attacks:
+        move_type = _move_type_of(attack)
+        if move_type:
+            types.add(move_type)
+    return frozenset(types)
+
+
+# Display names for the CSV ``gender_id`` values (veekun convention).
+_GENDER_LABELS = {1: "Female", 2: "Male"}
+
+
+def _pokemon_gender(pokemon: Any) -> Any:
+    """Return the raw ``gender`` of a Pokémon dict/object, or ``None``.
+
+    Same dual-shape handling as :func:`_known_move_types`; the value is passed
+    straight to :func:`_csv_gender_id`, which is what decides whether it is
+    recognised ("M"/"F") or degrades to "no gate".
+    """
+    if pokemon is None:
+        return None
+    if isinstance(pokemon, dict):
+        return pokemon.get("gender")
+    return getattr(pokemon, "gender", None)
+
+
+def _level_gender_gate(evo_id: int, caller_gender_id: Optional[int]) -> bool:
+    """Return whether a level-up evolution target is open to this gender.
+
+    ``caller_gender_id is None`` (no/unrecognised gender) fails **open** — the
+    same no-check-without-data convention ``check_evolution_for_pokemon`` and
+    ``check_evolution_by_item`` use for their gender gates, and deliberately the
+    opposite of the fail-closed move-type gate: a missing moveset is a fact we
+    could not read, while a missing gender is a save that never stored one.
+
+    Thin wrapper over ``pokedex_functions.gender_allows_evolution`` so the PC's
+    manual "Evolve now" readiness and the automatic level-up path can't drift
+    apart on what the gate means; only the level trigger scope is fixed here.
+    """
+    return gender_allows_evolution(evo_id, caller_gender_id, _LEVEL_EVO_TRIGGERS)
+
+
+def _satisfies_move_gate(
+    evo: FriendshipEvolution, known_move_types: Optional[frozenset]
+) -> bool:
+    """Return whether ``evo``'s move-type requirement is satisfied.
+
+    ``known_move_types is None`` means "moves unknown" — the caller had no
+    attacks data at all. Every gate then evaluates False so a move-gated
+    evolution is never offered on missing data (fail-closed); non-gated
+    evolutions are unaffected and stay eligible.
+
+    Note that :func:`evolution_readiness` always passes a concrete frozenset:
+    :func:`_known_move_types` answers a Pokémon with no readable moveset with an
+    *empty* set, which fails the same way. The ``None`` case exists for direct
+    callers (and for the parameter's own default) and behaves identically.
+    """
+    if evo.known_move_type is None:
+        return True
+    if known_move_types is None:
+        return False
+    return evo.known_move_type in known_move_types
+
+
 def _select_evolution(
-    evos: tuple[FriendshipEvolution, ...], time_of_day: str
+    evos: tuple[FriendshipEvolution, ...],
+    time_of_day: str,
+    known_move_types: Optional[frozenset] = None,
 ) -> FriendshipEvolution:
     """Pick the most appropriate friendship evolution for the current time.
 
-    Prefers an evolution eligible right now (its ``time_of_day`` matches, or it
-    has none); among those, an explicitly time-gated row beats a blank-time one,
-    then lowest ``evo_id``. If none is eligible now, falls back to the lowest
-    ``evo_id`` so the UI can still show e.g. "waiting for Night".
+    First drops evolutions whose optional move-type requirement (CSV
+    ``known_move_type_id``, e.g. Sylveon's Fairy-move gate) isn't met by the
+    Pokémon's current moveset; when the moveset is unknown (``None``), gated
+    rows are dropped too — a move-gated evolution must never be selected on
+    unconfirmed data.
+
+    Among the survivors it prefers the most specific requirement first: a
+    satisfied move-type gate (in-game, a Fairy move *forces* Sylveon over the
+    time-gated Espeon/Umbreon), then an evolution eligible right now (its
+    ``time_of_day`` matches, or it has none), an explicitly time-gated row
+    beating a blank-time one, then lowest ``evo_id``. If none is eligible now,
+    falls back to the lowest remaining ``evo_id`` so the UI can still show e.g.
+    "waiting for Night".
+
+    If *every* row is move-gated and none is satisfied there is no reachable
+    row to rank, so the lowest ``evo_id`` comes back as a representative for the
+    UI ("needs a Fairy-type move"). Callers MUST NOT read that as eligible:
+    :func:`evolution_readiness` re-checks the chosen row with
+    :func:`_satisfies_move_gate` and folds the result into ``ready``, so the
+    branch can't fail open. (No bundled species reaches it today — Eevee, the
+    only species with gated rows, also has ungated ones.)
 
     Args:
         evos: Non-empty tuple from :func:`get_friendship_evolutions_for_species`.
         time_of_day: Current time of day (``"day"`` or ``"night"``).
+        known_move_types: Lower-case move types the Pokémon knows, or ``None``
+            when the moveset is unknown (move-gated rows then never win).
 
     Returns:
         The chosen :class:`FriendshipEvolution`.
     """
-    eligible_now = [e for e in evos if e.time_of_day in (time_of_day, None)]
+    valid_evos = [e for e in evos if _satisfies_move_gate(e, known_move_types)]
+    if not valid_evos:
+        # Reaching here means every row carries a move gate and none is met (an
+        # ungated row would have satisfied trivially). Ranking them by "most
+        # specific requirement" is meaningless when none is reachable, so return
+        # the lowest evo_id as a stable representative for the UI and let the
+        # caller's _satisfies_move_gate re-check keep it out of `ready`.
+        return min(evos, key=lambda e: e.evo_id)
+
+    eligible_now = [e for e in valid_evos if e.time_of_day in (time_of_day, None)]
     if eligible_now:
-        # Prefer explicit-time rows (e.g. Espeon@day) over blank-time rows, then
-        # lowest evo_id. ``time_of_day is None`` sorts last via the bool key.
-        return min(eligible_now, key=lambda e: (e.time_of_day is None, e.evo_id))
+        # Sort: satisfied move gate first (a known Fairy move outranks the
+        # day/night clock — Sylveon over Espeon/Umbreon), then explicit-time
+        # rows over blank-time rows, then lowest evo_id. Each ``is None`` /
+        # ``==`` predicate sorts falsy-first via the bool key. Every row here
+        # has already passed its gate, so the first key only ever promotes a
+        # SATISFIED gate.
+        return min(
+            eligible_now,
+            key=lambda e: (
+                e.known_move_type is None,
+                e.time_of_day is None,
+                e.evo_id,
+            ),
+        )
     # Nothing matches the current time; still return a representative.
-    return min(evos, key=lambda e: e.evo_id)
+    return min(valid_evos, key=lambda e: e.evo_id)
 
 
 def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
@@ -454,8 +702,12 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
     Returns:
         A readiness dict with keys: ``evolvable, ready, method, evo_id,
         evo_name, min_happiness, current_friendship, friendship_remaining,
-        required_time, time_ok, status_text, bar_max, rejected``. ``bar_max``
-        defaults to :data:`MAX_FRIENDSHIP` outside the friendship path.
+        required_time, time_ok, status_text, bar_max, rejected,
+        required_move_type, gated_alternatives``. ``bar_max`` defaults to
+        :data:`MAX_FRIENDSHIP` outside the friendship path;
+        ``required_move_type``/``gated_alternatives`` describe CSV
+        ``known_move_type_id`` gates (Sylveon's Fairy-move requirement) and are
+        ``None``/``()`` everywhere else.
     """
     if isinstance(pokemon, dict):
         species_id = pokemon.get("id")
@@ -486,6 +738,8 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
         "status_text": "",
         "bar_max": MAX_FRIENDSHIP,
         "rejected": False,
+        "required_move_type": None,
+        "gated_alternatives": (),
     }
 
     if species_id is None:
@@ -514,15 +768,34 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
             pokemon=pokemon,
         )
 
-    chosen = _select_evolution(evos, time_of_day)
+    known_move_types = _known_move_types(pokemon)
+    chosen = _select_evolution(evos, time_of_day, known_move_types)
     evo_id = chosen.evo_id
     evo_name = chosen.evo_name
     min_happiness = chosen.min_happiness
     required_time = chosen.time_of_day
 
+    # The chosen row can still carry an UNMET move gate in one case: every row
+    # for the species was gated, so _select_evolution had to hand back a
+    # representative. Folding move_ok into `ready` is what keeps that branch
+    # from failing open (the friendship/time numbers alone would say "ready").
+    move_ok = _satisfies_move_gate(chosen, known_move_types)
+    required_move_type = None if move_ok else chosen.known_move_type
+
+    # Evolutions the data offers but the current moveset hides. Without this the
+    # gate is invisible: a high-friendship Eevee simply shows Espeon/Umbreon and
+    # nothing ever tells the player Sylveon exists or what it wants.
+    gated_alternatives = tuple(
+        (e.evo_name, e.known_move_type)
+        for e in evos
+        if e.evo_id != evo_id
+        and e.known_move_type is not None
+        and not _satisfies_move_gate(e, known_move_types)
+    )
+
     friendship_remaining = max(0, min_happiness - friendship)
     time_ok = required_time is None or required_time == time_of_day
-    ready = (not everstone) and friendship >= min_happiness and time_ok
+    ready = (not everstone) and friendship >= min_happiness and time_ok and move_ok
 
     status_text = _build_status_text(
         everstone=everstone,
@@ -533,6 +806,8 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
         time_ok=time_ok,
         time_of_day=time_of_day,
         rejected=evolution_rejected,
+        required_move_type=required_move_type,
+        gated_alternatives=gated_alternatives,
     )
 
     return {
@@ -549,6 +824,12 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
         "status_text": status_text,
         "bar_max": min_happiness,
         "rejected": evolution_rejected,
+        # Unmet move-type gate on the CHOSEN evolution (None when satisfied or
+        # ungated), and the (name, move_type) pairs of alternatives currently
+        # hidden behind one — e.g. ``(("Sylveon", "fairy"),)`` for an Eevee that
+        # knows no Fairy move.
+        "required_move_type": required_move_type,
+        "gated_alternatives": gated_alternatives,
     }
 
 
@@ -630,11 +911,12 @@ def _level_readiness(
     Called by :func:`evolution_readiness` when the species has no friendship
     evolution; returns ``not_evolvable`` unchanged if it has no level-up evolution
     either. Ignores ``evolution_rejected`` (the manual button still shows) but
-    DOES enforce the region preference (``misc.active_region``), any
+    DOES enforce the region preference (``misc.active_region``), the CSV
+    ``gender_id`` gate (a male Burmy evolves into Mothim, never Wormadam), any
     ``time_of_day`` requirement, a required ``levelMove`` (e.g. Mr. Mime needs
     Mimic) and a ``minimumDefeated`` count (e.g. Pawmot needs 100 defeats):
-    ``ready = (not everstone) and level >= min_level and time_ok and knows_move
-    and defeated_ok``.
+    ``ready = (not everstone) and level >= min_level and time_ok and gender_ok
+    and knows_move and defeated_ok``.
 
     Returns:
         A readiness dict with ``method="level"`` (or ``not_evolvable``).
@@ -651,6 +933,37 @@ def _level_readiness(
     if filtered:
         level_evos = tuple(filtered)
 
+    # Gender gate from the bundled CSV (veekun ids: 1 = female, 2 = male):
+    # Vespiquen needs a female Combee, Salazzle a female Salandit, and Burmy
+    # splits into Wormadam (female) / Mothim (male). This mirrors the gate
+    # ``check_evolution_for_pokemon`` applies on the automatic level-up path —
+    # without it the PC's manual "Evolve now" button is a way around it, and a
+    # male Burmy is offered Wormadam (lowest evo_id) instead of Mothim.
+    #
+    # Unlike the region filter above this narrows the choice but never widens
+    # it back: when every target is gated to the other gender the representative
+    # is kept only so the UI can say why, and ``gender_ok`` keeps it out of
+    # ``ready``.
+    pokemon_gender = _pokemon_gender(pokemon)
+    caller_gender_id = _csv_gender_id(pokemon_gender)
+    gendered = [e for e in level_evos if _level_gender_gate(e.evo_id, caller_gender_id)]
+    if gendered:
+        level_evos = tuple(gendered)
+
+    # Second gender source, for splits pokemon_evolution.csv cannot express as
+    # gendered rows: veekun models Espurr -> Meowstic/Meowstic-F and Lechonk ->
+    # Oinkologne/Oinkologne-F as FORMS of one species, so neither carries a
+    # gender_id and the gate above sees no split — leaving the lowest-evo_id
+    # tie-break to hand every Espurr the male Meowstic. pokedex.json does carry
+    # it, on each evolved form's own `gender`. Narrows siblings only (see
+    # filter_gender_split_forms), so it can never empty the candidate list and
+    # `gender_ok` below stays driven by the CSV gate alone.
+    split = set(
+        filter_gender_split_forms([e.evo_id for e in level_evos], pokemon_gender)
+    )
+    if split:
+        level_evos = tuple(e for e in level_evos if e.evo_id in split)
+
     # Among the surviving targets prefer one eligible right now (its time matches
     # or it has no time requirement); an explicit-time row beats a blank-time one.
     eligible_now = [e for e in level_evos if e.time_of_day in (time_of_day, None)]
@@ -663,8 +976,19 @@ def _level_readiness(
     min_level = chosen.min_level
     required_time = chosen.time_of_day
 
+    # Re-check the CHOSEN row rather than trusting the filter: when nothing
+    # survived it, `chosen` is a representative whose gate is unmet.
+    gender_ok = _level_gender_gate(chosen.evo_id, caller_gender_id)
+    required_gender = (
+        None
+        if gender_ok
+        else _GENDER_LABELS.get(
+            _evolution_row_gender_id(chosen.evo_id, _LEVEL_EVO_TRIGGERS)
+        )
+    )
+
     time_ok = required_time is None or required_time == time_of_day
-    ready = (not everstone) and level >= min_level and time_ok
+    ready = (not everstone) and level >= min_level and time_ok and gender_ok
 
     # Move-based (levelMove) and defeat-based (minimumDefeated) gating from the
     # evolved species' pokedex.json data.
@@ -708,6 +1032,21 @@ def _level_readiness(
 
     if everstone:
         status_text = "Everstone prevents evolution"
+    elif not gender_ok:
+        # Nothing the player does changes a Pokémon's gender, so this outranks
+        # the level/move/defeat lines below — none of them are actionable while
+        # it holds.
+        #
+        # Branch on gender_ok, NOT on the label: an unrecognised CSV gender_id
+        # (nothing in the bundled data carries one, but the file is regenerated
+        # from upstream) leaves `required_gender` None while `ready` is already
+        # False, and keying on the label would then fall through to a cheerful
+        # "Ready to evolve into ..." line contradicting the button beside it.
+        status_text = (
+            f"Needs to be {required_gender} to evolve into {evo_name}"
+            if required_gender
+            else f"{evo_name} has a gender requirement this Pokémon doesn't meet"
+        )
     elif not knows_move and required_move:
         status_text = f"Needs to learn {required_move} to evolve"
     elif not defeated_ok and required_defeated:
@@ -746,6 +1085,11 @@ def _level_readiness(
         "status_text": status_text,
         "bar_max": MAX_FRIENDSHIP,
         "rejected": evolution_rejected,
+        # Shape parity with the friendship path. Level evolutions gate on a
+        # specific move NAME (``evoMove``, surfaced in status_text above), not on
+        # a move TYPE from the CSV, so these are always empty here.
+        "required_move_type": None,
+        "gated_alternatives": (),
     }
 
 
@@ -759,37 +1103,74 @@ def _build_status_text(
     time_ok: bool,
     time_of_day: str,
     rejected: bool = False,
+    required_move_type: Optional[str] = None,
+    gated_alternatives: tuple = (),
 ) -> str:
     """Build the human-readable readiness line shown in the UI.
 
+    ``required_move_type`` is an unmet move-type gate on the chosen evolution
+    and always wins the line, because nothing else the player does will unblock
+    it. ``gated_alternatives`` are ``(name, move_type)`` pairs for evolutions the
+    species *can* reach but whose gate the current moveset doesn't meet; they are
+    appended as a hint so the branch is discoverable at all (without it a Fairy
+    move silently redirects an Eevee to Sylveon with no prior warning).
+
+    Where the hint actually surfaces today: the only consumer of ``status_text``
+    is the details panel (``gui_classes/pokemon_details.py``), and it renders the
+    line only while ``ready`` is False — which for a friendship evolution is the
+    whole climb from 0 to ``min_happiness`` (every capture starts at friendship
+    0, Eevee needs 160), so the player sees it for the entire period they can act
+    on it. Once ``ready`` flips the panel shows an "Evolve now" button instead
+    and the line is not drawn. The hint is still appended to the ready branches
+    below so the string stays correct for any consumer that does render it —
+    just don't read those variants as something a user sees today.
+
     Examples:
         - ``"Everstone prevents evolution"``
-        - ``"Evolution rejected — tap Evolve now to override"``
         - ``"Ready to evolve into Espeon!"``
         - ``"Ready — waiting for Night (now Day)"``
         - ``"40 friendship to evolve into Espeon · needs Day"``
+        - ``"40 friendship to evolve into Espeon · Sylveon needs a Fairy-type move"``
+        - ``"Needs a Fairy-type move to evolve into Sylveon"``
     """
     if everstone:
         return "Everstone prevents evolution"
 
+    # An unmet gate on the chosen evolution outranks every other line: the
+    # friendship bar being full doesn't matter while the moveset blocks it.
+    if required_move_type:
+        return (
+            f"Needs a {required_move_type.capitalize()}-type move "
+            f"to evolve into {evo_name}"
+        )
+
+    # Build the parts first: an entry with a blank type contributes nothing, and
+    # joining an all-blank list would otherwise leave a dangling " · ".
+    hint_parts = [
+        f"{name} needs a {move_type.capitalize()}-type move"
+        for name, move_type in gated_alternatives
+        if move_type
+    ]
+    hint = (" · " + " · ".join(hint_parts)) if hint_parts else ""
+
     if ready and rejected:
-        return "Evolution rejected — tap Evolve now to override"
+        return "Evolution rejected — tap Evolve now to override" + hint
 
     if ready:
-        return f"Ready to evolve into {evo_name}!"
+        return f"Ready to evolve into {evo_name}!" + hint
 
     # Friendship is high enough but the time of day is wrong.
     if friendship_remaining == 0 and not time_ok and required_time is not None:
         return (
             f"Ready — waiting for {required_time.capitalize()} "
-            f"(now {time_of_day.capitalize()})"
+            f"(now {time_of_day.capitalize()})" + hint
         )
 
     # Still needs more friendship.
     text = f"{friendship_remaining} friendship to evolve into {evo_name}"
     if required_time is not None:
         text += f" · needs {required_time.capitalize()}"
-    return text
+    return text + hint
 
 
 def check_friendship_evolution_for_pokemon(
@@ -800,6 +1181,8 @@ def check_friendship_evolution_for_pokemon(
     friendship: int = 0,
     evolution_rejected: bool = False,
     now: Optional[datetime] = None,
+    attacks: Optional[list] = None,
+    pokemon_defeated: Optional[int] = None,
 ) -> Optional[int]:
     """Prompt a friendship (or defeat-milestone) evolution for a Pokémon if ready.
 
@@ -810,16 +1193,36 @@ def check_friendship_evolution_for_pokemon(
 
     * friendship/time evolutions (``method == "friendship"``); and
     * ``minimumDefeated`` evolutions (a subset of ``method == "level"`` — e.g.
-      Pawmo -> Pawmot after 100 defeats), whose defeat count is read from the DB.
+      Pawmo -> Pawmot after 100 defeats), whose defeat count comes from the
+      caller's in-memory state (with a guarded DB fallback for legacy callers).
 
     Plain level-up evolutions are NOT auto-prompted here (those are handled by
     ``check_evolution_for_pokemon`` on level-up; the manual PC button covers the
     rest), so a level-ready Pokémon without a defeat milestone stays silent.
 
+    Args:
+        individual_id: The individual Pokémon's DB id.
+        pokemon_id: National Pokédex id of the current species/form.
+        evo_window: The evolution window used to prompt the offer.
+        everstone: Whether an Everstone is held (suppresses prompting).
+        friendship: Current friendship value of the Pokémon.
+        evolution_rejected: Whether a prior offer was rejected (suppresses).
+        now: Optional :class:`datetime` overriding the configured day/night clock.
+        attacks: Optional live moveset; when given it takes precedence over the
+            stored one so move-type-gated evolutions (e.g. Sylveon's Fairy-move
+            requirement) evaluate against freshest-known data.
+        pokemon_defeated: Optional defeat count for ``minimumDefeated``
+            evolutions (e.g. Pawmo -> Pawmot). Supply it — together with
+            ``attacks`` — from state the caller already holds so this checker
+            performs **no synchronous disk I/O** on Anki's review path (coding
+            guideline: never do synchronous disk I/O mid-review). ``None``
+            keeps the legacy behavior of one guarded DB read for the value(s)
+            the caller didn't supply.
+
     Returns:
         The evolved species id if the evolution was triggered, else ``None``.
     """
-    settings_obj = services.settings  # registry-backed; no singletons/aqt import
+    settings_obj = _settings()  # registry-backed; no singletons/aqt import
 
     if (
         not settings_obj.get("evolution.friendship_time_enabled", True)
@@ -828,17 +1231,30 @@ def check_friendship_evolution_for_pokemon(
     ):
         return None
 
-    # Defeat count for minimumDefeated evolutions (Pawmo/Rellor): read via the DB
-    # seam, guarded so a missing/unavailable store degrades to 0 rather than
-    # raising on the victory hot path.
-    pokemon_defeated = 0
-    try:
-        db = services.db
-        if db is not None and hasattr(db, "get_pokemon"):
-            record = db.get_pokemon(individual_id)
-            if record:
-                pokemon_defeated = record.get("pokemon_defeated", 0)
-    except Exception:
+    # Defeat count and known attacks for move/defeat-gated evolutions (Sylveon
+    # needs a Fairy-type move; Pawmo/Rellor need defeat milestones). Production
+    # callers hold both in memory already and pass them in, so the victory-time
+    # path does zero synchronous disk I/O. The DB seam below runs only for the
+    # values a caller left as None (legacy/test callers), guarded so a
+    # missing/unavailable store degrades to 0 / no attacks rather than raising.
+    defeats_known = pokemon_defeated is not None
+    if pokemon_defeated is None or attacks is None:
+        try:
+            db = services.db
+            if db is not None and hasattr(db, "get_pokemon"):
+                record = db.get_pokemon(individual_id) or {}
+                if isinstance(record, dict):
+                    if not defeats_known:
+                        pokemon_defeated = record.get("pokemon_defeated", 0) or 0
+                    if attacks is None:
+                        attacks = record.get("attacks") or []
+        except Exception:
+            if not defeats_known:
+                pokemon_defeated = 0
+            if attacks is None:
+                attacks = []
+    if pokemon_defeated is None:
+        # Caller supplied an explicit None-ish count; treat as no milestone.
         pokemon_defeated = 0
 
     shim = {
@@ -846,6 +1262,9 @@ def check_friendship_evolution_for_pokemon(
         "friendship": friendship,
         "everstone": everstone,
         "pokemon_defeated": pokemon_defeated,
+        # The live moveset lets _select_evolution honor move-type gates
+        # (e.g. Sylveon) instead of offering them on unconfirmed data.
+        "attacks": attacks,
     }
     readiness = evolution_readiness(shim, now)
 

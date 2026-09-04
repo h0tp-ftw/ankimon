@@ -28,6 +28,7 @@ from .utils import (
     count_items_and_rewrite,
 )
 from .functions.encounter_functions import generate_random_pokemon
+from .functions.pokedex_functions import warm_evolution_caches
 from .functions.badges_functions import get_achieved_badges
 from .functions.rate_addon_functions import rate_this_addon
 from .gui_entities import CheckFiles
@@ -112,7 +113,24 @@ def run_startup_background_checks(backup_manager=None):
     # 4. Sprite/asset folder checks (disk).
     database_complete = _check_assets_background()
 
-    # 5. First enemy + starter/rating preconditions (DB/CPU); the Qt side of
+    # 5. Warm the static evolution table (disk parse) HERE rather than letting
+    #    the first level-up pay for it. Every reader of pokemon_evolution.csv
+    #    — the gender gate, the friendship and level-up evolution lookups —
+    #    runs inside on_review_card, and reviews are gated on
+    #    services.startup_finished, which flips only once this function has
+    #    returned: warming here is what keeps the parse off the review path for
+    #    the whole session. Unconditional (unlike step 6 below) because the CSV
+    #    ships inside the add-on, so it is readable whether or not the player's
+    #    downloaded assets are complete. Guarded because a QueryOp failure has
+    #    no recovery — see on_startup_failed: it would leave startup_finished
+    #    False and silently drop every answered card. An unparsed CSV must
+    #    never cost the player the add-on.
+    try:
+        warm_evolution_caches()
+    except Exception as e:
+        logger.log("error", f"Error warming evolution caches: {e}")
+
+    # 6. First enemy + starter/rating preconditions (DB/CPU); the Qt side of
     #    each (stat application, starter window, rate dialog) runs in
     #    run_startup_ui_callbacks.
     enemy_info = None
@@ -129,7 +147,7 @@ def run_startup_background_checks(backup_manager=None):
         if len(badge_list) > 1 and ankimon_db.get_user_data("rate_this") is not True:
             needs_rating = True
 
-    # 6. Item-count consolidation (DB write; thread-safe layer).
+    # 7. Item-count consolidation (DB write; thread-safe layer).
     try:
         count_items_and_rewrite()
     except Exception as e:

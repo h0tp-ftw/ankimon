@@ -259,6 +259,14 @@ def startup_env(monkeypatch, tmp_path):
     )
     monkeypatch.setitem(
         sys.modules,
+        "Ankimon.functions.pokedex_functions",
+        _stub_module(
+            "Ankimon.functions.pokedex_functions",
+            warm_evolution_caches=rec("warm_evolution_caches", 507),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
         "Ankimon.functions.badges_functions",
         _stub_module(
             "Ankimon.functions.badges_functions",
@@ -377,6 +385,61 @@ def test_background_checks_do_no_ui_work_and_return_contract(startup_env):
     assert _called(env, "run_backup")
     assert _called(env, "generate_random_pokemon")
     assert _called(env, "count_items_and_rewrite")
+    assert _called(env, "warm_evolution_caches")
+
+
+def test_background_checks_warm_the_evolution_table(startup_env):
+    """``pokemon_evolution.csv`` must be parsed HERE, not by the first level-up.
+
+    Every consumer of the evolution rows (the gender gate, the friendship and
+    level-up lookups) runs inside ``on_review_card``, and the lazy loaders let
+    whichever caller arrives first pay the ~500-row parse — synchronous disk
+    I/O mid-review, which AGENTS.md forbids. Warming on the boot thread is what
+    makes that impossible for the session: reviews are gated on
+    ``services.startup_finished``, which flips only once this half has
+    returned, so no review can precede the warm.
+    """
+    env = startup_env
+    env.mod.run_startup_background_checks()
+
+    assert len(_called(env, "warm_evolution_caches")) == 1
+
+
+def test_evolution_table_is_warmed_even_when_assets_are_missing(startup_env):
+    """The evolution CSV ships inside the add-on, so it is warmable whether or
+    not the player's sprite folders are complete. Hanging the warm off
+    ``database_complete`` (as the first-enemy step is) would leave the table
+    cold for exactly the players whose next boot step is a download dialog."""
+    env = startup_env
+    env.folders_exist = False
+
+    results = env.mod.run_startup_background_checks()
+
+    assert results["database_complete"] is False
+    assert len(_called(env, "warm_evolution_caches")) == 1
+
+
+def test_a_failing_warm_cannot_fail_the_boot(startup_env, monkeypatch):
+    """The warm rides on a QueryOp with no recovery: a raise here skips
+    ``on_startup_complete`` entirely, so ``services.startup_finished`` stays
+    False and every answered card is silently dropped for the session. Failing
+    to pre-parse a CSV must never cost the player the whole add-on."""
+    env = startup_env
+
+    def boom():
+        raise OSError("data_files unreadable")
+
+    monkeypatch.setattr(env.mod, "warm_evolution_caches", boom)
+
+    results = env.mod.run_startup_background_checks()
+
+    # The boot completed and the rest of the background work still ran.
+    assert results["database_complete"] is True
+    assert _called(env, "count_items_and_rewrite")
+    assert any(
+        call[0] == "log" and call[1] == "error" and "data_files unreadable" in call[2]
+        for call in env.calls
+    )
 
 
 def test_background_checks_flag_starter_and_rating(startup_env):
@@ -744,9 +807,7 @@ def boot_env(monkeypatch):
             "PyQt6.QtGui",
             QKeySequence=lambda *args: None,
             QShortcut=lambda *args, **kwargs: SimpleNamespace(
-                activated=SimpleNamespace(
-                    connect=rec("QShortcut.activated.connect")
-                ),
+                activated=SimpleNamespace(connect=rec("QShortcut.activated.connect")),
                 setEnabled=rec("QShortcut.setEnabled"),
             ),
         ),

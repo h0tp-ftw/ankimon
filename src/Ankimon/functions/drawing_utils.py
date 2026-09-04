@@ -31,7 +31,6 @@ def tooltipWithColour(
         return
 
     settings = services.settings
-    styling_in_reviewer = settings.get("gui.styling_in_reviewer")
     reviewer_text_message_box = settings.get("gui.reviewer_text_message_box")
     period = int(
         settings.get("gui.reviewer_text_message_box_time") * 1000
