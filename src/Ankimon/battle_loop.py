@@ -260,6 +260,8 @@ def on_review_card(*args):
             enemy_pokemon.battle_status = validate_pokemon_status(enemy_pokemon)
             main_pokemon.battle_status = validate_pokemon_status(main_pokemon)
 
+            is_review_based_damage_enabled = settings_obj.get("battle.review_based_damage", True)
+
             formatted_battle_log = process_battle_data(
                 battle_info=battle_info,
                 multiplier=multiplier,
@@ -275,6 +277,7 @@ def on_review_card(*args):
                 pokemon_encounter=ankimon_tracker_obj.pokemon_encounter,
                 translator=translator,
                 changes=current_battle_info_changes,
+                review_based_damage=is_review_based_damage_enabled,
             )
 
             tooltipWithColour(formatted_battle_log, color)
@@ -301,12 +304,15 @@ def on_review_card(*args):
             if true_dmg_from_user_move > 0:
                 reviewer_obj.seconds = settings_obj.compute_special_variable("animate_time")
                 tooltipWithColour(f" -{true_dmg_from_user_move} HP ", "#F06060", x=200)
-                if multiplier == 1:
+                if is_review_based_damage_enabled:
+                    if multiplier == 1:
+                        play_effect_sound(settings_obj, "HurtNormal")
+                    elif multiplier < 1:
+                        play_effect_sound(settings_obj, "HurtNotEffective")
+                    elif multiplier > 1:
+                        play_effect_sound(settings_obj, "HurtSuper")
+                else:
                     play_effect_sound(settings_obj, "HurtNormal")
-                elif multiplier < 1:
-                    play_effect_sound(settings_obj, "HurtNotEffective")
-                elif multiplier > 1:
-                    play_effect_sound(settings_obj, "HurtSuper")
             else:
                 reviewer_obj.seconds = 0
 
