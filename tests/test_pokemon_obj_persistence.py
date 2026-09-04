@@ -143,6 +143,44 @@ def test_pokemon_object_normalizes_explicit_hp(hp):
     assert pokemon.current_hp == expected_hp
 
 
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, "fighting"),
+        ("", "fighting"),
+        ("Fighting", "fighting"),
+        ("  FAINTED  ", "fainted"),
+        ("fainted", "fainted"),
+    ],
+)
+def test_battle_status_normalized_by_constructor(raw, expected):
+    _services, _AnkimonDB, PokemonObject = _load_seam_and_pokemon_obj()
+
+    assert _make_pokemon(PokemonObject, battle_status=raw).battle_status == expected
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (None, "fighting"),
+        ("", "fighting"),
+        ("Fighting", "fighting"),
+        ("  FAINTED  ", "fainted"),
+    ],
+)
+def test_battle_status_normalized_by_update_stats(raw, expected):
+    """update_stats() bypasses __init__ and writes the database row straight
+    onto the attribute, so a record holding None used to leave battle_status as
+    None — and validate_pokemon_status() then raised AttributeError on .lower().
+    """
+    _services, _AnkimonDB, PokemonObject = _load_seam_and_pokemon_obj()
+    pokemon = _make_pokemon(PokemonObject)
+
+    pokemon.update_stats(battle_status=raw)
+
+    assert pokemon.battle_status == expected
+
+
 # --------------------------------------------------------------------------- #
 # Held-item persistence (re-fit of exp tests/test_held_items.py onto the seam) #
 # --------------------------------------------------------------------------- #
@@ -428,6 +466,7 @@ def _load_pokemon_functions_with_stubs(base_stats):
     lr = types.ModuleType("Ankimon.functions.learnset_retrieval")
     lr.get_random_moves_for_pokemon = lambda name, level: ["Tackle"]
     lr.get_levelup_move_for_pokemon = lambda *a, **k: []
+    lr.get_evolution_moves_for_pokemon = lambda *a, **k: []
     sys.modules["Ankimon.functions.learnset_retrieval"] = lr
     setattr(sys.modules["Ankimon.functions"], "learnset_retrieval", lr)
 

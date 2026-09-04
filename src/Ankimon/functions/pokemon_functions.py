@@ -262,3 +262,4 @@ def save_fossil_pokemon(pokemon_id):
     db.save_pokemon(caught_pokemon)
 
 from .learnset_retrieval import get_levelup_move_for_pokemon  # noqa: F401,E303 — re-export for backwards compat
+from .learnset_retrieval import get_evolution_moves_for_pokemon  # noqa: F401,E303 — re-export for backwards compat

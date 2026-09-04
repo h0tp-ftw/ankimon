@@ -145,7 +145,7 @@ def _apply_common_patches():
     p = "Ankimon.pyobj.evolution_window."
     handles = {
         "search": patch(p + "search_pokedex").start(),
-        "moves": patch(p + "get_random_moves_for_pokemon").start(),
+        "moves": patch(p + "_moves_gained_on_evolution").start(),
         "hp": patch(p + "calculate_hp").start(),
         "growth": patch(p + "get_growth_rate").start(),
         "base_exp": patch(p + "get_base_experience").start(),
@@ -430,7 +430,7 @@ def test_cancel_evolution_establishes_modality_before_foregrounding_move_dialog(
     events = _install_dialog_order_probe(evo_mod)
 
     with patch(
-        "Ankimon.pyobj.evolution_window.get_random_moves_for_pokemon",
+        "Ankimon.pyobj.evolution_window._moves_gained_on_evolution",
         return_value=["quick-attack"],
     ):
         win = _make_evo_window(evo_mod)

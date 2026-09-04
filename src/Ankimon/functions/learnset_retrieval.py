@@ -255,3 +255,16 @@ def get_levelup_move_for_pokemon(pokemon_name, pokemon_level, generation=9):
     return [
         move for move, learn_level in all_moves.items() if learn_level == pokemon_level
     ]
+
+
+def get_evolution_moves_for_pokemon(pokemon_name, pokemon_level, generation=9):
+    """Return the moves this species learns *on evolution* (never None).
+
+    Showdown encodes those as level 0 ("9L0"), which is not a level any Pokemon
+    ever reaches, so they can only be granted by evolving. Keep them out of
+    get_levelup_move_for_pokemon: that one runs on every single level-up, and a
+    move that is never "learned at this level" would be re-offered forever.
+    """
+    all_moves = _get_learnset_moves(pokemon_name, pokemon_level, generation)
+
+    return [move for move, learn_level in all_moves.items() if learn_level == 0]
