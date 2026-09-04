@@ -239,13 +239,10 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
     orig_load_ids = utils.load_collected_pokemon_ids
     utils.load_collected_pokemon_ids = lambda: collected_ids
     try:
-        try:
-            res = generate_random_pokemon(
-                level, tracker, collected_ids=collected_ids,
-                trainer_level=trainer_level, main_level=main_level,
-            )
-        except TypeError:
-            res = generate_random_pokemon(level, tracker)
+        res = generate_random_pokemon(
+            level, tracker, collected_ids=collected_ids,
+            trainer_level=trainer_level, main_level=main_level,
+        )
         pkmn_name, pkmn_id, pkmn_lvl, ability, pkmn_type, base_stats, \
         enemy_attacks, base_exp, growth_rate, ev, iv, gender, \
         battle_status, battle_stats, pkmn_tier, ev_yield, pkmn_shiny, nature = res
