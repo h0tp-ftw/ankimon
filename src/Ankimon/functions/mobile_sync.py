@@ -222,17 +222,13 @@ def _compute_initial_reviews(db, tracker, day_cutoff: int) -> int:
 def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=None, pokedex_cache=None, trainer_card=None, main_pokemon=None) -> dict | None:
     """Generates a random wild Pokémon encounter."""
     from .encounter_functions import generate_random_pokemon
-    import Ankimon.functions.encounter_functions as ef
     from .. import utils
 
-    # Inject trainer_card and main_pokemon temporarily into the globals
-    # of encounter_functions so that tier/chance generation matches the live UI
-    old_trainer_card = getattr(ef, "trainer_card", None)
-    old_main_pokemon = getattr(ef, "main_pokemon", None)
-    if trainer_card is not None:
-        ef.trainer_card = trainer_card
-    if main_pokemon is not None:
-        ef.main_pokemon = main_pokemon
+    # Pass the trainer/main levels explicitly so the tier roll matches desktop
+    # play without touching encounter_functions' module globals (a worker thread
+    # swapping those under the GUI thread would race desktop encounters).
+    trainer_level = getattr(trainer_card, "level", None)
+    main_level = getattr(main_pokemon, "level", None)
 
     if collected_ids is None:
         try:
@@ -244,7 +240,10 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
     utils.load_collected_pokemon_ids = lambda: collected_ids
     try:
         try:
-            res = generate_random_pokemon(level, tracker, collected_ids=collected_ids)
+            res = generate_random_pokemon(
+                level, tracker, collected_ids=collected_ids,
+                trainer_level=trainer_level, main_level=main_level,
+            )
         except TypeError:
             res = generate_random_pokemon(level, tracker)
         pkmn_name, pkmn_id, pkmn_lvl, ability, pkmn_type, base_stats, \
@@ -271,10 +270,6 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
         nature = "serious"
     finally:
         utils.load_collected_pokemon_ids = orig_load_ids
-        if trainer_card is not None:
-            ef.trainer_card = old_trainer_card
-        if main_pokemon is not None:
-            ef.main_pokemon = old_main_pokemon
 
     return {
         "name": pkmn_name,
