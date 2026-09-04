@@ -2257,10 +2257,9 @@ def handle_main_pokemon_faint(
     one, so this path does just the faint bookkeeping (heal + reset).
     """
     msg = translator.translate(
-        "pokemon_fainted",
-        enemy_pokemon_name=getattr(
-            main_pokemon, "display_name", main_pokemon.name.capitalize()
-        ),
+        "own_pokemon_fainted",
+        main_pokemon_name=get_pretty_name_for_name(main_pokemon.name),
+        enemy_pokemon_name=get_pretty_name_for_name(enemy_pokemon.name)
     )
     tooltipWithColour(msg, "#E12939")
     events.emit("faint", who="main", pokemon=main_pokemon.name)
