@@ -142,11 +142,15 @@ class _FormTolerantPokedex:
         return self._base.items()
 
 
-
 def _patch_engine_constants():
-    # 'allies' is the target for moves like Howl or Life Dew, but the engine
-    # forgot to list it as a self-targeting move type, causing it to incorrectly
-    # boost the opponent's stats or heal them.
+    # 'allies' is the doubles target for Howl, Life Dew, Jungle Healing and Lunar
+    # Blessing, but the engine never listed it as self-targeting, so anything keyed
+    # on MOVE_TARGET_SELF resolved to the defender. In practice that is Howl alone:
+    # the boost target in find_state_instructions flipped to the opponent, so the
+    # player buffed the wild Pokemon's Attack. (The heals are unaffected -- recovery
+    # goes through get_instructions_from_attacker_recovery, which keys on
+    # heal_target, not on this list.) Ankimon is singles-only, so 'allies' is always
+    # the user.
     if "allies" not in constants.MOVE_TARGET_SELF:
         constants.MOVE_TARGET_SELF.append("allies")
 
@@ -164,12 +168,18 @@ def _install_form_tolerant_pokedex():
     damage_calculator.pokedex = view
 
 
+# Never let a hardening patch break battle import; the raw engine still works for
+# every canonical Pokemon, which is the overwhelming majority. One try per patch --
+# they are independent, so a failure in either must not swallow the other (losing
+# _patch_engine_constants silently puts Howl's boost back on the opponent).
 try:
-    _install_form_tolerant_pokedex()
     _patch_engine_constants()
 except Exception:
-    # Never let a hardening patch break battle import; the raw engine still works
-    # for every canonical Pokemon, which is the overwhelming majority.
+    pass
+
+try:
+    _install_form_tolerant_pokedex()
+except Exception:
     pass
 
 
