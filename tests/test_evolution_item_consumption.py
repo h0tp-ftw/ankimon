@@ -145,7 +145,7 @@ def _apply_common_patches():
     p = "Ankimon.pyobj.evolution_window."
     handles = {
         "search": patch(p + "search_pokedex").start(),
-        "moves": patch(p + "get_levelup_move_for_pokemon").start(),
+        "moves": patch(p + "_moves_gained_on_evolution").start(),
         "hp": patch(p + "calculate_hp").start(),
         "growth": patch(p + "get_growth_rate").start(),
         "base_exp": patch(p + "get_base_experience").start(),

@@ -428,6 +428,7 @@ def _load_pokemon_functions_with_stubs(base_stats):
     lr = types.ModuleType("Ankimon.functions.learnset_retrieval")
     lr.get_random_moves_for_pokemon = lambda name, level: ["Tackle"]
     lr.get_levelup_move_for_pokemon = lambda *a, **k: []
+    lr.get_evolution_moves_for_pokemon = lambda *a, **k: []
     sys.modules["Ankimon.functions.learnset_retrieval"] = lr
     setattr(sys.modules["Ankimon.functions"], "learnset_retrieval", lr)
 
