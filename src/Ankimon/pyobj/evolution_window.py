@@ -26,10 +26,7 @@ from ..functions.pokedex_functions import (
     return_name_for_id,
     search_pokedex,
 )
-from ..functions.pokemon_functions import (
-    get_evolution_moves_for_pokemon,
-    get_levelup_move_for_pokemon,
-)
+from ..functions.pokemon_functions import get_levelup_move_for_pokemon
 from ..functions.battle_functions import calculate_hp
 from ..functions.update_main_pokemon import (
     update_main_pokemon,
@@ -49,16 +46,6 @@ from ..resources import (
     frontdefault,
     evolve_image_path,
 )
-
-
-def _moves_gained_on_evolution(species_name, level):
-    """Level-up moves for *level* plus the moves granted by evolving, deduped."""
-    moves = get_levelup_move_for_pokemon(species_name, level)
-    for move in get_evolution_moves_for_pokemon(species_name, level):
-        if move not in moves:
-            moves.append(move)
-
-    return moves
 
 
 class EvoWindow(QWidget):
@@ -407,7 +394,7 @@ class EvoWindow(QWidget):
             pokemon["id"] = evo_id
             pokemon["type"] = search_pokedex(evo_name.lower(), "types")
             attacks = pokemon["attacks"]
-            new_attacks = _moves_gained_on_evolution(
+            new_attacks = get_levelup_move_for_pokemon(
                 evo_name.lower(), int(pokemon["level"])
             )
             for new_attack in new_attacks:
@@ -635,7 +622,7 @@ class EvoWindow(QWidget):
             # Add logic to learn new moves
             attacks = pokemon_to_update.get("attacks", [])
             level = pokemon_to_update.get("level", 1)
-            new_attacks = _moves_gained_on_evolution(prevo_name.lower(), int(level))
+            new_attacks = get_levelup_move_for_pokemon(prevo_name.lower(), int(level))
 
             for new_attack in new_attacks:
                 if new_attack not in attacks:
