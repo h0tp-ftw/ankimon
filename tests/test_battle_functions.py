@@ -40,3 +40,18 @@ def test_validate_pokemon_status_healed():
 def test_validate_pokemon_status_normal():
     poke = MockPokemon(50, "fighting")
     assert validate_pokemon_status(poke) == "fighting"
+
+
+@pytest.mark.parametrize("raw", [None, "", "Fighting", "  FIGHTING  "])
+def test_validate_pokemon_status_tolerates_unnormalized_status(raw):
+    """PokemonObject.update_stats() writes the database row straight onto the
+    attribute, so battle_status can arrive as None or capitalised. battle_loop
+    calls this every turn, so it must not raise."""
+    assert validate_pokemon_status(MockPokemon(50, raw)) == "fighting"
+
+
+def test_validate_pokemon_status_without_the_attribute():
+    class Bare:
+        hp = 50
+
+    assert validate_pokemon_status(Bare()) == "fighting"
