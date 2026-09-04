@@ -335,12 +335,15 @@ class Reviewer_Manager:
         def get_sprite_url(pkmn, side):
             try:
                 abs_path = pkmn.get_sprite_path(side, image_format)
-                from ..resources import addon_dir
-
-                rel_path = os.path.relpath(abs_path, addon_dir).replace("\\", "/")
-                return f"/_addons/{addon_package}/{rel_path}"
+                norm = str(abs_path).replace("\\", "/")
+                marker = "user_files/sprites/"
+                idx = norm.find(marker)
+                if idx != -1:
+                    rel_path = norm[idx:]
+                    return f"/_addons/{addon_package}/{rel_path}"
             except Exception:
-                return ""
+                pass
+            return ""
 
         enemy_sprite_url = get_sprite_url(self.enemy_pokemon, "front")
 

@@ -12,7 +12,8 @@ never be imported headless. See :mod:`Ankimon.ui_port` for the contract.
 
 from __future__ import annotations
 
-from aqt.qt import QDialog
+from aqt import mw
+from aqt.qt import QDialog, QTimer
 from aqt.utils import showInfo, showWarning
 
 from .classes.choose_move_dialog import MoveSelectionDialog
@@ -24,16 +25,46 @@ class QtPresenter:
     """Shows real Qt dialogs for the UI-port interactions."""
 
     def choose_move(self, attacks):
-        dialog = MoveSelectionDialog(list(attacks))
-        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_move:
-            return dialog.selected_move
-        return None
+        # Parent to mw and force it to the front: a parentless QDialog can
+        # spawn behind the main Anki window (or the Ankimon battle popup)
+        # with no taskbar/focus cue on some window managers — exec() still
+        # blocks the calling turn on it, so the battle silently freezes with
+        # nothing in the logs, since nothing actually failed; the dialog is
+        # just invisible. (finding: turns stopped advancing despite correct
+        # review answers, with controls.allow_to_choose_moves enabled.)
+        dialog = MoveSelectionDialog(list(attacks), parent=mw)
+        # Let exec() establish modality and show the dialog first, then raise
+        # and activate it on the next event-loop iteration so it cannot appear
+        # behind the Anki/battle windows.
+        QTimer.singleShot(
+            0,
+            lambda: (
+                dialog.raise_(),
+                dialog.activateWindow(),
+            ),
+        )
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_move:
+                return dialog.selected_move
+            return None
+        finally:
+            dialog.deleteLater()
 
     def choose_attack_to_replace(self, attacks, new_attack):
-        dialog = AttackDialog(list(attacks), new_attack)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            return dialog.selected_attack
-        return None
+        dialog = AttackDialog(list(attacks), new_attack, parent=mw)
+        QTimer.singleShot(
+            0,
+            lambda: (
+                dialog.raise_(),
+                dialog.activateWindow(),
+            ),
+        )
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                return dialog.selected_attack
+            return None
+        finally:
+            dialog.deleteLater()
 
     def notify(self, level, message):
         if level == "warning":

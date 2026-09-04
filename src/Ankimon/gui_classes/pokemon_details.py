@@ -3,7 +3,7 @@ import json
 from typing import Any, Callable
 import re
 
-from aqt import qconnect
+from aqt import mw, qconnect
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor, QPolygonF, QPen, QBrush
 from PyQt6.QtCore import (
     Qt,
@@ -11,6 +11,7 @@ from PyQt6.QtCore import (
     QRectF,
     QPropertyAnimation,
     QEasingCurve,
+    QTimer,
     pyqtProperty,
 )
 from PyQt6.QtWidgets import QScrollArea
@@ -454,14 +455,15 @@ def PokemonCollectionDetailsSplit(
                     evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     evolution_note_label.setStyleSheet("color: #FF69B4;")
                     evolution_note_widget = evolution_note_label
-            elif not readiness["ready"] and readiness["status_text"]:
-                evolution_req_label = QLabel(readiness["status_text"])
-                evolution_req_label.setFont(custom_font)
-                evolution_req_label.setWordWrap(True)
-                evolution_req_label.setFixedWidth(230)
-                evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                evolution_req_label.setStyleSheet("color: #FF69B4;")
-                evolution_req_widget = evolution_req_label
+
+        if show_evolution_ui and not readiness["ready"] and readiness["status_text"]:
+            evolution_req_label = QLabel(readiness["status_text"])
+            evolution_req_label.setFont(custom_font)
+            evolution_req_label.setWordWrap(True)
+            evolution_req_label.setFixedWidth(230)
+            evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            evolution_req_label.setStyleSheet("color: #FF69B4;")
+            evolution_req_widget = evolution_req_label
 
         first_layout = QHBoxLayout()
         TopL_layout_Box = QVBoxLayout()
@@ -1443,8 +1445,19 @@ def remember_attack(
             msg += f"\n Your {pokemon_data['name'].capitalize()} has learned {new_attack} !"
             logger.log_and_showinfo("info", f"{msg}")
         else:
-            dialog = AttackDialog(attacks, new_attack)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog = AttackDialog(attacks, new_attack, parent=mw)
+            QTimer.singleShot(
+                0,
+                lambda: (
+                    dialog.raise_(),
+                    dialog.activateWindow(),
+                ),
+            )
+            try:
+                result = dialog.exec()
+            finally:
+                dialog.deleteLater()
+            if result == QDialog.DialogCode.Accepted:
                 selected_attack = dialog.selected_attack
                 try:
                     index_to_replace = attacks.index(selected_attack)

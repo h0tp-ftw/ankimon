@@ -677,3 +677,69 @@ def test_victory_seed_tolerates_int_vs_str_id_drift():
     # individual_id is TEXT in the schema but callers have passed ints; the
     # guard must not decline a genuine match over the type alone.
     assert _run_victory_with_stored_row(7, "7") == ["Tackle", "Charm"]
+
+
+def test_new_pokemon_clears_the_players_volatile_status(monkeypatch):
+    """A new wild encounter must clear the PLAYER's volatiles, not just the enemy's.
+
+    ``new_pokemon`` rebuilds the enemy object from ``pokemon_data`` (which carries
+    a fresh ``volatile_status``), but ``main_pokemon`` survives between encounters.
+    Without this reset a confusion/leechseed from the battle that just ended is
+    still on the player at the start of the next one, and gets handed to the
+    engine on turn 1. The hooks-level reset cannot cover it: that runs only on the
+    ``state is not None`` path, and ``new_pokemon`` sets ``_state.new_state = None``.
+
+    ``generate_random_pokemon`` is stubbed to raise, which both keeps the test off
+    the heavy encounter-generation path and pins the reset as happening BEFORE it.
+    """
+
+    class _Stop(Exception):
+        pass
+
+    class _Player:
+        def __init__(self):
+            self.level = 50
+            self.volatile_status = {"confusion", "leechseed"}
+
+    player = _Player()
+    monkeypatch.setattr(ef, "main_pokemon", player)
+    monkeypatch.setattr(ef, "clear_auto_battle_override", lambda: None)
+
+    def _stop(*args, **kwargs):
+        raise _Stop()
+
+    monkeypatch.setattr(ef, "generate_random_pokemon", _stop)
+
+    try:
+        ef.new_pokemon(mock.MagicMock(), None, mock.MagicMock(), None)
+    except _Stop:
+        pass
+
+    assert player.volatile_status == set()
+
+
+def test_new_pokemon_tolerates_a_player_without_volatile_status(monkeypatch):
+    """The reset must not crash on a main_pokemon that predates the attribute."""
+
+    class _Stop(Exception):
+        pass
+
+    class _LegacyPlayer:
+        def __init__(self):
+            self.level = 50
+
+    player = _LegacyPlayer()
+    monkeypatch.setattr(ef, "main_pokemon", player)
+    monkeypatch.setattr(ef, "clear_auto_battle_override", lambda: None)
+
+    def _stop(*args, **kwargs):
+        raise _Stop()
+
+    monkeypatch.setattr(ef, "generate_random_pokemon", _stop)
+
+    try:
+        ef.new_pokemon(mock.MagicMock(), None, mock.MagicMock(), None)
+    except _Stop:
+        pass
+
+    assert not hasattr(player, "volatile_status")

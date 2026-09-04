@@ -21112,8 +21112,8 @@
     "weightkg": 340,
     "color": "Gray",
     "prevo": "Nosepass",
-    "evoType": "levelExtra",
-    "evoCondition": "near a special magnetic field",
+    "evoType": "useItem",
+    "evoItem": "Thunder Stone",
     "eggGroups": [
       "Mineral"
     ],

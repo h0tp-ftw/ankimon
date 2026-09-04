@@ -459,6 +459,8 @@
   "bp_label": "BP",
   "combat_power": "戦闘力",
   "battle_power": "バトルパワー",
+  "level_label": "Lv.{level}",
+  "shiny_tooltip": "色違いのポケモン",
   "friendship_label": "なかよし度",
   "friendship_tooltip": "あなたとポケモンの絆の強さです。",
   "bff_tooltip": "💖 最高の相棒 (なかよし度最大)",

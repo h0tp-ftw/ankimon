@@ -21,6 +21,7 @@ import functools
 import json
 import math
 import random
+import unicodedata
 import csv
 from ..pyobj.error_handler import show_warning_with_traceback
 from ..pyobj.pokemon_obj import PokemonObject
@@ -193,6 +194,7 @@ _stats_csv_cache = None
 _poke_evo_cache = None
 _moves_cache = None
 _items_cost_cache = None
+_items_cost_index = None
 
 
 def _load_pokemon_csv_cache():
@@ -365,6 +367,54 @@ def _load_items_cost_cache():
     return _items_cost_cache
 
 
+def load_items_cost_index():
+    """Build ``{folded identifier: row}`` over items.csv for O(1) item lookups.
+
+    The three item lookups fold BOTH sides of the comparison (see
+    :func:`normalize_item_identifier`), and folding the stored identifier is the
+    expensive half: done per row per call it re-folds all 2510 rows on every
+    lookup, which turned one shop build (``utils.daily_item_list``, two price
+    lookups per item over the sprite directory) into ~0.5s of pure NFKD.
+
+    Folding once at load leaves the ANSWER identical. The first row for a folded
+    key wins, exactly as the linear scan returned the first match — which
+    matters, because items.csv holds 345 surplus duplicate rows and five
+    identifiers whose duplicates disagree (``metronome`` is id 254/cost 4000 at
+    its first row and id 20118/cost 1000 later).
+
+    A row whose identifier folds to ``""`` is skipped, so a malformed blank
+    identifier cell cannot answer a lookup; callers pair this with rejecting an
+    empty folded name, since both sides fold to the same ``""``.
+    """
+    global _items_cost_index
+    if _items_cost_index is None:
+        index = {}
+        for row in _load_items_cost_cache():
+            folded = normalize_item_identifier(row.get("identifier"))
+            if folded and folded not in index:
+                index[folded] = row
+        _items_cost_index = index
+    return _items_cost_index
+
+
+def items_cost_index_for(file_path):
+    """:func:`load_items_cost_index`, but only when ``file_path`` IS items.csv.
+
+    The path comparison lives here rather than in the caller so that it cannot
+    disagree with the file the index was built from: a module that rebinds its
+    own ``csv_file_items_cost`` (a test patching the name, say) would otherwise
+    be handed the bundled index for a different file entirely.
+
+    ``None`` means "no index for this path" — either it is another file, or the
+    index came back empty because items.csv could not be read. Both send the
+    caller down its own file scan, which is what still surfaces an unreadable
+    file as that caller's warning-plus-fallback rather than a silent miss.
+    """
+    if str(file_path) != str(csv_file_items_cost):
+        return None
+    return load_items_cost_index() or None
+
+
 # === POKEMON NAME & DESCRIPTION CACHES ===
 _pokemon_names_cache = {}  # {(pokemon_id, language): name}
 _pokemon_descriptions_cache = {}  # {(species_id, language): description}
@@ -441,6 +491,11 @@ def clear_pokedex_caches():
     _pokedex_id_index = None
     _pokemon_names_cache = {}
     _pokemon_descriptions_cache = {}
+    # _items_cost_cache / _items_cost_index are deliberately NOT reset: items.csv
+    # is bundled static data, identical across profiles, so a profile switch has
+    # nothing to reload. If that ever changes they must be cleared as a PAIR —
+    # the index holds references into the rows the cache built, so clearing only
+    # the cache would leave the index answering from the pre-clear file.
 
 
 def _normalize_language_id(language):
@@ -1784,6 +1839,34 @@ def return_name_for_id(pokemon_id):
         return None
 
 
+def normalize_item_identifier(value) -> str:
+    """Fold an item name to the shape ``items.csv`` keys on.
+
+    Applied to BOTH sides of every lookup, so a display name and the CSV
+    identifier meet in the middle. Without folding the CSV side too, the nine
+    identifiers that themselves carry a typographic apostrophe or an accent
+    (``koraidon’s-poké-ball``, ``kofu’s-wallet``, ``leader’s-crest``,
+    ``jalapeño``, ``flabébé-pollen``, the three ``-poké-ball-pick`` rows)
+    stay unreachable from any name a user or the UI would supply.
+
+    The steps, in order: strip, lowercase, fold U+2019 to a plain apostrophe,
+    strip combining accents via NFKD, spaces to hyphens, then drop apostrophes.
+
+    Verified against the shipped items.csv: this merges no two DISTINCT
+    identifiers — 2165 distinct raw identifiers over 2510 rows fold to exactly
+    2165 distinct keys, so every collision bucket holds repeats of one identical
+    raw string (the file already contained 344 such repeated identifiers before
+    any folding). Non-string input folds to ``""`` rather than raising, so a
+    caller passing an int gets a clean miss; callers must treat that ``""`` as a
+    miss outright rather than a key to match on.
+    """
+    if not isinstance(value, str):
+        return ""
+    folded = unicodedata.normalize("NFKD", value.strip().lower().replace("’", "'"))
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    return folded.replace(" ", "-").replace("'", "")
+
+
 def return_id_for_item_name(item_name):
     """
     Returns the ID of an item based on its name (identifier) from a CSV file.
@@ -1796,9 +1879,10 @@ def return_id_for_item_name(item_name):
         None: If no matching item is found or an error occurs.
     """
     try:
-        cache = _load_items_cost_cache()
-        for row in cache:
-            if row["identifier"] == item_name:
+        normalized_name = normalize_item_identifier(item_name)
+        if normalized_name:
+            row = load_items_cost_index().get(normalized_name)
+            if row is not None:
                 return row["id"]
 
         # Log a message if the item is not found

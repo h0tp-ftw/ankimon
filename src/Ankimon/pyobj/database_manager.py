@@ -14,7 +14,7 @@ import gc
 import time
 import contextlib
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import csv
 from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpokemon_path, items_path, badges_path, team_pokemon_path as team_path
@@ -323,6 +323,126 @@ def _is_main_thread() -> bool:
         return qtcore.QThread.currentThread() == app.thread()
     except Exception:
         return True
+
+
+# --- Legacy-save normalisation helpers ----------------------------------------
+# Shared by AnkimonDB.migrate_from_json() (the harness/test path) and
+# MigrationDialog._run_migration() (the path users hit on upgrade) so both apply
+# the same rules to the loosely-typed JSON that older Ankimon versions wrote:
+# items.json as a flat list of strings, Pokémon without an individual_id, and
+# quantities stored as strings.
+
+_LEGACY_ITEM_NAME_KEYS = ("item", "item_name", "name")
+_LEGACY_ITEM_QUANTITY_KEYS = ("quantity", "amount")
+
+
+def is_valid_individual_id(value: Any) -> bool:
+    """Only a non-empty string may be used as an individual_id.
+
+    Legacy saves have carried ``null``, ``""`` and even lists or dicts here; a
+    list or dict raises ``TypeError`` the moment it is used as a set key.
+    """
+    return isinstance(value, str) and bool(value.strip())
+
+
+def canonical_pokemon_name(name: Any) -> str:
+    """Lowercase, separator-stripped key for comparing Pokémon names."""
+    return str(name or "").replace(" ", "").replace("-", "").replace("_", "").lower()
+
+
+def coerce_item_quantity(value: Any) -> Optional[int]:
+    """Normalise a legacy item quantity to a positive int, or None if invalid.
+
+    ``None``, booleans, non-numeric strings, zero and negatives are invalid.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        quantity = value
+    elif isinstance(value, float):
+        if not value.is_integer():
+            return None
+        quantity = int(value)
+    elif isinstance(value, str):
+        try:
+            quantity = int(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    return quantity if quantity > 0 else None
+
+
+def normalize_legacy_item(item: Any) -> Optional[Tuple[str, int, Optional[Dict[str, Any]]]]:
+    """Return ``(item_name, quantity, extra_data)`` for one items.json entry, or None to skip it.
+
+    Accepts the flat-string format (``"potion"``) and dict entries under any of
+    the legacy name/quantity keys. Names are lowercased so ``"Potion"`` and
+    ``"potion"`` fold into one row and hit the items.csv identifier. A dict with
+    no quantity key defaults to 1; an explicit invalid quantity skips the entry
+    rather than writing junk to the DB.
+    """
+    if isinstance(item, str):
+        name = item.strip().lower()
+        return (name, 1, None) if name else None
+    if not isinstance(item, dict):
+        return None
+    name = None
+    for key in _LEGACY_ITEM_NAME_KEYS:
+        candidate = item.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            name = candidate.strip().lower()
+            break
+    if not name:
+        return None
+    raw_quantity: Any = 1
+    for key in _LEGACY_ITEM_QUANTITY_KEYS:
+        if key in item:
+            raw_quantity = item[key]
+            break
+    quantity = coerce_item_quantity(raw_quantity)
+    if quantity is None:
+        return None
+    return (name, quantity, item)
+
+
+def aggregate_legacy_items(items_list: Any) -> Dict[str, Tuple[int, Optional[Dict[str, Any]]]]:
+    """Fold an items.json list into ``{name: (total_quantity, extra_data)}``.
+
+    Duplicate entries accumulate and invalid entries are dropped. Writing the
+    result with ONE upsert per name keeps the migration idempotent, so a Retry
+    after a partial failure cannot double anyone's inventory.
+    """
+    totals: Dict[str, Tuple[int, Optional[Dict[str, Any]]]] = {}
+    if not isinstance(items_list, list):
+        return totals
+    for item in items_list:
+        normalized = normalize_legacy_item(item)
+        if normalized is None:
+            continue
+        name, quantity, extra_data = normalized
+        prev_quantity, prev_extra = totals.get(name, (0, None))
+        totals[name] = (prev_quantity + quantity, prev_extra if prev_extra is not None else extra_data)
+    return totals
+
+
+def find_matching_captured(main_pokemon: Dict[str, Any], all_captured: Iterable[Any]) -> Optional[Dict[str, Any]]:
+    """Locate the captured record that is the same Pokémon as ``main_pokemon``.
+
+    Legacy ``mainpokemon.json`` rarely carries an individual_id, so match on
+    species id, level, IVs and a canonical name: a case- or hyphen-only name
+    difference must not turn the starter into a second captured row.
+    """
+    target_name = canonical_pokemon_name(main_pokemon.get("name"))
+    for candidate in all_captured or ():
+        if not isinstance(candidate, dict):
+            continue
+        if (candidate.get("id") == main_pokemon.get("id")
+                and candidate.get("level") == main_pokemon.get("level")
+                and canonical_pokemon_name(candidate.get("name")) == target_name
+                and candidate.get("iv") == main_pokemon.get("iv")):
+            return candidate
+    return None
 
 
 class AnkimonDB:
@@ -1960,16 +2080,42 @@ class AnkimonDB:
         phase1_done = cursor.fetchone() is not None
 
         if not phase1_done:
+            # Any Phase 1 source that fails leaves the phase UNMARKED so the next
+            # run retries it; marking it would make a partial import permanent.
+            phase1_errors = []
+
             # Migrate mypokemon.json
             if mypokemon_path.is_file():
                 try:
                     with open(mypokemon_path, 'r', encoding='utf-8') as f:
                         pokemon_list = json.load(f)
+                    seen_ids = set()
+                    # A Retry re-reads the same JSON. Pokémon that carry no usable
+                    # individual_id would be inserted again under fresh UUIDs, so
+                    # hand each one the row an earlier pass already wrote for it.
+                    reusable_rows = [
+                        p for p in self.get_all_pokemon()
+                        if isinstance(p, dict) and is_valid_individual_id(p.get("individual_id"))
+                    ]
                     for pokemon in pokemon_list:
+                        if not isinstance(pokemon, dict):
+                            continue
+                        ind_id = pokemon.get("individual_id")
+                        if not is_valid_individual_id(ind_id):
+                            match = find_matching_captured(pokemon, reusable_rows)
+                            if match is not None:
+                                reusable_rows.remove(match)
+                                pokemon["individual_id"] = match["individual_id"]
+                            else:
+                                pokemon["individual_id"] = str(uuid.uuid4())
+                        elif ind_id in seen_ids:
+                            pokemon["individual_id"] = str(uuid.uuid4())
+                        seen_ids.add(pokemon["individual_id"])
                         if self.save_pokemon(pokemon):
                             stats["pokemon"] += 1
                     self._log("info", f"Migrated {stats['pokemon']} pokemon from mypokemon.json")
                 except Exception as e:
+                    phase1_errors.append(f"mypokemon.json: {e}")
                     self._log("error", f"Failed to migrate mypokemon.json: {e}")
 
             # Migrate mainpokemon.json
@@ -1980,10 +2126,20 @@ class AnkimonDB:
                     if main_data:
                         # mainpokemon.json is a list with one item
                         main_pokemon = main_data[0] if isinstance(main_data, list) else main_data
-                        if self.save_main_pokemon(main_pokemon):
-                            stats["main"] = 1
+                        if isinstance(main_pokemon, dict):
+                            if not is_valid_individual_id(main_pokemon.get("individual_id")):
+                                # Reuse the captured row's id so the starter is not
+                                # duplicated as a second captured Pokémon.
+                                match = find_matching_captured(main_pokemon, self.get_all_pokemon())
+                                if match and is_valid_individual_id(match.get("individual_id")):
+                                    main_pokemon["individual_id"] = match["individual_id"]
+                                else:
+                                    main_pokemon["individual_id"] = str(uuid.uuid4())
+                            if self.save_main_pokemon(main_pokemon):
+                                stats["main"] = 1
                     self._log("info", "Migrated main pokemon from mainpokemon.json")
                 except Exception as e:
+                    phase1_errors.append(f"mainpokemon.json: {e}")
                     self._log("error", f"Failed to migrate mainpokemon.json: {e}")
 
             # Migrate items.json
@@ -1992,19 +2148,31 @@ class AnkimonDB:
                     with open(items_path, 'r', encoding='utf-8') as f:
                         items_list = json.load(f)
                     
-                    for item in items_list:
-                        if not item: continue
-                        # Support multiple legacy keys for item name
-                        item_name = item.get("item") or item.get("name") or item.get("item_name")
-                        quantity = item.get("quantity", item.get("amount", 1))
-                        if item_name:
-                            if self.add_item(item_name, quantity, extra_data=item, commit=False):
-                                stats["items"] += 1
+                    # Fold duplicates and coerce quantities first, then upsert each
+                    # name once: a Retry after a partial failure must not double
+                    # anyone's inventory.
+                    if not isinstance(items_list, list):
+                        self._log("warning", f"Unexpected items.json format: {type(items_list).__name__}; skipped")
+                        items_list = []
+                    item_totals = aggregate_legacy_items(items_list)
+                    skipped = sum(1 for entry in items_list if normalize_legacy_item(entry) is None)
+                    if skipped:
+                        self._log("warning", f"Skipped {skipped} unreadable entries in items.json")
+                    for item_name, (quantity, extra_data) in item_totals.items():
+                        if self.add_item(item_name, quantity, extra_data=extra_data, commit=False):
+                            stats["items"] += 1
                     
                     self._get_connection().commit()
                     self._log("info", f"Migrated {stats['items']} items from items.json")
                 except Exception as e:
+                    phase1_errors.append(f"items.json: {e}")
                     self._log("error", f"Failed to migrate items.json: {e}")
+                    # Item rows are written with commit=False; drop the partial batch
+                    # so a retry starts from the pre-items state.
+                    try:
+                        self._get_connection().rollback()
+                    except Exception as rollback_error:
+                        self._log("error", f"Could not roll back partial items.json import: {rollback_error}")
 
             # Migrate badges.json - handles both [1, 2, 3] and [{"id": 1}, ...] formats
             if badges_path.is_file():
@@ -2016,19 +2184,30 @@ class AnkimonDB:
                         if isinstance(badge, (int, str)):
                             badge_id = str(badge)
                             badge_data = {"achieved": True}
-                        else:
+                        elif isinstance(badge, dict):
                             badge_id = str(badge.get("id", badge.get("badge_id", "")))
                             # Ensure we have achieved status preserved
                             badge_data = badge
                             badge_data["achieved"] = True
+                        else:
+                            continue
                                 
                         if badge_id:
                             self.save_badge(badge_id, badge_data)
                             stats["badges"] += 1
                     self._log("info", f"Migrated {stats['badges']} badges from badges.json")
                 except Exception as e:
+                    phase1_errors.append(f"badges.json: {e}")
                     self._log("error", f"Failed to migrate badges.json: {e}")
-            
+
+            if phase1_errors:
+                stats["errors"] = phase1_errors
+                self._log(
+                    "error",
+                    f"Phase 1 migration incomplete; left unmarked so the next run retries it: {phase1_errors}",
+                )
+                return stats
+
             # Mark Phase 1 as done
             cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES ('migrated', 'true')")
 
@@ -2094,15 +2273,19 @@ class AnkimonDB:
         # Count JSON entries
         json_counts = {"pokemon": 0, "items": 0, "badges": 0}
         try:
+            # Count only what the loops above could have migrated, and compare
+            # item QUANTITIES (duplicates fold together) against SUM(quantity).
             if mypokemon_path.is_file():
                 with open(mypokemon_path, 'r', encoding='utf-8') as f:
-                    json_counts["pokemon"] = len(json.load(f))
+                    json_counts["pokemon"] = sum(1 for p in json.load(f) if isinstance(p, dict))
             if items_path.is_file():
                 with open(items_path, 'r', encoding='utf-8') as f:
-                    json_counts["items"] = len(json.load(f))
+                    json_counts["items"] = sum(
+                        quantity for quantity, _ in aggregate_legacy_items(json.load(f)).values()
+                    )
             if badges_path.is_file():
                 with open(badges_path, 'r', encoding='utf-8') as f:
-                    json_counts["badges"] = len(json.load(f))
+                    json_counts["badges"] = sum(1 for b in json.load(f) if isinstance(b, (int, str, dict)))
         except Exception as e:
             self._log("warning", f"Could not read JSON files for integrity check: {e}")
         
@@ -2110,7 +2293,7 @@ class AnkimonDB:
         db_counts = {"pokemon": 0, "items": 0, "badges": 0}
         cursor.execute("SELECT COUNT(*) FROM captured_pokemon")
         db_counts["pokemon"] = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM items")
+        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM items")
         db_counts["items"] = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM badges")
         db_counts["badges"] = cursor.fetchone()[0]
