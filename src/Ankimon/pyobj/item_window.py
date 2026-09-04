@@ -120,6 +120,12 @@ class ItemWindow(QWidget):
             "ultra-ball": 13,  # Increased catch rate (original was 10, now 13)
         }
 
+        self.escape_items = {
+            "poke-doll": True,
+            "smoke-ball": True,
+            "fluffy-tail": True,
+        }
+
         self.evolution_items = set()
         self.load_evolution_items()
 
@@ -405,6 +411,9 @@ class ItemWindow(QWidget):
             use_item_button.clicked.connect(
                 lambda: self.Evolve_Fossil(item_name, fossil_id, fossil_pokemon_name)
             )
+        elif item_name in self.escape_items:
+            use_item_button = QPushButton("Escape from battle")
+            use_item_button.clicked.connect(lambda: self.Handle_EscapeItem(item_name))
         elif item_name in self.pokeball_chances:
             use_item_button = QPushButton("Try catching wild Pokemon")
             use_item_button.clicked.connect(lambda: self.Handle_Pokeball(item_name))
@@ -496,6 +505,9 @@ class ItemWindow(QWidget):
                     "ok": False,
                     "message": f"Failed to revive {fossil_pokemon_name}.",
                 }
+            if name in self.escape_items:
+                self.Handle_EscapeItem(name)
+                return {"ok": True, "message": f"Escaped using {name}."}
             if name in self.pokeball_chances:
                 self.Handle_Pokeball(name)
                 return {"ok": True, "message": f"Threw {name}."}
@@ -644,6 +656,36 @@ class ItemWindow(QWidget):
             self.logger.log("game", f"{item_name} gets a bonus for Water-type Pokémon!")
 
         return catch_chance
+
+    def Handle_EscapeItem(self, item_name: str):
+        # Notify the user
+        self.logger.log_and_showinfo(
+            "info", f"You used the {item_name} and successfully escaped the battle!"
+        )
+        self.delete_item(item_name)  # Consume the item
+
+        # Log to mobile sync history if enabled
+        from ..services import services
+        from ..functions.mobile_sync import save_encounter_history
+        save_encounter_history(
+            None,
+            None,
+            None,
+            {"enemy_name": self.enemy_pokemon.name, "companion_name": self.main_pokemon.name},
+            "escaped"
+        )
+
+        # Reset the wild pokemon directly and update the window
+        from ..functions.encounter_functions import new_pokemon
+        from ..singletons import get_test_window, reviewer_obj
+
+        new_pokemon(
+            self.enemy_pokemon,
+            get_test_window(),
+            services.ankimon_tracker_obj,
+            reviewer_obj,
+            update_hud=True,
+        )
 
     def Handle_Pokeball(self, item_name: str):
         # Check if the item exists in the pokeball chances

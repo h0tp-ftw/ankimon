@@ -274,23 +274,6 @@ USELESS_ITEMS = {
     "relic-gold",
     "tiny-mushroom",
     # catching / escape / encounter rate items
-    "dive-ball",
-    "dusk-ball",
-    "great-ball",
-    "heal-ball",
-    "luxury-ball",
-    "master-ball",
-    "nest-ball",
-    "net-ball",
-    "poke-ball",
-    "premier-ball",
-    "quick-ball",
-    "repeat-ball",
-    "safari-ball",
-    "timer-ball",
-    "ultra-ball",
-    "smoke-ball",  # escape from wild battles
-    "fluffy-tail",  # escape from wild battles
     "repel",
     "max-repel",
     "super-repel",
@@ -312,7 +295,6 @@ USELESS_ITEMS = {
     "yellow-shard",
     # Contest / Grooming / Friendship items outside battle
     "soothe-bell",
-    "luxury-ball",
     "pretty-wing",
     # Miscellaneous items for info
     "heart-scale",
