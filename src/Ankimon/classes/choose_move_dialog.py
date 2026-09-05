@@ -1,9 +1,25 @@
+from functools import partial
+
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel
 from PyQt6.QtGui import QFont, QShortcut, QKeySequence
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QEvent, QTimer
 
 from ..functions.pokedex_functions import find_details_move
 from ..move_names import format_move_name
+
+
+# Digit selection exists only for Key_1..Key_9, so one range bounds both the
+# QShortcut loop (real keyboards) and the key handler (synthetic input); the
+# two paths cannot drift apart into different limits.
+DIGIT_SHORTCUT_COUNT = Qt.Key.Key_9 - Qt.Key.Key_1 + 1
+
+# Ctrl/Alt/Meta chords belong to Anki or another add-on. Shift is deliberately
+# NOT in this set: on AZERTY-style layouts the digit row *is* Shift+key, so
+# excluding it makes 1-9 unreachable there, and a controller mapper that emits
+# its digits with Shift held would silently do nothing.
+CHORD_MODIFIERS = (Qt.KeyboardModifier.ControlModifier
+                   | Qt.KeyboardModifier.AltModifier
+                   | Qt.KeyboardModifier.MetaModifier)
 
 
 class MoveSelectionDialog(QDialog):
@@ -26,29 +42,42 @@ class MoveSelectionDialog(QDialog):
         self._accept_timer.timeout.connect(self.accept)
 
         layout = QVBoxLayout(self)
-        title_label = QLabel("Press a number or click to select a move.\n"
-                             "Use Up/Down, then Enter or Space.")
+        if self.mainpokemon_attacks:
+            title = ("Press a number or click to select a move.\n"
+                     "Use Up/Down, then Enter or Space.")
+        else:
+            # The usual title names three actions that cannot work here. Say
+            # what the dialog is and how to leave it instead.
+            title = ("No moves available.\n"
+                     "Press Escape or Enter to close.")
+        title_label = QLabel(title)
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         layout.addWidget(title_label)
 
         self.move_labels = []
         for index, move in enumerate(self.mainpokemon_attacks):
-            if index < 9:
+            if index < DIGIT_SHORTCUT_COUNT:
                 shortcut = QShortcut(QKeySequence(str(index + 1)), self)
                 # Controller tools that send keys to focusObject() need only
                 # window-scoped shortcuts once the presenter activates this modal.
                 shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
                 shortcut.setAutoRepeat(False)
-                shortcut.activated.connect(self.create_shortcut_handler(index))
+                shortcut.activated.connect(partial(self.select_move, index))
 
-            move_detail = find_details_move(move)
+            # find_details_move returns None on its exception path; fall back to
+            # the raw name rather than raising out of the constructor, which
+            # would kill the turn before exec() ever ran.
+            move_detail = find_details_move(move) or {}
             move_name = format_move_name(move_detail.get('name', move))
             move_label = QLabel(f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}")
             move_label.setToolTip(f"{move_detail.get('desc', 'No description available')}")
             move_label.setFont(QFont("Arial", 12))
             move_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            move_label.mousePressEvent = self.create_mouse_press_handler(index)
+            # One filter on the dialog, rather than a closure per label: an
+            # assigned mousePressEvent holds label -> closure -> dialog -> label
+            # alive every turn until the cycle collector gets to it.
+            move_label.installEventFilter(self)
             layout.addWidget(move_label)
             self.move_labels.append(move_label)
         self.update_highlight()
@@ -62,16 +91,13 @@ class MoveSelectionDialog(QDialog):
             else:
                 label.setStyleSheet("border: 1px solid #ccc; border-radius: 0px; background-color: transparent;")
 
-    def create_mouse_press_handler(self, index):
-        def handle_mouse_press(event):
-            if event.button() == Qt.MouseButton.LeftButton:
-                self.select_move(index)
-        return handle_mouse_press
-
-    def create_shortcut_handler(self, index):
-        def handle_shortcut():
-            self.select_move(index)
-        return handle_shortcut
+    def eventFilter(self, obj, event):
+        if (event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton
+                and obj in self.move_labels):
+            self.select_move(self.move_labels.index(obj))
+            return True
+        return super().eventFilter(obj, event)
 
     def select_move(self, index):
         """Latch one choice until the dialog closes; duplicate input is harmless."""
@@ -83,11 +109,23 @@ class MoveSelectionDialog(QDialog):
         self.update_highlight()
         self._accept_timer.start(0)
 
+    def _index_for_digit(self, key):
+        """Map Key_1..Key_9 to a move index, or None when there is no such move."""
+        if not Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
+            return None
+        index = key - Qt.Key.Key_1
+        return index if index < len(self.mainpokemon_attacks) else None
+
     def handle_navigation_key(self, key) -> bool:
         """Handle plain keys delivered to this dialog, including synthetic input."""
         if not self.mainpokemon_attacks:
-            # Do not let QDialog's default Return handler accept an empty choice.
-            return key in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Space)
+            # Nothing to choose. Close on confirm rather than swallowing it —
+            # QDialog's default Return handler would otherwise accept an empty
+            # choice, and swallowing leaves Escape as the only way out.
+            if key in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Space):
+                self.reject()
+                return True
+            return False
         if self.selected_move is not None:
             return True
         if key == Qt.Key.Key_Up:
@@ -101,19 +139,19 @@ class MoveSelectionDialog(QDialog):
         if key in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Space):
             self.select_move(self.current_selection)
             return True
-        if Qt.Key.Key_1 <= key <= Qt.Key.Key_9:
-            move_index = key - Qt.Key.Key_1
-            if move_index < len(self.mainpokemon_attacks):
-                self.select_move(move_index)
-                return True
+        move_index = self._index_for_digit(key)
+        if move_index is not None:
+            self.select_move(move_index)
+            return True
         return False
 
     def keyPressEvent(self, event):
-        # Keypad Enter/digits are ordinary choices; Ctrl/Alt/Meta/Shift chords
-        # belong to Anki or another add-on. Escape must still cancel a pending choice.
+        # Keypad Enter/digits and Shift-qualified digits are ordinary choices;
+        # Ctrl/Alt/Meta chords belong to Anki or another add-on. Escape must
+        # still cancel a pending choice.
         if event.key() == Qt.Key.Key_Escape:
             super().keyPressEvent(event)
-        elif event.modifiers() & ~Qt.KeyboardModifier.KeypadModifier:
+        elif event.modifiers() & CHORD_MODIFIERS:
             event.ignore()
         elif event.isAutoRepeat() and event.key() not in (Qt.Key.Key_Up, Qt.Key.Key_Down):
             event.accept()
@@ -123,8 +161,18 @@ class MoveSelectionDialog(QDialog):
             super().keyPressEvent(event)
 
     def showEvent(self, event):
+        # Reset the highlight too: a reused dialog that paints a row it has not
+        # latched turns a bare Enter into last turn's choice.
         self.selected_move = None
+        self.current_selection = 0
+        self.update_highlight()
         super().showEvent(event)
+
+    def reject(self):
+        # Cancelling must not leave a latched move behind for any reader that
+        # does not also check the dialog's result code.
+        self.selected_move = None
+        super().reject()
 
     def hideEvent(self, event):
         self._accept_timer.stop()

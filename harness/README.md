@@ -94,7 +94,8 @@ python -m harness.checks.probe_real_play   # plays via real hooks: real windows,
 python -m harness.checks.probe_real_move_selection  # real modal input + cancellation + deletion
 ```
 
-The move-selection probe restores the real modal event loop after boot and sends
+The move-selection probe restores the real modal event loop for that dialog
+after boot (and restores the harness stub afterwards), and sends
 numeric and navigation key events through Qt, including the synchronous
 `focusObject()` press/release sequence used by Contanki. It covers duplicate
 input, cancellation, nested dialogs, modifiers, keypad input, and deletion.
