@@ -91,7 +91,23 @@ bash harness/setup_tier2.sh        # one-time: builds .tier2/ (venv + local Qt l
 source .tier2/env.sh               # LD_LIBRARY_PATH + QT_QPA_PLATFORM=offscreen + venv
 python -m harness.checks.probe_real_boot   # real add-on boots; objects are the REAL classes
 python -m harness.checks.probe_real_play   # plays via real hooks: real windows, real battles
+python -m harness.checks.probe_real_move_selection  # real modal input + cancellation + deletion
 ```
+
+The move-selection probe restores the real modal event loop for that dialog
+after boot (and restores the harness stub afterwards), and sends
+numeric and navigation key events through Qt, including the synchronous
+`focusObject()` press/release sequence used by Contanki. It covers duplicate
+input, cancellation, nested dialogs, modifiers, keypad input, and deletion.
+It runs in Tier-2 CI and through an isolated subprocess in the pytest suite.
+
+This verifies controllers that **emit mapped keyboard events**. It does not
+emulate a physical controller or Contanki's mapping/state dispatch. In upstream
+[Contanki 7dbc573](https://github.com/roxgib/anki-contanki/blob/7dbc573144c91a586d51c5c6667ab022dcade5e8/contanki/funcs.py),
+`get_state()` returns `NoFocus` for unrecognized dialogs, and `Contanki.poll()`
+stops before emitting keys. Neither a Qt shortcut nor an application event
+filter can handle an event that was never sent. End-to-end Contanki validation
+therefore needs the installed version/fork, mappings, and its dialog support.
 
 Real browser screens use the separate `PyQt6-WebEngine` package. Install it only
 when needed, then run the strict browser probe:
