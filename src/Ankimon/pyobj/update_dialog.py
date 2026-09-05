@@ -95,13 +95,7 @@ class UpdateDialog(QDialog):
         self.tabs.addTab(self._build_releases_tab(), "  Releases  ")
         self.tabs.addTab(self._build_dev_tab(), "  Developer  ")
         self.tabs.addTab(self._build_sprites_tab(), "  Sprites  ")
-        self.tabs.currentChanged.connect(self._on_tab_changed)
         body.addWidget(self.tabs)
-
-        if select_tab == "sprites":
-            self.tabs.setCurrentIndex(3)
-        elif self._git_clone:
-            self.tabs.setCurrentIndex(2)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -116,6 +110,14 @@ class UpdateDialog(QDialog):
         )
         self.status_label.setMinimumHeight(24)
         body.addWidget(self.status_label)
+
+        # Tab changes can start asynchronous loading and touch the status/progress
+        # widgets, so connect and select only after those widgets exist.
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        if select_tab == "sprites":
+            self.tabs.setCurrentIndex(3)
+        elif self._git_clone:
+            self.tabs.setCurrentIndex(2)
 
         layout.addLayout(body)
         self._load_data()
