@@ -297,6 +297,8 @@ class ProfileData:
             "total_xp": _safe(lambda: int(tc.total_xp), 0),
             "xp_for_next_level": _safe(lambda: int(tc.xp_for_next_level()), 0),
             "cash": _safe(lambda: int(tc.cash), 0),
+            "cash_earned_today": _safe(lambda: int(self.settings_obj.get("trainer.cash_earned_today", 0)), 0),
+            "mobile_cash_earned_today": _safe(lambda: int(self.settings_obj.get("trainer.mobile_cash_earned_today", 0)), 0),
             "favorite_pokemon": format_pokemon_name(
                 getattr(tc, "favorite_pokemon", "") or "None"
             ),
