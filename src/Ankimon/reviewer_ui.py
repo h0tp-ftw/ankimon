@@ -147,7 +147,29 @@ def cycle_team_pokemon():
 
         pkmn_name = pokemon_data.get("nickname") or pokemon_data.get("name", "Unknown")
         pkmn_level = pokemon_data.get("level", "?")
-        tooltip(f"Switched to {pkmn_name}! LVL: {pkmn_level}")
+        switch_msg = f"Switched to {pkmn_name}! LVL: {pkmn_level}"
+
+        # The HUD refresh above only repaints the bottom-of-reviewer bars —
+        # the separate Ankimon Window popup has its own sprite/name label and
+        # message box, and was never told a swap happened, so it kept showing
+        # the pokemon (and battle text) from before the cycle. Routes the
+        # switch message into the window's own message box rather than
+        # leaving it to the floating Anki tooltip below — with the window
+        # open the two used to visually overlap/compete for the same
+        # on-screen space.
+        shown_in_window = False
+        try:
+            from .functions.drawing_utils import show_in_ankimon_window
+
+            shown_in_window = show_in_ankimon_window(switch_msg)
+        except Exception as e:
+            print(f"Error updating Ankimon Window: {e}")
+
+        # Only float the tooltip when the window did NOT take the message —
+        # otherwise the same sentence appears twice at once, which is the
+        # overlap show_in_ankimon_window() exists to remove.
+        if not shown_in_window:
+            tooltip(switch_msg)
 
     except Exception as e:
         print(f"Unexpected error: {e}")

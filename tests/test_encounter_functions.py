@@ -187,7 +187,7 @@ def test_handle_enemy_faint_auto_catch_regional_enabled():
         achievements = {}
 
         # Execute
-        ef.handle_enemy_faint(
+        result = ef.handle_enemy_faint(
             main_pokemon,
             enemy_pokemon,
             collected_pokemon_ids,
@@ -203,6 +203,10 @@ def test_handle_enemy_faint_auto_catch_regional_enabled():
         mock_new.assert_called_once()
         mock_kill.assert_not_called()
         assert mock_tracker.faint_processed is True
+        # battle_loop.py skips its end-of-turn display_battle() based on this
+        # return value — a fresh encounter was painted here via new_pokemon(),
+        # so it must report True.
+        assert result is True
 
     finally:
         # Restore original globals
@@ -349,7 +353,7 @@ def test_handle_enemy_faint_manual_mode_clears_stale_override():
         ef.kill_pokemon = kill
         ef._auto_battle_override = "catch"
 
-        ef.handle_enemy_faint(
+        result = ef.handle_enemy_faint(
             main_pokemon,
             enemy_pokemon,
             set(),
@@ -365,6 +369,11 @@ def test_handle_enemy_faint_manual_mode_clears_stale_override():
         kill.assert_not_called()
         new.assert_not_called()
         assert ef.get_auto_battle_override() is None
+        # Manual mode shows the death/catch screen, not a fresh encounter —
+        # battle_loop.py's enemy_pokemon.hp > 0 check already excludes this
+        # case from the end-of-turn repaint, but the return value itself must
+        # still honestly report "did not replace the encounter".
+        assert result is False
     finally:
         ef.settings_obj = original_settings
         ef.ankimon_tracker_obj = original_tracker

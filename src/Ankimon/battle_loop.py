@@ -35,6 +35,112 @@ from .pyobj.error_handler import show_warning_with_traceback
 main_pokemon = None
 enemy_pokemon = None
 settings_obj = None
+
+# Set while a manual-mode double faint is waiting on the player's enemy
+# catch/defeat choice, so a later battle round doesn't register a second
+# resolution callback for the same pending main faint.
+_main_faint_deferred = False
+# The callback currently registered on the catch/defeat hook buckets. Kept at
+# module scope so an ABANDONED deferral can be disarmed from outside _resolve()
+# itself -- see _cancel_main_faint_deferral().
+_main_faint_resolver = None
+
+
+def _cancel_main_faint_deferral():
+    """Disarm a pending main-faint deferral and unregister its callback.
+
+    ``_resolve()`` used to be the only thing that ever cleared
+    ``_main_faint_deferred`` or removed itself from the hook buckets. So a
+    deferral the player never answered -- they closed the Ankimon Window
+    instead of the death screen, and the next round healed the main Pokemon
+    through the immediate branch in on_review_card() -- stayed armed forever.
+    The stale callback then fired on the next unrelated catch/defeat and ran
+    handle_main_pokemon_faint() against a FULL-HP Pokemon: a bogus faint
+    message and sound, a spurious ``faint`` event, and reset_bonuses()
+    silently wiping that battle's stat boosts.
+
+    Safe to call unconditionally -- a no-op when nothing is armed.
+    """
+    global _main_faint_deferred, _main_faint_resolver
+
+    _main_faint_deferred = False
+    resolver, _main_faint_resolver = _main_faint_resolver, None
+    if resolver is None:
+        return
+
+    from . import hook_registry
+
+    for bucket in (
+        hook_registry.catch_pokemon_hooks,
+        hook_registry.defeat_pokemon_hooks,
+    ):
+        try:
+            bucket.remove(resolver)
+        except ValueError:
+            pass
+
+
+def _defer_main_faint_until_enemy_resolved(
+    main_pokemon, enemy_pokemon, reviewer_obj, translator
+):
+    """Manual-mode double faint: run handle_main_pokemon_faint() only after the
+    player answers the enemy catch/defeat screen that handle_enemy_faint() left
+    open. Doing it now would heal the main Pokemon and spawn a fresh encounter
+    over that screen before the choice is made.
+
+    Returns True when a deferral is in effect -- newly armed here, or already
+    armed by an earlier round -- and False when one could not be armed at all.
+    On False the caller MUST handle the faint immediately; a deferral nothing
+    can resolve would strand the main Pokemon at 0 HP forever.
+    """
+    global _main_faint_deferred, _main_faint_resolver
+    if _main_faint_deferred:
+        return True
+
+    try:
+        from . import hook_registry
+    except Exception:
+        # hook_registry imports aqt, so this is the headless / no-Anki case.
+        # Nothing there could ever fire the resolver, and deferring anyway
+        # would park the main Pokemon at 0 HP with no way back -- so report
+        # failure and let the caller handle the faint immediately.
+        return False
+
+    def _resolve():
+        if not _main_faint_deferred:
+            return
+        # Clears the flag AND unregisters this callback from both buckets
+        # before any of the work below, so an exception here cannot leave the
+        # deferral armed with a callback nothing will ever remove.
+        _cancel_main_faint_deferral()
+        resolve_window = services.test_window
+        handle_main_pokemon_faint(
+            main_pokemon,
+            enemy_pokemon,
+            resolve_window if is_alive(resolve_window) else None,
+            reviewer_obj,
+            translator,
+            spawn_replacement=False,
+        )
+        try:
+            reviewer_obj.refresh_hud()
+        except Exception:
+            pass
+        # The catch/defeat that triggered this already ran new_pokemon(), which
+        # composited the fresh encounter's intro frame while main_pokemon.hp
+        # was still 0. Repaint so the healed main HP bar is visible now rather
+        # than only after the next answered card.
+        try:
+            if is_alive(resolve_window) and resolve_window.current_view == "battle":
+                resolve_window.force_display_battle()
+        except Exception:
+            pass
+
+    _main_faint_deferred = True
+    _main_faint_resolver = _resolve
+    hook_registry.add_catch_pokemon_hook(_resolve)
+    hook_registry.add_defeat_pokemon_hook(_resolve)
+    return True
 reviewer_obj = None
 ankimon_tracker_obj = None
 test_window = None
@@ -167,6 +273,16 @@ def on_review_card(*args):
 
         if battle_sounds == True and ankimon_tracker_obj.general_card_count_for_battle == 1:
             play_sound(enemy_pokemon.id, settings_obj)
+
+        # This turn's battle-log line and per-side damage. Only the
+        # cards-per-round batch below actually runs the poke_engine
+        # simulation, so on every other review they keep these defaults —
+        # bound here rather than read back out of locals() by name further
+        # down, where a rename would silently disable the message box and
+        # both shakes instead of raising.
+        formatted_battle_log = None
+        true_dmg_from_user_move = 0
+        true_dmg_from_enemy_move = 0
 
         if ankimon_tracker_obj.cards_battle_round >= _get_cards_per_round():
             ankimon_tracker_obj.cards_battle_round = 0
@@ -320,6 +436,7 @@ def on_review_card(*args):
                 sign = "+" if heals_to_opponent > 0 else ""
                 tooltipWithColour(f" {sign}{int(heals_to_opponent)} HP ", heal_color, x=250)
 
+            encounter_replaced = False
             if enemy_pokemon.hp < 1:
                 enemy_pokemon.hp = 0
                 # Liveness guards (F24): resolve both windows fresh from the
@@ -329,47 +446,172 @@ def on_review_card(*args):
                 # raising "wrapped C/C++ object deleted".
                 faint_window = services.test_window
                 live_faint_window = faint_window if is_alive(faint_window) else None
-                if live_faint_window is not None:
+                # Only when the window is actually showing the battle view.
+                # Manual mode (the shipped default) never sets
+                # faint_processed, so while the catch/defeat screen is up this
+                # block is re-entered on every completed round — and with
+                # paint_now that would flash the battle scene over the death
+                # screen each time before handle_enemy_faint() restored it.
+                if (
+                    live_faint_window is not None
+                    and getattr(live_faint_window, "current_view", None) == "battle"
+                ):
                     try:
-                        live_faint_window.display_battle()
+                        # The killing blow's own frame: this turn's log line
+                        # over the enemy sprite tipped on its side at 0 HP.
+                        # It has to carry message_text — the end-of-turn
+                        # repaint further down is skipped on exactly the
+                        # turns a side faints, so without it the message box
+                        # would show the PREVIOUS turn's text on the frame
+                        # where the enemy actually died, and the last line of
+                        # every battle would never be shown at all.
+                        # force_ + paint_now because the faint handler
+                        # replaces this frame (fresh encounter, or the death
+                        # screen) inside this same call stack, well within
+                        # the debounce window and long before Qt would paint
+                        # on its own. No shake: the animation's timer steps
+                        # would land on the NEXT encounter and jitter the
+                        # wrong sprites.
+                        live_faint_window.force_display_battle(
+                            message_text=formatted_battle_log, paint_now=True
+                        )
                     except RuntimeError:
                         live_faint_window = None
                 evo = services.evo_window
-                handle_enemy_faint(
-                    main_pokemon,
-                    enemy_pokemon,
-                    s.collected_pokemon_ids,
-                    live_faint_window,
-                    evo if is_alive(evo) else None,
-                    reviewer_obj,
-                    logger,
-                    achievements,
+                # handle_enemy_faint() returns True when it replaced
+                # enemy_pokemon with a fresh wild encounter (auto-catch/
+                # auto-defeat/override/wishlist all do, via new_pokemon(),
+                # which already painted that encounter's own intro frame) —
+                # same reasoning as handle_main_pokemon_faint below: skip the
+                # end-of-turn display_battle() so it doesn't immediately
+                # overwrite that intro frame with this turn's stale text.
+                # Manual mode (False) shows the death/catch screen instead,
+                # already excluded from that repaint via the enemy_pokemon.hp
+                # > 0 check further down.
+                encounter_replaced = bool(
+                    handle_enemy_faint(
+                        main_pokemon,
+                        enemy_pokemon,
+                        s.collected_pokemon_ids,
+                        live_faint_window,
+                        evo if is_alive(evo) else None,
+                        reviewer_obj,
+                        logger,
+                        achievements,
+                    )
                 )
                 s.mutator_full_reset = 1
+        else:
+            encounter_replaced = False
 
         if cry_counter == 10 and battle_sounds is True:
             play_sound(enemy_pokemon.id, settings_obj)
 
         if main_pokemon.hp < 1:
+            main_pokemon.hp = 0
             # Liveness guard (F24): hand the faint handler a live window or None
             # (new_pokemon already None-checks before painting).
             main_faint_window = services.test_window
-            handle_main_pokemon_faint(
-                main_pokemon,
-                enemy_pokemon,
-                main_faint_window if is_alive(main_faint_window) else None,
-                reviewer_obj,
-                translator,
+            live_main_faint_window = (
+                main_faint_window if is_alive(main_faint_window) else None
             )
+            # Not on a double faint: handle_enemy_faint() has already replaced
+            # enemy_pokemon with a fresh wild encounter, so this frame would
+            # show the NEXT enemy at full HP standing over the tipped-out main
+            # Pokémon under the previous fight's log line.
+            #
+            # The current_view check mirrors the enemy-faint branch above, and
+            # a same-turn double faint is exactly when it earns its keep: in
+            # manual mode handle_enemy_faint() puts the death/catch screen up
+            # and returns False, so encounter_replaced stays False and this
+            # paint_now repaint would flash the battle scene over the screen
+            # the player still has to answer.
+            if (
+                live_main_faint_window is not None
+                and not encounter_replaced
+                and getattr(live_main_faint_window, "current_view", None) == "battle"
+            ):
+                try:
+                    # Mirror of the enemy-faint frame above, and it has to
+                    # happen HERE: handle_main_pokemon_faint() heals the main
+                    # Pokémon back to full HP as one of its first statements,
+                    # so this is the only moment its sprite can be drawn
+                    # tipped over at 0 HP, and the only moment the killing
+                    # blow's log line can reach the message box before
+                    # new_pokemon() paints the replacement encounter.
+                    live_main_faint_window.force_display_battle(
+                        message_text=formatted_battle_log, paint_now=True
+                    )
+                except RuntimeError:
+                    live_main_faint_window = None
+            # Manual-mode double faint: handle_enemy_faint() left the enemy
+            # catch/defeat decision to the player instead of replacing the
+            # encounter. Running handle_main_pokemon_faint() now would heal
+            # main and spawn a fresh encounter before they answer it, so defer
+            # the main-faint bookkeeping until the choice completes.
+            #
+            # "Enemy still fainted AND not replaced" is the whole condition.
+            # This also used to require the Ankimon Window to be alive and on
+            # its "death" view, which silently excluded the case where that
+            # window is CLOSED -- the decision is still pending there, just via
+            # the reviewer-side Catch/Defeat buttons (mw.catchpokemon /
+            # mw.defeatpokemon) rather than the popup. In that case the faint
+            # was handled immediately, new_pokemon() refreshed enemy_pokemon in
+            # place to full HP, and the player's later Catch hit
+            # CatchPokemonHook's `enemy_pokemon.hp < 1` guard and silently did
+            # nothing -- the fainted Pokemon was simply lost.
+            #
+            # Auto modes cannot reach here: they replace the encounter, so
+            # encounter_replaced is True by this point.
+            enemy_decision_pending = (
+                not encounter_replaced and enemy_pokemon.hp < 1
+            )
+            if enemy_decision_pending and _defer_main_faint_until_enemy_resolved(
+                main_pokemon, enemy_pokemon, reviewer_obj, translator
+            ):
+                pass  # the resolver will run handle_main_pokemon_faint() later
+            else:
+                # Handling the faint HERE supersedes any deferral still armed
+                # from an earlier round the player walked away from (they
+                # closed the Ankimon Window rather than answering its death
+                # screen). Disarm it first, or its stale callback fires a
+                # phantom faint on the next unrelated catch/defeat.
+                _cancel_main_faint_deferral()
+                handle_main_pokemon_faint(
+                    main_pokemon,
+                    enemy_pokemon,
+                    live_main_faint_window,
+                    reviewer_obj,
+                    translator,
+                )
             s.mutator_full_reset = 1
+            # Either a fresh encounter now stands in enemy_pokemon's place, or
+            # (deferred double faint) the enemy death screen is up — neither
+            # wants the end-of-turn repaint below.
+            # handle_main_pokemon_faint() heals main and, via new_pokemon(),
+            # replaces enemy_pokemon with a fresh wild encounter AND already
+            # painted that encounter's own intro frame. Below, the final
+            # display_battle() call would otherwise immediately repaint over
+            # that intro frame with THIS turn's now-stale battle-log text and
+            # shake flags — both describe the fight that just ended against
+            # the enemy that no longer exists.
+            encounter_replaced = True
 
         reviewer_obj.refresh_hud()
         # Liveness guard (F24): is_alive replaces the bare None-check so a
         # deleted-but-non-None widget can't raise on the end-of-turn repaint.
         final_window = services.test_window
-        if is_alive(final_window) and enemy_pokemon.hp > 0:
+        if not encounter_replaced and is_alive(final_window) and enemy_pokemon.hp > 0:
+            # The ATTACKER shakes, not the one hit: main dealing damage means
+            # main attacked (shake main's sprite), enemy dealing damage means
+            # enemy attacked (shake enemy's sprite) — both can be true in the
+            # same turn if neither side fainted the other first.
             try:
-                final_window.display_battle()
+                final_window.display_battle(
+                    message_text=formatted_battle_log,
+                    shake_enemy=bool(true_dmg_from_enemy_move),
+                    shake_main=bool(true_dmg_from_user_move),
+                )
             except RuntimeError:
                 pass
     except Exception as e:
