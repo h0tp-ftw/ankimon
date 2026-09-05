@@ -652,10 +652,22 @@ class AnkimonDB:
                 except Exception:
                     pass
                     
-            # Dump current database safely
+            # Dump current database safely, recovering what we can
             src_conn = sqlite3.connect(str(db_file))
+            lines = []
             try:
-                lines = list(src_conn.iterdump())
+                iterator = src_conn.iterdump()
+                while True:
+                    try:
+                        lines.append(next(iterator))
+                    except StopIteration:
+                        break
+                    except sqlite3.DatabaseError as e:
+                        self._log("warning", f"iterdump encountered corruption, saving partial dump: {e}")
+                        break
+            except Exception as e:
+                self._log("error", f"Could not initialize database dump: {e}")
+                # Fallback to empty dump to allow initialization
             finally:
                 src_conn.close()
             
