@@ -166,52 +166,7 @@
                         }
                     ]
                 },
-                {
-                    "name": "battle_scenes_without_dialog",
-                    "type": "folder",
-                    "children": [
-                        {
-                            "name": "beach_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "desert_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "grass_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "ground_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "ice_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "ocean_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "psychic_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "rock_pkmnbattlescene.png",
-                            "type": "file"
-                        },
-                        {
-                            "name": "toxic_pkmnbattlescene.png",
-                            "type": "file"
-                        }
-                    ]
-                },
+                
                 {
                     "name": "evo_temp.jpg",
                     "type": "file"
