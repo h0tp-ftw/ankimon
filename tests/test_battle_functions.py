@@ -50,6 +50,14 @@ def test_validate_pokemon_status_tolerates_unnormalized_status(raw):
     assert validate_pokemon_status(MockPokemon(50, raw)) == "fighting"
 
 
+@pytest.mark.parametrize("raw, expected", [("  PAR  ", "par"), ("Fainted", "fainted")])
+def test_validate_pokemon_status_preserves_padded_or_capitalised_real_status(raw, expected):
+    """Normalising must not turn a real status into "fighting": a padded "  par  "
+    is still paralysed, and a capitalised "Fainted" at 0 HP is still fainted."""
+    hp = 0 if expected == "fainted" else 50
+    assert validate_pokemon_status(MockPokemon(hp, raw)) == expected
+
+
 def test_validate_pokemon_status_without_the_attribute():
     class Bare:
         hp = 50

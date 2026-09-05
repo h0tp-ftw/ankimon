@@ -595,7 +595,13 @@ def validate_pokemon_status(pokemon):
         "fighting",
     }
 
-    current_status = str(getattr(pokemon, "battle_status", None) or "fighting").lower()
+    # Mirror PokemonObject._normalize_battle_status: strip + lower, None/blank
+    # means healthy. A padded "  par  " must stay "par", not fall through the
+    # invalid-status branch and be silently reset to "fighting".
+    current_status = (
+        str(getattr(pokemon, "battle_status", None) or "").strip().lower()
+        or "fighting"
+    )
 
     # Ensure volatile_status exists
     if not hasattr(pokemon, "volatile_status"):
