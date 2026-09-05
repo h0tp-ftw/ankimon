@@ -315,8 +315,14 @@ class TestWindow(QWidget):
             f in pokemon.name.lower() for f in ["-mega", "-gmax"]
         ):
             return get_pretty_name_for_name(pokemon.name)
+
+        try:
+            p_id = int(pokemon.id)
+        except ValueError:
+            return get_pretty_name_for_name(pokemon.name)
+
         return get_pokemon_diff_lang_name(
-            int(pokemon.id), int(self.settings_obj.get("misc.language"))
+            p_id, int(self.settings_obj.get("misc.language"))
         )
 
     def _same_view_debounced(self, view):

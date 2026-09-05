@@ -20,6 +20,41 @@ from ..pyobj.error_handler import show_warning_with_traceback
 ankimon_tracker_obj = None
 settings_obj = None
 
+# --- Monkey-patch StateMutator to update Castform on weather change ---
+if not getattr(StateMutator.start_weather, "_ankimon_castform_wrapped", False):
+    _original_start_weather = StateMutator.start_weather
+    _original_reverse_start_weather = StateMutator.reverse_start_weather
+
+    def _update_castform(self):
+        from ..poke_engine import constants
+        for side in (self.state.user, self.state.opponent):
+            if side.active.ability == "forecast" and side.active.id.startswith("castform"):
+                if self.state.weather in [constants.SUN, constants.DESOLATE_LAND]:
+                    side.active.id = "castformsunny"
+                    side.active.types = ["fire"]
+                elif self.state.weather in [constants.RAIN, constants.HEAVY_RAIN]:
+                    side.active.id = "castformrainy"
+                    side.active.types = ["water"]
+                elif self.state.weather in constants.HAIL_OR_SNOW:
+                    side.active.id = "castformsnowy"
+                    side.active.types = ["ice"]
+                else:
+                    side.active.id = "castform"
+                    side.active.types = ["normal"]
+
+    def _wrapped_start_weather(self, weather, _):
+        _original_start_weather(self, weather, _)
+        _update_castform(self)
+
+    def _wrapped_reverse_start_weather(self, _, old_weather):
+        _original_reverse_start_weather(self, _, old_weather)
+        _update_castform(self)
+
+    _wrapped_start_weather._ankimon_castform_wrapped = True
+    StateMutator.start_weather = _wrapped_start_weather
+    StateMutator.reverse_start_weather = _wrapped_reverse_start_weather
+
+
 # --- F37: review-based damage multiplier, applied at the poke-engine level ---
 # poke_engine.find_state_instructions calls
 # ``instruction_generator.get_instructions_from_damage`` via module attribute, so
@@ -385,6 +420,64 @@ def simulate_battle_with_poke_engine(
 
         mutator = StateMutator(state)
 
+        startup_instructions = []
+        if mutator_full_reset == 1:
+            from ..poke_engine import constants as pe_constants
+            from ..poke_engine.special_effects.abilities.on_switch_in import ability_on_switch_in
+            from ..poke_engine.special_effects.items.on_switch_in import item_on_switch_in
+
+            # User switch-in effects
+            user_ability_instructions = ability_on_switch_in(
+                state.user.active.ability,
+                state,
+                pe_constants.USER,
+                state.user.active,
+                pe_constants.OPPONENT,
+                state.opponent.active
+            )
+            if user_ability_instructions:
+                mutator.apply(user_ability_instructions)
+                startup_instructions.extend(user_ability_instructions)
+
+            user_item_instructions = item_on_switch_in(
+                state.user.active.item,
+                state,
+                pe_constants.USER,
+                state.user.active,
+                pe_constants.OPPONENT,
+                state.opponent.active
+            )
+            if user_item_instructions:
+                mutator.apply(user_item_instructions)
+                startup_instructions.extend(user_item_instructions)
+
+            # Opponent switch-in effects
+            opponent_ability_instructions = ability_on_switch_in(
+                state.opponent.active.ability,
+                state,
+                pe_constants.OPPONENT,
+                state.opponent.active,
+                pe_constants.USER,
+                state.user.active
+            )
+            if opponent_ability_instructions:
+                mutator.apply(opponent_ability_instructions)
+                startup_instructions.extend(opponent_ability_instructions)
+
+            # Opponent item switch-in effects
+            opponent_item_instructions = item_on_switch_in(
+                state.opponent.active.item,
+                state,
+                pe_constants.OPPONENT,
+                state.opponent.active,
+                pe_constants.USER,
+                state.user.active
+            )
+            if opponent_item_instructions:
+                mutator.apply(opponent_item_instructions)
+                startup_instructions.extend(opponent_item_instructions)
+
+
         if settings_obj and settings_obj.get("battle.review_based_damage"):
             mutator.review_based_damage_multiplier = (
                 ankimon_tracker_obj.multiplier
@@ -409,7 +502,7 @@ def simulate_battle_with_poke_engine(
         chosen_outcome = random.choices(transpose_instructions, weights=weights, k=1)[0]
 
         if settings_obj and settings_obj.get("battle.review_based_damage"):
-            instrs = []
+            instrs = list(startup_instructions)
             for instr in chosen_outcome.instructions:
                 if instr[0] == constants.DAMAGE and instr[1] == constants.OPPONENT:
                     if hasattr(mutator, "review_based_damage_multiplier_applied"):
@@ -431,7 +524,7 @@ def simulate_battle_with_poke_engine(
                 else:
                     instrs.append(instr)
         else:
-            instrs = chosen_outcome.instructions
+            instrs = list(startup_instructions) + chosen_outcome.instructions
 
         user_hp_before = int(state.user.active.hp)
         opponent_hp_before = int(state.opponent.active.hp)
@@ -445,6 +538,11 @@ def simulate_battle_with_poke_engine(
         battle_info_changes = diff_states(state_before, state_after)
 
         # Save changes from State to Pokemon objects (enhanced for volatile status)
+        if hasattr(state.user.active, "id"):
+            main_pokemon.id = state.user.active.id
+        if hasattr(state.opponent.active, "id"):
+            enemy_pokemon.id = state.opponent.active.id
+
         main_pokemon.hp = state.user.active.hp
         main_pokemon.current_hp = state.user.active.hp
         enemy_pokemon.hp = state.opponent.active.hp
