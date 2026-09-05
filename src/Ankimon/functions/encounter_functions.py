@@ -2166,7 +2166,9 @@ def handle_main_pokemon_faint(
     Handles what happens when the main Pokémon faints.
     """
     msg = translator.translate(
-        "pokemon_fainted", enemy_pokemon_name=main_pokemon.name.capitalize()
+        "own_pokemon_fainted",
+        main_pokemon_name=main_pokemon.name.capitalize(),
+        enemy_pokemon_name=get_pretty_name_for_name(enemy_pokemon.name)
     )
     tooltipWithColour(msg, "#E12939")
     events.emit("faint", who="main", pokemon=main_pokemon.name)
