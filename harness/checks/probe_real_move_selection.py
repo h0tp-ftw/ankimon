@@ -192,8 +192,13 @@ class MoveSelectionTests(unittest.TestCase):
         self.assertEqual(dialog.selected_move, "growl")
 
     def test_digit_shortcut_activates_the_matching_move(self):
-        # sendEvent() bypasses Qt's shortcut map, so every other digit test
-        # here reaches keyPressEvent and never the QShortcut wiring.
+        # Every other digit test here goes through the QShortcut rather than
+        # keyPressEvent: sendEvent() reaches QApplication::notify, which does
+        # consult the shortcut map, so an unmodified digit is claimed before
+        # keyPressEvent sees it. keyPressEvent's digit branch is exercised only
+        # where the shortcut cannot match -- see
+        # test_shift_qualified_keys_select_and_navigate and
+        # test_invalid_number_does_not_close_dialog.
         dialog = self.dialog()
         shortcuts = dialog.findChildren(QShortcut)
         self.assertEqual([s.key().toString() for s in shortcuts], ["1", "2", "3", "4"])

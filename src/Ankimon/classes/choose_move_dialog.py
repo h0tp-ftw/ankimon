@@ -9,8 +9,11 @@ from ..move_names import format_move_name
 
 
 # Digit selection exists only for Key_1..Key_9, so one range bounds both the
-# QShortcut loop (real keyboards) and the key handler (synthetic input); the
-# two paths cannot drift apart into different limits.
+# QShortcut loop and the keyPressEvent handler, and the two cannot drift apart
+# into different limits. An unmodified digit is claimed by the shortcut whether
+# it arrives from a real keyboard or from sendEvent(), which reaches
+# QApplication::notify and so consults the shortcut map too; keyPressEvent
+# handles the digits the shortcut cannot match, Shift+digit above all.
 DIGIT_SHORTCUT_COUNT = Qt.Key.Key_9 - Qt.Key.Key_1 + 1
 
 # Ctrl/Alt/Meta chords belong to Anki or another add-on. Shift is deliberately
