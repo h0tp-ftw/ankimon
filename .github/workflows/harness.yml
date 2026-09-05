@@ -13,6 +13,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   tier1:
     name: Tier 1 — logic gate + functionality sweep (no Qt)
