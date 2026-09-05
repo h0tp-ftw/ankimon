@@ -184,6 +184,12 @@ def create_menu_actions(
         )
         profile_menu.addAction(achievement_bag_action)
 
+        # Monthly Challenge
+        monthly_challenge_action = QAction("Monthly Challenge", mw)
+        monthly_challenge_action.setMenuRole(QAction.MenuRole.NoRole)
+        qconnect(monthly_challenge_action.triggered, lambda: _open_shell_at("monthly"))
+        profile_menu.addAction(monthly_challenge_action)
+        
         # Showdown Teambuilder
         pokemon_showdown_action = QAction(mw.translator.translate("open_showdown_teambuilder_button"), mw)
         pokemon_showdown_action.setMenuRole(QAction.MenuRole.NoRole)
