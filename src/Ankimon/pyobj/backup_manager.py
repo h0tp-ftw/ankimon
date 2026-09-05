@@ -390,6 +390,16 @@ class BackupManager:
             active_db = services.db.db_path.name
             backup_file = backup_path / active_db
             if backup_file.exists():
+                # We MUST close all database connections before overwriting the file.
+                # Otherwise, replacing an active DB file causes SQLite to enter a
+                # malformed state, preventing successful loading on the next boot.
+                try:
+                    services.db.close(wait_seconds=2.0)
+                except Exception as e:
+                    self.logger.log("error", f"Failed to gracefully close connections before restore: {e}")
+                    showWarning(f"Failed to gracefully close the database. Aborting restore to prevent corruption: {e}")
+                    return
+
                 shutil.copy2(backup_file, self.user_files_path / active_db)
             else:
                 showWarning(
