@@ -63,6 +63,7 @@ jobs:
         run: |
           xvfb-run -a python3 -m harness.checks.probe_real_boot
           xvfb-run -a python3 -m harness.checks.probe_real_play
+          xvfb-run -a python3 -m harness.checks.probe_real_move_selection
 
   tier2_webengine:
     name: Tier 2 WebEngine — real Settings shell
