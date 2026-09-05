@@ -10,11 +10,31 @@
 
     const SPRITE_BASE = '../user_files/sprites/front_default';
     const FALLBACK = SPRITE_BASE + '/0.png';
+    // Sent as the companion arg when this session never touched the Active
+    // Companion selection, so the backend leaves whatever main Pokémon is
+    // already set alone instead of reading "no companion" as "clear it" —
+    // impossible as a real individual_id, so it can't collide with one.
+    const COMPANION_UNCHANGED = '__companion_unchanged__';
 
     const state = {
         team: [null, null, null, null, null, null],
         xpShare: null,         // individual_id of the XP Share holder (any owned Pokémon)
         xpShareInfo: null,     // display stub for the holder (may be benched)
+        companionId: null,     // individual_id of the Active Companion (must be a team slot member)
+        // The last companion the BACKEND confirmed — the page load's value, or
+        // whatever a save reported back. companionId above is optimistic the
+        // moment the crown is clicked, and handle_save_team can refuse the
+        // change (id not in the saved team, nothing to promote, row already
+        // released) while still saving the team; reverting to this is what
+        // keeps the ⚔ badge showing the DB's battler instead of a wish.
+        companionConfirmedId: null,
+        // Whether THIS session actually changed the companion (crown toggle,
+        // or an implicit clear because the companion's slot got removed/
+        // replaced) — vs. simply never having touched it. Only a touched
+        // change is sent to the backend as authoritative; an untouched save
+        // (e.g. just reordering the team) must leave whatever main Pokémon
+        // is already set alone, not wipe it. See saveTeam()/applyData().
+        companionTouched: false,
         maxSize: 6,
         teamCycleCount: 3,     // limit for hotkey 9 rotation
         roster: null,          // null = not loaded yet
@@ -26,11 +46,6 @@
         spriteMode: 'static',
     };
 
-    // NOTE: the "Active Companion" picker (an iframe mode="companion-picker"
-    // flow) was never finished — no page hosts the iframe and its helpers were
-    // undefined — so that dead path is removed here. The Python read/write seam
-    // (get_team_data.companion / handle_save_team companion_id) is retained for
-    // whenever the picker UI is actually built; saveTeam sends '' until then.
     let teamBridge = null;
 
     function spriteUrl(stub, mode = state.spriteMode) {
@@ -165,17 +180,21 @@
             const m = state.team[i];
             const slot = document.createElement('div');
             const isXp = !!(m && state.xpShare && String(m.id) === String(state.xpShare));
-            slot.className = 'slot ' + (m ? 'filled' : 'empty') + (isXp ? ' xp-share' : '');
+            const isCompanion = !!(m && state.companionId && String(m.id) === String(state.companionId));
+            slot.className = 'slot ' + (m ? 'filled' : 'empty') + (isXp ? ' xp-share' : '') + (isCompanion ? ' companion' : '');
 
             if (m) {
                 const cp = (m.cp === undefined || m.cp === null) ? '—' : num(m.cp);
                 const types = (m.types || []).map(typeBadge).join('');
                 const hasCycle = state.teamCycleCount > 1 && i < state.teamCycleCount;
                 const cycleBadge = hasCycle ? '<span class="slot-rotation-badge" title="Cycled via Hotkey 9">↻</span>' : '';
+                const companionBadge = isCompanion ? '<span class="slot-companion-badge" title="Active Companion">⚔</span>' : '';
 
                 slot.title = 'Click to switch';
                 slot.innerHTML = `
-                    <span class="slot-num">${i + 1}${cycleBadge}</span>
+                    <span class="slot-num">${i + 1}${cycleBadge}${companionBadge}</span>
+                    <button class="slot-corner slot-crown${isCompanion ? ' on' : ''}" data-act="companion" data-slot="${i}"
+                            title="${isCompanion ? 'Active Companion (battling now)' : 'Set as Active Companion'}">⚔</button>
                     <button class="slot-corner slot-star${isXp ? ' on' : ''}" data-act="xp" data-slot="${i}"
                             title="${isXp ? 'Remove XP Share' : 'Set as XP Share'}">★</button>
                     <button class="slot-corner slot-remove" data-act="remove" data-slot="${i}" title="Remove">✕</button>
@@ -201,13 +220,14 @@
         }
         grid.replaceChildren(frag);
 
-        // Corner buttons (★ XP Share, ✕ remove) override the card's click-to-switch.
+        // Corner buttons (⚔ Companion, ★ XP Share, ✕ remove) override the card's click-to-switch.
         grid.querySelectorAll('[data-act]').forEach((btn) => {
             const i = Number(btn.dataset.slot);
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (btn.dataset.act === 'remove') removeSlot(i);
                 else if (btn.dataset.act === 'xp') toggleXp(i);
+                else if (btn.dataset.act === 'companion') toggleCompanion(i);
             });
         });
 
@@ -220,6 +240,20 @@
         if (!m) return;
         if (state.xpShare && String(m.id) === String(state.xpShare)) setXpShare(null);
         else setXpShare(m);
+    }
+
+    // ---------------- Active Companion ----------------
+    // The companion must be an actual team member (it's who battles), so
+    // this only ever operates on a filled team slot — no separate roster
+    // picker needed. There's always exactly one, or none.
+    function toggleCompanion(slot) {
+        const m = state.team[slot];
+        if (!m) return;
+        const id = String(m.id);
+        state.companionId = (state.companionId === id) ? null : id;
+        state.companionTouched = true;
+        markDirty();
+        renderTeam();
     }
 
     // Sidebar team overview: filled count, average level, total CP, type coverage.
@@ -274,12 +308,27 @@
     function removeSlot(slot) {
         // XP Share is independent of team membership now — removing a Pokémon
         // from a slot leaves it owned, so we keep it as the XP Share holder.
+        // Active Companion, though, MUST be a team member — clear it if the
+        // Pokémon leaving the slot was the companion.
+        const m = state.team[slot];
+        if (m && state.companionId && String(m.id) === String(state.companionId)) {
+            state.companionId = null;
+            state.companionTouched = true;
+        }
         state.team[slot] = null;
         markDirty();
         renderTeam();
     }
 
     function assignSlot(slot, stub) {
+        // Swapping out the slot that held the companion clears it — the new
+        // occupant isn't automatically the companion, and the old one is no
+        // longer a team member.
+        const prev = state.team[slot];
+        if (prev && state.companionId && String(prev.id) === String(state.companionId)) {
+            state.companionId = null;
+            state.companionTouched = true;
+        }
         // Copy so editing one slot can't alias another / the roster entry.
         const member = { id: stub.id, p: stub.p, n: stub.n, l: stub.l };
         if (stub.s) member.s = 1;
@@ -548,11 +597,38 @@
             updateSaveUI();
             return Promise.resolve({ ok: true });
         }
-        // Third arg is companion_id — always '' (no shipped companion picker; the
-        // Python seam accepts it for when that UI is built).
-        return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', '').then((res) => {
+        const companionArg = state.companionTouched ? (state.companionId || '') : COMPANION_UNCHANGED;
+        const companionWasTouched = state.companionTouched;
+        return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', companionArg).then((res) => {
             if (res && res.ok) {
                 state.dirty = false;
+                // The save is now the new baseline. companionTouched used to
+                // only ever clear in applyData() (page init), so after ONE
+                // companion edit every later save in the session kept sending
+                // an authoritative companion — and since the backend rewrites
+                // an empty one into "promote the first team member", editing
+                // slot 1 later would silently re-crown whoever landed there.
+                state.companionTouched = false;
+                // The backend reports what it actually left as the Active
+                // Companion whenever this save was authoritative, because a
+                // clear can come back as a promotion. Adopt it so the crown
+                // on screen matches the DB without a reload.
+                if (res.companion !== undefined) {
+                    state.companionId = res.companion ? String(res.companion) : null;
+                    state.companionConfirmedId = state.companionId;
+                    renderTeam();
+                } else if (companionWasTouched) {
+                    // The team saved but the companion change did NOT: the
+                    // backend omits the key on every outcome that leaves the
+                    // existing is_main row alone (id not on the saved team,
+                    // an empty team with nobody to promote, or a row already
+                    // released). companionTouched has just been cleared, so
+                    // nothing would ever re-send this id — keeping it on
+                    // screen would leave the ⚔ badge pointing at a Pokémon
+                    // that is not the DB's battler until a page reload.
+                    state.companionId = state.companionConfirmedId;
+                    renderTeam();
+                }
                 updateSaveUI();
                 toast(res.message || 'Team saved.', 'success');
                 return res;
@@ -581,6 +657,9 @@
         for (let i = 0; i < state.maxSize; i++) state.team.push(team[i] || null);
         state.xpShare = data.xp_share ? String(data.xp_share) : null;
         state.xpShareInfo = data.xp_share_info || null;
+        state.companionId = data.companion ? String(data.companion) : null;
+        state.companionConfirmedId = state.companionId;   // straight from the DB
+        state.companionTouched = false;   // fresh load — nothing changed yet
         state.spriteMode = data.sprite_mode || 'static';
         state.teamCycleCount = data.team_cycle_count || 3;
 
@@ -690,6 +769,7 @@
                 max_size: 6,
                 xp_share: '2',
                 xp_share_info: { id: '2', p: 6, n: 'Charizard', l: 52, s: 1 },
+                companion: '1',
                 team: [
                     { id: '1', p: 25, n: 'Pikachu', l: 18, cp: 820, types: ['Electric'] },
                     { id: '2', p: 6, n: 'Charizard', l: 52, s: 1, cp: 2410, types: ['Fire', 'Flying'] },

@@ -604,6 +604,7 @@ class ProfileData:
         return out
 
     def get_team_data(self):
+        """Team screen payload: roster, XP Share holder, and Active Companion."""
         members = self._team_member_stubs()
         for m in members:
             m["cp"] = self._calc_cp(m["id"])
@@ -620,10 +621,9 @@ class ProfileData:
             cycle_count = 3
             sprite_mode = "static"
 
-        # companion/companion_info expose the current main Pokémon as a ready
-        # read-seam for the deferred Active Companion picker (team.js does not
-        # render them yet — see handle_save_team). Kept so that UI can wire in
-        # without a Python change.
+        # companion/companion_info: the current main Pokémon (is_main=1 in the
+        # DB) — team.js renders this as the ⚔ badge and lets it be changed via
+        # handle_save_team's companion_id.
         db = services.db
         main_pkmn = db.get_main_pokemon() if db else None
         companion_id = main_pkmn.get("individual_id") if main_pkmn else None
@@ -751,14 +751,55 @@ class ProfileData:
             print(f"[Ankimon] profile: CP calc failed for {individual_id}: {e}")
             return 0
 
+    # team.js sends this in place of a real individual_id when the Active
+    # Companion selection was never touched this session (the ⚔ button was
+    # never clicked, and no slot holding it was removed/replaced) — every
+    # OTHER team save (reordering, swapping an unrelated slot, XP Share only)
+    # must go through this path too, so it can't be a real id and must be
+    # left completely alone here: it used to be treated the same as "no
+    # companion" and cleared whatever main Pokémon was already set on every
+    # single save that didn't touch the crown, which is the actual regression
+    # this sentinel exists to prevent.
+    #
+    # The literal is mirrored in team.js (``COMPANION_UNCHANGED``). The two
+    # are pinned together by test_team_save_companion.py, which reads team.js
+    # off disk and asserts this exact string appears in it — a rename on
+    # either side that isn't mirrored would otherwise silently make every
+    # ordinary save look "touched" again and resurrect the regression above.
+    _COMPANION_UNCHANGED = "__companion_unchanged__"
+
     def handle_save_team(self, team_ids, xp_share_id, companion_id):
         """Persist the chosen team + XP Share holder.
 
-        ``companion_id`` (Active Companion / main-Pokémon override) is a ready
-        write-seam, but NO shipped UI populates it yet — the Team screen's
-        companion picker is deferred (team.js sends ''), so the set_main_pokemon
-        branch below is inert until that UI lands. Do not describe Active
-        Companion as a working feature."""
+        ``companion_id`` is the Active Companion — whichever team member should
+        actually be the one battling (``is_main=1`` in the DB). team.js's ⚔
+        button on a team slot sets/clears it; ``_COMPANION_UNCHANGED`` means
+        this save never touched that selection at all and the existing
+        is_main row (however it got there — the crown, or an older pathway
+        like starter selection/PC box) must be left alone.
+
+        Anything else is a companion *change*, and a change never ends with
+        the game having no battler at all: a real, valid team-member id is a
+        set, and an explicit clear promotes the first member of the team being
+        saved. The three ways a change can't be honoured — an id that isn't in
+        the team being saved (bad input), a clear with an empty team (nobody to
+        promote), and an id whose captured_pokemon row is gone by the time
+        set_main_pokemon() runs (released, or a stale roster cache) — all fall
+        back to leaving the existing is_main row exactly where it is, and none
+        of them report a ``companion`` back. This method never drops it: zero
+        is_main=1 rows makes the next load fall through
+        ``update_main_pokemon()`` to ``MAIN_POKEMON_DEFAULT``, the level-5
+        Ditto named "Please Restart Anki", and a stale-but-real battler beats
+        that in every case.
+
+        Whenever the companion is actually set, the live ``main_pokemon``
+        object is reloaded from the DB and the reviewer HUD + Ankimon Window
+        repaint so the swap is visible immediately. The response carries a
+        ``companion`` key back to team.js in that case, because a clear can be
+        rewritten into a promotion here and the page would otherwise keep
+        showing no crown while the DB has one."""
+        companion_touched = companion_id != self._COMPANION_UNCHANGED
+
         seen = set()
         clean_ids = []
         for raw in team_ids or []:
@@ -772,7 +813,32 @@ class ProfileData:
 
         team_data = [{"individual_id": ind_id} for ind_id in clean_ids]
         xp_share_id = str(xp_share_id) if xp_share_id else None
-        companion_id = str(companion_id) if companion_id else None
+        companion_id = str(companion_id) if (companion_touched and companion_id) else None
+        # The Active Companion has to actually be a member of the team being
+        # saved — otherwise a slot swap in the same save could point
+        # set_main_pokemon at a Pokémon that just got dropped from the roster,
+        # leaving the battler out of sync with what the team screen shows.
+        # An id that fails this check is bad INPUT, not an instruction: drop
+        # the companion field from this save entirely (back to "unchanged")
+        # rather than letting a bridge race, a stale cached team.js or a
+        # third-party caller delete the player's battler.
+        if companion_id and companion_id not in clean_ids:
+            companion_id = None
+            companion_touched = False
+        # An explicit clear — the crown toggled off, or the companion's own
+        # slot removed/replaced in team.js — means "somebody else battles
+        # now", never "nobody does". Leaving zero is_main=1 rows makes the
+        # NEXT load fall through update_main_pokemon() to
+        # MAIN_POKEMON_DEFAULT: the level-5 Ditto literally named "Please
+        # Restart Anki". Promote the first member of the team being saved;
+        # if the save empties the team there is nobody to promote, so treat
+        # it as "unchanged" and leave the existing battler alone rather than
+        # leaving the player with none at all.
+        elif companion_touched and not companion_id:
+            if clean_ids:
+                companion_id = clean_ids[0]
+            else:
+                companion_touched = False
 
         try:
             # NOTE: no legacy "trainer.team" config write — the DB team table
@@ -780,10 +846,49 @@ class ProfileData:
             # uses; settings.py migrates/deletes the old config key on load.
             self.settings_obj.set("trainer.xp_share", xp_share_id)
             services.db.save_team(team_data)
-            if companion_id:
-                services.db.set_main_pokemon(companion_id)
+            # companion_touched now means exactly "this save has an id to
+            # set": the sentinel, a rejected id and an unpromotable clear have
+            # all been folded into "leave the existing is_main row alone".
+            if not companion_touched:
+                pass  # leave whatever main Pokémon is already set alone
+            elif not services.db.set_main_pokemon(companion_id):
+                # set_main_pokemon() returns False when the individual_id has
+                # no captured_pokemon row — the id was only checked against the
+                # team team.js just sent, so a release or a stale roster cache
+                # between page load and save lands here. Nothing was written:
+                # the old is_main row still stands, so this is the same
+                # "unchanged" outcome as a rejected id, and reporting a
+                # companion back would make team.js show a crown the DB never
+                # got.
+                companion_touched = False
+            else:
                 from ..functions.update_main_pokemon import update_main_pokemon
+
                 update_main_pokemon(services.main_pokemon)
+                # Repaint the reviewer HUD + the Ankimon Window popup so the
+                # switch is visible immediately, not just after the next
+                # battle turn (same seam cycle_team_pokemon() in reviewer_ui.py
+                # uses for its own companion swap).
+                try:
+                    if services.reviewer is not None:
+                        services.reviewer.refresh_hud()
+                except Exception:
+                    pass
+                try:
+                    # is_alive(), not a bare None-check: a closed-and-deleted
+                    # Ankimon Window is still a non-None sip wrapper, and
+                    # calling into it raises "wrapped C/C++ object deleted"
+                    # — which the except below would swallow, silently
+                    # skipping the repaint this branch exists to do.
+                    from ..utils import is_alive
+
+                    test_window = services.test_window
+                    if is_alive(test_window) and test_window.isVisible():
+                        test_window.main_pokemon = services.main_pokemon
+                        if test_window.current_view == "battle":
+                            test_window.force_display_battle()
+                except Exception:
+                    pass
         except Exception as e:
             return {"ok": False, "message": f"Failed to save team: {e}"}
 
@@ -794,7 +899,13 @@ class ProfileData:
             pass
 
         self._roster_cache = None
-        return {"ok": True, "message": "Team saved.", "count": len(team_data)}
+        result = {"ok": True, "message": "Team saved.", "count": len(team_data)}
+        if companion_touched:
+            # What the save actually left as the Active Companion — team.js
+            # applies this so a clear that was rewritten into a promotion
+            # shows its crown straight away instead of after a page reload.
+            result["companion"] = companion_id
+        return result
 
     # ------------------------------------------------------------------
     # Trainer sprite picker
