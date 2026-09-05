@@ -551,6 +551,20 @@ def test_tier_fallback_degrades_straight_to_normal(monkeypatch):
     assert "Legendary" not in queried  # no sideways cascade into other rare tiers
 
 
+def test_explicit_main_level_overrides_global_for_tier_gates():
+    # The bound global says level 50; an explicit main_level must win, all the
+    # way from get_tier through modify_percentages to the legacy gates.
+    ef.main_pokemon.level = 50
+    ef.settings_obj.get.return_value = 100  # daily_average
+    gated = ("Ultra", "Legendary", "Mega", "Gmax", "Mythical")
+
+    low = ef.modify_percentages(150, 100, 25, main_level=1)
+    assert all(low[t] == 0 for t in gated)
+    high = ef.modify_percentages(150, 100, 25, main_level=100)
+    assert all(high[t] > 0 for t in gated)
+    assert all(ef.get_tier(150, 25, main_level=1) not in gated for _ in range(50))
+
+
 def _run_victory_with_stored_row(stored_individual_id, main_individual_id):
     """Drive one no-level-up victory and report what the checkers were handed.
 
