@@ -674,6 +674,32 @@ class PokemonObject:
             "evasion": 0,
         }
 
+    def change_ability(self, new_ability: str) -> None:
+        """
+        Changes the Pokémon's ability and saves it to the database.
+        """
+        db = services.db
+        self.ability = new_ability
+
+        # Save to captured_pokemon in database
+        pokemon_data = db.get_pokemon(self.individual_id)
+        if pokemon_data:
+            pokemon_data["ability"] = new_ability
+            db.save_pokemon(pokemon_data)
+
+        # Ensure main_pokemon data in db is also updated if this is the main pokemon
+        main_pokemon = db.get_main_pokemon()
+        if main_pokemon and main_pokemon["individual_id"] == self.individual_id:
+            main_pokemon["ability"] = new_ability
+            db.save_main_pokemon(main_pokemon)
+
+        try:
+            from ..singletons import main_pkmn
+            if main_pkmn.individual_id == self.individual_id:
+                main_pkmn.ability = new_ability
+        except ImportError:
+            pass
+
     def give_held_item(self, held_item: str) -> None:
         """
         Assigns a held item to the Pokémon and updates the database.

@@ -423,6 +423,11 @@ class ItemWindow(QWidget):
             # Optional: Set alignment for better appearance
             info_item_button.setAlignment(Qt.AlignmentFlag.AlignTop)
 
+        elif item_name in GiveItemWindow.ABILITY_ITEMS:
+            use_item_button = QPushButton("Change Ability")
+            use_item_button.clicked.connect(
+                lambda: self._prompt_and_change_ability(item_name)
+            )
         elif item_name in self.evolution_items:
             use_item_button = QPushButton("Evolve Pokemon")
             use_item_button.clicked.connect(
@@ -502,6 +507,9 @@ class ItemWindow(QWidget):
             if name in self.evolution_items:
                 self._prompt_and_check_evo_item(name)
                 return {"ok": True, "message": ""}
+            if name in GiveItemWindow.ABILITY_ITEMS:
+                self._prompt_and_change_ability(name)
+                return {"ok": True, "message": ""}
             if (
                 name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
                 or name.endswith("-berry")
@@ -579,6 +587,13 @@ class ItemWindow(QWidget):
             return
         individual_id, _ = selected
         self._give_held_item_by_id(individual_id, item_name)
+
+    def _prompt_and_change_ability(self, item_name: str):
+        selected = self._select_pokemon("Use Ability Item")
+        if not selected:
+            return
+        individual_id, pokemon_id = selected
+        self.Change_Ability(individual_id, pokemon_id, item_name)
 
     def _prompt_and_check_evo_item(self, item_name: str):
         selected = self._select_pokemon("Use Evolution Item")
@@ -1008,3 +1023,71 @@ class ItemWindow(QWidget):
     def more_info_button_act(self, item_name: str):
         description = get_id_and_description_by_item_name(item_name)
         self.logger.log_and_showinfo("info", f"{description}")
+
+    def Change_Ability(self, individual_id: str, pokemon_id: int, item_name: str):
+        pokemon_obj = None
+        # Try to find the pokemon
+        if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
+            pokemon_obj = self.main_pokemon
+        else:
+            db_pokemon = services.db.get_pokemon(individual_id)
+            if db_pokemon:
+                pokemon_obj = PokemonObject(db_pokemon)
+
+        if not pokemon_obj:
+            services.ui.warn("Could not find the selected Pokémon.")
+            return
+
+        pokemon_name = search_pokedex_by_id(pokemon_obj.id)
+        possible_abilities = search_pokedex_by_id(pokemon_obj.id, "abilities")
+
+        if not possible_abilities:
+            services.ui.warn(f"{pokemon_name} does not have any abilities.")
+            return
+
+        numeric_abilities = {k: v for k, v in possible_abilities.items() if k.isdigit()}
+        hidden_ability = possible_abilities.get("H")
+
+        available_abilities = []
+        if item_name == "ability-patch":
+            if hidden_ability:
+                if pokemon_obj.ability != hidden_ability:
+                    available_abilities.append(hidden_ability)
+        elif item_name == "ability-capsule":
+            for k, v in numeric_abilities.items():
+                if v != pokemon_obj.ability:
+                    available_abilities.append(v)
+
+        if not available_abilities:
+            services.ui.info(f"It won't have any effect on {pokemon_obj.name}.")
+            return
+
+        def on_ability_chosen(ability_name):
+            if ability_name:
+                pokemon_obj.change_ability(ability_name)
+                services.db.update_item_quantity(item_name, -1)
+                services.ui.info(f"{pokemon_obj.name}'s ability changed to {ability_name}!")
+
+                # Close items window or just rebuild
+                if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
+                    self.main_pokemon.ability = ability_name
+
+                # Check if we should close the items window after use
+                settings_obj = Settings()
+                if not settings_obj.get("misc.keep_items_window_open"):
+                    self.close()
+
+        if len(available_abilities) == 1:
+            on_ability_chosen(available_abilities[0])
+        else:
+            # Let the user choose if there are multiple options (e.g. 2 normal abilities)
+            ability, ok = QInputDialog.getItem(
+                self,
+                "Choose Ability",
+                f"Select a new ability for {pokemon_obj.name}:",
+                available_abilities,
+                0,
+                False
+            )
+            if ok and ability:
+                on_ability_chosen(ability)

@@ -2850,6 +2850,8 @@ class GiveItemWindow(QDialog):
         "weakness-policy",
     }
 
+    ABILITY_ITEMS = {'ability-capsule', 'ability-patch'}
+
     def __init__(self, item_list: list[str], give_item_func: Callable, logger):
         super().__init__()
         self.setWindowTitle("Give an Item")
