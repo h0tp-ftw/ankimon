@@ -167,6 +167,32 @@ def _install_form_tolerant_pokedex():
     modify_move.pokedex = view
     damage_calculator.pokedex = view
 
+    from ..poke_engine.special_effects.abilities import before_move
+
+    # 2) Patch stancechange
+    original_stancechange = before_move.stancechange
+
+    def patched_stancechange(state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon):
+        # Allow Aegislash-Shield to also trigger stance change
+        from ..poke_engine import constants
+
+        orig_id = attacking_pokemon.id
+        if orig_id == 'aegislashshield':
+            attacking_pokemon.id = 'aegislash'
+
+        result = original_stancechange(state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon)
+
+        # The form change happens by the engine applying a MUTATOR_CHANGE_STATS block later.
+        # It DOES NOT change attacking_pokemon.id in-place. Because original_stancechange
+        # specifically checks for 'aegislash', it is safe and required to restore the original
+        # ID here so it isn't permanently overwritten in the state cache.
+        attacking_pokemon.id = orig_id
+
+        return result
+
+    before_move.stancechange = patched_stancechange
+
+
 
 # Never let a hardening patch break battle import; the raw engine still works for
 # every canonical Pokemon, which is the overwhelming majority. One try per patch --
