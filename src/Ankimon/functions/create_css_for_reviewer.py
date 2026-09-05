@@ -20,14 +20,14 @@ def create_css_for_reviewer(
     if enemy_hp_true_percent <= 25:
         enemy_hp_color = "rgba(255, 0, 0, 0.85)"  # Red
     elif enemy_hp_true_percent <= 50:
-        enemy_hp_color = "rgba(255, 255, 0, 0.85)"  # Yellow
+        enemy_hp_color = "rgba(255, 140, 0, 0.85)"  # Orange
     else:
         enemy_hp_color = "rgba(114, 230, 96, 0.85)"  # Green
 
     if main_hp_true_percent <= 25:
         main_hp_color = "rgba(255, 0, 0, 0.85)"  # Red
     elif main_hp_true_percent <= 50:
-        main_hp_color = "rgba(255, 255, 0, 0.85)"  # Yellow
+        main_hp_color = "rgba(255, 140, 0, 0.85)"  # Orange
     else:
         main_hp_color = "rgba(114, 230, 96, 0.85)"  # Green
 
