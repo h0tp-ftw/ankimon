@@ -430,7 +430,7 @@ def test_cancel_evolution_establishes_modality_before_foregrounding_move_dialog(
     events = _install_dialog_order_probe(evo_mod)
 
     with patch(
-        "Ankimon.pyobj.evolution_window._moves_gained_on_evolution",
+        "Ankimon.pyobj.evolution_window.get_levelup_move_for_pokemon",
         return_value=["quick-attack"],
     ):
         win = _make_evo_window(evo_mod)
@@ -438,3 +438,93 @@ def test_cancel_evolution_establishes_modality_before_foregrounding_move_dialog(
         win.cancel_evolution("some-uuid", "eevee")
 
     assert events == ["scheduled", "exec", "raise", "activate", "delete"]
+
+
+def test_moves_gained_on_evolution_unions_levelup_and_evolution_moves():
+    """Evolving grants this level's level-up moves plus the species' "9L0"
+    on-evolution moves, deduped and level-up first."""
+    evo_mod, _ = _load_evo_window()
+
+    p = "Ankimon.pyobj.evolution_window."
+    with (
+        patch(p + "get_levelup_move_for_pokemon", return_value=["tackle", "vinewhip"]),
+        patch(
+            p + "get_evolution_moves_for_pokemon",
+            return_value=["petalblizzard", "tackle"],
+        ),
+    ):
+        assert evo_mod._moves_gained_on_evolution("venusaur", 32) == [
+            "tackle",
+            "vinewhip",
+            "petalblizzard",
+        ]
+
+
+def test_evolve_pokemon_persists_evolution_only_move():
+    """A "9L0" move granted on evolution must land in the saved attack list."""
+    evo_mod, _ = _load_evo_window()
+    mock_db = MagicMock()
+    evo_mod.services.db = mock_db
+
+    handles = _apply_common_patches()
+    try:
+        handles["search"].side_effect = lambda name, key: (
+            ["Grass"] if key == "types" else {"hp": 80} if key == "baseStats" else {}
+        )
+        handles["moves"].return_value = ["petalblizzard"]
+        mock_db.get_pokemon.return_value = {
+            "id": 2,
+            "name": "Ivysaur",
+            "level": 32,
+            "attacks": ["tackle"],
+            "iv": {},
+            "ev": {},
+            "xp": 100,
+        }
+
+        win = _make_evo_window(evo_mod)
+        win.evolve_pokemon(
+            individual_id="some-uuid",
+            prevo_id=2,
+            prevo_name="ivysaur",
+            evo_id=3,
+            evo_name="venusaur",
+            main_pokemon=None,
+        )
+
+        handles["moves"].assert_called_once_with("venusaur", 32)
+        saved = mock_db.save_pokemon.call_args[0][0]
+        assert saved["attacks"] == ["tackle", "petalblizzard"]
+        assert saved["battle_status"] == "fighting"
+    finally:
+        patch.stopall()
+
+
+def test_cancel_evolution_grants_levelup_moves_but_not_evolution_moves():
+    """Declining keeps the Pokemon as its pre-evolution, so it may still learn
+    this level's ordinary move, but never the evolution-only "9L0" move."""
+    evo_mod, _ = _load_evo_window()
+    mock_db = MagicMock()
+    mock_db.get_pokemon.return_value = {
+        "id": 2,
+        "name": "Ivysaur",
+        "level": 32,
+        "attacks": ["tackle"],
+    }
+    evo_mod.services.db = mock_db
+
+    p = "Ankimon.pyobj.evolution_window."
+    with (
+        patch(p + "get_levelup_move_for_pokemon", return_value=["sleeppowder"]),
+        patch(
+            p + "get_evolution_moves_for_pokemon", return_value=["petalblizzard"]
+        ) as evo_moves,
+    ):
+        win = _make_evo_window(evo_mod)
+        win.main_pokemon = None
+        win.cancel_evolution("some-uuid", "ivysaur")
+
+    evo_moves.assert_not_called()
+    saved = mock_db.save_pokemon.call_args[0][0]
+    assert saved["attacks"] == ["tackle", "sleeppowder"]
+    assert saved["evolution_rejected"] is True

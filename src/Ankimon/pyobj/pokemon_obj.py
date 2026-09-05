@@ -619,7 +619,7 @@ class PokemonObject:
                     ["hp", "atk", "def", "spa", "spd", "spe"], engine_data["ivs"]
                 )
             },
-            battlestatus=engine_data.get("status", "fighting"),
+            battle_status=engine_data.get("status", "fighting"),
             moves=engine_data["moves"],
             stat_stages={
                 "atk": engine_data["stat_stages"]["attack"],

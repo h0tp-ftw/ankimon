@@ -635,7 +635,9 @@ class EvoWindow(QWidget):
             # Add logic to learn new moves
             attacks = pokemon_to_update.get("attacks", [])
             level = pokemon_to_update.get("level", 1)
-            new_attacks = _moves_gained_on_evolution(prevo_name.lower(), int(level))
+            # Level-up moves only: the Pokemon stays as prevo_name, so the
+            # evolution-only ("9L0") moves must not be granted here.
+            new_attacks = get_levelup_move_for_pokemon(prevo_name.lower(), int(level))
 
             for new_attack in new_attacks:
                 if new_attack not in attacks:
