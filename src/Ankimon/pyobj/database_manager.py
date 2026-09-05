@@ -1951,7 +1951,10 @@ class AnkimonDB:
     def set_config_value(self, key: str, value: Any):
         """Sets a config key-value pair."""
         # Store as JSON string to preserve type information
-        str_value = json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
+        if isinstance(value, bool):
+            str_value = "true" if value else "false"
+        else:
+            str_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
         
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -1970,8 +1973,14 @@ class AnkimonDB:
             val = row["value"]
             # Try to parse as JSON, fallback to string
             try:
-                return json.loads(val)
+                parsed = json.loads(val)
+                return parsed
             except:
+                if isinstance(val, str):
+                    if val.lower() == 'true':
+                        return True
+                    elif val.lower() == 'false':
+                        return False
                 return val
         return default
 
@@ -1985,15 +1994,26 @@ class AnkimonDB:
             try:
                 result[key] = json.loads(val)
             except:
-                result[key] = val
+                if isinstance(val, str):
+                    if val.lower() == 'true':
+                        result[key] = True
+                    elif val.lower() == 'false':
+                        result[key] = False
+                    else:
+                        result[key] = val
+                else:
+                    result[key] = val
         return result
 
     def save_all_config(self, config_dict: Dict[str, Any]):
-        """Bulk saves a config dictionary to the database."""
+        """Saves all config settings from a dictionary."""
         conn = self._get_connection()
         cursor = conn.cursor()
         for key, value in config_dict.items():
-            str_value = json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
+            if isinstance(value, bool):
+                str_value = "true" if value else "false"
+            else:
+                str_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
             cursor.execute(
                 "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
                 (key, str_value)
@@ -2005,7 +2025,10 @@ class AnkimonDB:
         """Upsert a SINGLE config key (incremental). Avoids rewriting all ~60 config
         rows on every Settings.set — the battle loop awards cash per review, so the
         old save_all_config path rewrote the whole table dozens of times per battle."""
-        str_value = json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
+        if isinstance(value, bool):
+            str_value = "true" if value else "false"
+        else:
+            str_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
         conn = self._get_connection()
         conn.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
