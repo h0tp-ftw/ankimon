@@ -86,6 +86,12 @@ def _load_update_dialog():
             # to import at collection time.
             "published_at_for_tag",
             "stamp_addon_mod",
+            # Git-checkout helpers. The default stub returns None, so
+            # is_git_clone() is falsy here and these tests keep exercising the
+            # non-Git download path.
+            "is_git_clone",
+            "get_git_checkout_info",
+            "git_checkout_source",
         ):
             setattr(update_manager, name, lambda *args, **kwargs: None)
         sys.modules["Ankimon.pyobj.update_manager"] = update_manager
@@ -231,6 +237,11 @@ def _make_dialog():
         _close_finalized=False,
         _sprites_busy_token=None,
         sprites_thread=None,
+        # Non-Git install: _run_update branches on _git_clone to choose between
+        # the download and the git-checkout path, and _git_info gates the
+        # fast-forward button. These fakes exercise the download path.
+        _git_clone=False,
+        _git_info={},
     )
     dialog._action_buttons = types.MethodType(
         update_dialog.UpdateDialog._action_buttons, dialog

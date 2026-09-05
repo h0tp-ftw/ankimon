@@ -102,20 +102,14 @@ def test_is_git_clone_true_when_addon_dir_is_repo(tmp_path, monkeypatch):
     assert um.is_git_clone() is True
 
 
-def test_is_git_clone_false_in_dev_mode(tmp_path, monkeypatch):
-    from unittest.mock import patch
+def test_is_git_clone_stays_true_in_dev_mode(tmp_path, monkeypatch):
     addon = tmp_path / "ankimon"
     addon.mkdir()
     (addon / ".git").mkdir()
     monkeypatch.setattr(um, "addon_dir", addon)
 
-    # When not in dev mode, it returns True because it has a .git folder
-    with patch("Ankimon.utils.is_dev_mode", return_value=False):
-        assert um.is_git_clone() is True
-
-    # When in dev mode, it returns False even with a .git folder
-    with patch("Ankimon.utils.is_dev_mode", return_value=True):
-        assert um.is_git_clone() is False
+    # Developer naming must not disable the checkout safety guard.
+    assert um.is_git_clone() is True
 
 
 def test_is_git_clone_false_for_plain_install(tmp_path, monkeypatch):
@@ -193,6 +187,113 @@ def test_git_pull_ff_failure_is_safe(tmp_path, monkeypatch):
     ok, msg = um.git_pull_ff_only()
     assert ok is False
     assert "fast-forward" in msg.lower()
+
+
+def test_git_pull_refuses_dirty_tree(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(
+        um.subprocess,
+        "run",
+        _fake_git({"status": _FakeProc(0, " M src/Ankimon/example.py\n")}),
+    )
+
+    ok, msg = um.git_pull_ff_only()
+
+    assert ok is False
+    assert "local changes" in msg.lower()
+
+
+def test_git_pull_refuses_detached_checkout(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(
+        um.subprocess,
+        "run",
+        _fake_git({"rev-parse": _FakeProc(0, "HEAD\n")}),
+    )
+
+    ok, msg = um.git_pull_ff_only()
+
+    assert ok is False
+    assert "detached" in msg.lower()
+
+
+# --- git_checkout_source -----------------------------------------------------
+
+
+def test_git_checkout_source_refuses_dirty_tree(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(
+        um.subprocess,
+        "run",
+        _fake_git({"status": _FakeProc(0, " M src/Ankimon/example.py\n")}),
+    )
+
+    ok, msg = um.git_checkout_source("pr", "123")
+
+    assert ok is False
+    assert "local changes" in msg.lower()
+
+
+def test_git_checkout_source_fetches_pr_detached(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "status":
+            return _FakeProc(0, "")
+        if cmd[3] == "rev-parse" and "--abbrev-ref" in cmd:
+            return _FakeProc(0, "main\n")
+        if cmd[3] == "rev-parse" and "--short" in cmd:
+            return _FakeProc(0, "abc1234\n")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("pr", "123")
+
+    assert ok is True
+    assert "PR #123" in msg
+    assert [
+        "fetch",
+        "--force",
+        um.GIT_REMOTE_URL,
+        "refs/pull/123/head",
+    ] in calls
+    assert ["checkout", "--detach", "FETCH_HEAD"] in calls
+    assert ["submodule", "update", "--init", "--recursive"] in calls
+
+
+def test_git_checkout_source_reattaches_existing_branch(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "status":
+            return _FakeProc(0, "")
+        if cmd[3] == "rev-parse" and "--abbrev-ref" in cmd:
+            return _FakeProc(0, "HEAD\n")
+        if cmd[3] == "rev-parse" and "--short" in cmd:
+            return _FakeProc(0, "def5678\n")
+        if cmd[3] == "show-ref":
+            return _FakeProc(0, "")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("branch", "main")
+
+    assert ok is True
+    assert "branch 'main'" in msg
+    assert ["checkout", "main"] in calls
+    assert ["merge", "--ff-only", "FETCH_HEAD"] in calls
+    assert ["checkout", "--detach", "FETCH_HEAD"] not in calls
 
 
 # --- pre-v2.0 version filtering ----------------------------------------------

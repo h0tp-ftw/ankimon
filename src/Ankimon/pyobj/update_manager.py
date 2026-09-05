@@ -19,6 +19,7 @@ from ..resources import addon_dir
 REPO_OWNER = "h0tp-ftw"
 REPO_NAME = "ankimon"
 GITHUB_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
+GIT_REMOTE_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 DOWNLOAD_TIMEOUT = 30
 USER_AGENT = "Ankimon-Updater (https://github.com/h0tp-ftw/ankimon)"
 DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
@@ -82,21 +83,43 @@ def _git_repo_root() -> Optional[Path]:
 
 
 def is_git_clone() -> bool:
-    """True if Ankimon runs from a git working tree (a dev clone).
+    """True if Ankimon runs from a git working tree.
 
-    The in-place updater would overwrite every file under ``addon_dir`` with the
-    downloaded copy, trashing the working tree and any uncommitted/untracked
-    changes (``.git`` is above ``addon_dir`` so it survives, but the checkout is
-    clobbered). So the destructive updater is hidden for clones; a safe
-    ``git pull --ff-only`` is offered instead (see ``git_pull_ff_only``).
+    Git detection is independent of developer mode: the archive installer must
+    never overwrite a checkout. The updater dialog stays available for clones,
+    but routes selections through safe Git operations instead.
     """
-    try:
-        from ..utils import is_dev_mode
-        if is_dev_mode():
-            return False
-    except Exception:
-        pass
     return _git_repo_root() is not None
+
+
+def get_git_checkout_info() -> dict:
+    """Return lightweight display information for the updater's Git mode."""
+    root = _git_repo_root()
+    info = {"is_git": root is not None, "branch": "", "sha": "", "dirty": False}
+    if root is None or shutil.which("git") is None:
+        return info
+
+    def _git(*args):
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    try:
+        branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+        sha = _git("rev-parse", "--short", "HEAD")
+        status = _git("status", "--porcelain")
+        if branch.returncode == 0:
+            info["branch"] = branch.stdout.strip()
+        if sha.returncode == 0:
+            info["sha"] = sha.stdout.strip()
+        if status.returncode == 0:
+            info["dirty"] = bool(status.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return info
 
 
 def git_pull_ff_only(status_cb=None) -> tuple[bool, str]:
@@ -132,9 +155,23 @@ def git_pull_ff_only(status_cb=None) -> tuple[bool, str]:
         )
 
     try:
+        status = _git("status", "--porcelain", timeout=30)
+        if status.returncode != 0:
+            return False, (status.stderr or status.stdout or "git status failed").strip()
+        if status.stdout.strip():
+            return False, (
+                "Your Ankimon checkout has local changes. Commit, stash, or discard "
+                "them before updating from the updater."
+            )
+
         branch = (
             _git("rev-parse", "--abbrev-ref", "HEAD", timeout=30).stdout or ""
         ).strip() or "HEAD"
+        if branch == "HEAD":
+            return False, (
+                "This checkout is detached. Select a branch, release, tag, or PR in "
+                "the updater instead of pulling the current checkout."
+            )
         log(f"Fast-forwarding '{branch}' (git pull --ff-only)...")
         pull = _git("pull", "--ff-only")
         if pull.returncode != 0:
@@ -158,6 +195,127 @@ def git_pull_ff_only(status_cb=None) -> tuple[bool, str]:
         return False, "git timed out. Update manually with 'git pull'."
     except Exception as e:
         return False, f"git update failed: {e}. Update manually with 'git pull'."
+
+
+def git_checkout_source(
+    source_type: str,
+    source_name: Optional[str] = None,
+    status_cb=None,
+) -> tuple[bool, str]:
+    """Safely move a Git checkout to a branch, PR, tag, or release.
+
+    Existing local branches and commits are never reset. An existing local branch
+    is reattached and fast-forwarded from the official repository; PRs, tags,
+    releases, and branches without a local counterpart are checked out detached.
+    A dirty working tree is refused before any checkout, and submodules are synced.
+    """
+
+    def log(msg):
+        if status_cb:
+            status_cb(msg)
+
+    root = _git_repo_root()
+    if root is None:
+        return False, "Ankimon is not running from a git checkout."
+    if shutil.which("git") is None:
+        return False, "git wasn't found on Anki's PATH."
+
+    def _git(*args, timeout=180):
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+    try:
+        if source_type == "current":
+            return git_pull_ff_only(status_cb=status_cb)
+
+        status = _git("status", "--porcelain", timeout=30)
+        if status.returncode != 0:
+            return False, (status.stderr or status.stdout or "git status failed").strip()
+        if status.stdout.strip():
+            return False, (
+                "Your Ankimon checkout has local changes. Commit, stash, or discard "
+                "them before switching versions in the updater."
+            )
+
+        if not source_name:
+            return False, "No Git target was selected."
+
+        if source_type == "pr":
+            remote_ref = f"refs/pull/{source_name}/head"
+            display = f"PR #{source_name}"
+        elif source_type == "branch":
+            remote_ref = f"refs/heads/{source_name}"
+            display = f"branch '{source_name}'"
+        elif source_type in {"tag", "release"}:
+            remote_ref = f"refs/tags/{source_name}"
+            display = f"{source_type} '{source_name}'"
+        else:
+            return False, f"Unsupported Git source type: {source_type}"
+
+        log(f"Fetching {display} from the Ankimon repository...")
+        fetch = _git("fetch", "--force", GIT_REMOTE_URL, remote_ref)
+        if fetch.returncode != 0:
+            return False, (
+                f"Could not fetch {display}.\n\n"
+                + (fetch.stderr or fetch.stdout or "Unknown git fetch error").strip()
+            )
+
+        checkout_ref = "FETCH_HEAD"
+        if source_type == "branch":
+            local_branch = _git(
+                "show-ref", "--verify", "--quiet", f"refs/heads/{source_name}",
+                timeout=30,
+            )
+            if local_branch.returncode == 0:
+                checkout = _git("checkout", source_name)
+                if checkout.returncode != 0:
+                    return False, (
+                        f"Could not check out local branch '{source_name}'.\n\n"
+                        + (checkout.stderr or checkout.stdout or "Unknown git checkout error").strip()
+                    )
+                log(f"Fast-forwarding local branch '{source_name}'...")
+                merge = _git("merge", "--ff-only", checkout_ref)
+                if merge.returncode != 0:
+                    return False, (
+                        f"Local branch '{source_name}' could not be fast-forwarded. "
+                        "Your commits were left unchanged.\n\n"
+                        + (merge.stderr or merge.stdout or "Unknown git merge error").strip()
+                    )
+                checkout_ref = None
+
+        if checkout_ref is not None:
+            log(f"Checking out {display}...")
+            checkout = _git("checkout", "--detach", checkout_ref)
+            if checkout.returncode != 0:
+                return False, (
+                    f"Could not check out {display}.\n\n"
+                    + (checkout.stderr or checkout.stdout or "Unknown git checkout error").strip()
+                )
+
+        operation = "Updated" if checkout_ref is None else "Checked out"
+        log("Updating submodules...")
+        sub = _git("submodule", "update", "--init", "--recursive")
+        if sub.returncode != 0:
+            return True, (
+                f"{operation} {display}, but the submodule update failed. Run "
+                "'git submodule update --init --recursive' manually.\n\n"
+                + (sub.stderr or sub.stdout or "").strip()
+            )
+
+        sha = _git("rev-parse", "--short", "HEAD", timeout=30)
+        sha_text = sha.stdout.strip() if sha.returncode == 0 else "the selected commit"
+        return True, (
+            f"{operation} {display} at {sha_text}. Local commits were not rewritten. "
+            "Please restart Anki."
+        )
+    except subprocess.TimeoutExpired:
+        return False, "git timed out while switching the Ankimon checkout."
+    except Exception as e:
+        return False, f"git checkout failed: {e}"
 
 
 def _parse_version(name: str) -> Optional[tuple]:

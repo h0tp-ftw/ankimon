@@ -28,6 +28,9 @@ from .update_manager import (
     fetch_branches,
     fetch_open_prs,
     apply_update,
+    is_git_clone,
+    get_git_checkout_info,
+    git_checkout_source,
     _download_zip_to_temp,
     _download_branch_zip,
     _download_pr_zip,
@@ -68,6 +71,8 @@ class UpdateDialog(QDialog):
         self._close_finalized = False
         self._sprites_busy_token = None
         self.sprites_thread = None
+        self._git_clone = is_git_clone()
+        self._git_info = get_git_checkout_info() if self._git_clone else {}
 
         self._apply_theme()
 
@@ -82,6 +87,8 @@ class UpdateDialog(QDialog):
         body.setContentsMargins(20, 16, 20, 16)
 
         body.addLayout(self._build_channel_row())
+        if self._git_clone:
+            body.addWidget(self._build_git_notice())
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_brrr_tab(), f"  Branch: {self.active_branch}  ")
@@ -93,6 +100,8 @@ class UpdateDialog(QDialog):
 
         if select_tab == "sprites":
             self.tabs.setCurrentIndex(3)
+        elif self._git_clone:
+            self.tabs.setCurrentIndex(2)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -110,6 +119,69 @@ class UpdateDialog(QDialog):
 
         layout.addLayout(body)
         self._load_data()
+
+    def _build_git_notice(self):
+        c = self._colors
+        info = self._git_info
+        branch = info.get("branch") or "unknown"
+        sha = info.get("sha") or "unknown"
+        detached = branch == "HEAD"
+        display_branch = "detached checkout" if detached else branch
+        state = "local changes" if info.get("dirty") else "clean"
+        state_color = c["warning"] if info.get("dirty") else c["success"]
+
+        group = QGroupBox("Git Workspace Mode")
+        group.setStyleSheet(f"""
+            QGroupBox {{
+                background-color: {c['header_bg']};
+                border: 2px solid {c['accent']};
+                border-radius: 10px;
+                margin-top: 10px;
+                padding: 18px 12px 12px 12px;
+            }}
+            QGroupBox::title {{
+                color: {c['accent']};
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 6px;
+                font-weight: bold;
+            }}
+        """)
+        row = QHBoxLayout(group)
+
+        note = QLabel(
+            f"<b>{display_branch}</b> · <code>{sha}</code> · "
+            f"<span style='color:{state_color}'><b>{state}</b></span><br>"
+            "Use the same Releases and Developer tabs below. Git fetches the "
+            "selected source and checks it out without resetting local branches."
+        )
+        note.setWordWrap(True)
+        note.setStyleSheet(f"font-size: 11px; color: {c['text']};")
+        row.addWidget(note, 1)
+
+        self.git_pull_btn = QPushButton("Fast-forward Current Branch")
+        # Route through _set_action_enabled so _action_button_states records the
+        # intended state: _end_busy restores from that map, and a plain
+        # setEnabled() would let the button come back enabled after an update
+        # even on a detached or dirty checkout.
+        self._set_action_enabled(
+            self.git_pull_btn, not detached and not info.get("dirty")
+        )
+        self.git_pull_btn.setToolTip(
+            "Unavailable while detached or while the checkout has local changes."
+            if not self.git_pull_btn.isEnabled()
+            else "Run git pull --ff-only on the current branch."
+        )
+        self.git_pull_btn.clicked.connect(
+            lambda: self._run_update(
+                None,
+                "current Git branch",
+                source_type="current",
+                source_name="current",
+            )
+        )
+        row.addWidget(self.git_pull_btn)
+        return group
 
     def _build_channel_row(self):
         """A labeled dropdown to pick the auto-update channel (dialog-only UI).
@@ -143,6 +215,9 @@ class UpdateDialog(QDialog):
 
     @property
     def active_branch(self) -> str:
+        if self._git_clone:
+            branch = self._git_info.get("branch") or "main"
+            return "detached" if branch == "HEAD" else branch
         state = read_update_state()
         if state and state.get("source_type") == "branch":
             return state.get("source_name") or "main"
@@ -617,12 +692,17 @@ class UpdateDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        warning = QLabel(
-            "⚠ Do not use this if you installed Ankimon by cloning the git "
-            "repository. The updater overwrites files in place and would clobber "
-            "your checkout — update with 'git pull' instead. (Your Pokémon "
-            "data and sprites are always preserved.)"
+        warning_text = (
+            "Git workspace mode is active. Sources selected here are fetched from "
+            "the official Ankimon repository and checked out with Git; local "
+            "changes must be committed, stashed, or discarded first."
+            if self._git_clone
+            else
+            "⚠ Pull requests and development branches may contain unreviewed code. "
+            "Only install sources you trust. Your Pokémon data and sprites are "
+            "preserved during archive-based updates."
         )
+        warning = QLabel(warning_text)
         warning.setStyleSheet(
             f"color: {c['warning']}; font-size: 11px; font-weight: bold;"
         )
@@ -1122,14 +1202,19 @@ class UpdateDialog(QDialog):
     # --- Actions ---
 
     def _action_buttons(self):
-        return (
+        buttons = [
             self.brrr_update_btn,
             self.update_latest_btn,
             self.release_btn,
             self.dev_install_btn,
             self.sprites_check_btn,
             self.sprites_update_btn,
-        )
+        ]
+        # Only built in Git-checkout mode, so it must not be assumed present:
+        # _begin_busy() runs on every install, Git or not.
+        if hasattr(self, "git_pull_btn"):
+            buttons.append(self.git_pull_btn)
+        return tuple(buttons)
 
     def _set_action_enabled(self, button, enabled: bool):
         self._action_button_states[button] = enabled
@@ -1174,7 +1259,17 @@ class UpdateDialog(QDialog):
         published_at: str = None,
         extra_warning: str = None,
     ):
-        prompt = f"Update Ankimon to {label}?\n\nYour Pokemon data, settings, and sprites will be preserved."
+        if self._git_clone:
+            prompt = (
+                f"Switch this Git checkout to {label}?\n\n"
+                "Your local branches and commits will not be reset. The checkout "
+                "must be clean, and Anki must be restarted afterward."
+            )
+        else:
+            prompt = (
+                f"Update Ankimon to {label}?\n\n"
+                "Your Pokemon data, settings, and sprites will be preserved."
+            )
         if extra_warning:
             prompt = f"{extra_warning}\n\n{prompt}"
         confirm = QMessageBox.question(
@@ -1187,10 +1282,30 @@ class UpdateDialog(QDialog):
             return
 
         busy_token = self._begin_busy()
-        self.status_label.setText(f"Downloading {label}...")
+        self.status_label.setText(
+            f"Preparing Git checkout for {label}..."
+            if self._git_clone
+            else f"Downloading {label}..."
+        )
 
         def bg(_col):
             nonlocal commit_sha
+            messages = []
+
+            def status_update(m):
+                messages.append(m)
+                mw.taskman.run_on_main(lambda: self.status_label.setText(m))
+
+            if self._git_clone:
+                success, msg = git_checkout_source(
+                    source_type or "current",
+                    source_name,
+                    status_cb=status_update,
+                )
+                # 4-tuple to match on_done's unpack; a Git checkout stamps no
+                # pending addon mod, so pending_mod is None.
+                return success, msg, messages, None
+
             if source_type == "branch" and not commit_sha:
                 commit_sha = fetch_branch_sha(source_name)
 
@@ -1202,11 +1317,6 @@ class UpdateDialog(QDialog):
                     [],
                     None,
                 )
-            messages = []
-
-            def status_update(m):
-                messages.append(m)
-                mw.taskman.run_on_main(lambda: self.status_label.setText(m))
 
             success, msg, pending_mod = apply_update(
                 zip_path,
