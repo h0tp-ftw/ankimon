@@ -17,7 +17,7 @@ from datetime import datetime
 from aqt import QDialog, QVBoxLayout, QWebEngineView, QWebEnginePage, mw
 from aqt.qt import Qt, QUrl, QFrame, QWebEngineProfile
 from PyQt6.QtCore import QObject, pyqtSlot, QTimer, QByteArray
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWidgets import QStackedWidget
 import csv
@@ -32,7 +32,7 @@ except ImportError:  # dev helper not landed yet (thread-reload-and-misc-utils u
         return False
 
 
-from ..resources import items_path, csv_file_items_cost, csv_file_descriptions
+from ..resources import items_path, csv_file_items_cost, csv_file_descriptions, icon_path
 
 
 class SafeWebEnginePage(QWebEnginePage):
@@ -1074,6 +1074,7 @@ class AnkimonItemsWeb(QDialog):
         self._live_refresh_pending = False
         self.current_screen = None
         self.setWindowTitle("Ankimon")
+        self.setWindowIcon(QIcon(str(icon_path)))
 
         # Paint the shell dark from the first frame. The web views set their
         # own page background, but the surrounding QDialog/QFrame/QStackedWidget
