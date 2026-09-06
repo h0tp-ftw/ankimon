@@ -2,7 +2,7 @@ import pytest
 import sys
 import importlib.util
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 # Mock Anki dependencies
 sys.modules["aqt"] = MagicMock()
@@ -351,8 +351,13 @@ def test_monthly_challenge_rollback_on_add_failure(show_info_mock, dialog_mock, 
     # Should have attempted to add Pokémon
     add_pokemon_mock.assert_called_once()
     
-    # Should roll back monthly_challenge to 0 on failure
-    mock_db.set_user_data.assert_any_call("monthly_challenge", 0)
+    # Verify the rollback sequence: first set to 1 (accepted), then rollback to 0 on failure
+    # The call order matters - cannot use assert_any_call because it can't distinguish the two writes
+    monthly_challenge_calls = [
+        call("monthly_challenge", 1),  # Set to accepted
+        call("monthly_challenge", 0)   # Rollback on failure
+    ]
+    mock_db.set_user_data.assert_has_calls(monthly_challenge_calls)
     mock_db.set_user_data.assert_any_call("monthly_challenge_id", "test-id")
     
     # Should show the challenge dialog (user accepted)
