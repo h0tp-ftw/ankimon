@@ -512,7 +512,7 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
     pokemon_level = challenge_pokemon.get("level", 1) if challenge_pokemon else 1
     
     message_text = (
-        f"Congrats, you've successfully received <b>{pokemon_name}</b> <b>Lvl. {pokemon_level}</b>!<br><br>"
+        f"Congrats, you've successfully received <b>{escape(str(pokemon_name))}</b> <b>Lvl. {escape(str(pokemon_level))}</b>!<br><br>"
         f"Tip: Check your progress at <b>Ankimon → Profile → Monthly Challenge</b> to see your dedication in action!"
     )
     
