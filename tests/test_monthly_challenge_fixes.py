@@ -237,10 +237,12 @@ def test_monthly_challenge_rejected_status(show_info_mock, dialog_mock, add_poke
 
     mock_db.get_user_data.return_value = True
     
-    # Set monthly_status to 2 (rejected)
+    # Set monthly_status to 2 (rejected) and monthly_challenge_id to current ID
     def get_user_data_side_effect(key, default=None):
         if key == "monthly_challenge":
             return 2
+        if key == "monthly_challenge_id":
+            return "test-id"  # Match current ID to prevent reset
         return True
     
     mock_db.get_user_data.side_effect = get_user_data_side_effect
