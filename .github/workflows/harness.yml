@@ -34,7 +34,6 @@ jobs:
         run: |
           python3 harness/scenarios/economy.py
           python3 harness/scenarios/longrun.py 3000
-          python3 harness/scenarios/sync_fuzz.py 100
 
   tier2:
     name: Tier 2 — real add-on, offscreen Qt

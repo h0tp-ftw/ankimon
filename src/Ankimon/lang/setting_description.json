@@ -67,7 +67,6 @@
     "misc.language": "Select language ID for Pokémon names and descriptions. [1: Japanese (Hir & Kata), 2: Japanese (Roomaji), 3: Korean, 4: Chinese (Traditional), 5: French, 6: German, 7: Spanish, 8: Italian, 9: English, 10: Czech, 11: Japanese, 12: Chinese (Simplified), 13: Portuguese (Brazil), 14: Spanish (Latin America)]",
     "misc.ssh": "Enable SSH if encountering connectivity issues (like Eduroam restrictions).",
     "misc.leaderboard": "Enable synchronization with Ankimon leaderboard. To set up, enter your Username and API Key below.",
-    "misc.ankiweb_sync": "Sync your Ankimon SAVE DATA (Pokémon, items, trainer progress) across your own devices that share one AnkiWeb account, by riding Anki's media sync. When ON, your local save is backed up automatically and integrity-checked before any incoming data is applied.\nThis is SEPARATE from Mobile Reviews: reviews done on AnkiMobile/AnkiDroid become battles regardless of this setting.\nTips: don't use 'Delete Unused' when checking media, and avoid playing on two devices between syncs (the most recent sync wins).",
     "misc.YouShallNotPass_Ankimon_News": "If enabled, you will not receive news pop-ups when Ankimon starts (like changelogs and updates).",
     "misc.discord_rich_presence": "Enable Discord Rich Presence for Ankimon. Shows in Discord as 'Playing Ankimon'.",
     "misc.discord_rich_presence_text": "Set to 1 for Ankimon Quotes or set to 2 for showing what Pokémon you are battle against or with",

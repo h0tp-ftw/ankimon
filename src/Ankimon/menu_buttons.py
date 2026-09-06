@@ -25,6 +25,7 @@ from .pokedex.pokedex_obj import Pokedex
 from .pyobj.achievement_window import AchievementWindow
 from .pyobj.ankimon_tracker_window import AnkimonTrackerWindow
 from .pyobj.backup_manager import BackupManager
+from .pyobj.save_transfer import export_save, import_save
 from .gui_classes.backup_manager_dialog import BackupManagerDialog
 from .gui_entities import (
     License,
@@ -218,6 +219,21 @@ def create_menu_actions(
     backup_manager_action.setMenuRole(QAction.MenuRole.NoRole)
     backup_manager_action.triggered.connect(lambda: BackupManagerDialog(backup_manager, mw).exec())
     game_menu.addAction(backup_manager_action)
+
+    # Manual save transfer. This is the supported way to move a save between
+    # computers now that the automatic AnkiWeb file-sync is gone; before this
+    # there was no way to do it in either direction (the Backup Manager only
+    # ever wrote to a fixed path it chose itself). Kept next to Backup Manager
+    # rather than split across menus — they are the same kind of operation.
+    export_save_action = QAction("Export Save File…", mw)
+    export_save_action.setMenuRole(QAction.MenuRole.NoRole)
+    export_save_action.triggered.connect(lambda: export_save(mw))
+    game_menu.addAction(export_save_action)
+
+    import_save_action = QAction("Import Save File…", mw)
+    import_save_action.setMenuRole(QAction.MenuRole.NoRole)
+    import_save_action.triggered.connect(lambda: import_save(mw))
+    game_menu.addAction(import_save_action)
 
     # Effectiveness chart
     eff_chart_action = QAction(mw.translator.translate("eff_chart_button"), mw)
