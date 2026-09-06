@@ -133,8 +133,15 @@ def logger():
 @pytest.fixture
 def live_db(tmp_path, monkeypatch):
     """Point the module's notion of the ACTIVE save at a real file."""
+    from Ankimon.services import services
+
     active = _make_save(tmp_path / "ankimon.db", pokemon=3, badges=1, history=2, cash=500)
     monkeypatch.setattr(st, "_active_db_path", lambda: active)
+    # Imports rebase to this collection's current review boundary, including
+    # an empty collection (SQLite's MAX returns None).
+    monkeypatch.setattr(services, "col", types.SimpleNamespace(
+        db=types.SimpleNamespace(scalar=lambda sql: None),
+    ))
     return active
 
 
@@ -623,13 +630,11 @@ def test_rescue_is_deferred_off_the_profile_open_stack(media, live_db, logger, m
     assert st.get_db_stats(live_db)["pokemon"] == 42
 
 
-def test_rescue_reverifies_the_media_file_at_the_moment_of_the_write(
+def test_rescue_keeps_the_verified_snapshot_when_the_media_file_changes(
     media, live_db, logger, monkeypatch
 ):
-    """The scan verified the candidate on a worker thread; the user then read a
-    dialog. In that window Anki's media sync can replace a bare or fixed-name
-    media file underneath the offer, so what is copied over the live save has to
-    be checked again right before the copy — not only when it was chosen."""
+    """A download after the offer cannot change the private verified snapshot
+    the user approved, even if preserving the bare media file failed."""
     bare = _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: True)
     monkeypatch.setattr(st, "showInfo", MagicMock())
@@ -645,8 +650,6 @@ def test_rescue_reverifies_the_media_file_at_the_moment_of_the_write(
         st.mw.progress, "single_shot",
         lambda ms, fn, requires_collection=True: scheduled.append(fn),
     )
-    before = Path(live_db).read_bytes()
-
     st.run_media_migration(MagicMock(), logger)
     assert len(scheduled) == 1
 
@@ -659,9 +662,11 @@ def test_rescue_reverifies_the_media_file_at_the_moment_of_the_write(
 
     scheduled[0]()
 
-    assert Path(live_db).read_bytes() == before
-    assert calls == []                       # no backup, no replace
-    assert warn.called
+    assert st.get_db_stats(live_db)["pokemon"] == 42
+    assert [c[0] for c in calls] == ["backup", "replace"]
+    assert Path(calls[1][1]) != bare
+    assert not Path(calls[1][1]).exists()  # snapshot was released
+    warn.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -730,7 +735,7 @@ def test_the_notice_never_breaks_the_migration(media, live_db, logger, monkeypat
             raise RuntimeError("db exploded")
 
     registry = types.ModuleType("Ankimon.services")
-    registry.services = types.SimpleNamespace(db=_Boom())
+    registry.services = types.SimpleNamespace(db=_Boom(), col=None)
     monkeypatch.setitem(sys.modules, "Ankimon.services", registry)
     marked = MagicMock()
     monkeypatch.setattr(st, "_mark_migration_done", marked)

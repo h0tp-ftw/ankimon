@@ -333,7 +333,7 @@ def _active_db_path() -> Optional[Path]:
     return fallback if fallback.is_file() else None
 
 
-def _sqlite_backup(source: Path, dest: Path) -> None:
+def _sqlite_backup(source: Path, dest: Path, timeout: float = 30.0) -> None:
     """Copy ``source`` to ``dest`` via SQLite's online-backup API.
 
     This is the reason the export is trustworthy: ``Connection.backup`` takes a
@@ -344,16 +344,58 @@ def _sqlite_backup(source: Path, dest: Path) -> None:
     constructed with ``wal=False``) and silently returned busy when another
     connection held a snapshot.
     """
-    src_conn = sqlite3.connect(str(source), timeout=30)
+    # Imports and migration candidates are external files. A read-only source
+    # must neither create a missing file nor recover a hot journal in place.
+    uri = Path(source).resolve().as_uri() + "?mode=ro"
+    src_conn = sqlite3.connect(uri, uri=True, timeout=timeout)
     try:
-        src_conn.execute("PRAGMA busy_timeout = 30000;")
-        dest_conn = sqlite3.connect(str(dest), timeout=30)
+        dest_conn = sqlite3.connect(str(dest), timeout=timeout)
         try:
-            src_conn.backup(dest_conn)
+            deadline = time.monotonic() + timeout
+
+            def check_deadline(status, remaining, total):
+                # backup() retries SQLITE_BUSY itself, beyond connect's busy
+                # timeout. Bound both those retries and a large unlocked copy.
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Timed out taking a save snapshot")
+
+            src_conn.backup(dest_conn, pages=256, progress=check_deadline, sleep=0.05)
         finally:
             dest_conn.close()
     finally:
         src_conn.close()
+
+
+def _snapshot_save(source: Path, timeout: float = 30.0) -> Path:
+    """Return a private verified snapshot; its owner must discard it afterwards.
+
+    The same file supplies the displayed stats and the eventual replacement.
+    A cloud download can replace the original pathname while a dialog or the
+    safety backup runs, without changing the save the user approved.
+    """
+    from .ankimon_sync import _verify_sqlite_integrity
+
+    fd, name = tempfile.mkstemp(prefix="ankimon-snapshot-", suffix=".db")
+    os.close(fd)
+    snapshot = Path(name)
+    try:
+        _sqlite_backup(source, snapshot, timeout=timeout)
+        if not _verify_sqlite_integrity(snapshot, timeout=timeout):
+            raise ValueError("The selected file is not a valid Ankimon save")
+        return snapshot
+    except BaseException:
+        _discard_snapshot(snapshot)
+        raise
+
+
+def _discard_snapshot(snapshot: Optional[Path]) -> None:
+    """Release only a caller-owned temporary snapshot and its SQLite sidecars."""
+    if snapshot is not None:
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            try:
+                Path(str(snapshot) + suffix).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _is_same_file(a: Path, b: Path) -> bool:
@@ -453,6 +495,17 @@ def export_save(parent=None) -> bool:
         )
         return False
 
+    # The picker confirmed dest_str, which can differ from the normalized
+    # filename. Never silently overwrite an existing archive.db when the user
+    # selected a nonexistent archive.txt (or archive with no extension).
+    if dest != Path(dest_str) and dest.exists() and not askUser(
+        f"The export will be saved as:\n{dest}\n\n"
+        "That file already exists. Replace it?",
+        parent=parent,
+        defaultno=True,
+    ):
+        return False
+
     # Build into a temp file beside the destination and move it into place only
     # after it verifies, so an interrupted or failed export can never leave a
     # half-written file the user might later import over a good save.
@@ -504,10 +557,9 @@ def export_save(parent=None) -> bool:
 
 def import_save(parent=None) -> bool:
     """Replace the ACTIVE Ankimon save with a file the user chooses."""
-    from .ankimon_sync import _verify_sqlite_integrity
-
     parent = parent or mw
     target = _active_db_path()
+    collection = _active_collection()
     if target is None:
         showWarning("The Ankimon database is not ready yet; try again once Anki has finished loading.")
         return False
@@ -519,56 +571,93 @@ def import_save(parent=None) -> bool:
         return False
     source = Path(src_str)
 
-    if not _verify_sqlite_integrity(source):
-        showWarning(
-            "That file is not a valid Ankimon save (it failed an integrity "
-            "check, or is missing Ankimon's data). Nothing was changed."
-        )
-        return False
-
-    if source.resolve() == Path(target).resolve():
+    if _is_same_file(source, target):
         showWarning("That file is the save Ankimon is already using. Nothing was changed.")
         return False
 
-    incoming = get_db_stats(source)
-    current = get_db_stats(target)
-    if not askUser(
-        "Replace your current Ankimon save with this file?\n\n"
-        f"FILE YOU CHOSE\n{_format_stats(incoming)}\n\n"
-        f"YOUR CURRENT SAVE\n{_format_stats(current)}\n\n"
-        "Your current save will be backed up first, and Anki will close so the "
-        "new save is loaded cleanly.",
-        parent=parent,
-        defaultno=True,
-    ):
+    snapshot = None
+    try:
+        snapshot = _snapshot_save(source)
+        incoming = get_db_stats(snapshot)
+        current = get_db_stats(target)
+        if not askUser(
+            "Replace your current Ankimon save with this file?\n\n"
+            f"FILE YOU CHOSE\n{_format_stats(incoming)}\n\n"
+            f"YOUR CURRENT SAVE\n{_format_stats(current)}\n\n"
+            "Your current save will be backed up first, and Anki will close so the "
+            "new save is loaded cleanly.",
+            parent=parent,
+            defaultno=True,
+        ):
+            return False
+
+        return _replace_active_save(snapshot, target, "Import", collection=collection)
+    except Exception as e:
+        showWarning(f"Import aborted: {e}. Nothing was replaced.")
         return False
+    finally:
+        _discard_snapshot(snapshot)
 
-    return _replace_active_save(source, target, "Import")
+
+def _active_collection():
+    """The collection whose review history belongs to the active profile."""
+    from ..services import services
+
+    return services.col if services.col is not None else mw.col
 
 
-def _replace_active_save(source: Path, target: Path, what: str) -> bool:
-    """Back up, then atomically put ``source`` in place of the live save.
+def _rebase_import_watermark(snapshot: Path, col) -> None:
+    """Exclude this collection's existing reviews in the private imported copy.
 
-    Order is load-bearing. The source is verified HERE, at the moment of the
-    write, not only when it was chosen: Import checks its file a few lines
-    before this, but the rescue checked its candidate on a worker thread and
-    then waited for the user to read a dialog — a window in which Anki's media
-    sync can replace a media file underneath the offer. Then the backup, and a
+    Restart does not reset a stored nonzero watermark, and shutdown itself can
+    sync before restarting. Stamp MAX(revlog.id) before publishing the save,
+    even when the source's watermark is ahead of this collection's. Future
+    reviews remain detectable. A missing/unreadable collection aborts import.
+    """
+    if col is None:
+        raise RuntimeError("The Anki collection is not available")
+    watermark = col.db.scalar("SELECT MAX(id) FROM revlog")
+    if watermark is None:
+        watermark = 0
+    if type(watermark) is not int or watermark < 0:
+        raise ValueError("Could not read the collection's review watermark")
+    conn = sqlite3.connect(str(snapshot), timeout=30)
+    try:
+        with conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_revlog_watermark', ?)",
+                (str(watermark),),
+            )
+    finally:
+        conn.close()
+
+
+def _replace_active_save(source: Path, target: Path, what: str, *, collection) -> bool:
+    """Back up, then install the private snapshot the caller showed the user.
+
+    ``source`` must be a caller-owned snapshot, never the original external
+    pathname. Rebase its review watermark and verify it before the backup; a
     failed backup REFUSES the replacement — never overwrite the live save with
     no recovery path. The replace itself goes through ``_atomic_replace``, which
     closes the live connection, writes a temp on the same volume,
     ``os.replace``s it into place (retrying a transient OneDrive/antivirus lock)
     and reaps stale ``-wal`` / ``-shm`` sidecars belonging to the old file.
 
-    Anki is closed afterwards, and that is deliberate rather than lazy: the next
-    boot re-runs ``profile_did_open``, whose ``watermark == 0`` re-derivation
-    from ``MAX(id) FROM revlog`` is what stops the imported save's mobile
-    watermark from queueing thousands of already-handled reviews as fresh mobile
-    battles. It also rehydrates every singleton holding the old connection.
+    Anki is closed afterwards to rehydrate every singleton from the restored
+    save. The watermark is already rebased before any shutdown sync can run.
     """
     from .ankimon_sync import (
         get_ankimon_sync, _handle_manual_sync_error, _verify_sqlite_integrity,
     )
+
+    try:
+        if _active_db_path() != Path(target) or _active_collection() is not collection:
+            raise RuntimeError("The active profile or save changed; please try the import again")
+        _rebase_import_watermark(source, collection)
+    except Exception as e:
+        showWarning(f"{what} aborted: {e}. Your save is unchanged.")
+        return False
 
     if not _verify_sqlite_integrity(Path(source)):
         showWarning(
@@ -815,7 +904,7 @@ def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
     return candidates, unreadable
 
 
-def _offer_rescue_later(protected: Path, target: Path) -> None:
+def _offer_rescue_later(snapshot: Path, target: Path, collection) -> None:
     """Run the rescue off the current call stack.
 
     The rescue ends in ``close_anki()`` → ``mw.close()``, whose ``closeEvent``
@@ -826,11 +915,16 @@ def _offer_rescue_later(protected: Path, target: Path) -> None:
     that is being unloaded. Deferring by one event-loop turn keeps the whole
     thing in a settled session, the way the menu-driven Import already is.
     """
+    media_dir = _media_dir()
+
     def _go():
         try:
-            _replace_active_save(protected, target, "Rescue")
+            if _media_dir() == media_dir:
+                _replace_active_save(snapshot, target, "Rescue", collection=collection)
         except Exception:
             pass
+        finally:
+            _discard_snapshot(snapshot)
 
     try:
         mw.progress.single_shot(0, _go, False)
@@ -1023,8 +1117,23 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         ))
         return _result("armed", media_path=media_path, media_stats=media_stats)
 
+    # Freeze the chosen file on this worker, then read the displayed statistics
+    # from that snapshot. Ranking/preservation above can span a media download;
+    # their earlier stats must never describe different bytes from the rescue.
+    snapshot = None
+    try:
+        snapshot = _snapshot_save(media_path, timeout=MIGRATION_PROBE_TIMEOUT)
+        media_stats = get_db_stats(snapshot, timeout=MIGRATION_PROBE_TIMEOUT)
+        if media_stats is None:
+            raise ValueError("Could not read the rescue snapshot")
+    except Exception as e:
+        _discard_snapshot(snapshot)
+        notes.append(("info", f"Could not snapshot {media_path.name}: {e}; rescanning later."))
+        return _result("armed")
+
     return _result(
         "compare",
+        snapshot_path=snapshot,
         media_path=media_path,
         media_stats=media_stats,
         local_stats=local_stats,
@@ -1115,6 +1224,14 @@ def _preserve(at_risk: Path, media_dir: Path, target_db: str,
 
 
 def _apply_migration_result(result: Dict[str, Any], logger) -> None:
+    """Apply a scan and release its snapshot unless a deferred rescue owns it."""
+    try:
+        _apply_migration_decision(result, logger)
+    finally:
+        _discard_snapshot(result.pop("snapshot_path", None))
+
+
+def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
     """The MAIN-THREAD half: log, prompt, and settle or stay armed.
 
     Everything in here either touches Qt or writes the profile flag, so it runs
@@ -1133,6 +1250,7 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
         return
 
     target = result.get("target")
+    collection = _active_collection()
     media_stats = result.get("media_stats")
     local_stats = result.get("local_stats")
     fingerprint = result.get("fingerprint", "")
@@ -1167,7 +1285,7 @@ def _apply_migration_result(result: Dict[str, Any], logger) -> None:
             # FAILURE — a refused backup, a persisting file lock — the flag is
             # still unset, so the user is offered the rescue again next launch
             # instead of silently losing their only route back to that data.
-            _offer_rescue_later(Path(result["media_path"]), Path(target))
+            _offer_rescue_later(result.pop("snapshot_path"), Path(target), collection)
             return
         # Declined: remembered for this media folder, whether or not this pass
         # goes on to settle.
@@ -1291,6 +1409,7 @@ def start_media_migration(settings_obj, logger) -> None:
         if media_dir is None or not media_dir.is_dir():
             return
         target = _active_db_path()
+        collection = _active_collection()
 
         if _MIGRATION_SCAN_STATE["running"]:
             _MIGRATION_SCAN_STATE["rerun"] = True
@@ -1300,12 +1419,14 @@ def start_media_migration(settings_obj, logger) -> None:
             return _migration_scan(media_dir, target)
 
         def _done(future) -> None:
+            result = None
             try:
                 result = future.result()
                 # A profile switch during the scan would leave us applying one
                 # profile's media folder to another's flag and another's save.
                 # mw.pm has already moved on by the time this runs, so compare.
-                if result is not None and _media_dir() == media_dir:
+                if (result is not None and _media_dir() == media_dir
+                        and _active_collection() is collection):
                     _apply_migration_result(result, logger)
             except Exception as e:
                 try:
@@ -1313,6 +1434,8 @@ def start_media_migration(settings_obj, logger) -> None:
                 except Exception:
                     pass
             finally:
+                if result is not None:
+                    _discard_snapshot(result.pop("snapshot_path", None))
                 _MIGRATION_SCAN_STATE["running"] = False
                 if _MIGRATION_SCAN_STATE["rerun"]:
                     _MIGRATION_SCAN_STATE["rerun"] = False
