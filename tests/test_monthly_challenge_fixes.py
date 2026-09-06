@@ -55,8 +55,9 @@ def mock_requests():
 
 @patch("Ankimon.pyobj.pokemon_trade.datetime")
 @patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
 @patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_rate_this_check(show_info_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+def test_rate_this_check(show_info_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
     logger = MockLogger()
 
     # Setup datetime to return known values
@@ -77,6 +78,9 @@ def test_rate_this_check(show_info_mock, add_pokemon_mock, datetime_mock, mock_r
         }
     ]
     mock_requests.return_value = mock_response
+
+    # Mock dialog to accept the Pokémon
+    dialog_mock.return_value = True
 
     # Test case 1: user hasn't rated (returns None)
     mock_db.get_user_data.return_value = None
@@ -107,8 +111,9 @@ def test_rate_this_check(show_info_mock, add_pokemon_mock, datetime_mock, mock_r
 
 @patch("Ankimon.pyobj.pokemon_trade.datetime")
 @patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
 @patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_previous_challenge_pokemon_null_check(show_info_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+def test_previous_challenge_pokemon_null_check(show_info_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
     logger = MockLogger()
 
     # Setup datetime to return known values
@@ -134,6 +139,9 @@ def test_previous_challenge_pokemon_null_check(show_info_mock, add_pokemon_mock,
 
     mock_db.get_user_data.return_value = True
 
+    # Mock dialog to accept the Pokémon
+    dialog_mock.return_value = True
+
     # Setup get_pokemon to handle target and previous pokemon
     def get_pokemon_side_effect(individual_id):
         if individual_id == "test-id":
@@ -155,8 +163,9 @@ def test_previous_challenge_pokemon_null_check(show_info_mock, add_pokemon_mock,
 
 @patch("Ankimon.pyobj.pokemon_trade.datetime")
 @patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
 @patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_previous_challenge_pokemon_has_enough_defeats(show_info_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+def test_previous_challenge_pokemon_has_enough_defeats(show_info_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
     logger = MockLogger()
 
     dt_mock = MagicMock()
@@ -180,6 +189,9 @@ def test_previous_challenge_pokemon_has_enough_defeats(show_info_mock, add_pokem
     mock_requests.return_value = mock_response
 
     mock_db.get_user_data.return_value = True
+
+    # Mock dialog to accept the Pokémon
+    dialog_mock.return_value = True
 
     def get_pokemon_side_effect(individual_id):
         if individual_id == "test-id":
