@@ -7,7 +7,6 @@ from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
 from aqt import mw, utils
-from aqt.theme import theme_manager
 from ..resources import pokeapi_db_path, moves_file_path, pokedex_path, icon_path
 from ..functions.sprite_functions import get_sprite_path
 from datetime import datetime
@@ -112,13 +111,10 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
         - The "Accept Pokémon" button is set as the default button (Enter key)
     """
 
-    # Detect test environment - automatically accept in tests
-    if "PYTEST_CURRENT_TEST" in os.environ:
-        return True
-
     from PyQt6.QtWidgets import QSizePolicy
     from PyQt6.QtGui import QMovie, QPixmap
     from PyQt6.QtCore import QSize
+    from aqt.theme import theme_manager
     
     parent = parent_window if parent_window is not None else mw
     window = QDialog(parent)
@@ -312,9 +308,9 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
     layout.addLayout(content_layout)
 
     discord_label = QLabel(
-        'For more information on monthly challenges and to redeem higher-tier prizes (spoiler: where Shinies are involved!)'
-        ' for your performance, please check the '
-        '<a href="https://discord.gg/Fd6fZYQx4r" style="color: {accent_blue}; text-decoration: none;">Ankimon Discord</a>!'
+        f'For more information on monthly challenges and to redeem higher-tier prizes (spoiler: where Shinies are involved!)'
+        f' for your performance, please check the '
+        f'<a href="https://discord.gg/Fd6fZYQx4r" style="color: {accent_blue}; text-decoration: none;">Ankimon Discord</a>!'
     )
     discord_label.setWordWrap(True)
     discord_label.setStyleSheet(f"color: {text}; font-size: 0.85rem;")
@@ -381,6 +377,7 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
     from PyQt6.QtWidgets import QSizePolicy
     from PyQt6.QtGui import QMovie
     from PyQt6.QtCore import QSize
+    from aqt.theme import theme_manager
     import os
     
     parent = parent_window if parent_window is not None else mw
@@ -559,6 +556,7 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
     from PyQt6.QtWidgets import QSizePolicy
     from PyQt6.QtGui import QMovie
     from PyQt6.QtCore import QSize
+    from aqt.theme import theme_manager
     import os
     
     parent = parent_window if parent_window is not None else mw
@@ -854,13 +852,13 @@ def check_and_award_monthly_pokemon(logger, defer=True):
                 success = add_pokemon_to_collection(new_pokemon, parent_window=mw)
                 if success:
                     logger.log("info", f"Successfully awarded {new_pokemon['name']}{shiny_text}.")
-                    show_monthly_acceptance_dialog(parent_window=mw, challenge_pokemon=challenge_pokemon_data)
+                    show_monthly_acceptance_dialog(parent_window=mw, challenge_pokemon=new_pokemon)
                 else:
                     db.set_user_data("monthly_challenge", 0)
                     logger.log("error", f"Failed to add {new_pokemon['name']} to collection. Status rolled back.")
             else:
                 db.set_user_data("monthly_challenge", 2)
-                show_monthly_rejection_dialog(parent_window=mw, challenge_pokemon=challenge_pokemon_data)
+                show_monthly_rejection_dialog(parent_window=mw, challenge_pokemon=new_pokemon)
                 logger.log("info", f"User rejected {new_pokemon['name']}{shiny_text}.")
 
         except Exception as e:
