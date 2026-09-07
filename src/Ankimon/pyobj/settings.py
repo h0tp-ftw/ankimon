@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
     "gui.show_sprites_across_ankimon": True,
     "gui.hud_styling": True,
     "gui.pop_up_dialog_message_on_defeat": False,
+    "gui.pop_up_dialog_message_on_encounter": False,
     "gui.pop_up_dialog_message_on_item": True,
     "gui.review_hp_bar_thickness": 2,
     "gui.reviewer_image_gif": False,

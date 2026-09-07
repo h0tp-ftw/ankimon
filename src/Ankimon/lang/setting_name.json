@@ -29,6 +29,7 @@
     "gui.show_sprites_across_ankimon": "Show Sprites Across Ankimon",
     "gui.hud_styling": "Styling",
     "gui.pop_up_dialog_message_on_defeat": "Pop-Up on Defeat",
+    "gui.pop_up_dialog_message_on_encounter": "Pop-Up on Special Encounter",
     "gui.pop_up_dialog_message_on_item": "Pop-Up on Item Receive",
     "gui.review_hp_bar_thickness": "HP Bar Thickness",
     "gui.reviewer_image_gif": "Reviewer Image as GIF",

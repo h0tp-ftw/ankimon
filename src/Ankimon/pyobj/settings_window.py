@@ -420,6 +420,7 @@ class SettingsWindow(QMainWindow):
                     "View Main Pokémon Front",
                     "XP Bar Location",
                     "Pop-Up on Defeat",
+                    "Pop-Up on Special Encounter",
                     "Pop-Up on Item Receive",
                 ],
                 "subgroups": {
