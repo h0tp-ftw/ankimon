@@ -33,6 +33,15 @@ def fake_logger():
     services.reset()
 
 
+@pytest.fixture(autouse=True)
+def clear_sprite_cache():
+    """Clear the sprite cache before each test to avoid cross-test contamination
+    from cached os.path.exists() results when os.path.exists is monkeypatched."""
+    sf._clear_sprite_cache()
+    yield
+    sf._clear_sprite_cache()
+
+
 def test_found_sprite_returns_path_and_logs_debug(fake_logger, monkeypatch):
     expected = sf._path_format(back=False, id=25, gif=False, shiny=False, female=False)
     monkeypatch.setattr("os.path.exists", lambda p: p == expected)
@@ -259,3 +268,37 @@ def test_get_relative_sprite_path_default_on_error(fake_logger, monkeypatch):
     assert sf.get_relative_sprite_path(25, shiny=False) == (
         "../user_files/sprites/front_default/0.png"
     )
+
+
+def test_fractional_id_rejected(fake_logger, monkeypatch):
+    """Fractional IDs like 25.9 should be rejected and return substitute."""
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+
+    result = sf.get_sprite_path("front", "png", 25.9, shiny=False, gender="M")
+
+    assert result == sf.SUBSTITUTE_PATH
+    assert any("Invalid sprite id 25.9" in msg for _, msg in fake_logger.logs)
+
+
+def test_boolean_id_rejected(fake_logger, monkeypatch):
+    """Boolean IDs should be rejected and return substitute."""
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+
+    result = sf.get_sprite_path("front", "png", True, shiny=False, gender="M")
+
+    assert result == sf.SUBSTITUTE_PATH
+    assert any("Invalid sprite id True" in msg for _, msg in fake_logger.logs)
+
+
+def test_non_positive_id_rejected(fake_logger, monkeypatch):
+    """Non-positive IDs (0, -1) should be rejected and return substitute."""
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+
+    result = sf.get_sprite_path("front", "png", 0, shiny=False, gender="M")
+    assert result == sf.SUBSTITUTE_PATH
+    assert any("Invalid sprite id 0" in msg for _, msg in fake_logger.logs)
+
+    fake_logger.logs.clear()
+    result = sf.get_sprite_path("front", "png", -1, shiny=False, gender="M")
+    assert result == sf.SUBSTITUTE_PATH
+    assert any("Invalid sprite id -1" in msg for _, msg in fake_logger.logs)
