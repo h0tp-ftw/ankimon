@@ -6285,7 +6285,7 @@
     "weightkg": 34.6,
     "color": "Pink",
     "prevo": "Happiny",
-    "evoType": "levelHold",
+    "evoType": "useItem",
     "evoItem": "Oval Stone",
     "evoCondition": "during the day",
     "evos": [
