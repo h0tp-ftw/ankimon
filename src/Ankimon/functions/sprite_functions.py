@@ -5,6 +5,9 @@ from ..resources import pkmnimgfolder
 
 SUBSTITUTE_PATH = f"{pkmnimgfolder}/front_default/substitute.png"
 
+# Cache for validated sprite paths to avoid repeated filesystem calls during UI rendering
+_PATH_VALIDITY_CACHE = {}
+
 
 def _load_pokedex():
     """Return the in-memory pokedex cache.
@@ -55,30 +58,40 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
     return f"{pkmnimgfolder}/{base_path}/{id}.{sprite_type}"
 
 
+def _get_cached_valid_path(path):
+    """Return cached validated path if valid, otherwise None.
+
+    This caches the result of path containment validation and existence checks
+    to avoid repeated synchronous filesystem calls during UI rendering.
+    """
+    if path not in _PATH_VALIDITY_CACHE:
+        sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
+        resolved_path = os.path.realpath(path)
+        try:
+            is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
+            _PATH_VALIDITY_CACHE[path] = resolved_path if is_contained and os.path.exists(resolved_path) else None
+        except ValueError:
+            # Handles cross-drive path scenarios on Windows
+            _PATH_VALIDITY_CACHE[path] = None
+
+    return _PATH_VALIDITY_CACHE[path]
+
+
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):
     """Return a gendered sprite only when its resolved path stays in the sprite root."""
     path = _path_format(back, id, gif, shiny, female)
-    sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
-    resolved_path = os.path.realpath(path)
-    try:
-        is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
-    except ValueError:
-        is_contained = False
-    if is_contained and os.path.exists(resolved_path):
+    cached_path = _get_cached_valid_path(path)
+    if cached_path:
         services.logger.log("debug", f"Sprite found: {path}")
-        return resolved_path
+        return cached_path
 
     if female:
         # requested gendered but not found, try non-gendered
         path = _path_format(back, id, gif, shiny, False)
-        resolved_path = os.path.realpath(path)
-        try:
-            is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
-        except ValueError:
-            is_contained = False
-        if is_contained and os.path.exists(resolved_path):
+        cached_path = _get_cached_valid_path(path)
+        if cached_path:
             services.logger.log("debug", f"Sprite found (gender fallback): {path}")
-            return resolved_path
+            return cached_path
 
 
 def _try_back(back: bool, id: int, gif: bool, shiny: bool, female: bool):
@@ -115,6 +128,9 @@ def get_sprite_path(
 
     try:
         if isinstance(id, bool):
+            raise ValueError
+        # Reject fractional numeric IDs before conversion
+        if isinstance(id, float) and not id.is_integer():
             raise ValueError
         id = int(id)
         if id <= 0:
