@@ -56,17 +56,29 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
 
 
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):
+    """Return a gendered sprite only when its resolved path stays in the sprite root."""
     path = _path_format(back, id, gif, shiny, female)
-    if os.path.exists(path):
+    sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
+    resolved_path = os.path.realpath(path)
+    try:
+        is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
+    except ValueError:
+        is_contained = False
+    if is_contained and os.path.exists(resolved_path):
         services.logger.log("debug", f"Sprite found: {path}")
-        return path
+        return resolved_path
 
     if female:
         # requested gendered but not found, try non-gendered
         path = _path_format(back, id, gif, shiny, False)
-        if os.path.exists(path):
+        resolved_path = os.path.realpath(path)
+        try:
+            is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
+        except ValueError:
+            is_contained = False
+        if is_contained and os.path.exists(resolved_path):
             services.logger.log("debug", f"Sprite found (gender fallback): {path}")
-            return path
+            return resolved_path
 
 
 def _try_back(back: bool, id: int, gif: bool, shiny: bool, female: bool):
@@ -100,6 +112,16 @@ def get_sprite_path(
         pokemon_name: Optional Pokémon name (used for Mega/Gmax forms to look up
             the correct form-specific sprite ID)
     """
+
+    try:
+        if isinstance(id, bool):
+            raise ValueError
+        id = int(id)
+        if id <= 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        services.logger.log("warning", f"Invalid sprite id {id!r}; using substitute sprite.")
+        return SUBSTITUTE_PATH
 
     gif = sprite_type == "gif"
     female = gender == "F"
