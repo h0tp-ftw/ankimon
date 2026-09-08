@@ -9,6 +9,12 @@ SUBSTITUTE_PATH = f"{pkmnimgfolder}/front_default/substitute.png"
 _PATH_VALIDITY_CACHE = {}
 
 
+def _clear_sprite_cache():
+    """Clear the sprite path validation cache. Used primarily for testing."""
+    global _PATH_VALIDITY_CACHE
+    _PATH_VALIDITY_CACHE.clear()
+
+
 def _load_pokedex():
     """Return the in-memory pokedex cache.
 
