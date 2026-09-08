@@ -1,4 +1,5 @@
 import os
+from numbers import Integral
 
 from ..services import services
 from ..resources import pkmnimgfolder
@@ -135,9 +136,18 @@ def get_sprite_path(
     try:
         if isinstance(id, bool):
             raise ValueError
-        # Reject fractional numeric IDs before conversion
-        if isinstance(id, float) and not id.is_integer():
-            raise ValueError
+        if isinstance(id, (int, float, complex)):
+            if isinstance(id, complex):
+                raise ValueError
+            if isinstance(id, float) and not id.is_integer():
+                raise ValueError
+        elif hasattr(id, "__int__") and hasattr(id, "__float__"):
+            try:
+                as_float = float(id)
+                if as_float != int(as_float):
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise ValueError
         id = int(id)
         if id <= 0:
             raise ValueError
