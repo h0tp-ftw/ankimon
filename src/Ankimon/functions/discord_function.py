@@ -11,6 +11,8 @@ from ..events import events
 if TYPE_CHECKING:
     from ..pyobj.ankimon_tracker import AnkimonTracker
 
+from ..addon_files.lib.pypresence.exceptions import PipeClosed
+
 
 def _show_discord_error(message: str) -> None:
     events.emit("tooltip", message=message)
@@ -102,6 +104,9 @@ class DiscordPresence:
                     start=self.start_time
                 )
                 time.sleep(30)  # Sleep for 30 seconds before updating again
+        except PipeClosed:
+            self.logger_obj.log("warning", "Discord pipe was closed during update. Stopping rich presence loop.")
+            self.loop = False
         except Exception as e:
             self.logger_obj.log("error",f"Error with Discord Rich Presence: {e}")
             _show_discord_error(
@@ -133,6 +138,8 @@ class DiscordPresence:
                 # self.thread.join() # Removed to prevent blocking
                 self.thread = None  # Reset the thread
             self.RPC.clear()
+        except PipeClosed:
+            self.logger_obj.log("warning", "Discord pipe was closed when clearing. Ignoring.")
         except Exception as e:
             self.logger_obj.log("error",f"Error clearing Discord Rich Presence: {e}")
             _show_discord_error(
@@ -150,6 +157,8 @@ class DiscordPresence:
                     state="Break time! You’ve earned it.",
                     large_image=self.large_image_url
                 )
+        except PipeClosed:
+            self.logger_obj.log("warning", "Discord pipe was closed when stopping. Ignoring.")
         except Exception as e:
             self.logger_obj.log("error",f"Error stopping Discord Rich Presence: {e}")
             _show_discord_error(
