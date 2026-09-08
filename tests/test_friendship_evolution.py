@@ -1439,3 +1439,9 @@ def test_trade_evolution_linking_cord():
     result = fe.evolution_readiness({"id": 67, "friendship": 0})
     assert result["method"] == "item"
     assert "Evolves into Machamp using a Linking Cord" in result["status_text"]
+
+
+def test_happiny_level_hold():
+    result = fe.evolution_readiness({"id": 440, "friendship": 0})
+    assert result["method"] == "item"
+    assert "Evolves into Chansey using a Oval Stone" in result["status_text"]

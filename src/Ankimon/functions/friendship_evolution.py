@@ -412,7 +412,7 @@ def get_item_evolutions_for_species(
                     continue
 
                 evo_type = target_data.get("evoType")
-                if evo_type in ("useItem", "trade"):
+                if evo_type in ("useItem", "trade", "levelHold"):
                     evo_item = target_data.get("evoItem")
                     if not evo_item:
                         # Trade evolutions with no held item use a Linking Cord in Ankimon.
