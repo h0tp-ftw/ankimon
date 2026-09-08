@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ankimon — Monthly Challenge</title>
+    <!-- Inline dark bg so the first paint is dark -->
+    <style>
+        html { background: #0d1117; }
+        .skeleton {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 14px;
+            opacity: 0.5;
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+        .skeleton-hero { height: 400px; }
+        @keyframes skeleton-pulse {
+            0%, 100% { opacity: 0.35; }
+            50%      { opacity: 0.6; }
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="monthly.css?v=20260901">
+    <link rel="stylesheet" href="../ankimon_items_web/nav-switcher.css?v=20260901">
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body class="dark-mode">
+    <div class="app-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div id="nav-switcher" class="nav-switcher">
+                    <button id="nav-trigger" class="nav-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+                        <img src="../user_files/sprites/items/lucky-punch.png?v=20260901" class="app-logo icon-item-sprite" alt="">
+                        <h1>MONTHLY</h1>
+                        <span class="nav-chevron">▾</span>
+                    </button>
+                    <div id="nav-menu" class="nav-menu hidden" role="menu">
+                        <button class="nav-menu-item" role="menuitem" data-screen="items">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/max-potion.png?v=20260901" class="icon-item-sprite" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Items</span>
+                                <span class="nav-menu-desc">Your inventory and today's Mart</span>
+                            </div>
+                        </button>
+                        <button class="nav-menu-item" role="menuitem" data-screen="ankidex">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/poke-ball.png?v=20260901" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Ankidex</span>
+                                <span class="nav-menu-desc">Browse caught Pokémon</span>
+                            </div>
+                        </button>
+                        <button class="nav-menu-item" role="menuitem" data-screen="team">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/great-ball.png?v=20260901" class="icon-item-sprite" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Team</span>
+                                <span class="nav-menu-desc">Your active 6 Pokémon</span>
+                            </div>
+                        </button>
+                        <button class="nav-menu-item" role="menuitem" data-screen="profile">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/water-gem.png?v=20260901" class="icon-item-sprite" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Profile</span>
+                                <span class="nav-menu-desc">Card, badges &amp; avatar</span>
+                            </div>
+                        </button>
+                        <button class="nav-menu-item" role="menuitem" data-screen="settings">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/x-speed.png?v=20260901" class="icon-item-sprite" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Settings</span>
+                                <span class="nav-menu-desc">Configure Ankimon</span>
+                            </div>
+                        </button>
+                        <button class="nav-menu-item active" role="menuitem" data-screen="monthly">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/lucky-punch.png?v=20260901" class="icon-item-sprite" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Monthly Challenge</span>
+                                <span class="nav-menu-desc">Claim your monthly Pokémon</span>
+                            </div>
+                        </button>
+                        <button class="nav-menu-item" role="menuitem" data-screen="mobile">
+                            <span class="nav-menu-icon"><img src="../user_files/sprites/items/elixir.png?v=20260901" class="icon-item-sprite" alt=""></span>
+                            <div class="nav-menu-text">
+                                <span class="nav-menu-title">Mobile &amp; Web Reviews</span>
+                                <span class="nav-menu-desc">Pending mobile/web battles</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Month's Mon Box - Large Blue Box with Badges -->
+            <div id="current-mon-box" class="current-mon-box">
+                <div id="current-mon-sprite-container" class="current-mon-sprite-container">
+                    <img id="current-mon-img" src="../user_files/sprites/front_default/0.png" alt="">
+                    <div id="current-mon-badges" class="current-mon-badges">
+                        <span id="current-mon-types" class="badge type-badge">—</span>
+                        <span id="current-mon-level" class="badge level-badge">Lv.—</span>
+                        <span id="current-mon-defeated" class="badge defeated-badge">Df. —</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Summary Box -->
+            <div id="stats-summary" class="stats-summary">
+                <div class="stats-summary-header">STATS</div>
+                <div id="stats-summary-content">
+                    <div class="stats-summary-loading">Loading stats...</div>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer - Tip -->
+            <div class="sidebar-footer">
+                <div class="footer-tip">
+                    <span class="footer-tip-icon">Tip:</span>
+                    <span class="footer-tip-text">Accept the current month's challenge to view previous month's results before it slips away!</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <!-- Empty header - no stats chips -->
+            </header>
+
+            <div class="content-scroll">
+                <div id="monthly-content">
+                    <!-- Skeleton placeholder -->
+                    <div class="skeleton skeleton-hero" style="min-height: 400px; border-radius: 16px;"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Confirm Modal (Receive) -->
+    <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <div id="confirm-mark" class="modal-mark">?</div>
+            <h2 id="confirm-title">Receive this Mon?</h2>
+            <p id="confirm-copy">Add this month's challenge Mon to your collection?</p>
+            <div class="modal-actions">
+                <button id="confirm-cancel" class="button button-quiet" type="button">Cancel</button>
+                <button id="confirm-action" class="button button-primary" type="button">Accept Challenge</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Remove Confirmation Modal -->
+    <div id="remove-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="remove-title">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <div id="remove-mark" class="modal-mark">!</div>
+            <h2 id="remove-title">Remove this Pokémon?</h2>
+            <p id="remove-copy">This removes this Mon from your collection. <strong>All progress will be reset</strong> — if you receive it again, its level and number of Pokémon defeated will return to their defaults.</p>
+            <div class="modal-actions">
+                <button id="remove-cancel" class="button button-quiet" type="button">Cancel</button>
+                <button id="remove-confirm" class="button button-danger" type="button">Reject Challenge</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+
+    <script src="../ankimon_items_web/nav-switcher.js?v=20260901"></script>
+    <script src="monthly.js?v=20260901"></script>
+</body>
+</html>
