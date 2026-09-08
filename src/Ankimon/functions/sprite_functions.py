@@ -70,18 +70,22 @@ def _get_cached_valid_path(path):
 
     This caches the result of path containment validation and existence checks
     to avoid repeated synchronous filesystem calls during UI rendering.
+    Only caches paths that are confirmed to exist; missing paths are not stored.
     """
-    if path not in _PATH_VALIDITY_CACHE:
-        sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
-        resolved_path = os.path.realpath(path)
-        try:
-            is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
-            _PATH_VALIDITY_CACHE[path] = resolved_path if is_contained and os.path.exists(resolved_path) else None
-        except ValueError:
-            # Handles cross-drive path scenarios on Windows
-            _PATH_VALIDITY_CACHE[path] = None
+    if path in _PATH_VALIDITY_CACHE:
+        return _PATH_VALIDITY_CACHE[path]
 
-    return _PATH_VALIDITY_CACHE[path]
+    sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
+    resolved_path = os.path.realpath(path)
+    try:
+        is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
+        if is_contained and os.path.exists(resolved_path):
+            _PATH_VALIDITY_CACHE[path] = resolved_path
+            return resolved_path
+    except ValueError:
+        pass
+
+    return None
 
 
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):
@@ -146,7 +150,7 @@ def get_sprite_path(
                 as_float = float(id)
                 if as_float != int(as_float):
                     raise ValueError
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 raise ValueError
         id = int(id)
         if id <= 0:
