@@ -1434,3 +1434,8 @@ def test_gallade_gender_gate_female():
     result = fe.evolution_readiness({"id": 281, "friendship": 0, "gender": "F"})
     assert result["method"] == "item"
     assert "Needs to be Male to evolve into Gallade" in result["status_text"]
+
+def test_trade_evolution_linking_cord():
+    result = fe.evolution_readiness({"id": 67, "friendship": 0})
+    assert result["method"] == "item"
+    assert "Evolves into Machamp using a Linking Cord" in result["status_text"]
