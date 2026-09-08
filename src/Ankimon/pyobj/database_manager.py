@@ -1700,6 +1700,27 @@ class AnkimonDB:
         conn.commit()
         return True
 
+    def set_monthly_challenge_state(self, challenge_id: str, status: int):
+        """Persist the monthly challenge id and status in one transaction."""
+        if status not in (0, 1, 2):
+            raise ValueError("Monthly challenge status must be 0, 1, or 2")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
+                ("monthly_challenge_id", str(challenge_id)),
+            )
+            cursor.execute(
+                "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
+                ("monthly_challenge", str(status)),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        return True
+
     def get_user_data(self, key: str, default: Any = None) -> Any:
         """Retrieves user data by key."""
         cursor = self.execute("SELECT value FROM user_data WHERE key = ?", (key,))
