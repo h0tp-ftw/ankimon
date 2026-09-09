@@ -13,7 +13,11 @@ import os
 import sys
 import traceback
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    )
+)
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
@@ -29,20 +33,27 @@ def run_smoke_tier1():
     """Runs standard smoke check using Driver."""
     print("Running Tier 1 Smoke Play-Through Proof...")
     from harness.driver import Driver
-    d = Driver(seed={"main": {"species": "Pikachu", "level": 20}})
-    d.set_enemy(species="Rattata", level=5)
-    d.answer("good")
-    events = d.drain_events()
+
+    d = Driver(
+        seed={"main": {"species": "Pikachu", "level": 20}},
+        settings_overrides={"battle.cards_per_round": 1},
+        first_encounter=False,
+    )
+    events = d.set_enemy(species="Rattata", level=5)
+    events.extend(d.answer("good"))
     errors = [e for e in events if e.get("type") == "error"]
     if errors:
         print(f"❌ FAILED: Error events encountered: {errors}")
+        return False
+    if not any(e.get("type") == "battle" for e in events):
+        print("❌ FAILED: No battle event was produced.")
         return False
     print("✅ PASSED: Tier 1 Smoke Play verified cleanly.")
     return True
 
 
 def run_proof_file(file_path):
-    """Executes a user-specified Python proof script."""
+    """Run a trusted proof module whose run_proof() explicitly returns True."""
     print(f"Executing Proof Scenario: {file_path}...")
     abs_path = os.path.abspath(file_path)
     if not os.path.exists(abs_path):
@@ -55,47 +66,82 @@ def run_proof_file(file_path):
         return False
 
     module = importlib.util.module_from_spec(spec)
+    previous_module = sys.modules.get(spec.name)
+    sys.modules[spec.name] = module
     try:
         spec.loader.exec_module(module)
-        if hasattr(module, "run_proof"):
-            res = module.run_proof()
-            if res is False:
-                print("❌ Proof returned False (assertion failed)")
-                return False
-        print(f"✅ PASSED: Proof scenario '{os.path.basename(file_path)}' completed successfully.")
+        proof = getattr(module, "run_proof", None)
+        if not callable(proof):
+            print(
+                "❌ FAILED: Define a callable run_proof() that returns True after its assertions."
+            )
+            return False
+        if proof() is not True:
+            print("❌ FAILED: run_proof() did not explicitly return True.")
+            return False
+        print(
+            f"✅ PASSED: Proof scenario '{os.path.basename(file_path)}' completed successfully."
+        )
         return True
-    except Exception as e:
-        print(f"❌ FAILED: Exception occurred during proof execution:\n")
+    except (Exception, SystemExit):
+        print("❌ FAILED: Exception occurred during proof execution:\n")
         traceback.print_exc()
         return False
+    finally:
+        if previous_module is None:
+            sys.modules.pop(spec.name, None)
+        else:
+            sys.modules[spec.name] = previous_module
 
 
 def scaffold_test(tier, target_path):
     """Scaffolds a new proof test file from templates."""
-    template_name = "tier2_proof_template.py" if tier == 2 else "tier1_proof_template.py"
-    template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", template_name)
-    
+    template_name = (
+        "tier2_proof_template.py" if tier == 2 else "tier1_proof_template.py"
+    )
+    template_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "templates",
+        template_name,
+    )
+
     if not os.path.exists(template_path):
         print(f"❌ Template not found at: {template_path}")
         return False
-        
+
     with open(template_path, "r", encoding="utf-8") as f:
         content = f.read()
-        
-    os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
-    with open(target_path, "w", encoding="utf-8") as f:
-        f.write(content)
-        
+
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+        with open(target_path, "x", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        print(f"❌ Could not create scaffold: {e}")
+        return False
+
     print(f"✅ Created new Tier-{tier} proof scaffold at: {target_path}")
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run or scaffold focused Tier 1 / Tier 2 proof scenarios")
-    parser.add_argument("--file", help="Path to custom proof Python file to execute")
-    parser.add_argument("--smoke", action="store_true", help="Run quick Tier-1 smoke proof")
-    parser.add_argument("--init-tier1", help="Create new Tier 1 proof script scaffold at target path")
-    parser.add_argument("--init-tier2", help="Create new Tier 2 proof script scaffold at target path")
+    """Run one explicit proof or scaffold action."""
+    parser = argparse.ArgumentParser(
+        description="Run or scaffold focused Tier 1 / Tier 2 proof scenarios"
+    )
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument(
+        "--file", help="Trusted Python module with run_proof() returning True"
+    )
+    action.add_argument(
+        "--smoke", action="store_true", help="Run quick Tier-1 smoke proof"
+    )
+    action.add_argument(
+        "--init-tier1", help="Create new Tier 1 proof script scaffold at target path"
+    )
+    action.add_argument(
+        "--init-tier2", help="Create new Tier 2 proof script scaffold at target path"
+    )
 
     args = parser.parse_args()
 
@@ -108,7 +154,9 @@ def main():
     elif args.file:
         success = run_proof_file(args.file)
     else:
-        print("Please provide --file <PATH>, --smoke, --init-tier1 <PATH>, or --init-tier2 <PATH>")
+        print(
+            "Please provide --file <PATH>, --smoke, --init-tier1 <PATH>, or --init-tier2 <PATH>"
+        )
         sys.exit(1)
 
     sys.exit(0 if success else 1)

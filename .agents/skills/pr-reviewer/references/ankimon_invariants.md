@@ -8,7 +8,7 @@ When reviewing code changes in Ankimon, verify that none of these core architect
 
 Ankimon decouples the game core from Anki/Qt so it can be tested completely headless.
 
-- **No Top-Level `aqt` or `PyQt6` in Core**: Modules under `src/Ankimon/` that represent domain logic (`battle_loop.py`, `card_hooks.py`, `business.py`, `functions/`, `database_manager.py`, `core.py`) must **never** import `aqt`, `anki`, or `PyQt6` at top-level.
+- **No Top-Level `aqt` or `PyQt6` in Core**: Modules under `src/Ankimon/` that represent domain logic (`battle_loop.py`, `card_hooks.py`, `business.py`, `functions/`, `pyobj/database_manager.py`, `core.py`) must remain importable without `aqt`, `anki`, or `PyQt6`; guard or lazy-load GUI imports.
 - **Read State from `services`**: Read shared objects (`db`, `logger`, `settings`, `main_pokemon`, `enemy_pokemon`, `trainer_card`, `achievements`) from `services`, never by reaching into `mw`.
 - **UI Operations Route Through `services.ui`**: Input dialogs, prompts, and user alerts must go through `services.ui` (`HeadlessPresenter` in headless mode, `QtPresenter` in production) rather than instantiating Qt dialogs directly inside game logic.
 - **Self-Adapting Pure-Output Helpers**: Pure GUI helpers (tooltips, sound effects, HUD updates) must guard Qt imports, always emit a structured event (`events.py`), and render only when Qt is present.
@@ -19,20 +19,20 @@ Ankimon decouples the game core from Anki/Qt so it can be tested completely head
 
 - **Database Path**: All user data is stored in SQLite (`user_files/ankimon.db`).
 - **Never Modify Shipped Databases**: Static assets and bundled data are read-only; runtime data lives exclusively in `user_files/`.
-- **Backward Compatibility & Migrations**: Schema alterations must be handled safely in `database_manager.py` without requiring manual DB deletes or crashing on existing user saves.
+- **Backward Compatibility & Migrations**: Schema alterations must be handled safely in `pyobj/database_manager.py` without requiring manual DB deletes or crashing on existing user saves.
 - **Key Table Invariants**:
   - `captured_pokemon`: `(individual_id, is_main, data)` — `data` is JSON-encoded Pokemon dictionary.
-  - `items`: `(item_id, count)`
-  - `badges`: `(badge_id, timestamp)`
-  - `team`: `(slot, individual_id)`
+  - `items`: `(id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id)`
+  - `badges`: `(badge_id, achieved)`
+  - `team`: `(slot_position, individual_id)`
 
 ---
 
 ## 🐉 3. Pokémon Data & Encounter System
 
-- **Mega / Gmax / Alternate Forms (IDs ≥ 10000)**: Must be resolved to their base species ID via `check_id_ok()` before generation-toggle checks or Pokédex registry lookups. Failing to resolve base IDs causes silent crashes or missing dex entries.
+- **Mega / Gmax / Alternate Forms (IDs ≥ 10000)**: `check_id_ok()` returns whether generation settings permit the ID; it is not an ID converter. Preserve actual IDs for form-aware Pokédex lookups. Resolve the Pokédex `species_id` explicitly when a caller needs the base species, and retain regional-form generation checks.
 - **Encounter Prerequisite Chains**: Encounter prerequisite chains must form a **strict Directed Acyclic Graph (DAG)**. Any circular dependency will cause infinite recursion and freeze Anki.
-- **Lowercase Lookup Keys**: Always lowercase and strip hyphens from species/item keys before database lookups or cache indexing. Capitalized keys fail silently.
+- **Lowercase Lookup Keys**: Use each lookup's canonical key format. Species caches use normalized names, while item keys such as `rare-candy` retain hyphens; do not strip them indiscriminately.
 - **Stat Formulas**: Max HP and CP must follow standard formulas:
   $$\text{Max HP} = \left\lfloor\frac{(2 \times \text{Base HP} + \text{IV} + \lfloor\text{EV}/4\rfloor) \times \text{Level}}{100}\right\rfloor + \text{Level} + 10$$
 

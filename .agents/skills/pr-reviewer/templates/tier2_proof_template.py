@@ -6,11 +6,20 @@ Boots genuine Ankimon with real PyQt6 in offscreen mode.
 Use this template to author a NEW test proving that a UI/widget or state persistence feature works.
 """
 
-import os
 import sys
+from pathlib import Path
 
 # Ensure repo root is on sys.path
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+for candidate in (*Path(__file__).resolve().parents, Path.cwd(), *Path.cwd().parents):
+    if (candidate / "harness" / "driver.py").is_file() and (
+        candidate / "src" / "Ankimon"
+    ).is_dir():
+        REPO_ROOT = str(candidate)
+        break
+else:
+    raise RuntimeError(
+        "Save this proof inside the Ankimon checkout or run it from the checkout root."
+    )
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
@@ -22,71 +31,74 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         pass
 
 
-def _find_widget(app, cls, **match):
-    """Finds first visible widget of class `cls` whose getter text matches `match`."""
-    for w in app.allWidgets():
-        if not isinstance(w, cls) or not w.isVisible():
+def _find_widget(parent, cls, **match):
+    """Find a visible child matching every supplied text getter."""
+    for w in parent.findChildren(cls):
+        if not w.isVisible():
             continue
-        for getter, sub in match.items():
-            try:
-                val = getattr(w, getter)() or ""
-            except Exception:
-                val = ""
-            if sub.lower() in str(val).lower():
-                return w
+        if all(
+            sub.casefold() in str(getattr(w, getter)() or "").casefold()
+            for getter, sub in match.items()
+        ):
+            return w
     return None
 
 
 def run_proof():
+    """Example rename proof; adapt the actual interaction and assertion to the PR."""
     from harness.real_driver import RealDriver
+    from harness.fixtures import build_pokemon
     from PyQt6.QtWidgets import QPushButton, QLineEdit
     from PyQt6.QtTest import QTest
 
-    # 1. Seed initial game state matching the PR scenario
-    d = RealDriver(seed={
-        "main": {"species": "Pikachu", "level": 25},
-        "box": [
-            {"species": "Gengar", "level": 50, "nickname": "OriginalNick"},
-            {"species": "Snorlax", "level": 40},
-        ],
-        "items": {"Pokeball": 10},
-    })
-    
-    app = d.app
+    # RealDriver has no seed argument. Boot a throwaway profile, then insert
+    # this non-main Pokemon through the existing fixture and database APIs.
+    d = RealDriver(
+        first_encounter=False,
+        settings_overrides={
+            "audio.sounds": False,
+            "audio.sound_effects": False,
+        },
+    )
+    app = d.env.app
     db = d.services.db
-    pc = d.services.pc_box_window
+    pc = d.services.pokemon_pc
+    pokemon = build_pokemon(
+        {"species": "Gengar", "level": 50, "nickname": "OriginalNick"}
+    )
+    iid = pokemon.individual_id
+    db.save_pokemon(pokemon.to_dict())
+    assert db.get_pokemon(iid)["nickname"] == "OriginalNick"
 
-    print(">>> 1. Initial State Initialized.")
+    try:
+        pc.show()
+        pc.refresh_pokemon_grid()
+        pc.show_pokemon_details({"individual_id": iid})
+        app.processEvents()
 
-    # 2. Drive the specific UI feature or dialog
-    # Example: Inspect a Box Pokemon and perform an action
-    all_pkmn = db.get_all_pokemon()
-    target_pkmn = all_pkmn[0]
-    iid = target_pkmn["individual_id"]
-    
-    # pc.show_pokemon_details(target_pkmn)
-    # app.processEvents()
+        edit = _find_widget(
+            pc, QLineEdit, placeholderText="Enter a new Nickname for your Pokémon"
+        )
+        button = _find_widget(pc, QPushButton, text="Rename Pokémon")
+        assert edit is not None and button is not None, "Rename widgets must be visible"
+        edit.clear()
+        QTest.keyClicks(edit, "NewNick")
+        button.click()
+        app.processEvents()
 
-    # 3. Simulate user interactions with widgets using QTest
-    # edit = _find_widget(app, QLineEdit, placeholderText="Nickname")
-    # btn = _find_widget(app, QPushButton, text="Rename")
-    # if edit and btn:
-    #     edit.clear()
-    #     QTest.keyClicks(edit, "NewNick")
-    #     btn.click()
-    #     app.processEvents()
+        updated_pkmn = db.get_pokemon(iid)
+        assert updated_pkmn["nickname"] == "NewNick", "Rename must persist in SQLite"
+        events = d.drain_events()
+        errors = [e for e in events if e.get("type") == "error"]
+        assert not errors, f"Unexpected error events fired: {errors}"
 
-    # 4. Assert that DB / game state updated as expected
-    updated_pkmn = db.get_pokemon(iid)
-    # assert updated_pkmn.get("nickname") == "NewNick", "Nickname should update in SQLite DB"
-
-    # 5. Check event stream for unexpected errors
-    events = d.drain_events()
-    errors = [e for e in events if e.get("type") == "error"]
-    assert not errors, f"Unexpected error events fired: {errors}"
-
-    print("✅ Tier 2 Proof PASSED: Real Qt feature interaction and persistence verified.")
-    return True
+        print(
+            "✅ Tier 2 sample PASSED: Renaming through real Qt widgets persisted in SQLite."
+        )
+        return True
+    finally:
+        pc.close()
+        app.processEvents()
 
 
 if __name__ == "__main__":

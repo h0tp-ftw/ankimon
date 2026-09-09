@@ -1,164 +1,68 @@
-# Authoring New Focused Tier 1 & Tier 2 Proof Tests
+# Authoring Focused Tier 1 and Tier 2 Proofs
 
-This guide explains how to **author bespoke test scenarios** during PR reviews to actively prove that a PR's changes work as intended.
+Choose a behavior the PR claims to change. Construct its initial state, exercise the affected operation, and assert the observable result. Attach the actual code, command, exit status, and output to the review. The templates contain runnable samples; adapt them before using them as evidence for another claim.
 
----
+## Tier 1: core logic and battle events
 
-## 🎯 The Philosophy of PR Proof Verification
+Use [tier1_proof_template.py](../templates/tier1_proof_template.py) for game logic without Anki or Qt. Install `requests` and initialize the poke-engine submodule first.
 
-When reviewing a PR, standard baseline suites (`harness/check.py`) only confirm that nothing *catastrophically regressed*. They do **not** prove that the *new feature or fix* actually works in practice.
+A driver action returns the events it produced and clears the queue. Accumulate the results instead of draining again:
 
-As a reviewer, you must:
-1. **Extract the Core Hypothesis**: What specific behavior does this PR claim to fix, improve, or introduce?
-2. **Author a Targeted Test Script**: Write a focused Python test script using Tier 1 (`Driver`) or Tier 2 (`RealDriver` + real PyQt6 offscreen).
-3. **Execute & Observe**: Run the new test, inspect state transitions and event emissions, and verify database persistence.
-4. **Attach Evidence**: Include your authored test and its execution output in the review report.
-
----
-
-## 🖥️ Authoring New Tier 2 Proofs (Real Qt / Widgets / Persistence)
-
-Tier 2 boots the genuine add-on with offscreen Qt. Use Tier 2 whenever a PR touches:
-- Qt dialogs, menus, context actions, buttons, text inputs, dropdowns.
-- PC Box movements, move management, nickname renaming, favorite toggling.
-- Settings window persistence and tab navigation.
-- Reviewer UI shortcuts, hooks, and HUD updates.
-- WebShell host (`webshell/host.py`), `LiveUpdateBridge`, and QWebChannel messaging.
-
-### Pattern 1: Authoring a Real UI Interaction Check (QTest)
-```python
-def check_pr_nickname_rename(d, app, db, pc, pool):
-    """Proves that renaming a Pokemon via the real Qt details dialog persists to DB."""
-    from PyQt6.QtWidgets import QLineEdit, QPushButton
-    from PyQt6.QtTest import QTest
-
-    iid = pool.pop()
-    pkmn = db.get_pokemon(iid)
-    pc.show_pokemon_details(pkmn)
-    app.processEvents()
-
-    # Locate real widgets in dialog
-    edit = None
-    btn = None
-    for w in app.allWidgets():
-        if isinstance(w, QLineEdit) and w.placeholderText() == "Nickname":
-            edit = w
-        elif isinstance(w, QPushButton) and w.text() == "Rename":
-            btn = w
-
-    assert edit is not None and btn is not None, "Could not find rename widgets"
-
-    edit.clear()
-    QTest.keyClicks(edit, "ThunderGod")
-    btn.click()
-    app.processEvents()
-
-    # Assert persistence in database
-    after = (db.get_pokemon(iid) or {}).get("nickname", "")
-    assert after == "ThunderGod", f"Expected 'ThunderGod', got {after}"
-    return True
-```
-
-### Pattern 2: Authoring a Real Hook / Reviewer Catch Proof
-```python
-def check_pr_catch_flow(d, app, db, pc, pool):
-    """Proves that catching a fainted enemy updates the captured collection."""
-    before_count = db.get_pokemon_count()
-    
-    # Simulate enemy fainting
-    d.services.enemy_pokemon.hp = 0
-    d.services.enemy_pokemon.current_hp = 0
-    
-    # Trigger real reviewer catch hook
-    d.catch()
-    app.processEvents()
-
-    after_count = db.get_pokemon_count()
-    assert after_count == before_count + 1, f"Expected {before_count + 1} Pokemon, found {after_count}"
-    return True
-```
-
-### Pattern 3: Authoring a Settings Dropdown Persistence Proof
-```python
-def check_pr_settings_channel(d, app, db, pc, pool):
-    """Proves that changing a settings dropdown updates both memory and settings DB."""
-    from Ankimon.pyobj.settings_dialog import SettingsDialog
-    
-    dlg = SettingsDialog()
-    app.processEvents()
-    
-    # Change setting via UI widget
-    # dlg.some_dropdown.setCurrentIndex(1)
-    # dlg.save_and_close()
-    # app.processEvents()
-
-    # Assert setting state
-    # assert d.services.settings.get("some_key") == "expected_val"
-    dlg.close()
-    dlg.deleteLater()
-    return True
-```
-
----
-
-## 🏎️ Authoring New Tier 1 Proofs (Domain Logic / Battle Loop)
-
-Tier 1 runs with zero dependencies under plain Python. Use Tier 1 whenever a PR touches:
-- Battle calculations, damage formulas, move execution, type effectiveness.
-- Card answer processing and multiplier calculations.
-- Leveling up, EXP curves, evolutionary thresholds.
-- Encounter rate algorithms, pity counters, mastery calculations.
-- Item inventory operations and SQLite queries.
-
-### Pattern 1: Authoring a Battle Damage & Faint Proof
 ```python
 from harness.driver import Driver
 
+
 def run_proof():
-    d = Driver(seed={
-        "main": {"species": "Charizard", "level": 50, "moves": ["Flamethrower"]},
-    })
-    d.set_enemy(species="Oddish", level=5)  # Grass/Poison weak to Fire
-    
-    d.answer("good")  # Attacks
-    events = d.drain_events()
+    d = Driver(
+        seed={"main": {"species": "Pikachu", "level": 25}},
+        settings_overrides={"battle.cards_per_round": 1},
+        first_encounter=False,
+    )
+    events = d.set_enemy(species="Pidgey", level=10)
+    events.extend(d.answer("good"))
     state = d.get_state()
-
-    # Assert battle events
-    assert any(e["type"] == "battle" for e in events), "Expected battle event"
-    assert any(e["type"] in ("defeat", "faint") for e in events), "Expected Oddish to faint"
-    print("✅ Battle proof passed!")
+    assert any(event["type"] == "battle" for event in events)
+    assert not any(event["type"] == "error" for event in events)
+    assert 0 <= state["main"]["hp"] <= state["main"]["max_hp"]
+    return True
 ```
 
-### Pattern 2: Authoring an Encounter Pity / Roll Proof
-```python
-from harness.driver import Driver
+This proves that answering a card produces a battle with valid HP. A damage, leveling, or encounter-economy PR needs assertions for its specific numerical or state-transition claim as well. For random outcomes, control the relevant randomness and settings; a fixed number of answers does not guarantee a particular encounter or faint.
 
-def run_proof():
-    d = Driver(seed={"main": {"species": "Pikachu", "level": 20}})
-    
-    # Simulate answering 20 cards and track spawned enemy tiers
-    spawned_tiers = []
-    for _ in range(20):
-        d.answer("good")
-        events = d.drain_events()
-        for e in events:
-            if e["type"] == "encounter":
-                spawned_tiers.append(e.get("tier"))
-                
-    assert len(spawned_tiers) > 0, "Expected encounters to trigger"
-    print(f"✅ Encounter proof passed! Tiers: {spawned_tiers}")
+## Tier 2: real Qt interactions and persistence
+
+Use [tier2_proof_template.py](../templates/tier2_proof_template.py). Set up the environment with `harness/setup_tier2.sh` and source `.tier2/env.sh`.
+
+The sample boots a genuine `RealDriver`, inserts a collection Pokemon with `build_pokemon()` and `db.save_pokemon()`, opens its details, types a nickname with `QTest`, clicks the rename button, and verifies the SQLite nickname changed. It fails if the widgets are missing or persistence did not occur.
+
+The existing interfaces are:
+
+| Needed object | Access |
+| --- | --- |
+| QApplication | `d.env.app` |
+| Database | `d.services.db` |
+| PC window | `d.services.pokemon_pc` |
+| Pokemon fixture | `harness.fixtures.build_pokemon(spec)` |
+
+`RealDriver(seed=...)` is unsupported. Insert collection fixtures after boot using the APIs above. For a test of live battle state, configure that state too; writing only a main-Pokemon DB row does not update the existing live object.
+
+Find widgets within the relevant window and use their actual labels. The PC search field also mentions "nickname", so the rename sample matches "Enter a new Nickname for your Pokémon". Assert that the input and action exist before interacting. The widget helper requires every supplied getter match.
+
+After direct widget calls, process Qt events and read `d.drain_events()`. After driver actions such as `d.catch()` or `d.answer()`, inspect their returned events instead. An empty error list supplements a feature-specific assertion; it cannot prove that a UI action or save happened.
+
+For settings changes, drive the actual settings control and check both the saved configuration and the loaded value. Inspect the current settings implementation instead of assuming a `SettingsDialog()` or a placeholder dropdown exists. For WebEngine behavior, request `webengine=True, require_webengine=True` and inspect the real DOM.
+
+## Running and saving proofs
+
+Run these commands from the repository root:
+
+```bash
+python .agents/skills/pr-reviewer/scripts/run_proof_scenario.py --init-tier1 tests/proofs/proof_pr_818_tier1.py
+python .agents/skills/pr-reviewer/scripts/run_proof_scenario.py --file tests/proofs/proof_pr_818_tier1.py
 ```
 
----
+Use the actual PR number, and `--init-tier2` for the Qt template. Scaffolding refuses overwrites. The copied templates locate the checkout from their ancestors or the working directory, so external copies must be run from the checkout.
 
-## 📁 Where to Save Authored Tests
+The `--file` contract is a trusted Python module exposing `run_proof()` with an explicit `True` result after its assertions. A missing function, an exception, `SystemExit`, or any other return value fails the run. This helper is not a sandbox and does not execute pytest functions or `__main__` blocks; run those with their normal test runner.
 
-When reviewing a PR, save your newly authored proof test in one of these locations:
-- `tests/proofs/test_pr_<PR_NUMBER>_proof.py`
-- Or run it via:
-  ```bash
-  python .agents/skills/pr-reviewer/scripts/run_proof_scenario.py --file path/to/proof.py
-  ```
-
-Once verified, paste the test script and its execution output directly into the review report!
+Default the review report to NOT RUN. Only record PASSED after checking the actual exit status and relevant assertions; record blocked checks and their missing prerequisites.
