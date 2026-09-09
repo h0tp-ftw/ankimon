@@ -15,6 +15,7 @@ from harness.real_driver import RealDriver
 
 
 def run_proof():
+    """Run the real UI proof without using or changing a shared sprite cache."""
     # Never link this fixture to a developer's shared sprite pack.
     with tempfile.TemporaryDirectory(prefix="ankimon-items-proof-") as directory:
         previous_cache = os.environ.get("ANKIMON_SPRITE_CACHE")
@@ -29,6 +30,7 @@ def run_proof():
 
 
 def _run(directory):
+    """Exercise purchases and item evolutions against real Qt, Chromium and SQLite."""
     from PyQt6.QtCore import Qt
     from PyQt6.QtGui import QPixmap
     from PyQt6.QtTest import QTest
@@ -84,13 +86,16 @@ def _run(directory):
     page = window.webview_items.page()
 
     def js(script):
+        """Evaluate JavaScript and wait for the real page's callback."""
         return _run_javascript(page, script)
 
     def click(selector):
+        """Require the requested DOM control to exist, then activate it."""
         assert js(f"Boolean(document.querySelector({json.dumps(selector)}))"), selector
         js(f"document.querySelector({json.dumps(selector)}).click()")
 
     def screenshot(name):
+        """Optionally capture the window after Chromium presents the new frame."""
         dest = os.environ.get("ANKIMON_PROOF_SCREENSHOTS")
         if dest:
             Path(dest).mkdir(parents=True, exist_ok=True)
@@ -116,6 +121,7 @@ def _run(directory):
     screenshot("linking-cord-shop")
 
     def open_picker(item):
+        """Select an owned item and open its populated evolution picker."""
         # Bag view includes the Oval Stone, which need not be in today's stock.
         click('.nav-item[data-filter="owned"]')
         assert _wait_until(
@@ -135,12 +141,14 @@ def _run(directory):
         )
 
     def choose(mon):
+        """Select a fixture Pokemon and wait for its native evolution prompt."""
         assert js(
             f"(() => {{ const c = [...document.querySelectorAll('#picker-grid .pokemon-card')].find(c => c.textContent.includes({json.dumps(mon['nickname'])})); if (!c) return false; c.click(); return true; }})()"
         ), mon["id"]
         assert _wait_until(lambda: get_evo_window().isVisible())
 
     def press(label):
+        """Click the unique visible action on the native evolution window."""
         matches = [
             button
             for button in get_evo_window().findChildren(QPushButton)

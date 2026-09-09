@@ -30,6 +30,7 @@ LINKING_CORD_EVOLUTIONS = (
 
 
 def run_proof():
+    """Check every remapped evolution and shop fallback in a disposable profile."""
     d = Driver(first_encounter=False)
     from Ankimon import utils
     from Ankimon.functions.pokedex_functions import (
