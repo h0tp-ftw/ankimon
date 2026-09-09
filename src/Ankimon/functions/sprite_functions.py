@@ -1,5 +1,4 @@
 import os
-from numbers import Integral
 
 from ..services import services
 from ..resources import pkmnimgfolder
