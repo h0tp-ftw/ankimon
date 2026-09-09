@@ -50,7 +50,9 @@ def hook_env(monkeypatch):
         "Ankimon.poke_engine.instruction_generator",
         get_instructions_from_damage=lambda *a, **k: None,
     )
-    monkeypatch.setitem(sys.modules, instruction_generator.__name__, instruction_generator)
+    monkeypatch.setitem(
+        sys.modules, instruction_generator.__name__, instruction_generator
+    )
 
     poke_engine = sys.modules["Ankimon.poke_engine"]
     poke_engine.constants = constants
@@ -58,28 +60,44 @@ def hook_env(monkeypatch):
     poke_engine.damage_calculator = SimpleNamespace(pokedex=None)
 
     dummy = type("Dummy", (), {})
-    monkeypatch.setitem(sys.modules, "Ankimon.poke_engine.battle", _module(
-        "Ankimon.poke_engine.battle", Move=dummy
-    ))
-    monkeypatch.setitem(sys.modules, "Ankimon.poke_engine.objects", _module(
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.poke_engine.battle",
+        _module("Ankimon.poke_engine.battle", Move=dummy),
+    )
+    monkeypatch.setitem(
+        sys.modules,
         "Ankimon.poke_engine.objects",
-        Pokemon=dummy,
-        State=dummy,
-        StateMutator=dummy,
-        Side=dummy,
-    ))
-    monkeypatch.setitem(sys.modules, "Ankimon.poke_engine.helpers", _module(
-        "Ankimon.poke_engine.helpers", normalize_name=lambda value: value
-    ))
-    monkeypatch.setitem(sys.modules, "Ankimon.poke_engine.find_state_instructions", _module(
+        _module(
+            "Ankimon.poke_engine.objects",
+            Pokemon=dummy,
+            State=dummy,
+            StateMutator=dummy,
+            Side=dummy,
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.poke_engine.helpers",
+        _module("Ankimon.poke_engine.helpers", normalize_name=lambda value: value),
+    )
+    monkeypatch.setitem(
+        sys.modules,
         "Ankimon.poke_engine.find_state_instructions",
-        get_all_state_instructions=lambda *a, **k: [],
-    ))
-    monkeypatch.setitem(sys.modules, "Ankimon.poke_engine.data", _module(
-        "Ankimon.poke_engine.data", pokedex={"aegislash": {"weight": 53.0}}
-    ))
+        _module(
+            "Ankimon.poke_engine.find_state_instructions",
+            get_all_state_instructions=lambda *a, **k: [],
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.poke_engine.data",
+        _module("Ankimon.poke_engine.data", pokedex={"aegislash": {"weight": 53.0}}),
+    )
 
-    modify_move = _module("Ankimon.poke_engine.special_effects.moves.modify_move", pokedex=None)
+    modify_move = _module(
+        "Ankimon.poke_engine.special_effects.moves.modify_move", pokedex=None
+    )
     sys.modules["Ankimon.poke_engine.special_effects.moves"].modify_move = modify_move
     monkeypatch.setitem(sys.modules, modify_move.__name__, modify_move)
 
@@ -87,15 +105,24 @@ def hook_env(monkeypatch):
         "Ankimon.poke_engine.special_effects.abilities.before_move",
         stancechange=lambda *a, **k: None,
     )
-    sys.modules["Ankimon.poke_engine.special_effects.abilities"].before_move = before_move
+    sys.modules[
+        "Ankimon.poke_engine.special_effects.abilities"
+    ].before_move = before_move
     monkeypatch.setitem(sys.modules, before_move.__name__, before_move)
 
-    monkeypatch.setitem(sys.modules, "Ankimon.services", _module(
-        "Ankimon.services", services=SimpleNamespace()
-    ))
-    monkeypatch.setitem(sys.modules, "Ankimon.pyobj.error_handler", _module(
-        "Ankimon.pyobj.error_handler", show_warning_with_traceback=lambda *a, **k: None
-    ))
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.services",
+        _module("Ankimon.services", services=SimpleNamespace()),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "Ankimon.pyobj.error_handler",
+        _module(
+            "Ankimon.pyobj.error_handler",
+            show_warning_with_traceback=lambda *a, **k: None,
+        ),
+    )
 
     spec = importlib.util.spec_from_file_location(
         "Ankimon.functions.ankimon_hooks_to_poke_engine", _HOOK_PATH
@@ -177,8 +204,14 @@ def test_hot_reload_upgrades_the_old_id_only_adapter(hook_env):
     hook, before_move = hook_env
 
     def old_adapter(state, side, move, attacker, defender):
-        return [("change_stats", side, (300, 160, 70, 160, 70, 100),
-                 (100, 70, 160, 70, 160, 100))]
+        return [
+            (
+                "change_stats",
+                side,
+                (300, 160, 70, 160, 70, 100),
+                (100, 70, 160, 70, 160, 100),
+            )
+        ]
 
     old_adapter._ankimon_stancechange_compat = True
     before_move.stancechange = old_adapter

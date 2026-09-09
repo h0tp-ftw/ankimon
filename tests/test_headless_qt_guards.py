@@ -330,7 +330,9 @@ def test_sprite_download_survives_a_qcoreapplication_only_process():
 
 
 def test_audio_import_without_an_application_creates_no_players():
-    code = _QCORE_STUBS.format(src=str(_SRC)) + """
+    code = (
+        _QCORE_STUBS.format(src=str(_SRC))
+        + """
 assert PyQt6.QtCore.QCoreApplication.instance() is None
 from Ankimon import utils
 assert not utils._HAVE_AUDIO
@@ -338,6 +340,7 @@ assert utils.audio_output is None
 assert utils.media_player is None
 print('OK')
 """
+    )
     proc = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=20
     )
@@ -346,7 +349,9 @@ print('OK')
 
 
 def test_audio_players_are_created_on_the_application_thread():
-    code = _QCORE_STUBS.format(src=str(_SRC)) + """
+    code = (
+        _QCORE_STUBS.format(src=str(_SRC))
+        + """
 app = PyQt6.QtCore.QCoreApplication([])
 from Ankimon import utils
 assert utils._HAVE_AUDIO
@@ -354,6 +359,7 @@ assert utils.media_player.audioOutput() is utils.audio_output
 assert utils.media_player.thread() == app.thread()
 print('OK')
 """
+    )
     proc = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=20
     )

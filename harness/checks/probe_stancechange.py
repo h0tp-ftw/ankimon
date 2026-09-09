@@ -3,6 +3,7 @@
 Outcome exploration must not turn current HP into max HP, including when a
 faster opponent's miss, flinch or paralysis creates multiple branches.
 """
+
 import copy
 import pathlib
 import sys
@@ -41,12 +42,22 @@ def make_state(form="aegislashshield", side="user", hp=100):
     defender = pokemon("mew")
     defender.speed = 200
     user, opponent = (attacker, defender) if side == "user" else (defender, attacker)
-    return bridge.State(bridge.reset_side(user), bridge.reset_side(opponent), None, None, False)
+    return bridge.State(
+        bridge.reset_side(user), bridge.reset_side(opponent), None, None, False
+    )
 
 
 def stats(pokemon):
-    return (pokemon.id, pokemon.hp, pokemon.maxhp, pokemon.attack, pokemon.defense,
-            pokemon.special_attack, pokemon.special_defense, pokemon.speed)
+    return (
+        pokemon.id,
+        pokemon.hp,
+        pokemon.maxhp,
+        pokemon.attack,
+        pokemon.defense,
+        pokemon.special_attack,
+        pokemon.special_defense,
+        pokemon.speed,
+    )
 
 
 class StanceChangeTests(unittest.TestCase):
@@ -56,7 +67,9 @@ class StanceChangeTests(unittest.TestCase):
             for side in ("user", "opponent"):
                 for hp in (100, 300):
                     for opposing_move in ("thunderbolt", "airslash"):
-                        with self.subTest(form=form, side=side, hp=hp, move=opposing_move):
+                        with self.subTest(
+                            form=form, side=side, hp=hp, move=opposing_move
+                        ):
                             state = make_state(form, side, hp)
                             initial = copy.deepcopy(state)
                             active = getattr(state, side).active
@@ -68,8 +81,11 @@ class StanceChangeTests(unittest.TestCase):
                                 bridge.StateMutator(state), *moves
                             )
                             self.assertGreater(len(outcomes), 1)
-                            self.assertEqual(stats(active), expected,
-                                             "Exploring outcomes mutated the input battler")
+                            self.assertEqual(
+                                stats(active),
+                                expected,
+                                "Exploring outcomes mutated the input battler",
+                            )
                             changed_stance = False
                             for outcome in outcomes:
                                 mutator = bridge.StateMutator(copy.deepcopy(initial))
@@ -83,7 +99,9 @@ class StanceChangeTests(unittest.TestCase):
                                     for i in outcome.instructions
                                 )
                                 mutator.reverse(outcome.instructions)
-                                self.assertEqual(stats(getattr(mutator.state, side).active), expected)
+                                self.assertEqual(
+                                    stats(getattr(mutator.state, side).active), expected
+                                )
                             self.assertTrue(changed_stance)
 
     def test_attack_then_kings_shield_changes_stats_without_changing_hp(self):
@@ -100,9 +118,11 @@ class StanceChangeTests(unittest.TestCase):
                     self.assertEqual(attacker.id, form)
                     self.assertEqual((attacker.hp, attacker.maxhp), (100, 300))
                     self.assertEqual(attacker.attack > attacker.defense, blade)
-                self.assertIsNone(before_move.stancechange(
-                    state, "user", all_move_json["swordsdance"], attacker, defender
-                ))
+                self.assertIsNone(
+                    before_move.stancechange(
+                        state, "user", all_move_json["swordsdance"], attacker, defender
+                    )
+                )
 
 
 if __name__ == "__main__":

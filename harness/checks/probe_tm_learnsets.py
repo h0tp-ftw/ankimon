@@ -1,4 +1,5 @@
 """Check TM resolution against the shipped form tables, without Anki/Qt."""
+
 import pathlib
 import sys
 import tempfile
@@ -15,7 +16,10 @@ _PROFILE = tempfile.TemporaryDirectory(prefix="ankimon_tm_forms_")
 bootstrap(_PROFILE.name)
 
 from Ankimon.functions.tm_learnset import get_tm_learnset, _load_tm_learnsets_cache
-from Ankimon.functions.pokedex_functions import _load_pokedex_cache, search_pokedex_by_id
+from Ankimon.functions.pokedex_functions import (
+    _load_pokedex_cache,
+    search_pokedex_by_id,
+)
 
 # Independent correspondence checked against the bundled pokemon.csv identifiers
 # and explicit Pokédex form/parent metadata. Never derive expected keys using the
@@ -84,6 +88,7 @@ class TMLearnsetTests(unittest.TestCase):
 
     def test_parent_cycles_terminate_and_still_try_the_base_species(self):
         from Ankimon.functions import tm_learnset
+
         metadata = {
             "testform": {"baseSpecies": "Charizard", "changesFrom": "OtherForm"},
             "otherform": {"baseSpecies": "Charizard", "battleOnly": "TestForm"},
@@ -92,7 +97,9 @@ class TMLearnsetTests(unittest.TestCase):
 
         def lookup(name, field):
             name = name.lower()
-            return metadata[name].get(field) if name in metadata else original(name, field)
+            return (
+                metadata[name].get(field) if name in metadata else original(name, field)
+            )
 
         with patch.object(tm_learnset, "search_pokedex", lookup):
             self.assertEqual(get_tm_learnset("TestForm"), get_tm_learnset("Charizard"))

@@ -108,7 +108,9 @@ def test_resolves_direct_default_and_explicit_form_keys(tm_module, name, expecte
     assert module.get_tm_learnset(name) == expected
 
 
-def test_explicit_form_falls_back_to_base_species_when_tm_data_has_no_form_key(tm_module):
+def test_explicit_form_falls_back_to_base_species_when_tm_data_has_no_form_key(
+    tm_module,
+):
     module, _ = tm_module
     assert module.get_tm_learnset("Venusaur-Mega") == ["solarbeam"]
 
@@ -130,7 +132,9 @@ def test_tm_json_is_loaded_once_and_reused(tm_module):
     assert opener.call_count == 1
 
 
-def test_failed_warm_does_not_poison_cache_and_later_access_retries(tm_module, monkeypatch):
+def test_failed_warm_does_not_poison_cache_and_later_access_retries(
+    tm_module, monkeypatch
+):
     module, _ = tm_module
     failing = mock_open()
     failing.side_effect = OSError("temporarily unreadable")

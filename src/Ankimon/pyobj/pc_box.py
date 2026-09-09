@@ -1073,7 +1073,7 @@ class PokemonPC(QDialog):
         Refreshes the grid to ensure newly caught Pokémon are visible.
         """
         super().showEvent(event)
-        
+
         # Avoid clearing/rebuilding the layout (which causes black screens)
         # if the grid is already built and the count of Pokémon hasn't changed.
         try:
@@ -1337,7 +1337,7 @@ class PokemonPC(QDialog):
         # Pokéball Icon - only show if sprites are enabled
         icon_label = QLabel()
         show_sprites = self.settings.get("gui.show_sprites_across_ankimon", True)
-        
+
         if not show_sprites:
             # When sprites are disabled, use an empty label with the same fixed size
             # to maintain layout stability
@@ -1391,7 +1391,7 @@ class PokemonPC(QDialog):
                     self.details_panel_stack.removeWidget(self._placeholder_widget)
                 self._placeholder_widget.deleteLater()
                 self._placeholder_widget = None
-            
+
             # Create a fresh placeholder with the current sprite setting
             self._placeholder_widget = self._create_placeholder_widget()
             # Insert at index 0 (placeholder slot)
@@ -1539,7 +1539,9 @@ class PokemonPC(QDialog):
                         )
                     )
 
-                    level_text = self.translator.translate("level_label", level=pokemon.get('level', 1))
+                    level_text = self.translator.translate(
+                        "level_label", level=pokemon.get("level", 1)
+                    )
                     level_label = QLabel(level_text)
                     level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     level_label.setStyleSheet(f"""
@@ -1851,18 +1853,18 @@ class PokemonPC(QDialog):
         and see the change immediately without restarting Anki.
         """
         self._pokemon_cache = None  # Invalidate database cache
-        
+
         # Reload the sprite visibility setting to ensure it's current
         self.show_sprites_across_ankimon = self.settings.get(
             "gui.show_sprites_across_ankimon", True
         )
         self.gif_in_collection = self.settings.get("gui.gif_in_collection")
-        
+
         if not self.layout():
             self.create_gui()
         else:
             self.refresh_pokemon_grid()
-            
+
             # If a Pokémon is selected, refresh its details to apply the new sprite setting
             if self._selected_individual_id is not None:
                 # Re-fetch the Pokémon data and show details with updated sprites
@@ -1876,7 +1878,7 @@ class PokemonPC(QDialog):
             else:
                 # If no Pokémon is selected, refresh the placeholder to apply the new setting
                 self._show_placeholder_details()
-                
+
         self.layout().invalidate()
         self.layout().activate()
 
@@ -2073,7 +2075,9 @@ class PokemonPC(QDialog):
         target_stat = stat_map.get(sort_key_str)
 
         if sort_key_str == "date":
-            order_clause = f"ORDER BY captured_date {direction}, original_index {direction}"
+            order_clause = (
+                f"ORDER BY captured_date {direction}, original_index {direction}"
+            )
         elif sort_key_str == "name":
             order_clause = f"ORDER BY name {direction}, json_extract(data, '$.nickname') {direction}"
         elif sort_key_str == "level":
@@ -2455,10 +2459,9 @@ class PokemonPC(QDialog):
                         # Keep the live main-pokemon singleton in step with a
                         # moveset edit, mirroring give_held_item/remove_held_item.
                         main_pkmn = services.main_pokemon
-                        if (
-                            main_pkmn is not None
-                            and getattr(main_pkmn, "individual_id", None) == data.get("individual_id")
-                        ):
+                        if main_pkmn is not None and getattr(
+                            main_pkmn, "individual_id", None
+                        ) == data.get("individual_id"):
                             main_pkmn.attacks = data.get("attacks", main_pkmn.attacks)
                         self.show_pokemon_details(pokemon)
 
@@ -2817,6 +2820,7 @@ class PokemonPC(QDialog):
 
     def reject(self):  # Called when pressing Escape
         import base64
+
         try:
             mw.pm.profile[self.GEOMETRY_KEY] = base64.b64encode(
                 bytes(self.saveGeometry())
