@@ -42,6 +42,7 @@ def hook_env(monkeypatch):
         WEIGHT="weight",
         OPPONENT="opponent",
         MOVE_TARGET_SELF=[],
+        MUTATOR_CHANGE_STATS="change_stats",
     )
     monkeypatch.setitem(sys.modules, constants.__name__, constants)
 
@@ -115,35 +116,36 @@ def test_shield_form_is_delegated_as_engine_aegislash_and_restored(hook_env):
 
     def original(state, side, move, attacker, defender):
         seen.append(attacker.id)
-        return "result"
+        return None
 
     before_move.stancechange = original
     hook._install_stancechange_compat()
-    pokemon = SimpleNamespace(id="aegislashshield")
+    pokemon = SimpleNamespace(id="aegislashshield", maxhp=300)
 
-    assert _call(before_move.stancechange, pokemon) == "result"
+    assert _call(before_move.stancechange, pokemon) is None
     assert seen == ["aegislash"]
     assert pokemon.id == "aegislashshield"
 
 
-def test_shield_form_id_is_restored_when_engine_raises(hook_env):
+@pytest.mark.parametrize("form", ["aegislashshield", "aegislash", "aegislashblade"])
+def test_form_id_is_restored_when_engine_raises(hook_env, form):
     hook, before_move = hook_env
 
     def original(state, side, move, attacker, defender):
-        assert attacker.id == "aegislash"
+        assert attacker.id == ("aegislash" if form == "aegislashshield" else form)
         raise RuntimeError("engine failure")
 
     before_move.stancechange = original
     hook._install_stancechange_compat()
-    pokemon = SimpleNamespace(id="aegislashshield")
+    pokemon = SimpleNamespace(id=form, maxhp=300)
 
     with pytest.raises(RuntimeError, match="engine failure"):
         _call(before_move.stancechange, pokemon)
 
-    assert pokemon.id == "aegislashshield"
+    assert pokemon.id == form
 
 
-def test_non_shield_ids_pass_through_unchanged(hook_env):
+def test_other_species_pass_through_unchanged(hook_env):
     hook, before_move = hook_env
     seen = []
 
@@ -153,11 +155,11 @@ def test_non_shield_ids_pass_through_unchanged(hook_env):
 
     before_move.stancechange = original
     hook._install_stancechange_compat()
-    pokemon = SimpleNamespace(id="aegislashblade")
+    pokemon = SimpleNamespace(id="pikachu")
 
     assert _call(before_move.stancechange, pokemon) == "ok"
-    assert seen == ["aegislashblade"]
-    assert pokemon.id == "aegislashblade"
+    assert seen == ["pikachu"]
+    assert pokemon.id == "pikachu"
 
 
 def test_installation_is_idempotent(hook_env):
@@ -169,4 +171,19 @@ def test_installation_is_idempotent(hook_env):
     hook._install_stancechange_compat()
 
     assert before_move.stancechange is first_wrapper
-    assert getattr(first_wrapper, "_ankimon_stancechange_compat", False) is True
+
+
+def test_hot_reload_upgrades_the_old_id_only_adapter(hook_env):
+    hook, before_move = hook_env
+
+    def old_adapter(state, side, move, attacker, defender):
+        return [("change_stats", side, (300, 160, 70, 160, 70, 100),
+                 (100, 70, 160, 70, 160, 100))]
+
+    old_adapter._ankimon_stancechange_compat = True
+    before_move.stancechange = old_adapter
+    hook._install_stancechange_compat()
+    pokemon = SimpleNamespace(id="aegislashshield", maxhp=300)
+    result = _call(before_move.stancechange, pokemon)
+    assert result[0][3] == (300, 70, 160, 70, 160, 100)
+    assert pokemon.id == "aegislashshield"

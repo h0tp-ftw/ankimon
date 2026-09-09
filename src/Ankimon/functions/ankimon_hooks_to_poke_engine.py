@@ -169,23 +169,25 @@ def _install_form_tolerant_pokedex():
 
 
 def _install_stancechange_compat():
-    """Teach the vendored engine Ankimon's explicit Shield Forme id.
+    """Support Shield's explicit id and reversible stats for all Aegislash forms.
 
     poke-engine uses ``aegislash`` for Shield Forme, while Ankimon serializes
     that same battler as ``aegislashshield``. Temporarily translate only for
     the engine call and restore the live object even if the engine raises.
+    The engine also puts current HP in its old-stat tuple, but its mutator
+    reverses that field into max HP. Correct it before outcome exploration.
     """
     from ..poke_engine.special_effects.abilities import before_move
 
     original_stancechange = before_move.stancechange
-    if getattr(original_stancechange, "_ankimon_stancechange_compat", False):
+    if getattr(original_stancechange, "_ankimon_stancechange_compat", False) == 2:
         return
 
     def patched_stancechange(
         state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon
     ):
         original_id = attacking_pokemon.id
-        if original_id != "aegislashshield":
+        if original_id not in ("aegislashshield", "aegislash", "aegislashblade"):
             return original_stancechange(
                 state,
                 attacking_side,
@@ -194,9 +196,11 @@ def _install_stancechange_compat():
                 defending_pokemon,
             )
 
-        attacking_pokemon.id = "aegislash"
+        original_maxhp = attacking_pokemon.maxhp
+        if original_id == "aegislashshield":
+            attacking_pokemon.id = "aegislash"
         try:
-            return original_stancechange(
+            instructions = original_stancechange(
                 state,
                 attacking_side,
                 attacking_move,
@@ -206,7 +210,18 @@ def _install_stancechange_compat():
         finally:
             attacking_pokemon.id = original_id
 
-    patched_stancechange._ankimon_stancechange_compat = True
+        if instructions is None:
+            return None
+        return [
+            (instr[0], instr[1], instr[2], (original_maxhp, *instr[3][1:]))
+            if instr[0] == constants.MUTATOR_CHANGE_STATS and instr[1] == attacking_side
+            else instr
+            for instr in instructions
+        ]
+
+    # Version the guard so hot-reloading over the older id-only adapter still
+    # installs this correction, while repeated installation remains idempotent.
+    patched_stancechange._ankimon_stancechange_compat = 2
     before_move.stancechange = patched_stancechange
 
 
