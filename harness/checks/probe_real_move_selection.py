@@ -315,6 +315,53 @@ class MoveSelectionTests(unittest.TestCase):
         self.assertEqual(edit.text(), "1234 ")
         self.assertEqual(dialog.result(), QDialog.DialogCode.Rejected)
 
+    def test_presenter_hide_cancels_pending_choice_without_hanging(self):
+        """Qt's hide exits exec(); the presenter must discard the pending move."""
+        from Ankimon.gui_presenter import QtPresenter
+
+        dialogs = []
+        errors = []
+        timed_out = []
+
+        def choose_then_hide():
+            dialog = QApplication.activeModalWidget()
+            try:
+                self.assertIsInstance(dialog, self.dialog_type)
+                dialogs.append(dialog)
+                self.key(dialog, Qt.Key.Key_2)
+                self.assertEqual(dialog.selected_move, "growl")
+                dialog.hide()
+            except Exception as exc:
+                errors.append(exc)
+                if dialog is not None and not sip.isdeleted(dialog):
+                    dialog.reject()
+
+        def cancel_on_timeout():
+            timed_out.append(True)
+            # A hung hidden dialog is no longer activeModalWidget(). Keep its
+            # reference so the watchdog can still end exec() and fail the test.
+            dialog = dialogs[0] if dialogs else QApplication.activeModalWidget()
+            if dialog is not None and not sip.isdeleted(dialog):
+                dialog.reject()
+
+        timeout = QTimer()
+        timeout.setSingleShot(True)
+        timeout.timeout.connect(cancel_on_timeout)
+        timeout.start(2000)
+        QTimer.singleShot(20, choose_then_hide)
+        try:
+            move = QtPresenter().choose_move(MOVES)
+        finally:
+            timeout.stop()
+
+        self.assertFalse(errors, errors)
+        self.assertFalse(timed_out, "hiding the dialog left the presenter blocked")
+        self.assertTrue(dialogs, "input never reached the move dialog")
+        self.assertIsNone(move)
+        self.assertEqual(dialogs[0].result(), QDialog.DialogCode.Rejected)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.assertTrue(sip.isdeleted(dialogs[0]))
+
     def test_destroying_dialog_cancels_queued_acceptance(self):
         dialog = self.dialog()
         finished = []
