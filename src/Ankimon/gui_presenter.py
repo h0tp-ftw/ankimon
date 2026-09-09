@@ -25,6 +25,12 @@ class QtPresenter:
     """Shows real Qt dialogs for the UI-port interactions."""
 
     def choose_move(self, attacks):
+        attacks = list(attacks)
+        if not attacks:
+            # A zero-row modal has nothing to select and nothing to explain, so
+            # never open one: the caller already falls back to its own move when
+            # this returns None.
+            return None
         # Parent to mw and force it to the front: a parentless QDialog can
         # spawn behind the main Anki window (or the Ankimon battle popup)
         # with no taskbar/focus cue on some window managers — exec() still
@@ -32,7 +38,7 @@ class QtPresenter:
         # nothing in the logs, since nothing actually failed; the dialog is
         # just invisible. (finding: turns stopped advancing despite correct
         # review answers, with controls.allow_to_choose_moves enabled.)
-        dialog = MoveSelectionDialog(list(attacks), parent=mw)
+        dialog = MoveSelectionDialog(attacks, parent=mw)
         # Let exec() establish modality and show the dialog first, then raise
         # and activate it on the next event-loop iteration so it cannot appear
         # behind the Anki/battle windows.

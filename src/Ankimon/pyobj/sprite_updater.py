@@ -326,6 +326,10 @@ class SpriteUpdateDialog(QDialog):
             self.status_label.setText("Cancelling download...")
 
     def on_download_finished(self, success, message):
+        # Refresh hits and misses even when an update only partially completed.
+        from ..functions.sprite_functions import _clear_sprite_cache
+
+        _clear_sprite_cache()
         if success:
             try:
                 manifest_path = self.dest_dir.parent / "sprites_local_manifest.json"
