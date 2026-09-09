@@ -27,6 +27,13 @@ for _pkg in (
 import pytest
 
 
+def pytest_configure(config):
+    # The Tier-2 wrapper boots the whole add-on under real Qt, which the
+    # harness.yml tier2 job also does. Registering the marker lets a fast run
+    # deselect it with -m "not tier2" instead of paying for a second boot.
+    config.addinivalue_line("markers", "tier2: requires the optional real-Qt Tier-2 environment")
+
+
 @pytest.fixture(autouse=True)
 def restore_package_stubs():
     from unittest.mock import MagicMock

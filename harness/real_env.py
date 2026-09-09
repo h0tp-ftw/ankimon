@@ -100,11 +100,19 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
     # the changelog/leaderboard network paths short-circuit). Faithful enough —
     # "offline" is a valid state and doesn't affect gameplay.
     if neuter_network:
+        import socket
+
+        def _offline_socket(*a, **k):
+            raise OSError("offline (harness)")
+
+        # Startup tries a direct TCP connection before requests. Disable both
+        # transports so the offline session also stays offline on connected CI.
+        socket.create_connection = _offline_socket
         try:
             import requests
 
             def _offline(*a, **k):
-                raise RuntimeError("offline (harness)")
+                raise requests.ConnectionError("offline (harness)")
 
             requests.get = _offline
             requests.post = _offline
