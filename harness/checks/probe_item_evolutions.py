@@ -6,6 +6,7 @@ Run with plain Python: python3 harness/checks/probe_item_evolutions.py
 import csv
 import pathlib
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -33,6 +34,7 @@ def run_proof():
     """Check every remapped evolution and shop fallback in a disposable profile."""
     d = Driver(first_encounter=False)
     from Ankimon import utils
+    from Ankimon.functions import pokedex_functions
     from Ankimon.functions.pokedex_functions import (
         _load_pokedex_cache,
         check_evolution_by_item,
@@ -50,11 +52,22 @@ def run_proof():
     ):
         assert int(return_id_for_item_name(item)) == item_id
         for prevo, evolved in pairs:
-            assert check_evolution_by_item(prevo, item_id) == evolved, (item, prevo)
+            if item == "oval-stone":
+                with patch.object(
+                    pokedex_functions, "get_time_of_day", return_value="day"
+                ):
+                    assert check_evolution_by_item(prevo, item_id) == evolved, (
+                        item,
+                        prevo,
+                    )
+            else:
+                assert check_evolution_by_item(prevo, item_id) == evolved, (item, prevo)
             source = pokedex[search_pokedex_by_id(prevo)]
             target = pokedex[search_pokedex_by_id(evolved)]
             assert target["evoType"] == "useItem"
             assert target["evoItem"].lower().replace(" ", "-") == item
+            if item == "oval-stone":
+                assert target["evoCondition"] == "during the day"
             assert any(
                 row["evolves_from_species_id"] == str(source["species_id"])
                 and row["evolved_species_id"] == str(target["species_id"])
@@ -66,6 +79,9 @@ def run_proof():
                 check_evolution_by_item(prevo, 110 if item_id == 2160 else 2160) is None
             )
         assert check_evolution_by_item(25, item_id) is None
+    with patch.object(pokedex_functions, "get_time_of_day", return_value="night"):
+        assert check_evolution_by_item(440, 110) is None
+
     # Held-item trades retain their own item; a cord cannot bypass the requirement.
     assert check_evolution_by_item(112, 2160) is None
     assert check_evolution_by_item(112, return_id_for_item_name("protector")) == 464

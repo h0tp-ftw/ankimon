@@ -6287,6 +6287,7 @@
     "prevo": "Happiny",
     "evoType": "useItem",
     "evoItem": "Oval Stone",
+    "evoCondition": "during the day",
     "evos": [
       "Blissey"
     ],

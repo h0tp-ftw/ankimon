@@ -4,10 +4,12 @@ Run: QT_QPA_PLATFORM=offscreen python3 -m harness.checks.probe_real_item_evoluti
 Optional screenshot directory: ANKIMON_PROOF_SCREENSHOTS=/tmp/pr838-screenshots
 """
 
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
 
 from harness.checks.probe_real_webengine import _run_javascript, _wait_until
 from harness.checks.probe_item_evolutions import LINKING_CORD_EVOLUTIONS
@@ -49,6 +51,7 @@ def _run(directory):
     )
     from harness.fixtures import build_pokemon
     from Ankimon import utils
+    from Ankimon.functions import pokedex_functions
     from Ankimon.singletons import get_items_window, get_item_window, get_evo_window
     from Ankimon.functions.pokedex_functions import get_pretty_name_for_id
     from Ankimon.ankimon_items_web.shop_obj import SCREEN_ITEMS
@@ -169,20 +172,26 @@ def _run(directory):
     assert db.get_item("linking-cord")["quantity"] == 13
 
     for mon, evolved, item in records:
-        before = db.get_item(item)["quantity"]
-        open_picker(item)
-        choose(mon)
-        press("Evolve Pokémon")
-        assert _wait_until(
-            lambda: db.get_pokemon(mon["individual_id"])["id"] == evolved
-        ), (mon["id"], evolved)
-        saved = db.get_pokemon(mon["individual_id"])
-        assert saved["nickname"] == mon["nickname"]
-        assert (db.get_item(item) or {}).get("quantity", 0) == before - 1
-        print(
-            f"UI evolution: {mon['id']} -> {evolved} ({get_pretty_name_for_id(evolved)}), consumed one {item}"
+        time_context = (
+            patch.object(pokedex_functions, "get_time_of_day", return_value="day")
+            if item == "oval-stone"
+            else nullcontext()
         )
-        get_evo_window().close()
+        with time_context:
+            before = db.get_item(item)["quantity"]
+            open_picker(item)
+            choose(mon)
+            press("Evolve Pokémon")
+            assert _wait_until(
+                lambda: db.get_pokemon(mon["individual_id"])["id"] == evolved
+            ), (mon["id"], evolved)
+            saved = db.get_pokemon(mon["individual_id"])
+            assert saved["nickname"] == mon["nickname"]
+            assert (db.get_item(item) or {}).get("quantity", 0) == before - 1
+            print(
+                f"UI evolution: {mon['id']} -> {evolved} ({get_pretty_name_for_id(evolved)}), consumed one {item}"
+            )
+            get_evo_window().close()
 
     assert not [event for event in d.drain_events() if event["type"] == "error"]
     window.close()

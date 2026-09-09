@@ -257,7 +257,6 @@ def test_use_item_evolutions_are_still_offered(shop_obj):
         ("Pumpkaboo-Small", 10027, 10030, "linking-cord"),
         ("Pumpkaboo-Large", 10028, 10031, "linking-cord"),
         ("Pumpkaboo-Super", 10029, 10032, "linking-cord"),
-        ("Happiny", 440, 113, "oval-stone"),
     ],
 )
 def test_remapped_item_evolutions_are_offered(
@@ -277,6 +276,23 @@ def test_remapped_item_evolutions_are_offered(
     assert "e" not in choices[unrelated["individual_id"]]
     wrong_item = "oval-stone" if item == "linking-cord" else "linking-cord"
     assert "e" not in _choices(shop_obj, [mon], wrong_item)[mon["individual_id"]]
+
+
+def test_happiny_oval_stone_is_day_only(shop_obj):
+    """Direct Oval Stone use still preserves Happiny's daytime requirement."""
+    happiny = _pokemon("Happiny", 440)
+    item_id = shop_obj.return_id_for_item_name("oval-stone")
+    pokedex_functions = importlib.import_module("Ankimon.functions.pokedex_functions")
+
+    with patch.object(pokedex_functions, "get_time_of_day", return_value="day"):
+        assert shop_obj.check_evolution_by_item(440, item_id) == 113
+        day_choices = _choices(shop_obj, [happiny], "oval-stone")
+        assert day_choices[happiny["individual_id"]].get("e") == 1
+
+    with patch.object(pokedex_functions, "get_time_of_day", return_value="night"):
+        assert shop_obj.check_evolution_by_item(440, item_id) is None
+        night_choices = _choices(shop_obj, [happiny], "oval-stone")
+        assert "e" not in night_choices[happiny["individual_id"]]
 
 
 def test_wrong_item_is_not_offered(shop_obj):

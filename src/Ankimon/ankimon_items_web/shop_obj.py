@@ -76,6 +76,7 @@ from ..functions.pokedex_functions import (
     _load_pokedex_cache,
     check_evolution_by_item,
     evolution_gender_allows,
+    evolution_time_allows,
     return_id_for_item_name,
 )
 from ..business import calculate_cp_from_dict
@@ -2104,6 +2105,9 @@ class AnkimonItemsWeb(QDialog):
                                 if not evolution_gender_allows(
                                     target_data, pokemon_gender, _ITEM_EVO_TRIGGERS
                                 ):
+                                    continue
+
+                                if not evolution_time_allows(target_data):
                                     continue
 
                                 # "trade" belongs here alongside "useItem": Ankimon has no

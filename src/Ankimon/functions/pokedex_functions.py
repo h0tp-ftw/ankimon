@@ -1196,6 +1196,27 @@ def filter_gender_split_forms(evo_ids, gender):
     return matching or ids
 
 
+def evolution_time_allows(target_data, current_time=None) -> bool:
+    """Return whether a timed evolution condition allows this candidate.
+
+    Item evolutions normally have no time gate. When ``evoCondition`` mentions
+    ``day`` or ``night``, apply the same clock semantics used by level-based
+    evolutions. ``current_time`` exists mainly for deterministic callers/tests;
+    production callers use :func:`get_time_of_day`.
+    """
+    if not isinstance(target_data, dict):
+        return False
+    condition = (target_data.get("evoCondition") or "").lower()
+    required_time = None
+    if "day" in condition:
+        required_time = "day"
+    elif "night" in condition:
+        required_time = "night"
+    if required_time is None:
+        return True
+    return (current_time or get_time_of_day()) == required_time
+
+
 def check_evolution_by_item(pokemon_id, item_id, gender=None):
     """
     Check if a Pokémon evolves using a specific item.
@@ -1264,6 +1285,11 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None):
                             if not evolution_gender_allows(
                                 target_data, gender, _ITEM_EVO_TRIGGERS
                             ):
+                                continue
+
+                            # Preserve timed direct-use evolutions (e.g. Happiny
+                            # needs an Oval Stone during the day).
+                            if not evolution_time_allows(target_data):
                                 continue
 
                             # Normalize both sides by stripping spaces, hyphens and
