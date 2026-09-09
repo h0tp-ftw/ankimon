@@ -57,7 +57,6 @@ from ..resources import (
     items_path,
     csv_file_items_cost,
     poke_evo_path,
-    pokemon_tm_learnset_path,
     addon_dir,
 )
 from ..business import calculate_cp_from_dict
@@ -68,6 +67,7 @@ from ..functions.pokedex_functions import (
     get_pretty_name_for_name,
     search_pokedex_by_id,
 )
+from ..functions.tm_learnset import get_tm_learnset
 from ..functions.gui_functions import type_icon_path, move_category_path
 
 MOVE_TYPE_COLORS = {
@@ -451,45 +451,14 @@ class MoveManagerWidget(QWidget):
             )
             return
 
-        # Normalize: strip hyphens and everything after the first hyphen to try base species
-        # e.g. "venusaur-mega" -> "venusaur"
-        base_name = internal_name.split("-")[0].lower()
-
-        # DO NOT overwrite internal_name so it retains its capitalization for Pokedex lookup later.
-        lower_internal = internal_name.lower().replace("-", "")
-
-        # 2. Load TM learnsets
+        # 2. Resolve form aliases/base-species fallback through the shared
+        # startup-warmed TM cache. search_pokedex_by_id() above has already
+        # populated the Pokédex cache used for form metadata.
         try:
-            with open(pokemon_tm_learnset_path, "r", encoding="utf-8") as f:
-                tm_learnsets = json.load(f)
+            valid_tms = get_tm_learnset(internal_name)
         except Exception as e:
             self.logger.log_and_showinfo("error", f"Failed to load TM learnsets: {e}")
             return
-
-        # 3. Get valid TMs for this species (check specific form then base species)
-        valid_tms = tm_learnsets.get(lower_internal) or tm_learnsets.get(base_name)
-        if not valid_tms:
-            # Fallback for base forms that are stored with a suffix (e.g. aegislash -> aegislashshield)
-            from ..functions.pokedex_functions import _load_pokedex_cache
-            import re
-            pokedex = _load_pokedex_cache()
-
-            # The pokedex dictionary has keys in lowercase but our internal_name might be capitalized
-            pkmn = pokedex.get(internal_name.lower()) or pokedex.get(internal_name)
-            if pkmn and "baseForme" in pkmn:
-                base_forme_str = pkmn["baseForme"].lower()
-                if base_forme_str == "m":
-                    base_forme_str = "male"
-                elif base_forme_str == "f":
-                    base_forme_str = "female"
-                elif internal_name.lower() == "maushold":
-                    base_forme_str = "familyofthree"
-                elif internal_name.lower() == "squawkabilly":
-                    base_forme_str = "greenplumage"
-
-                base_forme_suffix = re.sub(r'[^a-z0-9]', '', base_forme_str)
-                alt_name = lower_internal + base_forme_suffix
-                valid_tms = tm_learnsets.get(alt_name)
         if not valid_tms:
             self.logger.log_and_showinfo(
                 "info", f"This Pokémon cannot learn any moves from TMs."

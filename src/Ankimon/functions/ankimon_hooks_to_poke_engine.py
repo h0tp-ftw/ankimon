@@ -167,36 +167,52 @@ def _install_form_tolerant_pokedex():
     modify_move.pokedex = view
     damage_calculator.pokedex = view
 
+
+def _install_stancechange_compat():
+    """Teach the vendored engine Ankimon's explicit Shield Forme id.
+
+    poke-engine uses ``aegislash`` for Shield Forme, while Ankimon serializes
+    that same battler as ``aegislashshield``. Temporarily translate only for
+    the engine call and restore the live object even if the engine raises.
+    """
     from ..poke_engine.special_effects.abilities import before_move
 
-    # 2) Patch stancechange
     original_stancechange = before_move.stancechange
+    if getattr(original_stancechange, "_ankimon_stancechange_compat", False):
+        return
 
-    def patched_stancechange(state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon):
-        # Allow Aegislash-Shield to also trigger stance change
-        from ..poke_engine import constants
+    def patched_stancechange(
+        state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon
+    ):
+        original_id = attacking_pokemon.id
+        if original_id != "aegislashshield":
+            return original_stancechange(
+                state,
+                attacking_side,
+                attacking_move,
+                attacking_pokemon,
+                defending_pokemon,
+            )
 
-        orig_id = attacking_pokemon.id
-        if orig_id == 'aegislashshield':
-            attacking_pokemon.id = 'aegislash'
+        attacking_pokemon.id = "aegislash"
+        try:
+            return original_stancechange(
+                state,
+                attacking_side,
+                attacking_move,
+                attacking_pokemon,
+                defending_pokemon,
+            )
+        finally:
+            attacking_pokemon.id = original_id
 
-        result = original_stancechange(state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon)
-
-        # The form change happens by the engine applying a MUTATOR_CHANGE_STATS block later.
-        # It DOES NOT change attacking_pokemon.id in-place. Because original_stancechange
-        # specifically checks for 'aegislash', it is safe and required to restore the original
-        # ID here so it isn't permanently overwritten in the state cache.
-        attacking_pokemon.id = orig_id
-
-        return result
-
+    patched_stancechange._ankimon_stancechange_compat = True
     before_move.stancechange = patched_stancechange
-
 
 
 # Never let a hardening patch break battle import; the raw engine still works for
 # every canonical Pokemon, which is the overwhelming majority. One try per patch --
-# they are independent, so a failure in either must not swallow the other (losing
+# they are independent, so a failure in one must not swallow the others (losing
 # _patch_engine_constants silently puts Howl's boost back on the opponent).
 try:
     _patch_engine_constants()
@@ -205,6 +221,11 @@ except Exception:
 
 try:
     _install_form_tolerant_pokedex()
+except Exception:
+    pass
+
+try:
+    _install_stancechange_compat()
 except Exception:
     pass
 
