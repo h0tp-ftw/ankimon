@@ -54,6 +54,7 @@ _spec.loader.exec_module(_lr)
 from Ankimon.functions.learnset_retrieval import (
     _get_learnset_moves,
     get_all_pokemon_moves,
+    get_evolution_moves_for_pokemon,
     get_levelup_move_for_pokemon,
     get_random_moves_for_pokemon,
 )
@@ -116,6 +117,14 @@ FAKE_LEARNSET = {
         "learnset": {
             "ember": ["9L1"],
             "flareblitz": ["9L62", "9S11"],
+        }
+    },
+    # "9L0" is Showdown's code for a move learned ON EVOLUTION, not one learned
+    # at level 0 (no Pokemon is ever level 0).
+    "venusaur": {
+        "learnset": {
+            "tackle": ["9L1"],
+            "petalblizzard": ["9L0"],
         }
     },
 }
@@ -222,6 +231,30 @@ class TestGetLevelupMove:
     def test_no_match_returns_empty_list(self):
         result = get_levelup_move_for_pokemon("slowpoke", 13, 9)
         assert result == []
+
+
+class TestEvolutionMovesAreNotLevelupMoves:
+    """A "9L0" move is granted by evolving, not by reaching a level.
+
+    get_levelup_move_for_pokemon runs on every single level-up, so a move that is
+    never "learned at this level" must not surface from it — otherwise it is
+    re-offered at every level for the rest of the Pokemon's life.
+    """
+
+    def test_levelup_never_returns_an_evolution_move(self):
+        for level in (1, 2, 20, 50, 100):
+            assert "petalblizzard" not in get_levelup_move_for_pokemon(
+                "venusaur", level, 9
+            )
+
+    def test_levelup_still_returns_the_exact_level_move(self):
+        assert get_levelup_move_for_pokemon("venusaur", 1, 9) == ["tackle"]
+
+    def test_evolution_helper_returns_the_evolution_move(self):
+        assert get_evolution_moves_for_pokemon("venusaur", 32, 9) == ["petalblizzard"]
+
+    def test_evolution_helper_excludes_ordinary_levelup_moves(self):
+        assert get_evolution_moves_for_pokemon("slowpoke", 50, 9) == []
 
 
 class TestEventSCodesExcluded:

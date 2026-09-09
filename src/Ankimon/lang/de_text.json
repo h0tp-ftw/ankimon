@@ -459,6 +459,8 @@
   "bp_label": "KP",
   "combat_power": "Wettkampfpunkte",
   "battle_power": "Kampfstärke",
+  "level_label": "Lvl {level}",
+  "shiny_tooltip": "Schillerndes Pokémon",
   "friendship_label": "Freundschaft",
   "friendship_tooltip": "Misst die Bindung zwischen dir und deinem Pokémon.",
   "bff_tooltip": "💖 Bester Freund (Höchste Freundschaft)",

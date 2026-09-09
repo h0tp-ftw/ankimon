@@ -27,7 +27,7 @@
     "gui.animate_time": "Animate Time",
     "gui.gif_in_collection": "Show GIFs in Collection",
     "gui.show_sprites_across_ankimon": "Show Sprites Across Ankimon",
-    "gui.styling_in_reviewer": "Styling in Reviewer",
+    "gui.hud_styling": "Styling",
     "gui.pop_up_dialog_message_on_defeat": "Pop-Up on Defeat",
     "gui.pop_up_dialog_message_on_item": "Pop-Up on Item Receive",
     "gui.review_hp_bar_thickness": "HP Bar Thickness",

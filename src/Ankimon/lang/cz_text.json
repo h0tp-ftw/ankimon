@@ -459,6 +459,8 @@
   "bp_label": "BP",
   "combat_power": "Bojová síla",
   "battle_power": "Bojová síla",
+  "level_label": "Úroveň {level}",
+  "shiny_tooltip": "Lesklý Pokémon",
   "friendship_label": "Přátelství",
   "friendship_tooltip": "Měří pouto mezi vámi a vaším pokémonem.",
   "bff_tooltip": "💖 Nejlepší přítel (Nejvyšší přátelství)",

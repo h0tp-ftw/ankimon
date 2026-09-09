@@ -459,6 +459,8 @@
   "bp_label": "BP",
   "combat_power": "战斗力",
   "battle_power": "对战能力",
+  "level_label": "等级 {level}",
+  "shiny_tooltip": "闪光宝可梦",
   "friendship_label": "亲密度",
   "friendship_tooltip": "测量你和宝可梦之间的羁绊。",
   "bff_tooltip": "💖 最好的朋友 (最高亲密度)",

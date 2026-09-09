@@ -594,17 +594,46 @@
                     state.explicitHudOverrides.clear();
                     setEdit(setting.key, nextValue);
                     syncHudTogglesForSpriteVisibility();
+                    HUD_TOGGLE_AUTO_SYNC_KEYS.forEach(refreshBooleanControl);
                 } else {
                     if (HUD_TOGGLE_AUTO_SYNC_KEYS.includes(setting.key)) {
                         state.explicitHudOverrides.add(setting.key);
                     }
                     setEdit(setting.key, nextValue);
                 }
-                renderAll();  // refresh control + dirty pip
+                updateToggleButtons(wrap, setting.key);
+                updateDirtyUI();
+                markRowDirty(setting.key);
             });
             wrap.appendChild(btn);
         });
         return wrap;
+    }
+
+    /**
+     * Repaints whichever control currently renders `key` after its value was
+     * changed programmatically. Every HUD element ships as a `.setting-chip`
+     * inside one shared chip row rather than as its own boolean row, so a
+     * `.setting-row`-only lookup would silently refresh nothing; the toggle
+     * branch keeps working if a key is ever promoted to a row of its own.
+     */
+    function refreshBooleanControl(key) {
+        const value = !!getSettingValue(key);
+        const selector = cssEscape(key);
+        document.querySelectorAll(`.setting-chip[data-key="${selector}"]`)
+            .forEach((chip) => chip.classList.toggle('active', value));
+        document.querySelectorAll(`.setting-row[data-key="${selector}"] .setting-toggle`)
+            .forEach((toggle) => updateToggleButtons(toggle, key));
+    }
+
+    function updateToggleButtons(wrap, key) {
+        const value = getSettingValue(key);
+        const btns = wrap.querySelectorAll('.setting-toggle-option');
+        btns.forEach((btn, idx) => {
+            const isOn = (idx === 0 && value) || (idx === 1 && !value);
+            btn.classList.toggle('active', isOn);
+            btn.classList.toggle('off', idx === 1);
+        });
     }
 
     function syncHudTogglesForSpriteVisibility() {
@@ -636,7 +665,8 @@
         sel.addEventListener('change', () => {
             const raw = sel.value === '__null__' ? null : sel.value;
             setEdit(setting.key, raw);
-            renderAll();
+            updateDirtyUI();
+            markRowDirty(setting.key);
         });
         return sel;
     }

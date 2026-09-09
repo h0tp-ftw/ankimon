@@ -35,13 +35,21 @@ def test_ipc_path(path):
 
 # Returns on first IPC pipe matching Discord's
 def get_ipc_path(pipe=None):
+    """Find Discord's local IPC socket, checking native, Snap, and Flatpak
+    sandbox locations (including Vesktop's) in turn."""
     ipc = 'discord-ipc-'
     if pipe is not None:
         ipc = f"{ipc}{pipe}"
 
     if sys.platform in ('linux', 'darwin'):
         tempdir = os.environ.get('XDG_RUNTIME_DIR') or (f"/run/user/{os.getuid()}" if os.path.exists(f"/run/user/{os.getuid()}") else tempfile.gettempdir())
-        paths = ['.', 'snap.discord', 'app/com.discordapp.Discord', 'app/com.discordapp.DiscordCanary']
+        paths = [
+            '.',
+            'snap.discord',
+            'app/com.discordapp.Discord',
+            'app/com.discordapp.DiscordCanary',
+            '.flatpak/dev.vencord.Vesktop/xdg-run',
+        ]
     elif sys.platform == 'win32':
         tempdir = r'\\?\pipe'
         paths = ['.']

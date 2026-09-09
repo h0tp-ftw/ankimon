@@ -403,7 +403,6 @@ class SettingsWindow(QMainWindow):
             },
             "Styling": {
                 "settings": [
-                    "Styling in Reviewer",
                     "Team Overview in Deck Overview",
                     "Animate Time",
                     "Show GIFs in Collection",
@@ -440,6 +439,7 @@ class SettingsWindow(QMainWindow):
                             "Show Enemy Shiny Star",
                             "Show Player Shiny Star",
                             "Show Text Message Box in Reviewer",
+                            "Styling",
                         ]
                     }
                 }

@@ -14,7 +14,12 @@ from .pyobj.settings import Settings
 from .pyobj.InfoLogger import ShowInfoLogger
 
 from .functions.battle_functions import calculate_hp
-from .functions.pokedex_functions import find_details_move, search_pokedex
+from .functions.pokedex_functions import (
+    find_details_move,
+    items_cost_index_for,
+    normalize_item_identifier,
+    search_pokedex,
+)
 
 from .pyobj.error_handler import show_warning_with_traceback
 from .resources import (
@@ -346,6 +351,8 @@ USELESS_ITEMS = {
     "max-ether",
     "elixir",
     "ether",
+    # Deprecated / Functional as UI mechanic instead
+    "exp-share",
 }
 
 
@@ -471,10 +478,23 @@ def get_item_price(item_name, file_path=csv_file_items_cost):
         int: The cost of the item, or None if the item is not found or has no id.
     """
     try:
+        # Both sides folded so display names ("King's Rock", "Poke Ball") reach
+        # the CSV identifiers, which are lowercase and hyphenated and in nine
+        # rows carry a typographic apostrophe or an accent. A blank identifier
+        # cell folds to "" as well, so an empty folded name must never match
+        # one — but that check stays INSIDE each branch rather than returning
+        # early, because returning early would skip the open() below and with it
+        # the warning an unreadable file still owes its caller.
+        wanted = normalize_item_identifier(item_name)
+        index = items_cost_index_for(file_path)
+        if index is not None:
+            row = index.get(wanted) if wanted else None
+            return int(row["cost"]) if row is not None else None
         with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                if row["identifier"] == item_name:
+                folded = normalize_item_identifier(row["identifier"])
+                if folded and folded == wanted:
                     cost = row["cost"]
                     return int(cost)
     except FileNotFoundError:
@@ -503,10 +523,16 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
         int: The id of the item, or None if the item is not found or has no id.
     """
     try:
+        wanted = normalize_item_identifier(item_name)
+        index = items_cost_index_for(file_path)
+        if index is not None:
+            row = index.get(wanted) if wanted else None
+            return int(row["id"]) if row is not None else None
         with open(file_path, mode="r", newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                if row["identifier"] == item_name:
+                folded = normalize_item_identifier(row["identifier"])
+                if folded and folded == wanted:
                     id = row["id"]
                     return int(id)
     except (OSError, KeyError) as e:
@@ -596,7 +622,13 @@ def get_item_description(item_name, language_id):
         return None
 
 
+_registered_fonts = set()  # font_file names already handed to QFontDatabase
+
+
 def load_custom_font(font_size, language):
+    """Return a QFont for the addon's pixel font, registering the file with
+    Qt's font database only the first time it's needed (see the caching note
+    below — repeat registrations here bloated fontconfig into crashing)."""
     if language == 1:
         font_file = "pkmn_w.ttf"
         font_file_path = font_path / font_file
@@ -612,10 +644,28 @@ def load_custom_font(font_size, language):
         font_file = "Early GameBoy.ttf"
         font_size = int((font_size * 2) / 5)
 
-    # Register the custom font with its file path. Qt imported lazily so utils
-    # stays importable headless (custom fonts are a GUI-only concern).
+    # Register the custom font with its file path — but ONLY the first time
+    # per file. addApplicationFont() adds a brand new entry to Qt's font
+    # database on every call, even for a file already registered; this
+    # function is called on every battle-scene redraw, so without caching it
+    # could silently register the same font hundreds of times over a play
+    # session — bloating the font database until fontconfig's internal
+    # font-set sort crashes with a stack overflow (observed: SIGSEGV inside
+    # FcFontSetSort). Qt imported lazily so utils stays importable headless
+    # (custom fonts are a GUI-only concern).
     from PyQt6.QtGui import QFontDatabase, QFont
-    QFontDatabase.addApplicationFont(str(font_path / font_file))
+    if font_file not in _registered_fonts:
+        # addApplicationFont() returns -1 on failure. Only cache the file as
+        # "registered" when it actually succeeded — caching a failure here
+        # would silently and permanently skip every retry for that file.
+        font_id = QFontDatabase.addApplicationFont(str(font_path / font_file))
+        # In a test env where QFontDatabase itself is mocked, addApplicationFont
+        # can return a MagicMock instead of a real int — not a failure signal,
+        # just not a real Qt call, so treat anything other than a genuine
+        # negative int as success (preserves the old always-cache behavior
+        # there) rather than letting the comparison raise.
+        if not (isinstance(font_id, int) and font_id < 0):
+            _registered_fonts.add(font_file)
     custom_font = QFont(
         font_name
     )  # Use the font family name you specified in the font file

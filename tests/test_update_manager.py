@@ -12,6 +12,7 @@ what the services-registry refactor targets.)
 
 import importlib.util
 import json
+import os
 import sys
 import time
 import types
@@ -93,29 +94,61 @@ def test_is_git_clone_true_when_repo_root_has_dot_git(tmp_path, monkeypatch):
     assert um.is_git_clone() is True
 
 
-def test_is_git_clone_true_when_addon_dir_is_repo(tmp_path, monkeypatch):
-    addon = tmp_path / "ankimon"
-    addon.mkdir()
-    (addon / ".git").mkdir()
+def test_is_git_clone_follows_dev_symlink_into_repo(tmp_path, monkeypatch):
+    # The dev setup symlinks addons21/Ankimon -> <repo>/src/Ankimon. The walk
+    # must resolve the link first so the repo root is found through it.
+    addon = tmp_path / "repo" / "src" / "Ankimon"
+    addon.mkdir(parents=True)
+    (tmp_path / "repo" / ".git").mkdir()
+    link = tmp_path / "addons21" / "Ankimon"
+    link.parent.mkdir()
+    try:
+        link.symlink_to(addon, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    monkeypatch.setattr(um, "addon_dir", link)
+
+    assert um.is_git_clone() is True
+    assert um._git_repo_root() == (tmp_path / "repo").resolve()
+
+
+def test_is_git_clone_stays_true_in_dev_mode(tmp_path, monkeypatch):
+    addon = tmp_path / "repo" / "src" / "Ankimon"
+    addon.mkdir(parents=True)
+    (tmp_path / "repo" / ".git").mkdir()
     monkeypatch.setattr(um, "addon_dir", addon)
 
+    # Developer naming must not disable the checkout safety guard.
     assert um.is_git_clone() is True
 
 
-def test_is_git_clone_false_in_dev_mode(tmp_path, monkeypatch):
-    from unittest.mock import patch
-    addon = tmp_path / "ankimon"
-    addon.mkdir()
-    (addon / ".git").mkdir()
+def test_is_git_clone_false_when_enclosing_repo_is_not_ankimon(tmp_path, monkeypatch):
+    # Anki's data folder (or $HOME) can itself be a git repo. That is a plain
+    # install: the archive updater must keep serving it, and above all the Git
+    # checkout helpers must never fetch Ankimon's history into that repo.
+    addon = tmp_path / "Anki2" / "addons21" / "1908235722"
+    addon.mkdir(parents=True)
+    (tmp_path / "Anki2" / ".git").mkdir()
     monkeypatch.setattr(um, "addon_dir", addon)
 
-    # When not in dev mode, it returns True because it has a .git folder
-    with patch("Ankimon.utils.is_dev_mode", return_value=False):
-        assert um.is_git_clone() is True
+    assert um.is_git_clone() is False
+    assert um._git_repo_root() is None
 
-    # When in dev mode, it returns False even with a .git folder
-    with patch("Ankimon.utils.is_dev_mode", return_value=True):
-        assert um.is_git_clone() is False
+    ok, msg = um.git_checkout_source("pr", "123")
+    assert ok is False
+    assert "not running from a git checkout" in msg.lower()
+
+
+def test_is_git_clone_false_when_repo_has_a_different_ankimon(tmp_path, monkeypatch):
+    # A .git above the addon whose src/Ankimon is some *other* directory is not
+    # the checkout this addon runs from.
+    addon = tmp_path / "repo" / "vendor" / "Ankimon"
+    addon.mkdir(parents=True)
+    (tmp_path / "repo" / "src" / "Ankimon").mkdir(parents=True)
+    (tmp_path / "repo" / ".git").mkdir()
+    monkeypatch.setattr(um, "addon_dir", addon)
+
+    assert um.is_git_clone() is False
 
 
 def test_is_git_clone_false_for_plain_install(tmp_path, monkeypatch):
@@ -139,7 +172,7 @@ def test_apply_update_refuses_on_git_clone_and_cleans_zip(tmp_path, monkeypatch)
     assert not dummy_zip.exists()  # guard cleaned up the downloaded archive
 
 
-# --- git_pull_ff_only --------------------------------------------------------
+# --- git helpers fakes -------------------------------------------------------
 
 class _FakeProc:
     def __init__(self, returncode=0, stdout="", stderr=""):
@@ -155,44 +188,221 @@ def _fake_git(responses):
     return _run
 
 
-def test_git_pull_reports_not_a_clone(monkeypatch):
-    monkeypatch.setattr(um, "_git_repo_root", lambda: None)
-    ok, msg = um.git_pull_ff_only()
-    assert ok is False
-    assert "not running from a git checkout" in msg.lower()
+# --- git_checkout_source -----------------------------------------------------
 
 
-def test_git_pull_handles_git_missing_from_path(tmp_path, monkeypatch):
-    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
-    monkeypatch.setattr(um.shutil, "which", lambda _name: None)
-    ok, msg = um.git_pull_ff_only()
-    assert ok is False
-    assert "path" in msg.lower()
-
-
-def test_git_pull_success_names_the_branch(tmp_path, monkeypatch):
+def test_git_checkout_source_refuses_dirty_tree(tmp_path, monkeypatch):
     monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
     monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
-    monkeypatch.setattr(um.subprocess, "run", _fake_git({
-        "rev-parse": _FakeProc(0, "main\n"),
-        "pull": _FakeProc(0, "Updating 111..222\n"),
-        "submodule": _FakeProc(0, ""),
-    }))
-    ok, msg = um.git_pull_ff_only()
+    monkeypatch.setattr(
+        um.subprocess,
+        "run",
+        _fake_git({"status": _FakeProc(0, " M src/Ankimon/example.py\n")}),
+    )
+
+    ok, msg = um.git_checkout_source("pr", "123")
+
+    assert ok is False
+    assert "local changes" in msg.lower()
+
+
+def test_git_checkout_source_fetches_pr_detached(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "status":
+            return _FakeProc(0, "")
+        if cmd[3] == "rev-parse" and "--abbrev-ref" in cmd:
+            return _FakeProc(0, "main\n")
+        if cmd[3] == "rev-parse" and "--short" in cmd:
+            return _FakeProc(0, "abc1234\n")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("pr", "123")
+
     assert ok is True
-    assert "main" in msg
+    assert "PR #123" in msg
+    assert [
+        "fetch",
+        "--force",
+        um.GIT_REMOTE_URL,
+        "refs/pull/123/head",
+    ] in calls
+    assert ["checkout", "--detach", "FETCH_HEAD"] in calls
+    assert ["submodule", "update", "--init", "--recursive"] in calls
 
 
-def test_git_pull_ff_failure_is_safe(tmp_path, monkeypatch):
+def test_git_checkout_source_reattaches_existing_branch(tmp_path, monkeypatch):
     monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
     monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
-    monkeypatch.setattr(um.subprocess, "run", _fake_git({
-        "rev-parse": _FakeProc(0, "feature\n"),
-        "pull": _FakeProc(1, "", "fatal: Not possible to fast-forward, aborting."),
-    }))
-    ok, msg = um.git_pull_ff_only()
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "status":
+            return _FakeProc(0, "")
+        if cmd[3] == "rev-parse" and "--abbrev-ref" in cmd:
+            return _FakeProc(0, "HEAD\n")
+        if cmd[3] == "rev-parse" and "--short" in cmd:
+            return _FakeProc(0, "def5678\n")
+        if cmd[3] == "show-ref":
+            return _FakeProc(0, "")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("branch", "main")
+
+    assert ok is True
+    assert "branch 'main'" in msg
+    assert ["checkout", "main"] in calls
+    assert ["merge", "--ff-only", "FETCH_HEAD"] in calls
+    assert ["checkout", "--detach", "FETCH_HEAD"] not in calls
+    # The fast-forward is proven before HEAD moves, not discovered after.
+    ancestry = ["merge-base", "--is-ancestor", "refs/heads/main", "FETCH_HEAD"]
+    assert ancestry in calls
+    assert calls.index(ancestry) < calls.index(["checkout", "main"])
+
+
+def test_git_checkout_source_refuses_unfastforwardable_branch_before_moving_head(
+    tmp_path, monkeypatch
+):
+    # Local main has commits the canonical repo lacks (diverged or ahead). The
+    # refusal must come BEFORE any checkout: the user is on 'feature' and must
+    # still be on 'feature' when the "Update Failed" box appears.
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "merge-base":
+            return _FakeProc(1, "")  # not an ancestor
+        if cmd[3] == "show-ref":
+            return _FakeProc(0, "")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("branch", "main")
+
     assert ok is False
-    assert "fast-forward" in msg.lower()
+    assert "nothing was changed" in msg.lower()
+    assert not any(c and c[0] in ("checkout", "merge") for c in calls)
+
+
+def test_git_checkout_source_reports_head_position_if_merge_fails_late(
+    tmp_path, monkeypatch
+):
+    # Ancestry said fast-forward is fine, checkout happened, then the merge
+    # failed anyway (tree changed under us). The message must not claim
+    # nothing changed: HEAD is now on the branch.
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(
+        um.subprocess,
+        "run",
+        _fake_git({
+            "show-ref": _FakeProc(0, ""),
+            "merge": _FakeProc(1, "", "fatal: Not possible to fast-forward, aborting."),
+        }),
+    )
+
+    ok, msg = um.git_checkout_source("branch", "main")
+
+    assert ok is False
+    assert "now checked out" in msg.lower()
+    assert "nothing was changed" not in msg.lower()
+
+
+def test_git_checkout_source_current_fetches_canonical_branch(tmp_path, monkeypatch):
+    # "current" is the checked-out branch fetched from the OFFICIAL repository,
+    # not `git pull` against the checkout's own origin (a contributor's fork):
+    # the dialog compared HEAD against the official branch, so that is what
+    # must be installed.
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "rev-parse" and "--abbrev-ref" in cmd:
+            return _FakeProc(0, "feature\n")
+        if cmd[3] == "rev-parse":
+            return _FakeProc(0, "abc1234\n")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("current", "current")
+
+    assert ok is True
+    assert "branch 'feature'" in msg
+    assert ["fetch", "--force", um.GIT_REMOTE_URL, "refs/heads/feature"] in calls
+    assert ["merge", "--ff-only", "FETCH_HEAD"] in calls
+    assert not any(c and c[0] == "pull" for c in calls)
+
+
+def test_git_checkout_source_current_refuses_detached_head(tmp_path, monkeypatch):
+    monkeypatch.setattr(um, "_git_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(um.shutil, "which", lambda _name: "/usr/bin/git")
+    calls = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd[3:])
+        if cmd[3] == "rev-parse" and "--abbrev-ref" in cmd:
+            return _FakeProc(0, "HEAD\n")
+        return _FakeProc(0, "")
+
+    monkeypatch.setattr(um.subprocess, "run", _run)
+
+    ok, msg = um.git_checkout_source("current", "current")
+
+    assert ok is False
+    assert "detached" in msg.lower()
+    assert not any(c and c[0] in ("fetch", "checkout", "merge") for c in calls)
+
+
+def test_git_checkout_source_reattach_is_atomic_against_real_git(tmp_path, monkeypatch):
+    # Real repositories, no fakes: 'main' diverged locally from the canonical
+    # repo. The refusal must leave HEAD on the branch the user was on.
+    import subprocess as sp
+
+    if not um.shutil.which("git"):
+        pytest.skip("git not installed")
+
+    # Hermetic: a contributor's global config (commit.gpgsign, hooks, default
+    # branch) must not be able to fail this test.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+    def git(cwd, *args):
+        return sp.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True)
+
+    canonical = tmp_path / "canonical"
+    canonical.mkdir()
+    git(canonical, "init", "-q")
+    git(canonical, "symbolic-ref", "HEAD", "refs/heads/main")
+    git(canonical, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base")
+    clone = tmp_path / "clone"
+    git(tmp_path, "clone", "-q", str(canonical), str(clone))
+    git(clone, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "local only")
+    git(clone, "checkout", "-q", "-b", "feature")
+    git(canonical, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "upstream moved")
+
+    monkeypatch.setattr(um, "_git_repo_root", lambda: clone)
+    monkeypatch.setattr(um, "GIT_REMOTE_URL", str(canonical))
+
+    ok, msg = um.git_checkout_source("branch", "main")
+
+    assert ok is False
+    assert "nothing was changed" in msg.lower()
+    assert git(clone, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip() == "feature"
 
 
 # --- pre-v2.0 version filtering ----------------------------------------------

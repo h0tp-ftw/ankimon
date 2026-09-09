@@ -22,13 +22,16 @@ def export_to_pkmn_showdown():
     # EV dict was mutated in place; __setattr__ doesn't catch dict-item
     # changes, so drop the cached CP manually.
     main_pokemon.invalidate_cp_cache()
+
+    pokemon_type_text = ' '.join(t.capitalize() for t in main_pokemon.type)
+
     # Format the Pokemon info
-    pokemon_info = "{} ({})\nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\n IVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe ".format(
+    pokemon_info = "{} ({})\nAbility: {}\nLevel: {}\nType: {}\nEVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe\nIVs: {} HP / {} Atk / {} Def / {} SpA / {} SpD / {} Spe ".format(
         main_pokemon.name,
         main_pokemon.gender,
         main_pokemon.ability,
         main_pokemon.level,
-        main_pokemon.type,
+        pokemon_type_text,
         main_pokemon.ev["hp"],
         main_pokemon.ev["atk"],
         main_pokemon.ev["def"],
@@ -86,6 +89,16 @@ def export_all_pkmn_showdown():
     info = "Pokemon Infos have been Copied to your Clipboard! \nNow simply paste this text into Teambuilder in PokemonShowdown. \nNote: Fight in the [Gen 7] Anything Goes - Battle Mode"
     info_label = QLabel(info)
 
+    # Build the dialog even for an empty collection. Previously these widgets
+    # were created only inside the Pokémon loop, leaving local variables unbound.
+    layout = QVBoxLayout()
+    layout.addWidget(info_label)
+    error_code_input = QLineEdit()
+    error_code_input.setPlaceholderText("Enter Error Code")
+    save_button = QPushButton("Fix Pokemon Export Code")
+    layout.addWidget(error_code_input)
+    layout.addWidget(save_button)
+
     # Get all pokemon data
     pokemon_info_complete_text = ""
     try:
@@ -100,11 +113,7 @@ def export_all_pkmn_showdown():
                 pokemon_level = pokemon['level']
                 pokemon_ability = pokemon['ability']
                 pokemon_type = pokemon['type']
-                pokemon_type_text = pokemon_type[0].capitalize()
-                if len(pokemon_type) > 1:
-                    pokemon_type_text = ""
-                    pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                    pokemon_type_text += f" {pokemon_type[1].capitalize()}"
+                pokemon_type_text = ' '.join(t.capitalize() for t in pokemon_type)
                 pokemon_attacks = pokemon['attacks']
                 pokemon_ev = pokemon['ev']
                 pokemon_iv = pokemon['iv']
@@ -183,6 +192,8 @@ def flex_pokemon_collection():
     # Information label
     info = "Pokemon Infos have been Copied to your Clipboard! \nNow simply paste this text into https://pokepast.es/.\nAfter pasting the infos in your clipboard and submitting the needed infos on the right,\n you will receive a link to send friends to flex."
     info_label = QLabel(info)
+    layout = QVBoxLayout()
+    layout.addWidget(info_label)
 
     # Get all pokemon data
     pokemon_info_complete_text = ""
@@ -198,11 +209,7 @@ def flex_pokemon_collection():
                 pokemon_level = pokemon['level']
                 pokemon_ability = pokemon['ability']
                 pokemon_type = pokemon['type']
-                pokemon_type_text = pokemon_type[0].capitalize()
-                if len(pokemon_type) > 1:
-                    pokemon_type_text = ""
-                    pokemon_type_text += f"{pokemon_type[0].capitalize()}"
-                    pokemon_type_text += f" {pokemon_type[1].capitalize()}"
+                pokemon_type_text = ' '.join(t.capitalize() for t in pokemon_type)
                 pokemon_attacks = pokemon['attacks']
                 pokemon_ev = pokemon['ev']
                 pokemon_iv = pokemon['iv']

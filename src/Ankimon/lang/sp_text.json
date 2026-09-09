@@ -458,6 +458,8 @@
   "bp_label": "PC",
   "combat_power": "Poder de combate",
   "battle_power": "Poder de combate",
+  "level_label": "Nv. {level}",
+  "shiny_tooltip": "Pokémon variocolor",
   "friendship_label": "Amistad",
   "friendship_tooltip": "Mide el vínculo entre tú y tu Pokémon.",
   "bff_tooltip": "💖 Mejor Amigo (Amistad Máxima)",

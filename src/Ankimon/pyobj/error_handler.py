@@ -24,10 +24,17 @@ from typing import Optional, Dict
 # headless harness they fail and we fall back to log + structured event only.
 try:
     from PyQt6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSizePolicy
+        QApplication,
+        QDialog,
+        QVBoxLayout,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QSizePolicy,
     )
     from PyQt6.QtGui import QPixmap, QImage
     from PyQt6.QtCore import Qt
+
     _HAVE_QT = True
 except Exception:  # pragma: no cover - exercised only headless
     _HAVE_QT = False
@@ -42,6 +49,7 @@ def _logger():
     """Best-effort access to the shared logger without importing aqt."""
     try:
         from ..services import services
+
         return services.logger
     except Exception:
         return None
@@ -74,7 +82,9 @@ def set_image_from_url(label: "QLabel", url: str, width: int = 140) -> None:
         image.loadFromData(response.content)
         pixmap = QPixmap.fromImage(image)
         if not pixmap.isNull():
-            pixmap = pixmap.scaledToWidth(width, Qt.TransformationMode.SmoothTransformation)
+            pixmap = pixmap.scaledToWidth(
+                width, Qt.TransformationMode.SmoothTransformation
+            )
             label.setPixmap(pixmap)
             label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         else:
@@ -103,7 +113,7 @@ def load_error_images(json_path: Path) -> Dict[str, str]:
     """Load and select random error image metadata."""
     default_image = {"path": "", "credit": "", "url": ""}
     try:
-        with open(json_path, 'r', encoding='utf-8') as f:
+        with open(json_path, "r", encoding="utf-8") as f:
             error_images = json.load(f)
         return random.choice(error_images)
     except Exception as e:
@@ -140,12 +150,15 @@ def create_credit_label(chosen_image: Dict[str, str]) -> "Optional[QLabel]":
     label.setStyleSheet("font-size:10px; color:#aaa;")
     label.setWordWrap(True)
     label.setFixedWidth(140)
-    label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding)
+    label.setSizePolicy(
+        QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding
+    )
     return label
 
 
-def build_dialog_ui(dialog: "QDialog", message: str, exception: Exception,
-                   chosen_image: Dict[str, str]) -> None:
+def build_dialog_ui(
+    dialog: "QDialog", message: str, exception: Exception, chosen_image: Dict[str, str]
+) -> None:
     """Construct dialog UI layout without environment info display."""
     main_layout = QHBoxLayout(dialog)
     main_layout.setContentsMargins(24, 18, 24, 18)
@@ -197,9 +210,13 @@ def build_dialog_ui(dialog: "QDialog", message: str, exception: Exception,
         if local_path.exists():
             pixmap = QPixmap(str(local_path))
             if not pixmap.isNull():
-                pixmap = pixmap.scaledToWidth(140, Qt.TransformationMode.SmoothTransformation)
+                pixmap = pixmap.scaledToWidth(
+                    140, Qt.TransformationMode.SmoothTransformation
+                )
                 image_label.setPixmap(pixmap)
-                image_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+                image_label.setAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+                )
             else:
                 image_label.setText("Image failed to load")
     right_layout.addWidget(image_label, alignment=Qt.AlignmentFlag.AlignRight)
@@ -251,7 +268,7 @@ def setup_dialog_style(dialog: "QDialog") -> None:
 def show_warning_with_traceback(
     parent=None,
     exception: Optional[Exception] = None,
-    message: str = "An error occurred during execution."
+    message: str = "An error occurred during execution.",
 ) -> None:
     """Report an error: always log + emit an ``error`` event; show the rich Qt
     dialog only when a Qt runtime is available.
@@ -272,12 +289,29 @@ def show_warning_with_traceback(
         logger.log("error", f"{message}: {exception}\n{env_info}\n{tb_text}")
     try:
         from ..events import events
-        events.emit("error", message=message, exception=str(exception), traceback=tb_text)
+
+        events.emit(
+            "error", message=message, exception=str(exception), traceback=tb_text
+        )
     except Exception:
         pass
 
     # No GUI → done.
     if not _HAVE_QT:
+        return
+
+    # Same hard Qt violation as the thread check below, for the other reason a
+    # QWidget can be unbuildable: PyQt6 being IMPORTABLE (_HAVE_QT above) is not
+    # the same as an application existing. Without a QApplication, constructing
+    # the dialog aborts the process at the C++ level. This function is the funnel
+    # every `except Exception` in the add-on reaches, so on a dev box running the
+    # Tier-1 harness that turned any recoverable error into a force-close —
+    # exactly inverting this module's purpose, which is to make errors
+    # observable. Headless we stop after the log + error event above.
+    # isinstance, not `is None`: QApplication.instance() is inherited from
+    # QCoreApplication and returns whatever application exists, so a console-only
+    # QCoreApplication reads as non-None and the QDialog below aborts anyway.
+    if not isinstance(QApplication.instance(), QApplication):
         return
 
     # Constructing a QWidget/QDialog off the Qt GUI thread is a hard Qt violation
@@ -288,6 +322,7 @@ def show_warning_with_traceback(
     # log + error-event above (the durable record) rather than building a dialog.
     try:
         from ..utils import is_main_thread
+
         if not is_main_thread():
             return
     except Exception:
@@ -301,7 +336,7 @@ def show_warning_with_traceback(
         parent = _mw
 
     # Load error images
-    error_json_path = pyobj_path / 'error_images.json'
+    error_json_path = pyobj_path / "error_images.json"
     chosen_image = load_error_images(error_json_path)
 
     # Create and configure dialog

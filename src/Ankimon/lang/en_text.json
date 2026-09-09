@@ -460,6 +460,8 @@
   "bp_label": "BP",
   "combat_power": "Combat Power",
   "battle_power": "Battle Power",
+  "level_label": "Lvl {level}",
+  "shiny_tooltip": "Shiny Pokémon",
   "friendship_label": "Friendship",
   "friendship_tooltip": "Measures the bond between you and your Pokémon.",
   "bff_tooltip": "💖 Best Friend (Highest Friendship)",

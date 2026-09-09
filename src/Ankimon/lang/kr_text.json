@@ -459,6 +459,8 @@
   "bp_label": "BP",
   "combat_power": "전투력",
   "battle_power": "배틀 파워",
+  "level_label": "Lv.{level}",
+  "shiny_tooltip": "색이 다른 포켓몬",
   "friendship_label": "친밀도",
   "friendship_tooltip": "당신과 포켓몬 사이의 유대감을 측정합니다.",
   "bff_tooltip": "💖 베스트 프렌드 (최고 친밀도)",

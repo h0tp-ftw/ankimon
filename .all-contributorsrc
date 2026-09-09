@@ -251,6 +251,17 @@
       ],
       "nickname": "slager",
       "discord_id": "955178102097600622"
+    },
+    {
+      "login": "JadonKJones",
+      "name": "JadonKJones",
+      "avatar_url": "https://github.com/JadonKJones.png",
+      "profile": "https://github.com/JadonKJones",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "sakamotosan",
+      "discord_id": "1404969660931379230"
     }
   ],
   "contributorsPerLine": 5

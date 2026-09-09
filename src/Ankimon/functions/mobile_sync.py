@@ -219,10 +219,16 @@ def _compute_initial_reviews(db, tracker, day_cutoff: int) -> int:
         pass
     return initial_reviews
 
-def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=None, pokedex_cache=None) -> dict | None:
+def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=None, pokedex_cache=None, trainer_card=None, main_pokemon=None) -> dict | None:
     """Generates a random wild Pokémon encounter."""
     from .encounter_functions import generate_random_pokemon
     from .. import utils
+
+    # Pass the trainer/main levels explicitly so the tier roll matches desktop
+    # play without touching encounter_functions' module globals (a worker thread
+    # swapping those under the GUI thread would race desktop encounters).
+    trainer_level = getattr(trainer_card, "level", None)
+    main_level = getattr(main_pokemon, "level", None)
 
     if collected_ids is None:
         try:
@@ -233,10 +239,10 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
     orig_load_ids = utils.load_collected_pokemon_ids
     utils.load_collected_pokemon_ids = lambda: collected_ids
     try:
-        try:
-            res = generate_random_pokemon(level, tracker, collected_ids=collected_ids)
-        except TypeError:
-            res = generate_random_pokemon(level, tracker)
+        res = generate_random_pokemon(
+            level, tracker, collected_ids=collected_ids,
+            trainer_level=trainer_level, main_level=main_level,
+        )
         pkmn_name, pkmn_id, pkmn_lvl, ability, pkmn_type, base_stats, \
         enemy_attacks, base_exp, growth_rate, ev, iv, gender, \
         battle_status, battle_stats, pkmn_tier, ev_yield, pkmn_shiny, nature = res
@@ -832,7 +838,7 @@ def _run_mobile_battles_impl(
         cards_in_encounter = seed_idx + 1
         temp_tracker = TempTracker(initial_reviews + cards_in_encounter)
 
-        enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None)
+        enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None, trainer_card, main_pokemon)
         adjusted_level = max(1, active_max_level + (enc_data["level"] - stable_max_level))
         current_enemy_pokemon = PokemonObject(
             type=enc_data["type"], name=enc_data["name"], id=enc_data["id"], shiny=enc_data["shiny"],
@@ -1329,7 +1335,7 @@ def _run_mobile_battles_impl(
                     random.seed(enc_seed)
                     encounter_idx += 1
                     
-                    enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None)
+                    enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None, trainer_card, main_pokemon)
                     adjusted_level = max(1, active_max_level + (enc_data["level"] - stable_max_level))
                     current_enemy_pokemon = PokemonObject(
                         type=enc_data["type"], name=enc_data["name"], id=enc_data["id"], shiny=enc_data["shiny"],

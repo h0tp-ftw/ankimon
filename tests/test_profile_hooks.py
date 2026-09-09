@@ -68,6 +68,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     clear_learnset = MagicMock(name="clear_learnset_cache")
     clear_encounter = MagicMock(name="clear_encounter_cache")
     clear_auto_battle = MagicMock(name="clear_auto_battle_override")
+    warm_evolution = MagicMock(name="warm_evolution_caches", return_value=507)
 
     monkeypatch.setitem(
         sys.modules,
@@ -89,7 +90,8 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         ),
     )
     monkeypatch.setitem(
-        sys.modules, "Ankimon.utils",
+        sys.modules,
+        "Ankimon.utils",
         _stub_module("Ankimon.utils", test_online_connectivity=lambda: False),
     )
     monkeypatch.setitem(
@@ -125,7 +127,9 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         sys.modules,
         "Ankimon.functions.pokedex_functions",
         _stub_module(
-            "Ankimon.functions.pokedex_functions", clear_pokedex_caches=clear_pokedex
+            "Ankimon.functions.pokedex_functions",
+            clear_pokedex_caches=clear_pokedex,
+            warm_evolution_caches=warm_evolution,
         ),
     )
     monkeypatch.setitem(
@@ -157,6 +161,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         clear_encounter,
         clear_auto_battle,
     )
+    profile_hooks._warm = warm_evolution
     return profile_hooks
 
 
@@ -250,12 +255,16 @@ class _Future:
         return self._value
 
 
-def _fire_profile_did_open(monkeypatch, *, ankiweb_sync, mobile_enabled=True):
+def _fire_profile_did_open(
+    monkeypatch, *, ankiweb_sync, mobile_enabled=True, warm_error=None
+):
     """Register hooks, then fire the profile_did_open handler with the given
     settings and return (profile_hooks, its stubbed ankimon_sync module)."""
     _fresh_services(monkeypatch)
     gui_hooks = _fresh_gui_hooks()
     profile_hooks = _exec_profile_hooks(monkeypatch, gui_hooks)
+    if warm_error is not None:
+        profile_hooks._warm.side_effect = warm_error
 
     def _get(key, default=None):
         return {
@@ -298,3 +307,33 @@ def test_sync_hooks_registered_when_ankiweb_sync_enabled(monkeypatch):
     _, sync_mod = _fire_profile_did_open(monkeypatch, ankiweb_sync=True)
 
     sync_mod.setup_ankimon_sync_hooks.assert_called_once()
+
+
+# --- Static-data re-warm on profile open ------------------------------------
+# _on_profile_close drops the pokedex caches, the evolution table among them.
+# The boot warm (startup.run_startup_background_checks) runs once per Anki
+# PROCESS — a profile switch never re-runs it — so without a re-warm here the
+# first level-up after a switch parses pokemon_evolution.csv inside
+# on_review_card, which is the review-path I/O AGENTS.md forbids.
+
+
+def test_profile_open_rewarms_the_evolution_table(monkeypatch):
+    profile_hooks, _ = _fire_profile_did_open(monkeypatch, ankiweb_sync=False)
+
+    profile_hooks._warm.assert_called_once_with()
+
+
+def test_profile_open_warm_failure_does_not_break_the_rest_of_the_handler(monkeypatch):
+    """The warm is an optimization, and it runs first in the handler — a raise
+    would take the mobile-sync hook registration and the tip of the day down
+    with it, which costs far more than an unparsed CSV."""
+    profile_hooks, sync_mod = _fire_profile_did_open(
+        monkeypatch, ankiweb_sync=False, warm_error=OSError("data_files unreadable")
+    )
+
+    profile_hooks._warm.assert_called_once_with()
+    sync_mod.setup_ankimon_sync_hooks.assert_called_once()
+    profile_hooks.logger.log.assert_any_call(
+        "error",
+        "Error warming evolution caches on profile open: data_files unreadable",
+    )

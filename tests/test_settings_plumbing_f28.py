@@ -33,6 +33,7 @@ Runs Qt-free (Tier-1 / venv_t1): ``Settings`` imports only ``json``/``os``/
 """
 
 import importlib.util
+import re
 import sys
 import types
 from pathlib import Path
@@ -396,3 +397,62 @@ def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
     assert "SCREEN_TEAM" in allowlist
     assert "SCREEN_MOBILE" not in allowlist
     assert "SCREEN_HISTORY" not in allowlist
+
+
+def _load_settings_schema():
+    schema_path = _src / "Ankimon" / "ankimon_items_web" / "settings_schema.py"
+    spec = importlib.util.spec_from_file_location(
+        "_ankimon_settings_schema_f28", schema_path
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _schema_chip_keys(schema):
+    keys = set()
+    for group in schema.GROUPS:
+        containers = [group, *group.get("subgroups", [])]
+        for container in containers:
+            chip_def = container.get("chip_group")
+            if not chip_def:
+                continue
+            keys.update(key for key, _label in chip_def["keys"])
+    return keys
+
+
+def test_sprite_visibility_sync_repaints_the_chip_controls():
+    """The HUD auto-sync keys are chips, so the post-sync repaint must find them.
+
+    Toggling "Show Sprites Across Ankimon" rewrites every HUD element key in
+    ``state.edits``. Each of those keys is rendered as a ``.setting-chip``
+    button inside one shared chip row, never as its own ``.setting-row`` with a
+    ``.setting-toggle``, so a repaint that only walks setting rows matches
+    nothing and leaves the whole HUD block visually stale while the dirty
+    counter climbs.
+    """
+    settings_js = (
+        _src / "Ankimon" / "ankimon_items_web" / "settings.js"
+    ).read_text(encoding="utf-8")
+    schema = _load_settings_schema()
+
+    js_keys = set(
+        re.findall(
+            r"'([\w.]+)'",
+            settings_js.split("HUD_TOGGLE_AUTO_SYNC_KEYS = [", 1)[1].split("]", 1)[0],
+        )
+    )
+    assert js_keys, "HUD_TOGGLE_AUTO_SYNC_KEYS is empty or unparseable"
+    assert js_keys <= _schema_chip_keys(schema), (
+        "auto-synced HUD keys must be chip keys — if one ever becomes a "
+        "standalone row, revisit the repaint helper below"
+    )
+
+    repaint = re.search(
+        r"HUD_TOGGLE_AUTO_SYNC_KEYS\.forEach\((\w+)\)", settings_js
+    )
+    assert repaint, "master toggle no longer repaints the synced HUD controls"
+    helper = settings_js.split(f"function {repaint.group(1)}(", 1)[1]
+    assert ".setting-chip[data-key=" in helper.split("\n    }", 1)[0], (
+        "the repaint helper must target chip buttons, not setting rows alone"
+    )

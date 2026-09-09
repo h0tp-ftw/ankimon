@@ -24,7 +24,7 @@
     "gui.animate_time": "Enable a small animation for Pokémon interactions. This animation is displayed when you or the wild Pokémon is taking damage.",
     "gui.gif_in_collection": "Show animated sprites (GIFs) instead of static sprites in the collection view.",
     "gui.show_sprites_across_ankimon": "Disable this setting to hide all Ankimon-related visual elements, such as sprites, GIFs, and HP/XP bars. This includes images in the Pokémon PC, Trainer Card, Item Shop, and reviewer. Text and descriptions will be retained. Great for focus sessions or a word-based presentation. Only exclusion: Mon sprites are still shown in the Ankimon Window (Ctrl+Shift+P).",
-    "gui.styling_in_reviewer": "Apply custom CSS styles to enhance reviewer visuals.",
+    "gui.hud_styling": "Apply custom CSS styles to enhance reviewer HUD visuals.",
     "gui.pop_up_dialog_message_on_defeat": "Show a pop-up message when a wild Pokémon is defeated.",
     "gui.pop_up_dialog_message_on_item": "Show a pop-up window when you receive an item. Turning this off still awards the item, it just does not interrupt your reviews.",
     "gui.review_hp_bar_thickness": "Set the HP bar thickness for reviews [2: 8px, 3: 12px, 4: 16px, 5: 20px].",

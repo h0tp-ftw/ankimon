@@ -269,6 +269,15 @@ def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
     """
 
     def _on_profile_open() -> None:
+        # Prevent modal dialog collisions on macOS during startup.
+        # If the database needs migration, the MigrationDialog is currently
+        # blocking the main thread. Spawning update/sprite modals simultaneously
+        # will cause a UI deadlock.
+        from .services import services
+        if services.db is not None and not services.db.is_migrated():
+            _log_info("Skipping update checks: Database migration is pending.")
+            return
+
         if online_connectivity:
             check_for_update(online_connectivity, ssh)
         try:
