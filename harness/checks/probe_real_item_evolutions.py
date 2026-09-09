@@ -171,6 +171,46 @@ def _run(directory):
     assert db.get_pokemon(mon["individual_id"])["id"] == mon["id"]
     assert db.get_item("linking-cord")["quantity"] == 13
 
+    # An already-open confirmation must not hand out a free evolution when
+    # another action spends the item before the user confirms.
+    original = db.get_pokemon(mon["individual_id"])
+    open_picker("linking-cord")
+    choose(mon)
+    assert db.update_item_quantity("linking-cord", -13) == 0
+    press("Evolve Pokémon")
+    assert db.get_pokemon(mon["individual_id"]) == original
+    assert db.get_item("linking-cord") is None
+    get_evo_window().close()
+    db.save_item(2160, "linking-cord", 13)
+    window.update_ui_data()
+
+    # Inject a genuine SQLite write failure through the real confirmation.
+    # Only the warning renderer is intercepted, so this unattended proof does
+    # not block on the deliberately generated error dialog.
+    from Ankimon.pyobj import evolution_window
+
+    open_picker("linking-cord")
+    choose(mon)
+    db.execute(
+        "CREATE TEMP TRIGGER fail_item_charge BEFORE UPDATE OF quantity ON items "
+        "WHEN OLD.item_name = 'linking-cord' "
+        "BEGIN SELECT RAISE(ABORT, 'injected item charge failure'); END"
+    )
+    try:
+        with patch.object(evolution_window, "show_warning_with_traceback") as warning:
+            press("Evolve Pokémon")
+            warning.assert_called_once()
+            assert "injected item charge failure" in str(
+                warning.call_args.kwargs["exception"]
+            )
+        assert db.get_pokemon(mon["individual_id"]) == original
+        assert db.get_item("linking-cord")["quantity"] == 13
+        assert not db._get_connection().in_transaction
+    finally:
+        db.execute("DROP TRIGGER fail_item_charge")
+        get_evo_window().close()
+    print("UI rollback: stale inventory and failed item charge preserve the Pokémon")
+
     for mon, evolved, item in records:
         time_context = (
             patch.object(pokedex_functions, "get_time_of_day", return_value="day")
@@ -196,7 +236,7 @@ def _run(directory):
     assert not [event for event in d.drain_events() if event["type"] == "error"]
     window.close()
     print(
-        "probe_real_item_evolutions: OK (real Chromium icon + purchase + 13 picker/Qt confirmations + cancellation + SQLite checks)"
+        "probe_real_item_evolutions: OK (real Chromium icon + purchase + 13 picker/Qt confirmations + cancellation + stale inventory + failed charge rollback + SQLite checks)"
     )
     return True
 

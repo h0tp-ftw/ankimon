@@ -8,7 +8,7 @@ routed through the ``services.db`` seam on main (exp reached ``mw.ankimon_db``),
 so the tests inject the mock DB via ``services.db``.
 
 Covers:
-* item-triggered evolutions consume one stone (``update_item_quantity(name, -1)``);
+* item-triggered evolutions use atomic persistence and stop on failure;
 * the nickname is rewritten to the pretty evolved name only when it was never
   customised (empty / still matching the pre-evolution species), and a custom
   nickname is preserved.
@@ -17,6 +17,7 @@ Covers:
 import importlib.util
 import sys
 import types
+import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -153,6 +154,7 @@ def _apply_common_patches():
         "update_main": patch(p + "update_main_pokemon").start(),
         "badge": patch(p + "check_for_badge").start(),
         "is_alive": patch(p + "is_alive", return_value=False).start(),
+        "atomic": patch(p + "save_item_evolution", return_value=True).start(),
     }
     handles["moves"].return_value = []
     handles["hp"].return_value = 100
@@ -221,6 +223,7 @@ def test_evolve_pokemon_consumes_stone():
             ["Fire"] if key == "types" else {"hp": 50} if key == "baseStats" else {}
         )
         mock_db.get_pokemon.return_value = {
+            "individual_id": "some-uuid",
             "id": 133,
             "name": "Eevee",
             "level": 20,
@@ -241,7 +244,66 @@ def test_evolve_pokemon_consumes_stone():
             item_name="fire-stone",
         )
 
-        mock_db.update_item_quantity.assert_called_once_with("fire-stone", -1)
+        handles["atomic"].assert_called_once()
+        db, original, evolved, item = handles["atomic"].call_args.args
+        assert db is mock_db
+        assert original["id"] == 133
+        assert evolved["id"] == 136
+        assert original["attacks"] == []
+        assert item == "fire-stone"
+        mock_db.save_pokemon.assert_not_called()
+        mock_db.update_item_quantity.assert_not_called()
+        mock_db.mark_as_caught.assert_not_called()
+    finally:
+        patch.stopall()
+
+
+@pytest.mark.parametrize(
+    "failure", ["missing_item", "database_error", "profile_change"]
+)
+def test_failed_item_evolution_never_reports_success(failure):
+    """A rejected transaction must not award badges or update the live UI."""
+    evo_mod, _ = _load_evo_window()
+    mock_db = MagicMock()
+    mock_db.db_path = "original.db"
+    evo_mod.services.db = mock_db
+    mock_db.get_pokemon.return_value = {
+        "individual_id": "some-uuid",
+        "id": 133,
+        "name": "Eevee",
+        "level": 20,
+        "attacks": [],
+        "iv": {},
+        "ev": {},
+        "xp": 100,
+    }
+    handles = _apply_common_patches()
+    try:
+        handles["search"].side_effect = lambda name, key: (
+            ["Fire"] if key == "types" else {"hp": 50} if key == "baseStats" else {}
+        )
+        if failure == "database_error":
+            handles["atomic"].side_effect = RuntimeError("failed charge")
+        elif failure == "profile_change":
+
+            def change_profile(*args):
+                mock_db.db_path = "new-profile.db"
+                return []
+
+            handles["moves"].side_effect = change_profile
+        else:
+            handles["atomic"].return_value = False
+        win = _make_evo_window(evo_mod)
+        win.evolve_pokemon(
+            "some-uuid", 133, "eevee", 136, "flareon", None, "fire-stone"
+        )
+        win.display_evo_complete.assert_not_called()
+        handles["badge"].assert_not_called()
+        handles["update_main"].assert_not_called()
+        mock_db.save_pokemon.assert_not_called()
+        mock_db.update_item_quantity.assert_not_called()
+        if failure == "profile_change":
+            handles["atomic"].assert_not_called()
     finally:
         patch.stopall()
 

@@ -1,3 +1,4 @@
+from copy import deepcopy
 import random
 from typing import Optional
 
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..services import services
+from ..functions.item_evolution import save_item_evolution
 from ..utils import load_custom_font, is_alive
 from ..functions.pokedex_functions import (
     get_base_experience,
@@ -159,7 +161,7 @@ class EvoWindow(QWidget):
 
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
-        
+
         # Only load and draw the Pokémon sprite if sprites are enabled
         show_sprites = self._should_show_sprites()
         if show_sprites:
@@ -264,14 +266,14 @@ class EvoWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
         painter.drawPixmap(0, 0, pixmap_bckg)
-        
+
         # Only load, resize, and draw Pokémon sprites if sprites are enabled
         if show_sprites:
             # Display the Pokémon image
             pkmnimage_path = frontdefault / f"{prevo_id}.png"
             pkmnpixmap = QPixmap()
             pkmnpixmap.load(str(pkmnimage_path))
-            
+
             pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
             pkmnpixmap2 = QPixmap()
             pkmnpixmap2.load(str(pkmnimage_path2))
@@ -298,7 +300,7 @@ class EvoWindow(QWidget):
 
             painter.drawPixmap(255, 70, pkmnpixmap)
             painter.drawPixmap(255, 285, pkmnpixmap2)
-        
+
         # Draw the text on top of the image
         font = QFont()
         font.setPointSize(12)  # Adjust the font size as needed
@@ -367,6 +369,7 @@ class EvoWindow(QWidget):
         db = services.db
 
         try:
+            source_db_path = db.db_path if item_name else None
             pokemon = db.get_pokemon(individual_id)
             if not pokemon:
                 self.logger.log(
@@ -386,6 +389,10 @@ class EvoWindow(QWidget):
                 )
                 return
 
+            # Move selection can run a nested event loop. Keep the original
+            # record so the final transaction refuses to overwrite newer data.
+            expected_pokemon = deepcopy(pokemon) if item_name else None
+
             # Persist the pre-evolved species as caught before the id changes so
             # the Pokédex keeps crediting the earlier form (no-op on stores that
             # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
@@ -393,7 +400,7 @@ class EvoWindow(QWidget):
             # ordinary save, this one is NOT recoverable. Once the id below is
             # overwritten the pre-evolution is gone from captured_pokemon, so
             # _reconcile_pokedex_history has nothing left to re-derive it from.
-            if hasattr(db, "mark_as_caught"):
+            if not item_name and hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
                 except Exception as e:
@@ -534,15 +541,28 @@ class EvoWindow(QWidget):
             # the auto prompt resumes for the new form's future evolutions.
             pokemon["evolution_rejected"] = False
 
-            # Save to database before awarding any evolution achievements.
-            if not db.save_pokemon(pokemon):
-                self.logger.log("error", f"Failed to save evolved pokemon {individual_id}")
+            # Item evolutions commit the species, inventory, and history as
+            # one operation, after all move dialogs have finished.
+            if item_name:
+                if (
+                    services.db is not db
+                    or db.db_path != source_db_path
+                    or not save_item_evolution(db, expected_pokemon, pokemon, item_name)
+                ):
+                    self.logger.log_and_showinfo(
+                        "warning",
+                        "Evolution could not be completed because the Pokémon, "
+                        "item, or profile changed. Please select them again.",
+                    )
+                    return
+            elif not db.save_pokemon(pokemon):
+                self.logger.log(
+                    "error", f"Failed to save evolved pokemon {individual_id}"
+                )
                 return
 
-            # Consume the evolution stone (if this evolution was item-triggered)
-            # and refresh any open item windows so the count updates live.
+            # The item charge has committed; refresh any open item windows.
             if item_name:
-                db.update_item_quantity(item_name, -1)
                 from ..singletons import get_item_window, get_items_window
 
                 item_w = get_item_window()
@@ -558,6 +578,7 @@ class EvoWindow(QWidget):
             # and skip the achievement.
             try:
                 from ..resources import POKEMON_TIERS
+
                 if int(evo_id) in POKEMON_TIERS.get("Fossil", []):
                     check_fossil = check_for_badge(self.achievements, 19)
                     if check_fossil is False:
