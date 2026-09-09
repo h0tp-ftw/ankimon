@@ -314,3 +314,57 @@ def test_non_positive_id_rejected(fake_logger, monkeypatch):
     result = sf.get_sprite_path("front", "png", -1, shiny=False, gender="M")
     assert result == sf.SUBSTITUTE_PATH
     assert any("Invalid sprite id -1" in msg for _, msg in fake_logger.logs)
+
+
+def test_outside_root_sprite_rejected(monkeypatch, tmp_path):
+    root = tmp_path / "sprites"
+    root.mkdir()
+    outside = tmp_path / "sprites-other" / "25.png"
+    outside.parent.mkdir()
+    outside.touch()
+    candidate = str(outside)
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    monkeypatch.setattr(sf, "_path_format", lambda *args: candidate)
+
+    assert sf._get_cached_valid_path(candidate) is None
+    assert sf.get_sprite_path("front", "png", 25, False, "M") == sf.SUBSTITUTE_PATH
+    assert candidate not in sf._PATH_VALIDITY_CACHE
+
+
+def test_realpath_escape_rejected(monkeypatch, tmp_path):
+    root = tmp_path / "sprites"
+    root.mkdir()
+    candidate = str(root / "25.png")
+    outside = tmp_path / "outside.png"
+    outside.touch()
+    realpath = sf.os.path.realpath
+
+    def escaped_realpath(path):
+        if sf.os.fspath(path) == candidate:
+            return realpath(outside)
+        return realpath(path)
+
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    monkeypatch.setattr(sf.os.path, "realpath", escaped_realpath)
+    monkeypatch.setattr(sf, "_path_format", lambda *args: candidate)
+
+    assert sf._get_cached_valid_path(candidate) is None
+    assert sf.get_sprite_path("front", "png", 25, False, "M") == sf.SUBSTITUTE_PATH
+    assert candidate not in sf._PATH_VALIDITY_CACHE
+
+
+def test_commonpath_value_error_returns_substitute(monkeypatch, tmp_path):
+    root = tmp_path / "sprites"
+    root.mkdir()
+    candidate = root / "25.png"
+    candidate.touch()
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+
+    def incompatible_paths(paths):
+        raise ValueError("Paths are on different drives")
+
+    monkeypatch.setattr(sf.os.path, "commonpath", incompatible_paths)
+
+    assert sf._get_cached_valid_path(str(candidate)) is None
+    assert sf.get_sprite_path("front", "png", 25, False, "M") == sf.SUBSTITUTE_PATH
+    assert str(candidate) not in sf._PATH_VALIDITY_CACHE
