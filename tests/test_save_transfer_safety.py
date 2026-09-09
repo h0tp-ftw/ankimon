@@ -6,6 +6,7 @@ and external writers are controlled at the boundary.
 
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 from concurrent.futures import Future
@@ -151,6 +152,61 @@ def test_export_confirms_the_normalized_existing_destination(transfer, tmp_path,
     else:
         assert dest.read_bytes() == before
     assert not selected.exists()
+
+
+@pytest.mark.parametrize("during_snapshot", [False, True])
+def test_export_refuses_an_archive_with_unrecovered_wal(transfer, tmp_path, monkeypatch, during_snapshot):
+    dest = _make_save(tmp_path / "archive.db", pokemon=99, name="Archive")
+    before = {}
+
+    def leave_unrecovered_wal():
+        # Abrupt exit keeps committed WAL pages without any open connection.
+        # Replacing just archive.db would replay this old trainer over Local.
+        subprocess.run([sys.executable, "-c", """
+import os, sqlite3, sys
+conn = sqlite3.connect(sys.argv[1])
+conn.execute('PRAGMA journal_mode=WAL')
+conn.execute('PRAGMA wal_autocheckpoint=0')
+conn.execute("UPDATE config SET value='Stale WAL' WHERE key='trainer.name'")
+conn.commit()
+os._exit(0)
+""", str(dest)], check=True, timeout=10)
+        assert Path(str(dest) + "-wal").stat().st_size > 0
+        before.update((path, path.read_bytes()) for path in tmp_path.glob("archive.db*"))
+
+    if during_snapshot:
+        backup = st._sqlite_backup
+
+        def backup_then_external_write(*args, **kwargs):
+            backup(*args, **kwargs)
+            leave_unrecovered_wal()
+
+        monkeypatch.setattr(st, "_sqlite_backup", backup_then_external_write)
+    else:
+        leave_unrecovered_wal()
+    monkeypatch.setattr(st.QFileDialog, "getSaveFileName", lambda *a, **k: (str(dest), ""))
+    active_before = transfer.active.read_bytes()
+
+    assert st.export_save() is False
+    assert {path: path.read_bytes() for path in tmp_path.glob("archive.db*")} == before
+    assert transfer.active.read_bytes() == active_before
+    assert list(tmp_path.glob("ankimon-export-*")) == []
+    st.showInfo.assert_not_called()
+    st.showWarning.assert_called_once()
+
+
+@pytest.mark.parametrize("suffix", ["-shm", "-journal"])
+def test_export_leaves_other_destination_sidecars_untouched(transfer, tmp_path, monkeypatch, suffix):
+    dest = _make_save(tmp_path / "archive.db", pokemon=99)
+    before = dest.read_bytes()
+    sidecar = Path(str(dest) + suffix)
+    sidecar.write_bytes(b"unfinished database state")
+    monkeypatch.setattr(st.QFileDialog, "getSaveFileName", lambda *a, **k: (str(dest), ""))
+
+    assert st.export_save() is False
+    assert dest.read_bytes() == before
+    assert sidecar.read_bytes() == b"unfinished database state"
+    assert list(tmp_path.glob("ankimon-export-*")) == []
 
 
 @pytest.mark.parametrize("foreign_watermark", [1000, 9000])

@@ -110,11 +110,11 @@ _DIGEST_CHARS = 32
 # before any scan is dispatched.
 _MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
 
-# The fingerprint of the folder whose comparison the user already ANSWERED. Kept
-# apart from the settle because a folder holding one unreadable file beside a
+# The identity of the snapshot and folder whose comparison the user ANSWERED.
+# Kept apart from the settle because a folder holding one unreadable file beside a
 # readable save that is ahead of the local one must stay armed (to retry the
 # unreadable file) and yet not greet the user with the same rescue prompt on
-# every profile open. A folder that changes is asked afresh.
+# every profile open. A different snapshot or changed folder is asked afresh.
 _MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
 
 # How long the AUTOMATIC migration waits on a locked file, and the wall-clock
@@ -528,7 +528,21 @@ def export_save(parent=None) -> bool:
         # file inside a OneDrive/Dropbox folder is the obvious thing a
         # two-desktop user does, and a bare os.replace there throws WinError 5
         # with no actionable text (issue #636).
-        _retry_on_lock(lambda: os.replace(tmp, dest))
+        def publish():
+            """Refuse an archive whose journal could replay over the export."""
+            # Check immediately before every replace attempt, including retries:
+            # a writer may have opened the archive while the snapshot was built.
+            # Sidecars can also survive a crash with no open handles. They
+            # belong to the destination, so never delete or recover them here.
+            if any(Path(str(dest) + suffix).exists()
+                   for suffix in ("-wal", "-shm", "-journal")):
+                raise RuntimeError(
+                    "The destination is in use or has an unfinished database "
+                    "transaction. Choose a different file name for the export."
+                )
+            os.replace(tmp, dest)
+
+        _retry_on_lock(publish)
         tmp = None
     except Exception as e:
         if _is_lock_error(e):
@@ -1126,6 +1140,13 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         media_stats = get_db_stats(snapshot, timeout=MIGRATION_PROBE_TIMEOUT)
         if media_stats is None:
             raise ValueError("Could not read the rescue snapshot")
+        # Remember the content actually shown, not just the folder's stat
+        # signature: releasing a lock can expose a different candidate without
+        # changing any file's size or mtime. Hash the private verified snapshot
+        # here on the worker, never the mutable media path on the UI thread.
+        candidate_digest = _content_digest(snapshot)
+        if candidate_digest is None:
+            raise ValueError("Could not identify the rescue snapshot")
     except Exception as e:
         _discard_snapshot(snapshot)
         notes.append(("info", f"Could not snapshot {media_path.name}: {e}; rescanning later."))
@@ -1134,6 +1155,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     return _result(
         "compare",
         snapshot_path=snapshot,
+        candidate_digest=candidate_digest,
         media_path=media_path,
         media_stats=media_stats,
         local_stats=local_stats,
@@ -1255,8 +1277,16 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
     local_stats = result.get("local_stats")
     fingerprint = result.get("fingerprint", "")
     # A pass that must stay armed for an unreadable file never settles, so the
-    # answer is remembered on its own or the question repeats every boot.
-    answered = bool(fingerprint) and _profile_flag(_MIGRATION_ANSWERED_FLAG) == fingerprint
+    # answer is remembered on its own or the question repeats every boot. Scope
+    # it to BOTH this folder and the chosen snapshot: a previously locked save
+    # can become the best candidate without changing the folder fingerprint.
+    # Legacy folder-only answers safely reoffer once.
+    candidate_digest = result.get("candidate_digest")
+    answer_identity = (
+        f"v2:{candidate_digest}:{fingerprint}"
+        if fingerprint and candidate_digest else ""
+    )
+    answered = bool(answer_identity) and _profile_flag(_MIGRATION_ANSWERED_FLAG) == answer_identity
 
     if target is not None and _dominates(media_stats, local_stats) and not answered:
         if askUser(
@@ -1287,9 +1317,9 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
             # instead of silently losing their only route back to that data.
             _offer_rescue_later(result.pop("snapshot_path"), Path(target), collection)
             return
-        # Declined: remembered for this media folder, whether or not this pass
-        # goes on to settle.
-        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, fingerprint)
+        # Declined: remember this candidate in this folder, whether or not this
+        # pass goes on to settle.
+        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, answer_identity)
     elif (
         not answered
         and target is not None
@@ -1316,7 +1346,7 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
             "and load it with Ankimon → Import Save File… — your current save is "
             "backed up before it is replaced."
         )
-        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, fingerprint)
+        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, answer_identity)
 
     if result.get("unreadable"):
         # Something in the folder exists but could not be judged this pass — a
