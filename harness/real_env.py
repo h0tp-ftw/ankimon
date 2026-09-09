@@ -48,7 +48,9 @@ def _seed_assets(user_path):
     base = pathlib.Path(user_path) / "sprites"
 
     cache_env = os.environ.get("ANKIMON_SPRITE_CACHE")
-    cache = pathlib.Path(cache_env) if cache_env else (REPO / ".tier2" / "sprites-cache")
+    cache = (
+        pathlib.Path(cache_env) if cache_env else (REPO / ".tier2" / "sprites-cache")
+    )
     if (cache / "download_complete.flag").exists():
         try:
             if base.is_symlink():
@@ -69,8 +71,15 @@ def _seed_assets(user_path):
 
     from PyQt6.QtGui import QImage, QColor
 
-    for sub in ("front_default", "back_default", "items", "badges",
-                "front_default_gif", "back_default_gif", "berries"):
+    for sub in (
+        "front_default",
+        "back_default",
+        "items",
+        "badges",
+        "front_default_gif",
+        "back_default_gif",
+        "berries",
+    ):
         (base / sub).mkdir(parents=True, exist_ok=True)
     substitute = base / "front_default" / "substitute.png"
     if not substitute.exists():
@@ -79,8 +88,14 @@ def _seed_assets(user_path):
         img.save(str(substitute), "PNG")
 
 
-def start_real_session(user_path=None, settings_overrides=None, neuter_network=True,
-                       first_run=False, webengine=False, require_webengine=False):
+def start_real_session(
+    user_path=None,
+    settings_overrides=None,
+    neuter_network=True,
+    first_run=False,
+    webengine=False,
+    require_webengine=False,
+):
     """Boot the real add-on and return handles (app, aqt, services, events).
 
     first_run=True seeds the sprite assets BEFORE the import, so startup's
@@ -127,9 +142,11 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
         raise ValueError("require_webengine=True requires webengine=True")
     if webengine:
         os.environ.setdefault("QTWEBENGINE_DISABLE_SANDBOX", "1")
-        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS",
-                              "--no-sandbox --disable-gpu --disable-dev-shm-usage "
-                              "--in-process-gpu --single-process")
+        os.environ.setdefault(
+            "QTWEBENGINE_CHROMIUM_FLAGS",
+            "--no-sandbox --disable-gpu --disable-dev-shm-usage "
+            "--in-process-gpu --single-process",
+        )
         try:
             import PyQt6.QtWebEngineWidgets  # noqa: F401  (must precede QApplication)
         except Exception as exc:
@@ -157,10 +174,18 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
     QDialog.exec = lambda self: 0
     try:
         QMessageBox.exec = lambda self: QMessageBox.StandardButton.Ok
-        QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Yes)
-        QMessageBox.warning = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
-        QMessageBox.information = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
-        QMessageBox.critical = staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok)
+        QMessageBox.question = staticmethod(
+            lambda *a, **k: QMessageBox.StandardButton.Yes
+        )
+        QMessageBox.warning = staticmethod(
+            lambda *a, **k: QMessageBox.StandardButton.Ok
+        )
+        QMessageBox.information = staticmethod(
+            lambda *a, **k: QMessageBox.StandardButton.Ok
+        )
+        QMessageBox.critical = staticmethod(
+            lambda *a, **k: QMessageBox.StandardButton.Ok
+        )
     except Exception:
         pass
 
@@ -169,8 +194,11 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
     # fuzzer can't hang on them (mirrors the QMessageBox auto-answers above).
     def _fuzz_get_item(parent, title, label, items, current=0, editable=True, *a, **k):
         items = list(items)
-        chosen = items[current] if 0 <= current < len(items) else (items[0] if items else "")
+        chosen = (
+            items[current] if 0 <= current < len(items) else (items[0] if items else "")
+        )
         return chosen, True
+
     try:
         QInputDialog.getItem = staticmethod(_fuzz_get_item)
         QInputDialog.getText = staticmethod(lambda *a, **k: ("Ankimon", True))
@@ -194,16 +222,19 @@ def start_real_session(user_path=None, settings_overrides=None, neuter_network=T
     # faithful boot order — the same hook the real client runs on profile open.)
     try:
         from anki.hooks import runHook
+
         runHook("profileLoaded")
     except Exception:
         pass
 
     # Turn on event capture (emits are no-ops until enabled).
     from Ankimon.events import events
+
     events.enable()
     events.reset()
 
     from Ankimon.services import services
+
     if settings_overrides:
         for k, v in settings_overrides.items():
             services.settings.set(k, v)
