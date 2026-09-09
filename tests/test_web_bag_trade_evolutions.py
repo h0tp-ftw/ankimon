@@ -242,6 +242,43 @@ def test_use_item_evolutions_are_still_offered(shop_obj):
     assert choices[gloom["individual_id"]].get("e") == 1
 
 
+@pytest.mark.parametrize(
+    "name,prevo_id,evolved_id,item",
+    [
+        ("Kadabra", 64, 65, "linking-cord"),
+        ("Machoke", 67, 68, "linking-cord"),
+        ("Graveler", 75, 76, "linking-cord"),
+        ("Graveler-Alola", 10110, 10111, "linking-cord"),
+        ("Haunter", 93, 94, "linking-cord"),
+        ("Boldore", 525, 526, "linking-cord"),
+        ("Gurdurr", 533, 534, "linking-cord"),
+        ("Phantump", 708, 709, "linking-cord"),
+        ("Pumpkaboo", 710, 711, "linking-cord"),
+        ("Pumpkaboo-Small", 10027, 10030, "linking-cord"),
+        ("Pumpkaboo-Large", 10028, 10031, "linking-cord"),
+        ("Pumpkaboo-Super", 10029, 10032, "linking-cord"),
+        ("Happiny", 440, 113, "oval-stone"),
+    ],
+)
+def test_remapped_item_evolutions_are_offered(
+    shop_obj, name, prevo_id, evolved_id, item
+):
+    """Pin #838 explicitly, including forms that share a base species ID."""
+    assert (
+        shop_obj.check_evolution_by_item(
+            prevo_id, shop_obj.return_id_for_item_name(item)
+        )
+        == evolved_id
+    )
+    mon = _pokemon(name, prevo_id)
+    unrelated = _pokemon("Pikachu", 25)
+    choices = _choices(shop_obj, [mon, unrelated], item)
+    assert choices[mon["individual_id"]].get("e") == 1
+    assert "e" not in choices[unrelated["individual_id"]]
+    wrong_item = "oval-stone" if item == "linking-cord" else "linking-cord"
+    assert "e" not in _choices(shop_obj, [mon], wrong_item)[mon["individual_id"]]
+
+
 def test_wrong_item_is_not_offered(shop_obj):
     """Eligibility is still per-item: Rhydon does not evolve with a Leaf Stone."""
     rhydon = _pokemon("Rhydon", 112)

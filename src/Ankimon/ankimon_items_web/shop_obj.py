@@ -21,7 +21,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWidgets import QStackedWidget
 import csv
-from ..utils import give_item, is_alive
+from ..utils import get_item_sprite_path, give_item, is_alive
 from ..pyobj.settings import DEFAULT_CONFIG, HUD_TOGGLE_AUTO_SYNC_KEYS
 
 try:
@@ -1789,7 +1789,7 @@ class AnkimonItemsWeb(QDialog):
             entry["move_damage_class"] = (move.get("category") or "").title() or None
         else:
             entry["image_url"] = QUrl.fromLocalFile(
-                str(items_path / f"{name}.png")
+                str(get_item_sprite_path(name))
             ).toString()
             entry["description"] = (
                 self._lookup_description(name) or f"A useful item: {ui_name}"
