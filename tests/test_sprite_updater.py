@@ -4,8 +4,11 @@ import hashlib
 import sys
 import types
 import importlib.util
+import pytest
 from pathlib import Path
 from unittest import mock
+
+from conftest import isolated_modules
 
 _SRC = Path(__file__).parent.parent / "src"
 
@@ -59,9 +62,63 @@ def _load_sprite_updater():
         sys.modules[k] = v
     sys.modules["Ankimon.pyobj.sprite_updater"] = su_mod
     
-    return su_mod
+    return su_mod, ds_mod
 
-su = _load_sprite_updater()
+su, _ = _load_sprite_updater()
+
+
+@pytest.fixture
+def sprite_download_modules():
+    """Keep collection-time Qt mocks out of the real completion callbacks."""
+    with isolated_modules(
+        "PyQt6",
+        extra=("Ankimon.pyobj.download_sprites", "Ankimon.pyobj.sprite_updater"),
+    ):
+        yield _load_sprite_updater()
+
+
+@pytest.mark.parametrize("download_kind", ["zip", "diff"])
+@pytest.mark.parametrize("success", [True, False])
+def test_download_completion_refreshes_sprite_fallbacks(
+    monkeypatch, tmp_path, sprite_download_modules, download_kind, success
+):
+    """Even failed downloads may install files that supersede cached misses."""
+    from Ankimon.functions import sprite_functions as sf
+
+    updater, downloader = sprite_download_modules
+    monkeypatch.setattr(sf.services, "logger", mock.Mock())
+    root = tmp_path / "sprites"
+    (root / "front_default").mkdir(parents=True)
+    (root / "front_default" / "25.png").touch()
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    sf._clear_sprite_cache()
+    try:
+        assert sf.get_sprite_path("front", "png", 25, False, "F") == (
+            f"{root}/front_default/25.png"
+        )
+        preferred = root / "front_default" / "female" / "25.png"
+        preferred.parent.mkdir()
+        preferred.touch()
+
+        module = downloader if download_kind == "zip" else updater
+        dialog_type = (
+            downloader.DownloadDialog if download_kind == "zip" else updater.SpriteUpdateDialog
+        )
+        monkeypatch.setattr(module, "QMessageBox", mock.Mock())
+        dialog = types.SimpleNamespace(
+            dest_dir=root,
+            status_label=mock.Mock(),
+            cancel_button=mock.Mock(),
+            start_button=mock.Mock(),
+            progress_bar=mock.Mock(),
+            accept=mock.Mock(),
+            reject=mock.Mock(),
+        )
+        dialog_type.on_download_finished(dialog, success, "Download finished")
+
+        assert sf.get_sprite_path("front", "png", 25, False, "F") == str(preferred)
+    finally:
+        sf._clear_sprite_cache()
 
 
 def test_git_blob_sha1(tmp_path):
