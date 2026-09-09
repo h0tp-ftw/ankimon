@@ -280,6 +280,18 @@ def test_fractional_id_rejected(fake_logger, monkeypatch):
     assert any("Invalid sprite id 25.9" in msg for _, msg in fake_logger.logs)
 
 
+def test_high_precision_fractional_id_rejected(fake_logger, monkeypatch):
+    from decimal import Decimal
+
+    monkeypatch.setattr("os.path.exists", lambda p: True)
+    sprite_id = Decimal("25.0000000000000000000000001")
+
+    result = sf.get_sprite_path("front", "png", sprite_id, shiny=False, gender="M")
+
+    assert result == sf.SUBSTITUTE_PATH
+    assert any("Invalid sprite id" in msg for _, msg in fake_logger.logs)
+
+
 def test_boolean_id_rejected(fake_logger, monkeypatch):
     """Boolean IDs should be rejected and return substitute."""
     monkeypatch.setattr("os.path.exists", lambda p: True)
