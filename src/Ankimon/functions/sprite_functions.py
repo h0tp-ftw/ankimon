@@ -138,24 +138,15 @@ def get_sprite_path(
     """
 
     try:
-        if isinstance(id, bool):
+        if isinstance(id, (bool, complex)):
             raise ValueError
-        if isinstance(id, (int, float, complex)):
-            if isinstance(id, complex):
-                raise ValueError
-            if isinstance(id, float) and not id.is_integer():
-                raise ValueError
-        elif hasattr(id, "__int__") and hasattr(id, "__float__"):
-            try:
-                as_float = float(id)
-                if as_float != int(as_float):
-                    raise ValueError
-            except (TypeError, ValueError, OverflowError):
-                raise ValueError
-        id = int(id)
-        if id <= 0:
+        validated_id = int(id)
+        if not isinstance(id, (str, bytes, bytearray)) and id != validated_id:
             raise ValueError
-    except (TypeError, ValueError):
+        if validated_id <= 0:
+            raise ValueError
+        id = validated_id
+    except (TypeError, ValueError, OverflowError):
         services.logger.log("warning", f"Invalid sprite id {id!r}; using substitute sprite.")
         return SUBSTITUTE_PATH
 
