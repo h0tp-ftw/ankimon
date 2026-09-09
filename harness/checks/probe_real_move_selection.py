@@ -9,6 +9,7 @@ presenter's deferred deletion, and puts the harness stub back afterwards.
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -27,7 +28,10 @@ MOVES = ["tackle", "growl", "scratch", "ember"]
 
 def setUpModule():
     global _ENV
-    _ENV = start_real_session()
+    # Offline boot must not depend on DNS or a reachable TCP endpoint. Keep
+    # the real startup connectivity check, but fail if it reaches the network.
+    with patch("socket.getaddrinfo", side_effect=AssertionError("network access during offline boot")):
+        _ENV = start_real_session()
     # real_env stubs QDialog.exec process-wide so a real boot can never hang on
     # a modal. Restore the blocking loop for this dialog alone -- restoring it
     # globally would leave any later dialog (an error box, a first-run prompt)
@@ -47,6 +51,9 @@ def tearDownModule():
 
 
 class MoveSelectionTests(unittest.TestCase):
+    def test_boot_stays_offline(self):
+        self.assertFalse(_ENV.Ankimon.online_connectivity)
+
     def setUp(self):
         from Ankimon.classes.choose_move_dialog import MoveSelectionDialog
 
