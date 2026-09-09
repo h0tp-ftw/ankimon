@@ -1537,23 +1537,6 @@ class AnkimonDB:
 
     # --- Config Operations (replaces config.obf) ---
 
-    def set_config_value(self, key: str, value: Any):
-        """Sets a config key-value pair."""
-        # Store as JSON string to preserve type information
-        if isinstance(value, bool):
-            str_value = "true" if value else "false"
-        else:
-            str_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-        
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-            (key, str_value)
-        )
-        conn.commit()
-        return True
-
     def get_config_value(self, key: str, default: Any = None) -> Any:
         """Retrieves a config value by key."""
         cursor = self.execute("SELECT value FROM config WHERE key = ?", (key,))
@@ -1562,10 +1545,12 @@ class AnkimonDB:
             val = row["value"]
             # Try to parse as JSON, fallback to string
             try:
-                parsed = json.loads(val)
-                return parsed
-            except:
-                if isinstance(val, str):
+                return json.loads(val)
+            except (json.JSONDecodeError, TypeError):
+                from .settings import DEFAULT_CONFIG
+
+                # Legacy Python boolean spellings only apply to boolean settings.
+                if isinstance(DEFAULT_CONFIG.get(key), bool) and isinstance(val, str):
                     if val.lower() == 'true':
                         return True
                     elif val.lower() == 'false':
@@ -1582,8 +1567,10 @@ class AnkimonDB:
             val = row["value"]
             try:
                 result[key] = json.loads(val)
-            except:
-                if isinstance(val, str):
+            except (json.JSONDecodeError, TypeError):
+                from .settings import DEFAULT_CONFIG
+
+                if isinstance(DEFAULT_CONFIG.get(key), bool) and isinstance(val, str):
                     if val.lower() == 'true':
                         result[key] = True
                     elif val.lower() == 'false':
