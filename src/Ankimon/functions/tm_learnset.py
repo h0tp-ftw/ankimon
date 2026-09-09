@@ -24,6 +24,30 @@ _FORM_TOKEN_ALIASES = {
 }
 
 _FORM_SUFFIX_ALIASES = {
+    ("raticate", "alolatotem"): "totemalola",
+    ("marowak", "alolatotem"): "totem",
+    ("pikachu", "original"): "originalcap",
+    ("pikachu", "hoenn"): "hoenncap",
+    ("pikachu", "sinnoh"): "sinnohcap",
+    ("pikachu", "unova"): "unovacap",
+    ("pikachu", "kalos"): "kaloscap",
+    ("pikachu", "alola"): "alolacap",
+    ("pikachu", "partner"): "partnercap",
+    ("pikachu", "world"): "worldcap",
+    ("tauros", "paldeacombat"): "paldeacombatbreed",
+    ("tauros", "paldeablaze"): "paldeablazebreed",
+    ("tauros", "paldeaaqua"): "paldeaaquabreed",
+    ("darmanitan", "galar"): "galarstandard",
+    ("greninja", "bond"): "battlebond",
+    ("rockruff", "dusk"): "owntempo",
+    ("minior", "meteor"): "redmeteor",
+    ("mimikyu", "totem"): "totemdisguised",
+    ("mimikyu", "bustedtotem"): "totembusted",
+    ("necrozma", "duskmane"): "dusk",
+    ("necrozma", "dawnwings"): "dawn",
+    ("ogerpon", "wellspring"): "wellspringmask",
+    ("ogerpon", "hearthflame"): "hearthflamemask",
+    ("ogerpon", "cornerstone"): "cornerstonemask",
     ("maushold", "three"): "familyofthree",
     ("maushold", "four"): "familyoffour",
     ("squawkabilly", "green"): "greenplumage",
@@ -60,36 +84,48 @@ def _candidate_keys(internal_name) -> tuple[str, ...]:
 
     Base entries with ``baseForme`` (Aegislash, Deoxys, etc.) prefer the
     fully-qualified default form key. Explicit form entries prefer their direct
-    Pokédex key, then a metadata-derived key, then the base species as the
-    existing UI intended. Duplicate candidates are removed without reordering.
+    Pokédex key, then a metadata-derived key. Missing battle-only forms inherit
+    from their declared parent form before trying the base species (including
+    its default form). A visited set makes malformed parent cycles harmless.
     """
-    normalized = _normalize_key(internal_name)
-    if not normalized:
-        return ()
-
-    base_species = _pokedex_string(internal_name, "baseSpecies")
-    forme = _pokedex_string(internal_name, "forme")
-    base_forme = _pokedex_string(internal_name, "baseForme")
-
     candidates = []
+    visited = set()
 
     def add(key: str) -> None:
         if key and key not in candidates:
             candidates.append(key)
 
-    if base_species:
-        species_key = _normalize_key(base_species)
-        add(normalized)
-        if forme:
-            add(species_key + _form_suffix(species_key, forme))
-        add(species_key)
-    elif base_forme:
-        species_key = normalized
-        add(species_key + _form_suffix(species_key, base_forme))
-        add(normalized)
-    else:
-        add(normalized)
+    def visit(name) -> None:
+        normalized = _normalize_key(name)
+        if not normalized or normalized in visited:
+            return
+        visited.add(normalized)
 
+        base_species = _pokedex_string(normalized, "baseSpecies")
+        forme = _pokedex_string(normalized, "forme")
+        base_forme = _pokedex_string(normalized, "baseForme")
+        if base_species:
+            species_key = _normalize_key(base_species)
+            add(normalized)
+            if forme:
+                add(species_key + _form_suffix(species_key, forme))
+        elif base_forme:
+            add(normalized + _form_suffix(normalized, base_forme))
+            add(normalized)
+        else:
+            add(normalized)
+
+        # E.g. Urshifu-Rapid-Strike-Gmax inherits Rapid-Strike's TMs, not the
+        # default Single-Strike table. Do not infer ancestry by stripping name
+        # suffixes or choosing an arbitrary member of a list-valued battleOnly.
+        for field in ("changesFrom", "battleOnly"):
+            parent = _pokedex_string(normalized, field)
+            if parent:
+                visit(parent)
+        if base_species:
+            visit(base_species)
+
+    visit(internal_name)
     return tuple(candidates)
 
 
