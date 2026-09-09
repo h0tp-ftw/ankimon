@@ -1,17 +1,19 @@
 import os
+from collections import OrderedDict
 
 from ..services import services
 from ..resources import pkmnimgfolder
 
 SUBSTITUTE_PATH = f"{pkmnimgfolder}/front_default/substitute.png"
 
-# Cache for validated sprite paths to avoid repeated filesystem calls during UI rendering
-_PATH_VALIDITY_CACHE = {}
+# Cache both hits and misses so fallback variants do not hit the disk on every
+# repaint. Bound it because unknown IDs can arrive throughout a long Anki session.
+_SPRITE_CACHE_MAXSIZE = 4096
+_PATH_VALIDITY_CACHE = OrderedDict()
 
 
 def _clear_sprite_cache():
-    """Clear the sprite path validation cache. Used primarily for testing."""
-    global _PATH_VALIDITY_CACHE
+    """Forget cached hits and misses after a sprite download or update finishes."""
     _PATH_VALIDITY_CACHE.clear()
 
 
@@ -65,26 +67,30 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
 
 
 def _get_cached_valid_path(path):
-    """Return cached validated path if valid, otherwise None.
-
-    This caches the result of path containment validation and existence checks
-    to avoid repeated synchronous filesystem calls during UI rendering.
-    Only caches paths that are confirmed to exist; missing paths are not stored.
-    """
-    if path in _PATH_VALIDITY_CACHE:
-        return _PATH_VALIDITY_CACHE[path]
-
-    sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
-    resolved_path = os.path.realpath(path)
+    """Return a validated logical sprite path, caching contained hits and misses."""
     try:
-        is_contained = os.path.commonpath((sprite_root, resolved_path)) == sprite_root
-        if is_contained and os.path.exists(resolved_path):
-            _PATH_VALIDITY_CACHE[path] = resolved_path
-            return resolved_path
-    except ValueError:
-        pass
+        result = _PATH_VALIDITY_CACHE.pop(path)
+    except KeyError:
+        sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
+        resolved_path = os.path.realpath(path)
+        try:
+            if os.path.commonpath((sprite_root, resolved_path)) != sprite_root:
+                return None
+            result = None
+            if os.path.exists(resolved_path):
+                # Web consumers need the logical user_files/sprites prefix even
+                # when the root is a symlink. Rebase the validated target, not
+                # the unchecked input, so internal symlinks remain contained.
+                relative_path = os.path.relpath(resolved_path, sprite_root)
+                relative_path = relative_path.replace(os.sep, "/")
+                result = f"{pkmnimgfolder}/{relative_path}"
+        except ValueError:
+            return None
 
-    return None
+    _PATH_VALIDITY_CACHE[path] = result
+    if len(_PATH_VALIDITY_CACHE) > _SPRITE_CACHE_MAXSIZE:
+        _PATH_VALIDITY_CACHE.popitem(last=False)
+    return result
 
 
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):

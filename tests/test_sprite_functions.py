@@ -368,3 +368,81 @@ def test_commonpath_value_error_returns_substitute(monkeypatch, tmp_path):
     assert sf._get_cached_valid_path(str(candidate)) is None
     assert sf.get_sprite_path("front", "png", 25, False, "M") == sf.SUBSTITUTE_PATH
     assert str(candidate) not in sf._PATH_VALIDITY_CACHE
+
+
+def test_symlinked_sprite_root_preserves_web_paths(monkeypatch, tmp_path):
+    """Canonical containment must not strip the logical web asset prefix."""
+    root = tmp_path / "addon" / "user_files" / "sprites"
+    root.parent.mkdir(parents=True)
+    target = tmp_path / "sprite-cache"
+    (target / "front_default").mkdir(parents=True)
+    (target / "front_default" / "25.png").touch()
+    try:
+        root.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"Directory symlinks are unavailable: {exc}")
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+
+    assert sf.get_sprite_path("front", "png", 25, False, "M") == (
+        f"{root}/front_default/25.png"
+    )
+    assert sf.get_relative_sprite_path(25, False, "M") == (
+        "../user_files/sprites/front_default/25.png"
+    )
+
+
+@pytest.mark.parametrize("side,sprite_type", [("front", "png"), ("back", "gif")])
+@pytest.mark.parametrize("sprite_exists", [True, False])
+def test_warm_fallback_avoids_filesystem_calls(
+    monkeypatch, tmp_path, side, sprite_type, sprite_exists
+):
+    """Missing gender/side/format variants must stay cheap on every repaint."""
+    root = tmp_path / "sprites"
+    (root / "front_default").mkdir(parents=True)
+    if sprite_exists:
+        (root / "front_default" / "25.png").touch()
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    expected = f"{root}/front_default/25.png" if sprite_exists else sf.SUBSTITUTE_PATH
+    assert sf.get_sprite_path(side, sprite_type, 25, False, "F") == expected
+
+    def no_filesystem(*args, **kwargs):
+        pytest.fail("A warmed sprite lookup touched the filesystem")
+
+    with monkeypatch.context() as guarded:
+        guarded.setattr(sf.os.path, "realpath", no_filesystem)
+        guarded.setattr(sf.os.path, "exists", no_filesystem)
+        for _ in range(3):
+            assert sf.get_sprite_path(side, sprite_type, 25, False, "F") == expected
+
+
+def test_sprite_cache_is_bounded(monkeypatch, tmp_path):
+    """Visiting new sprites must evict old entries in a long-running process."""
+    root = tmp_path / "sprites"
+    (root / "front_default").mkdir(parents=True)
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    monkeypatch.setattr(sf, "_SPRITE_CACHE_MAXSIZE", 3, raising=False)
+    for pokemon_id in range(1, 5):
+        (root / "front_default" / f"{pokemon_id}.png").touch()
+        assert sf.get_sprite_path("front", "png", pokemon_id, False, "M") == (
+            f"{root}/front_default/{pokemon_id}.png"
+        )
+
+    assert len(sf._PATH_VALIDITY_CACHE) <= 3
+
+
+def test_cache_clear_discovers_new_preferred_sprite(monkeypatch, tmp_path):
+    """An asset refresh must replace a cached PNG fallback with the new GIF."""
+    root = tmp_path / "sprites"
+    (root / "front_default").mkdir(parents=True)
+    (root / "front_default" / "25.png").touch()
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    assert sf.get_sprite_path("back", "gif", 25, False, "F") == (
+        f"{root}/front_default/25.png"
+    )
+
+    preferred = root / "back_default_gif" / "female" / "25.gif"
+    preferred.parent.mkdir(parents=True)
+    preferred.touch()
+    sf._clear_sprite_cache()
+
+    assert sf.get_sprite_path("back", "gif", 25, False, "F") == str(preferred)

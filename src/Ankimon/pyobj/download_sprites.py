@@ -524,6 +524,10 @@ class DownloadDialog(QDialog):
         self.status_label.setText(status)
 
     def on_download_finished(self, success: bool, message: str):
+        # A cancelled or failed extraction may still have installed some files.
+        from ..functions.sprite_functions import _clear_sprite_cache
+
+        _clear_sprite_cache()
         self.status_label.setText(message)
         self.cancel_button.setEnabled(False)
         if success:
