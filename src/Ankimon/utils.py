@@ -42,16 +42,23 @@ from .resources import (
 from .move_names import format_move_name
 
 
-# Audio is optional. Under Anki these construct real Qt players; headless (the
-# agent harness / tests) there is no QtMultimedia, so we degrade to "no audio"
-# and play_sound/play_effect_sound become event-only.
+# Audio is optional. Qt can be installed without an application (headless
+# imports); constructing multimedia objects then can hang or crash natively,
+# beyond what try/except can catch. Anki imports us on its application thread.
+audio_output = None
+media_player = None
+_HAVE_AUDIO = False
 try:
-    from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+    from PyQt6.QtCore import QCoreApplication, QThread
 
-    audio_output = QAudioOutput()
-    media_player = QMediaPlayer()
-    media_player.setAudioOutput(audio_output)
-    _HAVE_AUDIO = True
+    _audio_app = QCoreApplication.instance()
+    if _audio_app is not None and QThread.currentThread() == _audio_app.thread():
+        from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
+
+        audio_output = QAudioOutput()
+        media_player = QMediaPlayer()
+        media_player.setAudioOutput(audio_output)
+        _HAVE_AUDIO = True
 except Exception:
     audio_output = None
     media_player = None
