@@ -5,6 +5,7 @@ Run with plain Python: python3 harness/checks/probe_item_evolutions.py
 
 import csv
 import pathlib
+import struct
 import sys
 from unittest.mock import patch
 
@@ -93,7 +94,13 @@ def run_proof():
     assert not cord.exists()
     fallback = utils.get_item_sprite_path("linking-cord")
     assert fallback.is_file()
-    assert fallback.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    raw = fallback.read_bytes()
+    assert raw.startswith(b"\x89PNG\r\n\x1a\n")
+    # Both bags scale the whole canvas to fit their cell, so transparent padding
+    # is never trimmed and a padded icon paints visibly smaller than the tightly
+    # cropped pack icons beside it. Every pack item is <= 90px on its long edge.
+    width, height = struct.unpack(">II", raw[16:24])
+    assert max(width, height) <= 90, (width, height)
     expected = [
         {"name": "linking-cord", "description": "Item: linking-cord", "price": 8000}
     ]

@@ -114,7 +114,7 @@ def _run(directory):
     ), "Cord never rendered"
     assert _wait_until(
         lambda: js(
-            "(() => { const i = document.querySelector('[data-item-name=\"linking-cord\"] img'); return !!i && i.complete && i.naturalWidth === 128; })()"
+            "(() => { const i = document.querySelector('[data-item-name=\"linking-cord\"] img'); return !!i && i.complete && i.naturalWidth === 88 && i.naturalHeight === 87; })()"
         )
     ), "Bundled icon did not load in Chromium"
     click('[data-item-name="linking-cord"]')
@@ -185,8 +185,9 @@ def _run(directory):
     window.update_ui_data()
 
     # Inject a genuine SQLite write failure through the real confirmation.
-    # Only the warning renderer is intercepted, so this unattended proof does
-    # not block on the deliberately generated error dialog.
+    # The transaction rolls the failure back, so the player gets the retry
+    # message rather than a crash-report dialog; both are intercepted here so
+    # this unattended proof cannot block on either.
     from Ankimon.pyobj import evolution_window
 
     open_picker("linking-cord")
@@ -197,12 +198,22 @@ def _run(directory):
         "BEGIN SELECT RAISE(ABORT, 'injected item charge failure'); END"
     )
     try:
+        evo = get_evo_window()
         with patch.object(evolution_window, "show_warning_with_traceback") as warning:
-            press("Evolve Pokémon")
-            warning.assert_called_once()
-            assert "injected item charge failure" in str(
-                warning.call_args.kwargs["exception"]
-            )
+            with patch.object(evo.logger, "log_and_showinfo") as told:
+                with patch.object(evo.logger, "log") as logged:
+                    press("Evolve Pokémon")
+        warning.assert_not_called()
+        warnings = [
+            call.args for call in told.call_args_list if call.args[0] == "warning"
+        ]
+        assert warnings, "the player was told nothing about the failed evolution"
+        assert "please try again" in warnings[-1][1].lower(), warnings[-1]
+        assert any(
+            "injected item charge failure" in str(call.args[1])
+            for call in logged.call_args_list
+            if call.args and call.args[0] == "error"
+        ), "the underlying sqlite error never reached the log"
         assert db.get_pokemon(mon["individual_id"]) == original
         assert db.get_item("linking-cord")["quantity"] == 13
         assert not db._get_connection().in_transaction

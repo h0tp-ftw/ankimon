@@ -5,6 +5,7 @@ import importlib
 import json
 import sqlite3
 import sys
+import time
 
 import pytest
 
@@ -224,3 +225,109 @@ def test_cannot_commit_an_existing_transaction(evolution_db, bulk):
     finally:
         conn._disable_commit = False
         conn.rollback()
+
+
+def _hold_write_lock(db, seconds, ready):
+    """Hold a real write lock on the DB file from another connection."""
+    import threading
+
+    other = sqlite3.connect(db.db_path, timeout=30, check_same_thread=False)
+    other.execute("BEGIN IMMEDIATE")
+    other.execute("INSERT OR REPLACE INTO user_data (key, value) VALUES ('held','1')")
+    ready.set()
+
+    def release():
+        time.sleep(seconds)
+        other.commit()
+        other.close()
+
+    thread = threading.Thread(target=release, daemon=True)
+    thread.start()
+    return thread
+
+
+def test_a_concurrent_writer_is_waited_out_not_reported_as_failure(evolution_db):
+    """The busy_timeout must survive the read-before-write transaction shape.
+
+    A deferred BEGIN that SELECTs first holds a SHARED lock, and sqlite skips
+    the busy handler when promoting it, so any concurrent writer produced an
+    instant "database is locked" — exactly what _prepare_connection's 30s
+    timeout exists to prevent. The old two-step save waited and succeeded.
+    """
+    import threading
+
+    db, before, after = evolution_db
+    db.save_item(2160, "linking-cord", 3)
+    ready = threading.Event()
+    holder = _hold_write_lock(db, 1.0, ready)
+    assert ready.wait(10)
+
+    started = time.monotonic()
+    assert _save(db, before, after) is True
+    waited = time.monotonic() - started
+    holder.join(timeout=10)
+
+    assert waited >= 0.5, f"returned in {waited:.2f}s — it did not wait for the lock"
+    assert db.get_pokemon("kadabra") == after
+    assert db.get_item("linking-cord")["quantity"] == 2
+
+
+def test_waiting_for_the_lock_does_not_hold_the_pokedex_lock(evolution_db):
+    """Retrying must release _pokedex_lock so the other writer can finish.
+
+    The bulk mobile resolve takes the write lock first and _pokedex_lock second
+    (save_pokemon -> mark_as_caught), the opposite order to this module. Waiting
+    for the write lock while holding _pokedex_lock would stall the very thread
+    we are waiting on, so the wait has to happen with the lock released.
+    """
+    import threading
+
+    db, before, after = evolution_db
+    db.save_item(2160, "linking-cord", 3)
+    ready = threading.Event()
+    holder = _hold_write_lock(db, 1.0, ready)
+    assert ready.wait(10)
+
+    stalls = []
+    stop = threading.Event()
+
+    def poll_pokedex_lock():
+        while not stop.is_set():
+            started = time.monotonic()
+            with db._pokedex_lock:
+                stalls.append(time.monotonic() - started)
+            time.sleep(0.02)
+
+    poller = threading.Thread(target=poll_pokedex_lock, daemon=True)
+    poller.start()
+    try:
+        assert _save(db, before, after) is True
+    finally:
+        stop.set()
+        poller.join(timeout=5)
+        holder.join(timeout=10)
+
+    assert stalls, "the poller never ran"
+    assert max(stalls) < 0.5, f"_pokedex_lock was held for {max(stalls):.2f}s"
+
+
+@pytest.mark.parametrize("stored", ["not json at all", "", "{", "\x00"])
+def test_an_unreadable_history_value_does_not_cost_the_evolution(evolution_db, stored):
+    """get_user_data and _coerce_pokedex_id_list both tolerate junk here.
+
+    The evolution must not be the one caller that treats a legacy or
+    hand-edited pokedex list as fatal.
+    """
+    db, before, after = evolution_db
+    db.save_item(2160, "linking-cord", 2)
+    db.execute(
+        "INSERT OR REPLACE INTO user_data (key, value) VALUES ('pokedex_caught', ?)",
+        (stored,),
+    )
+    db._get_connection().commit()
+
+    assert _save(db, before, after) is True
+    assert db.get_pokemon("kadabra") == after
+    assert db.get_item("linking-cord")["quantity"] == 1
+    for key in ("pokedex_caught", "pokedex_seen"):
+        assert {64, 65} <= set(db.get_user_data(key, []))

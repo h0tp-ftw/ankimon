@@ -590,3 +590,67 @@ def test_cancel_evolution_grants_levelup_moves_but_not_evolution_moves():
     saved = mock_db.save_pokemon.call_args[0][0]
     assert saved["attacks"] == ["tackle", "sleeppowder"]
     assert saved["evolution_rejected"] is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("Item evolution requires its own transaction"),
+        RuntimeError("The Pokémon changed during item evolution"),
+        Exception("database is locked"),
+    ],
+)
+def test_a_raising_commit_shows_the_retry_message_not_a_traceback(error):
+    """Every raising exit of save_item_evolution has already rolled back.
+
+    That makes it a retryable condition, so the player should get the same
+    actionable warning the return-False paths produce — not the crash-report
+    dialog show_warning_with_traceback builds.
+    """
+    evo_mod, _ = _load_evo_window()
+    mock_db = MagicMock()
+    mock_db.db_path = "original.db"
+    evo_mod.services.db = mock_db
+    mock_db.get_pokemon.return_value = {
+        "individual_id": "some-uuid",
+        "id": 133,
+        "name": "Eevee",
+        "level": 20,
+        "attacks": [],
+        "iv": {},
+        "ev": {},
+        "xp": 100,
+    }
+    handles = _apply_common_patches()
+    traceback_dialog = patch(
+        "Ankimon.pyobj.evolution_window.show_warning_with_traceback"
+    ).start()
+    try:
+        handles["search"].side_effect = lambda name, key: (
+            ["Fire"] if key == "types" else {"hp": 50} if key == "baseStats" else {}
+        )
+        handles["atomic"].side_effect = error
+        win = _make_evo_window(evo_mod)
+        win.evolve_pokemon(
+            "some-uuid", 133, "eevee", 136, "flareon", None, "fire-stone"
+        )
+
+        traceback_dialog.assert_not_called()
+        warnings = [
+            call.args
+            for call in win.logger.log_and_showinfo.call_args_list
+            if call.args and call.args[0] == "warning"
+        ]
+        assert warnings, "the player was told nothing"
+        assert "please try again" in warnings[-1][1].lower()
+        # And the failure detail is still recorded for a bug report.
+        assert any(
+            call.args and call.args[0] == "error"
+            for call in win.logger.log.call_args_list
+        )
+        win.display_evo_complete.assert_not_called()
+        handles["badge"].assert_not_called()
+        mock_db.save_pokemon.assert_not_called()
+        mock_db.update_item_quantity.assert_not_called()
+    finally:
+        patch.stopall()

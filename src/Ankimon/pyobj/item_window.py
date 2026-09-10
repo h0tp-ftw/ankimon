@@ -34,6 +34,7 @@ from ..functions.pokedex_functions import (
     return_id_for_item_name,
     check_evolution_by_item,
     find_details_move,
+    item_evolution_time_requirement,
 )
 
 from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
@@ -863,9 +864,22 @@ class ItemWindow(QWidget):
                     individual_id, prevo_id, evo_id, item_name=item_name
                 )
             else:
-                self.logger.log_and_showinfo(
-                    "info", "This Pokemon does not need this item."
+                # A clock-gated evolution (Happiny + Oval Stone) also answers
+                # None, so distinguish it: "does not need this item" is simply
+                # wrong for a Pokemon that needs exactly this item, later.
+                required_time = item_evolution_time_requirement(
+                    prevo_id, item_id, gender=gender
                 )
+                if required_time:
+                    self.logger.log_and_showinfo(
+                        "info",
+                        f"This Pokemon evolves with this item, but only during "
+                        f"the {required_time}. Try again then.",
+                    )
+                else:
+                    self.logger.log_and_showinfo(
+                        "info", "This Pokemon does not need this item."
+                    )
         except Exception as e:
             show_warning_with_traceback(parent=self, exception=e, message=f"{e}")
 

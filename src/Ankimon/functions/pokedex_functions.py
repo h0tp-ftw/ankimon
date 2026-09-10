@@ -1196,6 +1196,18 @@ def filter_gender_split_forms(evo_ids, gender):
     return matching or ids
 
 
+def evolution_required_time(target_data):
+    """Return ``"day"``/``"night"`` when a candidate is clock-gated, else None."""
+    if not isinstance(target_data, dict):
+        return None
+    condition = (target_data.get("evoCondition") or "").lower()
+    if "day" in condition:
+        return "day"
+    if "night" in condition:
+        return "night"
+    return None
+
+
 def evolution_time_allows(target_data, current_time=None) -> bool:
     """Return whether a timed evolution condition allows this candidate.
 
@@ -1206,18 +1218,34 @@ def evolution_time_allows(target_data, current_time=None) -> bool:
     """
     if not isinstance(target_data, dict):
         return False
-    condition = (target_data.get("evoCondition") or "").lower()
-    required_time = None
-    if "day" in condition:
-        required_time = "day"
-    elif "night" in condition:
-        required_time = "night"
+    required_time = evolution_required_time(target_data)
     if required_time is None:
         return True
     return (current_time or get_time_of_day()) == required_time
 
 
-def check_evolution_by_item(pokemon_id, item_id, gender=None):
+def item_evolution_time_requirement(pokemon_id, item_id, gender=None):
+    """Return the time of day an otherwise-valid item evolution is waiting for.
+
+    :func:`check_evolution_by_item` answers None both for "wrong item" and for
+    "right item, wrong time", so a caller cannot tell the player which it is —
+    a Happiny holding an Oval Stone at night would be told it "does not need
+    this item". This reports ``"day"``/``"night"`` only when the clock is the
+    single remaining obstacle, and None in every other case (including when the
+    evolution is available right now).
+    """
+    if check_evolution_by_item(pokemon_id, item_id, gender=gender):
+        return None
+    evo_id = check_evolution_by_item(
+        pokemon_id, item_id, gender=gender, ignore_time=True
+    )
+    if not evo_id:
+        return None
+    pokedex_data = _load_pokedex_cache()
+    return evolution_required_time(pokedex_data.get(search_pokedex_by_id(evo_id)))
+
+
+def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False):
     """
     Check if a Pokémon evolves using a specific item.
 
@@ -1288,8 +1316,13 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None):
                                 continue
 
                             # Preserve timed direct-use evolutions (e.g. Happiny
-                            # needs an Oval Stone during the day).
-                            if not evolution_time_allows(target_data):
+                            # needs an Oval Stone during the day). ``ignore_time``
+                            # is for callers asking "would this work at another
+                            # hour?" — see item_evolution_time_requirement — and
+                            # must never be set on the path that actually evolves.
+                            if not ignore_time and not evolution_time_allows(
+                                target_data
+                            ):
                                 continue
 
                             # Normalize both sides by stripping spaces, hyphens and

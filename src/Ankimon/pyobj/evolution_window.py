@@ -544,15 +544,31 @@ class EvoWindow(QWidget):
             # Item evolutions commit the species, inventory, and history as
             # one operation, after all move dialogs have finished.
             if item_name:
-                if (
-                    services.db is not db
-                    or db.db_path != source_db_path
-                    or not save_item_evolution(db, expected_pokemon, pokemon, item_name)
-                ):
+                try:
+                    committed = (
+                        services.db is db
+                        and db.db_path == source_db_path
+                        and save_item_evolution(
+                            db, expected_pokemon, pokemon, item_name
+                        )
+                    )
+                except Exception as e:
+                    # save_item_evolution is all-or-nothing: every raising exit
+                    # has already rolled back, so nothing was charged and
+                    # nothing was evolved. That makes this a retryable
+                    # condition, not a crash — show the same actionable message
+                    # the return-False paths get instead of dropping a traceback
+                    # dialog on the player. The detail still reaches the log.
+                    self.logger.log(
+                        "error", f"Item evolution could not be committed: {e}"
+                    )
+                    committed = False
+                if not committed:
                     self.logger.log_and_showinfo(
                         "warning",
                         "Evolution could not be completed because the Pokémon, "
-                        "item, or profile changed. Please select them again.",
+                        "item, or profile changed, or the database was busy. "
+                        "Nothing was used — please try again.",
                     )
                     return
             elif not db.save_pokemon(pokemon):
