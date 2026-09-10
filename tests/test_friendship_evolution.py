@@ -1106,6 +1106,11 @@ def test_all_gated_fallback_is_never_reported_ready(monkeypatch):
         "get_friendship_evolutions_for_species",
         lambda species_id: (_gated(700, "Sylveon", "fairy"),),
     )
+    monkeypatch.setattr(
+        fe,
+        "get_item_evolutions_for_species",
+        lambda species_id: tuple(),
+    )
     result = fe.evolution_readiness(
         _eevee(400, ["Tackle"]), now=datetime(2024, 1, 1, 9, 0)
     )
@@ -1405,3 +1410,38 @@ def test_level_gender_gate_delegates_to_the_shared_helper(monkeypatch):
 
     assert fe._level_gender_gate(416, 1) is False
     assert fe.evolution_readiness(_lvl(1, 20, "M"), now=_NOON)["ready"] is False
+
+def test_pikachu_item_readiness():
+    result = fe.evolution_readiness({"id": 25, "friendship": 0})
+    assert result["method"] == "item"
+    assert result["evolvable"] is True
+    assert result["ready"] is False
+    assert "Evolves into Raichu using a Thunder Stone" in result["status_text"]
+
+def test_eevee_item_readiness():
+    result = fe.evolution_readiness({"id": 133, "friendship": 0})
+    # Since friendship is 0, item readiness takes precedence now to show the stones!
+    assert result["method"] == "item"
+    assert "Evolves into Vaporeon using a Water Stone" in result["status_text"]
+    assert "160 friendship to evolve into" in result["status_text"]
+
+def test_gallade_gender_gate_male():
+    result = fe.evolution_readiness({"id": 281, "friendship": 0, "gender": "M"})
+    assert result["method"] == "item"
+    assert "Evolves into Gallade using a Dawn Stone" in result["status_text"]
+
+def test_gallade_gender_gate_female():
+    result = fe.evolution_readiness({"id": 281, "friendship": 0, "gender": "F"})
+    assert result["method"] == "item"
+    assert "Needs to be Male to evolve into Gallade" in result["status_text"]
+
+def test_trade_evolution_linking_cord():
+    result = fe.evolution_readiness({"id": 67, "friendship": 0})
+    assert result["method"] == "item"
+    assert "Evolves into Machamp using a Linking Cord" in result["status_text"]
+
+
+def test_happiny_level_hold():
+    result = fe.evolution_readiness({"id": 440, "friendship": 0})
+    assert result["method"] == "item"
+    assert "Evolves into Chansey using a Oval Stone" in result["status_text"]

@@ -419,9 +419,17 @@ def PokemonCollectionDetailsSplit(
             readiness["method"] != "friendship" or friendship_time_enabled
         )
         if show_evolution_ui:
-            if trigger_evo_callback is None and readiness["ready"]:
+            # We want to show the Evolve button if the pokemon is completely ready,
+            # or if it has an item evolution and the UI wants to show an item trigger.
+            # `readiness["ready"]` is intentionally False for item evolutions
+            # to prevent auto-prompting on level-up.
+            show_button = readiness["ready"] or readiness["method"] == "item"
+            if trigger_evo_callback is None and show_button:
                 evo_name = readiness["evo_name"] or "the next form"
-                evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
+                if readiness["method"] == "item":
+                    evolve_now_button = QPushButton(f"✨ Use Evolution Item")
+                else:
+                    evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
                 evolve_now_button.setFont(custom_font)
                 evolve_now_button.setFixedWidth(230)
                 evolve_now_button.setStyleSheet(
@@ -431,16 +439,23 @@ def PokemonCollectionDetailsSplit(
                 )
 
                 def evolve_now():
-                    # Lazy import: evo_window is a singleton built after this
-                    # module is first imported, so importing it at module top
-                    # would cycle.
-                    from ..singletons import evo_window
+                    if readiness["method"] == "item":
+                        # Trigger the item giving window for this Pokémon
+                        from ..singletons import get_pc_box
+                        pc = get_pc_box()
+                        if pc:
+                            pc.give_held_item({"individual_id": individual_id})
+                    else:
+                        # Lazy import: evo_window is a singleton built after this
+                        # module is first imported, so importing it at module top
+                        # would cycle.
+                        from ..singletons import evo_window
 
-                    # ask_pokemon_evo is modeless and returns immediately, so a
-                    # refresh here would run BEFORE the user confirms — a no-op.
-                    # The real refresh happens inside evolve_pokemon after
-                    # confirmation.
-                    evo_window.ask_pokemon_evo(individual_id, id, readiness["evo_id"])
+                        # ask_pokemon_evo is modeless and returns immediately, so a
+                        # refresh here would run BEFORE the user confirms — a no-op.
+                        # The real refresh happens inside evolve_pokemon after
+                        # confirmation.
+                        evo_window.ask_pokemon_evo(individual_id, id, readiness["evo_id"])
 
                 qconnect(evolve_now_button.clicked, evolve_now)
                 evolution_req_widget = evolve_now_button

@@ -20,6 +20,7 @@ from typing import Any, NamedTuple, Optional
 
 from .pokedex_functions import (
     _LEVEL_EVO_TRIGGERS,
+    _ITEM_EVO_TRIGGERS,
     _csv_gender_id,
     _evolution_row_gender_id,
     _load_moves_cache,
@@ -58,6 +59,20 @@ class FriendshipEvolution(NamedTuple):
     min_happiness: int
     time_of_day: Optional[str]
     known_move_type: Optional[str] = None
+
+
+class ItemEvolution(NamedTuple):
+    """A single item-based evolution (e.g. Thunder Stone -> Raichu).
+
+    Attributes:
+        evo_id: National Pokédex id of the evolved species.
+        evo_name: Capitalised display name of the evolved species.
+        required_item: The item needed to trigger the evolution.
+    """
+
+    evo_id: int
+    evo_name: str
+    required_item: str
 
 
 class LevelEvolution(NamedTuple):
@@ -360,6 +375,69 @@ def get_friendship_evolutions_for_species(
 
 
 @functools.lru_cache(maxsize=None)
+def get_item_evolutions_for_species(
+    pokemon_id: int,
+) -> tuple[ItemEvolution, ...]:
+    """Return all item-based evolutions for a species, sorted by evolved id.
+
+    Reads from the form-aware ``pokedex.json`` cache for evolutions with
+    ``evoType`` == "useItem" or "trade" (which Ankimon treats as use-item).
+    """
+    from .pokedex_functions import (
+        _load_pokedex_cache,
+        safe_int,
+        search_pokedex_by_id,
+    )
+
+    evolutions: list[ItemEvolution] = []
+    pokedex_data = _load_pokedex_cache()
+    internal_name = search_pokedex_by_id(pokemon_id)
+
+    if internal_name in pokedex_data:
+        evo_list = pokedex_data[internal_name].get("evos")
+        if evo_list:
+            for target_evo_name in evo_list:
+                normalized = (
+                    target_evo_name.lower()
+                    .replace(" ", "")
+                    .replace("-", "")
+                    .replace("'", "")
+                    .replace(".", "")
+                    .replace(":", "")
+                )
+                target_data = pokedex_data.get(normalized) or pokedex_data.get(
+                    target_evo_name.lower()
+                )
+                if not target_data:
+                    continue
+
+                evo_type = target_data.get("evoType")
+                if evo_type in ("useItem", "trade", "levelHold"):
+                    evo_item = target_data.get("evoItem")
+                    if not evo_item:
+                        # Trade evolutions with no held item use a Linking Cord in Ankimon.
+                        if evo_type == "trade":
+                            evo_item = "Linking Cord"
+                        else:
+                            continue
+
+                    target_id = safe_int(
+                        target_data.get("actual_id") or target_data.get("species_id")
+                    )
+                    if target_id > 0:
+                        evolutions.append(
+                            ItemEvolution(
+                                evo_id=target_id,
+                                evo_name=target_data.get("name", target_evo_name),
+                                required_item=evo_item,
+                            )
+                        )
+
+    evolutions.sort(key=lambda e: e.evo_id)
+    return tuple(evolutions)
+
+
+@functools.lru_cache(maxsize=None)
 def get_level_evolutions_for_species(
     pokemon_id: int,
 ) -> tuple[LevelEvolution, ...]:
@@ -597,6 +675,11 @@ def _level_gender_gate(evo_id: int, caller_gender_id: Optional[int]) -> bool:
     return gender_allows_evolution(evo_id, caller_gender_id, _LEVEL_EVO_TRIGGERS)
 
 
+def _item_gender_gate(evo_id: int, caller_gender_id: Optional[int]) -> bool:
+    """Return whether an item-based evolution target is open to this gender."""
+    return gender_allows_evolution(evo_id, caller_gender_id, _ITEM_EVO_TRIGGERS)
+
+
 def _satisfies_move_gate(
     evo: FriendshipEvolution, known_move_types: Optional[frozenset]
 ) -> bool:
@@ -689,10 +772,11 @@ def _select_evolution(
 def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
     """Compute manual-evolution readiness for a single Pokémon.
 
-    Covers both friendship/time and plain level-up evolutions, so the PC's
-    "Evolve now" button and ✨ badge work for either. Friendship takes precedence
-    (``method="friendship"``); otherwise a level-up evolution is considered
-    (``method="level"``), else ``method=None``. Accepts a dict or an object with
+    Covers friendship/time, item-based, and plain level-up evolutions, so the PC's
+    "Evolve now" button and ✨ badge work. Friendship takes precedence
+    (``method="friendship"``); then item evolutions (``method="item"``);
+    otherwise a level-up evolution is considered (``method="level"``),
+    else ``method=None``. Accepts a dict or an object with
     ``id`` / ``friendship`` / ``everstone`` / ``level`` (missing -> 0 / False / 1).
 
     Args:
@@ -753,7 +837,19 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
 
     evos = get_friendship_evolutions_for_species(species_id)
     if not evos:
-        # No friendship evolution — fall back to a plain level-up evolution so
+        # No friendship evolution — try an item-based evolution next.
+        item_readiness = _item_readiness(
+            species_id=species_id,
+            everstone=everstone,
+            friendship=friendship,
+            evolution_rejected=evolution_rejected,
+            not_evolvable=not_evolvable,
+            pokemon=pokemon,
+        )
+        if item_readiness["evolvable"]:
+            return item_readiness
+
+        # No item evolution either — fall back to a plain level-up evolution so
         # the manual "Evolve now" path covers level evolvers too (auto level-ups
         # are still handled by check_evolution_for_pokemon; this is for mons that
         # rejected, hold an Everstone, or were caught above their evolve level).
@@ -796,6 +892,53 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
     friendship_remaining = max(0, min_happiness - friendship)
     time_ok = required_time is None or required_time == time_of_day
     ready = (not everstone) and friendship >= min_happiness and time_ok and move_ok
+
+    # If the friendship evolution isn't ready (or even if it is, maybe they want to use an item),
+    # we should check for item evolutions and build a combined status text.
+    # Actually, if the friendship evolution is ready, it returns "ready" to show a button.
+    # But if not ready, we should show both item and friendship requirements.
+    if not ready:
+        item_readiness = _item_readiness(
+            species_id=species_id,
+            everstone=everstone,
+            friendship=friendship,
+            evolution_rejected=evolution_rejected,
+            not_evolvable=not_evolvable,
+            pokemon=pokemon,
+        )
+        if item_readiness["evolvable"]:
+            hint_parts = []
+            if item_readiness["status_text"]:
+                hint_parts.append(item_readiness["status_text"])
+
+            # Let's rebuild the logic. We want the EXACT string that friendship evolution would give,
+            # but with the item hints prepended.
+            base_status_text = _build_status_text(
+                everstone=everstone,
+                ready=ready,
+                evo_name=evo_name,
+                friendship_remaining=friendship_remaining,
+                required_time=required_time,
+                time_ok=time_ok,
+                time_of_day=time_of_day,
+                rejected=evolution_rejected,
+                required_move_type=required_move_type,
+                gated_alternatives=gated_alternatives,
+            )
+
+            if base_status_text:
+                hint_parts.append(base_status_text)
+
+            if hint_parts:
+                item_readiness["status_text"] = " · ".join(hint_parts)
+
+            item_readiness["current_friendship"] = friendship
+            item_readiness["min_happiness"] = min_happiness
+            item_readiness["friendship_remaining"] = max(0, min_happiness - friendship) if min_happiness else 0
+            item_readiness["required_move_type"] = required_move_type
+            item_readiness["gated_alternatives"] = gated_alternatives
+
+            return item_readiness
 
     status_text = _build_status_text(
         everstone=everstone,
@@ -893,6 +1036,86 @@ def _filter_evolutions_by_region(
             if not has_matching_regional_sibling:
                 filtered.append(evo)
     return filtered
+
+
+def _item_readiness(
+    *,
+    species_id: int,
+    everstone: bool,
+    friendship: int,
+    evolution_rejected: bool,
+    not_evolvable: dict,
+    pokemon: Any = None,
+) -> dict:
+    """Compute readiness for an item-based evolution.
+
+    Called by :func:`evolution_readiness` before falling back to plain level-up.
+    Item evolutions are strictly informational here (the actual use happens in
+    the bag menu), so they are never ``ready=True``. They exist so the UI can
+    display the required item text instead of being silent or showing a level-up
+    alternative.
+
+    Returns:
+        A readiness dict with ``method="item"`` (or ``not_evolvable``).
+    """
+    item_evos = get_item_evolutions_for_species(species_id)
+    if not item_evos:
+        return not_evolvable
+
+    pokemon_gender = _pokemon_gender(pokemon)
+    caller_gender_id = _csv_gender_id(pokemon_gender)
+
+    valid_evos = []
+    for evo in item_evos:
+        # Check gender gate from CSV for item evolutions (e.g. Gallade, Froslass)
+        gender_ok = _item_gender_gate(evo.evo_id, caller_gender_id)
+        if gender_ok:
+            valid_evos.append(evo)
+
+    if not valid_evos:
+        # If all were gated by gender, just return the first one as representative
+        # to show the "Needs to be..." text. This is handled by falling through
+        # and letting the gender gate check below build the text.
+        valid_evos = [item_evos[0]]
+
+    # Build a combined string of all valid item evolutions
+    status_parts = []
+    representative_gender_gate = None
+
+    for evo in valid_evos:
+        gender_ok = _item_gender_gate(evo.evo_id, caller_gender_id)
+        if not gender_ok:
+            # We know caller_gender_id is either 1 (female) or 2 (male) if it failed,
+            # so the requirement is the other one.
+            required_gender = "Female" if caller_gender_id == 2 else "Male"
+            representative_gender_gate = f"Needs to be {required_gender} to evolve into {evo.evo_name}"
+        else:
+            status_parts.append(f"Evolves into {evo.evo_name} using a {evo.required_item}")
+
+    if everstone:
+        status_text = "Everstone prevents evolution"
+    elif representative_gender_gate and not status_parts:
+        status_text = representative_gender_gate
+    else:
+        status_text = " · ".join(status_parts)
+
+    return {
+        "evolvable": True,
+        "ready": False,  # Item evolutions are never "ready" in the PC
+        "method": "item",
+        "evo_id": valid_evos[0].evo_id if valid_evos else None,
+        "evo_name": valid_evos[0].evo_name if valid_evos else None,
+        "min_happiness": None,
+        "current_friendship": friendship,
+        "friendship_remaining": 0,
+        "required_time": None,
+        "time_ok": True,
+        "status_text": status_text,
+        "bar_max": MAX_FRIENDSHIP,
+        "rejected": evolution_rejected,
+        "required_move_type": None,
+        "gated_alternatives": (),
+    }
 
 
 def _level_readiness(
