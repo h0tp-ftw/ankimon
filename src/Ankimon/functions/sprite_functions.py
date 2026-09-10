@@ -1,9 +1,20 @@
 import os
+from collections import OrderedDict
 
 from ..services import services
 from ..resources import pkmnimgfolder
 
 SUBSTITUTE_PATH = f"{pkmnimgfolder}/front_default/substitute.png"
+
+# Cache both hits and misses so fallback variants do not hit the disk on every
+# repaint. Bound it because unknown IDs can arrive throughout a long Anki session.
+_SPRITE_CACHE_MAXSIZE = 4096
+_PATH_VALIDITY_CACHE = OrderedDict()
+
+
+def _clear_sprite_cache():
+    """Forget cached hits and misses after a sprite download or update finishes."""
+    _PATH_VALIDITY_CACHE.clear()
 
 
 def _load_pokedex():
@@ -55,18 +66,48 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
     return f"{pkmnimgfolder}/{base_path}/{id}.{sprite_type}"
 
 
+def _get_cached_valid_path(path):
+    """Return a validated logical sprite path, caching contained hits and misses."""
+    try:
+        result = _PATH_VALIDITY_CACHE.pop(path)
+    except KeyError:
+        sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
+        resolved_path = os.path.realpath(path)
+        try:
+            if os.path.commonpath((sprite_root, resolved_path)) != sprite_root:
+                return None
+            result = None
+            if os.path.exists(resolved_path):
+                # Web consumers need the logical user_files/sprites prefix even
+                # when the root is a symlink. Rebase the validated target, not
+                # the unchecked input, so internal symlinks remain contained.
+                relative_path = os.path.relpath(resolved_path, sprite_root)
+                relative_path = relative_path.replace(os.sep, "/")
+                result = f"{pkmnimgfolder}/{relative_path}"
+        except ValueError:
+            return None
+
+    _PATH_VALIDITY_CACHE[path] = result
+    if len(_PATH_VALIDITY_CACHE) > _SPRITE_CACHE_MAXSIZE:
+        _PATH_VALIDITY_CACHE.popitem(last=False)
+    return result
+
+
 def _try_gendered(back: bool, id: int, gif: bool, shiny: bool, female: bool):
+    """Return a gendered sprite only when its resolved path stays in the sprite root."""
     path = _path_format(back, id, gif, shiny, female)
-    if os.path.exists(path):
+    cached_path = _get_cached_valid_path(path)
+    if cached_path:
         services.logger.log("debug", f"Sprite found: {path}")
-        return path
+        return cached_path
 
     if female:
         # requested gendered but not found, try non-gendered
         path = _path_format(back, id, gif, shiny, False)
-        if os.path.exists(path):
+        cached_path = _get_cached_valid_path(path)
+        if cached_path:
             services.logger.log("debug", f"Sprite found (gender fallback): {path}")
-            return path
+            return cached_path
 
 
 def _try_back(back: bool, id: int, gif: bool, shiny: bool, female: bool):
@@ -100,6 +141,19 @@ def get_sprite_path(
         pokemon_name: Optional Pokémon name (used for Mega/Gmax forms to look up
             the correct form-specific sprite ID)
     """
+
+    try:
+        if isinstance(id, (bool, complex)):
+            raise ValueError
+        validated_id = int(id)
+        if not isinstance(id, (str, bytes, bytearray)) and id != validated_id:
+            raise ValueError
+        if validated_id <= 0:
+            raise ValueError
+        id = validated_id
+    except (TypeError, ValueError, OverflowError):
+        services.logger.log("warning", f"Invalid sprite id {id!r}; using substitute sprite.")
+        return SUBSTITUTE_PATH
 
     gif = sprite_type == "gif"
     female = gender == "F"

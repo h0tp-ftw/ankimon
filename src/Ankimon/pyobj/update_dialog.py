@@ -1,5 +1,6 @@
 from aqt import mw
 from aqt.operations import QueryOp
+from pathlib import Path
 from aqt.qt import (
     Qt,
     QDialog,
@@ -27,17 +28,33 @@ from .update_manager import (
     fetch_branches,
     fetch_open_prs,
     apply_update,
+    is_git_clone,
+    get_git_checkout_info,
+    git_checkout_source,
     _download_zip_to_temp,
     _download_branch_zip,
     _download_pr_zip,
     read_update_state,
     fetch_branch_sha,
+    published_at_for_tag,
+    stamp_addon_mod,
 )
 from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
 
 
+def _start_query_op(parent, op, success, failure):
+    try:
+        QueryOp(
+            parent=parent, op=op, success=success
+        ).failure(failure).without_collection().run_in_background()
+    except Exception as exc:
+        # Submission happens on the Qt thread, so synchronous failures can use
+        # the same UI-safe cleanup callback as background worker failures.
+        failure(exc)
+
+
 class UpdateDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, select_tab=None):
         super().__init__(parent or mw)
         self.setWindowTitle("Update Ankimon")
         self.setMinimumWidth(520)
@@ -48,6 +65,18 @@ class UpdateDialog(QDialog):
         self._branches = []
         self._prs = []
         self.dev_data_loaded = False
+        self._busy_operations = set()
+        self._action_button_states = {}
+        self._closing = False
+        self._close_finalized = False
+        self._sprites_busy_token = None
+        self.sprites_thread = None
+        self._git_clone = is_git_clone()
+        self._git_info = get_git_checkout_info() if self._git_clone else {}
+        # Canonical tip of the checked-out branch, learned by _load_data. Starts as
+        # "unknown": an empty string is truthy-safe but distinct from None.
+        self._git_remote_sha = "" if self._git_clone else None
+        self._git_ff_blocked = False
 
         self._apply_theme()
 
@@ -62,28 +91,139 @@ class UpdateDialog(QDialog):
         body.setContentsMargins(20, 16, 20, 16)
 
         body.addLayout(self._build_channel_row())
+        if self._git_clone:
+            body.addWidget(self._build_git_notice())
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_brrr_tab(), f"  Branch: {self.active_branch}  ")
         self.tabs.addTab(self._build_releases_tab(), "  Releases  ")
         self.tabs.addTab(self._build_dev_tab(), "  Developer  ")
+        self.tabs.addTab(self._build_sprites_tab(), "  Sprites  ")
         self.tabs.currentChanged.connect(self._on_tab_changed)
         body.addWidget(self.tabs)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setMinimumHeight(self.progress_bar.fontMetrics().height() + 8)
         body.addWidget(self.progress_bar)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("font-size: 11px; color: gray; padding: 0 4px;")
-        self.status_label.setFixedHeight(20)
+        self.status_label.setStyleSheet(
+            f"font-size: 12px; font-weight: bold; color: {self._colors['text']}; padding: 2px 4px;"
+        )
+        self.status_label.setMinimumHeight(24)
         body.addWidget(self.status_label)
+
+        # Pre-select a tab only now: currentChanged is already wired, and landing
+        # on the Developer tab kicks off _load_dev_data() -> _begin_busy(), which
+        # needs progress_bar and status_label to exist.
+        if select_tab == "sprites":
+            self.tabs.setCurrentIndex(3)
+        elif self._git_clone:
+            self.tabs.setCurrentIndex(2)
 
         layout.addLayout(body)
         self._load_data()
+
+    def _git_banner_html(self) -> str:
+        import html
+
+        c = self._colors
+        info = self._git_info
+        branch = info.get("branch") or "unknown"
+        sha = info.get("sha") or "unknown"
+        display_branch = "detached checkout" if branch == "HEAD" else branch
+        state = "local changes" if info.get("dirty") else "clean"
+        state_color = c["warning"] if info.get("dirty") else c["success"]
+        # Branch names may legally contain <, > and &; QLabel renders rich text.
+        return (
+            f"<b>{html.escape(display_branch)}</b> · <code>{html.escape(sha)}</code> · "
+            f"<span style='color:{state_color}'><b>{state}</b></span><br>"
+            "Use the same Releases and Developer tabs below. Git fetches the "
+            "selected source from the Ankimon repository and checks it out "
+            "without resetting local branches."
+        )
+
+    def _git_pull_allowed(self) -> bool:
+        info = self._git_info
+        return (
+            bool(info.get("branch"))
+            and info.get("branch") != "HEAD"
+            and not info.get("dirty")
+            # "current" fetches the checked-out branch from the Ankimon repository;
+            # a local-only or fork branch can only fail. Unknown until _load_data
+            # has asked, so the button starts enabled and busy covers the wait.
+            and self._git_remote_sha is not None
+            # ...and the Branch tab's verdict: when the canonical branch is known
+            # to be behind or diverged a fast-forward cannot succeed either.
+            and not self._git_ff_blocked
+        )
+
+    def _apply_git_pull_state(self):
+        # Route through _set_action_enabled so _action_button_states records the
+        # intended state: _end_busy restores from that map, and a plain
+        # setEnabled() would let the button come back enabled after an update
+        # even on a detached or dirty checkout.
+        allowed = self._git_pull_allowed()
+        self._set_action_enabled(self.git_pull_btn, allowed)
+        self.git_pull_btn.setToolTip(
+            "Fast-forward the checked-out branch from the Ankimon repository."
+            if allowed
+            else "Unavailable while detached or while the checkout has local changes."
+        )
+
+    def _refresh_git_state(self):
+        """Re-read the checkout after a Git operation moved it and redraw
+        everything derived from it (banner, pull button, Branch tab)."""
+        self._git_info = get_git_checkout_info()
+        # Both describe a different branch now; _load_data re-asks.
+        self._git_remote_sha = None
+        self._git_ff_blocked = False
+        self._git_note.setText(self._git_banner_html())
+        self._apply_git_pull_state()
+        self._load_data()
+
+    def _build_git_notice(self):
+        c = self._colors
+
+        group = QGroupBox("Git Workspace Mode")
+        group.setStyleSheet(f"""
+            QGroupBox {{
+                background-color: {c['header_bg']};
+                border: 2px solid {c['accent']};
+                border-radius: 10px;
+                margin-top: 10px;
+                padding: 18px 12px 12px 12px;
+            }}
+            QGroupBox::title {{
+                color: {c['accent']};
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 6px;
+                font-weight: bold;
+            }}
+        """)
+        row = QHBoxLayout(group)
+
+        self._git_note = QLabel(self._git_banner_html())
+        self._git_note.setWordWrap(True)
+        self._git_note.setStyleSheet(f"font-size: 11px; color: {c['text']};")
+        row.addWidget(self._git_note, 1)
+
+        self.git_pull_btn = QPushButton("Fast-forward Current Branch")
+        self._apply_git_pull_state()
+        self.git_pull_btn.clicked.connect(
+            lambda: self._run_update(
+                None,
+                "current Git branch",
+                source_type="current",
+                source_name="current",
+            )
+        )
+        row.addWidget(self.git_pull_btn)
+        return group
 
     def _build_channel_row(self):
         """A labeled dropdown to pick the auto-update channel (dialog-only UI).
@@ -117,6 +257,9 @@ class UpdateDialog(QDialog):
 
     @property
     def active_branch(self) -> str:
+        if self._git_clone:
+            branch = self._git_info.get("branch") or "main"
+            return "detached" if branch == "HEAD" else branch
         state = read_update_state()
         if state and state.get("source_type") == "branch":
             return state.get("source_name") or "main"
@@ -140,6 +283,8 @@ class UpdateDialog(QDialog):
                 "btn_hover": "#505050",
                 "btn_primary": "#1976d2",
                 "btn_primary_hover": "#1565c0",
+                "progress_text": "#ffffff",
+                "progress_chunk": "#1565c0",
             }
         else:
             self._colors = {
@@ -157,6 +302,8 @@ class UpdateDialog(QDialog):
                 "btn_hover": "#e0e0e0",
                 "btn_primary": "#1976d2",
                 "btn_primary_hover": "#1565c0",
+                "progress_text": "#212121",
+                "progress_chunk": "#90caf9",
             }
         c = self._colors
         self.setStyleSheet(f"""
@@ -209,9 +356,13 @@ class UpdateDialog(QDialog):
                 border: none;
                 background-color: {c["group_border"]};
                 border-radius: 4px;
+                color: {c["progress_text"]};
+                text-align: center;
+                font-weight: bold;
+                padding: 2px;
             }}
             QProgressBar::chunk {{
-                background-color: {c["accent"]};
+                background-color: {c["progress_chunk"]};
                 border-radius: 4px;
             }}
             QTabWidget::pane {{
@@ -221,6 +372,7 @@ class UpdateDialog(QDialog):
             }}
             QTabBar::tab {{
                 padding: 8px 16px;
+                color: {c["text"]};
                 border: 1px solid transparent;
                 border-bottom: none;
                 border-top-left-radius: 6px;
@@ -372,7 +524,7 @@ class UpdateDialog(QDialog):
             QPushButton:hover {{ background-color: {c["btn_primary_hover"]}; }}
             QPushButton:disabled {{ background-color: {c["btn_bg"]}; color: {c["muted"]}; }}
         """)
-        self.brrr_update_btn.setEnabled(False)
+        self._set_action_enabled(self.brrr_update_btn, False)
         self.brrr_update_btn.clicked.connect(self._on_brrr_update_clicked)
         ctrl_layout.addWidget(self.brrr_update_btn)
 
@@ -443,12 +595,65 @@ class UpdateDialog(QDialog):
         self.brrr_snooze_checkbox.blockSignals(False)
 
         # 5. Status & Update Button
-        if not remote_sha:
-            self.brrr_status_label.setText("Status:  Could not check connection.")
+        relation = state.get("git_relation") if self._git_clone else None
+        if self._git_clone:
+            # The banner's pull button runs the same fast-forward as this tab's
+            # button, so it follows the same verdict.
+            self._git_remote_sha = remote_sha
+            self._git_ff_blocked = relation in ("behind", "diverged")
+            self._apply_git_pull_state()
+        if self._git_clone and active == "detached":
+            self.brrr_status_label.setText(
+                "Status:  Detached checkout. Pick a branch, release, tag, or PR "
+                "from the other tabs."
+            )
+            self.brrr_status_label.setStyleSheet(
+                f"font-size: 13px; font-weight: bold; color: {c['warning']};"
+            )
+            self._set_action_enabled(self.brrr_update_btn, False)
+            self.brrr_update_btn.setText("No Branch Checked Out")
+        elif self._git_clone and self._git_info.get("dirty"):
+            # Same gate as the banner's pull button: both run the same
+            # fast-forward, and the backend refuses a dirty tree anyway.
+            self.brrr_status_label.setText(
+                "Status:  Local changes present. Commit, stash, or discard them "
+                "before updating."
+            )
+            self.brrr_status_label.setStyleSheet(
+                f"font-size: 13px; font-weight: bold; color: {c['warning']};"
+            )
+            self._set_action_enabled(self.brrr_update_btn, False)
+            self.brrr_update_btn.setText("Checkout Has Local Changes")
+        elif not remote_sha:
+            self.brrr_status_label.setText(
+                f"Status:  Branch '{active}' was not found on the Ankimon repository "
+                "(or it could not be reached)."
+                if self._git_clone
+                else "Status:  Could not check connection."
+            )
             self.brrr_status_label.setStyleSheet(
                 f"font-size: 13px; font-weight: bold; color: {c['error']};"
             )
-            self.brrr_update_btn.setEnabled(False)
+            self._set_action_enabled(self.brrr_update_btn, False)
+            if self._git_clone:
+                self.brrr_update_btn.setText("Branch Not on Ankimon Repository")
+        elif self._git_clone and local_sha != remote_sha and relation in ("behind", "diverged"):
+            # A SHA mismatch is not an update when the local branch is the one
+            # that is ahead or has diverged: a fast-forward is impossible, so
+            # don't offer it. An UNKNOWN relation (rate limit, offline, a local
+            # commit GitHub has never seen) falls through and offers it instead:
+            # git_checkout_source proves ancestry before moving anything, and
+            # the UI must not state a reason it cannot know.
+            if relation == "behind":
+                why = f"Your checkout is ahead of '{active}' on the Ankimon repository."
+            else:
+                why = f"Your checkout has diverged from '{active}' on the Ankimon repository."
+            self.brrr_status_label.setText(f"Status:  {why}")
+            self.brrr_status_label.setStyleSheet(
+                f"font-size: 13px; font-weight: bold; color: {c['warning']};"
+            )
+            self._set_action_enabled(self.brrr_update_btn, False)
+            self.brrr_update_btn.setText("Cannot Fast-forward")
         elif local_sha != remote_sha:
             self.brrr_status_label.setText(
                 f"Status:  New Update Available! (Latest: {remote_sha[:7]})"
@@ -456,14 +661,14 @@ class UpdateDialog(QDialog):
             self.brrr_status_label.setStyleSheet(
                 f"font-size: 13px; font-weight: bold; color: {c['warning']};"
             )
-            self.brrr_update_btn.setEnabled(True)
+            self._set_action_enabled(self.brrr_update_btn, True)
             self.brrr_update_btn.setText("Update Branch Now")
         else:
             self.brrr_status_label.setText("Status:  Up to date!")
             self.brrr_status_label.setStyleSheet(
                 f"font-size: 13px; font-weight: bold; color: {c['success']};"
             )
-            self.brrr_update_btn.setEnabled(False)
+            self._set_action_enabled(self.brrr_update_btn, False)
             self.brrr_update_btn.setText("Already Up to Date")
 
         # 6. Commits Feed
@@ -494,6 +699,16 @@ class UpdateDialog(QDialog):
 
     def _on_brrr_update_clicked(self):
         branch = self.active_branch
+        if self._git_clone:
+            if branch == "detached":
+                return
+            self._run_update(
+                None,
+                f"latest {branch}",
+                source_type="current",
+                source_name="current",
+            )
+            return
         self._run_update(
             lambda progress_cb: _download_branch_zip(branch, progress_cb),
             f"latest {branch}",
@@ -541,7 +756,7 @@ class UpdateDialog(QDialog):
             QPushButton:disabled {{ background-color: {c["btn_bg"]}; color: {c["muted"]}; }}
         """)
         self.update_latest_btn.clicked.connect(self._on_latest_release_update)
-        self.update_latest_btn.setEnabled(False)
+        self._set_action_enabled(self.update_latest_btn, False)
         latest_layout.addWidget(self.update_latest_btn)
         layout.addWidget(latest_group)
 
@@ -563,7 +778,7 @@ class UpdateDialog(QDialog):
         self.release_btn = QPushButton("Install Selected Release")
         self.release_btn.setMinimumHeight(34)
         self.release_btn.clicked.connect(self._on_release_update)
-        self.release_btn.setEnabled(False)
+        self._set_action_enabled(self.release_btn, False)
         specific_layout.addWidget(self.release_btn)
         layout.addWidget(specific_group)
 
@@ -582,12 +797,17 @@ class UpdateDialog(QDialog):
         info.setWordWrap(True)
         layout.addWidget(info)
 
-        warning = QLabel(
-            "⚠ Do not use this if you installed Ankimon by cloning the git "
-            "repository. The updater overwrites files in place and would clobber "
-            "your checkout — update with 'git pull' instead. (Your Pokémon "
-            "data and sprites are always preserved.)"
+        warning_text = (
+            "Git workspace mode is active. Sources selected here are fetched from "
+            "the official Ankimon repository and checked out with Git; local "
+            "changes must be committed, stashed, or discarded first."
+            if self._git_clone
+            else
+            "⚠ Pull requests and development branches may contain unreviewed code. "
+            "Only install sources you trust. Your Pokémon data and sprites are "
+            "preserved during archive-based updates."
         )
+        warning = QLabel(warning_text)
         warning.setStyleSheet(
             f"color: {c['warning']}; font-size: 11px; font-weight: bold;"
         )
@@ -642,6 +862,271 @@ class UpdateDialog(QDialog):
         layout.addStretch()
         return widget
 
+    def _build_sprites_tab(self):
+        c = self._colors
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(14)
+        layout.setContentsMargins(6, 14, 6, 6)
+
+        info = QLabel("Check and download updates for the Ankimon sprites repository.")
+        info.setStyleSheet(f"color: {c['muted']}; font-size: 11px;")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        self.sprites_status = QLabel("Ready to check for updates.")
+        self.sprites_status.setStyleSheet("font-size: 12px;")
+        self.sprites_status.setWordWrap(True)
+        layout.addWidget(self.sprites_status)
+
+        self.sprites_progress = QProgressBar()
+        self.sprites_progress.setRange(0, 100)
+        self.sprites_progress.setValue(0)
+        self.sprites_progress.setVisible(False)
+        self.sprites_progress.setFixedHeight(12)
+        layout.addWidget(self.sprites_progress)
+
+        self.sprites_snooze_checkbox = QCheckBox("Snooze these updates for 7 days")
+        self.sprites_snooze_checkbox.setStyleSheet(f"color: {c['muted']}; font-size: 11px;")
+        
+        from ..resources import user_path_sprites
+        import json
+        import time
+        dest_dir = Path(user_path_sprites)
+        state_path = dest_dir.parent / "sprites_update_state.json"
+        is_snoozed = False
+        if state_path.exists():
+            try:
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                snooze_until = state_data.get("snooze_until")
+                is_snoozed = isinstance(snooze_until, (int, float)) and time.time() < snooze_until
+            except Exception:
+                pass
+        self.sprites_snooze_checkbox.setChecked(is_snoozed)
+        self.sprites_snooze_checkbox.stateChanged.connect(self._on_sprites_snooze_changed)
+        layout.addWidget(self.sprites_snooze_checkbox)
+
+        btn_layout = QHBoxLayout()
+        self.sprites_check_btn = QPushButton("Check for Updates")
+        self.sprites_check_btn.setMinimumHeight(38)
+        self.sprites_check_btn.clicked.connect(self._check_sprites)
+        btn_layout.addWidget(self.sprites_check_btn)
+
+        self.sprites_update_btn = QPushButton("Install Update")
+        self.sprites_update_btn.setMinimumHeight(38)
+        self.sprites_update_btn.setVisible(False)
+        self.sprites_update_btn.clicked.connect(self._start_sprites_download)
+        btn_layout.addWidget(self.sprites_update_btn)
+
+        layout.addLayout(btn_layout)
+        layout.addStretch()
+        return widget
+
+    def _on_sprites_snooze_changed(self, _state):
+        from ..resources import user_path_sprites
+        import json
+        import time
+        dest_dir = Path(user_path_sprites)
+        state_path = dest_dir.parent / "sprites_update_state.json"
+        
+        state_data = {}
+        if state_path.exists():
+            try:
+                state_data = json.loads(state_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+                
+        if self.sprites_snooze_checkbox.isChecked():
+            state_data["snooze_until"] = time.time() + 7 * 24 * 60 * 60
+        else:
+            state_data["snooze_until"] = 0
+            
+        try:
+            state_path.write_text(json.dumps(state_data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _check_sprites(self):
+        from .sprite_updater import calculate_sprite_diff
+        from ..resources import user_path_sprites
+
+        busy_token = self._begin_busy()
+        self.sprites_status.setText("Checking for sprite updates...")
+        self.sprites_progress.setValue(0)
+        self.sprites_progress.setVisible(False)
+        self.sprites_update_btn.setVisible(False)
+
+        dest_dir = Path(user_path_sprites)
+
+        def bg(_col):
+            # Run with ignore_snooze=True since this is a manual check
+            return calculate_sprite_diff(dest_dir, silent=False, ignore_snooze=True)
+
+        def settle_busy():
+            self._end_busy(busy_token)
+
+        def done(result):
+            try:
+                status = result.get("status")
+                if status == "up_to_date":
+                    self.sprites_status.setText("Sprites are already up to date!")
+                    self.sprites_progress.setValue(100)
+                    self.sprites_progress.setVisible(True)
+                elif status == "error":
+                    self.sprites_status.setText(
+                        f"Error checking updates: {result.get('error')}"
+                    )
+                elif status == "update_available":
+                    self.sprites_added = result.get("added", [])
+                    self.sprites_modified = result.get("modified", [])
+                    self.sprites_deleted = result.get("deleted", [])
+                    self.sprites_remote_sha = result.get("remote_sha")
+
+                    msg = "A sprites update is available!\n\n"
+                    msg += f"  • New sprites: {len(self.sprites_added)}\n"
+                    msg += f"  • Modified sprites: {len(self.sprites_modified)}\n"
+                    if self.sprites_deleted:
+                        msg += f"  • Obsolete to remove: {len(self.sprites_deleted)}\n"
+
+                    self.sprites_status.setText(msg)
+                    self.sprites_update_btn.setVisible(True)
+            finally:
+                settle_busy()
+
+        def failed(exc):
+            settle_busy()
+            self.sprites_status.setText(f"Error checking sprite updates: {exc}")
+
+        _start_query_op(self, bg, done, failed)
+
+    def _start_sprites_download(self):
+        if self.sprites_thread is not None and self.sprites_thread.isRunning():
+            return
+
+        from .sprite_updater import SpriteUpdateDiffThread
+        from ..resources import user_path_sprites
+
+        dest_dir = Path(user_path_sprites)
+        busy_token = self._begin_busy()
+        self._sprites_busy_token = busy_token
+        self.sprites_progress.setVisible(True)
+        self.sprites_progress.setValue(0)
+        completion_result = None
+        thread = None
+
+        def settle_busy():
+            if busy_token in self._busy_operations:
+                self._end_busy(busy_token)
+            if self._sprites_busy_token is busy_token:
+                self._sprites_busy_token = None
+
+        def record_finished(success, message):
+            nonlocal completion_result
+            completion_result = (success, message)
+
+        def thread_stopped():
+            # The worker may have changed files even on cancellation or failure.
+            from ..functions.sprite_functions import _clear_sprite_cache
+
+            _clear_sprite_cache()
+            closing = self._closing
+            try:
+                if not closing and self.sprites_thread is thread:
+                    if completion_result is None:
+                        self.sprites_status.setText(
+                            "Sprite update stopped unexpectedly. Please try again."
+                        )
+                    else:
+                        success, message = completion_result
+                        self.sprites_update_btn.setVisible(False)
+                        if success:
+                            try:
+                                manifest_path = (
+                                    dest_dir.parent / "sprites_local_manifest.json"
+                                )
+                                if manifest_path.exists():
+                                    manifest_path.unlink()
+                            except Exception:
+                                pass
+                            self.sprites_status.setText("Update complete! " + message)
+                            self.sprites_progress.setValue(100)
+                        else:
+                            self.sprites_status.setText("Update failed: " + message)
+            finally:
+                settle_busy()
+                if self.sprites_thread is thread:
+                    self.sprites_thread = None
+            if closing and not self._close_finalized:
+                self.reject()
+
+        def update_progress(value):
+            if (
+                not self._closing
+                and self.sprites_thread is thread
+                and busy_token in self._busy_operations
+            ):
+                self.sprites_progress.setValue(value)
+
+        def update_status(message):
+            if (
+                not self._closing
+                and self.sprites_thread is thread
+                and busy_token in self._busy_operations
+            ):
+                self.sprites_status.setText(message)
+
+        try:
+            thread = SpriteUpdateDiffThread(
+                self.sprites_added,
+                self.sprites_modified,
+                self.sprites_deleted,
+                self.sprites_remote_sha,
+                dest_dir,
+            )
+            self.sprites_thread = thread
+            thread.progress_signal.connect(
+                lambda value: mw.taskman.run_on_main(lambda: update_progress(value))
+            )
+            thread.status_signal.connect(
+                lambda message: mw.taskman.run_on_main(lambda: update_status(message))
+            )
+            thread.finished_signal.connect(
+                record_finished, Qt.ConnectionType.DirectConnection
+            )
+            thread.finished.connect(lambda: mw.taskman.run_on_main(thread_stopped))
+            thread.start()
+        except Exception as exc:
+            settle_busy()
+            if self.sprites_thread is thread:
+                self.sprites_thread = None
+            self.sprites_status.setText(f"Could not start sprite update: {exc}")
+
+    def _defer_close_for_sprite_thread(self):
+        self._closing = True
+        if self.sprites_thread is not None and self.sprites_thread.isRunning():
+            self.sprites_thread.cancel()
+            self.sprites_status.setText("Cancelling sprite update...")
+            return True
+
+        if self._sprites_busy_token is not None:
+            token = self._sprites_busy_token
+            self._sprites_busy_token = None
+            self._end_busy(token)
+        return False
+
+    def reject(self):
+        if self._defer_close_for_sprite_thread():
+            return
+        self._close_finalized = True
+        super().reject()
+
+    def closeEvent(self, event):
+        if self._defer_close_for_sprite_thread():
+            event.ignore()
+            return
+        self._close_finalized = True
+        super().closeEvent(event)
+
     # --- Data loading ---
 
     def _on_source_changed(self, index):
@@ -681,6 +1166,7 @@ class UpdateDialog(QDialog):
                 self.target_combo.addItem("No tags found")
 
     def _load_data(self):
+        busy_token = self._begin_busy()
         self.status_label.setText("Checking for updates...")
 
         def bg(_col):
@@ -688,6 +1174,7 @@ class UpdateDialog(QDialog):
                 fetch_branch_sha,
                 fetch_commit_date,
                 fetch_branch_commits,
+                fetch_branch_relation,
             )
 
             # 1. Fetch releases
@@ -697,10 +1184,18 @@ class UpdateDialog(QDialog):
             except Exception:
                 pass
 
-            # 2. Get local state
+            # 2. Get local state. update_state.json records archive installs;
+            # a Git checkout's truth is HEAD and the checked-out branch.
             state = read_update_state() or {}
-            local_sha = state.get("commit_sha")
-            branch = state.get("source_name") or "main"
+            if self._git_clone:
+                local_sha = self._git_info.get("full_sha") or None
+                branch = self.active_branch
+                if branch == "detached":
+                    branch = "main"
+                state = dict(state, commit_sha=local_sha)
+            else:
+                local_sha = state.get("commit_sha")
+                branch = state.get("source_name") or "main"
 
             # 3. Fetch remote branch details
             remote_sha = None
@@ -708,6 +1203,13 @@ class UpdateDialog(QDialog):
                 remote_sha = fetch_branch_sha(branch)
             except Exception:
                 pass
+            if self._git_clone and local_sha and remote_sha and remote_sha != local_sha:
+                # Which side is ahead decides whether a fast-forward is even
+                # possible; the SHA comparison alone is direction-blind.
+                try:
+                    state["git_relation"] = fetch_branch_relation(local_sha, branch)
+                except Exception:
+                    state["git_relation"] = None
 
             local_commit_date = None
             if local_sha:
@@ -726,21 +1228,25 @@ class UpdateDialog(QDialog):
             return releases, state, remote_sha, local_commit_date, commits
 
         def on_done(result):
-            self._releases, state, remote_sha, local_commit_date, commits = result
-            self._populate_brrr_ui(state, remote_sha, local_commit_date, commits)
-            self._populate_ui()
-            self.status_label.setText("")
+            try:
+                self._releases, state, remote_sha, local_commit_date, commits = result
+                self._populate_brrr_ui(state, remote_sha, local_commit_date, commits)
+                self._populate_ui()
+            finally:
+                self._end_busy(busy_token)
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        def on_failed(exc):
+            if self._end_busy(busy_token):
+                self.status_label.setText(f"Could not check for updates: {exc}")
+
+        _start_query_op(self, bg, on_done, on_failed)
 
     def _on_tab_changed(self, index):
         if index == 2 and not self.dev_data_loaded:
             self._load_dev_data()
 
     def _load_dev_data(self):
-        self._set_busy(True)
+        busy_token = self._begin_busy()
         self.status_label.setText("Loading developer options...")
 
         def bg(_col):
@@ -762,20 +1268,24 @@ class UpdateDialog(QDialog):
             return (tags, branches, prs)
 
         def on_done(result):
-            self._set_busy(False)
-            self._tags, self._branches, self._prs = result
-            self.dev_data_loaded = True
+            try:
+                self._tags, self._branches, self._prs = result
+                self.dev_data_loaded = True
 
-            # Repopulate targets in the Developer tab UI if needed
-            source = self.source_combo.currentData()
-            if source and source not in ("branch_brrr", "main"):
-                self._populate_target(source)
+                # Repopulate targets in the Developer tab UI if needed
+                source = self.source_combo.currentData()
+                if source and source not in ("branch_brrr", "main"):
+                    self._populate_target(source)
+            finally:
+                self._end_busy(busy_token)
 
-            self.status_label.setText("")
+        def on_failed(exc):
+            if self._end_busy(busy_token):
+                self.status_label.setText(
+                    f"Could not load developer options: {exc}"
+                )
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        _start_query_op(self, bg, on_done, on_failed)
 
     def _populate_ui(self):
         c = self._colors
@@ -787,25 +1297,28 @@ class UpdateDialog(QDialog):
                     f"font-weight: bold; font-size: 13px; color: {c['success']};"
                 )
                 self.update_latest_btn.setText("Already Up to Date")
+                self._set_action_enabled(self.update_latest_btn, False)
             else:
                 self.latest_tag_label.setText(f"New version available: {latest}")
                 self.latest_tag_label.setStyleSheet(
                     f"font-weight: bold; font-size: 13px; color: {c['warning']};"
                 )
-                self.update_latest_btn.setEnabled(True)
+                self._set_action_enabled(self.update_latest_btn, True)
         else:
             self.latest_tag_label.setText("Could not check for updates.")
             self.latest_tag_label.setStyleSheet(
                 f"font-weight: bold; font-size: 13px; color: {c['error']};"
             )
+            self._set_action_enabled(self.update_latest_btn, False)
 
         self.release_combo.clear()
         if self._releases:
             for r in self._releases:
                 self.release_combo.addItem(r["name"], r)
-            self.release_btn.setEnabled(True)
+            self._set_action_enabled(self.release_btn, True)
         else:
             self.release_combo.addItem("No releases found")
+            self._set_action_enabled(self.release_btn, False)
 
         source = self.source_combo.currentData()
         if source and source != "main":
@@ -813,14 +1326,48 @@ class UpdateDialog(QDialog):
 
     # --- Actions ---
 
-    def _set_busy(self, busy: bool):
-        self.progress_bar.setVisible(busy)
-        self.progress_bar.setValue(0)
-        self.update_latest_btn.setEnabled(not busy)
-        self.release_btn.setEnabled(not busy)
-        self.dev_install_btn.setEnabled(not busy)
-        if not busy:
-            self.status_label.setText("")
+    def _action_buttons(self):
+        buttons = [
+            self.brrr_update_btn,
+            self.update_latest_btn,
+            self.release_btn,
+            self.dev_install_btn,
+            self.sprites_check_btn,
+            self.sprites_update_btn,
+        ]
+        # Only built in Git-checkout mode, so it must not be assumed present:
+        # _begin_busy() runs on every install, Git or not.
+        if hasattr(self, "git_pull_btn"):
+            buttons.append(self.git_pull_btn)
+        return tuple(buttons)
+
+    def _set_action_enabled(self, button, enabled: bool):
+        self._action_button_states[button] = enabled
+        button.setEnabled(enabled and not self._busy_operations)
+
+    def _begin_busy(self):
+        token = object()
+        was_idle = not self._busy_operations
+        self._busy_operations.add(token)
+        if was_idle:
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setValue(0)
+        for button in self._action_buttons():
+            self._action_button_states.setdefault(button, button.isEnabled())
+            button.setEnabled(False)
+        return token
+
+    def _end_busy(self, token):
+        if token not in self._busy_operations:
+            return False
+        self._busy_operations.remove(token)
+        if self._busy_operations:
+            return False
+        for button in self._action_buttons():
+            button.setEnabled(self._action_button_states.get(button, False))
+        self.progress_bar.setVisible(False)
+        self.status_label.setText("")
+        return True
 
     def _on_progress(self, current: int, total: int):
         if total > 0:
@@ -834,9 +1381,20 @@ class UpdateDialog(QDialog):
         source_type: str = None,
         source_name: str = None,
         commit_sha: str = None,
+        published_at: str = None,
         extra_warning: str = None,
     ):
-        prompt = f"Update Ankimon to {label}?\n\nYour Pokemon data, settings, and sprites will be preserved."
+        if self._git_clone:
+            prompt = (
+                f"Switch this Git checkout to {label}?\n\n"
+                "Your local branches and commits will not be reset. The checkout "
+                "must be clean, and Anki must be restarted afterward."
+            )
+        else:
+            prompt = (
+                f"Update Ankimon to {label}?\n\n"
+                "Your Pokemon data, settings, and sprites will be preserved."
+            )
         if extra_warning:
             prompt = f"{extra_warning}\n\n{prompt}"
         confirm = QMessageBox.question(
@@ -848,33 +1406,72 @@ class UpdateDialog(QDialog):
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        self._set_busy(True)
-        self.status_label.setText(f"Downloading {label}...")
+        busy_token = self._begin_busy()
+        self.status_label.setText(
+            f"Preparing Git checkout for {label}..."
+            if self._git_clone
+            else f"Downloading {label}..."
+        )
 
         def bg(_col):
             nonlocal commit_sha
-            if source_type == "branch" and not commit_sha:
-                commit_sha = fetch_branch_sha(source_name)
-
-            zip_path = download_fn(progress_cb=self._on_progress)
-            if not zip_path:
-                return False, "Download failed. Check your internet connection.", []
             messages = []
 
             def status_update(m):
                 messages.append(m)
                 mw.taskman.run_on_main(lambda: self.status_label.setText(m))
 
-            success, msg = apply_update(
-                zip_path, source_type, source_name, commit_sha, status_cb=status_update
+            if self._git_clone:
+                success, msg = git_checkout_source(
+                    source_type or "current",
+                    source_name,
+                    status_cb=status_update,
+                )
+                # 4-tuple to match on_done's unpack; a Git checkout stamps no
+                # pending addon mod, so pending_mod is None.
+                return success, msg, messages, None
+
+            if source_type == "branch" and not commit_sha:
+                commit_sha = fetch_branch_sha(source_name)
+
+            zip_path = download_fn(progress_cb=self._on_progress)
+            if not zip_path:
+                return (
+                    False,
+                    "Download failed. Check your internet connection.",
+                    [],
+                    None,
+                )
+
+            success, msg, pending_mod = apply_update(
+                zip_path,
+                source_type,
+                source_name,
+                commit_sha,
+                published_at,
+                status_cb=status_update,
             )
-            return success, msg, messages
+            return success, msg, messages, pending_mod
 
         def on_done(result):
-            self._set_busy(False)
-            success, msg, messages = result
-            self.status_label.setText(messages[-1] if messages else msg)
-            self.progress_bar.setValue(100 if success else 0)
+            try:
+                success, msg, messages, pending_mod = result
+            except Exception as exc:
+                on_failed(exc)
+                return
+            # Date meta.json here, not in the worker above: QueryOp guarantees
+            # this callback runs on the main thread, which is the thread Anki
+            # read-modify-writes meta.json from. Doing it in the worker would
+            # let a stale snapshot overwrite a concurrent config change.
+            if success and pending_mod:
+                stamp_addon_mod(pending_mod)
+            if self._end_busy(busy_token):
+                self.status_label.setText(messages[-1] if messages else msg)
+                self.progress_bar.setValue(100 if success else 0)
+            if success and self._git_clone:
+                # HEAD moved: the banner, pull button and Branch tab all describe
+                # the checkout and must not keep showing the pre-checkout state.
+                self._refresh_git_state()
             if success:
                 QMessageBox.information(
                     self,
@@ -884,9 +1481,17 @@ class UpdateDialog(QDialog):
             else:
                 QMessageBox.warning(self, "Update Failed", msg)
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        def on_failed(exc):
+            if self._end_busy(busy_token):
+                self.status_label.setText(f"Update failed unexpectedly: {exc}")
+                self.progress_bar.setValue(0)
+            QMessageBox.warning(
+                self,
+                "Update Failed",
+                f"The update stopped unexpectedly. Please try again.\n\n{exc}",
+            )
+
+        _start_query_op(self, bg, on_done, on_failed)
 
     def _on_latest_release_update(self):
         if not self._releases:
@@ -898,6 +1503,7 @@ class UpdateDialog(QDialog):
             source_type="release",
             source_name=r["name"],
             commit_sha=r["name"],
+            published_at=r.get("published_at"),
         )
 
     def _on_release_update(self):
@@ -911,6 +1517,7 @@ class UpdateDialog(QDialog):
                 source_type="release",
                 source_name=data["name"],
                 commit_sha=data["name"],
+                published_at=data.get("published_at"),
             )
 
     def _on_dev_install(self):
@@ -958,6 +1565,13 @@ class UpdateDialog(QDialog):
                     source_type="tag",
                     source_name=data["name"],
                     commit_sha=data["name"],
+                    # Every tag the picker offers names a published release, and
+                    # installs byte-identical code to the Releases tab. Date it
+                    # the same way, or the tag's (earlier) commit timestamp lets
+                    # the AnkiWeb upload look newer than the code just installed.
+                    published_at=published_at_for_tag(
+                        data["name"], self._releases
+                    ),
                 )
 
 
@@ -1125,7 +1739,8 @@ class BranchUpdateProgressDialog(QDialog):
         border = "#444444" if is_dark else "#e0e0e0"
         btn_bg = "#3d3d3d" if is_dark else "#eeeeee"
         btn_hover = "#505050" if is_dark else "#e0e0e0"
-        accent = "#4fc3f7" if is_dark else "#1976d2"
+        progress_text = "#ffffff" if is_dark else "#212121"
+        progress_chunk = "#1565c0" if is_dark else "#90caf9"
 
         self.setStyleSheet(f"""
             QDialog {{
@@ -1141,11 +1756,12 @@ class BranchUpdateProgressDialog(QDialog):
                 background-color: {border};
                 border-radius: 4px;
                 text-align: center;
-                height: 16px;
-                color: {text};
+                color: {progress_text};
+                font-weight: bold;
+                padding: 2px;
             }}
             QProgressBar::chunk {{
-                background-color: {accent};
+                background-color: {progress_chunk};
                 border-radius: 4px;
             }}
             QPushButton {{
@@ -1177,6 +1793,8 @@ class BranchUpdateProgressDialog(QDialog):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setMinimumHeight(self.progress_bar.fontMetrics().height() + 8)
         layout.addWidget(self.progress_bar)
 
         btn_layout = QHBoxLayout()
@@ -1201,6 +1819,7 @@ class BranchUpdateProgressDialog(QDialog):
             _download_branch_zip,
             _download_zip_to_temp,
             apply_update,
+            stamp_addon_mod,
         )
 
         release = self.release
@@ -1210,11 +1829,12 @@ class BranchUpdateProgressDialog(QDialog):
         else:
             source_type, source_name, commit_sha = "branch", self.branch_name, self.remote_sha
             download = lambda: _download_branch_zip(self.branch_name, progress_cb=self.on_progress)
+        published_at = release.get("published_at") if release else None
 
         def bg(_col):
             zip_path = download()
             if not zip_path:
-                return False, "Download failed. Check your internet connection."
+                return False, "Download failed. Check your internet connection.", None
 
             def status_update(msg):
                 mw.taskman.run_on_main(lambda: self.status_label.setText(msg))
@@ -1224,11 +1844,20 @@ class BranchUpdateProgressDialog(QDialog):
                 source_type=source_type,
                 source_name=source_name,
                 commit_sha=commit_sha,
+                published_at=published_at,
                 status_cb=status_update,
             )
 
         def on_done(result):
-            success, msg = result
+            try:
+                success, msg, pending_mod = result
+            except Exception as exc:
+                on_failed(exc)
+                return
+            # Main thread (QueryOp guarantees it), which is where meta.json has
+            # to be written — see the matching note on the release/tag path.
+            if success and pending_mod:
+                stamp_addon_mod(pending_mod)
             self.btn_close.setEnabled(True)
             if success:
                 self.btn_close.setText("Restart Anki")
@@ -1246,9 +1875,19 @@ class BranchUpdateProgressDialog(QDialog):
                 self.progress_bar.setValue(0)
                 QMessageBox.warning(self, "Update Failed", msg)
 
-        QueryOp(
-            parent=self, op=bg, success=on_done
-        ).without_collection().run_in_background()
+        def on_failed(exc):
+            self.btn_close.setEnabled(True)
+            self.status_label.setText(
+                "Update stopped unexpectedly. Please check your connection and try again."
+            )
+            self.progress_bar.setValue(0)
+            QMessageBox.warning(
+                self,
+                "Update Failed",
+                f"The update stopped unexpectedly. Please try again.\n\n{exc}",
+            )
+
+        _start_query_op(self, bg, on_done, on_failed)
 
     def on_progress(self, current: int, total: int):
         if total > 0:

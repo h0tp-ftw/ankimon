@@ -43,6 +43,12 @@ During extraction, standard updates completely replace the addon folder. To prev
 2. `HelpInfos.html`, `updateinfos.md`, `meta.json` (root settings files).
 3. `update_state.json` (updater's own status file).
 
+`meta.json` is preserved through extraction but must then be **re-dated** — see
+[Stamp the install date](#modify-stamp-the-install-date) below. Preserving it
+alone is not enough: Anki decides an add-on is out of date by comparing that
+file's `mod` timestamp against AnkiWeb's, so carrying the old value forward makes
+Anki offer the AnkiWeb build as an "update" to code that is already newer.
+
 ---
 
 ## 3. Step-by-Step Porting Changes & Diffs
@@ -198,6 +204,88 @@ Modify the final section of `apply_update(...)` to write the update state upon s
              return True, "Ankimon updated successfully!"
 ```
 
+#### [MODIFY] Stamp the install date
+
+`AddonManager.install()` is the only thing that normally writes `meta.json`'s
+`mod`, and an in-app updater bypasses it entirely — it copies files in place. So
+without this step `mod` keeps describing whichever build *Anki* last installed,
+and Anki offers the AnkiWeb copy as an update to a newer GitHub build. Accepting
+it downgrades the user. This is the whole reason `stamp_addon_mod` exists.
+
+**Split this across two threads.** `apply_update(...)` runs in a `QueryOp`
+worker, but `meta.json` is Anki's file: `writeConfig`, `toggleEnabled` and
+`write_addon_meta` all read-modify-write the whole dict, and all of them run on
+the main thread. A worker doing its own read-modify-write races them — its
+snapshot, taken before a concurrent config write, gets replaced over the top and
+silently reverts it. Writing the file atomically prevents a *torn* file; it does
+nothing about a *stale* one.
+
+So resolve the timestamp in the worker (it needs the network) and return it;
+write it from the `QueryOp` success callback, which Anki guarantees runs on the
+main thread.
+
+Resolve it as the **last** thing `apply_update(...)` does, after the backup
+cleanup — anything that can still raise must run before it — and return it only
+on the success path, so a rolled-back install reports `None`:
+
+```diff
+             # Save local update metadata
+             save_update_state(source_type, source_name, commit_sha or "")
+
+             # ... cleanup(), final log(), backup rmtree ...
+
++            # Work out the date to stamp meta.json with, but do NOT write it
++            # here — see below. Guarded separately: resolving needs the network,
++            # and a GitHub hiccup must not fail an install that already
++            # succeeded.
++            pending_mod = None
++            try:
++                pending_mod = resolve_build_mtime(
++                    source_type, source_name, commit_sha, published_at
++                )
++            except Exception as e:
++                print(f"Ankimon Updater: Could not date the install: {e}")
++
+-            return True, "Ankimon updated successfully!"
++            return True, "Ankimon updated successfully!", pending_mod
+```
+
+Every other `return` in the function — the git-clone guard, the archive checks
+and the rollback handler — grows a third element of `None`. Then, in the dialog's
+success callback:
+
+```diff
+         def on_done(result):
+             try:
+-                success, msg = result
++                success, msg, pending_mod = result
+             except Exception as exc:
+                 on_failed(exc)
+                 return
++            # Main thread (QueryOp guarantees it) — the only safe place to
++            # read-modify-write meta.json. `success` is what authorises the
++            # write: dating a rolled-back build as the new one would make Anki
++            # read the old code as current and suppress the update that repairs it.
++            if success and pending_mod:
++                stamp_addon_mod(pending_mod)
+```
+
+Do this at **every** call site — it is easy to convert one and leave another
+unpacking a two-tuple, and because the unpack sits inside a broad `except` the
+mistake shows up only as a runtime "update failed unexpectedly", never as a
+traceback. Cover each path with a test that round-trips the worker function into
+the success callback.
+
+`stamp_addon_mod` deliberately edits the single key it owns rather than going
+through `AddonManager.write_addon_meta`, which re-derives six fields from an
+`AddonMeta` dataclass (`disabled`, `conflicts`, `min_point_version`,
+`max_point_version`, `branch_index`, `update_enabled`) and writes
+non-atomically.
+
+A release (or a tag naming one) is dated by its `published_at`; anything else by
+the commit it was built from. The value never moves backwards, and the commit
+path is capped at the present so a skewed clock cannot pin `mod` into the future.
+
 ---
 
 ### File 2: `src/Ankimon/changelog.py` (Startup Asynchronous Checks)
@@ -269,16 +357,20 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
                 # Download branch code
                 zip_path = _download_branch_zip(branch_name, progress_cb=prog_dialog._on_progress)
                 if not zip_path:
-                    return False, "Download failed. Check connection."
+                    return False, "Download failed. Check connection.", None
 
-                # Install
+                # Install. Returns the date to stamp meta.json with rather than
+                # writing it — this is a worker thread; see "Stamp the install date".
                 from .pyobj.update_manager import apply_update
-                success, msg = apply_update(zip_path, "branch", branch_name, remote_sha, status_cb=status_update)
-                return success, msg
+                return apply_update(zip_path, "branch", branch_name, remote_sha, status_cb=status_update)
 
             def on_update_done(update_result):
                 prog_dialog.close()
-                success, msg = update_result
+                success, msg, pending_mod = update_result
+                # Main thread: the only safe place to read-modify-write meta.json.
+                if success and pending_mod:
+                    from .pyobj.update_manager import stamp_addon_mod
+                    stamp_addon_mod(pending_mod)
                 if success:
                     from aqt.utils import showInfo
                     showInfo("Update complete! Please restart Anki for changes to take effect.")

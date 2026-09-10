@@ -41,6 +41,30 @@ class FakeDB:
         self.saved.append((key, value))
 
 
+class FailOnceBadgeDB(FakeDB):
+    """Raise on the first badge write, then persist normally."""
+
+    def __init__(self):
+        super().__init__(migrated=True)
+        self.failures_remaining = 1
+
+    def save_badge(self, key, value):
+        if self.failures_remaining:
+            self.failures_remaining -= 1
+            raise RuntimeError("forced badge persistence failure")
+        super().save_badge(key, value)
+
+
+class FakeCollection:
+    def __init__(self, note_id):
+        self.db = self
+        self.note_id = note_id
+
+    def scalar(self, query, card_id):
+        assert "SELECT nid FROM cards" in query
+        return self.note_id
+
+
 @pytest.fixture(autouse=True)
 def clean_registry():
     """Isolate each test: empty registry before and after."""
@@ -103,3 +127,40 @@ def test_handle_review_count_achievement_ignores_non_milestone():
 def test_check_for_badge_is_pure():
     assert bf.check_for_badge({"5": True}, 5) is True
     assert bf.check_for_badge({"5": True}, 6) is False
+
+
+def test_badge_11_candidate_survives_failed_persistence_and_retries(monkeypatch):
+    services.db = FailOnceBadgeDB()
+    achievements = {str(i): False for i in range(1, 69)}
+    pending = {"42"}
+    saved_candidate_states = []
+
+    monkeypatch.setattr(
+        bf,
+        "get_pending_badge_11_candidates",
+        lambda db: set(pending),
+    )
+
+    def save_candidates(db, candidates):
+        pending.clear()
+        pending.update(candidates)
+        saved_candidate_states.append(set(candidates))
+
+    monkeypatch.setattr(bf, "save_pending_badge_11_candidates", save_candidates)
+    col = FakeCollection(note_id=42)
+
+    bf.check_and_award_badge_11_on_review(
+        col, services.db, achievements, card_id=7
+    )
+
+    assert achievements["11"] is False
+    assert pending == {"42"}
+    assert saved_candidate_states == []
+
+    bf.check_and_award_badge_11_on_review(
+        col, services.db, achievements, card_id=7
+    )
+
+    assert achievements["11"] is True
+    assert pending == set()
+    assert saved_candidate_states == [set()]

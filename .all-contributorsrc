@@ -229,6 +229,39 @@
       ],
       "nickname": "PENDING_REVIEW",
       "discord_id": "PENDING_REVIEW"
+    },
+    {
+      "login": "Nut2026",
+      "name": "Nut2026",
+      "avatar_url": "https://github.com/Nut2026.png",
+      "profile": "https://github.com/Nut2026",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "Nuz",
+      "discord_id": "1317008280911876109"
+    },
+    {
+      "login": "slager2",
+      "name": "slager2",
+      "avatar_url": "https://github.com/slager2.png",
+      "profile": "https://github.com/slager2",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "slager",
+      "discord_id": "955178102097600622"
+    },
+    {
+      "login": "JadonKJones",
+      "name": "JadonKJones",
+      "avatar_url": "https://github.com/JadonKJones.png",
+      "profile": "https://github.com/JadonKJones",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "sakamotosan",
+      "discord_id": "1404969660931379230"
     }
   ],
   "contributorsPerLine": 5

@@ -753,3 +753,20 @@
     to { transform: translateY(0); opacity: 1; }
 }
 
+/* ============================================================
+   Password input field styling
+   ============================================================ */
+.setting-input[type="password"] {
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 2px;
+}
+
+.setting-input[type="password"]::placeholder {
+    letter-spacing: 0px;
+    font-family: Outfit, sans-serif;
+}
+
+.setting-row[data-key="leaderboard.api_key"] .setting-label::before {
+    content: '🔒 ';
+    font-size: 0.85rem;
+}

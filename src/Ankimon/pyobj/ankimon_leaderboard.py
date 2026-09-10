@@ -1,123 +1,97 @@
-import sys
-import json
-from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton
-from aqt.utils import showInfo
-from ..resources import user_path_credentials, mypokemon_path
-import json
+import threading
+
 import requests
-from aqt import mw # import setting values direct from init file
+
 from ..services import services
 
-#ANKIMON_LEADERBOARD_API_URL = "https://ankimon.com/api/leaderboard"  # Replace with the actual API URL
-ANKIMON_LEADERBOARD_API_URL = "https://leaderboard-api.ankimon.com/update_stats"  # Replace with the actual API URL
 
-class ApiKeyDialog(QDialog):
-    def __init__(self):
-        super().__init__()
+ANKIMON_LEADERBOARD_API_URL = "https://leaderboard-api.ankimon.com/update_stats"
 
-        self.setWindowTitle("Enter API Key and Username")
-        self.setGeometry(100, 100, 300, 200)
+# Outcome of the last completed push ("ok", "http:503", "network", ...). The sync
+# is no longer a once-per-session event — TrainerCard.sync_leaderboard() runs it
+# from the gameplay write path — so the result is logged on transitions only: the
+# first push of a session and every change after it, rather than a line a minute
+# for the whole time a player is reviewing.
+_last_sync_outcome = None
 
-        # Layout
-        layout = QVBoxLayout()
-
-        # Username input
-        self.username_label = QLabel("Username:")
-        self.username_input = QLineEdit(self)
-        self.username_input.setPlaceholderText("Enter your username")
-        layout.addWidget(self.username_label)
-        layout.addWidget(self.username_input)
-
-        # API Key input
-        self.api_key_label = QLabel("API Key:")
-        self.api_key_input = QLineEdit(self)
-        self.api_key_input.setPlaceholderText("Paste your API key")
-        layout.addWidget(self.api_key_label)
-        layout.addWidget(self.api_key_input)
-
-        # Submit button
-        self.submit_button = QPushButton("Submit", self)
-        self.submit_button.clicked.connect(self.submit)
-        layout.addWidget(self.submit_button)
-
-        # Set layout
-        self.setLayout(layout)
-
-    def submit(self):
-        username = self.username_input.text()
-        api_key = self.api_key_input.text()
-
-        if username and api_key:
-            credentials = {
-                "username": username,
-                "api_key": api_key
-            }
-            self.save_credentials(credentials)
-            self.accept()  # Close the dialog if everything is entered
-        else:
-            showInfo("Both fields must be filled out.")
-
-    def save_credentials(self, credentials):
-        try:
-            # Save the new credentials to the database
-            for key, value in credentials.items():
-                if services.db:
-                    services.db.set_user_data(key, value)
-            showInfo("Credentials saved successfully!")
-        except Exception as e:
-            showInfo(f"Error saving credentials: {e}")
 
 def sync_data_to_leaderboard(data):
+    """Synchronize player statistics with the Ankimon leaderboard server.
 
-        # First check if leaderboard is enabled in config
-        if not services.settings or not services.settings.get("misc.leaderboard"):
+    Credentials come from Settings and the HTTP request runs in a daemon thread
+    so review-time UI work is never blocked by the network.
+    """
+    if services.settings is None or not services.settings.get("misc.leaderboard"):
+        return
+
+    try:
+        username = services.settings.get("leaderboard.username", "")
+        api_key = services.settings.get("leaderboard.api_key", "")
+        if not username or not api_key:
+            print("Ankimon: Leaderboard sync skipped - credentials missing in settings")
             return
 
-        try:
-            # Load credentials from the database
-            if not services.db:
-                return
-            username = services.db.get_user_data("username")
-            api_key = services.db.get_user_data("api_key")
+        request_data = {
+            "username": username,
+            "api_key": api_key,
+            "stats": data,
+        }
 
-            # Validate credentials
-            if (not username or not api_key) and services.db.is_migrated():
-                showInfo("Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.")
-                return
-
-
-            # Check if both username and api_key are available
-            if username and api_key:
-                request_data = {
-                    "username": username,
-                    "api_key": api_key,
-                    "stats": data
-                }
-
-                # Send a POST request to the leaderboard API
+        def send_request():
+            global _last_sync_outcome
+            try:
                 response = requests.post(
                     ANKIMON_LEADERBOARD_API_URL,
-                    json=request_data
+                    json=request_data,
+                    timeout=10,
                 )
+                if response.status_code == 200:
+                    outcome = "ok"
+                    message = "Ankimon: Data synced to leaderboard successfully"
+                else:
+                    outcome = f"http:{response.status_code}"
+                    message = (
+                        "Ankimon: Failed to sync data - "
+                        f"Status: {response.status_code}"
+                    )
+            except requests.exceptions.RequestException as e:
+                outcome = "network"
+                message = f"Ankimon: Leaderboard sync network error: {e}"
+            except Exception as e:
+                outcome = "error"
+                message = f"Ankimon: Unexpected leaderboard error: {e}"
 
-                #showInfo(response.text)  # Show the response text for debugging
+            if outcome != _last_sync_outcome:
+                _last_sync_outcome = outcome
+                print(message)
 
-                # Check if the request was successful
-                #if response.status_code == 200:
-                #    mw.logger.log("log","Data synced successfully to leaderboard!")
-                #else:
-                #    mw.logger.log("log",f"Failed to sync data to leaderboard. Status code: {response.status_code}")
-            #else:
-                #mw.logger.log("Credentials are missing (username or api_key)")
-
-        except requests.exceptions.RequestException as e:
-            showInfo(f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}")
-        except Exception as e:
-            showInfo(f"Error: Missing credentials for Ankimon leaderboard. Please set up leaderboard from Ankimon menu or turn off in Settings.\n\n {e}")
+        threading.Thread(target=send_request, daemon=True).start()
+    except Exception as e:
+        print(f"Ankimon: Unexpected error preparing leaderboard sync: {e}")
 
 
+def migrate_credentials_from_db() -> bool:
+    """Atomically move legacy leaderboard credentials into Settings.
 
-def show_api_key_dialog():
-    dialog = ApiKeyDialog()  # Create the dialog instance
-    dialog.exec()  # Show the dialog
+    Existing Settings values win per field. The database transaction stores any
+    missing replacements and retires the corresponding legacy rows together, so
+    a write failure cannot destroy the user's original credentials.
+    """
+    if services.db is None or services.settings is None:
+        return False
 
+    migrated = services.db.migrate_user_data_to_config(
+        {
+            "username": "leaderboard.username",
+            "api_key": "leaderboard.api_key",
+        }
+    )
+    if not migrated:
+        return False
+
+    # The DB transaction has already persisted these values. Update the live
+    # Settings object in place without issuing a second, non-atomic write.
+    services.settings.config.update(migrated)
+    services.settings.compute_gui_config()
+    print("Ankimon: Migrated and cleared legacy leaderboard credentials")
+    return True

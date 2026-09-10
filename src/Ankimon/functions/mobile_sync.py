@@ -219,10 +219,16 @@ def _compute_initial_reviews(db, tracker, day_cutoff: int) -> int:
         pass
     return initial_reviews
 
-def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=None, pokedex_cache=None) -> dict | None:
+def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=None, pokedex_cache=None, trainer_card=None, main_pokemon=None) -> dict | None:
     """Generates a random wild Pokémon encounter."""
     from .encounter_functions import generate_random_pokemon
     from .. import utils
+
+    # Pass the trainer/main levels explicitly so the tier roll matches desktop
+    # play without touching encounter_functions' module globals (a worker thread
+    # swapping those under the GUI thread would race desktop encounters).
+    trainer_level = getattr(trainer_card, "level", None)
+    main_level = getattr(main_pokemon, "level", None)
 
     if collected_ids is None:
         try:
@@ -233,10 +239,10 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
     orig_load_ids = utils.load_collected_pokemon_ids
     utils.load_collected_pokemon_ids = lambda: collected_ids
     try:
-        try:
-            res = generate_random_pokemon(level, tracker, collected_ids=collected_ids)
-        except TypeError:
-            res = generate_random_pokemon(level, tracker)
+        res = generate_random_pokemon(
+            level, tracker, collected_ids=collected_ids,
+            trainer_level=trainer_level, main_level=main_level,
+        )
         pkmn_name, pkmn_id, pkmn_lvl, ability, pkmn_type, base_stats, \
         enemy_attacks, base_exp, growth_rate, ev, iv, gender, \
         battle_status, battle_stats, pkmn_tier, ev_yield, pkmn_shiny, nature = res
@@ -451,12 +457,6 @@ def load_active_team_clones(ankimon_db, settings_obj, main_pokemon_fallback) -> 
 
     def make_safe_clone(p):
         p_clone = copy.copy(p)
-        if hasattr(p, "stats") and isinstance(p.stats, dict):
-            try:
-                p_clone.stats = copy.deepcopy(p.stats)
-            except AttributeError:
-                if hasattr(p_clone, "__dict__"):
-                    p_clone.__dict__["stats"] = copy.deepcopy(p.stats)
         if hasattr(p, "base_stats") and isinstance(p.base_stats, dict):
             p_clone.base_stats = copy.deepcopy(p.base_stats)
         if hasattr(p, "ev") and isinstance(p.ev, dict):
@@ -838,7 +838,7 @@ def _run_mobile_battles_impl(
         cards_in_encounter = seed_idx + 1
         temp_tracker = TempTracker(initial_reviews + cards_in_encounter)
 
-        enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None)
+        enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None, trainer_card, main_pokemon)
         adjusted_level = max(1, active_max_level + (enc_data["level"] - stable_max_level))
         current_enemy_pokemon = PokemonObject(
             type=enc_data["type"], name=enc_data["name"], id=enc_data["id"], shiny=enc_data["shiny"],
@@ -1335,7 +1335,7 @@ def _run_mobile_battles_impl(
                     random.seed(enc_seed)
                     encounter_idx += 1
                     
-                    enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None)
+                    enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None, trainer_card, main_pokemon)
                     adjusted_level = max(1, active_max_level + (enc_data["level"] - stable_max_level))
                     current_enemy_pokemon = PokemonObject(
                         type=enc_data["type"], name=enc_data["name"], id=enc_data["id"], shiny=enc_data["shiny"],
@@ -2185,8 +2185,21 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
     
     color = "#6A4DAC"
 
+    levels_gained = 0
     # level-ups
     while int(find_experience_for_level(growth_rate, level, remove_cap)) < xp and (level_cap is None or level < level_cap):
+        if levels_gained >= 10:
+            if is_active and not in_bulk:
+                try:
+                    active_logger = logger or (services.logger if (services and getattr(services, "logger", None)) else None)
+                    if active_logger:
+                        active_logger.log("error", f"Mobile sync level-up loop exceeded safety cap of 10 for {pkmndata.get('name')}")
+                except Exception:
+                    pass
+            next_level_cost = int(find_experience_for_level(growth_rate, level, remove_cap))
+            xp = max(0, next_level_cost - 1)
+            break
+        levels_gained += 1
         level += 1
         if is_active and main_pokemon_singleton:
             main_pokemon_singleton.level = level
@@ -2244,6 +2257,19 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
         pkmndata["ev"] = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
     else:
         pkmndata["ev"] = _normalize_ev_yield(pkmndata["ev"])
+
+    # IV Updates/Defaults
+    def normalize_iv(value):
+        try:
+            return max(0, min(31, int(value)))
+        except (TypeError, ValueError):
+            return 15
+
+    if "iv" not in pkmndata or not isinstance(pkmndata["iv"], dict):
+        pkmndata["iv"] = {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
+    else:
+        # Ensure all keys exist and are valid integers between 0 and 31
+        pkmndata["iv"] = {k: normalize_iv(pkmndata["iv"].get(k, 15)) for k in ("hp", "atk", "def", "spa", "spd", "spe")}
         
     normalized_yield = {
         "hp": ev_yield_gained.get("hp", 0),
@@ -2280,12 +2306,36 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
     pkmndata["ev"]["spe"] += ev_yield["speed"]
 
     # Recompute stats
-    pkmndata["stats"] = {
-        k: PokemonObject.calc_stat(k, val, level, pkmndata["iv"][k], pkmndata["ev"][k], pkmndata.get("nature", "serious"))
-        for k, val in pkmndata["base_stats"].items()
-        if k in ("hp", "atk", "def", "spa", "spd", "spe")
-    }
-    pkmndata["current_hp"] = pkmndata["stats"].get("hp", 15)
+    base_stats = pkmndata.get("base_stats")
+    from .pokedex_functions import is_valid_base_stats
+
+    if not is_valid_base_stats(base_stats):
+        # Fall back to stats key if it contains original stats (before scaling/growth)
+        base_stats = base_stats or pkmndata.get("stats")
+        
+        # Fall back to pokedex search
+        if not is_valid_base_stats(base_stats):
+            from .pokedex_functions import search_pokedex
+            base_stats = search_pokedex(pkmndata.get("name", ""), "baseStats") or {}
+            
+        if is_valid_base_stats(base_stats):
+            pkmndata["base_stats"] = base_stats
+        else:
+            from ..services import services
+            services.logger.log(
+                "warning",
+                f"Could not resolve base_stats for {pkmndata.get('name')!r} "
+                f"({pkmndata.get('individual_id')}); stats left unscaled."
+            )
+
+    if is_valid_base_stats(base_stats):
+        pkmndata["stats"] = {
+            k: PokemonObject.calc_stat(k, int(val), level, pkmndata["iv"][k], pkmndata["ev"][k], pkmndata.get("nature", "serious"))
+            for k, val in base_stats.items()
+            if k in ("hp", "atk", "def", "spa", "spd", "spe")
+        }
+        pkmndata["current_hp"] = pkmndata["stats"].get("hp", 15)
+
     
     friendship = int(pkmndata.get("friendship", 0))
     friendship += random.randint(5, 9)

@@ -47,8 +47,17 @@ def split_japanese_string_by_length(input_string, max_length):
         yield current_line
 
 def resize_pixmap_img(pixmap, max_width):
+    """Scale a pixmap to ``max_width``, keeping its aspect ratio.
+
+    A pixmap whose image failed to load is null and reports a width of 0, so
+    the aspect-ratio maths would raise "integer division or modulo by zero" and
+    take the whole window down (issue #101). Nothing sensible can be scaled
+    from a null pixmap, so hand it back untouched — Qt draws it as a no-op.
+    """
     original_width = pixmap.width()
     original_height = pixmap.height()
+    if original_width <= 0:
+        return pixmap
     new_width = max_width
     new_height = (original_height * max_width) // original_width
     pixmap2 = pixmap.scaled(new_width, new_height)
@@ -84,11 +93,17 @@ def calculate_cpm(level: int) -> float:
     """CP Multiplier — exponential (saturating) function of level.
 
     Models the Pokemon GO idea of a level-scaling multiplier that grows
-    quickly at low levels and tapers off as the Pokemon approaches its
-    level ceiling. The curve asymptotes toward ``3.5`` as level grows —
-    reaching about ``2.42`` at the level-100 cap — and is smooth and
-    defined for any Anki level. The scale is deliberately larger than
-    Pokemon GO's real CPM cap (~``0.84``) to tune Ankimon's CP economy.
+    quickly at low levels and then keeps rewarding levelling across the
+    whole playable range, tapering only gradually. The curve asymptotes
+    toward ``3.5`` as level grows — reaching about ``2.42`` at level 100,
+    roughly 69% of that asymptote, so levels past the (optionally
+    disabled) level-100 cap still raise CP — and is smooth and defined
+    for any Anki level. The scale is deliberately larger than Pokemon
+    GO's real CPM cap (~``0.84``) to tune Ankimon's CP economy.
+
+    Note that ``CP`` scales as ``CPM ** 2``, and that ``cp`` is persisted
+    per-Pokemon, so retuning this function strands old-scale values in the
+    database — see :func:`pokemon_cp_is_stale`.
     """
     return 3.5 * (1 - math.exp(-max(level, 1) / 85))
 
@@ -302,12 +317,39 @@ def calculate_cp_from_dict(pokemon_dict):
     else:
         base_stats = pokemon_dict.get("stats", {})
 
-    level = pokemon_dict.get("level", 1)
+    # Coerce level the same way cp_breakdown_tooltip does: rows restored
+    # from JSON can carry it as a string, and calculate_cpm's max(level, 1)
+    # raises TypeError when comparing str/None against int. A level that is
+    # not a number at all is meaningless rather than merely mistyped, so it
+    # falls back to 1 instead of taking down every CP read on the row.
+    try:
+        level = int(pokemon_dict.get("level", 1) or 1)
+    except (TypeError, ValueError):
+        level = 1
     iv = pokemon_dict.get("iv") or {}
     ev = pokemon_dict.get("ev") or {}
 
     attack, defense, stamina = pokemon_go_raw_stats(base_stats, iv, ev)
     return calculate_pokemon_go_cp(attack, defense, stamina, level)
+
+
+def pokemon_cp_is_stale(pokemon_dict: dict) -> bool:
+    """Whether a stored Pokemon's persisted ``cp`` disagrees with the formula.
+
+    ``cp`` is derived data that is *also* persisted (see
+    ``encounter_functions`` at catch time), so retuning :func:`calculate_cpm`
+    leaves old-scale values in the database until something rewrites them.
+    Migration passes use this to decide whether a repair is needed.
+
+    Never raises: a row whose CP cannot be computed is reported as stale so
+    the caller's repair path takes over rather than the check exploding.
+    """
+    if not isinstance(pokemon_dict, dict):
+        return False
+    try:
+        return pokemon_dict.get("cp") != calculate_cp_from_dict(pokemon_dict)
+    except Exception:
+        return True
 
 def bP_none_moves(move):
     target =  move.get("target", None)

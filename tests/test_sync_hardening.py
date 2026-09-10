@@ -185,6 +185,79 @@ def test_atomic_replace_swaps_file_and_clears_stale_sidecars(tmp_path, monkeypat
         services.db = prev
 
 
+def test_atomic_replace_holds_quiescence_through_os_replace(tmp_path, monkeypatch):
+    import contextlib
+    import importlib
+
+    src = tmp_path / "ankimon.db"
+    src.write_bytes(b"LOCAL" + b"\x00" * 600)
+    media = tmp_path / "media.db"
+    media.write_bytes(b"REMOTE" + b"\x00" * 600)
+
+    class QuiescingDB:
+        db_path = src
+        inside = False
+        entered = 0
+        exited = 0
+
+        @contextlib.contextmanager
+        def quiesce(self, wait_seconds=0.0):
+            self.entered += 1
+            self.inside = True
+            try:
+                yield True
+            finally:
+                self.inside = False
+                self.exited += 1
+
+    runtime_services = importlib.import_module("Ankimon.services").services
+    prev = runtime_services.db
+    fake_db = QuiescingDB()
+    runtime_services.db = fake_db
+    original_replace = aksync.os.replace
+
+    def checked_replace(source, destination):
+        assert fake_db.inside, "database lifecycle barrier released before os.replace"
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(aksync.os, "replace", checked_replace)
+    try:
+        AnkimonDataSync()._atomic_replace(media, src)
+    finally:
+        runtime_services.db = prev
+
+    assert src.read_bytes().startswith(b"REMOTE")
+    assert fake_db.entered == 1
+    assert fake_db.exited == 1
+    assert fake_db.inside is False
+
+
+def test_atomic_replace_aborts_when_live_db_does_not_drain(tmp_path):
+    src = tmp_path / "ankimon.db"
+    src.write_bytes(b"LOCAL" + b"\x00" * 600)
+    media = tmp_path / "media.db"
+    media.write_bytes(b"REMOTE" + b"\x00" * 600)
+
+    class BusyDB:
+        db_path = src
+
+        def close(self, wait_seconds=0.0):
+            return False
+
+    import importlib
+
+    runtime_services = importlib.import_module("Ankimon.services").services
+    prev = runtime_services.db
+    runtime_services.db = BusyDB()
+    try:
+        with pytest.raises(RuntimeError, match="active operations did not finish"):
+            AnkimonDataSync()._atomic_replace(media, src)
+    finally:
+        runtime_services.db = prev
+
+    assert src.read_bytes().startswith(b"LOCAL")
+
+
 def _wire_read_configs(ds, monkeypatch, src, media):
     monkeypatch.setattr(ds, "_migrate_legacy_files", lambda: [])
     monkeypatch.setattr(ds, "_get_source_path", lambda fn: src)

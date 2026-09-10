@@ -31,7 +31,6 @@ def tooltipWithColour(
         return
 
     settings = services.settings
-    styling_in_reviewer = settings.get("gui.styling_in_reviewer")
     reviewer_text_message_box = settings.get("gui.reviewer_text_message_box")
     period = int(
         settings.get("gui.reviewer_text_message_box_time") * 1000
@@ -40,7 +39,7 @@ def tooltipWithColour(
     class CustomLabel(QLabel):
         def mousePressEvent(self, evt):
             evt.accept()
-            self.hide()
+            self.close()
 
     aw = parent or QApplication.activeWindow()
     if aw is None:
@@ -61,6 +60,10 @@ def tooltipWithColour(
         x = aw.mapToGlobal(QPoint(x + round(aw.width() / 2), 0)).x()
         y = aw.mapToGlobal(QPoint(0, aw.height() - (180 + y_offset))).y()
         lab = CustomLabel(aw)
+        # These tooltip windows are created for nearly every review. Hiding them
+        # leaves each label owned by the reviewer window forever, causing linear
+        # widget/RSS growth. Closing with WA_DeleteOnClose frees the C++ widget.
+        lab.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         lab.setFrameShape(QFrame.Shape.StyledPanel)
         lab.setLineWidth(2)
         lab.setWindowFlags(Qt.WindowType.ToolTip)
@@ -80,11 +83,11 @@ def tooltipWithColour(
         lab.move(QPoint(x - round(lab.width() * 0.5 * xref), y))
         try:
             QTimer.singleShot(
-                period, lambda: lab.hide() if lab and not sip.isdeleted(lab) else None
+                period, lambda: lab.close() if lab and not sip.isdeleted(lab) else None
             )
-        except:
+        except Exception:
             QTimer.singleShot(
-                3000, lambda: lab.hide() if lab and not sip.isdeleted(lab) else None
+                3000, lambda: lab.close() if lab and not sip.isdeleted(lab) else None
             )
         logger = services.logger
         if logger is not None:

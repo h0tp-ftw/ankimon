@@ -1,9 +1,8 @@
 import math
-import json
 from typing import Any, Callable
 import re
 
-from aqt import qconnect
+from aqt import mw, qconnect
 from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor, QPolygonF, QPen, QBrush
 from PyQt6.QtCore import (
     Qt,
@@ -11,6 +10,7 @@ from PyQt6.QtCore import (
     QRectF,
     QPropertyAnimation,
     QEasingCurve,
+    QTimer,
     pyqtProperty,
 )
 from PyQt6.QtWidgets import QScrollArea
@@ -50,6 +50,7 @@ from ..functions.pokedex_functions import (
     search_pokedex,
     search_pokedex_by_id,
 )
+from ..functions.tm_learnset import get_tm_learnset
 from ..functions.pokemon_functions import find_experience_for_level
 from ..functions.friendship_evolution import evolution_readiness
 from ..functions.gui_functions import type_icon_path, move_category_path
@@ -59,7 +60,6 @@ from ..utils import format_move_name, load_custom_font
 from ..resources import (
     icon_path,
     addon_dir,
-    pokemon_tm_learnset_path,
 )
 from ..texts import (
     attack_details_window_template,
@@ -118,6 +118,7 @@ def PokemonCollectionDetailsSplit(
     evolution_rejected: bool = False,
     friendship_time_enabled: bool = True,
     trigger_evo_callback: Callable = None,
+    show_sprites: bool = True,
 ):
     """Build the details panel as split components.
 
@@ -142,6 +143,10 @@ def PokemonCollectionDetailsSplit(
             "everstone": everstone,
             "attacks": attacks,
             "pokemon_defeated": pokemon_defeated,
+            # Needed for the CSV gender_id gate (Wormadam/Mothim, Vespiquen,
+            # Salazzle): without it this panel's status line would silently skip
+            # a gate the PC grid and the automatic level-up path both enforce.
+            "gender": gender,
         }
         readiness = evolution_readiness(pkmn_data_stub)
 
@@ -172,7 +177,10 @@ def PokemonCollectionDetailsSplit(
             "front", "gif" if gif_in_collection else "png", id, shiny, gender, name
         )
 
-        if gif_in_collection:
+        if not show_sprites:
+            # Keep the image area and surrounding layout stable for focus mode.
+            pkmnimage_label.setFixedSize(150, 150)
+        elif gif_in_collection:
             pkmnimage_label = MovieSplashLabel(pkmnimage_path)
         else:
             cache_key = (str(pkmnimage_path), shiny, gender)
@@ -205,7 +213,9 @@ def PokemonCollectionDetailsSplit(
         typeimage_path = addon_dir / "addon_sprites" / "Types" / typeimage_file
         pkmntype_label = QLabel()
         pkmntypepixmap = QPixmap()
-        if pkmntypepixmap.load(str(typeimage_path)):
+        if not show_sprites:
+            pkmntype_label.setFixedSize(50, 50)
+        elif pkmntypepixmap.load(str(typeimage_path)):
             # Optional: Scale type icon to a fixed size (e.g., 50x50) to fit nicely
             pkmntypepixmap = pkmntypepixmap.scaled(
                 50, 50, Qt.AspectRatioMode.KeepAspectRatio
@@ -221,7 +231,9 @@ def PokemonCollectionDetailsSplit(
             typeimage_path2 = addon_dir / "addon_sprites" / "Types" / type_image_file2
             pkmntype_label2 = QLabel()
             pkmntypepixmap2 = QPixmap()
-            if pkmntypepixmap2.load(str(typeimage_path2)):
+            if not show_sprites:
+                pkmntype_label2.setFixedSize(50, 50)
+            elif pkmntypepixmap2.load(str(typeimage_path2)):
                 # Optional: Scale second type icon similarly
                 pkmntypepixmap2 = pkmntypepixmap2.scaled(
                     50, 50, Qt.AspectRatioMode.KeepAspectRatio
@@ -388,12 +400,11 @@ def PokemonCollectionDetailsSplit(
         attacks_label.setFixedWidth(230)
         attacks_label.setFixedHeight(80)
 
-        # Friendship-evolution UI (classic single-panel path): an actionable
-        # "Evolve now" button when the Pokémon is ready, otherwise the
-        # requirement line (e.g. "40 friendship to evolve into Espeon · needs
-        # Day"). Only shown when relevant, and only when the caller did not
-        # supply its own trigger_evo_callback (which renders the button in the
-        # right-hand column instead).
+        # Evolution UI: show the requirement line whenever the Pokémon is not
+        # ready (e.g. "40 friendship to evolve into Espeon · needs Day").
+        # When ready, the classic path renders its own "Evolve now" button only
+        # if the caller did not supply trigger_evo_callback; callback callers
+        # render their evolve button in the right-hand column instead.
         evolution_req_widget = None
         # A secondary note shown alongside the Evolve button when the user
         # previously rejected this evolution (soft state) — the manual button
@@ -406,8 +417,8 @@ def PokemonCollectionDetailsSplit(
         show_evolution_ui = readiness["method"] is not None and (
             readiness["method"] != "friendship" or friendship_time_enabled
         )
-        if trigger_evo_callback is None:
-            if show_evolution_ui and readiness["ready"]:
+        if show_evolution_ui:
+            if trigger_evo_callback is None and readiness["ready"]:
                 evo_name = readiness["evo_name"] or "the next form"
                 evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
                 evolve_now_button.setFont(custom_font)
@@ -443,14 +454,15 @@ def PokemonCollectionDetailsSplit(
                     evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     evolution_note_label.setStyleSheet("color: #FF69B4;")
                     evolution_note_widget = evolution_note_label
-            elif show_evolution_ui and readiness["status_text"]:
-                evolution_req_label = QLabel(readiness["status_text"])
-                evolution_req_label.setFont(custom_font)
-                evolution_req_label.setWordWrap(True)
-                evolution_req_label.setFixedWidth(230)
-                evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                evolution_req_label.setStyleSheet("color: #FF69B4;")
-                evolution_req_widget = evolution_req_label
+
+        if show_evolution_ui and not readiness["ready"] and readiness["status_text"]:
+            evolution_req_label = QLabel(readiness["status_text"])
+            evolution_req_label.setFont(custom_font)
+            evolution_req_label.setWordWrap(True)
+            evolution_req_label.setFixedWidth(230)
+            evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            evolution_req_label.setStyleSheet("color: #FF69B4;")
+            evolution_req_widget = evolution_req_label
 
         first_layout = QHBoxLayout()
         TopL_layout_Box = QVBoxLayout()
@@ -742,6 +754,7 @@ def PokemonCollectionDetails(
     evolution_rejected: bool = False,
     friendship_time_enabled: bool = True,
     trigger_evo_callback: Callable = None,
+    show_sprites: bool = True,
 ):
     """Classic single-layout details panel (backward-compatible entrypoint).
 
@@ -784,6 +797,7 @@ def PokemonCollectionDetails(
             evolution_rejected=evolution_rejected,
             friendship_time_enabled=friendship_time_enabled,
             trigger_evo_callback=trigger_evo_callback,
+            show_sprites=show_sprites,
         )
     )
     layout = QVBoxLayout()
@@ -1430,8 +1444,19 @@ def remember_attack(
             msg += f"\n Your {pokemon_data['name'].capitalize()} has learned {new_attack} !"
             logger.log_and_showinfo("info", f"{msg}")
         else:
-            dialog = AttackDialog(attacks, new_attack)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog = AttackDialog(attacks, new_attack, parent=mw)
+            QTimer.singleShot(
+                0,
+                lambda: (
+                    dialog.raise_(),
+                    dialog.activateWindow(),
+                ),
+            )
+            try:
+                result = dialog.exec()
+            finally:
+                dialog.deleteLater()
+            if result == QDialog.DialogCode.Accepted:
                 selected_attack = dialog.selected_attack
                 try:
                     index_to_replace = attacks.index(selected_attack)
@@ -1510,25 +1535,20 @@ def tm_attack_details_window(
     """
     from ..pyobj.move_picker import MovePickerDialog
 
-    # 1. Get species/base name for TM lookup
+    # 1. Resolve the Pokédex key, then let the shared data-layer helper handle
+    # form aliases and base-species fallback. search_pokedex_by_id() also warms
+    # the Pokédex cache before get_tm_learnset() consults form metadata.
     internal_name = search_pokedex_by_id(id)
-    if not internal_name:
+    if not internal_name or internal_name == "Pokémon not found":
         logger.log_and_showinfo("error", f"Could not find Pokémon data for ID: {id}")
         return
 
-    base_name = internal_name.split("-")[0].lower()
-    internal_name = internal_name.lower()
-
-    # 2. Load TM learnsets
+    # 2. Get valid TMs for this species/form from the startup-warmed cache.
     try:
-        with open(pokemon_tm_learnset_path, "r", encoding="utf-8") as f:
-            tm_learnsets = json.load(f)
+        valid_tms = get_tm_learnset(internal_name)
     except Exception as e:
         logger.log_and_showinfo("error", f"Failed to load TM learnsets: {e}")
         return
-
-    # 3. Get valid TMs for this species (check specific form then base species)
-    valid_tms = tm_learnsets.get(internal_name) or tm_learnsets.get(base_name)
     if not valid_tms:
         logger.log_and_showinfo("info", "This Pokémon cannot learn any moves from TMs.")
         return

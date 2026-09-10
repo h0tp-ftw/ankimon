@@ -1,4 +1,4 @@
-import json
+from copy import deepcopy
 import random
 from typing import Optional
 
@@ -11,6 +11,7 @@ from aqt.qt import (
     QVBoxLayout,
     QWidget,
     QDialog,
+    QTimer,
     qconnect,
 )
 from PyQt6.QtGui import QColor, QPen
@@ -19,14 +20,20 @@ from PyQt6.QtWidgets import (
 )
 
 from ..services import services
+from ..functions.item_evolution import save_item_evolution
 from ..utils import load_custom_font, is_alive
 from ..functions.pokedex_functions import (
+    evolution_required_time,
+    evolution_time_allows,
     get_base_experience,
     get_growth_rate,
     return_name_for_id,
     search_pokedex,
 )
-from ..functions.pokemon_functions import get_random_moves_for_pokemon
+from ..functions.pokemon_functions import (
+    get_evolution_moves_for_pokemon,
+    get_levelup_move_for_pokemon,
+)
 from ..functions.battle_functions import calculate_hp
 from ..functions.update_main_pokemon import (
     update_main_pokemon,
@@ -46,6 +53,16 @@ from ..resources import (
     frontdefault,
     evolve_image_path,
 )
+
+
+def _moves_gained_on_evolution(species_name, level):
+    """Level-up moves for *level* plus the moves granted by evolving, deduped."""
+    moves = get_levelup_move_for_pokemon(species_name, level)
+    for move in get_evolution_moves_for_pokemon(species_name, level):
+        if move not in moves:
+            moves.append(move)
+
+    return moves
 
 
 class EvoWindow(QWidget):
@@ -79,6 +96,15 @@ class EvoWindow(QWidget):
 
     def open_dynamic_window(self):
         self.show()
+
+    def _should_show_sprites(self) -> bool:
+        """Check if sprites should be shown based on the global setting."""
+        if self.settings_obj is None:
+            return True
+        try:
+            return self.settings_obj.get("gui.show_sprites_across_ankimon", True)
+        except Exception:
+            return True
 
     def display_evo_complete(self, prevo_id: int, evo_id: int):
         """
@@ -126,12 +152,6 @@ class EvoWindow(QWidget):
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(bckgimage_path))
 
-        # Display the Pokémon image
-        image_path = frontdefault / f"{evo_id}.png"
-        image_pixmap = QPixmap()
-        image_pixmap.load(str(image_path))
-        image_pixmap = resize_pixmap_img(image_pixmap, 250)
-
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
         merged_pixmap.fill(
@@ -143,7 +163,16 @@ class EvoWindow(QWidget):
 
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(125, 10, image_pixmap)
+
+        # Only load and draw the Pokémon sprite if sprites are enabled
+        show_sprites = self._should_show_sprites()
+        if show_sprites:
+            # Display the Pokémon image
+            image_path = frontdefault / f"{evo_id}.png"
+            image_pixmap = QPixmap()
+            image_pixmap.load(str(image_path))
+            image_pixmap = resize_pixmap_img(image_pixmap, 250)
+            painter.drawPixmap(125, 10, image_pixmap)
 
         # custom font
         custom_font = load_custom_font(20, int(self.settings_obj.get("misc.language")))
@@ -223,34 +252,12 @@ class EvoWindow(QWidget):
         prevo_name = return_name_for_id(prevo_id)
         evo_name = return_name_for_id(evo_id)
 
-        # Display the Pokémon image
-        pkmnimage_path = frontdefault / f"{prevo_id}.png"
-        pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
-        pkmnpixmap = QPixmap()
-        pkmnpixmap.load(str(pkmnimage_path))
-        pkmnpixmap2 = QPixmap()
-        pkmnpixmap2.load(str(pkmnimage_path2))
+        # Check if sprites should be shown
+        show_sprites = self._should_show_sprites()
+
+        # Load the background image
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(evolve_image_path))
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 200
-        original_width = pkmnpixmap.width()
-        original_height = pkmnpixmap.height()
-
-        if original_width > max_width:
-            new_width = max_width
-            new_height = (original_height * max_width) // original_width
-            pkmnpixmap = pkmnpixmap.scaled(new_width, new_height)
-
-        # Calculate the new dimensions to maintain the aspect ratio
-        max_width = 200
-        original_width = pkmnpixmap.width()
-        original_height = pkmnpixmap.height()
-
-        if original_width > max_width:
-            new_width = max_width
-            new_height = (original_height * max_width) // original_width
-            pkmnpixmap2 = pkmnpixmap2.scaled(new_width, new_height)
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -261,8 +268,41 @@ class EvoWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
         painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(255, 70, pkmnpixmap)
-        painter.drawPixmap(255, 285, pkmnpixmap2)
+
+        # Only load, resize, and draw Pokémon sprites if sprites are enabled
+        if show_sprites:
+            # Display the Pokémon image
+            pkmnimage_path = frontdefault / f"{prevo_id}.png"
+            pkmnpixmap = QPixmap()
+            pkmnpixmap.load(str(pkmnimage_path))
+
+            pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
+            pkmnpixmap2 = QPixmap()
+            pkmnpixmap2.load(str(pkmnimage_path2))
+
+            # Calculate the new dimensions to maintain the aspect ratio
+            max_width = 200
+            original_width = pkmnpixmap.width()
+            original_height = pkmnpixmap.height()
+
+            if original_width > max_width:
+                new_width = max_width
+                new_height = (original_height * max_width) // original_width
+                pkmnpixmap = pkmnpixmap.scaled(new_width, new_height)
+
+            # Calculate the new dimensions to maintain the aspect ratio
+            max_width = 200
+            original_width = pkmnpixmap2.width()
+            original_height = pkmnpixmap2.height()
+
+            if original_width > max_width:
+                new_width = max_width
+                new_height = (original_height * max_width) // original_width
+                pkmnpixmap2 = pkmnpixmap2.scaled(new_width, new_height)
+
+            painter.drawPixmap(255, 70, pkmnpixmap)
+            painter.drawPixmap(255, 285, pkmnpixmap2)
+
         # Draw the text on top of the image
         font = QFont()
         font.setPointSize(12)  # Adjust the font size as needed
@@ -331,6 +371,7 @@ class EvoWindow(QWidget):
         db = services.db
 
         try:
+            source_db_path = db.db_path if item_name else None
             pokemon = db.get_pokemon(individual_id)
             if not pokemon:
                 self.logger.log(
@@ -350,41 +391,57 @@ class EvoWindow(QWidget):
                 )
                 return
 
-            # Persist the pre-evolved species as caught before the id changes so
-            # the Pokédex keeps crediting the earlier form (no-op on stores that
-            # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
-            if hasattr(db, "mark_as_caught"):
+            # Detect record changes made during move dialogs’ nested event loops.
+            expected_pokemon = deepcopy(pokemon) if item_name else None
+
+            # Record the old species before replacing its only recoverable record.
+            if not item_name and hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
                 except Exception as e:
-                    self.logger.log("warning", f"Failed to mark prevo as caught: {e}")
+                    self.logger.log(
+                        "error",
+                        f"Failed to mark pre-evolution {prevo_id} as caught; it will "
+                        f"be missing from the Pokedex: {e}",
+                    )
 
             pokemon["name"] = evo_name.capitalize()
             pokemon["id"] = evo_id
             pokemon["type"] = search_pokedex(evo_name.lower(), "types")
             attacks = pokemon["attacks"]
-            new_attacks = get_random_moves_for_pokemon(
+            new_attacks = _moves_gained_on_evolution(
                 evo_name.lower(), int(pokemon["level"])
             )
+            replaced_moves = []
             for new_attack in new_attacks:
                 if new_attack not in attacks:
                     if len(attacks) < 4:
                         attacks.append(new_attack)
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                        # Parent to the Anki main window, not this evolution
+                        # popup. EvoWindow is a separate top-level window that
+                        # gets torn down/hidden mid-flow; a child dialog of it
+                        # can lose its focus/taskbar cue or misbehave on macOS.
+                        # Let exec() establish modality before the timer raises
+                        # and activates the visible dialog.
+                        dialog = AttackDialog(attacks, new_attack, parent=mw)
+                        QTimer.singleShot(
+                            0,
+                            lambda: (
+                                dialog.raise_(),
+                                dialog.activateWindow(),
+                            ),
+                        )
+                        try:
+                            _accepted = dialog.exec() == QDialog.DialogCode.Accepted
+                        finally:
+                            dialog.deleteLater()
+                        if _accepted:
                             selected_attack = dialog.selected_attack
                             try:
                                 index_to_replace = attacks.index(selected_attack)
                                 attacks[index_to_replace] = new_attack
-                                self.logger.log_and_showinfo(
-                                    "info",
-                                    self.translator.translate(
-                                        "replaced_attack",
-                                        selected_attack=selected_attack,
-                                        new_attack=new_attack,
-                                    ),
-                                )
+                                replaced_moves.append((selected_attack, new_attack))
                             except ValueError:
                                 self.logger.log_and_showinfo(
                                     "info",
@@ -407,7 +464,9 @@ class EvoWindow(QWidget):
             ev = pokemon["ev"]
             level = pokemon["level"]
             hp = calculate_hp(hp_stat, level, ev, iv)
+            pokemon["hp"] = int(hp)
             pokemon["current_hp"] = int(hp)
+            pokemon["battle_status"] = "fighting"
             try:
                 pokemon["growth_rate"] = get_growth_rate(int(evo_id))
             except (ValueError, TypeError):
@@ -471,19 +530,59 @@ class EvoWindow(QWidget):
             # the auto prompt resumes for the new form's future evolutions.
             pokemon["evolution_rejected"] = False
 
-            # Save to database
-            db.save_pokemon(pokemon)
-            self.logger.log_and_showinfo(
-                "info",
-                self.translator.translate(
-                    "mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name
-                ),
-            )
-
-            # Consume the evolution stone (if this evolution was item-triggered)
-            # and refresh any open item windows so the count updates live.
+            # Commit only after all move dialogs finish.
             if item_name:
-                db.update_item_quantity(item_name, -1)
+                target_data = {
+                    "evoCondition": search_pokedex(evo_name.lower(), "evoCondition")
+                }
+                if not evolution_time_allows(target_data):
+                    required_time = evolution_required_time(target_data)
+                    self.logger.log_and_showinfo(
+                        "info",
+                        f"This Pokemon evolves with this item only during the "
+                        f"{required_time}. Nothing was used; try again then.",
+                    )
+                    return
+                try:
+                    committed = (
+                        services.db is db
+                        and db.db_path == source_db_path
+                        and save_item_evolution(
+                            db, expected_pokemon, pokemon, item_name
+                        )
+                    )
+                except Exception as e:
+                    # Persistence failures roll back; log the cause and offer a retry.
+                    self.logger.log(
+                        "error", f"Item evolution could not be committed: {e}"
+                    )
+                    committed = False
+                if not committed:
+                    self.logger.log_and_showinfo(
+                        "warning",
+                        "Evolution could not be completed because the Pokémon, "
+                        "item, or profile changed, or the database was busy. "
+                        "Nothing was used — please try again.",
+                    )
+                    return
+            elif not db.save_pokemon(pokemon):
+                self.logger.log(
+                    "error", f"Failed to save evolved pokemon {individual_id}"
+                )
+                return
+
+            for selected_attack, new_attack in replaced_moves:
+                self.logger.log_and_showinfo(
+                    "info",
+                    self.translator.translate(
+                        "replaced_attack",
+                        selected_attack=selected_attack,
+                        new_attack=new_attack,
+                    ),
+                )
+
+            # The item charge has committed; refresh any open item windows.
+            if item_name:
                 from ..singletons import get_item_window, get_items_window
 
                 item_w = get_item_window()
@@ -493,11 +592,36 @@ class EvoWindow(QWidget):
                 web_item_w = get_items_window()
                 if web_item_w is not None and is_alive(web_item_w):
                     web_item_w.update_ui_data()
+
+            # Award Badge 19 (Fossil) immediately after successful persistence
+            # and item consumption, before any UI notifications that could fail
+            # and skip the achievement.
+            try:
+                from ..resources import POKEMON_TIERS
+
+                if int(evo_id) in POKEMON_TIERS.get("Fossil", []):
+                    check_fossil = check_for_badge(self.achievements, 19)
+                    if check_fossil is False:
+                        # receive_badge sets the in-memory achievement only after
+                        # save_badges succeeds, so a persistence failure will not
+                        # leave achievements marked as awarded.
+                        receive_badge(19, self.achievements)
+            except Exception as e:
+                self.logger.log("error", f"Error checking Badge 19 (Fossil): {e}")
+
+            self.logger.log_and_showinfo(
+                "info",
+                self.translator.translate(
+                    "mainpokemon_has_evolved", prevo_name=prevo_name, evo_name=evo_name
+                ),
+            )
+
         except Exception as e:
             show_warning_with_traceback(
-                parent=mw, exception=e, message=f"Error occured in evolving pokemon"
+                parent=mw, exception=e, message="Error occured in evolving pokemon"
             )
             self.logger.log("error", f"{e}")
+            return
 
         try:  # Update Main Pokemon Object and sync with file
             if main_pokemon is not None and main_pokemon.individual_id == individual_id:
@@ -517,7 +641,7 @@ class EvoWindow(QWidget):
             show_warning_with_traceback(
                 parent=mw,
                 exception=e,
-                message=f"Error occured in updating main_pokemon obj",
+                message="Error occured in updating main_pokemon obj",
             )
         self.display_evo_complete(prevo_id, evo_id)
         check = check_for_badge(self.achievements, 16)
@@ -552,15 +676,34 @@ class EvoWindow(QWidget):
             # Add logic to learn new moves
             attacks = pokemon_to_update.get("attacks", [])
             level = pokemon_to_update.get("level", 1)
-            new_attacks = get_random_moves_for_pokemon(prevo_name.lower(), int(level))
+            # Level-up moves only: the Pokemon stays as prevo_name, so the
+            # evolution-only ("9L0") moves must not be granted here.
+            new_attacks = get_levelup_move_for_pokemon(prevo_name.lower(), int(level))
 
             for new_attack in new_attacks:
                 if new_attack not in attacks:
                     if len(attacks) < 4:
                         attacks.append(new_attack)
                     else:
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
+                        # Parent to the Anki main window, not this evolution
+                        # popup. EvoWindow is a separate top-level window that
+                        # gets torn down/hidden mid-flow; a child dialog of it
+                        # can lose its focus/taskbar cue or misbehave on macOS.
+                        # Let exec() establish modality before the timer raises
+                        # and activates the visible dialog.
+                        dialog = AttackDialog(attacks, new_attack, parent=mw)
+                        QTimer.singleShot(
+                            0,
+                            lambda: (
+                                dialog.raise_(),
+                                dialog.activateWindow(),
+                            ),
+                        )
+                        try:
+                            _accepted = dialog.exec() == QDialog.DialogCode.Accepted
+                        finally:
+                            dialog.deleteLater()
+                        if _accepted:
                             selected_attack = dialog.selected_attack
                             try:
                                 index_to_replace = attacks.index(selected_attack)

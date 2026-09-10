@@ -22,7 +22,6 @@ GROUPS = [
                     "SSH Access",
                     "Prevent Ankimon News on Startup",
                     "AnkiWeb Sync",
-                    "Ankimon Leaderboard",
                     "Developer Mode",
                 ],
             },
@@ -68,6 +67,7 @@ GROUPS = [
                 "settings": [
                     "Cards per Round",
                     "Review Based Damage",
+                    "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",
                 ],
@@ -93,10 +93,10 @@ GROUPS = [
     {
         "label": "Styling",
         "settings": [
-            "Styling in Reviewer",
             "Team Overview in Deck Overview",
             "Animate Time",
             "Show GIFs in Collection",
+            "Show Sprites Across Ankimon",
         ],
     },
     {
@@ -111,6 +111,7 @@ GROUPS = [
             "View Main Pokémon Front",
             "XP Bar Location",
             "Pop-Up on Defeat",
+            "Pop-Up on Item Receive",
         ],
         "chip_group": {
             "label": "HUD Element Toggles",
@@ -130,6 +131,7 @@ GROUPS = [
                 ("gui.hud_enemy_shiny_indicator", "Enemy Shiny Star"),
                 ("gui.hud_player_shiny_indicator", "Player Shiny Star"),
                 ("gui.reviewer_text_message_box", "Battle Log"),
+                ("gui.hud_styling", "Styling"),
             ],
         },
     },
@@ -202,8 +204,42 @@ GROUPS = [
                 ]
             }
         ]
+    },
+    {
+        "label": "Leaderboard",
+        "settings": [
+            "Enable Leaderboard Sync",
+            "Username",
+            "API Key"
+        ]
     }
 ]
+
+
+SECRET_SETTING_PLACEHOLDER = "********"
+
+
+def serialize_secret_setting(value):
+    """Return a browser-safe representation of a stored secret setting."""
+    configured = bool(value)
+    return {
+        "type": "password",
+        "value": SECRET_SETTING_PLACEHOLDER if configured else "",
+        "secret_configured": configured,
+        "secret_placeholder": SECRET_SETTING_PLACEHOLDER,
+    }
+
+
+def is_unchanged_secret_placeholder(value) -> bool:
+    """Whether a web-settings value means "leave the stored secret unchanged"."""
+    return value == SECRET_SETTING_PLACEHOLDER
+
+
+def display_setting_value(key, value):
+    """Redact secrets before rendering a settings-change summary."""
+    if key == "leaderboard.api_key" and value:
+        return SECRET_SETTING_PLACEHOLDER
+    return value
 
 
 # Active region dropdown options — preserved verbatim from the legacy window.

@@ -27,7 +27,6 @@ What's faked and why:
 from __future__ import annotations
 
 import sys
-import types
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -84,6 +83,13 @@ def _make_webengine_stubs(QWidget):
         def __getattr__(self, _):
             return lambda *a, **k: None
 
+    class _StubWebEngineProfile:
+        def __init__(self, *a, **k):
+            pass
+
+        def __getattr__(self, _):
+            return lambda *a, **k: None
+
     class _StubWebEngineSettings:
         class WebAttribute:
             JavascriptEnabled = 0
@@ -121,7 +127,12 @@ def _make_webengine_stubs(QWidget):
             # missing attrs (web-engine-only methods we don't model).
             return lambda *a, **k: None
 
-    return _StubWebEngineView, _StubWebEnginePage, _StubWebEngineSettings
+    return (
+        _StubWebEngineView,
+        _StubWebEnginePage,
+        _StubWebEngineSettings,
+        _StubWebEngineProfile,
+    )
 
 
 # --- the synchronous QueryOp ----------------------------------------------
@@ -323,15 +334,19 @@ def install(app, user_path, real_webengine=False):
     def qconnect(signal, func):
         signal.connect(func)
 
-    web_view = web_page = web_settings = None
+    web_view = web_page = web_settings = web_profile = None
     if real_webengine:
         try:
             from PyQt6.QtWebEngineWidgets import QWebEngineView as web_view
-            from PyQt6.QtWebEngineCore import QWebEnginePage as web_page, QWebEngineSettings as web_settings
+            from PyQt6.QtWebEngineCore import (
+                QWebEnginePage as web_page,
+                QWebEngineProfile as web_profile,
+                QWebEngineSettings as web_settings,
+            )
         except Exception:
-            web_view = web_page = web_settings = None
+            web_view = web_page = web_settings = web_profile = None
     if web_view is None:
-        web_view, web_page, web_settings = _make_webengine_stubs(QWidget)
+        web_view, web_page, web_settings, web_profile = _make_webengine_stubs(QWidget)
 
     # aqt.qt — faithful re-export of real PyQt6 (+ qconnect, sip, webengine stubs).
     qt = ModuleType("aqt.qt")
@@ -344,6 +359,7 @@ def install(app, user_path, real_webengine=False):
     qt.QWebEngineView = web_view
     qt.QWebEnginePage = web_page
     qt.QWebEngineSettings = web_settings
+    qt.QWebEngineProfile = web_profile
 
     # aqt.utils
     utils = ModuleType("aqt.utils")
@@ -359,6 +375,7 @@ def install(app, user_path, real_webengine=False):
     utils.QWebEngineView = web_view
     utils.QWebEnginePage = web_page
     utils.QWebEngineSettings = web_settings
+    utils.QWebEngineProfile = web_profile
 
     class _Tr:
         def __getattr__(self, _):
@@ -422,6 +439,9 @@ def install(app, user_path, real_webengine=False):
         if hasattr(qt, nm):
             setattr(aqt, nm, getattr(qt, nm))
     aqt.QWebEngineView = web_view
+    aqt.QWebEnginePage = web_page
+    aqt.QWebEngineSettings = web_settings
+    aqt.QWebEngineProfile = web_profile
 
     sys.modules["aqt"] = aqt
     sys.modules["aqt.qt"] = qt

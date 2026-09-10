@@ -120,7 +120,8 @@ def check_update_channel(d, app, db, pc, pool):
     for fn in saved_fetch:
         setattr(ud, fn, lambda *a, **k: [])
     for fn in saved_um_fetch:
-        setattr(um, fn, lambda *a, **k: None if fn != "fetch_branch_commits" else [])
+        # bind per iteration: a late-bound `fn` would make every stub return []
+        setattr(um, fn, (lambda *a, _fn=fn, **k: [] if _fn == "fetch_branch_commits" else None))
     # Preserve the original channel setting to restore after the test
     original_channel = d.services.settings.get("misc.update_channel")
     dlg = None
@@ -172,7 +173,74 @@ def check_update_channel(d, app, db, pc, pool):
             app.processEvents()
 
 
-CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel]
+def check_update_dialog_git_mode(d, app, db, pc, pool):
+    """The updater on a Git checkout: the dialog must build with the Git banner,
+    land on the Developer tab, and gate its buttons on the checkout state. This is
+    the only place the real __init__ ordering is exercised (the busy-state unit
+    tests use fakes), so it guards the "tab change before progress_bar exists"
+    crash. Every checkout state is driven through the real dialog."""
+    from Ankimon.pyobj import update_manager as um
+    import Ankimon.pyobj.update_dialog as ud
+
+    saved_fetch = {fn: getattr(ud, fn) for fn in ("fetch_releases", "fetch_tags", "fetch_branches", "fetch_open_prs",
+                                                  "is_git_clone", "get_git_checkout_info")}
+    saved_um_fetch = {fn: getattr(um, fn) for fn in ("fetch_branch_sha", "fetch_commit_date", "fetch_branch_commits",
+                                                     "fetch_branch_relation")}
+    for fn in ("fetch_releases", "fetch_tags", "fetch_branches", "fetch_open_prs"):
+        setattr(ud, fn, lambda *a, **k: [])
+    um.fetch_commit_date = lambda *a, **k: None
+    um.fetch_branch_commits = lambda *a, **k: []
+    # The canonical branch is one commit AHEAD of the checkout, so the clean case
+    # must light the Branch tab's update button; dirty/detached must not, and only
+    # the gates under test can make that difference.
+    um.fetch_branch_sha = lambda *a, **k: "f" * 40
+    um.fetch_branch_relation = lambda *a, **k: "ahead"
+    ud.is_git_clone = lambda: True
+
+    local = "a" * 40
+    cases = [
+        ("clean", {"is_git": True, "branch": "main", "sha": local[:7], "full_sha": local, "dirty": False},
+         dict(pull=True, brrr=True)),
+        ("dirty", {"is_git": True, "branch": "feat", "sha": local[:7], "full_sha": local, "dirty": True},
+         dict(pull=False, brrr=False)),
+        ("detached", {"is_git": True, "branch": "HEAD", "sha": local[:7], "full_sha": local, "dirty": False},
+         dict(pull=False, brrr=False)),
+    ]
+    problems = []
+    try:
+        for label, info, expect in cases:
+            ud.get_git_checkout_info = lambda info=info: info
+            dlg = None
+            try:
+                dlg = ud.UpdateDialog()
+                app.processEvents()
+                if dlg.tabs.currentIndex() != 2:
+                    problems.append("%s: tab=%s" % (label, dlg.tabs.currentIndex()))
+                if dlg.git_pull_btn.isEnabled() != expect["pull"]:
+                    problems.append("%s: pull_enabled=%s" % (label, dlg.git_pull_btn.isEnabled()))
+                if dlg._busy_operations:
+                    problems.append("%s: still busy after load" % label)
+                # The Branch tab must offer the fast-forward only when it can
+                # succeed: never on a detached HEAD (the label is not a ref) or a
+                # dirty tree.
+                if dlg.brrr_update_btn.isEnabled() != expect["brrr"]:
+                    problems.append("%s: brrr_enabled=%s" % (label, dlg.brrr_update_btn.isEnabled()))
+            except Exception as e:
+                problems.append("%s: raised %s: %s" % (label, type(e).__name__, e))
+            finally:
+                if dlg is not None:
+                    dlg.close()
+                    app.processEvents()
+    finally:
+        for fn, orig in saved_fetch.items():
+            setattr(ud, fn, orig)
+        for fn, orig in saved_um_fetch.items():
+            setattr(um, fn, orig)
+    return ("update_dialog (git checkout mode)", not problems, "; ".join(problems) or "3 checkout states OK")
+
+
+CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel,
+          check_update_dialog_git_mode]
 
 
 def _boot():

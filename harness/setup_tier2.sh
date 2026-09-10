@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # setup_tier2.sh — create the sudo-free Tier-2 environment for the Ankimon harness.
 #
-# Tier 2 runs the REAL add-on under real PyQt6 (offscreen). This needs PyQt6 +
-# the native Qt libraries. We get both WITHOUT touching the system:
+# Tier 2 runs the REAL add-on under real PyQt6 (offscreen). We get it WITHOUT
+# touching the system:
 #   * a venv with pip bootstrapped via get-pip.py (no python3-venv/apt needed)
-#   * PyQt6/requests/markdown installed into that venv
+#   * harness/requirements-tier2.txt installed into that venv
 #   * the native Qt .debs DOWNLOADED (not installed) and extracted into a local
 #     dir, reached via LD_LIBRARY_PATH
 #
@@ -35,8 +35,8 @@ if ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
   "$VENV/bin/python" "$T2/get-pip.py"
 fi
 
-echo "==> [2/4] PyQt6 + requests + markdown into the venv"
-"$VENV/bin/pip" install --quiet --upgrade PyQt6 requests markdown
+echo "==> [2/4] real Qt harness dependencies into the venv"
+"$VENV/bin/pip" install --quiet --upgrade -r "$REPO/harness/requirements-tier2.txt"
 
 echo "==> [3/4] download + extract native Qt libs locally (no install)"
 # Core EGL/GL/font/dbus/glib stack the offscreen Qt platform needs. Downloaded
@@ -68,6 +68,7 @@ echo "Next:"
 echo "  source .tier2/env.sh"
 echo "  python -m harness.checks.probe_real_boot"
 echo "  python -m harness.checks.probe_real_play"
+echo "For real Chromium screens, also run: bash harness/setup_webengine.sh"
 echo
 echo "Optional — real Pokemon sprites (pixel-accurate, ~600MB, sudo-free):"
 echo "  python3 harness/fetch_sprites.py"

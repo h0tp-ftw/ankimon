@@ -142,6 +142,19 @@ class _FormTolerantPokedex:
         return self._base.items()
 
 
+def _patch_engine_constants():
+    # 'allies' is the doubles target for Howl, Life Dew, Jungle Healing and Lunar
+    # Blessing, but the engine never listed it as self-targeting, so anything keyed
+    # on MOVE_TARGET_SELF resolved to the defender. In practice that is Howl alone:
+    # the boost target in find_state_instructions flipped to the opponent, so the
+    # player buffed the wild Pokemon's Attack. (The heals are unaffected -- recovery
+    # goes through get_instructions_from_attacker_recovery, which keys on
+    # heal_target, not on this list.) Ankimon is singles-only, so 'allies' is always
+    # the user.
+    if "allies" not in constants.MOVE_TARGET_SELF:
+        constants.MOVE_TARGET_SELF.append("allies")
+
+
 def _install_form_tolerant_pokedex():
     # Patch the modules whose lookups are keyed by a live battler's id/name. The
     # weight moves in modify_move are the confirmed crash; damage_calculator's
@@ -155,12 +168,95 @@ def _install_form_tolerant_pokedex():
     damage_calculator.pokedex = view
 
 
-try:
-    _install_form_tolerant_pokedex()
-except Exception:
-    # Never let a hardening patch break battle import; the raw engine still works
-    # for every canonical Pokemon, which is the overwhelming majority.
-    pass
+def _install_stancechange_compat():
+    """Support Shield's explicit id and reversible stats for all Aegislash forms.
+
+    poke-engine uses ``aegislash`` for Shield Forme, while Ankimon serializes
+    that same battler as ``aegislashshield``. Temporarily translate only for
+    the engine call and restore the live object even if the engine raises.
+    The engine also puts current HP in its old-stat tuple, but its mutator
+    reverses that field into max HP. Correct it before outcome exploration.
+    """
+    from ..poke_engine.special_effects.abilities import before_move
+
+    original_stancechange = before_move.stancechange
+    if getattr(original_stancechange, "_ankimon_stancechange_compat", False) == 2:
+        return
+
+    def patched_stancechange(
+        state, attacking_side, attacking_move, attacking_pokemon, defending_pokemon
+    ):
+        original_id = attacking_pokemon.id
+        if original_id not in ("aegislashshield", "aegislash", "aegislashblade"):
+            return original_stancechange(
+                state,
+                attacking_side,
+                attacking_move,
+                attacking_pokemon,
+                defending_pokemon,
+            )
+
+        original_maxhp = attacking_pokemon.maxhp
+        if original_id == "aegislashshield":
+            attacking_pokemon.id = "aegislash"
+        try:
+            instructions = original_stancechange(
+                state,
+                attacking_side,
+                attacking_move,
+                attacking_pokemon,
+                defending_pokemon,
+            )
+        finally:
+            attacking_pokemon.id = original_id
+
+        if instructions is None:
+            return None
+        return [
+            (instr[0], instr[1], instr[2], (original_maxhp, *instr[3][1:]))
+            if instr[0] == constants.MUTATOR_CHANGE_STATS and instr[1] == attacking_side
+            else instr
+            for instr in instructions
+        ]
+
+    # Version the guard so hot-reloading over the older id-only adapter still
+    # installs this correction, while repeated installation remains idempotent.
+    patched_stancechange._ankimon_stancechange_compat = 2
+    before_move.stancechange = patched_stancechange
+
+
+def _apply_engine_patch(patch):
+    """Apply one hardening patch, recording a failure without propagating it.
+
+    Never let a hardening patch break battle import; the raw engine still works
+    for every canonical Pokemon, which is the overwhelming majority. The patches
+    are independent, so a failure in one must not swallow the others.
+
+    Failing silently, though, is how a lost patch becomes an unexplainable bug
+    report months later: without _patch_engine_constants Howl's boost goes back
+    on the opponent, and without _install_stancechange_compat Aegislash keeps the
+    wrong stance. Log it instead. ``services.logger`` is None until the registry
+    is populated (headless imports, Tier-1 harness), so the record is best-effort
+    by design and its own failure must not escape either.
+    """
+    try:
+        patch()
+    except Exception as e:
+        logger = getattr(services, "logger", None)
+        if logger is None:
+            return
+        try:
+            logger.log(
+                "error",
+                f"poke-engine compatibility patch {patch.__name__} failed: {e}",
+            )
+        except Exception:
+            pass
+
+
+_apply_engine_patch(_patch_engine_constants)
+_apply_engine_patch(_install_form_tolerant_pokedex)
+_apply_engine_patch(_install_stancechange_compat)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:

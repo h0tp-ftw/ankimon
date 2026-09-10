@@ -11,12 +11,33 @@ on:
         required: false
         type: string
 
-# This workflow runs the ENTIRE release in one job on the built-in GITHUB_TOKEN
-# (which never expires) — prepare -> integrity test -> commit + tag -> build ->
-# publish. It deliberately does NOT hand off to main.yml via a tag push: GitHub
-# won't trigger a second workflow from a tag pushed with GITHUB_TOKEN, and a PAT
-# just to trigger that hand-off is a fragile, expiring dependency. Folding the
-# build+publish in here removes it entirely.
+# This workflow runs the whole release end to end — prepare -> integrity test ->
+# commit + tag -> build, then a manual approval gate, then publish — without any
+# long-lived stored credential. It deliberately does NOT hand off to main.yml via
+# a tag push: GitHub won't trigger a second workflow from a tag pushed with
+# GITHUB_TOKEN, and a PAT just to trigger that hand-off is a fragile, expiring
+# dependency to have to store and rotate. Folding the build+publish in here
+# removes it entirely.
+#
+# On tokens: GITHUB_TOKEN is scoped to a single job. Actions mints a fresh one
+# per job and it dies when that job ends (6h ceiling on hosted runners), so it is
+# not one token spanning the run. That is precisely what makes the approval gate
+# safe to wait on for days: `publish` is issued its own new token when it finally
+# starts, rather than needing one to survive the wait. The tag push and the
+# release creation each use their job's GITHUB_TOKEN; the push to `main` needs
+# more than that, and uses the App installation token — see the NOTE below.
+#
+# It is split across two jobs on purpose. AnkiWeb must be updated BEFORE the
+# GitHub release exists, because Anki decides an add-on is out of date by
+# comparing timestamps rather than version numbers — whichever channel publishes
+# last looks newer, so a GitHub-first release leaves in-app updater users being
+# offered the AnkiWeb build. AnkiWeb has no upload API (scripting the private one
+# is against its Terms), so the upload is a human step and the `ankiweb`
+# environment gate is what forces it to happen in the right order.
+#
+#   dispatch -> build (bump, tag, package) -> [you upload to AnkiWeb, approve] -> publish
+#
+# The step-by-step is on the `publish` job below.
 #
 # NOTE: pushing the version-bump commit to `main` uses a GitHub App installation
 # token (minted below via create-github-app-token) — `main` has a ruleset that
@@ -26,11 +47,19 @@ on:
 # unaffected (the ruleset targets the main branch only), so they stay on
 # GITHUB_TOKEN.
 jobs:
-  release:
+  # Everything up to a finished .ankiaddon. The version bump, the tag and the
+  # push to main all happen here, because `aab build` dates the manifest from
+  # the tag and so needs it to exist first. An abandoned run therefore leaves
+  # main claiming a version that was never released — recoverable by approving
+  # the held run (it waits 30 days), or by reverting the bump and deleting the tag.
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read
+    outputs:
+      release_tag: ${{ steps.vars.outputs.release_tag }}
+      module_name: ${{ steps.vars.outputs.module_name }}
     # Bind the workflow_dispatch inputs to env vars once, then reference them as
     # "$VERSION" / "$HIGHLIGHTS" in every run: block. Expanding
     # ${{ github.event.inputs.* }} straight into a shell script is a
@@ -264,13 +293,98 @@ jobs:
               f.write(content)
           EOF
 
+      # Pinned to a commit, like the third-party actions above. The artifact is
+      # the only thing crossing the approval gate — between this upload and the
+      # download below sits a human step and an arbitrary wait, so a mutable tag
+      # here means the code that carries the release could change underneath a
+      # run that is already half-approved.
+      #
+      # Both paths are relative to the workspace, so the artifact's root is their
+      # least common ancestor — the workspace — and the layout the publish job
+      # sees is "build/*.ankiaddon" plus "patched_changelog.md" at the top level.
+      # The publish job's paths depend on that; the verification step there fails
+      # the run if it ever stops holding.
+      - name: Hand the package to the publish job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ankiaddon
+          path: |
+            build/*.ankiaddon
+            patched_changelog.md
+          if-no-files-found: error
+          retention-days: 30
+
+  # AnkiWeb has no public upload API, and scripting the private one is against
+  # its Terms — so the upload stays a human step. It has to happen BEFORE the
+  # GitHub release exists, because Anki compares timestamps rather than version
+  # numbers: whichever channel is published last looks newer. Publishing to
+  # GitHub first leaves every in-app updater user with a meta.json "mod" older
+  # than the AnkiWeb listing, which is exactly the state that offers them the
+  # AnkiWeb build as an "update".
+  #
+  # The environment holds this job until a required reviewer approves it.
+  # Configure it once: Settings → Environments → New environment → "ankiweb",
+  # then add yourself under "Required reviewers".
+  #
+  #   1. Download the "ankiaddon" artifact from this run.
+  #   2. Upload Ankimon.ankiaddon at https://ankiweb.net/shared/addons/
+  #   3. Approve this job. The GitHub release then goes out, dated after it.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment:
+      name: ankiweb
+      url: https://ankiweb.net/shared/addons/
+    steps:
+      - name: Download the package built above
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ankiaddon
+
+      # By the time this job runs, AnkiWeb has already been updated — that is the
+      # whole point of the gate above. So this is the last moment a missing file
+      # can still be caught for free: publishing a release with no .ankiaddon
+      # attached, or with an empty body, would leave the two channels
+      # disagreeing with no way to un-publish the AnkiWeb upload. Assert the
+      # layout the build job produced rather than trusting it, so a future change
+      # to the upload paths fails loudly here instead of shipping a broken release.
+      - name: Verify the artifact is complete
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          if [ ! -s patched_changelog.md ]; then
+            echo "::error::patched_changelog.md is missing or empty — the release body would be blank."
+            exit 1
+          fi
+          packages=(build/*.ankiaddon)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "::error::No build/*.ankiaddon in the artifact — the release would ship without the add-on."
+            ls -R . || true
+            exit 1
+          fi
+          # The changelog's download link is hard-coded to this exact filename.
+          if [ ! -s build/Ankimon.ankiaddon ]; then
+            echo "::error::build/Ankimon.ankiaddon is missing or empty — the changelog's download link would 404."
+            exit 1
+          fi
+          echo "Publishing ${#packages[@]} package(s): ${packages[*]}"
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
-          tag_name: ${{ steps.vars.outputs.release_tag }}
-          name: "${{ steps.vars.outputs.module_name }} v${{ steps.vars.outputs.release_tag }}"
+          tag_name: ${{ needs.build.outputs.release_tag }}
+          name: "${{ needs.build.outputs.module_name }} v${{ needs.build.outputs.release_tag }}"
           body_path: patched_changelog.md
           files: build/*.ankiaddon
+          # Belt and braces with the verification step above: this action's
+          # default is to publish happily when `files` matches nothing, which at
+          # this point in the run would mean a release with no add-on attached
+          # and AnkiWeb already updated. The two guards are independent — this
+          # one keeps holding if the glob above ever drifts from the one the
+          # verification step checks.
+          fail_on_unmatched_files: true
           draft: false
           generate_release_notes: false
         env:

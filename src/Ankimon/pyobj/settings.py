@@ -33,8 +33,10 @@ DEFAULT_CONFIG = {
     "controls.allow_to_choose_moves": False,
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
-    "gui.styling_in_reviewer": True,
+    "gui.show_sprites_across_ankimon": True,
+    "gui.hud_styling": True,
     "gui.pop_up_dialog_message_on_defeat": False,
+    "gui.pop_up_dialog_message_on_item": True,
     "gui.review_hp_bar_thickness": 2,
     "gui.reviewer_image_gif": False,
     "gui.reviewer_text_message_box": True,
@@ -97,7 +99,20 @@ DEFAULT_CONFIG = {
     "mobile.enabled": True,
     "mobile.resolution_mode": "manual",
     "mobile.inactive_companions": [],
+    "leaderboard.username": "",
+    "leaderboard.api_key": "",
 }
+
+HUD_TOGGLE_AUTO_SYNC_KEYS = (
+    "gui.hud_player_sprite",
+    "gui.hud_enemy_sprite",
+    "gui.hud_xp_bar",
+    "gui.hud_hp_bars",
+    "gui.hud_status_badge",
+    "gui.hud_owned_indicator",
+    "gui.hud_enemy_shiny_indicator",
+    "gui.hud_player_shiny_indicator",
+)
 
 
 class Settings:
@@ -177,12 +192,21 @@ class Settings:
             if default is None and config.get(key) == "None":
                 config[key] = None
 
+        # gui.styling_in_reviewer was renamed to gui.hud_styling when the
+        # setting moved into the HUD Element Toggles group. Carry the stored
+        # value across once; the new key is authoritative from then on, so a
+        # legacy row that somehow reappears can never overwrite it.
+        styling_migrated = "gui.styling_in_reviewer" in config
+        if styling_migrated:
+            legacy_styling = config.pop("gui.styling_in_reviewer")
+            config.setdefault("gui.hud_styling", legacy_styling)
+
         # Ensure all default settings are present. A stored value of ``None``
         # is treated as "unset" and reseeded from the DEFAULT_CONFIG value —
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
-        modified = False
+        modified = styling_migrated
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None
@@ -191,7 +215,28 @@ class Settings:
                 config[key] = DEFAULT_CONFIG[key]
 
         if modified:
-            self.save_config(config)
+            # Persist schema/default migration without triggering behavioral
+            # side effects such as HUD autosync. Existing user HUD preferences
+            # must survive the introduction of a new master visibility key.
+            self.save_config(config, apply_hud_autosync=False)
+
+        # Drop the renamed key's row, but only once gui.hud_styling is really
+        # in the store. save_all_config upserts and never deletes, so a row left
+        # behind is read back on every load: it would re-seed the migration
+        # forever and revert the user's own Styling choice at every startup.
+        # save_config swallows a failed DB write, though, so "it returned" is
+        # not "it persisted" — deleting on a failed save would destroy the
+        # stored value outright, where leaving the row simply retries the
+        # migration on the next load.
+        if styling_migrated and services.db is not None:
+            try:
+                if services.db.get_config_value("gui.hud_styling") is not None:
+                    services.db.delete_config_value("gui.styling_in_reviewer")
+            except Exception as e:
+                print(
+                    "Ankimon: Failed to delete legacy config key "
+                    f"'gui.styling_in_reviewer': {e}"
+                )
 
         # Preserve the identity of ``self.config`` across (re)loads: external
         # holders of the dict keep observing updates instead of a stale rebind.
@@ -226,7 +271,54 @@ class Settings:
                         f"Ankimon: Warning: Could not convert '{config[key]}' for key '{key}' to int."
                     )
 
-    def save_config(self, config):
+    def _apply_hud_toggle_autosync(
+        self, config, previous_value=None, explicit_overrides=None
+    ):
+        """When the main sprite visibility setting changes, mirror that choice
+        into the reviewer HUD toggles for the listed elements.
+
+        The global setting is authoritative for HUD toggles the user did not
+        explicitly override in the same save transaction.
+        """
+        if not isinstance(config, dict):
+            return []
+
+        main_key = "gui.show_sprites_across_ankimon"
+        if main_key not in config:
+            return []
+
+        current_value = config.get(main_key, True)
+
+        # Autosync is a change-side effect, not a migration/default-seeding
+        # side effect. A missing previous value means there is no user-initiated
+        # transition to mirror.
+        if previous_value is None or previous_value == current_value:
+            return []
+
+        explicit_overrides = set(explicit_overrides or ())
+
+        changed_keys = []
+        for key in HUD_TOGGLE_AUTO_SYNC_KEYS:
+            if key in explicit_overrides:
+                continue
+            if config.get(key, True) != current_value:
+                config[key] = current_value
+                changed_keys.append(key)
+
+        return changed_keys
+
+    def save_config(
+        self, config, explicit_overrides=None, apply_hud_autosync=True
+    ):
+        previous_value = None
+        if hasattr(self, "config") and self.config is not None:
+            previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
+
+        if apply_hud_autosync:
+            self._apply_hud_toggle_autosync(
+                config, previous_value, explicit_overrides
+            )
+
         # 1. Always save to database if available
         if services.db is not None:
             try:
@@ -276,19 +368,26 @@ class Settings:
             return default
         return DEFAULT_CONFIG.get(key)
 
-    def set(self, key, value):
+    def set(self, key, value, explicit_overrides=None):
+        previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
         self.config[key] = value
+        changed_keys = self._apply_hud_toggle_autosync(
+            self.config, previous_value, explicit_overrides
+        )
+
         # Persist ONLY the changed key. The previous implementation re-saved the
         # entire config (~60 rows + a commit) on every set; the battle loop awards
         # cash per review, so a single battle rewrote all of config dozens of times.
         if services.db is not None:
             try:
                 services.db.set_config_value(key, value)
+                for changed_key in changed_keys:
+                    services.db.set_config_value(changed_key, self.config[changed_key])
             except Exception as e:
                 print(f"Ankimon: Failed to save config key '{key}': {e}")
         else:
             # No DB yet (very early boot / legacy) — fall back to the full save.
-            self.save_config(self.config)
+            self.save_config(self.config, explicit_overrides)
             return
         self._save_legacy_obf_if_present()
         self.compute_gui_config()

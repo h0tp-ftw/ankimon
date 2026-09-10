@@ -3,10 +3,15 @@
 Pins the OBSERVABLE contract of the ported encounter display:
 
 * ``init_ui`` builds ONE persistent layout (a ``main_label`` plus a hidden
-  death-screen ``button_widget``) and a fixed 556x300 window — no
+  death-screen ``button_widget``) in a margin-free window pinned to the battle
+  scenes' 556px width, with the height left to the layout — no
   rebuild-per-encounter: the layout and label objects keep their identity
   across ``display_first_encounter`` / ``display_battle`` /
   ``display_pokemon_death`` calls.
+* No view is cropped: every scene the window renders fits inside
+  ``main_label`` at its natural size (the regression a fixed 556x300 window
+  caused — it cut the message bar off the foot of the battle scene and clipped
+  11px off each side of it).
 * ``_get_display_name`` routes mega/gmax internal names through the base's
   ``pokedex_functions.get_pretty_name_for_name`` (expectations validated
   against the real ``data_files/pokedex.json``), and everything else through
@@ -80,9 +85,13 @@ class _FakePokemon:
         self.xp = kw.get("xp", 0)
         self.growth_rate = kw.get("growth_rate", "medium")
         self.cp = kw.get("cp", 345)
+        # Defaults to a real PNG so the sprite-scaling math runs; the issue #101
+        # tests override it with a path that does not exist, modelling a sprite
+        # the user never downloaded.
+        self.sprite_path = kw.get("sprite_path", _REAL_SPRITE)
 
     def get_sprite_path(self, side, ext):
-        return _REAL_SPRITE
+        return self.sprite_path
 
 
 class _FakeClock:
@@ -228,15 +237,90 @@ def test_init_ui_builds_persistent_scaffolding(make_window):
     assert layout.itemAt(1).widget() is win.button_widget
     assert win.button_widget.isHidden()
 
-    # Fixed 556x300 window (exp's fixed size/styling)
-    assert (win.minimumWidth(), win.minimumHeight()) == (556, 300)
-    assert (win.maximumWidth(), win.maximumHeight()) == (556, 300)
+    # Width is pinned to the battle scenes' own width; the height is the
+    # layout's to decide, so a taller view can never be cut off.
+    assert win.minimumWidth() == win.maximumWidth() == 556
+    assert win.maximumHeight() > win.minimumHeight()
+
+    # No contents margins: the 556px-wide scene has to reach both edges of a
+    # 556px-wide window, and QVBoxLayout's default 11px inset would crop it.
+    margins = layout.contentsMargins()
+    assert (margins.left(), margins.right()) == (0, 0)
+
     assert "rgb(44,44,44)" in win.styleSheet()
 
     # The Ankimon logo landed on the persistent label
     assert win.main_label.pixmap() is not None
     assert not win.main_label.pixmap().isNull()
     assert win.windowTitle() == "Ankimon Window"
+
+
+@pytest.mark.parametrize("view", ["first_encounter", "battle", "death"])
+def test_no_view_is_cropped(make_window, qapp, view):
+    """Every view renders at its natural size — nothing is cut off.
+
+    The regression this pins: ``init_ui`` used to pin the window to 556x300,
+    but the battle scene WITH its dialog box is 556x371, so the message bar
+    along its foot fell outside the window entirely. Both axes were wrong —
+    the layout's default 11px side margins also left the 556px-wide scene only
+    534px to draw in, shaving 11px off each side of every view.
+
+    Asserting on ``main_label`` rather than on the size constraints is what
+    makes this bite: a QLabel silently centre-crops a pixmap too big for it,
+    so the only honest question is whether the label is at least as large as
+    what it was handed. The window has to be shown for Qt to resolve the
+    layout against the real constraints (the suite runs offscreen).
+    """
+    win = make_window()
+    win.show()
+    qapp.processEvents()
+
+    if view == "first_encounter":
+        win.ankimon_tracker_obj.pokemon_encounter = 0  # the 556x371 scene
+        win.display_first_encounter()
+    elif view == "battle":
+        win.ankimon_tracker_obj.pokemon_encounter = 3  # the 555x258 scene
+        win.display_battle()
+    else:
+        win.display_pokemon_death()
+    qapp.processEvents()
+
+    pixmap = win.main_label.pixmap()
+    assert pixmap is not None and not pixmap.isNull()
+
+    assert win.main_label.width() >= pixmap.width(), (
+        f"{view}: {pixmap.width()}px-wide art cropped to a "
+        f"{win.main_label.width()}px label"
+    )
+    assert win.main_label.height() >= pixmap.height(), (
+        f"{view}: {pixmap.height()}px-tall art cropped to a "
+        f"{win.main_label.height()}px label"
+    )
+
+    win.hide()
+
+
+def test_death_view_keeps_room_for_the_buttons(make_window, qapp):
+    """The catch/defeat row is inside the window, not pushed past its foot.
+
+    The death view is the tallest thing after the battle scene — the pokedex
+    card plus the button row — and it is the view a fixed height is most
+    likely to clip, since the buttons are added below the art rather than
+    drawn into it.
+    """
+    win = make_window()
+    win.show()
+    qapp.processEvents()
+    win.display_pokemon_death()
+    qapp.processEvents()
+
+    assert not win.button_widget.isHidden()
+    button_bottom = win.button_widget.geometry().bottom()
+    assert button_bottom <= win.height(), (
+        f"catch/defeat row ends at y={button_bottom} in a {win.height()}px window"
+    )
+
+    win.hide()
 
 
 def test_layout_identity_persists_across_display_calls(make_window):
@@ -256,6 +340,31 @@ def test_layout_identity_persists_across_display_calls(make_window):
     assert win.layout().count() == 2
     assert win.current_view == "battle"
     assert not win.main_label.pixmap().isNull()
+
+
+def test_hp_none_values_render_in_encounter_and_battle_views(make_window):
+    main = _FakePokemon("pikachu", 25, hp=None, max_hp=None, type=["electric"])
+    enemy = _FakePokemon("charizard", 6, hp=None, max_hp=None, type=["fire", "flying"])
+    win = make_window(main=main, enemy=enemy)
+
+    assert win._safe_hp_pair(None, None) == (0, 1)
+    assert win._safe_hp_pair("invalid", 0) == (0, 1)
+
+    win.display_first_encounter()
+    assert win.current_view == "battle"
+    assert not win.main_label.pixmap().isNull()
+
+    win._last_display_time = 0
+    win.display_battle()
+    assert win.current_view == "battle"
+    assert not win.main_label.pixmap().isNull()
+
+
+def test_hp_values_are_clamped_to_normalized_maximum(make_window):
+    win = make_window()
+
+    assert win._safe_hp_pair(150, 100) == (100, 100)
+    assert win._safe_hp_pair(10**400, 1) == (1, 1)
 
 
 def test_first_encounter_resets_counter_and_battle_does_not_increment(make_window):
@@ -426,3 +535,123 @@ def test_death_buttons_route_through_hook_registry_seam(make_window, monkeypatch
     calls.clear()
     win.catch_button.click()
     assert calls == [("catch", {6, 25})]
+
+
+# --- issue #101: a missing sprite must not take the window down -------------
+#
+# `QPixmap.load` reports a missing/corrupt file by returning False rather than
+# raising, so a sprite the user never downloaded left a NULL pixmap (width 0)
+# and the aspect-ratio maths blew up with "integer division or modulo by zero".
+# The reporter hit it whenever Scatterbug (id 664) was their main Pokemon —
+# only the main's *back* sprite was absent.
+
+
+@pytest.fixture
+def missing_sprite(tmp_path):
+    """A sprite path guaranteed not to exist.
+
+    Deliberately NOT a path under ``user_files/sprites/`` — that directory is
+    gitignored and gets populated by the real sprite download, so a developer
+    who has fetched sprites would silently be testing a sprite that IS there.
+    """
+    path = tmp_path / "back_default" / "664.png"
+    assert not path.exists()
+    return path
+
+
+@pytest.mark.parametrize(
+    "render", ["pokemon_display_first_encounter", "pokemon_display_battle"]
+)
+@pytest.mark.parametrize("missing", ["main", "enemy", "both"])
+def test_missing_sprite_renders_instead_of_dividing_by_zero(
+    make_window, missing_sprite, render, missing
+):
+    """Both battle renders survive a sprite file that isn't on disk."""
+    main = _FakePokemon(
+        "scatterbug",
+        664,
+        type=["bug"],
+        sprite_path=missing_sprite if missing in ("main", "both") else _REAL_SPRITE,
+    )
+    enemy = _FakePokemon(
+        "charizard",
+        6,
+        type=["fire", "flying"],
+        sprite_path=missing_sprite if missing in ("enemy", "both") else _REAL_SPRITE,
+    )
+
+    win = make_window(main=main, enemy=enemy)
+
+    label = getattr(win, render)()  # used to raise ZeroDivisionError
+    assert label is not None
+
+
+def test_missing_sprite_falls_back_to_the_substitute_pixmap(
+    make_window, missing_sprite
+):
+    """The fallback actually loads — the user sees a substitute, not a blank.
+
+    The old ``try/except`` around ``QPixmap.load`` never fired, so the
+    substitute was never reached. ``default_path`` is pointed at a real PNG
+    here because the shipped substitute.png only lands in ``user_files`` after
+    the runtime sprite download.
+    """
+    main = _FakePokemon("scatterbug", 664, sprite_path=missing_sprite)
+    win = make_window(main=main)
+    win.default_path = _REAL_SPRITE
+
+    pixmap = win._load_sprite(main, "back")
+
+    assert not pixmap.isNull()
+    assert pixmap.width() > 0
+
+
+def test_raising_sprite_lookup_still_reaches_the_substitute(make_window):
+    """A ``get_sprite_path`` that blows up must fall back, as it always did."""
+
+    class _Exploding(_FakePokemon):
+        def get_sprite_path(self, side, ext):
+            raise RuntimeError("pokedex lookup failed")
+
+    main = _Exploding("scatterbug", 664)
+    win = make_window(main=main)
+    win.default_path = _REAL_SPRITE
+
+    assert not win._load_sprite(main, "back").isNull()
+
+
+def test_zero_max_hp_does_not_crash_the_hp_bar(make_window, tw_module):
+    """A corrupt save carrying max_hp = 0 draws an empty bar, not a traceback."""
+    from PyQt6.QtGui import QPainter, QPixmap
+
+    win = make_window()
+    canvas = QPixmap(100, 100)
+    painter = QPainter(canvas)
+    try:
+        assert win.draw_hp_bar(0, 0, 8, 116, 0, 0, painter) is painter
+    finally:
+        painter.end()
+
+
+@pytest.mark.parametrize(
+    "render", ["pokemon_display_first_encounter", "pokemon_display_battle"]
+)
+def test_zero_experience_does_not_crash_the_xp_bar(
+    make_window, tw_module, monkeypatch, render
+):
+    """A 0 from the exp-table lookup draws an empty XP bar, not a traceback.
+
+    Patched at the module seam instead of asserting a particular
+    ``find_experience_for_level`` return value, so this pins the divisor guard
+    itself and stays valid however that lookup behaves — main clamps its
+    sub-100 result to ``max(1, experience)``, so no real growth rate reaches 0
+    today. Both renders compute the divisor (``window_show`` for the first
+    encounter, ``pokemon_display_battle`` for the rest), so both are driven.
+    """
+    monkeypatch.setattr(tw_module, "find_experience_for_level", lambda *a, **kw: 0)
+
+    # The growth rate is deliberately left at the default: the patch above makes
+    # it irrelevant, and that is the point — the divisor is what is under test.
+    win = make_window(main=_FakePokemon("scatterbug", 664, xp=10))
+
+    assert getattr(win, render)() is not None

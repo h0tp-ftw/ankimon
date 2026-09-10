@@ -6,8 +6,24 @@ from ..services import services
 from ..utils import daily_item_list
 from ..resources import pokemon_tm_learnset_path
 
-# Daily Rotating Items Pool
-DAILY_ITEMS_POOL = daily_item_list()
+# Daily Rotating Items Pool, built on first use rather than at import time.
+#
+# `daily_item_list()` scans the sprites directory and, when it is missing, opens
+# the sprite-download agreement dialog. Doing that at module scope made merely
+# importing this module scan the disk and potentially pop a modal — and this
+# module is imported by `singletons`, which `battle_loop` imports lazily from
+# inside `on_review_card`. So the first card review of a fresh profile could
+# surface a download dialog from inside a stats notification, and a headless
+# run (the agent harness) aborted outright on the QWidget construction.
+_DAILY_ITEMS_POOL = None
+
+
+def get_daily_items_pool():
+    """Return the daily-shop item pool, building it once on first call."""
+    global _DAILY_ITEMS_POOL
+    if _DAILY_ITEMS_POOL is None:
+        _DAILY_ITEMS_POOL = daily_item_list() or []
+    return _DAILY_ITEMS_POOL
 
 
 class PokemonShopManager:
@@ -38,20 +54,25 @@ class PokemonShopManager:
         db = services.db
         shop_data = db.get_user_data("todays_shop")
         if shop_data:
-            if shop_data.get("items") and shop_data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+            if shop_data.get("items") and shop_data.get(
+                "date"
+            ) == datetime.now().strftime("%Y-%m-%d"):
                 return shop_data.get("items")
 
         seed = datetime.now().strftime("%Y-%m-%d")
         rng = random.Random(seed)
-        num_items = min(self.number_of_daily_items, len(DAILY_ITEMS_POOL))
-        return rng.sample(DAILY_ITEMS_POOL, num_items)
+        pool = get_daily_items_pool()
+        num_items = min(self.number_of_daily_items, len(pool))
+        return rng.sample(pool, num_items)
 
     def get_daily_tms(self):
         """Works like get_daily_items, but for TMs"""
         db = services.db
         shop_data = db.get_user_data("todays_shop")
         if shop_data:
-            if shop_data.get("technical_machines") and shop_data.get("date") == datetime.now().strftime("%Y-%m-%d"):
+            if shop_data.get("technical_machines") and shop_data.get(
+                "date"
+            ) == datetime.now().strftime("%Y-%m-%d"):
                 return shop_data.get("technical_machines")
 
         tm_pool = self.get_tm_pool()

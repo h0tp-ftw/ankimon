@@ -151,7 +151,7 @@ def get_settings_window():
         from .pyobj.settings_window import SettingsWindow
 
         win = SettingsWindow(
-            config=settings_obj.config,  # Use settings_obj.config instead of settings_obj.settings.config
+            config=dict(settings_obj.config),  # detached copy to avoid live mutation aliasing
             set_config_callback=settings_obj.set,
             save_config_callback=settings_obj.save_config,
             load_config_callback=settings_obj.load_config,
@@ -374,13 +374,35 @@ def notify_stats_changed():
     anything) to refresh based on its current screen (see
     ``AnkimonItemsWeb.refresh_live_screen`` and ``LIVE_UPDATES.md``).
 
+    Also refreshes the player's public leaderboard entry, since the same set of
+    call sites is exactly "the player's stats just changed". That push runs
+    whether or not a shell window is open, so it happens before the live-screen
+    early-return below.
+
     Pure best-effort and cheap: never creates the window, no-ops when no live
-    screen is visible, and swallows any error so a UI hiccup can't interfere
-    with gameplay. Call it from gameplay write chokepoints via a deferred
+    screen is visible, no-ops when the leaderboard is switched off (the
+    default), and swallows any error so a UI hiccup can't interfere with
+    gameplay. Main-thread only — background callers (mobile sync worker
+    threads) get neither refresh, and pick both up on their next main-thread
+    notification. Call it from gameplay write chokepoints via a deferred
     ``from .singletons import notify_stats_changed`` wrapped in try/except."""
     from .utils import is_main_thread
     if not is_main_thread():
         return
+
+    # Leaderboard push. TrainerCard.sync_leaderboard() reads the misc.leaderboard
+    # opt-in before touching the database and rate limits itself, so this costs
+    # a getattr for the users who never enable it, and the HTTP request itself
+    # is already handed to a daemon thread by ankimon_leaderboard.
+    try:
+        from .services import services
+
+        trainer_card = getattr(services, "trainer_card", None)
+        if trainer_card is not None:
+            trainer_card.sync_leaderboard()
+    except Exception as e:
+        print(f"[Ankimon] leaderboard sync from notify_stats_changed failed: {e}")
+
     global _items_web_window
     if not is_alive(_items_web_window):
         return
@@ -426,8 +448,14 @@ def swap_ankimon_account():
     from aqt.utils import tooltip
     from .functions.update_main_pokemon import update_main_pokemon
     from .functions.encounter_functions import new_pokemon, clear_encounter_cache
+    from .functions.mobile_sync import _mobile_sync_lock
 
+    mobile_lock_acquired = False
     try:
+        mobile_lock_acquired = _mobile_sync_lock.acquire(blocking=False)
+        if not mobile_lock_acquired:
+            tooltip("Cannot switch accounts while mobile battles are resolving.")
+            return
         # services.db (or its db_path) can be None during init / in headless
         # environments; read the active name inside the try so a missing DB
         # fails gracefully into the tooltip rather than raising an uncaught
@@ -519,6 +547,9 @@ def swap_ankimon_account():
         import traceback
 
         traceback.print_exc()
+    finally:
+        if mobile_lock_acquired:
+            _mobile_sync_lock.release()
 
 
 # DEFERRED seam points (do NOT add here in F31):

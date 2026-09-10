@@ -76,15 +76,55 @@ PC box).
 mode**. Nothing is drawn, but the real widgets/memory/PC box are all live, which
 is what makes real-Qt glitches and "crash after N encounters" reproducible.
 
-It needs PyQt6 + native Qt libs. The setup is **sudo-free** (a venv with pip
-bootstrapped via get-pip.py, and the Qt `.deb`s *downloaded and extracted* into a
-local dir — nothing installed system-wide; `rm -rf .tier2` undoes it):
+Base Tier 2 needs PyQt6 and native Qt libs. Its setup scripts require a Linux
+userland because they use `apt-get`, `dpkg-deb`, Linux library paths, and `/proc`
+memory statistics. On Windows, run Tier 2 from **WSL**, not PowerShell or Git
+Bash; the checkout can remain on `C:` and be opened through `/mnt/c/...`.
+
+The setup is **sudo-free** (a venv with pip bootstrapped via get-pip.py, and the
+Qt `.deb`s *downloaded and extracted* into a local dir — nothing installed
+system-wide; `rm -rf .tier2` undoes it). These are harness-only dependencies and
+are never shipped in the `.ankiaddon`:
 
 ```bash
 bash harness/setup_tier2.sh        # one-time: builds .tier2/ (venv + local Qt libs)
 source .tier2/env.sh               # LD_LIBRARY_PATH + QT_QPA_PLATFORM=offscreen + venv
 python -m harness.checks.probe_real_boot   # real add-on boots; objects are the REAL classes
 python -m harness.checks.probe_real_play   # plays via real hooks: real windows, real battles
+python -m harness.checks.probe_real_move_selection  # real modal input + cancellation + deletion
+python -m harness.checks.probe_real_tm_learnsets  # both TM screens: form filtering + SQLite saves
+```
+
+The move-selection probe restores the real modal event loop for that dialog
+after boot (and restores the harness stub afterwards), and sends
+numeric and navigation key events through Qt, including the synchronous
+`focusObject()` press/release sequence used by Contanki. It covers duplicate
+input, cancellation, nested dialogs, modifiers, keypad input, and deletion.
+It runs in Tier-2 CI and through an isolated subprocess in the pytest suite.
+
+The TM probe also restores its dialog's native modal loop. It learns TMs through
+both the PC move manager and Pokémon details, checks exact owned/form-specific
+move lists against bundled tables, verifies SQLite saves and cancellation, and
+fails if either screen rereads the startup-warmed TM file. Set
+`ANKIMON_TM_SCREENSHOTS=/path/to/artifacts` to capture the Aegislash and Blaze
+Tauros pickers. It runs in Tier-2 CI and in an isolated pytest subprocess.
+
+This verifies controllers that **emit mapped keyboard events**. It does not
+emulate a physical controller or Contanki's mapping/state dispatch. In upstream
+[Contanki 7dbc573](https://github.com/roxgib/anki-contanki/blob/7dbc573144c91a586d51c5c6667ab022dcade5e8/contanki/funcs.py),
+`get_state()` returns `NoFocus` for unrecognized dialogs, and `Contanki.poll()`
+stops before emitting keys. Neither a Qt shortcut nor an application event
+filter can handle an event that was never sent. End-to-end Contanki validation
+therefore needs the installed version/fork, mappings, and its dialog support.
+
+Real browser screens use the separate `PyQt6-WebEngine` package. Install it only
+when needed, then run the strict browser probe:
+
+```bash
+bash harness/setup_webengine.sh
+source .tier2/env.sh
+export LD_LIBRARY_PATH="$PWD/.tier2/we-libs/extract/usr/lib/$(uname -m)-linux-gnu:$LD_LIBRARY_PATH"
+python -m harness.checks.probe_real_webengine  # real Chromium Settings page + DOM save
 ```
 
 Drive it from Python (same action surface as Tier 1, via real hooks/windows):
@@ -124,8 +164,11 @@ After that, each Tier-2 session symlinks its `sprites/` dir to that cache, so th
 real windows load the real sprites (verified: e.g. `rhyhorn #111` ->
 `front_default/111.png`). Set `ANKIMON_SPRITE_CACHE` to point elsewhere.
 
-Note: the 3 WebEngine windows (pokedex/achievements/help) use lightweight stubs
-so the boot doesn't need the Chromium-based `PyQt6-WebEngine`.
+Normal Tier-2 boot/play probes still allow lightweight WebEngine stubs so they
+remain useful on machines without Chromium. The dedicated
+`probe_real_webengine` check is strict: it imports `PyQt6-WebEngine`, refuses to
+fall back, opens the real HTML Settings shell, edits Trainer Name through the
+DOM, clicks Save, and verifies the SQLite-backed Settings service changed.
 
 ## Drive it from Python
 

@@ -970,9 +970,18 @@
 
         if (matched.length === 0) {
             grid.replaceChildren();
+            // Three distinct empty states. The middle one matters because the
+            // eligibility filter above can empty the list on its own, with the
+            // search box untouched: a player whose only Kirlia is female sees
+            // zero Dawn Stone candidates, and blaming a search they never typed
+            // reads as a broken picker rather than an answer.
+            const eligibilityEmptied = !q && choices.length === 0
+                && state.picker.choices.length > 0;
             empty.textContent = state.picker.choices.length === 0
                 ? "You don't have any Pokémon yet."
-                : 'No Pokémon match that search.';
+                : eligibilityEmptied
+                    ? 'None of your Pokémon can use this item.'
+                    : 'No Pokémon match that search.';
             empty.classList.remove('hidden');
             grid.style.display = 'none';
             return;

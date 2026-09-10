@@ -222,3 +222,78 @@ def test_setting_save_persists_to_db_when_gate_open(isolated_env):
     cfg = db2.get_all_config()
     assert cfg["misc.gen9"] is True
     assert cfg["controls.allow_to_choose_moves"] is True
+
+
+@pytest.mark.parametrize("writer", ["single", "bulk"])
+@pytest.mark.parametrize("reader", ["single", "bulk", "settings"])
+def test_boolean_like_text_remains_text(isolated_env, writer, reader):
+    """Boolean recovery must not change names or credentials into toggles."""
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    values = {
+        "trainer.name": "False",
+        "trainer.sprite": "True",
+        "leaderboard.username": "TRUE",
+        "leaderboard.api_key": "FALSE",
+        "extension.custom_text": "fAlSe",
+        "battle.daily_average": "False",
+    }
+    try:
+        if writer == "single":
+            for key, value in values.items():
+                db.set_config_value(key, value)
+        else:
+            db.save_all_config(values)
+
+        if reader == "single":
+            actual = {key: db.get_config_value(key) for key in values}
+        elif reader == "bulk":
+            actual = db.get_all_config()
+        else:
+            env["services"].db = db
+            actual = env["settings_mod"].Settings().config
+
+        for key, value in values.items():
+            assert actual[key] == value, key
+            assert isinstance(actual[key], str), key
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize(
+    "stored, expected",
+    [("False", False), ("TRUE", True), ("fAlSe", False), ("TrUe", True)],
+)
+def test_legacy_boolean_settings_load_as_booleans(isolated_env, stored, expected):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    key = "gui.pop_up_dialog_message_on_defeat"
+    try:
+        with db._get_connection() as conn:
+            conn.execute("INSERT INTO config (key, value) VALUES (?, ?)", (key, stored))
+
+        assert db.get_config_value(key) is expected
+        assert db.get_all_config()[key] is expected
+        env["services"].db = db
+        assert env["settings_mod"].Settings().get(key) is expected
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize("writer", ["single", "bulk"])
+@pytest.mark.parametrize("value", [True, False])
+def test_boolean_config_writes_json_booleans(isolated_env, writer, value):
+    db = isolated_env["db_mod"].AnkimonDB()
+    key = "gui.pop_up_dialog_message_on_defeat"
+    try:
+        if writer == "single":
+            db.set_config_value(key, value)
+        else:
+            db.save_all_config({key: value})
+
+        with db.execute("SELECT value FROM config WHERE key = ?", (key,)) as cursor:
+            assert cursor.fetchone()["value"] == ("true" if value else "false")
+        assert db.get_config_value(key) is value
+        assert db.get_all_config()[key] is value
+    finally:
+        db.close()
