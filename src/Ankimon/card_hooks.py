@@ -28,16 +28,29 @@ def answerCard_before(filter, reviewer, card):
 
 def answerCard_after(rev, card, ease):
     maxEase = rev.mw.col.sched.answerButtons(card)
-    if ease == 1:
-        ankimon_tracker_obj.review("again")
-    elif ease == maxEase - 2:
-        ankimon_tracker_obj.review("hard")
-    elif ease == maxEase - 1:
+
+    # Check if the user wants to ignore learning cards (with safety guard for tests/startup)
+    ignore_learning = False
+    if services.settings is not None:
+        ignore_learning = services.settings.get("battle.ignore_learning_cards", False)
+    # card.type in Anki: 0 is New, 1 is Learning, 2 is Review, 3 is Relearning
+    is_learning_card = getattr(card, "type", 2) in (0, 1)
+
+    if ignore_learning and is_learning_card:
+        # Give the card a neutral/good review multiplier contribution instead of punishing learning
         ankimon_tracker_obj.review("good")
-    elif ease == maxEase:
-        ankimon_tracker_obj.review("easy")
     else:
-        tooltip("Error in ColorConfirmation: Couldn't interpret ease")
+        if ease == 1:
+            ankimon_tracker_obj.review("again")
+        elif ease == maxEase - 2:
+            ankimon_tracker_obj.review("hard")
+        elif ease == maxEase - 1:
+            ankimon_tracker_obj.review("good")
+        elif ease == maxEase:
+            ankimon_tracker_obj.review("easy")
+        else:
+            tooltip("Error in ColorConfirmation: Couldn't interpret ease")
+
     ankimon_tracker_obj.reset_card_timer()
 
     # Mobile-review de-dupe (F29): this review was just turned into battle
