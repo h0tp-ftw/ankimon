@@ -45,17 +45,33 @@ from .move_names import format_move_name
 # Audio is optional. Under Anki these construct real Qt players; headless (the
 # agent harness / tests) there is no QtMultimedia, so we degrade to "no audio"
 # and play_sound/play_effect_sound become event-only.
+#
+# Constructing QAudioOutput/QMediaPlayer at module scope can hang indefinitely
+# on Linux if the audio backend (e.g. pipewire/pulseaudio dbus) is unresponsive.
+# Instead, we defer instantiation until the first sound is played.
 try:
     from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-    audio_output = QAudioOutput()
-    media_player = QMediaPlayer()
-    media_player.setAudioOutput(audio_output)
     _HAVE_AUDIO = True
 except Exception:
-    audio_output = None
-    media_player = None
     _HAVE_AUDIO = False
+
+audio_output = None
+media_player = None
+
+
+def _get_media_player():
+    global audio_output, media_player
+    if not _HAVE_AUDIO:
+        return None
+    if media_player is None:
+        try:
+            audio_output = QAudioOutput()
+            media_player = QMediaPlayer()
+            media_player.setAudioOutput(audio_output)
+        except Exception:
+            media_player = None
+    return media_player
 
 
 def showInfo(message, *args, **kwargs):
@@ -737,9 +753,11 @@ def play_effect_sound(settings_obj, sound_type):
             return
         from PyQt6.QtCore import QUrl
 
-        audio_output.setVolume(settings_obj.get("audio.volume"))
-        media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
-        media_player.play()
+        player = _get_media_player()
+        if player is not None and audio_output is not None:
+            audio_output.setVolume(settings_obj.get("audio.volume"))
+            player.setSource(QUrl.fromLocalFile(str(audio_path)))
+            player.play()
     else:
         pass
 
@@ -854,9 +872,11 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
                 return
             from PyQt6.QtCore import QUrl
 
-            audio_output.setVolume(settings_obj.get("audio.volume"))
-            media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
-            media_player.play()
+            player = _get_media_player()
+            if player is not None and audio_output is not None:
+                audio_output.setVolume(settings_obj.get("audio.volume"))
+                player.setSource(QUrl.fromLocalFile(str(audio_path)))
+                player.play()
 
 
 def load_collected_pokemon_ids() -> set:
