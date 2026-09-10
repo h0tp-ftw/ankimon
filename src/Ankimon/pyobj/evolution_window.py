@@ -23,6 +23,8 @@ from ..services import services
 from ..functions.item_evolution import save_item_evolution
 from ..utils import load_custom_font, is_alive
 from ..functions.pokedex_functions import (
+    evolution_required_time,
+    evolution_time_allows,
     get_base_experience,
     get_growth_rate,
     return_name_for_id,
@@ -410,6 +412,7 @@ class EvoWindow(QWidget):
             new_attacks = _moves_gained_on_evolution(
                 evo_name.lower(), int(pokemon["level"])
             )
+            replaced_moves = []
             for new_attack in new_attacks:
                 if new_attack not in attacks:
                     if len(attacks) < 4:
@@ -438,14 +441,7 @@ class EvoWindow(QWidget):
                             try:
                                 index_to_replace = attacks.index(selected_attack)
                                 attacks[index_to_replace] = new_attack
-                                self.logger.log_and_showinfo(
-                                    "info",
-                                    self.translator.translate(
-                                        "replaced_attack",
-                                        selected_attack=selected_attack,
-                                        new_attack=new_attack,
-                                    ),
-                                )
+                                replaced_moves.append((selected_attack, new_attack))
                             except ValueError:
                                 self.logger.log_and_showinfo(
                                     "info",
@@ -536,6 +532,17 @@ class EvoWindow(QWidget):
 
             # Commit only after all move dialogs finish.
             if item_name:
+                target_data = {
+                    "evoCondition": search_pokedex(evo_name.lower(), "evoCondition")
+                }
+                if not evolution_time_allows(target_data):
+                    required_time = evolution_required_time(target_data)
+                    self.logger.log_and_showinfo(
+                        "info",
+                        f"This Pokemon evolves with this item only during the "
+                        f"{required_time}. Nothing was used; try again then.",
+                    )
+                    return
                 try:
                     committed = (
                         services.db is db
@@ -563,6 +570,16 @@ class EvoWindow(QWidget):
                     "error", f"Failed to save evolved pokemon {individual_id}"
                 )
                 return
+
+            for selected_attack, new_attack in replaced_moves:
+                self.logger.log_and_showinfo(
+                    "info",
+                    self.translator.translate(
+                        "replaced_attack",
+                        selected_attack=selected_attack,
+                        new_attack=new_attack,
+                    ),
+                )
 
             # The item charge has committed; refresh any open item windows.
             if item_name:

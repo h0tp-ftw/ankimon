@@ -640,3 +640,88 @@ def test_a_raising_commit_shows_the_retry_message_not_a_traceback(error):
         mock_db.update_item_quantity.assert_not_called()
     finally:
         patch.stopall()
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "confirmation",
+        "move_dialog",
+        "accepted_move_dialog",
+        "same_day",
+        "same_day_accepted_move",
+    ],
+)
+def test_item_evolution_rechecks_time_after_move_dialogs(phase):
+    evo_mod, pokedex_funcs = _load_evo_window()
+    mock_db = MagicMock()
+    mock_db.get_pokemon.return_value = {
+        "individual_id": "happiny",
+        "id": 440,
+        "name": "Happiny",
+        "level": 30,
+        "attacks": ["pound", "charm", "copycat", "sweetkiss"],
+        "iv": {},
+        "ev": {},
+    }
+    handles = _apply_common_patches()
+    try:
+        patch.object(evo_mod.services, "db", mock_db).start()
+        handles["search"].side_effect = lambda name, key: {
+            "types": ["Normal"],
+            "baseStats": {"hp": 250},
+            "abilities": {},
+            "evoCondition": "during the day",
+        }.get(key)
+        clock = patch.object(
+            pokedex_funcs, "get_time_of_day", return_value="day"
+        ).start()
+        assert pokedex_funcs.evolution_time_allows({"evoCondition": "during the day"})
+        if phase == "confirmation":
+            clock.return_value = "night"
+        elif phase in ("move_dialog", "accepted_move_dialog", "same_day_accepted_move"):
+            handles["moves"].return_value = ["softboiled"]
+
+            dialog_events = _install_dialog_order_probe(evo_mod)
+            original_exec = evo_mod.AttackDialog.exec
+
+            def finish_move_dialog(dialog):
+                if phase != "same_day_accepted_move":
+                    clock.return_value = "night"
+                result = original_exec(dialog)
+                if phase in ("accepted_move_dialog", "same_day_accepted_move"):
+                    return evo_mod.QDialog.DialogCode.Accepted
+                return result
+
+            patch.object(evo_mod.AttackDialog, "exec", finish_move_dialog).start()
+        win = _make_evo_window(evo_mod)
+        win.translator.translate.side_effect = lambda key, **kwargs: key
+        win.evolve_pokemon(
+            "happiny", 440, "happiny", 113, "chansey", None, "oval-stone"
+        )
+
+        evo_mod.show_warning_with_traceback.assert_not_called()
+        messages = [call.args[1] for call in win.logger.log_and_showinfo.call_args_list]
+        if phase in ("same_day", "same_day_accepted_move"):
+            handles["atomic"].assert_called_once()
+            win.display_evo_complete.assert_called_once()
+            if phase == "same_day_accepted_move":
+                assert handles["atomic"].call_args.args[2]["attacks"][0] == "softboiled"
+                assert "replaced_attack" in messages
+        else:
+            if phase in ("move_dialog", "accepted_move_dialog"):
+                assert "exec" in dialog_events
+            handles["atomic"].assert_not_called()
+            mock_db.save_pokemon.assert_not_called()
+            mock_db.mark_as_caught.assert_not_called()
+            mock_db.update_item_quantity.assert_not_called()
+            handles["badge"].assert_not_called()
+            handles["update_main"].assert_not_called()
+            win.display_evo_complete.assert_not_called()
+            assert "replaced_attack" not in messages
+            assert any(
+                "day" in str(call.args[1]) and "Nothing was used" in str(call.args[1])
+                for call in win.logger.log_and_showinfo.call_args_list
+            )
+    finally:
+        patch.stopall()

@@ -217,6 +217,29 @@ def _run(directory):
         get_evo_window().close()
     print("UI rollback: stale inventory and failed item charge preserve the Pokémon")
 
+    mon, _, _ = records[-1]
+    original = db.get_pokemon(mon["individual_id"])
+    history = {
+        key: db.get_user_data(key, []) for key in ("pokedex_caught", "pokedex_seen")
+    }
+    with patch.object(
+        pokedex_functions, "get_time_of_day", return_value="day"
+    ) as clock:
+        open_picker("oval-stone")
+        choose(mon)
+        clock.return_value = "night"
+        with patch.object(get_evo_window().logger, "log_and_showinfo") as told:
+            press("Evolve Pokémon")
+        assert db.get_pokemon(mon["individual_id"]) == original
+        assert db.get_item("oval-stone")["quantity"] == 1
+        assert all(db.get_user_data(key, []) == value for key, value in history.items())
+        assert any(
+            "day" in str(call.args[1]) and "Nothing was used" in str(call.args[1])
+            for call in told.call_args_list
+        )
+        get_evo_window().close()
+    print("UI time gate: delayed confirmation preserves Happiny and the Oval Stone")
+
     for mon, evolved, item in records:
         time_context = (
             patch.object(pokedex_functions, "get_time_of_day", return_value="day")
@@ -242,7 +265,7 @@ def _run(directory):
     assert not [event for event in d.drain_events() if event["type"] == "error"]
     window.close()
     print(
-        "probe_real_item_evolutions: OK (real Chromium icon + purchase + 13 picker/Qt confirmations + cancellation + stale inventory + failed charge rollback + SQLite checks)"
+        "probe_real_item_evolutions: OK (real Chromium icon + purchase + 13 picker/Qt confirmations + cancellation + stale inventory + failed charge rollback + delayed time gate + SQLite checks)"
     )
     return True
 
