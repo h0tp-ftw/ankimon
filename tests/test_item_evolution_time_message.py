@@ -51,9 +51,7 @@ def test_a_genuinely_wrong_item_reports_no_time_requirement(
     pokedex_functions, time_of_day
 ):
     """Only the clock may be the remaining obstacle, or the answer is None."""
-    with patch.object(
-        pokedex_functions, "get_time_of_day", return_value=time_of_day
-    ):
+    with patch.object(pokedex_functions, "get_time_of_day", return_value=time_of_day):
         assert (
             pokedex_functions.item_evolution_time_requirement(HAPPINY, LINKING_CORD)
             is None
@@ -65,13 +63,9 @@ def test_a_genuinely_wrong_item_reports_no_time_requirement(
 
 
 @pytest.mark.parametrize("time_of_day", ["day", "night"])
-def test_an_ungated_item_evolution_never_reports_a_time(
-    pokedex_functions, time_of_day
-):
+def test_an_ungated_item_evolution_never_reports_a_time(pokedex_functions, time_of_day):
     """Kadabra -> Alakazam works around the clock, so there is nothing to say."""
-    with patch.object(
-        pokedex_functions, "get_time_of_day", return_value=time_of_day
-    ):
+    with patch.object(pokedex_functions, "get_time_of_day", return_value=time_of_day):
         assert pokedex_functions.check_evolution_by_item(64, LINKING_CORD) == 65
         assert (
             pokedex_functions.item_evolution_time_requirement(64, LINKING_CORD) is None
