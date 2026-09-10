@@ -46,9 +46,11 @@ from .move_names import format_move_name
 # agent harness / tests) there is no QtMultimedia, so we degrade to "no audio"
 # and play_sound/play_effect_sound become event-only.
 #
-# Constructing QAudioOutput/QMediaPlayer at module scope can hang indefinitely
-# on Linux if the audio backend (e.g. pipewire/pulseaudio dbus) is unresponsive.
-# Instead, we defer instantiation until the first sound is played.
+# Construction is deferred to the first sound for two independent reasons:
+# at module scope it can hang indefinitely on Linux when the audio backend
+# (e.g. pipewire/pulseaudio dbus) is unresponsive, and building these QObjects
+# with no QApplication -- or off its thread -- is undefined behaviour that can
+# abort the process natively, beyond what try/except can catch.
 try:
     from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 
@@ -60,16 +62,39 @@ audio_output = None
 media_player = None
 
 
+def _audio_thread_ready() -> bool:
+    """True when a Qt application exists and we are running on its thread.
+
+    Anki calls the sound helpers from its GUI thread, so this is normally True
+    by the time the first sound plays. Headless imports and background workers
+    get False and stay silent instead of risking a native abort.
+    """
+    try:
+        from PyQt6.QtCore import QCoreApplication, QThread
+
+        app = QCoreApplication.instance()
+        if app is None:
+            return False
+        return QThread.currentThread() == app.thread()
+    except Exception:
+        return False
+
+
 def _get_media_player():
     global audio_output, media_player
     if not _HAVE_AUDIO:
         return None
     if media_player is None:
+        if not _audio_thread_ready():
+            # Deliberately leave the globals unset: a later call from the
+            # application thread must still be able to build a real player.
+            return None
         try:
             audio_output = QAudioOutput()
             media_player = QMediaPlayer()
             media_player.setAudioOutput(audio_output)
         except Exception:
+            audio_output = None
             media_player = None
     return media_player
 

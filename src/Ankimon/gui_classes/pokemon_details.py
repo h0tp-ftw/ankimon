@@ -1,5 +1,4 @@
 import math
-import json
 from typing import Any, Callable
 import re
 
@@ -51,6 +50,7 @@ from ..functions.pokedex_functions import (
     search_pokedex,
     search_pokedex_by_id,
 )
+from ..functions.tm_learnset import get_tm_learnset
 from ..functions.pokemon_functions import find_experience_for_level
 from ..functions.friendship_evolution import evolution_readiness
 from ..functions.gui_functions import type_icon_path, move_category_path
@@ -60,7 +60,6 @@ from ..utils import format_move_name, load_custom_font
 from ..resources import (
     icon_path,
     addon_dir,
-    pokemon_tm_learnset_path,
 )
 from ..texts import (
     attack_details_window_template,
@@ -1536,25 +1535,20 @@ def tm_attack_details_window(
     """
     from ..pyobj.move_picker import MovePickerDialog
 
-    # 1. Get species/base name for TM lookup
+    # 1. Resolve the Pokédex key, then let the shared data-layer helper handle
+    # form aliases and base-species fallback. search_pokedex_by_id() also warms
+    # the Pokédex cache before get_tm_learnset() consults form metadata.
     internal_name = search_pokedex_by_id(id)
-    if not internal_name:
+    if not internal_name or internal_name == "Pokémon not found":
         logger.log_and_showinfo("error", f"Could not find Pokémon data for ID: {id}")
         return
 
-    base_name = internal_name.split("-")[0].lower()
-    internal_name = internal_name.lower()
-
-    # 2. Load TM learnsets
+    # 2. Get valid TMs for this species/form from the startup-warmed cache.
     try:
-        with open(pokemon_tm_learnset_path, "r", encoding="utf-8") as f:
-            tm_learnsets = json.load(f)
+        valid_tms = get_tm_learnset(internal_name)
     except Exception as e:
         logger.log_and_showinfo("error", f"Failed to load TM learnsets: {e}")
         return
-
-    # 3. Get valid TMs for this species (check specific form then base species)
-    valid_tms = tm_learnsets.get(internal_name) or tm_learnsets.get(base_name)
     if not valid_tms:
         logger.log_and_showinfo("info", "This Pokémon cannot learn any moves from TMs.")
         return
