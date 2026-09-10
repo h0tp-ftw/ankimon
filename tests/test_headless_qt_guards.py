@@ -329,42 +329,140 @@ def test_sprite_download_survives_a_qcoreapplication_only_process():
     )
 
 
-def test_audio_import_without_an_application_creates_no_players():
-    code = (
-        _QCORE_STUBS.format(src=str(_SRC))
-        + """
+# QtMultimedia is the one genuinely optional piece of PyQt6 here: the wheel
+# ships the bindings but they need a system audio stack (libpulse and friends)
+# that a container or CI image may not have. That is not drift to fix — it is
+# the exact condition `_HAVE_AUDIO` exists to describe — so probes that must
+# actually build a player say so and report an unavailable backend as a skip.
+# Probes that assert nothing is built run everywhere, audio present or not.
+_REQUIRE_QTMULTIMEDIA = """
+try:
+    import PyQt6.QtMultimedia  # noqa: F401
+except Exception as exc:
+    print('SKIP_NO_QTMULTIMEDIA:' + repr(exc))
+    raise SystemExit(0)
+"""
+
+
+def _run_audio_probe(body, requires_audio=False, timeout=60):
+    """Run an audio-guard probe in a fresh interpreter and require it to finish.
+
+    Same rationale as ``_run_under_qcoreapplication``: constructing multimedia
+    QObjects with no application, or off the application thread, can abort the
+    process rather than raise, and Qt allows one application object per process.
+    """
+    preamble = _REQUIRE_QTMULTIMEDIA if requires_audio else ""
+    code = _QCORE_STUBS.format(src=str(_SRC)) + preamble + body
+    proc = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=timeout
+    )
+    if requires_audio and "SKIP_NO_QTMULTIMEDIA:" in proc.stdout:
+        pytest.skip(
+            "PyQt6.QtMultimedia is unavailable in this environment "
+            f"({proc.stdout.strip()}); the add-on treats that as 'no audio'"
+        )
+    assert proc.returncode == 0, (
+        f"audio guard failed (exit {proc.returncode}; -6 is SIGABRT)\n"
+        f"stdout: {proc.stdout}\nstderr: {proc.stderr}"
+    )
+    assert "OK" in proc.stdout, f"body did not complete: {proc.stdout}{proc.stderr}"
+    return proc
+
+
+def test_audio_import_creates_no_players():
+    """Importing utils must never construct multimedia objects.
+
+    Construction is deferred (#843) because doing it at module scope can hang
+    indefinitely when a Linux audio backend is unresponsive. ``_HAVE_AUDIO``
+    now records only that QtMultimedia imported, so assert on the globals.
+    """
+    _run_audio_probe(
+        """
 assert PyQt6.QtCore.QCoreApplication.instance() is None
 from Ankimon import utils
-assert not utils._HAVE_AUDIO
 assert utils.audio_output is None
 assert utils.media_player is None
 print('OK')
 """
     )
-    proc = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=20
-    )
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "OK" in proc.stdout
 
 
-def test_audio_players_are_created_on_the_application_thread():
-    code = (
-        _QCORE_STUBS.format(src=str(_SRC))
-        + """
-app = PyQt6.QtCore.QCoreApplication([])
+def test_audio_player_is_not_built_without_an_application():
+    """The deferred build must still refuse to run with no application.
+
+    Deferring alone is not enough: the first sound could arrive before Anki has
+    an application (or in a headless harness run), and building a QObject then
+    is undefined behaviour that ``try/except`` cannot contain.
+    """
+    _run_audio_probe(
+        """
+assert PyQt6.QtCore.QCoreApplication.instance() is None
 from Ankimon import utils
-assert utils._HAVE_AUDIO
-assert utils.media_player.audioOutput() is utils.audio_output
-assert utils.media_player.thread() == app.thread()
+assert utils._get_media_player() is None
+assert utils.audio_output is None
+assert utils.media_player is None
 print('OK')
 """
     )
-    proc = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=20
+
+
+def test_audio_players_are_created_on_the_application_thread():
+    """The normal Anki path: first sound on the GUI thread builds real players."""
+    _run_audio_probe(
+        """
+app = PyQt6.QtCore.QCoreApplication([])
+from Ankimon import utils
+assert utils._HAVE_AUDIO
+assert utils.media_player is None, 'construction must be deferred to first use'
+
+player = utils._get_media_player()
+assert player is not None
+assert player is utils.media_player
+assert player.audioOutput() is utils.audio_output
+assert player.thread() == app.thread()
+
+# Memoized: a second sound reuses the same player rather than rebuilding it.
+assert utils._get_media_player() is player
+print('OK')
+""",
+        requires_audio=True,
     )
-    assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "OK" in proc.stdout
+
+
+def test_audio_player_is_not_built_off_the_application_thread():
+    """A worker thread must stay silent and leave the globals buildable.
+
+    Returning None without caching it is the point: a background caller must
+    not poison the lazy slot for the GUI thread that comes after it.
+    """
+    _run_audio_probe(
+        """
+import threading
+
+app = PyQt6.QtCore.QCoreApplication([])
+from Ankimon import utils
+
+seen = {}
+
+
+def worker():
+    seen['player'] = utils._get_media_player()
+
+
+t = threading.Thread(target=worker)
+t.start()
+t.join(20)
+assert not t.is_alive()
+assert seen['player'] is None, 'built a multimedia QObject off the app thread'
+assert utils.media_player is None
+assert utils.audio_output is None
+
+# The application thread must still get a real player afterwards.
+assert utils._get_media_player() is not None
+print('OK')
+""",
+        requires_audio=True,
+    )
 
 
 # --------------------------------------------------------------------------- #
