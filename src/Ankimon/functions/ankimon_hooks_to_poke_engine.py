@@ -225,24 +225,38 @@ def _install_stancechange_compat():
     before_move.stancechange = patched_stancechange
 
 
-# Never let a hardening patch break battle import; the raw engine still works for
-# every canonical Pokemon, which is the overwhelming majority. One try per patch --
-# they are independent, so a failure in one must not swallow the others (losing
-# _patch_engine_constants silently puts Howl's boost back on the opponent).
-try:
-    _patch_engine_constants()
-except Exception:
-    pass
+def _apply_engine_patch(patch):
+    """Apply one hardening patch, recording a failure without propagating it.
 
-try:
-    _install_form_tolerant_pokedex()
-except Exception:
-    pass
+    Never let a hardening patch break battle import; the raw engine still works
+    for every canonical Pokemon, which is the overwhelming majority. The patches
+    are independent, so a failure in one must not swallow the others.
 
-try:
-    _install_stancechange_compat()
-except Exception:
-    pass
+    Failing silently, though, is how a lost patch becomes an unexplainable bug
+    report months later: without _patch_engine_constants Howl's boost goes back
+    on the opponent, and without _install_stancechange_compat Aegislash keeps the
+    wrong stance. Log it instead. ``services.logger`` is None until the registry
+    is populated (headless imports, Tier-1 harness), so the record is best-effort
+    by design and its own failure must not escape either.
+    """
+    try:
+        patch()
+    except Exception as e:
+        logger = getattr(services, "logger", None)
+        if logger is None:
+            return
+        try:
+            logger.log(
+                "error",
+                f"poke-engine compatibility patch {patch.__name__} failed: {e}",
+            )
+        except Exception:
+            pass
+
+
+_apply_engine_patch(_patch_engine_constants)
+_apply_engine_patch(_install_form_tolerant_pokedex)
+_apply_engine_patch(_install_stancechange_compat)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:

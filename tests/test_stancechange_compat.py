@@ -220,3 +220,71 @@ def test_hot_reload_upgrades_the_old_id_only_adapter(hook_env):
     result = _call(before_move.stancechange, pokemon)
     assert result[0][3] == (300, 70, 160, 70, 160, 100)
     assert pokemon.id == "aegislashshield"
+
+
+# --------------------------------------------------------------------------- #
+# _apply_engine_patch: the import-time guard around each hardening patch.
+#
+# Battle import must survive a patch that cannot apply (the raw engine is still
+# correct for every canonical Pokemon), but swallowing the failure in silence is
+# how a lost patch becomes an unexplainable bug report: without
+# _patch_engine_constants, Howl boosts the opponent; without
+# _install_stancechange_compat, Aegislash keeps the wrong stance.
+# --------------------------------------------------------------------------- #
+def test_a_failing_engine_patch_is_recorded_rather_than_swallowed(hook_env):
+    hook, _ = hook_env
+    logged = []
+    hook.services.logger = SimpleNamespace(
+        log=lambda level, message: logged.append((level, message))
+    )
+
+    def broken_patch():
+        raise RuntimeError("engine layout changed")
+
+    hook._apply_engine_patch(broken_patch)
+
+    assert len(logged) == 1, "a lost hardening patch must leave exactly one trace"
+    level, message = logged[0]
+    assert level == "error"
+    assert "broken_patch" in message, "the record must name which patch was lost"
+    assert "engine layout changed" in message
+
+
+def test_a_successful_engine_patch_is_not_logged(hook_env):
+    hook, _ = hook_env
+    logged = []
+    hook.services.logger = SimpleNamespace(
+        log=lambda level, message: logged.append((level, message))
+    )
+    applied = []
+
+    hook._apply_engine_patch(lambda: applied.append(1))
+
+    assert applied == [1]
+    assert logged == []
+
+
+def test_a_failing_engine_patch_stays_quiet_before_the_registry_exists(hook_env):
+    """Headless imports and the Tier-1 harness reach this with no logger bound."""
+    hook, _ = hook_env
+    assert getattr(hook.services, "logger", None) is None
+
+    def broken_patch():
+        raise RuntimeError("boom")
+
+    hook._apply_engine_patch(broken_patch)
+
+
+def test_a_broken_logger_cannot_break_battle_import(hook_env):
+    """Recording the failure is best-effort; it must not become the failure."""
+    hook, _ = hook_env
+
+    def explode(*args, **kwargs):
+        raise RuntimeError("logger is only half-built")
+
+    hook.services.logger = SimpleNamespace(log=explode)
+
+    def broken_patch():
+        raise RuntimeError("boom")
+
+    hook._apply_engine_patch(broken_patch)
