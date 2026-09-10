@@ -139,6 +139,7 @@ def test_save_main_pokemon_progress_caps_at_10_levelups():
         is_favorite=False,
         evolution_rejected=False,
         invalidate_cp_cache=lambda: None,
+        update_stats=lambda: None,
     )
     enemy = types.SimpleNamespace(ev_yield={})
     

@@ -2357,4 +2357,6 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
         if "attacks" in pkmndata:
             mp.attacks = list(pkmndata["attacks"])
         mp.invalidate_cp_cache()
-
+        # Level-up refreshes happen before EV awards. Refresh again after the
+        # final state is applied, including for EV-only mobile progress.
+        mp.update_stats()
