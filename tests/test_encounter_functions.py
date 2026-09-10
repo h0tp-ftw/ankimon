@@ -505,6 +505,7 @@ def test_save_main_pokemon_progress_persists_when_evo_window_none():
             is_favorite=False,
             evolution_rejected=False,
             invalidate_cp_cache=lambda: None,
+            update_stats=lambda: None,
         )
         enemy = types.SimpleNamespace(ev_yield={})
 
@@ -641,6 +642,7 @@ def _run_victory_with_stored_row(stored_individual_id, main_individual_id):
             is_favorite=False,
             evolution_rejected=False,
             invalidate_cp_cache=lambda: None,
+            update_stats=lambda: None,
         )
         enemy = types.SimpleNamespace(ev_yield={})
 

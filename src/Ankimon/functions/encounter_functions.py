@@ -1432,6 +1432,7 @@ def save_main_pokemon_progress(
             )
         )
         main_pokemon.level += 1
+        main_pokemon.update_stats()
         events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
@@ -1582,7 +1583,6 @@ def save_main_pokemon_progress(
     # Load existing Pokémon data if it exists
     if main_pokemon_data:
         mainpkmndata = main_pokemon_data
-        mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["xp"] = int(main_pokemon.xp)
         mainpkmndata["level"] = int(main_pokemon.level)
         # Clone raw EV yield to avoid mutating the in-memory enemy template
@@ -1637,6 +1637,10 @@ def save_main_pokemon_progress(
         main_pokemon.ev["spd"] += ev_yield["special-defense"]
         main_pokemon.ev["spe"] += ev_yield["speed"]
         main_pokemon.invalidate_cp_cache()
+        # Include this defeat's EVs, even when no level was gained. Keep the
+        # cached HP used by battles/HUD and the saved stats in sync.
+        main_pokemon.update_stats()
+        mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
         # Friendship is uncapped — it keeps climbing past MAX_FRIENDSHIP (400) so
         # players can flex a super-bonded Pokémon. The progress bar still fills at
@@ -1775,7 +1779,7 @@ def kill_pokemon(
                 logger,
                 settings_obj,
                 evo_window,
-                main_pokemon.id,
+                main_pokemon.individual_id,
                 exp,
                 xp_share_individual_id,
             )
