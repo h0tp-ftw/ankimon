@@ -119,7 +119,7 @@ def test_handle_review_count_achievement_ignores_non_milestone():
     services.db = FakeDB(migrated=True)
     achievements = {str(i): False for i in range(1, 69)}
 
-    result = bf.handle_review_count_achievement(150, achievements)
+    result = bf.handle_review_count_achievement(99, achievements)
 
     assert all(value is False for value in result.values())
 

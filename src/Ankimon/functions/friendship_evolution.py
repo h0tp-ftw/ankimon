@@ -423,7 +423,7 @@ def get_level_evolutions_for_species(
                 evo_type = target_data.get("evoType")
                 condition = (target_data.get("evoCondition") or "").lower()
                 target_id = safe_int(
-                    target_data.get("actual_id") or target_data.get("species_id")
+                    target_data.get("actual_id") or target_data.get("species_id") or target_data.get("num")
                 )
 
                 # Move-based (levelMove) and defeat-based (minimumDefeated)
