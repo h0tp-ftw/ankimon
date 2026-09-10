@@ -6,32 +6,24 @@ import sqlite3
 import time
 
 
-# One attempt may hold ``_pokedex_lock`` only briefly, so the sqlite wait per
-# attempt is short and the retry loop below supplies the patience instead. The
-# total budget matches AnkimonDB's own ``busy_timeout``, so an evolution waits
-# out a bulk mobile resolve for as long as an ordinary save would.
+# Match the DB’s 30-second budget without holding _pokedex_lock throughout.
 _LOCK_TOTAL_BUDGET_S = 30.0
 _LOCK_ATTEMPT_TIMEOUT_MS = 250
 _LOCK_RETRY_BACKOFF_S = 0.05
 
 
 def _is_lock_contention(error) -> bool:
-    """Whether ``error`` is sqlite refusing to wait any longer for a lock."""
+    """Return whether SQLite reported lock contention."""
     message = str(error).lower()
     return "locked" in message or "busy" in message
 
 
 @contextlib.contextmanager
 def _attempt_lock_timeout(db, conn):
-    """Shorten this connection's busy wait for the duration of one attempt.
+    """Limit each wait while holding _pokedex_lock.
 
-    This module holds ``_pokedex_lock`` across its transaction, while the bulk
-    mobile resolve takes the same two in the opposite order (write lock first,
-    then ``_pokedex_lock`` inside ``save_pokemon`` -> ``mark_as_caught``).
-    Blocking for the full 30s here would therefore stall the very thread we are
-    waiting on. Failing fast and retrying with the lock released keeps both
-    sides moving; ``save_item_evolution``'s loop owns the real deadline.
-    """
+    Mobile sync takes the SQLite write lock before _pokedex_lock. Short waits
+    let the retry loop release our lock so the other writer can finish."""
     conn.execute(f"PRAGMA busy_timeout={_LOCK_ATTEMPT_TIMEOUT_MS};")
     try:
         yield
@@ -41,31 +33,16 @@ def _attempt_lock_timeout(db, conn):
                 f"PRAGMA busy_timeout={getattr(db, '_BUSY_TIMEOUT_MS', 30000)};"
             )
         except Exception:
-            # A connection too broken to restore its own PRAGMA is already
-            # failing the caller through a louder error than this one.
+            # Preserve the original database error.
             pass
 
 
 @contextlib.contextmanager
 def _immediate_transaction(conn):
-    """``with conn:`` but with the write lock taken up front.
+    """Acquire write intent before reading so SQLite can wait for other writers.
 
-    ``ConnectionWrapper.__enter__`` issues a plain deferred ``BEGIN``. This
-    block READS before it writes, so it would start on a SHARED lock and have
-    to promote to RESERVED at the first UPDATE -- and sqlite deliberately does
-    NOT run the busy handler on that promotion, because waiting there could
-    deadlock two readers that each want to write. The 30s ``busy_timeout`` that
-    ``_prepare_connection`` sets for exactly this situation (its comment cites
-    mobile sync's bulk resolve holding one long write transaction) would be
-    bypassed, and any concurrent writer would produce an instant "database is
-    locked". ``BEGIN IMMEDIATE`` takes the write lock where the busy handler
-    still applies.
-
-    Drives ``conn._conn`` rather than the wrapper, exactly as
-    ``__enter__``/``__exit__`` do: the wrapper's ``execute`` auto-heals a closed
-    or malformed database by replaying onto a FRESH connection, which mid
-    transaction would silently split this atomic write across two of them.
-    """
+    Use the leased raw connection: wrapper auto-repair could replay a statement
+    on another connection and split the transaction."""
     conn.acquire_lease()
     try:
         conn._conn.execute("BEGIN IMMEDIATE")
@@ -77,8 +54,7 @@ def _immediate_transaction(conn):
             except Exception:
                 pass
             raise
-        # Mirrors __exit__: never swallow a commit failure. A lost write that
-        # reads as success is worse than a visible error.
+        # Roll back and propagate commit failures.
         try:
             conn._conn.commit()
         except Exception:
@@ -92,17 +68,11 @@ def _immediate_transaction(conn):
 
 
 def save_item_evolution(db, expected_pokemon, evolved_pokemon, item_name) -> bool:
-    """Commit the Pokémon, one item charge, and caught/seen history together.
+    """Atomically save the evolved Pokémon, charge one item, and record history.
 
-    ``expected_pokemon`` is the complete record read before any move dialogs.
-    A changed/deleted record or missing item returns False without changing
-    state. Database failures raise after rollback. This UI operation requires
-    its own transaction: it must never commit a caller's deferred bulk writes
-    or report success for an evolution that has not actually been committed.
-
-    Lock contention is retried rather than reported: a concurrent writer (the
-    bulk mobile resolve) means wait, not fail.
-    """
+    Return False for a stale/deleted expected_pokemon or missing item. Database
+    failures raise after rollback; lock contention retries for up to 30 seconds.
+    Requires its own transaction and the complete pre-dialog Pokémon record."""
     individual_id = expected_pokemon.get("individual_id")
     if (
         not individual_id
@@ -125,8 +95,7 @@ def save_item_evolution(db, expected_pokemon, evolved_pokemon, item_name) -> boo
                 species_ids,
             )
         except sqlite3.OperationalError as error:
-            # Every write is rolled back before this propagates, so a retry is
-            # safe: nothing was charged and nothing was evolved.
+            # Failed attempts roll back before retrying.
             if not _is_lock_contention(error) or time.monotonic() >= deadline:
                 raise
             time.sleep(_LOCK_RETRY_BACKOFF_S)
@@ -140,9 +109,8 @@ def save_item_evolution(db, expected_pokemon, evolved_pokemon, item_name) -> boo
 def _commit_once(
     db, individual_id, expected_pokemon, evolved_data, item_name, species_ids
 ) -> bool:
-    """One all-or-nothing attempt. Raises on contention so the caller retries."""
-    # Match the DB's history writer lock order. No callbacks or Qt work may
-    # run while this lock/transaction is held.
+    """Attempt one transaction; propagate contention to the retry loop."""
+    # No callbacks or Qt work while holding the history lock and transaction.
     with db._pokedex_lock, db.lease_connection() as conn:
         if (
             conn.in_transaction
@@ -166,11 +134,8 @@ def _commit_once(
 def _write_evolution(
     db, conn, individual_id, expected_pokemon, evolved_data, item_name, species_ids
 ) -> bool:
-    """The transaction itself, split out so the with-nesting stays readable."""
-    # Obtain the cursor before BEGIN. Its execute() does not auto-heal or
-    # replay a failed statement on another connection mid-transaction.
-    # _immediate_transaction rather than ``with conn:`` so the SELECT below
-    # cannot strand the write on a SHARED lock that sqlite refuses to promote.
+    """Write the evolution, item charge, and history in one transaction."""
+    # Acquire the cursor before BEGIN; raw execution cannot replay on a new connection.
     with conn.cursor() as cursor, _immediate_transaction(conn):
         cursor.execute(
             "SELECT data FROM captured_pokemon WHERE individual_id = ?",
@@ -193,27 +158,21 @@ def _write_evolution(
             (evolved_data, individual_id, row["data"]),
         )
         if cursor.rowcount != 1:
-            # After the charge, failure must leave through the rollback path;
-            # returning False here would commit the item.
+            # Returning False would commit the charge; raise to roll it back.
             raise RuntimeError("The Pokémon changed during item evolution")
         cursor.execute(
             "DELETE FROM items WHERE item_name = ? AND quantity = 0",
             (item_name,),
         )
 
-        # save_pokemon/mark_as_caught commit independently, so write both
-        # history keys here with the same cursor as the evolution.
+        # DB history helpers commit independently, so use this transaction’s cursor.
         for key in ("pokedex_caught", "pokedex_seen"):
             cursor.execute("SELECT value FROM user_data WHERE key = ?", (key,))
             history = cursor.fetchone()
             try:
                 existing = json.loads(history["value"]) if history else []
             except (TypeError, ValueError):
-                # Match get_user_data / _coerce_pokedex_id_list, which both
-                # treat a legacy or hand-edited value as recoverable rather than
-                # fatal. An unreadable history list must not cost the player
-                # their evolution; the two ids below are written back, and
-                # _reconcile_pokedex_history restores the rest on next boot.
+                # Recover malformed history; startup reconciliation restores other caught IDs.
                 existing = []
             ids = list(dict.fromkeys(db._coerce_pokedex_id_list(existing)))
             for species_id in species_ids:

@@ -247,13 +247,7 @@ def _hold_write_lock(db, seconds, ready):
 
 
 def test_a_concurrent_writer_is_waited_out_not_reported_as_failure(evolution_db):
-    """The busy_timeout must survive the read-before-write transaction shape.
-
-    A deferred BEGIN that SELECTs first holds a SHARED lock, and sqlite skips
-    the busy handler when promoting it, so any concurrent writer produced an
-    instant "database is locked" — exactly what _prepare_connection's 30s
-    timeout exists to prevent. The old two-step save waited and succeeded.
-    """
+    """Wait for a concurrent writer even though the transaction reads first."""
     import threading
 
     db, before, after = evolution_db
@@ -273,13 +267,7 @@ def test_a_concurrent_writer_is_waited_out_not_reported_as_failure(evolution_db)
 
 
 def test_waiting_for_the_lock_does_not_hold_the_pokedex_lock(evolution_db):
-    """Retrying must release _pokedex_lock so the other writer can finish.
-
-    The bulk mobile resolve takes the write lock first and _pokedex_lock second
-    (save_pokemon -> mark_as_caught), the opposite order to this module. Waiting
-    for the write lock while holding _pokedex_lock would stall the very thread
-    we are waiting on, so the wait has to happen with the lock released.
-    """
+    """Release _pokedex_lock between attempts so the other writer can finish."""
     import threading
 
     db, before, after = evolution_db
@@ -313,11 +301,7 @@ def test_waiting_for_the_lock_does_not_hold_the_pokedex_lock(evolution_db):
 
 @pytest.mark.parametrize("stored", ["not json at all", "", "{", "\x00"])
 def test_an_unreadable_history_value_does_not_cost_the_evolution(evolution_db, stored):
-    """get_user_data and _coerce_pokedex_id_list both tolerate junk here.
-
-    The evolution must not be the one caller that treats a legacy or
-    hand-edited pokedex list as fatal.
-    """
+    """Match the DB’s tolerance for malformed legacy history."""
     db, before, after = evolution_db
     db.save_item(2160, "linking-cord", 2)
     db.execute(

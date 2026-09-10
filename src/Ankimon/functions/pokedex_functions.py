@@ -1209,13 +1209,7 @@ def evolution_required_time(target_data):
 
 
 def evolution_time_allows(target_data, current_time=None) -> bool:
-    """Return whether a timed evolution condition allows this candidate.
-
-    Item evolutions normally have no time gate. When ``evoCondition`` mentions
-    ``day`` or ``night``, apply the same clock semantics used by level-based
-    evolutions. ``current_time`` exists mainly for deterministic callers/tests;
-    production callers use :func:`get_time_of_day`.
-    """
+    """Check the candidate’s day/night requirement using the evolution clock."""
     if not isinstance(target_data, dict):
         return False
     required_time = evolution_required_time(target_data)
@@ -1225,15 +1219,7 @@ def evolution_time_allows(target_data, current_time=None) -> bool:
 
 
 def item_evolution_time_requirement(pokemon_id, item_id, gender=None):
-    """Return the time of day an otherwise-valid item evolution is waiting for.
-
-    :func:`check_evolution_by_item` answers None both for "wrong item" and for
-    "right item, wrong time", so a caller cannot tell the player which it is —
-    a Happiny holding an Oval Stone at night would be told it "does not need
-    this item". This reports ``"day"``/``"night"`` only when the clock is the
-    single remaining obstacle, and None in every other case (including when the
-    evolution is available right now).
-    """
+    """Return day/night only when time is the sole unmet item-evolution requirement."""
     if check_evolution_by_item(pokemon_id, item_id, gender=gender):
         return None
     evo_id = check_evolution_by_item(
@@ -1315,11 +1301,7 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
                             ):
                                 continue
 
-                            # Preserve timed direct-use evolutions (e.g. Happiny
-                            # needs an Oval Stone during the day). ``ignore_time``
-                            # is for callers asking "would this work at another
-                            # hour?" — see item_evolution_time_requirement — and
-                            # must never be set on the path that actually evolves.
+                            # ignore_time is only for explaining unavailable evolutions.
                             if not ignore_time and not evolution_time_allows(
                                 target_data
                             ):

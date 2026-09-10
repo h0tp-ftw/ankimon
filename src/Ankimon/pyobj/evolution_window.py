@@ -389,17 +389,10 @@ class EvoWindow(QWidget):
                 )
                 return
 
-            # Move selection can run a nested event loop. Keep the original
-            # record so the final transaction refuses to overwrite newer data.
+            # Detect record changes made during move dialogs’ nested event loops.
             expected_pokemon = deepcopy(pokemon) if item_name else None
 
-            # Persist the pre-evolved species as caught before the id changes so
-            # the Pokédex keeps crediting the earlier form (no-op on stores that
-            # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
-            # Logged as an error, not a warning: unlike a failed mark on an
-            # ordinary save, this one is NOT recoverable. Once the id below is
-            # overwritten the pre-evolution is gone from captured_pokemon, so
-            # _reconcile_pokedex_history has nothing left to re-derive it from.
+            # Record the old species before replacing its only recoverable record.
             if not item_name and hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
@@ -541,8 +534,7 @@ class EvoWindow(QWidget):
             # the auto prompt resumes for the new form's future evolutions.
             pokemon["evolution_rejected"] = False
 
-            # Item evolutions commit the species, inventory, and history as
-            # one operation, after all move dialogs have finished.
+            # Commit only after all move dialogs finish.
             if item_name:
                 try:
                     committed = (
@@ -553,12 +545,7 @@ class EvoWindow(QWidget):
                         )
                     )
                 except Exception as e:
-                    # save_item_evolution is all-or-nothing: every raising exit
-                    # has already rolled back, so nothing was charged and
-                    # nothing was evolved. That makes this a retryable
-                    # condition, not a crash — show the same actionable message
-                    # the return-False paths get instead of dropping a traceback
-                    # dialog on the player. The detail still reaches the log.
+                    # Persistence failures roll back; log the cause and offer a retry.
                     self.logger.log(
                         "error", f"Item evolution could not be committed: {e}"
                     )

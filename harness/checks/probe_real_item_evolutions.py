@@ -102,8 +102,7 @@ def _run(directory):
         dest = os.environ.get("ANKIMON_PROOF_SCREENSHOTS")
         if dest:
             Path(dest).mkdir(parents=True, exist_ok=True)
-            # Chromium paints asynchronously after its JS callbacks and the
-            # SQLite write. Let the compositor present the asserted DOM state.
+            # Wait for Chromium to paint the asserted DOM state.
             QTest.qWait(500)
             assert window.grab().save(str(Path(dest) / f"{name}.png"))
 
@@ -171,8 +170,7 @@ def _run(directory):
     assert db.get_pokemon(mon["individual_id"])["id"] == mon["id"]
     assert db.get_item("linking-cord")["quantity"] == 13
 
-    # An already-open confirmation must not hand out a free evolution when
-    # another action spends the item before the user confirms.
+    # Spending the item during confirmation must prevent evolution.
     original = db.get_pokemon(mon["individual_id"])
     open_picker("linking-cord")
     choose(mon)
@@ -184,10 +182,7 @@ def _run(directory):
     db.save_item(2160, "linking-cord", 13)
     window.update_ui_data()
 
-    # Inject a genuine SQLite write failure through the real confirmation.
-    # The transaction rolls the failure back, so the player gets the retry
-    # message rather than a crash-report dialog; both are intercepted here so
-    # this unattended proof cannot block on either.
+    # Inject a SQLite failure; intercept dialogs to keep the proof unattended.
     from Ankimon.pyobj import evolution_window
 
     open_picker("linking-cord")

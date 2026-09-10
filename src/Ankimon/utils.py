@@ -424,8 +424,7 @@ def random_item() -> Optional[str]:
     return item_name
 
 
-# Small bundled additions remain available with older downloaded sprite packs.
-# Prefer downloaded artwork when a future pack supplies the same item.
+# Supply missing icons for older downloaded packs.
 _BUNDLED_ITEM_SPRITES = {
     "linking-cord": addon_dir / "addon_sprites" / "items" / "linking-cord.png",
 }

@@ -262,7 +262,7 @@ def test_use_item_evolutions_are_still_offered(shop_obj):
 def test_remapped_item_evolutions_are_offered(
     shop_obj, name, prevo_id, evolved_id, item
 ):
-    """Pin #838 explicitly, including forms that share a base species ID."""
+    """Include regional forms and every Pumpkaboo size."""
     assert (
         shop_obj.check_evolution_by_item(
             prevo_id, shop_obj.return_id_for_item_name(item)
@@ -279,7 +279,6 @@ def test_remapped_item_evolutions_are_offered(
 
 
 def test_happiny_oval_stone_is_day_only(shop_obj):
-    """Direct Oval Stone use still preserves Happiny's daytime requirement."""
     happiny = _pokemon("Happiny", 440)
     item_id = shop_obj.return_id_for_item_name("oval-stone")
     pokedex_functions = importlib.import_module("Ankimon.functions.pokedex_functions")

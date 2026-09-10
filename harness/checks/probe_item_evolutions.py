@@ -87,8 +87,7 @@ def run_proof():
     assert check_evolution_by_item(112, 2160) is None
     assert check_evolution_by_item(112, return_id_for_item_name("protector")) == 464
 
-    # Simulate an installed older pack with no Linking Cord, entirely in the
-    # harness's disposable profile. No user's sprite directory is written.
+    # Simulate an older sprite pack in the disposable profile.
     utils.items_path.mkdir(parents=True, exist_ok=True)
     cord = utils.items_path / "linking-cord.png"
     assert not cord.exists()
@@ -96,9 +95,7 @@ def run_proof():
     assert fallback.is_file()
     raw = fallback.read_bytes()
     assert raw.startswith(b"\x89PNG\r\n\x1a\n")
-    # Both bags scale the whole canvas to fit their cell, so transparent padding
-    # is never trimmed and a padded icon paints visibly smaller than the tightly
-    # cropped pack icons beside it. Every pack item is <= 90px on its long edge.
+    # Transparent padding shrinks the visible icon when scaled into a bag cell.
     width, height = struct.unpack(">II", raw[16:24])
     assert max(width, height) <= 90, (width, height)
     expected = [

@@ -1,18 +1,4 @@
-"""Tests for stone consumption + nickname carry in ``EvoWindow.evolve_pokemon``.
-
-``pyobj/evolution_window.py`` imports Qt at module top, so this module stubs
-``aqt`` / ``aqt.qt`` / ``PyQt6`` (with a real ``QWidget`` stand-in so ``EvoWindow``
-can subclass it) and every heavy dependency, then loads the real
-``evolution_window`` module and drives ``evolve_pokemon`` directly. DB access is
-routed through the ``services.db`` seam on main (exp reached ``mw.ankimon_db``),
-so the tests inject the mock DB via ``services.db``.
-
-Covers:
-* item-triggered evolutions use atomic persistence and stop on failure;
-* the nickname is rewritten to the pretty evolved name only when it was never
-  customised (empty / still matching the pre-evolution species), and a custom
-  nickname is preserved.
-"""
+"""Test atomic item evolution and nickname preservation with Qt dependencies stubbed."""
 
 import importlib.util
 import sys

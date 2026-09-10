@@ -864,9 +864,7 @@ class ItemWindow(QWidget):
                     individual_id, prevo_id, evo_id, item_name=item_name
                 )
             else:
-                # A clock-gated evolution (Happiny + Oval Stone) also answers
-                # None, so distinguish it: "does not need this item" is simply
-                # wrong for a Pokemon that needs exactly this item, later.
+                # Distinguish the wrong time from the wrong item.
                 required_time = item_evolution_time_requirement(
                     prevo_id, item_id, gender=gender
                 )
