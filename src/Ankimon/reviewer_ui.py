@@ -130,7 +130,6 @@ def cycle_team_pokemon():
 
             main_pokemon.update_stats(**pokemon_data)
             main_pokemon.max_hp = main_pokemon.calculate_max_hp()
-            main_pokemon.hp = main_pokemon.max_hp
             main_pokemon.reset_bonuses()
 
             save_main_pokemon(main_pokemon)
