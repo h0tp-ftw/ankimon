@@ -34,13 +34,14 @@ from ..functions.pokedex_functions import (
     return_id_for_item_name,
     check_evolution_by_item,
     find_details_move,
+    item_evolution_time_requirement,
 )
 
 from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
 from ..services import services
-from ..utils import play_effect_sound, is_alive
+from ..utils import get_item_sprite_path, play_effect_sound, is_alive
 from .error_handler import show_warning_with_traceback
 
 # At the moment when I write this line, "UserRole" is defined as UserRole 1000 in the Ankimon __init__.py file. IDK what it's about.
@@ -374,7 +375,7 @@ class ItemWindow(QWidget):
 
             item_file_path = items_path / f"Bag_TM_{tm_type}_SV_Sprite.png"
         else:
-            item_file_path = items_path / f"{item_name}.png"
+            item_file_path = get_item_sprite_path(item_name)
         item_picture_pixmap = QPixmap(str(item_file_path))
         item_picture_pixmap_scaled = item_picture_pixmap.scaled(
             96,
@@ -395,7 +396,9 @@ class ItemWindow(QWidget):
             # Resolve the main Pokemon inside the handler, not in the lambda:
             # ``self.main_pokemon.name`` here is evaluated on click and raises
             # before the no-main guard in Check_Heal_Item can report anything.
-            use_item_button.clicked.connect(lambda: self._heal_main_pokemon(item_name, hp_heal))
+            use_item_button.clicked.connect(
+                lambda: self._heal_main_pokemon(item_name, hp_heal)
+            )
         elif item_name in self.fossil_pokemon:
             fossil_id = self.fossil_pokemon[item_name]
             fossil_pokemon_name = search_pokedex_by_id(fossil_id)
@@ -708,7 +711,9 @@ class ItemWindow(QWidget):
             return False
 
         if quantity <= 0:
-            self.logger.log("warning", f"No {item_name} left in the bag; nothing consumed.")
+            self.logger.log(
+                "warning", f"No {item_name} left in the bag; nothing consumed."
+            )
             return False
 
         if not services.db.consume_item(item_name):
@@ -736,7 +741,9 @@ class ItemWindow(QWidget):
         self._refresh_bag()
         return True
 
-    def Check_Heal_Item(self, prevo_name: str, heal_points: int, item_name: str, achievements) -> bool:
+    def Check_Heal_Item(
+        self, prevo_name: str, heal_points: int, item_name: str, achievements
+    ) -> bool:
         """Heal the main Pokemon with ``item_name``, consuming one from the bag.
 
         Returns True only when the item was actually spent AND the heal applied.
@@ -781,7 +788,9 @@ class ItemWindow(QWidget):
             receive_badge(20, achievements)
         self._refresh_bag()
         play_effect_sound(self.settings_obj, "HpHeal")
-        self.logger.log_and_showinfo("info", f"{prevo_name} was healed for {heal_points}")
+        self.logger.log_and_showinfo(
+            "info", f"{prevo_name} was healed for {heal_points}"
+        )
         return True
 
     def _heal_main_pokemon(self, item_name: str, heal_points: int) -> bool:
@@ -855,9 +864,20 @@ class ItemWindow(QWidget):
                     individual_id, prevo_id, evo_id, item_name=item_name
                 )
             else:
-                self.logger.log_and_showinfo(
-                    "info", "This Pokemon does not need this item."
+                # Distinguish the wrong time from the wrong item.
+                required_time = item_evolution_time_requirement(
+                    prevo_id, item_id, gender=gender
                 )
+                if required_time:
+                    self.logger.log_and_showinfo(
+                        "info",
+                        f"This Pokemon evolves with this item, but only during "
+                        f"the {required_time}. Try again then.",
+                    )
+                else:
+                    self.logger.log_and_showinfo(
+                        "info", "This Pokemon does not need this item."
+                    )
         except Exception as e:
             show_warning_with_traceback(parent=self, exception=e, message=f"{e}")
 

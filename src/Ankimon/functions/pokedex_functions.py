@@ -1196,7 +1196,42 @@ def filter_gender_split_forms(evo_ids, gender):
     return matching or ids
 
 
-def check_evolution_by_item(pokemon_id, item_id, gender=None):
+def evolution_required_time(target_data):
+    """Return ``"day"``/``"night"`` when a candidate is clock-gated, else None."""
+    if not isinstance(target_data, dict):
+        return None
+    condition = (target_data.get("evoCondition") or "").lower()
+    if "day" in condition:
+        return "day"
+    if "night" in condition:
+        return "night"
+    return None
+
+
+def evolution_time_allows(target_data, current_time=None) -> bool:
+    """Check the candidate’s day/night requirement using the evolution clock."""
+    if not isinstance(target_data, dict):
+        return False
+    required_time = evolution_required_time(target_data)
+    if required_time is None:
+        return True
+    return (current_time or get_time_of_day()) == required_time
+
+
+def item_evolution_time_requirement(pokemon_id, item_id, gender=None):
+    """Return day/night only when time is the sole unmet item-evolution requirement."""
+    if check_evolution_by_item(pokemon_id, item_id, gender=gender):
+        return None
+    evo_id = check_evolution_by_item(
+        pokemon_id, item_id, gender=gender, ignore_time=True
+    )
+    if not evo_id:
+        return None
+    pokedex_data = _load_pokedex_cache()
+    return evolution_required_time(pokedex_data.get(search_pokedex_by_id(evo_id)))
+
+
+def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False):
     """
     Check if a Pokémon evolves using a specific item.
 
@@ -1263,6 +1298,12 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None):
                             # callers without gender data are unaffected.
                             if not evolution_gender_allows(
                                 target_data, gender, _ITEM_EVO_TRIGGERS
+                            ):
+                                continue
+
+                            # ignore_time is only for explaining unavailable evolutions.
+                            if not ignore_time and not evolution_time_allows(
+                                target_data
                             ):
                                 continue
 
