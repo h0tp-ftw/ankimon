@@ -449,6 +449,21 @@ def random_item() -> Optional[str]:
     return item_name
 
 
+# Supply missing icons for older downloaded packs.
+_BUNDLED_ITEM_SPRITES = {
+    "linking-cord": addon_dir / "addon_sprites" / "items" / "linking-cord.png",
+}
+
+
+def get_item_sprite_path(item_name):
+    """Resolve an item icon, falling back to a bundled addition when needed."""
+    downloaded = items_path / f"{item_name}.png"
+    bundled = _BUNDLED_ITEM_SPRITES.get(item_name)
+    if bundled is not None and not downloaded.is_file():
+        return bundled
+    return downloaded
+
+
 # Function to get the list of daily items
 def daily_item_list():
     """
@@ -466,8 +481,12 @@ def daily_item_list():
     excluded_suffixes = ["dust", "-piece", "-nugget", "-berry"]
     # Add full item names here to exclude them from the daily shop, e.g., ["master-ball"]
 
+    files = os.listdir(items_path)
+    files.extend(
+        f"{name}.png" for name in _BUNDLED_ITEM_SPRITES if f"{name}.png" not in files
+    )
     item_names = []
-    for file in os.listdir(items_path):
+    for file in files:
         if not file.endswith(".png"):
             continue
 
