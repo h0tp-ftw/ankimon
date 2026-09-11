@@ -20,6 +20,12 @@ from aqt.qt import (
     QTextBrowser,
     QCheckBox,
 )
+
+try:
+    from aqt.qt import QIcon
+except ImportError:
+    from PyQt6.QtGui import QIcon
+
 from aqt.theme import theme_manager
 
 from .update_manager import (
@@ -39,8 +45,20 @@ from .update_manager import (
     published_at_for_tag,
     stamp_addon_mod,
 )
+
 from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
 
+try:
+    from ..resources import icon_path
+except ImportError:
+    icon_path = None
+
+GUI_AVAILABLE = True
+try:
+    from aqt import mw
+    from aqt.operations import QueryOp
+except ImportError:
+    GUI_AVAILABLE = False
 
 def _start_query_op(parent, op, success, failure):
     try:
@@ -52,6 +70,158 @@ def _start_query_op(parent, op, success, failure):
         # the same UI-safe cleanup callback as background worker failures.
         failure(exc)
 
+
+import re
+from html import escape as _escape
+
+def _format_inline(text: str) -> str:
+    """
+    Apply inline formatting (bold, italic, strikethrough) to text.
+    """
+    
+    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'\*(.*?)\*', r'<i>\1</i>', text)
+    text = re.sub(r'~~(.*?)~~', r'<s>\1</s>', text)
+    
+    return text
+
+
+def markdown_to_html(text: str) -> str:
+    """
+    Convert basic Markdown to clean HTML for display in QTextBrowser.
+    Preserves all line breaks from the original text while cleaning formatting.
+    Makes all links clickable - both [text](url) format and plain URLs.
+    Truncates content right before the "Download:" line (handles bold formatting).
+    """
+    if not text:
+        return ""
+    
+    text = _escape(text)
+    
+    # Look for patterns like "Download:", "**Download:**", "**Download**:", etc.
+    download_match = re.search(
+        r'(?im)^\s*(?:\*{1,3})?Download(?:\*{1,3})?:',
+        text,
+    )
+    if download_match:
+        text = text[:download_match.start()]
+        text = text.rstrip()
+    
+    def fix_markdown_link(match):
+        """
+        Handle Markdown links: [text](url) - convert to HTML links
+        """
+        text_content = match.group(1)
+        url = match.group(2)
+        # Only allow http/https schemes for security
+        if not re.match(r'https?://', url, re.IGNORECASE):
+            return _escape(match.group(0))
+        safe_url = _escape(url, quote=True)
+        return f'<a href="{safe_url}">{text_content}</a>'
+    
+    text = re.sub(r'\[(.*?)\]\((.*?)\)', fix_markdown_link, text)
+    
+    def fix_plain_url(match):
+        """
+        Handle plain URLs - convert to clickable links
+        """
+        url = match.group(0)
+        if not re.match(r'https?://', url, re.IGNORECASE):
+            return _escape(url)
+        safe_url = _escape(url, quote=True)
+        return f'<a href="{safe_url}">{url}</a>'
+    
+    # Match URLs that aren't already inside an <a> tag
+    url_pattern = r'https?://[^\s<>"\'()]+'
+    parts = re.split(r'(<a[^>]*>.*?</a>)', text, flags=re.DOTALL)
+    processed_parts = []
+    for part in parts:
+        if part.startswith('<a'):
+            processed_parts.append(part)
+        else:
+            processed_parts.append(re.sub(url_pattern, fix_plain_url, part))
+    text = ''.join(processed_parts)
+    
+    lines = text.split('\n')
+    processed_lines = []
+    
+    for line in lines:
+        stripped = line.rstrip()
+
+        if not stripped:
+            processed_lines.append('')
+            continue
+        
+        # Headers
+        if re.match(r'^###\s+', stripped):
+            content = re.sub(r'^###\s+', '', stripped)
+            processed_lines.append(f'<b>{_format_inline(content)}</b>')
+            continue
+        elif re.match(r'^##\s+', stripped):
+            content = re.sub(r'^##\s+', '', stripped)
+            processed_lines.append(f'<b>{_format_inline(content)}</b>')
+            continue
+        elif re.match(r'^#\s+', stripped):
+            content = re.sub(r'^#\s+', '', stripped)
+            processed_lines.append(f'<b>{_format_inline(content)}</b>')
+            continue
+        
+        # Horizontal rules
+        if stripped in ['---', '___', '***']:
+            processed_lines.append('<hr style="border: none; border-top: 1px solid #444; margin: 4px 0;">')
+            continue
+        
+        # Bullet points
+        bullet_match = re.match(r'^[-*•]\s+(.*)$', stripped)
+        if bullet_match:
+            content = bullet_match.group(1)
+            # Apply inline formatting to bullet content
+            content = _format_inline(content)
+            # Bold any "feat:" or "fix:" labels
+            content = re.sub(r'(feat\([^)]*\)|fix\([^)]*\)|add\([^)]*\)|update\([^)]*\)):', r'<b>\1:</b>', content)
+            processed_lines.append(f'• {content}')
+            continue
+        
+        # Regular text
+        line_text = _format_inline(stripped)
+        
+        processed_lines.append(line_text)
+    
+    html = '\n'.join(processed_lines)
+    
+    lines = html.split('\n')
+    collapsed_lines = []
+    prev_empty = False
+    for line in lines:
+        if line == '':
+            if not prev_empty:
+                collapsed_lines.append('')
+                prev_empty = True
+        else:
+            collapsed_lines.append(line)
+            prev_empty = False
+    html = '\n'.join(collapsed_lines)
+    
+    html = html.replace('\n\n', '<br><br>')
+    html = html.replace('\n', '<br>')
+    
+    # Clean up excessive breaks - maximum of two consecutive <br> tags
+    html = re.sub(r'(<br>){3,}', '<br><br>', html)
+    
+    def add_link_style(match):
+        """
+        Add styles to all links in the HTML - but only if they don't already have styles
+        """
+        href = match.group(1)
+        text_content = match.group(2)
+        # Check if style already exists
+        if 'style=' in match.group(0):
+            return match.group(0)
+        return f'<a href="{href}" style="color: #1A73E8; text-decoration: none;">{text_content}</a>'
+    
+    html = re.sub(r'<a href="(.*?)">(.*?)</a>', add_link_style, html)
+    
+    return html
 
 class UpdateDialog(QDialog):
     def __init__(self, parent=None, select_tab=None):
@@ -1907,41 +2077,214 @@ def show_branch_update_prompt(
 def show_release_update_prompt(channel: str, release: dict):
     """Auto-update nudge for the stable / experimental release channels.
 
-    Shows the new version (and a snippet of its release notes) and, on accept,
+    Shows the new version with a scrollable release notes area and, on accept,
     installs it through the shared progress dialog. "Later" plus the snooze
     checkbox defers for a week — mirroring the branch prompt's behaviour.
     """
+    
     tag = release.get("name", "?")
-
-    box = QMessageBox(mw)
-    box.setWindowTitle("Ankimon Update Available")
-    box.setIcon(QMessageBox.Icon.Information)
-    box.setText(
-        f"A new <b>{channel}</b> release of Ankimon is available: "
-        f"<b>{tag}</b> (you have {addon_ver}).<br><br>"
-        "Your Pokémon data, team, and settings will be preserved."
-    )
     notes = (release.get("body") or "").strip()
+    notes_html = ""
+    
     if notes:
-        # Keep the popup compact; the full notes live on the GitHub release page.
-        box.setInformativeText(notes[:800] + ("…" if len(notes) > 800 else ""))
-
-    box.setStandardButtons(
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        notes_html = markdown_to_html(notes)
+    
+    # Validate that the release has the required keys before proceeding
+    if not release.get("name") or not release.get("zipball_url"):
+        QMessageBox.warning(
+            mw,
+            "Invalid Release",
+            "The release data is incomplete and cannot be installed.\n\n"
+            "Please try again later or check for updates manually."
+        )
+        return
+    
+    dialog = QDialog(mw)
+    dialog.setWindowTitle("Ankimon Update Available")
+    dialog.setMinimumWidth(550)
+    dialog.setMinimumHeight(450)
+    if icon_path:
+        dialog.setWindowIcon(QIcon(str(icon_path)))
+    
+    is_dark = theme_manager.night_mode
+    if is_dark:
+        bg = "#0d1117"
+        bg_darker = "#161b22"
+        bg_card_hover = "#252d3f"
+        border = "#2d3748"
+        text = "#f0f6fc"
+        accent_blue = "#58a6ff"
+        accent_green = "#3fb950"
+        btn_bg = "rgba(88, 166, 255, 0.08)"
+        btn_hover = "rgba(88, 166, 255, 0.18)"
+        update_btn_text = "#0d1117"
+    else:
+        bg = "#ffffff"
+        bg_darker = "#f0f2f5"
+        bg_card_hover = "#e9ecef"
+        border = "#d0d7de"
+        text = "#24292f"
+        accent_blue = "#0969da"
+        accent_green = "#2da44e"
+        btn_bg = "rgba(9, 105, 218, 0.08)"
+        btn_hover = "rgba(9, 105, 218, 0.18)"
+        update_btn_text = "#e6ffea"
+    
+    dialog.setStyleSheet(f"""
+        QDialog {{
+            background-color: {bg};
+            color: {text};
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        QLabel {{
+            color: {text};
+            background: transparent;
+        }}
+        QTextBrowser {{
+            background-color: {bg_darker};
+            border: 1px solid {border};
+            border-radius: 8px;
+            padding: 14px;
+            color: {text};
+            font-size: 14px;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        QTextBrowser a {{
+            color: {accent_blue};
+            text-decoration: none;
+        }}
+        QTextBrowser a:hover {{
+            text-decoration: underline;
+        }}
+        QTextBrowser b {{
+            color: {text};
+        }}
+        QPushButton {{
+            padding: 8px 20px;
+            border: 1px solid {border};
+            border-radius: 8px;
+            background: {btn_bg};
+            color: {text};
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-width: 100px;
+        }}
+        QPushButton:hover {{
+            background: {btn_hover};
+            border-color: {accent_blue};
+        }}
+        QPushButton#updateBtn {{
+            background: {accent_green};
+            border: none;
+            color: {update_btn_text};
+            font-weight: 700;
+        }}
+        QPushButton#updateBtn:hover {{
+            background: #2ea043;
+        }}
+        QPushButton#laterBtn {{
+            background: transparent;
+            border: 1px solid {border};
+            color: {text};
+        }}
+        QPushButton#laterBtn:hover {{
+            background: {bg_card_hover};
+            border-color: {text};
+        }}
+        QCheckBox {{
+            color: {text};
+            font-size: 0.8rem;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            spacing: 8px;
+        }}
+        QCheckBox::indicator {{
+            width: 16px;
+            height: 16px;
+            border: 2px solid {border};
+            border-radius: 4px;
+            background-color: {bg};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {accent_blue};
+            border-color: {accent_blue};
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {accent_blue};
+        }}
+    """)
+    
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(24, 24, 24, 24)
+    layout.setSpacing(16)
+    
+    # Escape dynamic content to prevent HTML injection
+    escaped_channel = _escape(channel)
+    escaped_tag = _escape(tag)
+    title_label = QLabel(
+        f"<span style='font-size: 1.2rem; font-weight: 800; letter-spacing: -0.3px; color: {text};'>A new <b>{escaped_channel}</b> release is available: <b>{escaped_tag}</b></span>"
     )
-    yes_btn = box.button(QMessageBox.StandardButton.Yes)
-    yes_btn.setText("Update Now")
-    box.button(QMessageBox.StandardButton.No).setText("Later")
-    box.setDefaultButton(QMessageBox.StandardButton.Yes)
-
+    title_label.setWordWrap(True)
+    layout.addWidget(title_label)
+    
+    info_label = QLabel("Your Pokémon data, team, and settings will be preserved.")
+    info_label.setStyleSheet(f"color: {text}; font-size: 0.88rem;")
+    info_label.setWordWrap(True)
+    layout.addWidget(info_label)
+    
+    if notes_html:
+        notes_label = QLabel("<b>Release Notes:</b>")
+        notes_label.setStyleSheet(f"color: {text}; font-weight: 700; font-size: 0.92rem;")
+        layout.addWidget(notes_label)
+        
+        notes_browser = QTextBrowser()
+        notes_browser.setOpenExternalLinks(True)
+        notes_browser.setHtml(notes_html)
+        notes_browser.setMinimumHeight(200)
+        notes_browser.setMaximumHeight(350)
+        layout.addWidget(notes_browser)
+    
     snooze = QCheckBox("Don't notify me for 1 week")
-    box.setCheckBox(snooze)
-
-    box.exec()
-    if box.clickedButton() is yes_btn:
+    layout.addWidget(snooze)
+    
+    button_layout = QHBoxLayout()
+    button_layout.addStretch()
+    
+    later_btn = QPushButton("Later")
+    later_btn.setObjectName("laterBtn")
+    later_btn.setMinimumWidth(100)
+    button_layout.addWidget(later_btn)
+    
+    update_btn = QPushButton("Update Now")
+    update_btn.setObjectName("updateBtn")
+    update_btn.setMinimumWidth(120)
+    button_layout.addWidget(update_btn)
+    
+    layout.addLayout(button_layout)
+    
+    # Helper to persist snooze if checkbox is checked
+    def _persist_snooze_if_checked():
+        if snooze.isChecked():
+            import time
+            from .update_manager import set_update_skip_until
+            set_update_skip_until(time.time() + 604800)
+    
+    def on_update():
+        dialog.accept()
         BranchUpdateProgressDialog(tag, tag, mw, release=release).exec()
-    elif snooze.isChecked():
-        import time
-        from .update_manager import set_update_skip_until
-
-        set_update_skip_until(time.time() + 604800)
+    
+    def on_later():
+        dialog.reject()
+        QMessageBox.information(
+            mw,
+            "Update Later",
+            "No problem! You can always check for updates and install them later by going to Ankimon => Help => Check for Updates."
+        )
+    
+    # Connect the finished signal to persist snooze on any close path
+    dialog.finished.connect(_persist_snooze_if_checked)
+    
+    update_btn.clicked.connect(on_update)
+    later_btn.clicked.connect(on_later)
+    
+    dialog.exec()
