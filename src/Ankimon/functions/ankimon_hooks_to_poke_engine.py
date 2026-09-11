@@ -588,13 +588,54 @@ def simulate_battle_with_poke_engine(
         for instr in instrs:
             battle_effects.append(list(instr))  # Convert tuples to lists
 
+        user_move_missed = False
+        user_move_blocked_by_status = None
+        opponent_move_missed = False
+        opponent_move_blocked_by_status = None
+
+        for instr in battle_effects:
+            if instr[0] == "move_missed":
+                if len(instr) > 1:
+                    if instr[1] == "user":
+                        user_move_missed = True
+                    elif instr[1] == "opponent":
+                        opponent_move_missed = True
+            elif instr[0] == "move_blocked_by_status":
+                if len(instr) > 2:
+                    if instr[1] == "user":
+                        user_move_blocked_by_status = instr[2]
+                    elif instr[1] == "opponent":
+                        opponent_move_blocked_by_status = instr[2]
+
         battle_info = {
             "battle_header": battle_header,
             "instructions": battle_effects,
             "state": new_state,
+            "user_move_missed": user_move_missed,
+            "user_move_blocked_by_status": user_move_blocked_by_status,
+            "opponent_move_missed": opponent_move_missed,
+            "opponent_move_blocked_by_status": opponent_move_blocked_by_status,
         }
 
+        # Also run effectiveness check since the engine does not provide it automatically
+        if main_move_normalized != "splash" and enemy_move_normalized != "splash":
+            from ..poke_engine.damage_calculator import type_effectiveness_modifier
+            from ..poke_engine.data import all_move_json
+
+            # Check user move effectiveness
+            if not user_move_missed and user_move_blocked_by_status is None:
+                user_move = all_move_json.get(main_move_normalized)
+                if user_move and user_move.get("category") in ["physical", "special"]:
+                    battle_info["user_effectiveness"] = type_effectiveness_modifier(user_move["type"], state.opponent.active.types)
+
+            # Check opponent move effectiveness
+            if not opponent_move_missed and opponent_move_blocked_by_status is None:
+                enemy_move_data = all_move_json.get(enemy_move_normalized)
+                if enemy_move_data and enemy_move_data.get("category") in ["physical", "special"]:
+                    battle_info["opponent_effectiveness"] = type_effectiveness_modifier(enemy_move_data["type"], state.user.active.types)
+
         return (
+
             battle_info,
             new_state,
             dmg_from_enemy_move,
