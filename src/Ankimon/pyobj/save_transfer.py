@@ -694,9 +694,10 @@ def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str
     are enough: Anki stamps a downloaded media file's mtime from the local clock
     at the moment it writes it, so a save that arrives from a peer always looks
     different from the one it replaced, and it only downloads at all when the
-    sha1 differs. A file that cannot be stat'ed is simply not part of the
-    signature, so the migration re-arms rather than settling on a folder it
-    could not read.
+    sha1 differs. Missing paths are omitted; other stat failures retain an
+    empty-string entry so the whole fingerprint stays unknown, including when
+    other candidates are readable. An unreadable newcomer must not match a
+    previously settled empty folder or subset of saves.
 
     Returned as a dict so the scan can amend it with only the files it wrote
     ITSELF — which is what separates "the folder the scan resolved" from "the
@@ -711,10 +712,13 @@ def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str
 
 
 def _fingerprint_entry(path: Path) -> Optional[str]:
+    """A stat signature, ``None`` for absence, or ``""`` for unknown metadata."""
     try:
         stat = path.stat()
-    except Exception:
+    except FileNotFoundError:
         return None
+    except Exception:
+        return ""
     return f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
 
 
@@ -724,9 +728,11 @@ def _join_fingerprint(entries: Dict[str, str]) -> str:
     An examined partition with no candidate is a real state, not an unknown
     one, so it gets a non-empty value of its own: the profile can settle on it,
     and ``_migration_done`` — which recomputes through this same function —
-    expires that settle the moment a save lands. The empty string stays
-    reserved for "nothing was computed", which never settles.
+    expires that settle the moment a save lands. An unknown entry makes the
+    entire fingerprint unknown (the empty string), which never settles.
     """
+    if "" in entries.values():
+        return ""
     return "|".join(sorted(entries.values())) or _EMPTY_MEDIA_FINGERPRINT
 
 

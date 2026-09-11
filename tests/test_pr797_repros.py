@@ -618,6 +618,79 @@ def test_an_empty_folder_settles_and_dispatches_no_scan_until_a_save_lands(
     assert 42 in {st.get_db_stats(p)["pokemon"] for p in _protected(folder)}
 
 
+@pytest.mark.parametrize("readable_neighbour", [False, True])
+@pytest.mark.parametrize("background", [False, True])
+def test_stat_failure_rearms_a_settled_folder_and_rescues_on_the_same_pass(
+    real_flag_media, live_db, logger, monkeypatch, taskman,
+    readable_neighbour, background,
+):
+    """An unreadable newcomer must not match the previously settled folder."""
+    folder, _profile = real_flag_media
+    if readable_neighbour:
+        _make_save(folder / "_old_ankimon.db", pokemon=1)
+    st.run_media_migration(MagicMock(), logger)
+    assert st._migration_done()
+
+    incoming = _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+    real_stat = Path.stat
+    failed = False
+
+    def stat(path, *args, **kwargs):
+        nonlocal failed
+        if path == incoming and not failed:
+            failed = True
+            raise PermissionError("transient metadata failure")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat)
+    if background:
+        st.start_media_migration(MagicMock(), logger)
+        assert len(taskman.queued) == 1
+        taskman.run_next()
+    else:
+        st.run_media_migration(MagicMock(), logger)
+
+    assert [st.get_db_stats(p)["pokemon"] for p in _protected(folder)] == [42]
+    ask.assert_called_once()
+    assert st.get_db_stats(live_db)["pokemon"] == 3
+    assert st._migration_done()
+
+
+@pytest.mark.parametrize("readable_neighbour", [False, True])
+def test_scan_with_unknown_metadata_cannot_settle_on_a_partial_fingerprint(
+    real_flag_media, live_db, logger, monkeypatch, readable_neighbour,
+):
+    """The worker must carry its unknown state through the main-thread settle."""
+    folder, profile = real_flag_media
+    incoming = _make_save(folder / "_old_ankimon.db", pokemon=42, badges=8, history=99)
+    if readable_neighbour:
+        _make_save(folder / "_other_ankimon.db", pokemon=1)
+    monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+    real_stat = Path.stat
+    failed = False
+
+    def stat(path, *args, **kwargs):
+        nonlocal failed
+        if path == incoming and not failed:
+            failed = True
+            raise PermissionError("transient metadata failure")
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat)
+    st.run_media_migration(MagicMock(), logger)
+
+    assert not profile.get(st._MIGRATION_FLAG)
+    assert not st._migration_done()
+    assert st.get_db_stats(incoming)["pokemon"] == 42
+    assert st.get_db_stats(live_db)["pokemon"] == 3
+
+    # A subsequent complete scan can settle normally.
+    st.run_media_migration(MagicMock(), logger)
+    assert st._migration_done()
+
+
 # ---------------------------------------------------------------------------
 # P1 -- _progress_key invents a winner between two saves that only diverged
 # ---------------------------------------------------------------------------
