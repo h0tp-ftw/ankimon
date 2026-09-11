@@ -36,12 +36,20 @@ _SAVE_PREFIX = {"ankimon.db": "_ankimon_save_", "ankimonDEV.db": "_ankimon_save_
 # Use 128 bits of SHA-256 for compact protected filenames.
 _DIGEST_CHARS = 32
 
-# Settle only when every candidate is readable and the comparison is resolved.
-# Empty folders, unreadable saves and failed rescues must remain eligible for a
-# later scan. The profile flag stores the media files' stat fingerprint, so a
-# download after startup re-arms migration. A media-sync stop triggers a scan;
-# it does not establish that the download succeeded.
+# Settle when every candidate is readable and the comparison is resolved, or
+# when the partition holds no candidate at all. Unreadable saves and failed
+# rescues must remain eligible for a later scan. The profile flag stores the
+# media files' stat fingerprint, so a download after startup re-arms migration —
+# which is what makes settling on an empty folder safe: a save that lands later
+# changes the fingerprint, and the next boot or media-sync stop rescans. A
+# media-sync stop triggers a scan; it does not establish that the download
+# succeeded.
 _MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
+
+# What the flag stores for a partition that was examined and held no candidate.
+# Distinct from "" (nothing was computed), which never settles, and from every
+# real fingerprint, which always contains a ":".
+_EMPTY_MEDIA_FINGERPRINT = "empty"
 
 # Remember the answered snapshot/folder independently: an unreadable neighbor
 # requires another scan without repeating an already answered rescue prompt.
@@ -664,7 +672,8 @@ def _mark_migration_done(fingerprint: str) -> None:
     would settle on a file nothing ever looked at. A fingerprint that could not
     be computed is the empty string, which ``_migration_done`` reads as
     not-settled: the cost is one more scan, where the cost of wrongly settling
-    is a save nobody offers back.
+    is a save nobody offers back. A folder that was examined and held nothing
+    is ``_EMPTY_MEDIA_FINGERPRINT`` instead, and does settle.
     """
     _set_profile_flag(_MIGRATION_FLAG, fingerprint)
 
@@ -710,7 +719,15 @@ def _fingerprint_entry(path: Path) -> Optional[str]:
 
 
 def _join_fingerprint(entries: Dict[str, str]) -> str:
-    return "|".join(sorted(entries.values()))
+    """One string for a partition's entries, shared by the scan and the settle.
+
+    An examined partition with no candidate is a real state, not an unknown
+    one, so it gets a non-empty value of its own: the profile can settle on it,
+    and ``_migration_done`` — which recomputes through this same function —
+    expires that settle the moment a save lands. The empty string stays
+    reserved for "nothing was computed", which never settles.
+    """
+    return "|".join(sorted(entries.values())) or _EMPTY_MEDIA_FINGERPRINT
 
 
 def _target_db_for(candidate: Path) -> str:
@@ -992,11 +1009,21 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         return base
 
     if not saves:
-        # An absence is never a resolution: the folder may simply not have
-        # received the peer's save yet, so stay armed and rescan on the next
-        # boot or media-sync event. The removal notice is independent of that
-        # and safe to run on every pass.
-        return _result("armed", notify=True)
+        if unreadable:
+            # Something is there that could not be judged this pass — a lock,
+            # or damage that may yet be repaired — so stay armed to retry it.
+            # The removal notice is independent of that and safe to run on
+            # every pass.
+            return _result("armed", notify=True)
+        # Nothing at all for this partition. The folder may simply not have
+        # received the peer's save yet — but that is what the fingerprint
+        # settle is for: the save landing later changes it, and the next boot
+        # or media-sync stop rescans. Staying armed instead dispatched a scan —
+        # two glob passes over collection.media — on every profile open and
+        # every media-sync stop, forever, for the majority of profiles that
+        # never had the removed feature on. Settle on the examined-empty
+        # fingerprint; the removal notice still runs from this result.
+        return _result("empty", notify=True)
 
     # Read each candidate exactly ONCE: every one is a SQLite open on a file
     # that may be locked, so re-reading a path to re-compare it multiplies the
@@ -1194,7 +1221,16 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
     if result.get("notify"):
         _notify_affected_user(logger)
 
-    if result.get("outcome") != "compare":
+    outcome = result.get("outcome")
+    if outcome == "empty":
+        # Nothing in this partition: settle on the examined-empty fingerprint,
+        # unless the active save changed partitions while the worker ran and
+        # the scan described the wrong one. ``_migration_done`` would catch
+        # that on its own recompute; the guard only saves a pointless write.
+        if _active_db_path() == result.get("target"):
+            _mark_migration_done(result.get("fingerprint", ""))
+        return
+    if outcome != "compare":
         return
 
     target = result.get("target")

@@ -365,6 +365,23 @@ def media(tmp_path, monkeypatch):
     return d
 
 
+@pytest.fixture
+def real_flag_media(tmp_path, monkeypatch):
+    """A media folder plus the REAL per-profile one-shot.
+
+    ``media`` stubs ``_migration_done``/``_mark_migration_done`` down to a
+    boolean. The tests about the flag's own policy — what a settle records and
+    when it expires — drive the real thing against a real profile dict.
+    """
+    folder = tmp_path / "collection.media"
+    folder.mkdir()
+    monkeypatch.setattr(st, "_media_dir", lambda: folder)
+    profile = {}
+    monkeypatch.setattr(st.mw.pm, "profile", profile, raising=False)
+    monkeypatch.setattr(st.mw.pm, "save", lambda: None, raising=False)
+    return folder, profile
+
+
 def test_migration_protects_the_bare_media_save(media, live_db, logger, monkeypatch):
     """collection.media/ankimon.db has no leading underscore, so Anki's Check
     Media lists it as unused and 'Delete Unused Files' deletes it — and that
@@ -507,54 +524,82 @@ def test_migration_settles_after_a_successful_rescue(media, live_db, logger, mon
 # --------------------------------------------------------------------------
 # The boot-ordering trap (the bug the first cut of this migration shipped)
 # --------------------------------------------------------------------------
-def test_empty_media_at_profile_open_does_not_burn_the_one_shot(media, live_db, logger, monkeypatch):
+def test_empty_media_at_profile_open_does_not_burn_the_one_shot(real_flag_media, live_db, logger):
     """THE regression guard. Anki fires profile_did_open at aqt/main.py:568, one
     line BEFORE maybe_auto_sync_on_open_close at :569. On a brand-new second
     device collection.media EXISTS (Anki creates it with the profile) but is
     empty — the peer's save arrives from the sync that starts moments later.
 
-    Concluding "nothing here, mark this profile done" at that moment burns the
-    flag permanently and the arriving save is never protected or offered, for
-    exactly the two-device user the rescue exists to serve.
+    Concluding "nothing here, mark this profile done" at that moment PERMANENTLY
+    would leave the arriving save never protected or offered, for exactly the
+    two-device user the rescue exists to serve. So the settle records what the
+    scan examined — an empty partition — and the arriving save expires it.
     """
-    marked = MagicMock()
-    monkeypatch.setattr(st, "_mark_migration_done", marked)
+    folder, profile = real_flag_media
 
     st.run_media_migration(MagicMock(), logger)     # the profile_did_open scan
 
-    marked.assert_not_called()
+    assert profile[st._MIGRATION_FLAG] == st._EMPTY_MEDIA_FINGERPRINT
+    assert st._migration_done()
+
+    _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)   # the sync lands
+
+    assert not st._migration_done()                 # the one-shot was not burned
 
 
-def test_peer_save_is_picked_up_on_the_post_sync_pass(media, live_db, logger, monkeypatch):
+def test_peer_save_is_picked_up_on_the_post_sync_pass(real_flag_media, live_db, logger, monkeypatch):
     """...and the post-media-sync pass is what actually finds it."""
+    folder, _profile = real_flag_media
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
 
     st.run_media_migration(MagicMock(), logger)                 # boot: nothing yet
-    assert _protected(media) == []
+    assert _protected(folder) == []
     ask.assert_not_called()
 
-    _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)   # download lands
+    _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)   # download lands
     st.run_media_migration(MagicMock(), logger)
 
-    assert len(_protected(media)) == 1                          # protected
+    assert len(_protected(folder)) == 1                         # protected
     ask.assert_called_once()                                    # and offered
 
 
-def test_empty_media_never_settles_however_many_syncs_have_finished(
+def test_empty_media_settles_on_the_examined_empty_fingerprint(
     media, live_db, logger, monkeypatch
 ):
-    """DELIBERATELY INVERTED from the behaviour this file first shipped.
+    """Inverted for the second time, and this time on the fingerprint settle.
 
-    It used to assert that an empty folder settles once a media sync has
-    "completed". There is no such signal: aqt/mediasync.py fires
+    The first version settled an empty folder once a media sync had "completed"
+    — a signal that does not exist: aqt/mediasync.py fires
     media_sync_did_start_or_stop(False) at :80 and only inspects
-    future.exception() at :82, so the hook means "the worker stopped" and fires
-    identically on failure, on abort, and when media syncing is switched off.
+    future.exception() at :82, so the hook fires identically on failure, on
+    abort, and when media syncing is switched off. A PERMANENT settle on it
+    burned the one-shot for the two-device user whose save had not downloaded
+    yet, so the second version stayed armed forever instead.
 
-    Settling on it burned the one-shot for the two-device user the rescue exists
-    to serve. An absence is never a resolution; the scan costs three stat calls
-    and a glob, so staying armed is close to free."""
+    Armed forever meant a background scan — two glob passes over
+    collection.media — on every profile open and on every one of those sync
+    stops, for the majority of profiles that never had the feature on. Since
+    the settle became a fingerprint of the examined folder, neither is needed:
+    an empty partition settles on its own sentinel, and a save landing later
+    changes the fingerprint and re-arms it (pinned in test_pr797_repros)."""
+    marked = MagicMock()
+    monkeypatch.setattr(st, "_mark_migration_done", marked)
+
+    st.run_media_migration(MagicMock(), logger)
+
+    marked.assert_called_once_with(st._EMPTY_MEDIA_FINGERPRINT)
+
+
+def test_an_unreadable_file_in_an_otherwise_empty_folder_keeps_it_armed(
+    media, live_db, logger, monkeypatch
+):
+    """The empty settle is for a partition that holds NOTHING. A file that is
+    there but will not open is unknown, not absent — a lock this second, or
+    damage that may yet be repaired — and settling past it would be the one
+    permanent miss the fingerprint cannot undo, since the file itself need
+    never change again."""
+    (media / "_old_ankimon.db").write_bytes(b"not a readable SQLite database")
     marked = MagicMock()
     monkeypatch.setattr(st, "_mark_migration_done", marked)
 

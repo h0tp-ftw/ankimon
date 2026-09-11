@@ -3,7 +3,8 @@
 Each of these was written RED against head 0582ffd0 -- reproducing a real
 failure -- and is kept green by the fixes in this commit. They are grouped by
 what they protect rather than by module, because they share one theme: the
-migration must never treat an ABSENCE or an UNKNOWN as a resolution.
+migration must never treat an UNKNOWN as a resolution, and a resolution of an
+ABSENCE must expire the moment the absence ends.
 
   * a media-sync hook that fires on failure is not proof a download arrived;
   * a save that will not open is unknown, not empty, on either side;
@@ -33,14 +34,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from test_save_transfer import _make_save, _protected, _Logger, st  # noqa: F401
-from test_save_transfer import logger, media, live_db  # noqa: F401
+from test_save_transfer import logger, media, live_db, real_flag_media  # noqa: F401
 
 
 # ===========================================================================
 # P0 #1 — a FAILED or ABORTED media sync permanently settles the migration
 # ===========================================================================
-def test_a_failed_media_sync_does_not_settle_an_empty_folder(
-    media, live_db, logger, monkeypatch
+def test_a_failed_media_sync_does_not_burn_the_one_shot_on_an_empty_folder(
+    real_flag_media, live_db, logger, monkeypatch
 ):
     """aqt/mediasync.py:77-86 --
 
@@ -59,20 +60,22 @@ def test_a_failed_media_sync_does_not_settle_an_empty_folder(
     run_media_migration treated that single signal as proof a download had its
     chance, settled an empty folder, and burned the per-profile flag forever.
     The PR body states the hook is "treated only as 'rescan now', never as 'it
-    worked'"; this asserts that stated invariant.
+    worked'"; this asserts that stated invariant. A pass may settle on what the
+    folder HELD — nothing — because that settle is a fingerprint and the next,
+    successful sync changes it; it must never settle on "the sync worked".
     """
-    marked = MagicMock()
-    monkeypatch.setattr(st, "_mark_migration_done", marked)
+    folder, profile = real_flag_media
 
     # The first media sync on a new device FAILS. Folder is still empty.
     st.run_media_migration(MagicMock(), logger)
 
-    marked.assert_not_called()
+    assert profile[st._MIGRATION_FLAG] == st._EMPTY_MEDIA_FINGERPRINT
 
     # ...and the save that arrives on the next, successful sync is still found.
-    _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
+    _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
     ask = MagicMock(return_value=False)
     monkeypatch.setattr(st, "askUser", ask)
+    assert not st._migration_done()
     st.run_media_migration(MagicMock(), logger)
     ask.assert_called_once()
 
@@ -202,7 +205,7 @@ def test_export_does_not_carry_the_leaderboard_api_key(tmp_path, monkeypatch):
 # P1 #4 — the session latch leaks across a profile switch
 # ===========================================================================
 def test_no_process_global_carries_sync_state_between_profiles(
-    media, live_db, logger, monkeypatch, tmp_path
+    real_flag_media, live_db, logger, monkeypatch, tmp_path
 ):
     """Anki does not re-import add-on modules on a profile switch, so ANY
     module-global "a media sync finished" latch is inherited by the next
@@ -210,30 +213,35 @@ def test_no_process_global_carries_sync_state_between_profiles(
     collection.media is still empty because B's download has not landed -> B
     settles on A's state and burns its one-shot forever.
 
-    The fix is structural: there is no such global. This pins that, and pins the
+    The fix is structural: there is no such global, and each profile's flag
+    records only what its OWN folder held. This pins that, and pins the
     behaviour it existed to produce.
     """
     assert not hasattr(st, "_media_sync_completed_this_session"), (
         "a process-global sync latch is back; it leaks across profile switches"
     )
+    media_a, profile_a = real_flag_media
 
     # --- profile A: a save is present, gets protected, rescue declined --------
-    _make_save(media / "ankimon.db", pokemon=42, badges=8, history=99)
+    _make_save(media_a / "ankimon.db", pokemon=42, badges=8, history=99)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
     st.run_media_migration(MagicMock(), logger)
+    settled_a = profile_a[st._MIGRATION_FLAG]
+    assert ":" in settled_a                              # A resolved A's save
 
-    # --- profile switch: B has its own, still-empty media folder -------------
+    # --- profile switch: B has its own profile and its own, still-empty folder
     media_b = tmp_path / "profileB" / "collection.media"
     media_b.mkdir(parents=True)
+    profile_b = {}
     monkeypatch.setattr(st, "_media_dir", lambda: media_b)
-    monkeypatch.setattr(st, "_migration_done", lambda: False)
-    marked = MagicMock()
-    monkeypatch.setattr(st, "_mark_migration_done", marked)
+    monkeypatch.setattr(st.mw.pm, "profile", profile_b, raising=False)
 
     st.run_media_migration(MagicMock(), logger)  # B's profile_did_open scan
     st.run_media_migration(MagicMock(), logger)
 
-    marked.assert_not_called()
+    # B settled on what B's folder held -- nothing -- and never on A's state.
+    assert profile_b[st._MIGRATION_FLAG] == st._EMPTY_MEDIA_FINGERPRINT
+    assert profile_a[st._MIGRATION_FLAG] == settled_a
 
     # ...and B's save, once it lands, is still protected and offered.
     ask = MagicMock(return_value=False)
@@ -430,23 +438,6 @@ def _reset_scan_state():
     st._MIGRATION_SCAN_STATE.update({"running": False, "rerun": False})
 
 
-@pytest.fixture
-def real_flag_media(tmp_path, monkeypatch):
-    """A media folder plus the REAL per-profile one-shot.
-
-    The shared ``media`` fixture stubs ``_migration_done``/``_mark_migration
-    _done`` down to a boolean, which is exactly the behaviour these tests exist
-    to reject, so they drive the real thing against a real profile dict.
-    """
-    folder = tmp_path / "collection.media"
-    folder.mkdir()
-    monkeypatch.setattr(st, "_media_dir", lambda: folder)
-    profile = {}
-    monkeypatch.setattr(st.mw.pm, "profile", profile, raising=False)
-    monkeypatch.setattr(st.mw.pm, "save", lambda: None, raising=False)
-    return folder, profile
-
-
 class _FakeTaskman:
     """Anki's taskman, but the work only happens when the test says so."""
 
@@ -568,6 +559,63 @@ def test_a_legacy_boolean_one_shot_is_re_armed_exactly_once(
 
     assert isinstance(profile[st._MIGRATION_FLAG], str)
     assert st._migration_done() is True
+
+
+def test_a_legacy_boolean_one_shot_on_an_empty_folder_settles_after_one_pass(
+    real_flag_media, live_db, logger
+):
+    """Same honour-once rule for the far more common profile: the feature was
+    never on, media holds nothing, and an earlier build stamped ``True``. One
+    real pass, then it settles on the examined-empty fingerprint."""
+    folder, profile = real_flag_media
+    profile[st._MIGRATION_FLAG] = True
+
+    assert st._migration_done() is False
+    st.run_media_migration(MagicMock(), logger)
+
+    assert profile[st._MIGRATION_FLAG] == st._EMPTY_MEDIA_FINGERPRINT
+    assert st._migration_done() is True
+
+
+def test_an_empty_folder_settles_and_dispatches_no_scan_until_a_save_lands(
+    real_flag_media, live_db, logger, monkeypatch, taskman
+):
+    """The empty-folder side of the boot-ordering trap, now that a settle is a
+    fingerprint of the folder it examined.
+
+    Staying armed on an empty folder was how the second device whose download
+    had not landed yet kept its rescue. But media_sync_did_start_or_stop(False)
+    fires on every sync stop — success, failure, abort, media sync switched off
+    — and each one re-dispatched a background scan, two glob passes over
+    collection.media, for a profile that never had the removed feature on. That
+    never settled, for anyone, ever.
+
+    The fingerprint makes the guard unnecessary: an empty partition settles on
+    its own sentinel, and the download the old guard was waiting for is exactly
+    what expires that settle.
+    """
+    folder, profile = real_flag_media
+    ask = MagicMock(return_value=False)
+    monkeypatch.setattr(st, "askUser", ask)
+
+    st.start_media_migration(MagicMock(), logger)          # profile_did_open
+    assert len(taskman.queued) == 1
+    taskman.run_next()
+    assert profile[st._MIGRATION_FLAG] == st._EMPTY_MEDIA_FINGERPRINT
+    assert st._migration_done()
+
+    for _ in range(3):                                     # sync stop, stop, stop
+        st.start_media_migration(MagicMock(), logger)
+    assert taskman.queued == []                            # nothing dispatched
+
+    _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)   # the download
+    assert not st._migration_done()
+    st.start_media_migration(MagicMock(), logger)
+    assert len(taskman.queued) == 1
+    taskman.run_next()
+
+    ask.assert_called_once()
+    assert 42 in {st.get_db_stats(p)["pokemon"] for p in _protected(folder)}
 
 
 # ---------------------------------------------------------------------------

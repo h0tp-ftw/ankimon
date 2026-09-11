@@ -111,13 +111,18 @@ def test_sync_removal_notice_stays_dismissed_after_saving_settings(
 
         st.run_media_migration(settings, services.logger)
         assert len(notices) == 1
-        assert not st._migration_done()
+        # An empty folder settles on its examined-empty fingerprint; a folder
+        # holding a file that will not open stays armed to retry it.
+        assert st._migration_done() is not unreadable_media
         assert db.get_config_value("misc.ankiweb_sync", None) is None
 
         # The web settings screen saves this same live dictionary in full.
         settings.save_config(settings.config, explicit_overrides=set())
         monkeypatch.setattr(services, "settings", settings_module.Settings())
         st.run_media_migration(services.settings, services.logger)
+        # A settled profile runs no further pass, so also ask the notice
+        # directly: the row must be gone from the database, not merely unread.
+        st._notify_affected_user(services.logger)
 
         assert len(notices) == 1
         assert settings.config is cached_config
