@@ -20,6 +20,7 @@ import pytest
 from test_save_transfer import _Logger, _make_save, st
 from Ankimon.functions import mobile_sync
 from Ankimon.pyobj import ankimon_sync, backup_manager
+from Ankimon.pyobj import settings as settings_module
 from Ankimon.pyobj.database_manager import AnkimonDB
 from Ankimon.services import services
 
@@ -81,6 +82,50 @@ def test_import_installs_the_save_shown_even_if_source_changes_in_dialog(transfe
     backups = list(transfer.backups.glob("*/ankimon.db"))
     assert len(backups) == 1 and st.get_db_stats(backups[0])["pokemon"] == 3
     assert list(transfer.snapshots.iterdir()) == []
+
+
+@pytest.mark.parametrize("unreadable_media", [False, True])
+def test_sync_removal_notice_stays_dismissed_after_saving_settings(
+    transfer, tmp_path, monkeypatch, unreadable_media,
+):
+    media = tmp_path / "collection.media"
+    media.mkdir()
+    if unreadable_media:
+        (media / "_old_ankimon.db").write_bytes(b"unreadable save")
+    monkeypatch.setattr(st, "_media_dir", lambda: media)
+    monkeypatch.setattr(st.mw.pm, "profile", {}, raising=False)
+    monkeypatch.setattr(st.mw.pm, "save", lambda: None, raising=False)
+    monkeypatch.setattr(settings_module, "services", services)
+    monkeypatch.setattr(settings_module, "user_path", tmp_path)
+    notices = []
+    monkeypatch.setattr(st, "showInfo", notices.append)
+    db = AnkimonDB(_Logger(), db_path=tmp_path / "settings.db")
+    monkeypatch.setattr(services, "db", db)
+    try:
+        db.set_config_value("misc.ankiweb_sync", True)
+        db.set_config_value("trainer.name", "Local")
+        settings = settings_module.Settings()
+        monkeypatch.setattr(services, "settings", settings)
+        cached_config = settings.config
+        assert cached_config["misc.ankiweb_sync"] in (True, "true")
+
+        st.run_media_migration(settings, services.logger)
+        assert len(notices) == 1
+        assert not st._migration_done()
+        assert db.get_config_value("misc.ankiweb_sync", None) is None
+
+        # The web settings screen saves this same live dictionary in full.
+        settings.save_config(settings.config, explicit_overrides=set())
+        monkeypatch.setattr(services, "settings", settings_module.Settings())
+        st.run_media_migration(services.settings, services.logger)
+
+        assert len(notices) == 1
+        assert settings.config is cached_config
+        assert "misc.ankiweb_sync" not in cached_config
+        assert db.get_config_value("misc.ankiweb_sync", None) is None
+        assert settings.config["trainer.name"] == "Local"
+    finally:
+        db.close()
 
 
 @pytest.mark.parametrize("with_config", [False, True])

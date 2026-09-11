@@ -903,7 +903,8 @@ def _notify_affected_user(logger) -> None:
     them. The key is gone from DEFAULT_CONFIG, but the row persists in the
     config table (writes were INSERT OR REPLACE only, nothing ever deleted), so
     it can still be read here. It is deleted afterwards, so this is safe to run
-    on every pass and cannot repeat.
+    on every pass and cannot repeat. Clear the live settings cache as well so
+    a later settings save cannot reinsert the retired row.
     """
     try:
         from ..services import services
@@ -933,6 +934,9 @@ def _notify_affected_user(logger) -> None:
             # boot, so the notice repeated, and holding this connection's write
             # lock until some unrelated write happened to commit it.
             db.delete_config_value("misc.ankiweb_sync")
+            config = getattr(getattr(services, "settings", None), "config", None)
+            if config is not None:
+                config.pop("misc.ankiweb_sync", None)
         except Exception:
             # Non-fatal: the worst case is the notice appearing once more.
             logger.log("info", "Could not clear the legacy misc.ankiweb_sync row.")
@@ -1025,10 +1029,18 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         else None
     )
 
-    # JUDGE. Ranking chooses which candidate to SHOW the user; picking one
-    # destroys nothing, so the raw counters are allowed here. Whether that
-    # candidate is worth offering at all is decided in _apply_migration_result.
-    best = max(stats, key=lambda p: _progress_key(stats[p]))
+    local_revision = _local_save_revision(target) if target else None
+    local_stats = (
+        get_db_stats(target, timeout=MIGRATION_PROBE_TIMEOUT) if target else None
+    )
+
+    # JUDGE. Prefer eligible rescues before ranking by raw counters. Otherwise
+    # a divergent save with more captures can hide an eligible copy and settle
+    # the folder without ever offering it. With no eligible copy, keep the
+    # highest-ranked candidate for the existing divergence/equality handling.
+    best = max(stats, key=lambda p: (
+        _dominates(stats[p], local_stats), _progress_key(stats[p]),
+    ))
     media_path, media_stats = best, stats[best]
     if best == at_risk and preserved is not None and (
         preserved in written or preserved in stats
@@ -1036,10 +1048,6 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
         # Prefer the protected path only if this scan read or verified it.
         media_path = preserved
 
-    local_revision = _local_save_revision(target) if target else None
-    local_stats = (
-        get_db_stats(target, timeout=MIGRATION_PROBE_TIMEOUT) if target else None
-    )
     local_digest = None
     if target is not None and local_stats is not None:
         try:

@@ -102,6 +102,35 @@ def test_legacy_folder_only_answer_reoffers_once(migration):
     assert not st._migration_done()
 
 
+@pytest.mark.parametrize("diverged_name", ["ankimon.db", "_diverged_ankimon.db"])
+def test_eligible_rescue_is_offered_before_a_higher_ranked_diverged_save(
+    migration, diverged_name,
+):
+    m = migration
+    m.active.unlink()
+    _make_save(m.active, pokemon=10, badges=10, history=10)
+    diverged = _make_save(m.folder / diverged_name, pokemon=100)
+    _make_save(m.folder / "_eligible_ankimon.db", pokemon=20, badges=20, history=20)
+    eligible = _make_save(m.folder / "_best_ankimon.db", pokemon=30, badges=20, history=20)
+    original = diverged.read_bytes()
+
+    result = st._migration_scan(m.folder, m.active)
+    chosen = result["media_path"]
+    st._apply_migration_result(result, m.logger)
+
+    assert len(m.prompts) == 1
+    assert chosen == eligible
+    assert "Pokemon: 30" in m.prompts[0]
+    assert st._migration_done()
+    st.run_media_migration(None, m.logger)
+    assert len(m.prompts) == 1
+    assert diverged.read_bytes() == original
+    if diverged_name == "ankimon.db":
+        protected = list(m.folder.glob("_ankimon_save_*.db"))
+        assert len(protected) == 1
+        assert protected[0].read_bytes() == original
+
+
 @pytest.mark.parametrize("target_db", ["ankimon.db", "ankimonDEV.db"])
 @pytest.mark.parametrize("damage", ["corrupt", "different_save"])
 def test_preservation_verifies_existing_copy_and_keeps_both_files(
