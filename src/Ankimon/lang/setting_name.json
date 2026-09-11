@@ -12,6 +12,7 @@
     "battle.daily_average": "Goal of Daily Average Cards",
     "battle.card_max_time": "Card Max Time",
     "battle.review_based_damage": "Review Based Damage",
+    "battle.ignore_learning_cards": "Ignore Learning Cards",
 
     "evolution.friendship_time_enabled": "Friendship & Time Evolution",
     "evolution.timezone_auto": "Auto-detect Time Zone",
