@@ -398,7 +398,8 @@ class AnkimonDataSync:
                 pass
             return False
 
-    def _atomic_replace(self, media_file: Path, source_file: Path) -> None:
+    def _atomic_replace(self, media_file: Path, source_file: Path,
+                        validate_target: Callable[[], Any] = None) -> None:
         """Overwrite ``source_file`` with ``media_file`` atomically via
         ``_atomic_write_over`` (temp on the same volume + ``os.replace``, retrying
         a transient OneDrive/antivirus lock), after closing the live connection to
@@ -415,7 +416,9 @@ class AnkimonDataSync:
 
         The connection registry requests closure from GUI and background wrappers.
         If an in-flight operation does not release its lease within the bounded
-        wait, replacement aborts and the original database remains untouched."""
+        wait, replacement aborts and the original database remains untouched.
+        ``validate_target`` runs after writers drain and before replacement,
+        while connection creation remains blocked."""
         source_file.parent.mkdir(parents=True, exist_ok=True)
         quiescence = self._quiesce_live_db_connection(source_file)
         entered = False
@@ -428,6 +431,8 @@ class AnkimonDataSync:
                 raise RuntimeError(
                     "Database replacement aborted because active operations did not finish"
                 )
+            if validate_target is not None:
+                validate_target()
             gc.collect()
 
         try:

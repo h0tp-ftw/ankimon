@@ -260,7 +260,9 @@ def _stub_sync(monkeypatch, *, backup_ok=True):
             calls.append(("backup", name))
             return backup_ok
 
-        def _atomic_replace(self, src, dest):
+        def _atomic_replace(self, src, dest, validate_target=None):
+            if validate_target is not None:
+                validate_target()
             calls.append(("replace", str(src), str(dest)))
             shutil.copy2(src, dest)
 

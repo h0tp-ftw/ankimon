@@ -1,6 +1,7 @@
 """A remembered migration answer applies only to the save actually shown."""
 
 import os
+import hashlib
 import sqlite3
 import sys
 from types import ModuleType, SimpleNamespace
@@ -99,3 +100,37 @@ def test_legacy_folder_only_answer_reoffers_once(migration):
 
     assert len(m.prompts) == 1
     assert not st._migration_done()
+
+
+@pytest.mark.parametrize("target_db", ["ankimon.db", "ankimonDEV.db"])
+@pytest.mark.parametrize("damage", ["corrupt", "different_save"])
+def test_preservation_verifies_existing_copy_and_keeps_both_files(
+    migration, target_db, damage,
+):
+    source = _make_save(migration.folder / target_db, pokemon=4)
+    original = source.read_bytes()
+    digest = hashlib.sha256(original).hexdigest()[:32]
+    prefix = "_ankimon_save_dev_" if target_db == "ankimonDEV.db" else "_ankimon_save_"
+    damaged = migration.folder / f"{prefix}{digest}.db"
+    if damage == "corrupt":
+        damaged.write_bytes(b"damaged protected save")
+    else:
+        _make_save(damaged, pokemon=1)
+    damaged_bytes = damaged.read_bytes()
+
+    active = migration.active
+    if target_db == "ankimonDEV.db":
+        active = _make_save(active.with_name(target_db), pokemon=3)
+    result = st._migration_scan(migration.folder, active)
+    st._discard_snapshot(result.get("snapshot_path"))
+
+    protected = [p for p in migration.folder.glob(f"{prefix}*.db") if p != damaged]
+    assert len(protected) == 1
+    assert protected[0].read_bytes() == original
+    assert source.read_bytes() == original
+    assert damaged.read_bytes() == damaged_bytes
+
+    written = []
+    assert st._preserve(source, migration.folder, target_db, [], [], written) == protected[0]
+    assert written == []
+    assert len(list(migration.folder.glob(f"{prefix}*.db"))) == 2
