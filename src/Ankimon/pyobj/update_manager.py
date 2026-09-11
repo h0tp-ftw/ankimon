@@ -983,7 +983,7 @@ def _fetch_submodule_sha(ref: str) -> Optional[str]:
     return None
 
 
-def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None):
+def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None, progress_cb=None):
     def log(msg):
         if status_cb:
             status_cb(msg)
@@ -991,7 +991,7 @@ def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None):
     url = f"https://github.com/ArdentRoe/poke-engine/archive/{sha}.zip"
     log("Downloading poke_engine submodule package...")
 
-    zip_path = _download_zip_to_temp(url)
+    zip_path = _download_zip_to_temp(url, progress_cb=progress_cb)
     if not zip_path:
         raise Exception("Failed to download poke_engine submodule zip archive.")
 
@@ -1058,6 +1058,23 @@ def apply_update(
         if status_cb:
             status_cb(msg)
 
+    def send_progress(current: int, total: int, message: str = None):
+        """Send progress percentage to the UI."""
+        if status_cb:
+            status_cb(f"__PROGRESS__{current}|{total}")
+            if message:
+                status_cb(message)
+
+    def submodule_progress(current: int, total: int):
+        """Map submodule download progress (0-100%) to the 97-99% range."""
+        if total > 0:
+            percent = int((current / total) * 100)
+            # Scale: 97% + (percent * 2 / 100) gives 97-99%
+            scaled = 97 + int((percent * 2) / 100)
+            # Clamp to 99% max
+            scaled = min(scaled, 99)
+            send_progress(scaled, 100, f"Downloading submodule... {percent}%")
+
     def cleanup():
         if os.path.exists(zip_path):
             try:
@@ -1113,10 +1130,22 @@ def apply_update(
 
             log(f"Archive validated: {len(new_files)} files to install.")
 
+            # Calculate total work units for progress reporting
+            # Phases: Backup (code_files), Remove (code_files), Install (new_files)
+            code_files = _collect_code_files(gitignore_patterns)
+            total_backup = len(code_files)
+            total_remove = len(code_files)
+            total_install = len(new_files)
+            total_work = total_backup + total_remove + total_install
+
+            # Reserve 5% for the submodule phase at the end
+            # So the main phases use 95% of the progress
+            main_work_total = total_work
+            progress_scale = 95
+
             # --- Backup current code files ---
             log("Backing up current addon code...")
             backup_dir = Path(tempfile.mkdtemp(prefix="ankimon_update_backup_"))
-            code_files = _collect_code_files(gitignore_patterns)
             backed_up = 0
             for rel, full_path in code_files.items():
                 dest = backup_dir / rel
@@ -1124,15 +1153,31 @@ def apply_update(
                 try:
                     shutil.copy2(full_path, dest)
                     backed_up += 1
+                    if backed_up % 10 == 0 or backed_up == total_backup:
+                        progress_value = int((backed_up / main_work_total) * progress_scale)
+                        send_progress(
+                            progress_value,
+                            100,
+                            f"Backing up {backed_up}/{total_backup} files..."
+                        )
                 except Exception:
                     pass
             log(f"Backed up {backed_up} code files to {backup_dir.name}.")
 
-            # --- Apply update ---
+            # --- Remove old addon code ---
             log("Removing old addon code...")
+            removed = 0
             for rel, full_path in code_files.items():
                 try:
                     full_path.unlink()
+                    removed += 1
+                    if removed % 10 == 0 or removed == total_remove:
+                        progress_value = int(((total_backup + removed) / main_work_total) * progress_scale)
+                        send_progress(
+                            progress_value,
+                            100,
+                            f"Removing old files {removed}/{total_remove}..."
+                        )
                 except Exception:
                     pass
 
@@ -1145,8 +1190,10 @@ def apply_update(
                     except Exception:
                         pass
 
+            # --- Install new files ---
             log("Installing new files...")
             installed = 0
+            total_files = len(new_files)
             for rel_path, zip_name in new_files.items():
                 if ".." in rel_path or os.path.isabs(rel_path):
                     continue
@@ -1156,6 +1203,13 @@ def apply_update(
                     with zf.open(zip_name) as source, dest.open("wb") as target:
                         shutil.copyfileobj(source, target)
                     installed += 1
+                    if installed % 5 == 0 or installed == total_files:
+                        progress_value = int(((total_backup + total_remove + installed) / main_work_total) * progress_scale)
+                        send_progress(
+                            progress_value,
+                            100,
+                            f"Installing {installed}/{total_files} files..."
+                        )
                 except PermissionError as pe:
                     if dest.exists():
                         log(
@@ -1167,10 +1221,17 @@ def apply_update(
             # --- Download and install matching poke_engine submodule version ---
             ref = _extract_ref_from_prefix(src_prefix)
             log(f"Resolving poke_engine submodule for ref '{ref}'...")
+            send_progress(95, 100, "Resolving submodule...")
             sub_sha = _fetch_submodule_sha(ref) or DEFAULT_SUBMODULE_SHA
 
+            # Download submodule with byte-progress reporting (maps to 97-99%),
+            # reserving 100% for successful completion after extraction.
+            send_progress(97, 100, "Downloading submodule...")
             _download_and_extract_submodule(
-                sub_sha, addon_dir / "poke_engine", status_cb
+                sub_sha,
+                addon_dir / "poke_engine",
+                status_cb=status_cb,
+                progress_cb=submodule_progress,
             )
 
             # --- Save update state if provided ---
@@ -1208,6 +1269,9 @@ def apply_update(
                 )
             except Exception as e:
                 print(f"Ankimon Updater: Could not date the install: {e}")
+
+            # Signal successful completion at 100%
+            send_progress(100, 100, "Update complete!")
 
             return (
                 True,

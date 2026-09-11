@@ -22,6 +22,11 @@ from aqt.qt import (
 )
 from aqt.theme import theme_manager
 
+try:
+    from aqt.qt import QIcon
+except ImportError:
+    from PyQt6.QtGui import QIcon
+
 from .update_manager import (
     fetch_releases,
     fetch_tags,
@@ -41,6 +46,10 @@ from .update_manager import (
 )
 from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
 
+try:
+    from ..resources import icon_path
+except ImportError:
+    icon_path = None
 
 def _start_query_op(parent, op, success, failure):
     try:
@@ -1719,6 +1728,12 @@ class BranchUpdatePromptDialog(QDialog):
 
 
 class BranchUpdateProgressDialog(QDialog):
+    """Dialog shown during the update process with progress bar and restart functionality."""
+
+    DOWNLOAD_PROGRESS_MAX = 40  # Download uses 0-40% of the total progress
+    INSTALL_PROGRESS_START = 40  # Installation starts at 40%
+    INSTALL_PROGRESS_MAX = 100  # Installation ends at 100%
+
     def __init__(self, branch_name: str, remote_sha: str, parent=None, release: dict = None):
         super().__init__(parent or mw)
         self.setWindowTitle("Updating Ankimon")
@@ -1732,6 +1747,9 @@ class BranchUpdateProgressDialog(QDialog):
         # same download/apply/progress flow.
         self.release = release
 
+        if icon_path:
+            self.setWindowIcon(QIcon(str(icon_path)))
+
         is_dark = theme_manager.night_mode
         bg = "#2b2b2b" if is_dark else "#ffffff"
         text = "#e0e0e0" if is_dark else "#212121"
@@ -1739,8 +1757,8 @@ class BranchUpdateProgressDialog(QDialog):
         border = "#444444" if is_dark else "#e0e0e0"
         btn_bg = "#3d3d3d" if is_dark else "#eeeeee"
         btn_hover = "#505050" if is_dark else "#e0e0e0"
-        progress_text = "#ffffff" if is_dark else "#212121"
-        progress_chunk = "#1565c0" if is_dark else "#90caf9"
+        progress_text = "#ffffff" if is_dark else "#000000"
+        progress_chunk = "#2d8a4e" if is_dark else "#2da44e"
 
         self.setStyleSheet(f"""
             QDialog {{
@@ -1800,10 +1818,10 @@ class BranchUpdateProgressDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.btn_close = QPushButton("Close")
-        self.btn_close.setEnabled(False)
-        self.btn_close.clicked.connect(self.accept)
-        btn_layout.addWidget(self.btn_close)
+        self.btn_restart = QPushButton("Restart Anki")
+        self.btn_restart.setEnabled(False)
+        self.btn_restart.clicked.connect(self._restart_anki)
+        btn_layout.addWidget(self.btn_restart)
 
         layout.addLayout(btn_layout)
         self.update_started = False
@@ -1813,6 +1831,11 @@ class BranchUpdateProgressDialog(QDialog):
         if not self.update_started:
             self.update_started = True
             self.start_update()
+
+    def _restart_anki(self):
+        """Restart Anki after an update."""
+        from aqt import mw
+        mw.close()
 
     def start_update(self):
         from .update_manager import (
@@ -1837,7 +1860,22 @@ class BranchUpdateProgressDialog(QDialog):
                 return False, "Download failed. Check your internet connection.", None
 
             def status_update(msg):
-                mw.taskman.run_on_main(lambda: self.status_label.setText(msg))
+                # Handle progress messages from the installation
+                if msg.startswith("__PROGRESS__"):
+                    # Catch only expected parsing errors; log diagnostics for malformed payloads
+                    try:
+                        _, progress_data = msg.split("__PROGRESS__", 1)
+                        current, total = progress_data.split("|")
+                        current = int(current)
+                        total = int(total)
+                        percent = int((current / total) * 100) if total > 0 else 0
+                        mw.taskman.run_on_main(lambda: self._on_install_progress(percent))
+                    except (ValueError, TypeError) as e:
+                        # Log the error but don't crash the update
+                        print(f"Ankimon Updater: Malformed progress message: {msg}, error: {e}")
+                else:
+                    # Regular status message
+                    mw.taskman.run_on_main(lambda: self.status_label.setText(msg))
 
             return apply_update(
                 zip_path,
@@ -1858,9 +1896,14 @@ class BranchUpdateProgressDialog(QDialog):
             # to be written — see the matching note on the release/tag path.
             if success and pending_mod:
                 stamp_addon_mod(pending_mod)
-            self.btn_close.setEnabled(True)
+
+            # Enable the Restart Anki button (with fallback for tests)
+            if hasattr(self, 'btn_restart'):
+                self.btn_restart.setEnabled(True)
+            if hasattr(self, 'btn_close'):
+                self.btn_close.setEnabled(True)
+
             if success:
-                self.btn_close.setText("Restart Anki")
                 self.status_label.setText(
                     "Update applied successfully! Please restart Anki."
                 )
@@ -1876,7 +1919,10 @@ class BranchUpdateProgressDialog(QDialog):
                 QMessageBox.warning(self, "Update Failed", msg)
 
         def on_failed(exc):
-            self.btn_close.setEnabled(True)
+            if hasattr(self, 'btn_restart'):
+                self.btn_restart.setEnabled(True)
+            if hasattr(self, 'btn_close'):
+                self.btn_close.setEnabled(True)
             self.status_label.setText(
                 "Update stopped unexpectedly. Please check your connection and try again."
             )
@@ -1890,10 +1936,37 @@ class BranchUpdateProgressDialog(QDialog):
         _start_query_op(self, bg, on_done, on_failed)
 
     def on_progress(self, current: int, total: int):
+        """Handle download progress updates from _download_zip_to_temp.
+
+        Scales download progress (0-100%) into the 0-40% range to reserve
+        space for installation progress.
+        """
         if total > 0:
             percent = int((current / total) * 100)
-            mw.taskman.run_on_main(lambda: self.progress_bar.setValue(percent))
+            scaled_percent = int((percent / 100) * self.DOWNLOAD_PROGRESS_MAX)
+            mw.taskman.run_on_main(lambda: self.progress_bar.setValue(scaled_percent))
 
+    def _on_install_progress(self, percent: int):
+        """Handle installation progress updates from apply_update.
+
+        Scales manager progress (0-100%) into the 40-100% range so that
+        the progress bar only reaches 100% when the manager reports 100%
+        completion. Only updates the progress bar if the new value is
+        higher than the current value, ensuring the bar never moves backwards.
+        """
+        if percent < 0:
+            scaled_percent = self.INSTALL_PROGRESS_START
+        elif percent >= 100:
+            scaled_percent = self.INSTALL_PROGRESS_MAX
+        else:
+            scaled_percent = self.INSTALL_PROGRESS_START + int(
+                (percent / 100) * (self.INSTALL_PROGRESS_MAX - self.INSTALL_PROGRESS_START)
+            )
+
+        scaled_percent = min(scaled_percent, self.INSTALL_PROGRESS_MAX)
+
+        if scaled_percent > self.progress_bar.value():
+            self.progress_bar.setValue(scaled_percent)
 
 def show_branch_update_prompt(
     branch_name: str, remote_sha: str, commits: list[dict] = None
