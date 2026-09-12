@@ -50,7 +50,13 @@ temporary file. Completion statistics come from the actual exported snapshot.
 
 At profile open, both `ankimon.db` and `ankimonDEV.db` in `collection.media` are
 guarded before Anki can start automatic media sync, then captured on a background
-worker. Media sync resumes only after capture completes. Verified copies include
+worker. Media sync resumes only after capture completes. Anki reads that gate
+once, when a sync starts, so clearing the guard would otherwise only permit the
+*next* attempt: a collection sync that began during the capture finishes without
+media and is never re-requested. Ankimon therefore remembers a sync its guard
+turned away and asks Anki's media syncer for it once the capture succeeds. That
+restart still honours the user's own media-sync preference, sign-in and profile
+state, and a scan that suppressed nothing starts nothing. Verified copies include
 committed WAL contents and use content-derived filenames under
 `ankimon-media-recovery/` beside `collection.media`, not inside the media folder.
 That keeps newly-created recovery databases out of AnkiWeb media sync while

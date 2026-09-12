@@ -1331,6 +1331,28 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
     return result
 
 
+def _resume_deferred_media_sync() -> None:
+    """Re-request one media sync the guard turned away.
+
+    Anki reads ``media_syncing_enabled()`` once, when a sync starts, and passes
+    it into the backend call; a collection sync that saw False finishes without
+    media and nothing re-requests it. Clearing the guard only makes the NEXT
+    attempt permissible, and Anki's own next attempt is a profile close or a
+    periodic tick whose clock the skipped sync has just reset. Ask for one now
+    instead. ``MediaSyncer.start`` re-checks the user's preference and sign-in
+    and returns immediately if a media sync is already running, so this cannot
+    sync for a user who turned media sync off.
+    """
+    try:
+        syncer = getattr(mw, "media_syncer", None)
+        if syncer is None or getattr(mw, "col", None) is None:
+            return
+        syncer.start()
+    except Exception:
+        # Never let a restart attempt keep the guard from being released.
+        pass
+
+
 def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None:
     """Pause media sync for this profile only while original bytes are at risk.
 
@@ -1338,6 +1360,9 @@ def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None
     Keep its preference untouched; the in-memory guard clears on a successful
     capture and automatically allows other profiles. Anchor it on the profile
     manager so an addon module reload cannot stack wrappers or lose the guard.
+
+    A sync turned away while the guard was up is remembered and re-requested
+    when the guard clears, because Anki keeps no deferred request of its own.
     """
     uncaptured = set(protection["unprotected"]) - set(protection["archived_sources"])
     pm = mw.pm
@@ -1346,18 +1371,28 @@ def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None
         if not uncaptured:
             return
         original = pm.media_syncing_enabled
-        state = {"blocked": set()}
+        state = {"blocked": set(), "deferred": set()}
 
         def enabled():
             folder = Path(pm.profileFolder()) / "collection.media"
-            return folder not in state["blocked"] and original()
+            allowed = original()
+            if allowed and folder in state["blocked"]:
+                # Only a sync the user's own preference would have permitted
+                # counts as deferred; nothing else may be restarted later.
+                state["deferred"].add(folder)
+                return False
+            return allowed
 
         pm.media_syncing_enabled = enabled
         pm._ankimon_media_protection_guard = state
+    state.setdefault("deferred", set())
     if uncaptured:
         state["blocked"].add(media_dir)
     else:
         state["blocked"].discard(media_dir)
+        if media_dir in state["deferred"]:
+            state["deferred"].discard(media_dir)
+            _resume_deferred_media_sync()
 
 
 _LAST_PROTECTION_NOTICE = None
