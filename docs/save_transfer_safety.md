@@ -189,3 +189,62 @@ Verifying those four fixes surfaced five more, all accepted:
   of the durability flush that follows no longer reports "could not be
   cancelled, try again", which the retry immediately contradicted with "there
   is no pending save import".
+
+An external review of the branch's own fixes found no surviving instance of the
+four findings it re-checked. Verifying them adversarially instead surfaced
+thirteen residual gaps, all accepted; eight further claims were refuted on the
+source and not acted on.
+
+Capture and the media-sync guard:
+
+- The capture signature no longer counts the scan's own `-shm` churn as somebody
+  else writing. Every read-only SQLite open the scan performs on a WAL-mode media
+  save creates or restamps that save's `-shm`, so the before/after pair could
+  never agree: the guard would never release and the scan would re-dispatch for
+  as long as the profile was open. The add-on's own exporter writes single-file
+  DELETE-mode saves, so this is a file that arrived some other way, not the
+  common path.
+- A sync the guard turned away is held rather than dropped when the replay
+  stands down. During a backup restore Anki keeps `restoring_backup` set for the
+  whole session and switches its own unattended syncs off, so the request that
+  was discarded there was gone for good.
+- A pass that leaves the guard up schedules its own rescan. The only recurring
+  trigger was the media-sync hook, and `MediaSyncer.start` returns before firing
+  it when the gate says no, so the guard suppressed its own retry. That timer is
+  requested unconditionally: Anki's collection gate drops rather than defers.
+- The gate reads the user's preference before the profile folder, and fails open
+  if the folder cannot be resolved. Anki's own `media_syncing_enabled` is a dict
+  lookup that cannot raise, and three callers assume as much.
+
+Import lifecycle:
+
+- Every notice that reports an armed import is guarded, not just the success
+  one. An exception from Qt in the staged or already-pending branch unwound into
+  the caller's "aborted, nothing was replaced" handler.
+- The menu can tell a pending import from one that has already installed. A
+  failed post-install cleanup leaves the record beside a replaced save, and both
+  answers were the wrong way round: Cancel claimed the save was unchanged, and a
+  second attempt was told the first would install at the next restart.
+- The advertised recovery path always holds the newest pre-install snapshot. A
+  retried install used to redirect the new snapshot and leave the stale one under
+  the name the user was given.
+- Superseded recovery snapshots are pruned to one. An install that cannot finish
+  is retried on every start and each attempt snapshots the save again.
+- The whole startup installation shares one 30-second budget. It runs during
+  add-on import, before Anki has a window or a progress dialog.
+- A record whose target no longer exists says so, and Cancel Pending Save Import
+  covers both save modes, since startup reports failures for both.
+
+Shutdown and scheduling:
+
+- Retention cannot take Anki's close down with it, and it stops when the
+  shutdown budget is gone. Abandoned staging directories are swept after an hour.
+- The media scan is dispatched as the last act of profile-open again. Its
+  main-thread callback would otherwise be delivered inside the modal dialogs
+  that follow, and the rescue it can offer reaches `close_anki` from there.
+
+A Tier-2 probe now plays the whole import contract out across a real restart of
+the real add-on: stage over the live save, keep editing, exit, start again, and
+check that the runtime is on the imported save with the final pre-import
+progress in the recovery copy and nothing left staged. Windows file locking and
+authenticated AnkiWeb behaviour remain outside this validation.
