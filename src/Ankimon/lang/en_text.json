@@ -108,6 +108,7 @@
   "pokemon_special_condition": "{pokemon_name} is affected by {condition}!",
   "effect_damage_dealt": "{pokemon_name} took {damage} damage!",
   "effect_health_restored": "{pokemon_name} restored {heal_amount} HP!",
+  "effect_item_consumed": "{pokemon_name} used up its {item}!",
   "effect_status_applied": "{pokemon_name} was afflicted with {status}!",
   "effect_stat_change": "{pokemon_name}'s {stat} {direction} by {amount} stage(s)!",
   "effect_volatile_status": "{pokemon_name} was affected by {status}!",
