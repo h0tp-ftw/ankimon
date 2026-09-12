@@ -192,8 +192,8 @@ Verifying those four fixes surfaced five more, all accepted:
 
 An external review of the branch's own fixes found no surviving instance of the
 four findings it re-checked. Verifying them adversarially instead surfaced
-thirteen residual gaps, all accepted; eight further claims were refuted on the
-source and not acted on.
+fifteen residual gaps in this branch, all accepted; eight further claims were
+refuted on the source and not acted on.
 
 Capture and the media-sync guard:
 
