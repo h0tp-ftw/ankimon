@@ -157,6 +157,41 @@ def test_cancellation_discards_only_pending_import(tmp_path):
     assert names(source) == ["incoming"]
 
 
+def test_cancellation_recovers_from_a_damaged_pending_manifest(tmp_path):
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    manifest = staged["pending_path"].parent / "pending.json"
+    manifest.write_text("{ definitely-not-json", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        importer.pending_import_info(target)
+    assert importer.cancel_pending_import(target) is True
+    assert not manifest.exists()
+    assert not staged["pending_path"].exists()
+    assert names(target) == ["local"]
+
+
+def test_cancellation_is_committed_even_if_staged_copy_cleanup_is_locked(
+    tmp_path, monkeypatch
+):
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    manifest = staged["pending_path"].parent / "pending.json"
+
+    def locked(_path):
+        raise PermissionError("simulated antivirus lock")
+
+    monkeypatch.setattr(importer, "_remove_owned_copy", locked)
+    assert importer.cancel_pending_import(target) is True
+    assert not manifest.exists()
+    assert importer.pending_import_info(target) is None
+    assert names(target) == ["local"]
+
+
 def test_pending_import_applies_only_to_the_explicit_target(tmp_path):
     importer = load_module()
     target = make_save(tmp_path / "ankimonDEV.db", "local")

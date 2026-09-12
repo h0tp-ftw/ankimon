@@ -407,40 +407,64 @@ class BackupManager:
         return summary
 
     def restore_backup(self, backup_path_str: str):
-        """Restores a selected backup (only the currently active database)."""
+        """Stage the selected backup for the next full process start.
+
+        Never copy over a database that the current runtime still has open.
+        Restore uses the same crash-safe installation gate as manual Import,
+        while retaining credentials because Backup Manager snapshots are private
+        local recovery material rather than portable exports.
+        """
         backup_path = Path(backup_path_str)
         if not backup_path.is_dir():
             showWarning("Selected backup path does not exist.")
             return
 
         if not askUser(
-            "Are you sure you want to restore this backup? This will overwrite your current Ankimon data. Anki will be closed to apply the changes."
+            "Prepare this backup for restore? It will replace the current Ankimon "
+            "save on the next full Anki restart. The final current save will be "
+            "retained as a separate recovery copy first."
         ):
             return
 
         try:
-            # Without an initialized database service we cannot tell which mode
-            # (normal vs dev) is active, so refuse the destructive restore rather
-            # than guessing or crashing on ``None.db_path``.
             if services.db is None:
                 showWarning("The Ankimon database is not initialized yet; cannot restore a backup.")
                 return
-            active_db = services.db.db_path.name
-            backup_file = backup_path / active_db
-            if backup_file.exists():
-                shutil.copy2(backup_file, self.user_files_path / active_db)
-            else:
+
+            target = Path(services.db.db_path)
+            backup_file = backup_path / target.name
+            if not backup_file.is_file():
                 showWarning(
-                    f"The selected backup does not contain a backup for the active database ({active_db})."
+                    "The selected backup does not contain a backup for the active "
+                    f"database ({target.name})."
                 )
                 return
 
-            showInfo("Backup restored successfully. Anki will now close. Please restart Anki to see the changes.")
-            close_anki()
+            from ..save_import import stage_import
+
+            pending = stage_import(
+                backup_file, target, sanitize_credentials=False
+            )
+            showInfo(
+                "Backup restore prepared for the next full Anki restart.\n\n"
+                "Your current save stays active until Anki exits. At the next "
+                "start, its final state will be retained here before the selected "
+                "backup is installed:\n"
+                f"{pending['recovery_path']}\n\n"
+                "If you choose Keep Editing, the restore remains pending until "
+                "the next full restart."
+            )
+            try:
+                close_anki()
+            except Exception as error:
+                showWarning(
+                    f"Anki could not close: {error}. Your current save is still "
+                    "active and the prepared restore remains pending."
+                )
 
         except Exception as e:
-            self.logger.log("error", f"Failed to restore backup: {e}")
-            showWarning(f"Failed to restore backup: {e}")
+            self.logger.log("error", f"Failed to prepare backup restore: {e}")
+            showWarning(f"Failed to prepare backup restore: {e}")
 
     def delete_backup(self, backup_path_str: str):
         """Deletes a selected backup."""

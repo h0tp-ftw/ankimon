@@ -335,7 +335,8 @@ def test_migration_does_not_block_profile_open_on_a_locked_save(
             f"profile-open path blocked for {elapsed:.1f}s on a locked media save"
         )
         assert len(queued) == 1
-        assert list(media.glob("_ankimon_unverified_*.zip"))
+        assert list(st._recovery_store(media).glob("_ankimon_unverified_*.zip"))
+        assert not list(media.glob("_ankimon_unverified_*.zip"))
     finally:
         holder.close()
 

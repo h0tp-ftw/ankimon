@@ -2,8 +2,8 @@
 
 Exports use SQLite snapshots with local credentials removed. Imports and rescues
 require a verified snapshot, explicit confirmation, a safety backup and atomic
-replacement. The migration preserves bare media saves under underscore-prefixed
-names, which Anki excludes from Delete Unused Files. Progress counters select a
+replacement. The migration preserves bare media saves in a private profile-local
+recovery directory outside ``collection.media``. Progress counters select a
 candidate for comparison; they do not prove one save contains another.
 
 The automatic file sync was removed because Anki media downloads have local
@@ -29,10 +29,25 @@ from PyQt6.QtWidgets import QFileDialog
 from ..resources import user_path
 from ..utils import close_anki
 
-# Leading underscores protect saves from Anki's Delete Unused Files. Keep
-# normal/developer partitions separate and name each distinct save by content.
-# Existing names must be verified before reuse; damaged copies keep their names.
+# Keep normal/developer partitions separate and name each distinct save by
+# content. Older revisions wrote underscore-prefixed copies into
+# ``collection.media`` to protect them from Delete Unused Files; new recovery
+# material lives outside that directory so Anki media sync cannot upload it.
 _SAVE_PREFIX = {"ankimon.db": "_ankimon_save_", "ankimonDEV.db": "_ankimon_save_dev_"}
+
+
+def _recovery_store(media_dir: Path, *, create: bool = False) -> Path:
+    """Profile-local media-save recovery storage that Anki does not sync."""
+    recovery = Path(media_dir).parent / "ankimon-media-recovery"
+    if create:
+        recovery.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if os.name != "nt":
+            try:
+                recovery.chmod(0o700)
+            except OSError:
+                pass
+    return recovery
+
 
 # Use 128 bits of SHA-256 for compact protected filenames.
 _DIGEST_CHARS = 32
@@ -699,9 +714,8 @@ def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str
     other candidates are readable. An unreadable newcomer must not match a
     previously settled empty folder or subset of saves.
 
-    Returned as a dict so the scan can amend it with only the files it wrote
-    ITSELF — which is what separates "the folder the scan resolved" from "the
-    folder as it stands after an unrelated download".
+    Only sync-visible media paths belong here. Private recovery copies are
+    scanned separately and cannot re-arm or settle a media-sync fingerprint.
     """
     entries: Dict[str, str] = {}
     for path in _media_candidate_paths(media_dir, target_db):
@@ -818,20 +832,20 @@ def _rescan_local_save(logger) -> None:
 
 
 def _media_candidate_paths(media_dir: Path, target_db: str) -> list:
-    """Every path in ``media_dir`` that could hold a save for ``target_db``.
+    """Every sync-visible path that could hold a save for ``target_db``.
 
-    ONE definition, shared by the scanner and by the settle fingerprint. If
-    those two ever drift, the fingerprint stops noticing a file the scanner
-    would have acted on — which silently re-opens the stale-settle hole the
-    fingerprint exists to close.
+    ONE definition is shared by the media fingerprint and the media side of the
+    scanner. Private recovery copies are intentionally excluded: they must not
+    affect the fingerprint that answers "did collection.media change?"
 
-    Three kinds of name: the bare one the removed feature wrote; the
-    content-addressed copies this migration writes; and the pre-2024 legacy
-    names, which are GLOBBED rather than reconstructed. The old code built them
-    from ``Path(__file__).parents[2].name``, which is ``addons21`` in a normal
-    install and ``src`` in a git checkout, and real profiles have been seen
-    carrying the numeric package id instead — so the exact prefix cannot be
-    computed after the fact, only matched.
+    Three kinds of sync-visible name may already exist: the bare one the removed
+    feature wrote; underscore/content-addressed copies written by older
+    migration revisions; and the pre-2024 legacy names, which are GLOBBED rather
+    than reconstructed. The old code built them from
+    ``Path(__file__).parents[2].name``, which is ``addons21`` in a normal install
+    and ``src`` in a git checkout, and real profiles have been seen carrying the
+    numeric package id instead — so the exact prefix cannot be computed after
+    the fact, only matched.
     """
     paths = [media_dir / target_db]
     try:
@@ -848,13 +862,30 @@ def _media_candidate_paths(media_dir: Path, target_db: str) -> list:
     return paths
 
 
-def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
-    """Every Ankimon save in collection.media belonging to ``target_db``.
+def _recovery_candidate_paths(media_dir: Path, target_db: str) -> list:
+    """Verified local recovery copies for ``target_db``, outside media sync."""
+    recovery = _recovery_store(media_dir)
+    if not recovery.is_dir():
+        return []
+    try:
+        return [
+            path
+            for path in sorted(recovery.glob(_SAVE_PREFIX[target_db] + "*.db"))
+            if _target_db_for(path) == target_db
+        ]
+    except Exception:
+        return []
 
-    Returns ``(candidates, unreadable)``. A file that exists but will not open
-    lands in ``unreadable`` rather than being silently dropped: it may be a real
-    save merely locked by another process this second, and the caller must stay
-    armed and rescan rather than settle as though the folder held nothing.
+
+def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
+    """Every recoverable media save belonging to ``target_db``.
+
+    This includes sync-visible legacy files in ``collection.media`` and verified
+    local copies retained beside it. Returns ``(candidates, unreadable)``. A file
+    that exists but will not open lands in ``unreadable`` rather than being
+    silently dropped: it may be a real save merely locked by another process
+    this second, and the caller must stay armed and rescan rather than settle as
+    though the folder held nothing.
     """
     from .ankimon_sync import _verify_sqlite_integrity
 
@@ -862,7 +893,10 @@ def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
     unreadable = []
     seen = set()
 
-    for path in _media_candidate_paths(media_dir, target_db):
+    for path in (
+        _media_candidate_paths(media_dir, target_db)
+        + _recovery_candidate_paths(media_dir, target_db)
+    ):
         try:
             resolved = path.resolve()
         except Exception:
@@ -984,10 +1018,9 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     written: list = []
     target_db = Path(target).name if target else "ankimon.db"
 
-    # Taken BEFORE anything is read or written, and amended below with only the
-    # files this scan wrote itself, so the settle describes the folder this pass
-    # actually examined — a peer's save landing mid-scan is not recorded as
-    # resolved.
+    # Taken BEFORE anything is read or written. This fingerprint deliberately
+    # describes only collection.media: private recovery copies are outside Anki
+    # media sync and must not make a settled media state look changed.
     entries = _media_fingerprint_entries(media_dir, target_db)
 
     protection = _protect_bare_saves(media_dir)
@@ -1000,12 +1033,6 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     unreadable.extend(integrity_failures)
 
     def _result(outcome: str, **extra) -> Dict[str, Any]:
-        for path in written:
-            entry = _fingerprint_entry(path)
-            if entry is None:
-                entries.pop(path.name, None)
-            else:
-                entries[path.name] = entry
         base = {
             "outcome": outcome,
             "notify": False,
@@ -1151,9 +1178,11 @@ def _preserve(at_risk: Path, media_dir: Path, target_db: str,
     tmp = None
     dest = None
     try:
+        recovery_dir = _recovery_store(media_dir, create=True)
+
         def destination(digest):
             """Find an identical copy or an unused name, skipping damaged copies."""
-            base = media_dir / _protected_copy_name(target_db, digest)
+            base = recovery_dir / _protected_copy_name(target_db, digest)
             candidate, suffix = base, 0
             while candidate.exists() or candidate.is_symlink():
                 if _content_digest(candidate) == digest:
@@ -1178,9 +1207,9 @@ def _preserve(at_risk: Path, media_dir: Path, target_db: str,
         written.append(dest)
         notes.append((
             "info",
-            f"Ankimon: preserved {at_risk.name} as {dest.name} "
-            "(protected from Anki's Delete Unused Files). Nothing was deleted "
-            "or overwritten.",
+            f"Ankimon: preserved {at_risk.name} as {dest} "
+            "outside collection.media so Anki media sync cannot upload it. "
+            "Nothing was deleted or overwritten.",
         ))
         return dest
     except Exception as e:
@@ -1228,7 +1257,8 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
             digest = _content_digest(archive)
             if digest is None:
                 raise OSError("Could not verify the raw archive bytes")
-            destination = media_dir / f"_ankimon_unverified_{name}_{digest}.zip"
+            recovery_dir = _recovery_store(media_dir, create=True)
+            destination = recovery_dir / f"_ankimon_unverified_{name}_{digest}.zip"
             base, suffix = destination, 0
             while destination.exists() or destination.is_symlink():
                 if _content_digest(destination) == digest:
@@ -1378,19 +1408,19 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
             "Ankimon's automatic AnkiWeb save-sync has been removed — it "
             "could not tell reliably which device's save was newer, and "
             "sometimes overwrote the wrong one.\n\n"
-            "A save left in your Anki media folder (synced from AnkiWeb, if "
-            "media sync is on) is further along than the save on this computer "
-            "on every count Ankimon can compare:\n\n"
-            f"IN YOUR MEDIA FOLDER\n{_format_stats(media_stats)}\n\n"
+            "A save recovered from your Anki media folder (synced from AnkiWeb, "
+            "if media sync is on) is further along than the save on this "
+            "computer on every count Ankimon can compare:\n\n"
+            f"RECOVERED MEDIA SAVE\n{_format_stats(media_stats)}\n\n"
             f"ON THIS COMPUTER\n{_format_stats(local_stats)}\n\n"
-            "Load the media-folder copy? Compare the two above first — Ankimon "
+            "Load the recovered copy? Compare the two above first — Ankimon "
             "counts what each save holds, it cannot tell whether one contains "
             "the other. Your current save will be backed up before anything is "
             "replaced, and Anki will close so the copy can be loaded cleanly."
             "\n\n"
-            "If you say no, nothing changes — the copy stays in your media "
-            "folder either way, and you will not be asked about it again "
-            "unless a different copy arrives there.",
+            "If you say no, nothing changes — the recovery copy stays preserved "
+            "locally, and you will not be asked about it again unless a "
+            "different media save arrives.",
             parent=mw,
             defaultno=True,
         ):
@@ -1428,16 +1458,16 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
         showInfo(
             "Ankimon's automatic AnkiWeb save-sync has been removed — it "
             "could not tell reliably which device's save was newer.\n\n"
-            "There is a save in your Anki media folder that has DIVERGED from "
-            "the one on this computer: each contains progress the other does "
-            "not, so neither can simply replace the other.\n\n"
-            f"IN YOUR MEDIA FOLDER ({Path(result['media_path']).name})\n"
+            "There is a save recovered from your Anki media folder that has "
+            "DIVERGED from the one on this computer: each contains progress the "
+            "other does not, so neither can simply replace the other.\n\n"
+            f"RECOVERED MEDIA SAVE ({result['media_path']})\n"
             f"{_format_stats(media_stats)}\n\n"
             f"ON THIS COMPUTER\n{_format_stats(local_stats)}\n\n"
             "Nothing has been changed and nothing has been deleted. If you want "
-            "the media-folder copy, copy it out of your collection.media folder "
-            "and load it with Ankimon → Import Save File… — your current save is "
-            "backed up before it is replaced."
+            "the recovered copy, load the recovery file shown above with "
+            "Ankimon → Import Save File… — your current save is backed up before "
+            "it is replaced."
         )
         _set_profile_flag(_MIGRATION_ANSWERED_FLAG, answer_identity)
 

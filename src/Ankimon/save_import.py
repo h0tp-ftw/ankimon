@@ -114,21 +114,32 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _prepare_incoming(path: Path, token: str) -> None:
+def _prepare_incoming(
+    path: Path, token: str, *, sanitize_credentials: bool = True
+) -> None:
+    """Prepare a staged save for installation.
+
+    Portable imports must never carry another installation's leaderboard
+    credentials. A Backup Manager restore is different: it restores the user's
+    own private local snapshot, so callers can explicitly retain credentials.
+    """
     conn = sqlite3.connect(path, timeout=_TIMEOUT)
     try:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        conn.execute("PRAGMA secure_delete=ON")
+        if sanitize_credentials:
+            conn.execute("PRAGMA secure_delete=ON")
         with conn:
-            # Explicit empty auth rows also prevent Settings from falling back
-            # to this installation's legacy config.obf when an old save has no
-            # config. An imported SQLite save never inherits local credentials.
-            conn.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
-            conn.executemany("INSERT OR REPLACE INTO config VALUES (?, '')", [
-                ("leaderboard.username",), ("leaderboard.api_key",),
-            ])
-            if "user_data" in tables:
-                conn.execute("DELETE FROM user_data WHERE key IN ('username', 'api_key')")
+            if sanitize_credentials:
+                # Explicit empty auth rows also prevent Settings from falling
+                # back to this installation's legacy config.obf when an old save
+                # has no config. A portable imported save never inherits local
+                # credentials.
+                conn.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
+                conn.executemany("INSERT OR REPLACE INTO config VALUES (?, '')", [
+                    ("leaderboard.username",), ("leaderboard.api_key",),
+                ])
+                if "user_data" in tables:
+                    conn.execute("DELETE FROM user_data WHERE key IN ('username', 'api_key')")
             conn.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
             conn.executemany("INSERT OR REPLACE INTO metadata VALUES (?, ?)", [
                 ("import_token", token), ("import_rebase_pending", "1"),
@@ -136,9 +147,10 @@ def _prepare_incoming(path: Path, token: str) -> None:
                 # Ordinary schema upgrades still run in AnkimonDB construction.
                 ("migrated", "true"), ("migrated_phase2", "true"),
             ])
-        # Eliminate credentials from free pages as well as live rows. New game
-        # state will require this device's user to sign in again.
-        conn.execute("VACUUM")
+        if sanitize_credentials:
+            # Eliminate credentials from free pages as well as live rows. New
+            # game state will require this device's user to sign in again.
+            conn.execute("VACUUM")
     finally:
         conn.close()
     _verify_save(path)
@@ -172,12 +184,18 @@ def pending_import_info(target: Path) -> dict | None:
     }
 
 
-def stage_import(snapshot: Path, target: Path) -> dict:
+def stage_import(
+    snapshot: Path, target: Path, *, sanitize_credentials: bool = True
+) -> dict:
     """Durably retain the chosen save without touching the runtime database.
 
     Returns pending_path, recovery_path and token. Recovery is reserved now and
     written from the final local save immediately before installation. Existing
     pending work must be cancelled explicitly before choosing another import.
+
+    ``sanitize_credentials`` is True for portable imports/rescues. Backup
+    Manager restores may set it False because their source is already private
+    local recovery material owned by this installation.
     """
     target, directory = _paths(target)
     if pending_import_info(target) is not None:
@@ -192,7 +210,7 @@ def stage_import(snapshot: Path, target: Path) -> dict:
         fd = os.open(incoming, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.close(fd)
         _snapshot(Path(snapshot), incoming)
-        _prepare_incoming(incoming, token)
+        _prepare_incoming(incoming, token, sanitize_credentials=sanitize_credentials)
         record = {
             "version": 1, "target": str(target), "token": token,
             "process": _process_identity(), "digest": _digest(incoming),
@@ -213,15 +231,49 @@ def stage_import(snapshot: Path, target: Path) -> dict:
 
 
 def cancel_pending_import(target: Path) -> bool:
-    """Cancel only staged work; all completed recovery copies remain intact."""
-    info = pending_import_info(target)
-    if info is None:
+    """Cancel staged work even if its manifest is damaged.
+
+    Removing and fsyncing the manifest is the cancellation commit point. Once
+    that succeeds, failure to delete an orphaned private staged copy must not
+    make the UI claim cancellation failed: without ``pending.json`` no startup
+    can install it. Invalid manifests are deliberately not trusted for paths;
+    only locally-generated 32-hex-token database names are cleaned up.
+    """
+    target, directory = _paths(target)
+    manifest = directory / "pending.json"
+    if not manifest.exists():
         return False
-    _, directory = _paths(target)
-    (directory / "pending.json").unlink()
+
+    try:
+        info = pending_import_info(target)
+    except Exception:
+        info = None
+
+    # Commit cancellation before touching any staged data.
+    manifest.unlink()
     _fsync_directory(directory)
-    _remove_owned_copy(info["pending_path"])
-    _fsync_directory(directory)
+
+    if info is not None:
+        candidates = [info["pending_path"]]
+    else:
+        candidates = [
+            path
+            for path in directory.glob("*.db")
+            if re.fullmatch(r"[0-9a-f]{32}\.db", path.name) is not None
+        ]
+    for path in candidates:
+        try:
+            _remove_owned_copy(path)
+        except OSError:
+            # The manifest is already durably gone, so this is only an orphaned
+            # private file. A later cleanup/stage can retry without any chance
+            # of installing it.
+            pass
+    try:
+        _fsync_directory(directory)
+    except OSError:
+        # The cancellation itself was already fsynced above.
+        pass
     return True
 
 

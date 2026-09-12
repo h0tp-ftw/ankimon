@@ -222,19 +222,78 @@ def test_get_backups_active_db_filtering(mock_env):
 
 def test_restore_only_active_db(mock_env):
     bm, db, user_files_dir, addon_dir = mock_env
+    from Ankimon.save_import import cancel_pending_import, pending_import_info
 
     backup_dir = bm.backups_path / "backup_2026-06-02_09-00-00"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    (backup_dir / "ankimon.db").write_bytes(b"NORMAL_DB_CONTENT")
-    (backup_dir / "ankimonDEV.db").write_bytes(b"DEV_DB_CONTENT")
+    _seed_db(backup_dir / "ankimon.db", "Blue", 999)
+    _seed_db(backup_dir / "ankimonDEV.db", "DevGuy", 111)
+    with closing(sqlite3.connect(backup_dir / "ankimon.db")) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config VALUES "
+            "('leaderboard.api_key', 'private-local-backup-key')"
+        )
+        conn.commit()
 
-    # Active DB is ankimon.db -> only that file is restored; the dev DB is untouched.
+    # Restore is staged: the current runtime keeps its original live DB until
+    # a fresh process can safely install the selected backup.
     bm.restore_backup(str(backup_dir))
 
-    restored = user_files_dir / "ankimon.db"
-    assert restored.exists()
-    assert restored.read_bytes() == b"NORMAL_DB_CONTENT"
+    assert db.get_config_value("trainer.name") == "Red"
+    assert db.get_config_value("trainer.cash") == 5000
+    pending = pending_import_info(db.db_path)
+    assert pending is not None
+    with closing(sqlite3.connect(pending["pending_path"])) as staged:
+        assert staged.execute(
+            "SELECT value FROM config WHERE key='trainer.name'"
+        ).fetchone()[0] == "Blue"
+        # Local Backup Manager restores retain this installation's credentials.
+        assert staged.execute(
+            "SELECT value FROM config WHERE key='leaderboard.api_key'"
+        ).fetchone()[0] == "private-local-backup-key"
     assert not (user_files_dir / "ankimonDEV.db").exists()
+    assert cancel_pending_import(db.db_path) is True
+
+
+def test_restore_targets_the_actual_custom_active_path(mock_env, tmp_path):
+    bm, _, user_files_dir, _ = mock_env
+    from Ankimon.save_import import cancel_pending_import, pending_import_info
+
+    custom_dir = tmp_path / "custom-profile"
+    custom_dir.mkdir()
+    active = AnkimonDB(MockLogger(), db_path=custom_dir / "profile-save.db")
+    active.set_config_value("trainer.name", "Current custom")
+    backup_dir = bm.backups_path / "backup_2026-06-02_10-00-00"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    _seed_db(backup_dir / "profile-save.db", "Restored custom", 4242)
+    try:
+        with patch.object(services, "db", active):
+            bm.restore_backup(str(backup_dir))
+            pending = pending_import_info(active.db_path)
+            assert pending is not None
+            assert pending["target"] == str(active.db_path.resolve())
+            assert not (user_files_dir / active.db_path.name).exists()
+            with closing(sqlite3.connect(pending["pending_path"])) as staged:
+                assert staged.execute(
+                    "SELECT value FROM config WHERE key='trainer.name'"
+                ).fetchone()[0] == "Restored custom"
+            assert cancel_pending_import(active.db_path) is True
+    finally:
+        active.close()
+
+
+def test_restore_rejects_a_corrupt_backup_without_touching_live_save(mock_env):
+    bm, db, _, _ = mock_env
+    from Ankimon.save_import import pending_import_info
+
+    backup_dir = bm.backups_path / "backup_2026-06-02_11-00-00"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    (backup_dir / db.db_path.name).write_bytes(b"not a database")
+
+    bm.restore_backup(str(backup_dir))
+
+    assert db.get_config_value("trainer.name") == "Red"
+    assert pending_import_info(db.db_path) is None
 
 
 @pytest.mark.parametrize("filename", ["ankimon.db", "ankimonDEV.db"])

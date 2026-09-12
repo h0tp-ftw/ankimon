@@ -90,6 +90,27 @@ def test_both_bare_saves_survive_before_worker_runs(transfer, tmp_path, monkeypa
     assert len(work) == 1
 
 
+def test_verified_recovery_copies_stay_outside_anki_media_sync(transfer, tmp_path):
+    media = tmp_path / "collection.media"
+    media.mkdir()
+    source = _make_save(media / "ankimon.db", pokemon=7)
+    with sqlite3.connect(source) as conn:
+        conn.execute(
+            "INSERT INTO config VALUES ('leaderboard.api_key', 'local-private-key')"
+        )
+
+    result = st._protect_bare_saves(media)
+
+    protected = result["protected"][source]
+    assert protected.parent == st._recovery_store(media)
+    assert protected.parent != media
+    assert not list(media.glob("_ankimon_save_*.db"))
+    with sqlite3.connect(protected) as conn:
+        assert conn.execute(
+            "SELECT value FROM config WHERE key='leaderboard.api_key'"
+        ).fetchone()[0] == "local-private-key"
+
+
 def test_media_preservation_captures_wal(transfer, tmp_path):
     media = tmp_path / "collection.media"
     media.mkdir()
@@ -138,6 +159,8 @@ def test_locked_media_is_archived_before_worker_and_never_claimed_verified(trans
         assert result["protected"] == {}
         assert result["unprotected"] == [source]
         assert len(result["archives"]) == 1
+        assert result["archives"][0].parent == st._recovery_store(media)
+        assert not list(media.glob("_ankimon_unverified_*.zip"))
         with zipfile.ZipFile(result["archives"][0]) as archive:
             assert archive.read("ankimon.db") == original
         monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)

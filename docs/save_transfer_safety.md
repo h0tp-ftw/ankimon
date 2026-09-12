@@ -31,6 +31,11 @@ does not run over an imported save. The review watermark is rebased when the
 destination collection opens, before mobile detection, including reviews that
 arrived during shutdown sync.
 
+Backup Manager restore uses the same staged, next-process installation path and
+captures the final current save before replacement. Because a Backup Manager
+snapshot is private local recovery material rather than a portable import, its
+leaderboard credentials are retained.
+
 ## Export and media preservation
 
 Export snapshots, removes credentials, vacuums, and verifies in private temporary
@@ -39,16 +44,19 @@ temporary file. Completion statistics come from the actual exported snapshot.
 
 At profile open, both `ankimon.db` and `ankimonDEV.db` in `collection.media` are
 captured before Anki can start automatic media sync. Verified copies include
-committed WAL contents and use underscore-prefixed, content-derived filenames.
-Only saves in the active mode are compared for recovery.
+committed WAL contents and use content-derived filenames under
+`ankimon-media-recovery/` beside `collection.media`, not inside the media folder.
+That keeps newly-created recovery databases out of AnkiWeb media sync while
+still leaving old underscore-prefixed migration copies readable for backwards
+compatibility. Only saves in the active mode are compared for recovery.
 
 If SQLite cannot read a source, Ankimon retains a labelled **unverified** ZIP of
-the raw database and its available sidecars. This is recovery material, not a
-guarantee that the archive contains a consistent save. Existing copies and raw
-archives must match their content before reuse. Damaged files remain untouched.
-If even raw capture fails, media sync pauses for that profile in memory until
-capture succeeds. Sync preferences are not changed. Close anything locking the
-files and restart Anki to retry.
+the raw database and its available sidecars in the same local recovery
+directory. This is recovery material, not a guarantee that the archive contains
+a consistent save. Existing copies and raw archives must match their content
+before reuse. Damaged files remain untouched. If even raw capture fails, media
+sync pauses for that profile in memory until capture succeeds. Sync preferences
+are not changed. Close anything locking the files and restart Anki to retry.
 
 Preservation status is separate from the feature-removal announcement. Worker
 or dispatch failures remain retryable and visible; they do not start a full
@@ -68,8 +76,8 @@ progress UI remain separate UX work. Aggregate counters never establish that
 one collection contains another.
 
 Regression coverage uses real SQLite files, WAL transactions, injected filesystem
-failures, and fresh subprocesses. Validation passed with 1,536 tests, 40 skips,
-9 subtests, all 13 Tier-1 checks, and the Tier-2 real-Qt play probe.
+failures, fresh subprocesses, malformed pending metadata, custom database paths,
+and assertions that new recovery files stay outside `collection.media`.
 
 A real Anki 25.09.2 session with a temporary profile also exercised an unfinished
 Add Cards note and **Keep Editing** during import shutdown. The original save

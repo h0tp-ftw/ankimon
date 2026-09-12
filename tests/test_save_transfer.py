@@ -112,17 +112,13 @@ def _make_save(path: Path, *, pokemon=0, badges=0, history=0,
 
 
 def _protected(media: Path, target_db: str = "ankimon.db"):
-    """The content-addressed protected copies the migration wrote, by name.
-
-    The migration never writes a FIXED protected name — a fixed name can hold
-    one save, so the second one to arrive forces a choice between overwriting
-    it and leaving the newcomer under the bare, deletable name, and the
-    progress counters cannot make that choice honestly. Each distinct save is
-    preserved as ``_ankimon_save_<digest of its bytes>.db`` instead, so tests
-    ask what is protected rather than assuming one name.
-    """
+    """All verified protected copies, including legacy sync-visible ones."""
+    locations = (media, st._recovery_store(media))
     return sorted(
-        path for path in media.glob(st._SAVE_PREFIX[target_db] + "*.db")
+        path
+        for location in locations
+        if location.is_dir()
+        for path in location.glob(st._SAVE_PREFIX[target_db] + "*.db")
         if st._target_db_for(path) == target_db
     )
 
