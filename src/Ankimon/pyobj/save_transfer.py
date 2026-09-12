@@ -1416,8 +1416,15 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
     return result
 
 
-def _resume_deferred_media_sync() -> None:
-    """Re-request one media sync the guard turned away.
+def _resume_deferred_media_sync() -> bool:
+    """Re-request one media sync the guard turned away; say whether it went.
+
+    The answer matters because every "no" here is a stand-down, not a refusal:
+    the request is still owed, and the caller puts it back rather than dropping
+    it. Anki has no deferred request of its own to fall back on, and in the one
+    state this most often declines for -- a backup restore in progress -- it has
+    switched its own unattended sync off too, so a dropped request is simply
+    gone for the session.
 
     Anki reads ``media_syncing_enabled()`` once, when a sync starts, and passes
     it into the backend call; a collection sync that saw False finishes without
@@ -1435,13 +1442,14 @@ def _resume_deferred_media_sync() -> None:
     try:
         syncer = getattr(mw, "media_syncer", None)
         if syncer is None or getattr(mw, "col", None) is None:
-            return
+            return False
         if getattr(mw, "restoring_backup", False):
-            return
+            return False
         syncer.start(True)
+        return True
     except Exception:
         # Never let a restart attempt keep the guard from being released.
-        pass
+        return False
 
 
 def _reading_to_display_the_preference() -> bool:
@@ -1491,10 +1499,22 @@ def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None
         state = {"blocked": set(), "deferred": set(), "lock": threading.Lock()}
 
         def enabled():
-            folder = Path(pm.profileFolder()) / "collection.media"
+            # The preference first: Anki's own media_syncing_enabled is a dict
+            # lookup that cannot fail, and a user who has media sync off needs
+            # no answer from the disk at all.
             allowed = original()
             if not allowed or _reading_to_display_the_preference():
                 return allowed
+            try:
+                folder = Path(pm.profileFolder()) / "collection.media"
+            except Exception:
+                # profileFolder(create=True) makes directories, so a base on a
+                # volume that went away raises here. Three callers read this --
+                # the Preferences dialog, the periodic timer's Qt slot, and the
+                # sync worker -- and none of them expect it to. Fail open: the
+                # guard only ever delays a sync, so answering "allowed" costs at
+                # most one unprotected pass, which the next scan re-arms.
+                return True
             with state["lock"]:
                 if folder not in state["blocked"]:
                     return True
@@ -1516,8 +1536,14 @@ def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None
             deferred = media_dir in state["deferred"]
             state["deferred"].discard(media_dir)
     # Outside the lock: restarting a sync re-enters Anki, which reads the gate.
-    if deferred:
-        _resume_deferred_media_sync()
+    if deferred and not _resume_deferred_media_sync():
+        # Standing down is not the same as being done. Put the request back so a
+        # later release -- or the next profile open, which is where Anki clears
+        # restoring_backup -- can still replay it. Dropping it here left the
+        # user who restored a backup and then synced by hand with no media sync
+        # for the rest of the session.
+        with lock:
+            state["deferred"].add(media_dir)
 
 
 _LAST_PROTECTION_NOTICE = None
@@ -1743,6 +1769,42 @@ _MIGRATION_SCAN_STATE = {"running": False, "rerun": False}
 _MIGRATION_RETRY_DELAY = 30.0
 
 
+def _schedule_migration_retry(settings_obj, logger) -> None:
+    """Ask for another pass later, without going through a media-sync hook.
+
+    The add-on's only recurring rescan trigger is
+    ``gui_hooks.media_sync_did_start_or_stop``, and ``MediaSyncer.start``
+    returns before ``start_monitoring`` when the gate says no. So exactly while
+    the guard is up, the 5-minute periodic media sync that would have fired that
+    hook fires nothing at all -- the guard suppresses its own retry. The
+    ``retry_at`` delay recorded after a failed capture had no clock behind it,
+    and a file that stopped being locked mid-session went unnoticed until the
+    user synced by hand or closed the profile, with media sync off throughout.
+
+    One timer at a time, cleared when it fires. A capture that succeeds releases
+    the guard and stops the cycle; nothing reschedules from here.
+    """
+    if _MIGRATION_SCAN_STATE.get("retry_scheduled"):
+        return
+
+    def _retry() -> None:
+        _MIGRATION_SCAN_STATE["retry_scheduled"] = False
+        try:
+            start_media_migration(settings_obj, logger)
+        except Exception:
+            pass
+
+    try:
+        # A little past the throttle, so the pass it asks for is not refused by
+        # the very retry_at that scheduled it.
+        mw.progress.single_shot(int(_MIGRATION_RETRY_DELAY * 1000) + 250, _retry, True)
+        _MIGRATION_SCAN_STATE["retry_scheduled"] = True
+    except Exception:
+        # No timer is a missed retry, not a failure: a manual sync and the next
+        # profile open still rescan.
+        pass
+
+
 def _pending_media_protection(media_dir: Path, target: Optional[Path]):
     """Stat both bare saves and sidecars without opening or copying their bytes.
 
@@ -1848,6 +1910,12 @@ def start_media_migration(settings_obj, logger) -> None:
                                               "protection": result["protection"],
                                               "retry_at": time.monotonic() + _MIGRATION_RETRY_DELAY}
                             _guard_uncaptured_media(media_dir, result["protection"])
+                            if (set(result["protection"]["unprotected"])
+                                    - set(result["protection"]["archived_sources"])):
+                                # The guard stays up, so Anki's media-sync hook
+                                # -- this scan's only other trigger -- is the
+                                # one thing that cannot bring the retry around.
+                                _schedule_migration_retry(settings_obj, logger)
                         _apply_migration_result(result, logger)
             except Exception as e:
                 try:
