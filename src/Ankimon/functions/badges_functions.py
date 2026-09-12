@@ -83,17 +83,41 @@ def receive_badge(badge_num, achievements):
     return achievements
 
 
+# Badge awarded once the day's review count reaches each threshold ("100 Cards
+# in one Session" ... see addon_files/badges.json). Module-level so the table is
+# not rebuilt on every answered card.
+_REVIEW_COUNT_MILESTONES = {
+    100: 1,
+    200: 2,
+    300: 3,
+    500: 4,
+    1000: 12,
+    2000: 13,
+}
+
+
 def handle_review_count_achievement(review_count, achievements):
-    milestones = {
-        100: 1,
-        200: 2,
-        300: 3,
-        500: 4,
-        1000: 12,
-        2000: 13,
-    }
-    for count_required, badge_to_award in milestones.items():
-        if review_count >= count_required and not check_for_badge(achievements, badge_to_award):
+    """Award every review-count milestone badge the count has reached.
+
+    Uses ``>=`` rather than an exact-match lookup because a burst of reviews can
+    skip the exact milestone integer (101 reviews must still earn the 100 badge).
+    """
+    # Coerce before comparing. ``AnkimonTracker.get_total_reviews`` forwards
+    # whatever ``col.db.scalar()`` returns, and that is ``None`` when the query
+    # yields no row (a stub/mock collection on ``services.col``). The previous
+    # ``milestones.get(review_count)`` lookup absorbed that harmlessly; a bare
+    # ``review_count >= threshold`` would raise TypeError straight into
+    # ``on_review_card``'s handler, popping an error dialog and aborting the
+    # whole battle turn on every review.
+    try:
+        review_count = int(review_count)
+    except (TypeError, ValueError):
+        return achievements
+
+    for count_required, badge_to_award in _REVIEW_COUNT_MILESTONES.items():
+        if review_count >= count_required and not check_for_badge(
+            achievements, badge_to_award
+        ):
             achievements = receive_badge(badge_to_award, achievements)
 
     return achievements
