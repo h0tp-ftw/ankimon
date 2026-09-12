@@ -256,11 +256,16 @@ def test_an_untouched_capture_still_settles_in_one_pass(transfer, media_host, mo
 
 @pytest.fixture
 def media_syncer(monkeypatch):
-    """Record what Ankimon asks Anki's media syncer to do."""
+    """Record what Ankimon asks Anki's media syncer to do.
+
+    ``mw`` is a MagicMock, so every unset attribute reads as truthy. Pin the
+    host state the resume actually consults instead of letting the mock decide.
+    """
     started = []
     monkeypatch.setattr(st.mw, "media_syncer",
                         SimpleNamespace(start=lambda *args: started.append(args)))
     monkeypatch.setattr(st.mw, "col", object())
+    monkeypatch.setattr(st.mw, "restoring_backup", False)
     return started
 
 
@@ -283,7 +288,10 @@ def test_a_sync_turned_away_by_the_guard_is_restarted_after_capture(
 
     media_host.finish()
     assert media_host.pm.media_syncing_enabled() is True
-    assert len(media_syncer) == 1
+    # Marked periodic, like Anki's own unattended timer: nobody clicked for
+    # this request, and MediaSyncer only keeps a failure out of a dialog when
+    # the request says it is periodic.
+    assert media_syncer == [(True,)]
 
 
 def test_capture_does_not_start_a_sync_nobody_asked_for(
@@ -312,16 +320,31 @@ def test_media_sync_switched_off_by_the_user_is_never_resumed(
     assert media_syncer == []
 
 
+def test_a_restore_in_progress_suppresses_the_resumed_sync(
+    transfer, media_host, media_syncer, monkeypatch,
+):
+    """Anki's own unattended sync stands down during a backup restore."""
+    monkeypatch.setattr(st.mw, "restoring_backup", True)
+    _make_save(media_host.media / "ankimon.db", pokemon=5)
+    st.start_media_migration(None, _Logger())
+    assert media_host.pm.media_syncing_enabled() is False
+
+    media_host.finish()
+    # The guard still lifts; only the extra request we would have made is held.
+    assert media_host.pm.media_syncing_enabled() is True
+    assert media_syncer == []
+
+
 def test_a_deferred_sync_is_resumed_only_once(transfer, media_host, media_syncer):
     """A later settled pass must not re-request the sync it already restarted."""
     _make_save(media_host.media / "ankimon.db", pokemon=5)
     st.start_media_migration(None, _Logger())
     assert media_host.pm.media_syncing_enabled() is False
     media_host.finish()
-    assert len(media_syncer) == 1
+    assert media_syncer == [(True,)]
 
     (media_host.media / "ankimon.db").unlink()
     st.start_media_migration(None, _Logger())
     if media_host.queued:
         media_host.finish()
-    assert len(media_syncer) == 1
+    assert media_syncer == [(True,)]

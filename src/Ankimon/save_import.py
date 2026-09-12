@@ -242,14 +242,18 @@ def stage_import(
         os.replace(temp_manifest, directory / "pending.json")
         published = True
     finally:
-        temp_manifest.unlink(missing_ok=True)
         if not published:
+            temp_manifest.unlink(missing_ok=True)
             _remove_owned_copy(incoming)
 
-    # Past the commit point. Everything below is durability and read-back, and
-    # none of it can un-arm the install, so a failure here is reported as a
-    # staged import the user can cancel — never as "nothing was replaced".
+    # Past the commit point. Everything below is cleanup, durability and
+    # read-back, and none of it can un-arm the install, so a failure here is
+    # reported as a staged import the user can cancel — never as "nothing was
+    # replaced". The leftover manifest is removed here rather than in the
+    # finally above for that reason: missing_ok hides only a missing file, and
+    # a locked directory would otherwise abort over an already-published save.
     try:
+        temp_manifest.unlink(missing_ok=True)
         _fsync_directory(directory)
         _fsync_directory(target.parent)
         info = pending_import_info(target)

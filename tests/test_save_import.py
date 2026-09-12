@@ -522,16 +522,21 @@ def test_rebase_rolls_back_watermark_if_marker_cannot_be_retired(tmp_path):
         conn.close()
 
 
-@pytest.mark.parametrize("failure", ["staging_directory", "target_directory", "read_back"])
+@pytest.mark.parametrize(
+    "failure", ["manifest_cleanup", "staging_directory", "target_directory", "read_back"],
+)
 def test_publication_failure_reports_a_pending_import_rather_than_an_abort(
     tmp_path, monkeypatch, failure,
 ):
     """Replacing pending.json is the commit point; later steps cannot undo it.
 
-    Durability and read-back run after publication and deliberately keep the
-    staged copy when they fail. A caller told only "aborted" would leave the
-    user playing on into a replacement they believe cannot happen, so staging
-    reports this state with its own exception.
+    Cleanup, durability and read-back all run after publication and
+    deliberately keep the staged copy when they fail. A caller told only
+    "aborted" would leave the user playing on into a replacement they believe
+    cannot happen, so staging reports this state with its own exception.
+
+    Each parameter breaks exactly one of those steps, in the order stage_import
+    performs them, so no two cases exercise the same line.
     """
     importer = load_module()
     target = make_save(tmp_path / "ankimon.db", "local")
@@ -539,11 +544,16 @@ def test_publication_failure_reports_a_pending_import_rather_than_an_abort(
     _, directory = importer._paths(target)
     injecting = [True]
     fsync_directory, read_back = importer._fsync_directory, importer.pending_import_info
+    unlink = Path.unlink
+
+    def failing_unlink(self, *args, **kwargs):
+        if injecting[0] and failure == "manifest_cleanup" and self.suffix == ".json":
+            raise PermissionError("injected manifest cleanup failure")
+        return unlink(self, *args, **kwargs)
 
     def failing_sync(path):
-        if injecting[0] and Path(path) == (
-            directory if failure == "staging_directory" else target.parent
-        ):
+        broken = {"staging_directory": directory, "target_directory": target.parent}
+        if injecting[0] and Path(path) == broken.get(failure):
             raise OSError(f"injected {failure} sync failure")
         return fsync_directory(path)
 
@@ -557,6 +567,7 @@ def test_publication_failure_reports_a_pending_import_rather_than_an_abort(
         published.append(path)
         return read_back(path)
 
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
     monkeypatch.setattr(importer, "_fsync_directory", failing_sync)
     monkeypatch.setattr(importer, "pending_import_info", failing_read_back)
 

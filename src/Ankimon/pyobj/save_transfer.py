@@ -1339,15 +1339,21 @@ def _resume_deferred_media_sync() -> None:
     media and nothing re-requests it. Clearing the guard only makes the NEXT
     attempt permissible, and Anki's own next attempt is a profile close or a
     periodic tick whose clock the skipped sync has just reset. Ask for one now
-    instead. ``MediaSyncer.start`` re-checks the user's preference and sign-in
-    and returns immediately if a media sync is already running, so this cannot
-    sync for a user who turned media sync off.
+    instead. ``MediaSyncer.start`` re-checks the user's preference and sign-in,
+    so this cannot sync for a user who turned media sync off.
+
+    Ask for it the way Anki's own unattended timer does. Nobody clicked for
+    this request, and MediaSyncer only keeps a failed one out of a dialog when
+    it is marked periodic. That timer's other condition, a backup restore in
+    progress, is the one thing ``start`` does not check for itself.
     """
     try:
         syncer = getattr(mw, "media_syncer", None)
         if syncer is None or getattr(mw, "col", None) is None:
             return
-        syncer.start()
+        if getattr(mw, "restoring_backup", False):
+            return
+        syncer.start(True)
     except Exception:
         # Never let a restart attempt keep the guard from being released.
         pass
