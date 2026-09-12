@@ -140,8 +140,9 @@ def _on_profile_did_open(online_connectivity):
             try:
                 services.ui.warn(
                     "Ankimon could not install the pending imports listed below. "
-                    "The previous save for each listed file remains active. "
-                    "They will retry on a full restart, or use Cancel Pending Save Import.\n\n" +
+                    "No save was replaced. They will retry on a full restart, or "
+                    "use Cancel Pending Save Import, which now covers both save "
+                    "modes.\n\n" +
                     "\n".join(failures)
                 )
                 services._save_import_errors = []

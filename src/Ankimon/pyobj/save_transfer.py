@@ -696,35 +696,68 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
     return True
 
 
+def _import_targets() -> list:
+    """Every save an install is attempted against on a start, active first.
+
+    ``get_db`` tries both modes on every start and reports a failure for either,
+    naming Cancel Pending Save Import as the remedy. Resolving only the active
+    save made that remedy answer "there is no pending save import" to a user
+    looking at a warning about the other one, on every start, forever.
+    """
+    targets = []
+    for candidate in (_active_db_path(), user_path / "ankimon.db",
+                      user_path / "ankimonDEV.db"):
+        if candidate is None:
+            continue
+        try:
+            resolved = Path(candidate).resolve()
+        except Exception:
+            continue
+        if resolved not in targets:
+            targets.append(resolved)
+    return targets
+
+
 def cancel_pending_save_import() -> None:
-    """Cancel a staged import and report filesystem failures through the menu."""
+    """Cancel staged imports for either save mode, and report what was found."""
+    from ..events import events
     from ..save_import import cancel_pending_import, pending_import_is_installed
 
-    target = _active_db_path()
-    try:
-        # Asked BEFORE cancelling: removing the manifest is what makes the two
-        # states indistinguishable afterwards.
-        installed = target is not None and pending_import_is_installed(target)
-        cancelled = target is not None and cancel_pending_import(target)
-    except OSError as error:
-        showWarning(f"The pending save import could not be cancelled: {error}. "
-                    "Close anything using the Ankimon folder and try again.")
+    cancelled, already_installed, failures = [], [], []
+    for target in _import_targets():
+        try:
+            # Asked BEFORE cancelling: removing the manifest is what makes the
+            # two states indistinguishable afterwards.
+            installed = pending_import_is_installed(target)
+            if not cancel_pending_import(target):
+                continue
+        except OSError as error:
+            failures.append(f"{target.name}: {error}")
+            continue
+        cancelled.append(target)
+        if installed:
+            already_installed.append(target)
+        events.emit("save_import_cancelled", target=str(target),
+                    installed=installed)
+
+    if failures:
+        showWarning("The pending save import could not be cancelled:\n\n"
+                    + "\n".join(failures)
+                    + "\n\nClose anything using the Ankimon folder and try again.")
         return
-    if cancelled and installed:
-        from ..events import events
-
-        events.emit("save_import_cancelled", target=str(target), installed=True)
-        showInfo("That import had already installed: the save you are playing IS the "
-                 "imported one. Only its leftover record was cleared, so nothing will "
-                 "be installed again.\n\nYour previous save was retained before the "
-                 "replacement — see Ankimon → Browse Recovered Saves.")
-    elif cancelled:
-        from ..events import events
-
-        events.emit("save_import_cancelled", target=str(target))
-        showInfo("The pending save import was cancelled. Your current save is unchanged.")
+    if not cancelled:
+        showInfo("There is no pending save import for either save mode.")
+        return
+    named = ", ".join(target.name for target in cancelled)
+    if already_installed:
+        showInfo(f"That import ({', '.join(t.name for t in already_installed)}) had "
+                 "already installed: the save you are playing IS the imported one. "
+                 "Only its leftover record was cleared, so nothing will be installed "
+                 "again.\n\nYour previous save was retained before the replacement — "
+                 "see Ankimon → Browse Recovered Saves.")
     else:
-        showInfo("There is no pending save import for the active mode.")
+        showInfo(f"The pending save import was cancelled ({named}). "
+                 "Your current save is unchanged.")
 
 
 def browse_recovered_saves() -> None:

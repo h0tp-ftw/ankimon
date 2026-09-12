@@ -439,7 +439,7 @@ def test_existing_recovery_directories_are_private_before_snapshot_access(tmp_pa
     child(
         "import stat\n"
         "snapshot = module._snapshot\n"
-        "def inspect_access(source, dest):\n"
+        "def inspect_access(source, dest, deadline=None):\n"
         "    assert stat.S_IMODE(dest.parent.stat().st_mode) == 0o700\n"
         "    assert stat.S_IMODE(dest.parent.parent.stat().st_mode) == 0o700\n"
         "    snapshot(source, dest)\n"
@@ -740,3 +740,51 @@ def test_repeated_failed_installs_do_not_grow_the_recovery_folder_forever(tmp_pa
     assert names(staged["recovery_path"]) == [
         "local", "run-0", "run-1", "run-2",
     ]
+
+
+def test_an_import_for_a_save_that_no_longer_exists_says_so(tmp_path):
+    """Every step below the check reads the target; a bare SQLite error does not.
+
+    get_db tries both modes on every start and never recreates the developer
+    save, so an unactionable message here repeats for as long as the record does.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimonDEV.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    importer.stage_import(source, target)
+    target.unlink()
+
+    child(
+        "try:\n"
+        "    module.commit_pending_import(target)\n"
+        "except FileNotFoundError as error:\n"
+        "    assert 'no longer exists' in str(error), error\n"
+        "    assert 'Cancel Pending Save Import' in str(error), error\n"
+        "else:\n"
+        "    raise AssertionError('a missing target should be reported, not opened')\n",
+        target,
+    )
+    assert importer.pending_import_info(target) is not None
+
+
+def test_a_spent_startup_budget_refuses_rather_than_waiting_again(tmp_path):
+    """The install runs before Anki has a window to say what it is waiting for."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    importer.stage_import(source, target)
+
+    child(
+        "import time\n"
+        "started = time.monotonic()\n"
+        "try:\n"
+        "    module.commit_pending_import(target, deadline=started - 1)\n"
+        "except TimeoutError as error:\n"
+        "    assert 'budget expired' in str(error), error\n"
+        "else:\n"
+        "    raise AssertionError('an expired budget should refuse the install')\n"
+        "assert time.monotonic() - started < 5, 'it waited anyway'\n",
+        target,
+    )
+    assert names(target) == ["local"]
+    assert importer.pending_import_info(target) is not None

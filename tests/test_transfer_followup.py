@@ -426,3 +426,29 @@ def test_a_second_import_is_not_told_the_installed_one_is_still_coming(
     assert len(shown) == 1
     assert "already installed" in shown[0].lower()
     assert "will install at the next" not in shown[0].lower()
+
+
+def test_cancel_reaches_an_import_staged_against_the_other_save_mode(
+    transfer, tmp_path, monkeypatch
+):
+    """Startup tries both modes and blames Cancel when either fails.
+
+    Resolving only the active save made that advice answer "there is no pending
+    save import" to somebody looking at a warning about the other one.
+    """
+    from Ankimon.save_import import pending_import_info, stage_import
+
+    monkeypatch.setattr(st, "user_path", tmp_path)
+    developer = _make_save(tmp_path / "ankimonDEV.db", pokemon=1, name="Dev")
+    stage_import(transfer.incoming, developer)
+    assert pending_import_info(developer) is not None
+
+    shown = []
+    monkeypatch.setattr(st, "showInfo", lambda message: shown.append(message))
+
+    st.cancel_pending_save_import()
+
+    assert pending_import_info(developer) is None
+    assert len(shown) == 1
+    assert "ankimonDEV.db" in shown[0]
+    assert "no pending save import" not in shown[0]

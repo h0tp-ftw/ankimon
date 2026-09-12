@@ -22,6 +22,12 @@ import uuid
 
 
 _TIMEOUT = 30.0
+# get_db installs pending work during add-on import, which Anki runs inside
+# AnkiQt.__init__ -- before setupProfile, before any window is shown and before
+# a progress dialog exists. A locked save there is Anki looking hung with
+# nothing on screen, so the WHOLE installation gets one budget, the way the
+# shutdown backup does, rather than a full SQLite timeout per file per step.
+STARTUP_IMPORT_BUDGET = 30.0
 _PROCESS_ATTRIBUTE = "_ankimon_save_import_process"
 
 
@@ -77,17 +83,32 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _connect_readonly(path: Path):
-    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=_TIMEOUT)
-    deadline = time.monotonic() + _TIMEOUT
-    conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 2000)
+def _budget(deadline: float | None) -> float:
+    """What one step may spend: its own timeout, or what is left of a shared one.
+
+    Raises rather than starting a step that has no time to finish in, so a
+    caller with an expired budget fails now instead of after another full wait.
+    """
+    if deadline is None:
+        return _TIMEOUT
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("the save import budget expired")
+    return min(_TIMEOUT, remaining)
+
+
+def _connect_readonly(path: Path, deadline: float = None):
+    timeout = _budget(deadline)
+    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout)
+    limit = time.monotonic() + timeout
+    conn.set_progress_handler(lambda: int(time.monotonic() > limit), 2000)
     return conn
 
 
-def _verify_save(path: Path) -> None:
+def _verify_save(path: Path, deadline: float = None) -> None:
     if not path.is_file() or path.stat().st_size < 512:
         raise ValueError("The pending save is missing or truncated")
-    conn = _connect_readonly(path)
+    conn = _connect_readonly(path, deadline)
     try:
         if conn.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
             raise ValueError("The save failed its SQLite integrity check")
@@ -104,16 +125,17 @@ def _remove_owned_copy(path: Path) -> None:
         Path(str(path) + suffix).unlink(missing_ok=True)
 
 
-def _snapshot(source: Path, dest: Path) -> None:
+def _snapshot(source: Path, dest: Path, deadline: float = None) -> None:
     """Build a verified single-file copy, including committed WAL contents."""
-    source_conn = _connect_readonly(source)
+    source_conn = _connect_readonly(source, deadline)
     try:
-        dest_conn = sqlite3.connect(dest, timeout=_TIMEOUT)
+        timeout = _budget(deadline)
+        dest_conn = sqlite3.connect(dest, timeout=timeout)
         try:
-            deadline = time.monotonic() + _TIMEOUT
+            limit = time.monotonic() + timeout
 
             def progress(status, remaining, total):
-                if time.monotonic() > deadline:
+                if time.monotonic() > limit:
                     raise TimeoutError("Timed out taking the import safety snapshot")
 
             source_conn.backup(dest_conn, pages=256, progress=progress, sleep=0.05)
@@ -122,7 +144,7 @@ def _snapshot(source: Path, dest: Path) -> None:
             dest_conn.close()
     finally:
         source_conn.close()
-    _verify_save(dest)
+    _verify_save(dest, deadline)
     _fsync_file(dest)
 
 
@@ -326,8 +348,8 @@ def cancel_pending_import(target: Path) -> bool:
     return True
 
 
-def _installed_token(target: Path) -> str | None:
-    conn = _connect_readonly(target)
+def _installed_token(target: Path, deadline: float = None) -> str | None:
+    conn = _connect_readonly(target, deadline)
     try:
         if conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'"
@@ -419,7 +441,7 @@ def _prune_superseded_recovery(directory: Path, name: str, keep: int = 1) -> Non
             pass
 
 
-def commit_pending_import(target: Path, logger=None) -> bool:
+def commit_pending_import(target: Path, logger=None, deadline: float = None) -> bool:
     """Install before any runtime exists, refusing work staged in this process.
 
     Returns True if installed (or a prior crash installed it); False if there is
@@ -427,6 +449,11 @@ def commit_pending_import(target: Path, logger=None) -> bool:
     for retry or explicit cancellation. ImportInstalledError means replacement
     succeeded but final sync or cleanup failed. The installed token prevents a
     retry from reapplying the old import over subsequent game progress.
+
+    ``deadline`` is an absolute ``time.monotonic()`` instant bounding the WHOLE
+    installation rather than each SQLite step. The caller runs during add-on
+    import, before Anki has a window to say what it is waiting for, so a locked
+    save must not be waited on twice over.
     """
     target, _ = _paths(target)
     # Any attempt may be followed by construction of a runtime. Retrying after
@@ -444,12 +471,22 @@ def commit_pending_import(target: Path, logger=None) -> bool:
     if info is None or info["process"] == _process_identity():
         return False
 
-    if _installed_token(target) == info["token"]:
+    if not target.is_file():
+        # Every step below reads the save, so without this the user gets a bare
+        # SQLite "unable to open database file" on every start. The developer
+        # save is never recreated, so that is forever.
+        raise FileNotFoundError(
+            f"{target.name} no longer exists, so the save import prepared for it "
+            "cannot be installed. Use Ankimon \u2192 Cancel Pending Save Import to "
+            "discard it."
+        )
+
+    if _installed_token(target, deadline) == info["token"]:
         _finish_installed_import(target, info["recovery_path"], logger)
         return True
 
     incoming = info["pending_path"]
-    _verify_save(incoming)
+    _verify_save(incoming, deadline)
     if _digest(incoming) != info["digest"]:
         raise ValueError("The pending save changed after it was confirmed")
     recovery = info["recovery_path"]
@@ -480,7 +517,7 @@ def commit_pending_import(target: Path, logger=None) -> bool:
     os.close(fd)
     backup_temp = Path(name)
     try:
-        _snapshot(target, backup_temp)
+        _snapshot(target, backup_temp, deadline)
         os.replace(backup_temp, recovery)
         _fsync_directory(recovery.parent)
         _fsync_directory(recovery.parent.parent)
@@ -491,7 +528,7 @@ def commit_pending_import(target: Path, logger=None) -> bool:
     # Let SQLite merge and remove the OLD database's journals itself. Never
     # delete a WAL before replacement: a crash in that gap would lose committed
     # progress. A busy external connection refuses the mode change and import.
-    conn = sqlite3.connect(target.as_uri() + "?mode=rw", uri=True, timeout=_TIMEOUT)
+    conn = sqlite3.connect(target.as_uri() + "?mode=rw", uri=True, timeout=_budget(deadline))
     try:
         mode = conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
         if str(mode).lower() != "delete":
