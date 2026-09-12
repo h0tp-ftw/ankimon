@@ -87,3 +87,31 @@ def test_startup_reports_the_save_that_is_active(tmp_path, monkeypatch, installe
         assert len(warnings) == 1
     finally:
         runtime.close()
+
+
+def test_failed_warning_delivery_keeps_the_notice_and_registers_sync_hooks(monkeypatch):
+    """A raising presenter must not silence an import outcome or skip the hooks."""
+    services = _fresh_services(monkeypatch)
+    services._save_import_errors = ["ankimon.db: injected replacement failure"]
+    services._save_import_warnings = ["ankimonDEV.db: injected final sync failure"]
+    delivered = []
+
+    def refuse(message):
+        delivered.append(message)
+        raise RuntimeError("the warning dialog could not be shown")
+
+    services.ui = SimpleNamespace(warn=refuse)
+    hooks = _exec_profile_hooks(monkeypatch, _fresh_gui_hooks())
+    hooks.mw.col = None
+    hooks.mw.taskman = SimpleNamespace(run_in_background=lambda *args: None)
+    hooks._on_profile_did_open(False)()
+
+    # Both notices were attempted, both survive for the next profile open
+    # instead of being cleared into nothing, and the AnkiWeb sync hooks that
+    # follow them still registered.
+    assert len(delivered) == 2
+    assert "could not install" in delivered[0].lower()
+    assert "are active" in delivered[1].lower()
+    assert services._save_import_errors == ["ankimon.db: injected replacement failure"]
+    assert services._save_import_warnings == ["ankimonDEV.db: injected final sync failure"]
+    assert hooks.setup_ankimon_sync_hooks.called

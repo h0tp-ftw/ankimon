@@ -60,9 +60,10 @@ sync pauses for that profile in memory until capture succeeds. Sync preferences
 are not changed. Close anything locking the files and restart Anki to retry.
 
 Preservation status is separate from the feature-removal announcement. Worker
-or dispatch failures remain retryable and visible; they do not copy, archive, or
-compare saves on the GUI thread. Unchanged unreadable saves have a 30-second
-retry delay; changed files, permissions, or SQLite sidecars re-arm immediately.
+and dispatch failures remain retryable and visible. Preservation work runs on
+the guarded worker and does not copy, archive, or compare saves on the GUI
+thread. Unchanged unreadable saves have a 30-second retry delay; changed files,
+permissions, or SQLite sidecars re-arm immediately.
 Moving an uncaptured save out of the media folder also clears its sync guard.
 Recovery paths are recorded in the Ankimon
 log. No original media file is deleted.
@@ -116,3 +117,19 @@ restart-only import behavior:
 The optional 80% docstring-coverage warning was not adopted as a blanket rewrite
 of the transfer tests and existing helpers. Behavioral contracts and the new
 failure/scheduling paths are documented where they need explanation.
+
+A second review round raised four further findings, all accepted:
+
+- Import outcome warnings are delivered inside their own guard, and each list is
+  cleared only after the user has actually been shown it. A presenter failure no
+  longer discards the notice or prevents the AnkiWeb sync hooks from registering.
+- The automatic shutdown backup spends a single 30-second budget across every
+  database it snapshots, starting with the one the result depends on, so two
+  locked saves cannot delay closing Anki for a full timeout each. Manual and
+  pre-overwrite backups keep the per-file default.
+- A media scan whose source changed after the worker captured it is discarded
+  whole rather than applied. Its comparison figures and rescue snapshot describe
+  a save that is already gone, and the next pass rescans with sync still paused.
+  The comparison uses the state the worker observed, so a transient metadata
+  failure while the scan was being dispatched no longer costs an extra pass.
+- The worker/GUI-thread sentence above names preservation work as its subject.

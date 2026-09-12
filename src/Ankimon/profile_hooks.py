@@ -128,24 +128,35 @@ def _on_profile_did_open(online_connectivity):
         except Exception as e:
             logger.log("error", f"Failed to initialize mobile watermark: {e}")
 
+        # Delivery goes through QtPresenter.warn -> showWarning in production, so
+        # it can raise. Report each list in its own guarded block and clear it
+        # only once the user has actually been told: a lost warning would leave
+        # the import outcome invisible, and an escaping one would take the sync
+        # hook registration below down with it.
         failures = getattr(services, "_save_import_errors", [])
         if failures:
-            services._save_import_errors = []
-            services.ui.warn(
-                "Ankimon could not install the pending imports listed below. "
-                "The previous save for each listed file remains active. "
-                "They will retry on a full restart, or use Cancel Pending Save Import.\n\n" +
-                "\n".join(failures)
-            )
+            try:
+                services.ui.warn(
+                    "Ankimon could not install the pending imports listed below. "
+                    "The previous save for each listed file remains active. "
+                    "They will retry on a full restart, or use Cancel Pending Save Import.\n\n" +
+                    "\n".join(failures)
+                )
+                services._save_import_errors = []
+            except Exception as e:
+                logger.log("error", f"Failed to report pending save import failures: {e}")
         warnings = getattr(services, "_save_import_warnings", [])
         if warnings:
-            services._save_import_warnings = []
-            services.ui.warn(
-                "Ankimon installed the imported saves listed below, and they are active. "
-                "A final disk sync or cleanup step failed. Any remaining pending "
-                "work will retry on a full restart without applying the import again.\n\n" +
-                "\n".join(warnings)
-            )
+            try:
+                services.ui.warn(
+                    "Ankimon installed the imported saves listed below, and they are active. "
+                    "A final disk sync or cleanup step failed. Any remaining pending "
+                    "work will retry on a full restart without applying the import again.\n\n" +
+                    "\n".join(warnings)
+                )
+                services._save_import_warnings = []
+            except Exception as e:
+                logger.log("error", f"Failed to report save import finalization warnings: {e}")
 
         # Register the AnkiWeb sync hooks SYNCHRONOUSLY here — not in the
         # backgrounded connectivity callback below. Anki fires profile_did_open

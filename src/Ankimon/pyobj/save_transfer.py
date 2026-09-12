@@ -1038,6 +1038,14 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
 
     protection = _protect_bare_saves(media_dir)
     notes.extend(protection["log"])
+    # The state this result actually describes. The caller's dispatch-time
+    # signature is not it: a transient stat failure there reads as "unknown",
+    # and comparing that against a readable file later would discard a sound
+    # scan. Taken after protection, so a change during ranking or snapshotting
+    # still invalidates the result; changes during protection itself are
+    # caught by _preserve's content verification.
+    _, captured_signature = _pending_media_protection(media_dir, target)
+
     unreadable.extend(protection["unprotected"])
     written.extend(path for path in protection["protected"].values()
                    if _target_db_for(path) == target_db)
@@ -1058,6 +1066,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
             "local_stats": None,
             "fingerprint": _join_fingerprint(entries),
             "protection": protection,
+            "signature": captured_signature,
         }
         base.update(extra)
         return base
@@ -1620,16 +1629,21 @@ def start_media_migration(settings_obj, logger) -> None:
                 if (result is not None and _media_dir() == media_dir
                         and _active_collection() is collection):
                     _, current_signature = _pending_media_protection(media_dir, target)
-                    if current_signature != signature:
-                        # A download or external writer changed the source
-                        # during capture. Keep sync paused until the next pass.
+                    baseline = result.get("signature", signature)
+                    if current_signature != baseline:
+                        # A download or external writer changed the source after
+                        # the worker captured it. Keep sync paused until the next
+                        # pass and drop this result whole: its comparison figures
+                        # and its rescue snapshot describe a save that is already
+                        # gone, so offering either would stage stale bytes.
                         _MIGRATION_SCAN_STATE["rerun"] = True
-                    elif result.get("protection"):
-                        completed[key] = {"signature": signature,
-                                          "protection": result["protection"],
-                                          "retry_at": time.monotonic() + _MIGRATION_RETRY_DELAY}
-                        _guard_uncaptured_media(media_dir, result["protection"])
-                    _apply_migration_result(result, logger)
+                    else:
+                        if result.get("protection"):
+                            completed[key] = {"signature": baseline,
+                                              "protection": result["protection"],
+                                              "retry_at": time.monotonic() + _MIGRATION_RETRY_DELAY}
+                            _guard_uncaptured_media(media_dir, result["protection"])
+                        _apply_migration_result(result, logger)
             except Exception as e:
                 try:
                     logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")

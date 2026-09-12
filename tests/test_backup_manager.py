@@ -602,3 +602,34 @@ def test_custom_active_filename_summary_describes_its_snapshot(mock_env, tmp_pat
             assert summary["trainer_cash"] == 54321
     finally:
         active.close()
+
+
+def test_shutdown_backup_spends_one_budget_across_both_databases(mock_env, monkeypatch):
+    """Two locked saves must not each hold the close for a full timeout."""
+    bm, _, user_files_dir, _ = mock_env
+    _seed_db(user_files_dir / "ankimonDEV.db", "Dev", 1)
+    clock = [100.0]
+    monkeypatch.setattr(_bm_mod.time, "monotonic", lambda: clock[0])
+    attempts = []
+
+    def exhaust(source_path, destination_path, timeout=30.0):
+        # A locked source spends everything it is given, then fails.
+        attempts.append((Path(source_path).name, timeout))
+        clock[0] += timeout
+        raise TimeoutError("Timed out taking a database backup")
+
+    monkeypatch.setattr(bm, "_snapshot_database", exhaust)
+    bm.on_anki_close()
+
+    # The active save goes first and consumes the whole shutdown budget; the
+    # companion database is refused rather than given a second full timeout.
+    assert [name for name, _ in attempts] == ["ankimon.db"]
+    assert attempts[0][1] == pytest.approx(bm.SHUTDOWN_BACKUP_BUDGET)
+    assert clock[0] - 100.0 <= bm.SHUTDOWN_BACKUP_BUDGET
+
+    # A pre-overwrite backup is not a shutdown: every file keeps the per-file
+    # default, and the call shape stays positional for callers that patch it.
+    attempts.clear()
+    assert bm.create_backup(required_file="ankimon.db") is False
+    assert [name for name, _ in attempts] == ["ankimon.db", "ankimonDEV.db"]
+    assert {timeout for _, timeout in attempts} == {30.0}

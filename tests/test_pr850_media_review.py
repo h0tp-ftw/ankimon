@@ -161,3 +161,31 @@ def test_browse_tightens_existing_recovery_directory(transfer, monkeypatch):
     st.browse_recovered_saves()
     assert recovery.stat().st_mode & 0o777 == 0o700
     assert opened == [str(recovery)]
+
+
+def test_scan_result_is_discarded_when_the_media_save_changes_mid_scan(
+    transfer, media_host, monkeypatch,
+):
+    """A save rewritten during capture must not be compared or offered."""
+    source = _make_save(media_host.media / "ankimon.db", pokemon=9)
+    applied = []
+    monkeypatch.setattr(st, "_apply_migration_result",
+                        lambda result, logger: applied.append(result))
+
+    st.start_media_migration(None, _Logger())
+    work, done = media_host.queued.pop(0)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(work)
+        future.result()
+    # A download lands between the worker finishing and its callback running.
+    source.unlink()
+    _make_save(source, pokemon=40)
+    done(future)
+
+    # Nothing from the obsolete pass reaches the user, sync stays paused, and
+    # the coalesced rerun is what finally applies a result.
+    assert applied == []
+    assert media_host.pm.media_syncing_enabled() is False
+    assert len(media_host.queued) == 1
+    media_host.finish()
+    assert len(applied) == 1

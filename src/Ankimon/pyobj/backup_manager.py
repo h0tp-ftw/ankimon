@@ -28,6 +28,9 @@ class BackupManager:
     ]
     MAX_BACKUPS = 5
     MAX_BACKUP_AGE_DAYS = 14
+    # profile_will_close runs the automatic backup synchronously, so the whole
+    # shutdown gets this budget once -- not one full SQLite timeout per file.
+    SHUTDOWN_BACKUP_BUDGET = 30.0
 
     def __init__(self, logger, settings_obj):
         self.logger = logger
@@ -106,8 +109,14 @@ class BackupManager:
                     backups.append(summary)
         return backups
 
-    def create_backup(self, manual=False, required_file: str = None) -> bool:
+    def create_backup(self, manual=False, required_file: str = None,
+                      deadline: float = None) -> bool:
         """Creates a new backup.
+
+        ``deadline`` is an absolute ``time.monotonic()`` instant that bounds the
+        WHOLE call rather than each file. Shutdown passes one so two locked
+        databases cannot hold Anki open for a full timeout each; every other
+        caller leaves it unset and keeps the per-file default.
 
         Returns ``True`` only if the backup directory contains a verified
         snapshot of the file the caller depends on. ``required_file`` names it (the
@@ -141,13 +150,28 @@ class BackupManager:
                     sources[active_path.name] = active_path
 
             completed = set()
-            for filename, source_path in sources.items():
+            needed = required_file or (active_path.name if active_path else "ankimon.db")
+            # A shared budget is spent on the file `success` depends on first,
+            # so a locked companion database cannot starve the one that matters.
+            order = sorted(sources, key=lambda name: name != needed) if deadline else sources
+            for filename in order:
+                source_path = sources[filename]
                 if source_path.exists():
                     # Isolate each snapshot: a failure on ankimonDEV.db must not mark
                     # a successful ankimon.db backup as failed (which would
                     # needlessly abort a safe import), and vice versa.
                     try:
-                        self._snapshot_database(source_path, staging_dir / filename)
+                        if deadline is None:
+                            self._snapshot_database(source_path, staging_dir / filename)
+                        else:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                # Refuse rather than start a snapshot whose own
+                                # deadline check would fail it after the copy.
+                                raise TimeoutError(
+                                    "the shutdown backup budget expired before this file")
+                            self._snapshot_database(source_path, staging_dir / filename,
+                                                    timeout=remaining)
                         completed.add(filename)
                     except Exception as e:
                         self.logger.log("error", f"Failed to back up {filename}: {e}")
@@ -160,7 +184,6 @@ class BackupManager:
 
             # A failed snapshot can leave a partial temporary file; only a
             # completed, verified snapshot authorizes a destructive overwrite.
-            needed = required_file or (active_path.name if active_path else "ankimon.db")
             if needed in completed and (staging_dir / needed).is_file():
                 if backup_dir.exists():
                     raise FileExistsError(f"Backup already exists: {backup_dir.name}")
@@ -525,6 +548,12 @@ class BackupManager:
                 self.logger.log("info", f"Deleted oldest backup to maintain max count: {oldest_backup.name}")
 
     def on_anki_close(self):
-        """Creates a backup when Anki is about to close."""
+        """Creates a backup when Anki is about to close.
+
+        One deadline covers every database this call snapshots: shutdown is
+        synchronous, so a per-file timeout would let two locked saves stall the
+        close for twice as long.
+        """
         # This logic can be expanded with the developer mode setting
-        self.create_backup(manual=False)
+        self.create_backup(manual=False,
+                           deadline=time.monotonic() + self.SHUTDOWN_BACKUP_BUDGET)
