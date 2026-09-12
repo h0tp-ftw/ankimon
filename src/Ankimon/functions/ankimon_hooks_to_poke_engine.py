@@ -20,6 +20,44 @@ from ..pyobj.error_handler import show_warning_with_traceback
 ankimon_tracker_obj = None
 settings_obj = None
 
+# Private key that ``_install_on_hit_boost_items`` stashes on a move dict and the
+# damage wrapper below consumes. It rides on the move instead of the move's
+# ``BOOSTS`` because the engine resolves a boost payload through one elif chain
+# (find_state_instructions) in which a SECONDARY always wins: a top-level BOOSTS is
+# read only for a move that has no secondary effect, which silently drops it for 17
+# of the engine's 37 damaging Electric moves, Thunderbolt included.
+_ON_HIT_BOOSTS_KEY = "_ankimon_on_hit_boosts"
+
+
+def _on_hit_item_triggers(mutator, instruction_set, defender):
+    """Whether an on-hit held item should fire for this one outcome.
+
+    The engine's ``frozen`` flag already covers a miss and an immune hit, but two
+    conditions it does not express are checked here:
+
+      * the defender actually lost HP. A hit absorbed by a Substitute leaves no
+        damage instruction against the defender, and the item's holder was not
+        itself struck.
+      * the defender is still standing afterwards. The engine's own faint check in
+        ``get_instructions_from_damage`` reads HP from before the killing blow is
+        added to the instruction set, so a Pokemon that is about to faint is never
+        frozen and would otherwise collect a boost on its way out.
+    """
+    if not any(
+        instr[0] == constants.MUTATOR_DAMAGE and instr[1] == defender and instr[2] > 0
+        for instr in instruction_set.instructions
+    ):
+        return False
+    # Balanced apply/reverse, exactly as get_instructions_from_boosts does a moment
+    # later, so the state this wrapper was handed is left as it was found.
+    mutator.apply(instruction_set.instructions)
+    try:
+        side = instruction_generator.get_side_from_state(mutator.state, defender)
+        return side.active.hp > 0
+    finally:
+        mutator.reverse(instruction_set.instructions)
+
+
 # --- F37: review-based damage multiplier, applied at the poke-engine level ---
 # poke_engine.find_state_instructions calls
 # ``instruction_generator.get_instructions_from_damage`` via module attribute, so
@@ -28,6 +66,11 @@ settings_obj = None
 # ``simulate_battle_with_poke_engine`` does not double-apply). Guarded against
 # double-wrapping on module reload (reload-safe singletons): capture the pristine
 # original and install the wrapper only once.
+#
+# The same wrapper also fans out the on-hit held-item boosts described above. They
+# belong in this one wrapper rather than a second layer over it: the reload guard is
+# a flag on the installed function, so a wrapper wrapping the wrapper would not carry
+# the flag and the next import would wrap again and scale damage twice.
 if not getattr(
     instruction_generator.get_instructions_from_damage,
     "_ankimon_review_wrapped",
@@ -52,9 +95,28 @@ if not getattr(
             else:
                 damage = math.floor(damage * mutator.review_based_damage_multiplier)
             mutator.review_based_damage_multiplier_applied = True
-        return _original_get_instructions_from_damage(
+        results = _original_get_instructions_from_damage(
             mutator, defender, damage, accuracy, attacking_move, instruction
         )
+
+        # Reaching this call already establishes what an on-hit item needs: the move
+        # survived every ability and item hook as a damaging move, so the Electric
+        # absorbers (Volt Absorb / Lightning Rod / Motor Drive) are out. The engine
+        # then freezes the instruction on a miss, on an immune hit (damage == 0) and
+        # on a faint, and ``get_instructions_from_boosts`` hands a frozen instruction
+        # back untouched -- so none of those need a branch here.
+        on_hit_boosts = attacking_move.get(_ON_HIT_BOOSTS_KEY)
+        if on_hit_boosts:
+            boosted = []
+            for instruction_set in results:
+                if _on_hit_item_triggers(mutator, instruction_set, defender):
+                    boosted += instruction_generator.get_instructions_from_boosts(
+                        mutator, defender, on_hit_boosts, True, instruction_set
+                    )
+                else:
+                    boosted.append(instruction_set)
+            results = boosted
+        return results
 
     _wrapped_get_instructions_from_damage._ankimon_review_wrapped = True
     instruction_generator.get_instructions_from_damage = (
@@ -225,6 +287,77 @@ def _install_stancechange_compat():
     before_move.stancechange = patched_stancechange
 
 
+def _install_on_hit_boost_items():
+    """Give Cell Battery its battle effect: +1 Attack when hit by an Electric move.
+
+    Ankimon sells Cell Battery (items.csv id 589) and lets any Pokemon hold it, and
+    the held item does reach the engine -- ``to_engine_format`` normalizes
+    "cell-battery" to "cellbattery" and passes it to ``Pokemon.item``. The engine
+    just has no entry for it in ``item_modify_attack_against``, so the item sat on
+    its holder doing nothing at all. The engine is a git submodule (edits there are
+    lost on ``git submodule update``), so the effect is registered from this side.
+
+    The engine's own equivalent, ``weaknesspolicy``, sets the move's ``BOOSTS`` and
+    lets find_state_instructions apply them to the defender. That route is not usable
+    here: the boost payload is resolved by one elif chain in which a SECONDARY wins,
+    so a top-level BOOSTS never survives Thunderbolt, Thunder, Spark, Thunder Punch,
+    Discharge or Volt Tackle -- 17 of the 37 damaging Electric moves. (The same
+    shadowing already makes weaknesspolicy and the on-hit abilities Stamina,
+    Justified, Weak Armor and Steam Engine inert against those moves. Repairing the
+    chain would move outcomes for about ten abilities, so it is left alone here.)
+    Instead the boost is stashed on the move under ``_ON_HIT_BOOSTS_KEY`` and fanned
+    out by the damage wrapper at the top of this module, which also means the
+    ability's own ``BOOSTS`` is never touched.
+
+    Like weaknesspolicy (and whiteherb, and airballoon) the item is NOT consumed.
+    ``modify_attack_against`` returns a move dict and has no way to emit a
+    change_item instruction, so single use is not expressible in this hook. Repeat
+    triggers are bounded by MAX_BOOSTS, which is how the engine already models its
+    other one-shot items.
+    """
+    from ..poke_engine.damage_calculator import type_effectiveness_modifier
+    from ..poke_engine.special_effects.items import modify_attack_against
+
+    def _on_hit_boost(move_type, stat, stages):
+        def effect(attacking_move, attacking_pokemon, defending_pokemon):
+            # Requiring a damaging category rules out the Electric-absorbing
+            # abilities (Volt Absorb / Lightning Rod / Motor Drive): they run first
+            # and turn the move into a STATUS move carrying their own boost.
+            if (
+                attacking_move[constants.CATEGORY] not in constants.DAMAGING_CATEGORIES
+                or attacking_move[constants.TYPE] != move_type
+            ):
+                return attacking_move
+            try:
+                if type_effectiveness_modifier(move_type, defending_pokemon.types) == 0:
+                    return attacking_move
+            except KeyError:
+                # Unrecognised type id. The engine's own damage path raises on this
+                # same lookup moments later; an item must not be what breaks first.
+                return attacking_move
+
+            attacking_move = attacking_move.copy()
+            attacking_move[_ON_HIT_BOOSTS_KEY] = {stat: stages}
+            return attacking_move
+
+        return effect
+
+    # item id -> (triggering move type, boosted stat, stages). Absorb Bulb (588),
+    # Snowball (689) and Luminous Moss (688) are the same shape and are also in
+    # Ankimon's item list; they are left for a follow-up so this change stays
+    # reviewable against one item's documented behaviour.
+    on_hit_boosts = {
+        "cellbattery": ("electric", constants.ATTACK, 1),
+    }
+    for item_name, (move_type, stat, stages) in on_hit_boosts.items():
+        effect = _on_hit_boost(move_type, stat, stages)
+        effect.__name__ = item_name
+        # setdefault keeps this idempotent across the reload-safe-singletons module
+        # reload, and lets a future submodule bump that implements the item natively
+        # win over this shim.
+        modify_attack_against.item_lookup.setdefault(item_name, effect)
+
+
 def _apply_engine_patch(patch):
     """Apply one hardening patch, recording a failure without propagating it.
 
@@ -257,6 +390,7 @@ def _apply_engine_patch(patch):
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
+_apply_engine_patch(_install_on_hit_boost_items)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
