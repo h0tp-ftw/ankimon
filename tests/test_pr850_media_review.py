@@ -392,12 +392,18 @@ def test_the_gate_and_the_release_cannot_interleave(
     _make_save(media_host.media / "ankimon.db", pokemon=5)
     st.start_media_migration(None, _Logger())
     state = media_host.pm._ankimon_media_protection_guard
-    answers = []
+    answers, about_to_read = [], threading.Event()
+
+    def anki_sync_worker():
+        about_to_read.set()
+        answers.append(media_host.pm.media_syncing_enabled())
 
     with state["lock"]:
-        worker = threading.Thread(
-            target=lambda: answers.append(media_host.pm.media_syncing_enabled()))
+        worker = threading.Thread(target=anki_sync_worker)
         worker.start()
+        # Wait for the worker to reach the gate, so an empty `answers` below
+        # means it is blocked on the lock rather than simply not scheduled yet.
+        assert about_to_read.wait(5)
         worker.join(0.25)
         # A release is mid-flight, so the gate may not answer yet.
         assert worker.is_alive()
