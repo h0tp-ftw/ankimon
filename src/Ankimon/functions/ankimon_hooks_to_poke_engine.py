@@ -387,16 +387,61 @@ def _install_stancechange_compat():
     before_move.stancechange = patched_stancechange
 
 
-# Abilities that do nothing to an incoming boost payload but transform it, and so
-# may be replayed over an on-hit item's boost. The allowlist is load-bearing rather
-# than cautious: most of the engine's defender-ability hooks REPLACE a move's BOOSTS
-# (stamina sets {defense: 1}), which would swallow the item's payload and hand back
-# the ability's own.
+# Abilities the ENGINE implements that do nothing to an incoming boost payload but
+# transform it, and so may be replayed over an on-hit item's boost. The allowlist is
+# load-bearing rather than cautious: most of the engine's defender-ability hooks
+# REPLACE a move's BOOSTS (stamina sets {defense: 1}), which would swallow the item's
+# payload and hand back the ability's own.
 _STAT_STAGE_ABILITIES = frozenset({"contrary"})
 
-# Bumped when the shape of what an on-hit effect stashes on a move changes, so an
-# in-process reload replaces an older shim instead of leaving it registered.
-_ON_HIT_ITEM_VERSION = 1
+# Stage multipliers the engine does NOT implement, mapped to their factor. Replaying
+# a payload through the engine only works for an ability it has a handler for, and
+# 'simple' appears nowhere in its ability hooks -- only in BYPASSABLE_ABILITIES -- so
+# the engine would hand the payload straight back and the battery would be spent on
+# an undoubled +1. These are applied on this side instead, which is why they cannot
+# simply join the allowlist above.
+_STAGE_MULTIPLIER_ABILITIES = {"simple": 2}
+
+# Abilities that switch a held item off. The engine models no item-disabling ability
+# at all -- 'klutz' appears nowhere in it, and ``item_modify_attack_against`` invokes
+# a registered callback unconditionally -- and nothing upstream strips the item
+# either, since ``to_engine_format`` passes ability and held item through side by
+# side. So an on-hit item has to ask this itself before it fires.
+_ITEM_DISABLING_ABILITIES = frozenset({"klutz"})
+
+# Bumped when the shape of what an on-hit effect stashes on a move changes, or when
+# what it stashes it FOR does, so an in-process reload replaces an older shim instead
+# of leaving it registered. Version 2 added the Simple and Klutz interactions: a v1
+# shim stashes a payload this wrapper still understands, but one that is +1 under
+# Simple and present at all under Klutz.
+_ON_HIT_ITEM_VERSION = 2
+
+
+def _ability_suppressed(attacking_pokemon, defending_pokemon):
+    """Whether the engine would treat the defender's ability as switched off.
+
+    Mirrors the guard at the top of the engine's ``ability_modify_attack_against``:
+    Neutralizing Gas on either side turns both abilities off, and a mold-breaker
+    attacker ignores a defender ability the engine lists as bypassable.
+
+    Mirrored rather than read back out of that dispatcher by probing it with an
+    ability it does implement, because such a probe answers this question only for as
+    long as the ability probed with stays implemented AND stays a detectable
+    transform. A submodule bump that renamed Contrary's handler would leave the probe
+    reporting every defender as suppressed -- Simple quietly no longer doubling and,
+    worse, Klutz quietly no longer disabling. Only the three-line structure is copied
+    here: WHICH abilities suppress and which are bypassable is still read from the
+    engine's own constants, so a bump that adds to either set is picked up for free.
+    """
+    if (
+        attacking_pokemon.ability == "neutralizinggas"
+        or defending_pokemon.ability == "neutralizinggas"
+    ):
+        return True
+    return (
+        attacking_pokemon.ability in constants.ABILITIES_THAT_IGNORE_OTHER_ABILITIES
+        and defending_pokemon.ability in constants.BYPASSABLE_ABILITIES
+    )
 
 
 def _install_on_hit_boost_items():
@@ -431,6 +476,12 @@ def _install_on_hit_boost_items():
     scoped to the encounter: the item lives on the engine State, which
     ``simulate_battle_with_poke_engine`` never writes back to the Pokemon object and
     rebuilds from it on every reset.
+
+    Three holder abilities change the outcome here and the engine applies none of
+    them on this path: Contrary inverts the boost, Simple doubles it, and Klutz stops
+    the item firing at all. Each is handled on this side, and each honours the
+    engine's own suppression rules -- so Neutralizing Gas hands a Klutz holder its
+    battery back, and a mold-breaker attacker leaves Simple's doubling off.
     """
     from ..poke_engine.damage_calculator import type_effectiveness_modifier
     from ..poke_engine.special_effects.abilities.modify_attack_against import (
@@ -449,23 +500,47 @@ def _install_on_hit_boost_items():
         mold-breaker-style bypass) stay the engine's rather than a second copy of
         them, and only the abilities on ``_STAT_STAGE_ABILITIES`` are routed through
         it.
+
+        Simple has to be applied on this side instead. It doubles a stage change, but
+        the engine has no handler for it, so replaying the payload would return it
+        unchanged and spend the battery on a +1. No Pokemon has both abilities, so
+        the two branches never compete for one payload. The doubled payload is
+        deliberately NOT clamped here: ``_effective_boost`` already decides whether a
+        partial raise is still worth spending the item on and the engine's boost
+        generator clamps what it emits, so a Simple holder at +5 takes the one stage
+        it has left and a holder at the cap keeps its battery.
         """
-        if defending_pokemon.ability not in _STAT_STAGE_ABILITIES:
-            return boosts
-        probe = ability_modify_attack_against(
-            defending_pokemon.ability,
-            {
-                constants.TARGET: constants.NORMAL,
-                constants.BOOSTS: dict(boosts),
-                constants.SECONDARY: None,
-            },
-            attacking_pokemon,
-            defending_pokemon,
-        )
-        return probe.get(constants.BOOSTS) or boosts
+        if defending_pokemon.ability in _STAT_STAGE_ABILITIES:
+            probe = ability_modify_attack_against(
+                defending_pokemon.ability,
+                {
+                    constants.TARGET: constants.NORMAL,
+                    constants.BOOSTS: dict(boosts),
+                    constants.SECONDARY: None,
+                },
+                attacking_pokemon,
+                defending_pokemon,
+            )
+            return probe.get(constants.BOOSTS) or boosts
+        multiplier = _STAGE_MULTIPLIER_ABILITIES.get(defending_pokemon.ability)
+        if multiplier is not None and not _ability_suppressed(
+            attacking_pokemon, defending_pokemon
+        ):
+            return {stat: stages * multiplier for stat, stages in boosts.items()}
+        return boosts
 
     def _on_hit_boost(move_type, stat, stages):
         def effect(attacking_move, attacking_pokemon, defending_pokemon):
+            # Klutz switches the item off, so the hit lands but the battery neither
+            # boosts nor is spent -- refusing here, before anything is stashed, is
+            # what keeps BOTH of those out of the wrapper's hands. Suppression-aware
+            # on purpose: Neutralizing Gas turns Klutz off as well, and then the
+            # battery works normally, so an unconditional check on the ability name
+            # would be wrong in exactly that matchup.
+            if defending_pokemon.ability in _ITEM_DISABLING_ABILITIES and (
+                not _ability_suppressed(attacking_pokemon, defending_pokemon)
+            ):
+                return attacking_move
             # Requiring a damaging category rules out the Electric-absorbing
             # abilities (Volt Absorb / Lightning Rod / Motor Drive): they run first
             # and turn the move into a STATUS move carrying their own boost.

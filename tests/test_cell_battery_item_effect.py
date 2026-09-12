@@ -22,6 +22,13 @@ a second Electric hit after the first spent the battery. Contrary is covered bec
 the engine runs a defender's ability before its item, which would otherwise hand a
 Contrary holder the +1 it is supposed to lose.
 
+Simple and Klutz are covered for a different reason: the engine implements neither,
+so neither can be had by replaying the payload through its ability hook the way
+Contrary is. Simple doubles the boost to +2 and Klutz stops the item firing and being
+spent at all, and both are checked against the engine's suppression rules -- a
+mold-breaker attacker turns Simple's doubling off, Neutralizing Gas hands a Klutz
+holder its battery back, and Mold Breaker does NOT turn Klutz off.
+
 Both the registration and the wrapper run inside ``_apply_engine_patch``, which
 swallows the exception and merely logs, so a regression here would be silent in
 production. These checks are what make it loud.
@@ -204,6 +211,7 @@ def _state(
     volatile=None,
     attack_boost=0,
     holder_speed=None,
+    attacker_ability=None,
 ):
     """Singles state whose USER side holds the item and receives the attack."""
     state = State(
@@ -217,6 +225,8 @@ def _state(
     state.user.active.attack_boost = attack_boost
     if ability is not None:
         state.user.active.ability = ability
+    if attacker_ability is not None:
+        state.opponent.active.ability = attacker_ability
     if volatile is not None:
         state.user.active.volatile_status.add(volatile)
     if holder_speed is not None:
@@ -256,6 +266,7 @@ def _opponent_damage(multiplier):
 
 _ATTACK_UP = (constants.MUTATOR_BOOST, constants.USER, constants.ATTACK, 1)
 _ATTACK_DOWN = (constants.MUTATOR_BOOST, constants.USER, constants.ATTACK, -1)
+_ATTACK_UP_DOUBLED = (constants.MUTATOR_BOOST, constants.USER, constants.ATTACK, 2)
 _SPENT = (constants.MUTATOR_CHANGE_ITEM, constants.USER, None, "cellbattery")
 
 
@@ -429,6 +440,79 @@ def test_contrary_holder_at_the_bottom_of_the_range_keeps_its_item():
     outcomes = _outcomes(
         "shockwave", ability="contrary", attack_boost=-1 * constants.MAX_BOOSTS
     )
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
+def test_simple_doubles_the_items_boost():
+    """Simple doubles a stage change, so Cell Battery is worth +2 Attack to a holder.
+
+    Unlike Contrary this cannot be had by replaying the payload through the engine's
+    ability hook: the engine implements no Simple at all, it appears only in
+    BYPASSABLE_ABILITIES, so the replay would hand back the +1 and the battery would
+    be spent on it.
+    """
+    outcomes = _outcomes("shockwave", ability="simple")
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == [_ATTACK_UP_DOUBLED]
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == [_SPENT]
+
+
+def test_simple_holder_takes_the_one_stage_it_has_left():
+    # A doubled boost at +5 asks for +7. The stage the holder actually has left is
+    # worth the item, so the engine clamps the instruction and the battery is spent.
+    outcomes = _outcomes(
+        "shockwave", ability="simple", attack_boost=constants.MAX_BOOSTS - 1
+    )
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == [_ATTACK_UP]
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == [_SPENT]
+
+
+def test_simple_holder_at_the_cap_keeps_its_item():
+    # Doubling must not talk the holder past the cap into spending the battery on a
+    # no-op: +6 is still +6 whether the item offers one stage or two.
+    outcomes = _outcomes(
+        "shockwave", ability="simple", attack_boost=constants.MAX_BOOSTS
+    )
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
+def test_mold_breaker_attacker_suppresses_simple():
+    """Simple is bypassable, so a mold-breaker hit leaves the boost at +1.
+
+    This is what the suppression check buys over a bare ``ability == "simple"``.
+    """
+    assert _boosts("shockwave", ability="simple", attacker_ability="moldbreaker") == [
+        _ATTACK_UP
+    ]
+
+
+def test_klutz_prevents_the_item_from_activating():
+    """Klutz switches the item off: the hit lands, the battery does nothing.
+
+    Nothing else on the path would stop it -- ``to_engine_format`` passes ability and
+    item through side by side and the engine's item dispatcher calls the registered
+    callback with no check of its own -- so neither a boost nor a spent battery may
+    come out of this.
+    """
+    outcomes = _outcomes("shockwave", ability="klutz")
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
+def test_neutralizing_gas_turns_klutz_off_and_the_item_back_on():
+    """The trap in checking Klutz unconditionally: Neutralizing Gas suppresses it."""
+    outcomes = _outcomes(
+        "shockwave", ability="klutz", attacker_ability="neutralizinggas"
+    )
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == [_ATTACK_UP]
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == [_SPENT]
+
+
+def test_mold_breaker_does_not_turn_klutz_off():
+    # Klutz is not in the engine's BYPASSABLE_ABILITIES, so a mold-breaker attacker
+    # leaves it alone. A blanket "any suppressor" check would hand the battery back.
+    outcomes = _outcomes("shockwave", ability="klutz", attacker_ability="moldbreaker")
     assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
     assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
 
