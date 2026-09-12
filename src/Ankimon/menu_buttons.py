@@ -25,7 +25,9 @@ from .pokedex.pokedex_obj import Pokedex
 from .pyobj.achievement_window import AchievementWindow
 from .pyobj.ankimon_tracker_window import AnkimonTrackerWindow
 from .pyobj.backup_manager import BackupManager
-from .pyobj.save_transfer import export_save, import_save
+from .pyobj.save_transfer import (
+    export_save, import_save, cancel_pending_save_import, browse_recovered_saves,
+)
 from .gui_classes.backup_manager_dialog import BackupManagerDialog
 from .gui_entities import (
     License,
@@ -234,6 +236,16 @@ def create_menu_actions(
     import_save_action.setMenuRole(QAction.MenuRole.NoRole)
     import_save_action.triggered.connect(lambda: import_save(mw))
     game_menu.addAction(import_save_action)
+
+    cancel_import_action = QAction("Cancel Pending Save Import", mw)
+    cancel_import_action.setMenuRole(QAction.MenuRole.NoRole)
+    cancel_import_action.triggered.connect(cancel_pending_save_import)
+    game_menu.addAction(cancel_import_action)
+
+    recovery_action = QAction("Browse Pre-import Recovery Saves…", mw)
+    recovery_action.setMenuRole(QAction.MenuRole.NoRole)
+    recovery_action.triggered.connect(browse_recovered_saves)
+    game_menu.addAction(recovery_action)
 
     # Effectiveness chart
     eff_chart_action = QAction(mw.translator.translate("eff_chart_button"), mw)

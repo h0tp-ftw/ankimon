@@ -56,6 +56,14 @@ def _on_profile_close():
 
 def _on_profile_did_open(online_connectivity):
     def handler():
+        # Capture bare media saves before any dialog can pump the event loop,
+        # and before Anki starts automatic sync after profile_did_open returns.
+        # Only preservation is synchronous; comparisons run in the background.
+        try:
+            register_media_migration_hooks(settings_obj, logger)
+        except Exception as e:
+            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
+
         # Re-warm the static evolution table _on_profile_close just dropped.
         # The boot warm (startup.run_startup_background_checks) runs once per
         # Anki PROCESS, so a profile SWITCH leaves pokemon_evolution.csv
@@ -81,6 +89,12 @@ def _on_profile_did_open(online_connectivity):
             if db is not None and col is not None:
                 from .functions.mobile_sync import clear_desktop_session
                 from .menu_buttons import update_mobile_badge
+                from .save_import import rebase_after_import
+
+                # Addon construction precedes opening the Anki collection.
+                # Rebase an installed import now, including shutdown-sync reviews,
+                # before any old reviews can be queued as mobile battles.
+                rebase_after_import(db, col)
 
                 watermark = db.get_mobile_watermark()
                 if watermark == 0:
@@ -114,6 +128,15 @@ def _on_profile_did_open(online_connectivity):
                 update_mobile_badge(pending)
         except Exception as e:
             logger.log("error", f"Failed to initialize mobile watermark: {e}")
+
+        failures = getattr(services, "_save_import_errors", [])
+        if failures:
+            services._save_import_errors = []
+            services.ui.warn(
+                "Ankimon could not install a pending import. Your current save remains active. "
+                "It will retry on a full restart, or use Cancel Pending Save Import.\n\n" +
+                "\n".join(failures)
+            )
 
         # Register the AnkiWeb sync hooks SYNCHRONOUSLY here — not in the
         # backgrounded connectivity callback below. Anki fires profile_did_open
@@ -173,28 +196,6 @@ def _on_profile_did_open(online_connectivity):
                 )
 
         mw.taskman.run_in_background(check_connectivity_bg, on_done)
-
-        # One-shot per-profile cleanup after the removal of the AnkiWeb
-        # file-sync: protect whatever that feature left in collection.media from
-        # Anki's "Delete Unused Files", and offer to rescue it if it holds more
-        # progress than the local save.
-        #
-        # This registers a media-sync-completion hook AND starts one scan now.
-        # Both are needed: Anki fires profile_did_open one line BEFORE it starts
-        # its own sync (aqt/main.py:568-569), so on a second device this first
-        # scan sees a media folder the peer's save has not reached yet, and only
-        # the post-sync pass can find it. Local files only, no network, never
-        # raises.
-        #
-        # The scan itself runs on a background thread (mw.taskman): it opens
-        # SQLite saves, and a locked or oversized one must not be waited on here,
-        # where the wait is a frozen startup. Only the decisions come back to
-        # this thread. A profile that has already resolved its media folder is a
-        # handful of stat calls and starts no thread at all.
-        try:
-            register_media_migration_hooks(settings_obj, logger)
-        except Exception as e:
-            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
 
     return handler
 

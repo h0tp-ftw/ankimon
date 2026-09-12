@@ -2,6 +2,9 @@ import os
 import sys
 import json
 import sqlite3
+import threading
+import time
+from contextlib import closing
 import pytest
 import importlib.util
 from pathlib import Path
@@ -129,7 +132,10 @@ def mock_env(tmp_path):
         # replaces exp's direct mw.ankimon_db access, so backup_manager reads
         # services.db instead of a mocked mw.
         with patch.object(services, "db", db):
-            yield bm, db, user_files_dir, addon_dir
+            try:
+                yield bm, db, user_files_dir, addon_dir
+            finally:
+                db.close()
 
 def test_backup_summary_trainer_info(mock_env):
     bm, db, user_files_dir, addon_dir = mock_env
@@ -229,3 +235,145 @@ def test_restore_only_active_db(mock_env):
     assert restored.exists()
     assert restored.read_bytes() == b"NORMAL_DB_CONTENT"
     assert not (user_files_dir / "ankimonDEV.db").exists()
+
+
+@pytest.mark.parametrize("filename", ["ankimon.db", "ankimonDEV.db"])
+def test_backup_contains_committed_wal_while_reader_blocks_checkpoint(mock_env, filename):
+    """Copying the main file after a busy checkpoint loses committed cash."""
+    bm, db, user_files_dir, _ = mock_env
+    source = user_files_dir / filename
+    if filename == "ankimonDEV.db":
+        _seed_db(source, "Dev", 5000)
+    db.execute("PRAGMA busy_timeout=1")
+
+    with closing(sqlite3.connect(source, timeout=0.01)) as writer, \
+         closing(sqlite3.connect(source)) as reader:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0] == 0
+        reader.execute("BEGIN")
+        assert reader.execute(
+            "SELECT value FROM config WHERE key='trainer.cash'"
+        ).fetchone()[0] == "5000"
+        writer.execute("UPDATE config SET value='12345' WHERE key='trainer.cash'")
+        writer.commit()
+        busy, pages, checkpointed = writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        assert busy == 1 and pages > checkpointed
+
+        assert bm.create_backup(required_file=filename) is True
+        backup = next(bm.backups_path.glob("backup_*")) / filename
+        # Read only the published file, without allowing a companion WAL to
+        # supply missing pages: this is what a restored backup can recover.
+        with closing(sqlite3.connect(backup.as_uri() + "?immutable=1", uri=True)) as saved:
+            assert saved.execute(
+                "SELECT value FROM config WHERE key='trainer.cash'"
+            ).fetchone()[0] == "12345"
+        reader.rollback()
+
+
+@pytest.mark.parametrize("manual", [False, True])
+@pytest.mark.parametrize("filename", ["ankimon.db", "profile-save.db"])
+def test_backup_uses_active_database_at_custom_path(mock_env, tmp_path, manual, filename):
+    """A same-named default save must never stand in for the active profile."""
+    bm, _, _, _ = mock_env
+    custom_dir = tmp_path / "profile with spaces #?"
+    custom_dir.mkdir()
+    active = AnkimonDB(MockLogger(), db_path=custom_dir / filename)
+    active.set_config_value("trainer.cash", 76543)
+    try:
+        with patch.object(services, "db", active):
+            assert bm.create_backup(manual=manual, required_file=filename) is True
+        backup = next(bm.backups_path.glob("backup_*")) / filename
+        with closing(sqlite3.connect(backup)) as saved:
+            assert saved.execute(
+                "SELECT value FROM config WHERE key='trainer.cash'"
+            ).fetchone()[0] == "76543"
+    finally:
+        active.close()
+
+
+@pytest.mark.parametrize("contents", [b"not a database", b""])
+def test_backup_rejects_invalid_required_database(mock_env, contents):
+    """A file's existence alone cannot establish a recoverable backup."""
+    bm, _, user_files_dir, _ = mock_env
+    (user_files_dir / "ankimonDEV.db").write_bytes(contents)
+
+    assert bm.create_backup(required_file="ankimonDEV.db") is False
+    backup_dir = next(bm.backups_path.glob("backup_*"))
+    assert not (backup_dir / "ankimonDEV.db").exists()
+
+
+def test_snapshot_timeout_does_not_publish_partial_backup(mock_env, tmp_path):
+    """A locked source must stop within its deadline and leave no usable backup."""
+    bm, _, _, _ = mock_env
+    source = tmp_path / "locked.db"
+    destination = tmp_path / "saved.db"
+    _seed_db(source, "Locked", 10)
+    with closing(sqlite3.connect(source, check_same_thread=False)) as locker:
+        locker.execute("PRAGMA journal_mode=DELETE")
+        locker.execute("BEGIN EXCLUSIVE")
+        # Release even if a regression removes the timeout, so a failed test
+        # cannot hang the test runner indefinitely inside sqlite3.backup().
+        release = threading.Timer(1.0, locker.rollback)
+        release.start()
+        started = time.monotonic()
+        try:
+            with pytest.raises(TimeoutError):
+                bm._snapshot_database(source, destination, timeout=0.05)
+            assert time.monotonic() - started < 0.75
+        finally:
+            release.cancel()
+            release.join()
+            locker.rollback()
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".snapshot-*"))
+
+
+def test_snapshot_missing_source_is_not_created(mock_env, tmp_path):
+    bm, _, _, _ = mock_env
+    source = tmp_path / "missing.db"
+    with pytest.raises(sqlite3.OperationalError):
+        bm._snapshot_database(source, tmp_path / "saved.db")
+    assert not source.exists()
+    assert not (tmp_path / "saved.db").exists()
+    assert not list(tmp_path.glob(".snapshot-*"))
+
+
+def test_backup_rejects_corruption_that_sqlite_can_copy(mock_env):
+    """Online backup copies pages without verifying their logical consistency."""
+    bm, _, user_files_dir, _ = mock_env
+    source = user_files_dir / "ankimonDEV.db"
+    with closing(sqlite3.connect(source)) as conn:
+        conn.executescript(
+            "CREATE TABLE captured_pokemon(id INTEGER, data TEXT);"
+            "CREATE TABLE scratch(data BLOB);"
+            "INSERT INTO scratch VALUES (zeroblob(10000));"
+            "DROP TABLE scratch;"
+        )
+    damaged = bytearray(source.read_bytes())
+    # The freelist still has pages, but its SQLite header count falsely says
+    # zero. Online backup succeeds; quick_check detects the inconsistency.
+    damaged[36:40] = (0).to_bytes(4, "big")
+    source.write_bytes(damaged)
+
+    assert bm.create_backup(required_file="ankimonDEV.db") is False
+    backup_dir = next(bm.backups_path.glob("backup_*"))
+    assert not (backup_dir / "ankimonDEV.db").exists()
+    assert not list(backup_dir.glob(".snapshot-*"))
+    assert source.read_bytes() == damaged
+
+
+def test_custom_active_filename_summary_describes_its_snapshot(mock_env, tmp_path):
+    bm, _, _, _ = mock_env
+    active = AnkimonDB(MockLogger(), db_path=tmp_path / "profile.db")
+    active.set_config_value("trainer.name", "Custom profile")
+    active.set_config_value("trainer.cash", 54321)
+    try:
+        with patch.object(services, "db", active):
+            assert bm.create_backup() is True
+            active.set_config_value("trainer.cash", 1)
+            summary = bm.get_backups()[0]
+            assert summary["trainer_name"] == "Custom profile"
+            assert summary["trainer_cash"] == 54321
+    finally:
+        active.close()

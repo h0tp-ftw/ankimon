@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from test_save_transfer import _Logger, _make_save, st
+from test_save_import import commit_in_new_process
 from Ankimon.functions import mobile_sync
 from Ankimon.pyobj import ankimon_sync, backup_manager
 from Ankimon.pyobj import settings as settings_module
@@ -49,7 +50,11 @@ def transfer(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "_active_db_path", lambda: active)
     monkeypatch.setattr(st, "showInfo", MagicMock())
     monkeypatch.setattr(st, "showWarning", MagicMock())
-    monkeypatch.setattr(st, "close_anki", MagicMock())
+    def restart():
+        if services.db is not None:
+            services.db.close()
+        commit_in_new_process(active)
+    monkeypatch.setattr(st, "close_anki", restart)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: True)
     monkeypatch.setattr(st.QFileDialog, "getOpenFileName", lambda *a, **k: (str(incoming), ""))
     monkeypatch.setattr(backup_manager, "user_path", tmp_path)
@@ -62,7 +67,7 @@ def transfer(tmp_path, monkeypatch):
     try:
         yield SimpleNamespace(active=active, incoming=incoming, sync=sync,
                               collection=collection, col=col, snapshots=snapshots,
-                              backups=tmp_path / "ankimon_backups")
+                              backups=tmp_path / "ankimon_recovery")
     finally:
         collection.close()
 
@@ -172,14 +177,15 @@ def test_export_removes_legacy_credentials_without_changing_live_save(
 
 
 def test_import_does_not_copy_a_source_changed_after_verification(transfer, monkeypatch):
-    backup = transfer.sync._backup_before_overwrite
+    from Ankimon import save_import
+    stage = save_import.stage_import
 
-    def backup_during_download(required):
-        result = backup(required)
-        transfer.incoming.write_bytes(b"corrupted during backup" * 100)
+    def stage_during_download(snapshot, target):
+        result = stage(snapshot, target)
+        transfer.incoming.write_bytes(b"corrupted after staging" * 100)
         return result
 
-    monkeypatch.setattr(transfer.sync, "_backup_before_overwrite", backup_during_download)
+    monkeypatch.setattr(save_import, "stage_import", stage_during_download)
     assert st.import_save()
     assert ankimon_sync._verify_sqlite_integrity(transfer.active)
     assert st.get_db_stats(transfer.active)["pokemon"] == 42
@@ -292,28 +298,21 @@ def test_deferred_rescue_invalidates_approval_when_local_save_changes(
         writer.close()
 
 
-def test_rescue_rechecks_changes_during_backup(transfer, rescue, monkeypatch):
+def test_rescue_recovery_includes_progress_after_staging(transfer, rescue, monkeypatch):
     st._apply_migration_result(st._migration_scan(rescue.media, transfer.active), _Logger())
     assert len(rescue.callbacks) == 1
-    backup = transfer.sync._backup_before_overwrite
 
-    def backup_then_progress(required):
-        success = backup(required)
-        connection = sqlite3.connect(transfer.active)
-        try:
-            with connection:
-                connection.executemany("INSERT INTO captured_pokemon VALUES (?, 0, '{}')",
-                                       [(f"mobile-{i}",) for i in range(5)])
-        finally:
-            connection.close()
-        return success
+    def finish_old_session():
+        with sqlite3.connect(transfer.active) as conn:
+            conn.executemany("INSERT INTO captured_pokemon VALUES (?, 0, '{}')",
+                             [(f"mobile-{i}",) for i in range(5)])
+        commit_in_new_process(transfer.active)
 
-    monkeypatch.setattr(transfer.sync, "_backup_before_overwrite", backup_then_progress)
+    monkeypatch.setattr(st, "close_anki", finish_old_session)
     rescue.callbacks.pop(0)()
-    rescue.finish_workers()
-
-    assert st.get_db_stats(transfer.active)["pokemon"] == 8
-    assert len(rescue.prompts) == 1
+    assert st.get_db_stats(transfer.active)["pokemon"] == 4
+    backups = list(transfer.backups.glob("*/ankimon.db"))
+    assert len(backups) == 1 and st.get_db_stats(backups[0])["pokemon"] == 8
     assert list(transfer.snapshots.iterdir()) == []
 
 
@@ -546,17 +545,15 @@ def test_confirmation_cannot_follow_a_profile_switch(transfer, tmp_path, monkeyp
     assert list(transfer.snapshots.iterdir()) == []
 
 
-@pytest.mark.parametrize("failure", ["decline", "backup", "replace"])
+@pytest.mark.parametrize("failure", ["decline", "staging"])
 def test_unsuccessful_import_releases_snapshot_and_preserves_live_save(transfer, monkeypatch, failure):
     before = transfer.active.read_bytes()
     if failure == "decline":
         monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
-    elif failure == "backup":
-        monkeypatch.setattr(transfer.sync, "_backup_before_overwrite", lambda *a: False)
     else:
         def disk_failure(*args):
-            raise OSError("cannot replace destination")
-        monkeypatch.setattr(transfer.sync, "_atomic_replace", disk_failure)
+            raise OSError("cannot prepare destination")
+        monkeypatch.setattr("Ankimon.save_import.stage_import", disk_failure)
     assert st.import_save() is False
     assert transfer.active.read_bytes() == before
     assert list(transfer.snapshots.iterdir()) == []

@@ -323,14 +323,19 @@ def test_migration_does_not_block_profile_open_on_a_locked_save(
     holder.execute("BEGIN EXCLUSIVE;")
     holder.execute("INSERT INTO items VALUES ('lockholder', 1)")
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
+    queued = []
+    monkeypatch.setattr(st.mw.taskman, "run_in_background",
+                        lambda scan, done, **kwargs: queued.append(scan))
 
     try:
         t0 = time.monotonic()
-        st.run_media_migration(MagicMock(), logger)
+        st.start_media_migration(MagicMock(), logger)
         elapsed = time.monotonic() - t0
         assert elapsed < 1.0, (
             f"profile-open path blocked for {elapsed:.1f}s on a locked media save"
         )
+        assert len(queued) == 1
+        assert list(media.glob("_ankimon_unverified_*.zip"))
     finally:
         holder.close()
 
@@ -991,11 +996,10 @@ def test_a_profile_switch_during_the_scan_discards_the_result(
     settled.assert_not_called()
 
 
-def test_start_falls_back_to_a_synchronous_run_without_a_task_manager(
+def test_start_preserves_and_retries_without_a_task_manager(
     real_flag_media, live_db, logger, monkeypatch
 ):
-    """Correctness beats responsiveness: if the dispatch is refused, do the work
-    rather than skip it."""
+    """Capture survives failed dispatch; the comparison remains asynchronous."""
     folder, _profile = real_flag_media
     _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
     ask = MagicMock(return_value=False)
@@ -1009,7 +1013,8 @@ def test_start_falls_back_to_a_synchronous_run_without_a_task_manager(
 
     st.start_media_migration(MagicMock(), logger)
 
-    ask.assert_called_once()
+    ask.assert_not_called()
+    assert st.get_db_stats(_protected(folder)[0])["pokemon"] == 42
     assert st._MIGRATION_SCAN_STATE["running"] is False
 
 
@@ -1153,7 +1158,10 @@ def test_equal_counters_do_not_mean_the_save_is_already_preserved(
 
     copies = _protected(media)
     assert len(copies) == 1, "the equal-but-different bare save was left exposed"
-    assert copies[0].read_bytes() == (media / "ankimon.db").read_bytes()
+    with sqlite3.connect(copies[0]) as conn:
+        assert [row[0] for row in conn.execute(
+            "SELECT individual_id FROM captured_pokemon ORDER BY individual_id"
+        )] == ["theirs-0", "theirs-1", "theirs-2", "theirs-3"]
 
 
 def test_two_devices_converge_on_one_name_for_one_save(tmp_path, live_db, logger, monkeypatch):

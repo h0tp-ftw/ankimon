@@ -378,6 +378,9 @@ def process_mobile_reviews_after_sync(col, ankimon_db, settings_obj, logger) -> 
         return 0
 
     try:
+        from ..save_import import rebase_after_import
+
+        rebase_after_import(ankimon_db, col)
         watermark = ankimon_db.get_mobile_watermark()
         desktop_ids = get_desktop_session_revlog_ids()
 

@@ -508,6 +508,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                     MOBILE_QUEUE_CAP,
                 )
                 from ..menu_buttons import update_mobile_badge
+                from ..save_import import rebase_after_import
 
                 dev_db_path = user_path / "ankimonDEV.db"
                 original_db_name = db.db_path.name
@@ -548,6 +549,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                         # 1. Queue to ankimon.db
                         if db.db_path.name != "ankimon.db":
                             db.switch_database("ankimon.db")
+                        rebase_after_import(db, col)
                         watermark_normal = db.get_mobile_watermark()
                         all_mobile_normal = detect_mobile_reviews(col, watermark_normal, desktop_ids)
                         if all_mobile_normal:
@@ -565,6 +567,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                         if dev_db_path.is_file():
                             if db.db_path.name != "ankimonDEV.db":
                                 db.switch_database("ankimonDEV.db")
+                            rebase_after_import(db, col)
                             watermark_dev = db.get_mobile_watermark()
                             all_mobile_dev = detect_mobile_reviews(col, watermark_dev, desktop_ids)
                             if all_mobile_dev:

@@ -1,0 +1,363 @@
+"""Durable save imports applied before the next process builds its game state.
+
+Staging never replaces a running session's database. A cancelled Anki close or
+an add-on reload therefore leaves that session usable. The composition root
+may commit pending work only before it opens any Ankimon database or creates
+game objects. This module deliberately has no Anki, Qt, or services imports.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sqlite3
+import sys
+import tempfile
+import time
+import uuid
+
+
+_TIMEOUT = 30.0
+_PROCESS_ATTRIBUTE = "_ankimon_save_import_process"
+
+
+def _process_identity() -> str:
+    # sys survives add-on module purges. Include the PID so a subprocess/fork
+    # cannot inherit the parent's identity while a reload keeps its identity.
+    identity = getattr(sys, _PROCESS_ATTRIBUTE, None)
+    if identity is None or identity[0] != os.getpid():
+        identity = (os.getpid(), uuid.uuid4().hex)
+        setattr(sys, _PROCESS_ATTRIBUTE, identity)
+    return f"{identity[0]}:{identity[1]}"
+
+
+def _paths(target: Path) -> tuple[Path, Path]:
+    target = Path(target).resolve()
+    return target, target.parent / f".ankimon-import-{target.name}"
+
+
+def _fsync_file(path: Path) -> None:
+    with path.open("rb") as handle:
+        os.fsync(handle.fileno())
+
+
+def _fsync_directory(path: Path) -> None:
+    # Windows does not allow opening directories this way. File fsync and the
+    # same-volume replace still apply there.
+    if os.name == "nt":
+        return
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _connect_readonly(path: Path):
+    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=_TIMEOUT)
+    deadline = time.monotonic() + _TIMEOUT
+    conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 2000)
+    return conn
+
+
+def _verify_save(path: Path) -> None:
+    if not path.is_file() or path.stat().st_size < 512:
+        raise ValueError("The pending save is missing or truncated")
+    conn = _connect_readonly(path)
+    try:
+        if conn.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+            raise ValueError("The save failed its SQLite integrity check")
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='captured_pokemon'"
+        ).fetchone() is None:
+            raise ValueError("The file is not an Ankimon save")
+    finally:
+        conn.close()
+
+
+def _remove_owned_copy(path: Path) -> None:
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        Path(str(path) + suffix).unlink(missing_ok=True)
+
+
+def _snapshot(source: Path, dest: Path) -> None:
+    """Build a verified single-file copy, including committed WAL contents."""
+    source_conn = _connect_readonly(source)
+    try:
+        dest_conn = sqlite3.connect(dest, timeout=_TIMEOUT)
+        try:
+            deadline = time.monotonic() + _TIMEOUT
+
+            def progress(status, remaining, total):
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Timed out taking the import safety snapshot")
+
+            source_conn.backup(dest_conn, pages=256, progress=progress, sleep=0.05)
+            dest_conn.execute("PRAGMA journal_mode=DELETE")
+        finally:
+            dest_conn.close()
+    finally:
+        source_conn.close()
+    _verify_save(dest)
+    _fsync_file(dest)
+
+
+def _digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _prepare_incoming(path: Path, token: str) -> None:
+    conn = sqlite3.connect(path, timeout=_TIMEOUT)
+    try:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        conn.execute("PRAGMA secure_delete=ON")
+        with conn:
+            # Explicit empty auth rows also prevent Settings from falling back
+            # to this installation's legacy config.obf when an old save has no
+            # config. An imported SQLite save never inherits local credentials.
+            conn.execute("CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)")
+            conn.executemany("INSERT OR REPLACE INTO config VALUES (?, '')", [
+                ("leaderboard.username",), ("leaderboard.api_key",),
+            ])
+            if "user_data" in tables:
+                conn.execute("DELETE FROM user_data WHERE key IN ('username', 'api_key')")
+            conn.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
+            conn.executemany("INSERT OR REPLACE INTO metadata VALUES (?, ?)", [
+                ("import_token", token), ("import_rebase_pending", "1"),
+                # Do not merge destination legacy JSON into a whole-save import.
+                # Ordinary schema upgrades still run in AnkimonDB construction.
+                ("migrated", "true"), ("migrated_phase2", "true"),
+            ])
+        # Eliminate credentials from free pages as well as live rows. New game
+        # state will require this device's user to sign in again.
+        conn.execute("VACUUM")
+    finally:
+        conn.close()
+    _verify_save(path)
+    _fsync_file(path)
+
+
+def pending_import_info(target: Path) -> dict | None:
+    """Read pending work for exactly this target; paths come from local code.
+
+    Invalid metadata raises instead of silently treating a failed import as
+    absent. No pathname from the manifest can redirect a write or deletion.
+    """
+    target, directory = _paths(target)
+    try:
+        with (directory / "pending.json").open(encoding="utf-8") as handle:
+            record = json.load(handle)
+    except FileNotFoundError:
+        return None
+    if not isinstance(record, dict):
+        raise ValueError("The pending import record is damaged")
+    token = record.get("token", "")
+    if (record.get("version") != 1 or record.get("target") != str(target)
+            or not isinstance(token, str) or re.fullmatch(r"[0-9a-f]{32}", token) is None
+            or not isinstance(record.get("process"), str)
+            or not isinstance(record.get("digest"), str)):
+        raise ValueError("The pending import record does not match this save")
+    return {
+        **record,
+        "pending_path": directory / f"{token}.db",
+        "recovery_path": target.parent / "ankimon_recovery" / f"pre-import-{token}" / target.name,
+    }
+
+
+def stage_import(snapshot: Path, target: Path) -> dict:
+    """Durably retain the chosen save without touching the runtime database.
+
+    Returns pending_path, recovery_path and token. Recovery is reserved now and
+    written from the final local save immediately before installation. Existing
+    pending work must be cancelled explicitly before choosing another import.
+    """
+    target, directory = _paths(target)
+    if pending_import_info(target) is not None:
+        raise RuntimeError("An import is already pending; cancel it before choosing another save")
+    token = uuid.uuid4().hex
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    incoming = directory / f"{token}.db"
+    temp_manifest = directory / f"{token}.json"
+    published = False
+    try:
+        # mkstemp permissions are private even if the user's umask is broad.
+        fd = os.open(incoming, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+        _snapshot(Path(snapshot), incoming)
+        _prepare_incoming(incoming, token)
+        record = {
+            "version": 1, "target": str(target), "token": token,
+            "process": _process_identity(), "digest": _digest(incoming),
+        }
+        with temp_manifest.open("x", encoding="utf-8") as handle:
+            json.dump(record, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_manifest, directory / "pending.json")
+        published = True
+        _fsync_directory(directory)
+        _fsync_directory(target.parent)
+        return pending_import_info(target)
+    finally:
+        temp_manifest.unlink(missing_ok=True)
+        if not published:
+            _remove_owned_copy(incoming)
+
+
+def cancel_pending_import(target: Path) -> bool:
+    """Cancel only staged work; all completed recovery copies remain intact."""
+    info = pending_import_info(target)
+    if info is None:
+        return False
+    _, directory = _paths(target)
+    (directory / "pending.json").unlink()
+    _fsync_directory(directory)
+    _remove_owned_copy(info["pending_path"])
+    _fsync_directory(directory)
+    return True
+
+
+def _installed_token(target: Path) -> str | None:
+    conn = _connect_readonly(target)
+    try:
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata'"
+        ).fetchone() is None:
+            return None
+        row = conn.execute("SELECT value FROM metadata WHERE key='import_token'").fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def _log(logger, level: str, message: str) -> None:
+    if logger is not None:
+        try:
+            logger.log(level, message)
+        except Exception:
+            pass
+
+
+def commit_pending_import(target: Path, logger=None) -> bool:
+    """Install before any runtime exists, refusing work staged in this process.
+
+    Returns True if installed (or a prior crash installed it); False if there is
+    nothing to do yet. Failures raise while leaving pending work available for
+    retry or explicit cancellation. The installed token prevents a crash after
+    replacement from reapplying the old import over subsequent game progress.
+    """
+    target, _ = _paths(target)
+    # A failed attempt is followed by construction of the OLD runtime. Retrying
+    # after reset_db or a module purge must wait for another full process start.
+    attribute = "_ankimon_import_startup_attempts"
+    identity = _process_identity()
+    saved = getattr(sys, attribute, None)
+    if saved is None or saved[0] != identity:
+        saved = (identity, set())
+        setattr(sys, attribute, saved)
+    if str(target) in saved[1]:
+        return False
+    saved[1].add(str(target))
+    info = pending_import_info(target)
+    if info is None or info["process"] == _process_identity():
+        return False
+
+    if _installed_token(target) == info["token"]:
+        cancel_pending_import(target)
+        return True
+
+    incoming = info["pending_path"]
+    _verify_save(incoming)
+    if _digest(incoming) != info["digest"]:
+        raise ValueError("The pending save changed after it was confirmed")
+    recovery = info["recovery_path"]
+    # parents=True applies mode only to the final directory, which would leave
+    # the shared recovery root readable under a permissive umask.
+    recovery.parent.parent.mkdir(mode=0o700, exist_ok=True)
+    recovery.parent.mkdir(mode=0o700, exist_ok=True)
+    if recovery.exists():
+        # A failed previous replacement may be followed by more local play.
+        # Retain that attempt's backup and capture the current save again.
+        recovery = recovery.with_name(f"retry-{uuid.uuid4().hex}-{target.name}")
+
+    fd, name = tempfile.mkstemp(prefix=".backup-", suffix=".db", dir=recovery.parent)
+    os.close(fd)
+    backup_temp = Path(name)
+    try:
+        _snapshot(target, backup_temp)
+        os.replace(backup_temp, recovery)
+        _fsync_directory(recovery.parent)
+        _fsync_directory(recovery.parent.parent)
+        _fsync_directory(target.parent)
+    finally:
+        _remove_owned_copy(backup_temp)
+
+    # Let SQLite merge and remove the OLD database's journals itself. Never
+    # delete a WAL before replacement: a crash in that gap would lose committed
+    # progress. A busy external connection refuses the mode change and import.
+    conn = sqlite3.connect(target.as_uri() + "?mode=rw", uri=True, timeout=_TIMEOUT)
+    try:
+        mode = conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+        if str(mode).lower() != "delete":
+            raise RuntimeError("Could not safely close the old save's journal")
+    finally:
+        conn.close()
+    if any(Path(str(target) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+        raise RuntimeError("The old save still has SQLite journals; import remains pending")
+
+    fd, name = tempfile.mkstemp(prefix=".ankimon-install-", suffix=".db", dir=target.parent)
+    os.close(fd)
+    install_temp = Path(name)
+    try:
+        shutil.copyfile(incoming, install_temp)
+        _fsync_file(install_temp)
+        os.replace(install_temp, target)
+        _fsync_directory(target.parent)
+    finally:
+        _remove_owned_copy(install_temp)
+    _log(logger, "info", f"Ankimon import installed. Previous save: {recovery}")
+    try:
+        cancel_pending_import(target)
+    except OSError as exc:
+        # Installation succeeded. The token makes cleanup safe to retry on the
+        # next launch without overwriting game progress.
+        _log(logger, "warning", f"Import installed; pending-file cleanup will retry: {exc}")
+    return True
+
+
+def rebase_after_import(db, col) -> bool:
+    """Exclude existing destination reviews before any mobile detection runs.
+
+    The next profile open sees reviews pulled by the previous shutdown sync.
+    Retire the marker and set that collection's exact watermark in one database
+    transaction. Failures propagate so callers can skip detection and retry;
+    the source save's watermark must never be used while the marker remains.
+    """
+    conn = db._get_connection()
+    with conn:
+        marker = conn.execute(
+            "SELECT value FROM metadata WHERE key='import_rebase_pending'"
+        ).fetchone()
+        if marker is None or str(marker[0]) != "1":
+            return False
+        if col is None:
+            raise RuntimeError("The Anki collection is not available to finish the import")
+        watermark = col.db.scalar("SELECT MAX(id) FROM revlog")
+        if watermark is None:
+            watermark = 0
+        if type(watermark) is not int or watermark < 0:
+            raise ValueError("Could not read the collection's review watermark")
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_revlog_watermark', ?)",
+            (str(watermark),),
+        )
+        conn.execute("DELETE FROM metadata WHERE key='import_rebase_pending'")
+    return True

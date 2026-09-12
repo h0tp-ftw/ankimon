@@ -128,7 +128,7 @@ def test_eligible_rescue_is_offered_before_a_higher_ranked_diverged_save(
     if diverged_name == "ankimon.db":
         protected = list(m.folder.glob("_ankimon_save_*.db"))
         assert len(protected) == 1
-        assert protected[0].read_bytes() == original
+        assert st.get_db_stats(protected[0]) == st.get_db_stats(diverged)
 
 
 @pytest.mark.parametrize("target_db", ["ankimon.db", "ankimonDEV.db"])
@@ -155,7 +155,7 @@ def test_preservation_verifies_existing_copy_and_keeps_both_files(
 
     protected = [p for p in migration.folder.glob(f"{prefix}*.db") if p != damaged]
     assert len(protected) == 1
-    assert protected[0].read_bytes() == original
+    assert st.get_db_stats(protected[0])["pokemon"] == 4
     assert source.read_bytes() == original
     assert damaged.read_bytes() == damaged_bytes
 

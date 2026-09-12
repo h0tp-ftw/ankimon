@@ -4,6 +4,10 @@ import json
 import os
 import shutil
 import datetime
+import sqlite3
+import tempfile
+import time
+from contextlib import closing
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -105,43 +109,41 @@ class BackupManager:
     def create_backup(self, manual=False, required_file: str = None) -> bool:
         """Creates a new backup.
 
-        Returns ``True`` only if the backup directory was written AND contains
-        the file the caller depends on. ``required_file`` names that file (the
+        Returns ``True`` only if the backup directory contains a verified
+        snapshot of the file the caller depends on. ``required_file`` names it (the
         one a pre-overwrite caller is protecting, e.g. ``ankimon.db``); when
         omitted, the active-mode database is used. Callers that back up *before*
         a destructive overwrite rely on this to refuse the overwrite when no
         recoverable backup of THAT file was actually made — so one unrelated
-        file's copy failure must not blank another file's success (each copy is
+        file's snapshot failure must not blank another file's success (each file is
         isolated below)."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         backup_dir = self.backups_path / f"backup_{timestamp}"
 
         success = False
         try:
-            # Checkpoint the active database first to flush all WAL changes to disk,
-            # so the single-file copy below captures the latest committed state.
-            if services.db is not None:
-                try:
-                    services.db.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                    self.logger.log("info", "Checkpoint database before backup.")
-                except Exception as e:
-                    self.logger.log("error", f"Failed to checkpoint database before backup: {e}")
-
             backup_dir.mkdir()
 
+            active_path = Path(services.db.db_path) if services.db is not None else None
             # For manual backups, only back up the currently active database.
-            files_to_copy = self.FILES_TO_BACKUP
-            if manual and services.db is not None:
-                files_to_copy = [services.db.db_path.name]
+            sources = {name: self.user_files_path / name for name in self.FILES_TO_BACKUP}
+            if active_path is not None:
+                # Profiles can choose a different directory or filename. Never
+                # substitute the default save for the active file being protected.
+                if manual:
+                    sources = {active_path.name: active_path}
+                else:
+                    sources[active_path.name] = active_path
 
-            for filename in files_to_copy:
-                source_path = self.user_files_path / filename
+            completed = set()
+            for filename, source_path in sources.items():
                 if source_path.exists():
-                    # Isolate each copy: a failure on ankimonDEV.db must not mark
+                    # Isolate each snapshot: a failure on ankimonDEV.db must not mark
                     # a successful ankimon.db backup as failed (which would
                     # needlessly abort a safe import), and vice versa.
                     try:
-                        shutil.copy2(source_path, backup_dir / filename)
+                        self._snapshot_database(source_path, backup_dir / filename)
+                        completed.add(filename)
                     except Exception as e:
                         self.logger.log("error", f"Failed to back up {filename}: {e}")
 
@@ -152,12 +154,10 @@ class BackupManager:
 
             self.logger.log("info", f"Created backup: {backup_dir.name}")
 
-            # Success = the SPECIFIC file the caller relies on landed in the
-            # backup dir. Defaults to the active-mode DB when unspecified.
-            needed = required_file or (
-                services.db.db_path.name if services.db is not None else "ankimon.db"
-            )
-            success = (backup_dir / needed).is_file()
+            # A failed snapshot can leave a partial temporary file; only a
+            # completed, verified snapshot authorizes a destructive overwrite.
+            needed = required_file or (active_path.name if active_path else "ankimon.db")
+            success = needed in completed and (backup_dir / needed).is_file()
 
             # Report manual feedback based on the ACTUAL outcome — never claim
             # success when the DB copy failed (per-file copy errors are logged,
@@ -178,6 +178,43 @@ class BackupManager:
 
         self.cleanup_backups()
         return success
+
+    @staticmethod
+    def _snapshot_database(source_path: Path, destination_path: Path, timeout: float = 30.0):
+        """Publish a verified standalone snapshot, including committed WAL pages.
+
+        A checkpoint can return busy while leaving committed pages in WAL, so
+        copying the main file is never sufficient. Read-only online backup also
+        works for an inactive database without mutating or creating its source.
+        """
+        deadline = time.monotonic() + timeout
+        fd, name = tempfile.mkstemp(prefix=".snapshot-", suffix=".db", dir=destination_path.parent)
+        os.close(fd)
+        temporary = Path(name)
+        try:
+            uri = source_path.resolve().as_uri() + "?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True, timeout=timeout)) as source, \
+                 closing(sqlite3.connect(temporary, timeout=timeout)) as snapshot:
+                def check_deadline(status, remaining, total):
+                    # backup() retries SQLITE_BUSY beyond connect's timeout.
+                    if time.monotonic() > deadline:
+                        raise TimeoutError("Timed out taking a database backup")
+
+                source.backup(snapshot, pages=256, progress=check_deadline, sleep=0.05)
+                snapshot.set_progress_handler(lambda: int(time.monotonic() > deadline), 2000)
+                if snapshot.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+                    raise ValueError("Database backup failed its integrity check")
+                if not snapshot.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='captured_pokemon'"
+                ).fetchone():
+                    raise ValueError("Database backup is not an Ankimon save")
+                # A backup is a single file: do not require WAL sidecars on restore.
+                snapshot.execute("PRAGMA journal_mode=DELETE")
+                check_deadline(0, 0, 0)
+            os.replace(temporary, destination_path)
+        finally:
+            for suffix in ("", "-wal", "-shm", "-journal"):
+                Path(str(temporary) + suffix).unlink(missing_ok=True)
 
     def _get_db_file_stats(self, db_file_path: Path) -> Dict[str, Any]:
         """Reads summary stats directly from one Ankimon SQLite backup file.
@@ -262,10 +299,11 @@ class BackupManager:
         )
 
         # Read stats from the database files stored inside this backup directory.
-        normal_stats = self._get_db_file_stats(backup_dir / "ankimon.db")
+        normal_name = "ankimon.db" if active_db_name == "ankimonDEV.db" else active_db_name
+        normal_stats = self._get_db_file_stats(backup_dir / normal_name)
         dev_stats = self._get_db_file_stats(backup_dir / "ankimonDEV.db")
 
-        normal_exists = (backup_dir / "ankimon.db").exists()
+        normal_exists = (backup_dir / normal_name).exists()
         dev_exists = (backup_dir / "ankimonDEV.db").exists()
 
         # If the backup folder has no DB files yet (e.g. a freshly-created dummy
