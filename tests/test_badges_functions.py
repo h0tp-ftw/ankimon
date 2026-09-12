@@ -115,11 +115,55 @@ def test_handle_review_count_achievement_awards_milestone():
     assert result["1"] is True  # 100 reviews -> badge 1
 
 
-def test_handle_review_count_achievement_ignores_non_milestone():
+def test_handle_review_count_achievement_ignores_below_first_milestone():
+    services.db = FakeDB(migrated=True)
+    achievements = {str(i): False for i in range(1, 69)}
+
+    result = bf.handle_review_count_achievement(99, achievements)
+
+    assert all(value is False for value in result.values())
+
+
+def test_handle_review_count_achievement_awards_overshot_milestone():
+    """A burst of reviews can skip the exact milestone; 150 must still earn badge 1."""
     services.db = FakeDB(migrated=True)
     achievements = {str(i): False for i in range(1, 69)}
 
     result = bf.handle_review_count_achievement(150, achievements)
+
+    assert {key for key, value in result.items() if value} == {"1"}
+
+
+def test_handle_review_count_achievement_awards_every_passed_milestone():
+    services.db = FakeDB(migrated=True)
+    achievements = {str(i): False for i in range(1, 69)}
+
+    result = bf.handle_review_count_achievement(2500, achievements)
+
+    assert {key for key, value in result.items() if value} == {
+        "1", "2", "3", "4", "12", "13",
+    }
+
+
+def test_handle_review_count_achievement_skips_already_held_badges():
+    """Past the top milestone every further review must stay write-free."""
+    db = FakeDB(migrated=True)
+    services.db = db
+    achievements = {str(i): False for i in range(1, 69)}
+    for badge in ("1", "2", "3", "4", "12", "13"):
+        achievements[badge] = True
+
+    bf.handle_review_count_achievement(5000, achievements)
+
+    assert db.saved == []
+
+
+def test_handle_review_count_achievement_tolerates_non_numeric_count():
+    """get_total_reviews() forwards col.db.scalar(), which can be None."""
+    services.db = FakeDB(migrated=True)
+    achievements = {str(i): False for i in range(1, 69)}
+
+    result = bf.handle_review_count_achievement(None, achievements)
 
     assert all(value is False for value in result.values())
 
