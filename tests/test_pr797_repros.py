@@ -322,6 +322,7 @@ def test_migration_does_not_block_profile_open_on_a_locked_save(
     holder.execute("PRAGMA locking_mode = EXCLUSIVE;")
     holder.execute("BEGIN EXCLUSIVE;")
     holder.execute("INSERT INTO items VALUES ('lockholder', 1)")
+    monkeypatch.setattr(st, "MIGRATION_PROBE_TIMEOUT", 0.01)
     monkeypatch.setattr(st, "askUser", lambda *a, **k: False)
     queued = []
     monkeypatch.setattr(st.mw.taskman, "run_in_background",
@@ -335,6 +336,9 @@ def test_migration_does_not_block_profile_open_on_a_locked_save(
             f"profile-open path blocked for {elapsed:.1f}s on a locked media save"
         )
         assert len(queued) == 1
+        assert not list(st._recovery_store(media).glob("_ankimon_unverified_*.zip"))
+        assert media in st.mw.pm._ankimon_media_protection_guard["blocked"]
+        queued[0]()
         assert list(st._recovery_store(media).glob("_ankimon_unverified_*.zip"))
         assert not list(media.glob("_ankimon_unverified_*.zip"))
     finally:
@@ -997,10 +1001,10 @@ def test_a_profile_switch_during_the_scan_discards_the_result(
     settled.assert_not_called()
 
 
-def test_start_preserves_and_retries_without_a_task_manager(
+def test_start_guards_and_retries_without_a_task_manager(
     real_flag_media, live_db, logger, monkeypatch
 ):
-    """Capture survives failed dispatch; the comparison remains asynchronous."""
+    """Failed dispatch keeps the sync guard and never runs inline recovery."""
     folder, _profile = real_flag_media
     _make_save(folder / "ankimon.db", pokemon=42, badges=8, history=99)
     ask = MagicMock(return_value=False)
@@ -1015,7 +1019,9 @@ def test_start_preserves_and_retries_without_a_task_manager(
     st.start_media_migration(MagicMock(), logger)
 
     ask.assert_not_called()
-    assert st.get_db_stats(_protected(folder)[0])["pokemon"] == 42
+    assert st.get_db_stats(folder / "ankimon.db")["pokemon"] == 42
+    assert _protected(folder) == []
+    assert folder in st.mw.pm._ankimon_media_protection_guard["blocked"]
     assert st._MIGRATION_SCAN_STATE["running"] is False
 
 

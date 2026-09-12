@@ -50,7 +50,7 @@ def transfer(tmp_path, monkeypatch):
     monkeypatch.setattr(st, "_active_db_path", lambda: active)
     monkeypatch.setattr(st, "showInfo", MagicMock())
     monkeypatch.setattr(st, "showWarning", MagicMock())
-    def restart():
+    def restart(**kwargs):
         if services.db is not None:
             services.db.close()
         commit_in_new_process(active)
@@ -302,7 +302,7 @@ def test_rescue_recovery_includes_progress_after_staging(transfer, rescue, monke
     st._apply_migration_result(st._migration_scan(rescue.media, transfer.active), _Logger())
     assert len(rescue.callbacks) == 1
 
-    def finish_old_session():
+    def finish_old_session(**kwargs):
         with sqlite3.connect(transfer.active) as conn:
             conn.executemany("INSERT INTO captured_pokemon VALUES (?, 0, '{}')",
                              [(f"mobile-{i}",) for i in range(5)])

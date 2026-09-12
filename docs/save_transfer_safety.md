@@ -43,7 +43,8 @@ storage. Only sanitised bytes enter the destination directory, including its
 temporary file. Completion statistics come from the actual exported snapshot.
 
 At profile open, both `ankimon.db` and `ankimonDEV.db` in `collection.media` are
-captured before Anki can start automatic media sync. Verified copies include
+guarded before Anki can start automatic media sync, then captured on a background
+worker. Media sync resumes only after capture completes. Verified copies include
 committed WAL contents and use content-derived filenames under
 `ankimon-media-recovery/` beside `collection.media`, not inside the media folder.
 That keeps newly-created recovery databases out of AnkiWeb media sync while
@@ -59,8 +60,11 @@ sync pauses for that profile in memory until capture succeeds. Sync preferences
 are not changed. Close anything locking the files and restart Anki to retry.
 
 Preservation status is separate from the feature-removal announcement. Worker
-or dispatch failures remain retryable and visible; they do not start a full
-comparison scan on the GUI thread. Recovery paths are recorded in the Ankimon
+or dispatch failures remain retryable and visible; they do not copy, archive, or
+compare saves on the GUI thread. Unchanged unreadable saves have a 30-second
+retry delay; changed files, permissions, or SQLite sidecars re-arm immediately.
+Moving an uncaptured save out of the media folder also clears its sync guard.
+Recovery paths are recorded in the Ankimon
 log. No original media file is deleted.
 
 ## Review disposition and validation limits
@@ -85,3 +89,30 @@ remained writable; a subsequent full process loaded the imported trainer and
 retained the final old progress in recovery. Dialog choices were automated;
 Anki's actual editor and close lifecycle ran. Authenticated AnkiWeb conflict
 resolution and Windows file locking remain outside this validation.
+
+## CodeRabbit review of #850
+
+All ten inline findings and the failed User Data Safety pre-merge check were
+accepted after checking the implementation. The fixes preserve the existing
+restart-only import behavior:
+
+- Failed backups never enter retention. A backup stays in a hidden staging
+  directory until its required SQLite snapshot and summary are complete; even
+  a failed cleanup cannot cause that directory to evict an older valid backup.
+- Restore and import callers request observable shutdown errors and report that
+  their prepared save remains pending. Cancellation filesystem errors and
+  recovery-folder access failures receive actionable menu warnings.
+- Errors after atomic replacement are reported separately: the imported save
+  is active, and final disk sync/cleanup can retry without reinstalling it over
+  newer progress. Failures before replacement still leave the old save active.
+- File fsync uses a writable handle for Windows. Existing pre-import recovery
+  directories are restricted before access, including those opened by browsing.
+- Preservation and raw archive writes run once on the guarded worker. Repeated
+  sync-stop notifications cannot immediately repeat an unchanged failed capture.
+- The locked-source timing test pins its probe budget; the permission test skips
+  root; the digest-collision test uses a valid source and a damaged copy in the
+  actual recovery directory and checks that a numbered copy preserves both.
+
+The optional 80% docstring-coverage warning was not adopted as a blanket rewrite
+of the transfer tests and existing helpers. Behavioral contracts and the new
+failure/scheduling paths are documented where they need explanation.

@@ -78,7 +78,7 @@ class BackupManager:
             return backups
         active_db = services.db.db_path.name
         for backup_dir in sorted(self.backups_path.iterdir(), reverse=True):
-            if backup_dir.is_dir():
+            if backup_dir.name.startswith("backup_") and backup_dir.is_dir():
                 # Only show a backup if it contains the database for the active mode.
                 if not (backup_dir / active_db).exists():
                     continue
@@ -119,10 +119,15 @@ class BackupManager:
         isolated below)."""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         backup_dir = self.backups_path / f"backup_{timestamp}"
+        staging_dir = self.backups_path / f".{backup_dir.name}"
 
         success = False
+        created_directory = False
         try:
-            backup_dir.mkdir()
+            if backup_dir.exists():
+                raise FileExistsError(f"Backup already exists: {backup_dir.name}")
+            staging_dir.mkdir()
+            created_directory = True
 
             active_path = Path(services.db.db_path) if services.db is not None else None
             # For manual backups, only back up the currently active database.
@@ -142,22 +147,26 @@ class BackupManager:
                     # a successful ankimon.db backup as failed (which would
                     # needlessly abort a safe import), and vice versa.
                     try:
-                        self._snapshot_database(source_path, backup_dir / filename)
+                        self._snapshot_database(source_path, staging_dir / filename)
                         completed.add(filename)
                     except Exception as e:
                         self.logger.log("error", f"Failed to back up {filename}: {e}")
 
-            summary = self._generate_summary(backup_dir)
+            summary = self._generate_summary(staging_dir)
+            summary['date'] = timestamp.replace("_", " ")
             summary['manual'] = manual
-            with open(backup_dir / "summary.json", 'w', encoding='utf-8') as f:
+            with open(staging_dir / "summary.json", 'w', encoding='utf-8') as f:
                 json.dump(summary, f, indent=4)
-
-            self.logger.log("info", f"Created backup: {backup_dir.name}")
 
             # A failed snapshot can leave a partial temporary file; only a
             # completed, verified snapshot authorizes a destructive overwrite.
             needed = required_file or (active_path.name if active_path else "ankimon.db")
-            success = needed in completed and (backup_dir / needed).is_file()
+            if needed in completed and (staging_dir / needed).is_file():
+                if backup_dir.exists():
+                    raise FileExistsError(f"Backup already exists: {backup_dir.name}")
+                staging_dir.rename(backup_dir)
+                success = True
+                self.logger.log("info", f"Created backup: {backup_dir.name}")
 
             # Report manual feedback based on the ACTUAL outcome — never claim
             # success when the DB copy failed (per-file copy errors are logged,
@@ -176,7 +185,16 @@ class BackupManager:
             if manual:
                 showWarning(f"Failed to create backup: {e}")
 
-        self.cleanup_backups()
+        if success:
+            self.cleanup_backups()
+        elif created_directory:
+            # Failed attempts stay outside listings and retention even if a
+            # locked file prevents deletion. Remove only staging directories
+            # created by this attempt, never a pre-existing timestamp collision.
+            try:
+                shutil.rmtree(staging_dir)
+            except OSError as error:
+                self.logger.log("error", f"Failed to remove incomplete backup: {error}")
         return success
 
     @staticmethod
@@ -455,7 +473,7 @@ class BackupManager:
                 "the next full restart."
             )
             try:
-                close_anki()
+                close_anki(raise_on_error=True)
             except Exception as error:
                 showWarning(
                     f"Anki could not close: {error}. Your current save is still "
@@ -482,8 +500,13 @@ class BackupManager:
 
     def cleanup_backups(self):
         """Deletes old backups based on retention policy."""
-        # Get only directories and sort them by modification time
-        backups = sorted([p for p in self.backups_path.iterdir() if p.is_dir()], key=os.path.getmtime)
+        # Only published backups enter retention. Failed or interrupted staging
+        # directories must not displace recoverable saves even if they remain.
+        backups = sorted(
+            [p for p in self.backups_path.iterdir()
+             if p.name.startswith("backup_") and p.is_dir()],
+            key=os.path.getmtime,
+        )
 
         backups_to_keep = []
         for backup_dir in backups:

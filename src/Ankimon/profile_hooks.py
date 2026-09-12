@@ -56,9 +56,8 @@ def _on_profile_close():
 
 def _on_profile_did_open(online_connectivity):
     def handler():
-        # Capture bare media saves before any dialog can pump the event loop,
-        # and before Anki starts automatic sync after profile_did_open returns.
-        # Only preservation is synchronous; comparisons run in the background.
+        # Guard startup sync before any dialog can pump the event loop, then
+        # preserve bare media saves in the background before sync may proceed.
         try:
             register_media_migration_hooks(settings_obj, logger)
         except Exception as e:
@@ -133,9 +132,19 @@ def _on_profile_did_open(online_connectivity):
         if failures:
             services._save_import_errors = []
             services.ui.warn(
-                "Ankimon could not install a pending import. Your current save remains active. "
-                "It will retry on a full restart, or use Cancel Pending Save Import.\n\n" +
+                "Ankimon could not install the pending imports listed below. "
+                "The previous save for each listed file remains active. "
+                "They will retry on a full restart, or use Cancel Pending Save Import.\n\n" +
                 "\n".join(failures)
+            )
+        warnings = getattr(services, "_save_import_warnings", [])
+        if warnings:
+            services._save_import_warnings = []
+            services.ui.warn(
+                "Ankimon installed the imported saves listed below, and they are active. "
+                "A final disk sync or cleanup step failed. Any remaining pending "
+                "work will retry on a full restart without applying the import again.\n\n" +
+                "\n".join(warnings)
             )
 
         # Register the AnkiWeb sync hooks SYNCHRONOUSLY here — not in the

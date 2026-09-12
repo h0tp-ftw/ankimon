@@ -3,6 +3,8 @@ import os
 import sqlite3
 import zipfile
 from pathlib import Path
+from concurrent.futures import Future
+from types import SimpleNamespace
 
 import pytest
 
@@ -70,7 +72,7 @@ def test_export_statistics_describe_snapshot_after_picker(transfer, tmp_path, mo
 
 
 @pytest.mark.parametrize("change", ["replace", "delete"])
-def test_both_bare_saves_survive_before_worker_runs(transfer, tmp_path, monkeypatch, change):
+def test_both_bare_saves_are_guarded_until_worker_captures_them(transfer, tmp_path, monkeypatch, change):
     media = tmp_path / "collection.media"
     media.mkdir()
     for name in ("ankimon.db", "ankimonDEV.db"):
@@ -78,9 +80,20 @@ def test_both_bare_saves_survive_before_worker_runs(transfer, tmp_path, monkeypa
     monkeypatch.setattr(st, "_media_dir", lambda: media)
     monkeypatch.setattr(st, "_migration_done", lambda: False)
     monkeypatch.setattr(st, "_MIGRATION_SCAN_STATE", {"running": False, "rerun": False})
+    pm = SimpleNamespace(profileFolder=lambda: str(tmp_path), media_syncing_enabled=lambda: True)
+    monkeypatch.setattr(st.mw, "pm", pm)
     work = []
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", lambda scan, done, **kw: work.append(scan))
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", lambda scan, done, **kw: work.append((scan, done)))
     st.start_media_migration(None, _Logger())
+    assert pm.media_syncing_enabled() is False
+    assert _protected(media) == []
+    assert len(work) == 1
+    scan, done = work[0]
+    future = Future()
+    future.set_result(scan())
+    assert pm.media_syncing_enabled() is False
+    done(future)
+    assert pm.media_syncing_enabled() is True
     for name in ("ankimon.db", "ankimonDEV.db"):
         (media / name).unlink()
         if change == "replace":
@@ -131,22 +144,23 @@ def test_media_preservation_captures_wal(transfer, tmp_path):
 def test_existing_digest_copy_must_verify_before_being_reported_protected(transfer, tmp_path):
     media = tmp_path / "collection.media"
     media.mkdir()
-    source = media / "ankimon.db"
-    with sqlite3.connect(source) as conn:
-        conn.execute("CREATE TABLE unrelated (id INTEGER)")
+    source = _make_save(media / "ankimon.db", pokemon=17)
     snapshot = tmp_path / "copied.db"
     st._sqlite_backup(source, snapshot)
-    existing = media / st._protected_copy_name(source.name, st._content_digest(snapshot))
-    existing.write_bytes(snapshot.read_bytes())
+    recovery = st._recovery_store(media, create=True)
+    existing = recovery / st._protected_copy_name(source.name, st._content_digest(snapshot))
+    existing.write_bytes(b"damaged existing save")
 
     protection = st._protect_bare_saves(media)
 
-    assert protection["protected"] == {}
-    assert protection["unprotected"] == [source]
-    assert len(protection["archives"]) == 1
+    numbered = existing.with_name(f"{existing.stem}-1.db")
+    assert protection["protected"] == {source: numbered}
+    assert protection["unprotected"] == []
+    assert st.get_db_stats(numbered)["pokemon"] == 17
+    assert existing.read_bytes() == b"damaged existing save"
 
 
-def test_locked_media_is_archived_before_worker_and_never_claimed_verified(transfer, tmp_path, monkeypatch):
+def test_locked_media_archive_is_never_claimed_verified(transfer, tmp_path, monkeypatch):
     media = tmp_path / "collection.media"
     media.mkdir()
     source = _make_save(media / "ankimon.db", pokemon=17)
@@ -197,12 +211,11 @@ def test_damaged_existing_raw_archive_is_not_reported_as_a_retained_copy(transfe
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX unreadable-file reproduction")
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0,
+                    reason="root bypasses the mode bits this test relies on")
 def test_uncaptured_original_pauses_only_its_profile_and_successful_retry_restores_sync(
     transfer, tmp_path, monkeypatch,
 ):
-    from concurrent.futures import Future
-    from types import SimpleNamespace
-
     profiles = [tmp_path / "profile-a", tmp_path / "profile-b"]
     for path in profiles:
         (path / "collection.media").mkdir(parents=True)
@@ -218,7 +231,7 @@ def test_uncaptured_original_pauses_only_its_profile_and_successful_retry_restor
     monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)
     monkeypatch.setattr(st, "_MIGRATION_SCAN_STATE", {"running": False, "rerun": False})
     callbacks = []
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", lambda scan, done, **kw: callbacks.append(done))
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", lambda scan, done, **kw: callbacks.append((scan, done)))
     source = _make_save(profiles[0] / "collection.media" / "ankimon.db", pokemon=17)
     original_mode = source.stat().st_mode
     source.chmod(0)
@@ -232,9 +245,10 @@ def test_uncaptured_original_pauses_only_its_profile_and_successful_retry_restor
         active_profile[0] = profiles[0]
         assert pm.media_syncing_enabled() is False
 
+        scan, done = callbacks.pop(0)
         failed = Future()
-        failed.set_exception(RuntimeError("comparison worker failed"))
-        callbacks[0](failed)
+        failed.set_result(scan())
+        done(failed)
         assert pm.media_syncing_enabled() is False
         assert any("Media sync is paused" in call.args[0] for call in st.showWarning.call_args_list)
     finally:
@@ -242,13 +256,18 @@ def test_uncaptured_original_pauses_only_its_profile_and_successful_retry_restor
 
     st.start_media_migration(None, _Logger())
     assert pm.media_syncing_enabled is guarded_method
+    assert pm.media_syncing_enabled() is False
+    scan, done = callbacks.pop(0)
+    recovered = Future()
+    recovered.set_result(scan())
+    done(recovered)
     assert pm.media_syncing_enabled() is True
     assert preferences == {"syncMedia": True, "autoSync": True}
     preferences["syncMedia"] = False
     assert pm.media_syncing_enabled() is False
 
 
-def test_dispatch_failure_preserves_files_without_running_scan(transfer, tmp_path, monkeypatch):
+def test_dispatch_failure_guards_files_without_running_scan(transfer, tmp_path, monkeypatch):
     media = tmp_path / "collection.media"
     media.mkdir()
     _make_save(media / "ankimon.db", pokemon=17)
@@ -265,7 +284,9 @@ def test_dispatch_failure_preserves_files_without_running_scan(transfer, tmp_pat
     monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
     monkeypatch.setattr(st, "_migration_scan", forbidden)
     st.start_media_migration(None, _Logger())
-    assert st.get_db_stats(_protected(media)[0])["pokemon"] == 17
+    assert st.get_db_stats(media / "ankimon.db")["pokemon"] == 17
+    assert _protected(media) == []
+    assert media in st.mw.pm._ankimon_media_protection_guard["blocked"]
     assert "retried" in st.showWarning.call_args.args[0]
 
 
@@ -277,7 +298,7 @@ def test_import_keeps_old_runtime_on_original_database(transfer, monkeypatch, sh
 
     monkeypatch.setattr(st, "showInfo", queued_old_write)
 
-    def close():
+    def close(**kwargs):
         if shutdown == "exception":
             raise RuntimeError("shutdown failed")
         if shutdown == "sync":

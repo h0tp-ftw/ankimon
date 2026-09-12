@@ -25,6 +25,10 @@ _TIMEOUT = 30.0
 _PROCESS_ATTRIBUTE = "_ankimon_save_import_process"
 
 
+class ImportInstalledError(RuntimeError):
+    """The imported save is active, but its final sync or cleanup failed."""
+
+
 def _process_identity() -> str:
     # sys survives add-on module purges. Include the PID so a subprocess/fork
     # cannot inherit the parent's identity while a reload keeps its identity.
@@ -41,7 +45,8 @@ def _paths(target: Path) -> tuple[Path, Path]:
 
 
 def _fsync_file(path: Path) -> None:
-    with path.open("rb") as handle:
+    # Windows FlushFileBuffers requires write access to the file handle.
+    with path.open("r+b") as handle:
         os.fsync(handle.fileno())
 
 
@@ -298,17 +303,34 @@ def _log(logger, level: str, message: str) -> None:
             pass
 
 
+def _finish_installed_import(target, recovery, logger, install_temp=None) -> None:
+    _log(logger, "info", f"Ankimon import installed. Previous save: {recovery}")
+    try:
+        # Retry this sync after a prior crash too, before retiring the manifest.
+        _fsync_directory(target.parent)
+        if install_temp is not None:
+            _remove_owned_copy(install_temp)
+        cancel_pending_import(target)
+    except Exception as error:
+        # The installed token prevents a later launch from reinstalling over
+        # new progress. Surface this separately from a refused replacement.
+        message = f"Imported save is active; final sync or cleanup did not finish: {error}"
+        _log(logger, "warning", message)
+        raise ImportInstalledError(message) from error
+
+
 def commit_pending_import(target: Path, logger=None) -> bool:
     """Install before any runtime exists, refusing work staged in this process.
 
     Returns True if installed (or a prior crash installed it); False if there is
-    nothing to do yet. Failures raise while leaving pending work available for
-    retry or explicit cancellation. The installed token prevents a crash after
-    replacement from reapplying the old import over subsequent game progress.
+    nothing to do yet. Failures before replacement leave pending work available
+    for retry or explicit cancellation. ImportInstalledError means replacement
+    succeeded but final sync or cleanup failed. The installed token prevents a
+    retry from reapplying the old import over subsequent game progress.
     """
     target, _ = _paths(target)
-    # A failed attempt is followed by construction of the OLD runtime. Retrying
-    # after reset_db or a module purge must wait for another full process start.
+    # Any attempt may be followed by construction of a runtime. Retrying after
+    # reset_db or a module purge must wait for another full process start.
     attribute = "_ankimon_import_startup_attempts"
     identity = _process_identity()
     saved = getattr(sys, attribute, None)
@@ -323,7 +345,7 @@ def commit_pending_import(target: Path, logger=None) -> bool:
         return False
 
     if _installed_token(target) == info["token"]:
-        cancel_pending_import(target)
+        _finish_installed_import(target, info["recovery_path"], logger)
         return True
 
     incoming = info["pending_path"]
@@ -331,10 +353,12 @@ def commit_pending_import(target: Path, logger=None) -> bool:
     if _digest(incoming) != info["digest"]:
         raise ValueError("The pending save changed after it was confirmed")
     recovery = info["recovery_path"]
-    # parents=True applies mode only to the final directory, which would leave
-    # the shared recovery root readable under a permissive umask.
+    # mkdir(mode=...) does not tighten pre-existing directories. Restrict both
+    # levels before inspecting or writing private recovery material.
     recovery.parent.parent.mkdir(mode=0o700, exist_ok=True)
+    recovery.parent.parent.chmod(0o700)
     recovery.parent.mkdir(mode=0o700, exist_ok=True)
+    recovery.parent.chmod(0o700)
     if recovery.exists():
         # A failed previous replacement may be followed by more local play.
         # Retain that attempt's backup and capture the current save again.
@@ -372,16 +396,10 @@ def commit_pending_import(target: Path, logger=None) -> bool:
         shutil.copyfile(incoming, install_temp)
         _fsync_file(install_temp)
         os.replace(install_temp, target)
-        _fsync_directory(target.parent)
-    finally:
+    except Exception:
         _remove_owned_copy(install_temp)
-    _log(logger, "info", f"Ankimon import installed. Previous save: {recovery}")
-    try:
-        cancel_pending_import(target)
-    except OSError as exc:
-        # Installation succeeded. The token makes cleanup safe to retry on the
-        # next launch without overwriting game progress.
-        _log(logger, "warning", f"Import installed; pending-file cleanup will retry: {exc}")
+        raise
+    _finish_installed_import(target, recovery, logger, install_temp)
     return True
 
 

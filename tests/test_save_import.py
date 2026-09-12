@@ -112,6 +112,23 @@ def test_staged_copy_requires_reauthentication_without_exporting_source_secrets(
     assert b"private-legacy-key" not in staged["pending_path"].read_bytes()
 
 
+def test_file_sync_uses_descriptor_that_can_flush_on_windows(tmp_path, monkeypatch):
+    importer = load_module()
+    path = tmp_path / "snapshot.db"
+    path.write_bytes(b"snapshot contents")
+    real_fsync = os.fsync
+
+    def require_write_access(descriptor):
+        # Windows FlushFileBuffers requires a handle with write access. A
+        # zero-byte write exercises that requirement on the host platform too.
+        os.write(descriptor, b"")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(importer.os, "fsync", require_write_access)
+    importer._fsync_file(path)
+    assert path.read_bytes() == b"snapshot contents"
+
+
 def test_next_process_installs_and_recovers_commits_made_after_staging(tmp_path):
     importer = load_module()
     target = make_save(tmp_path / "ankimon.db", "local")
@@ -320,6 +337,67 @@ def test_crash_after_atomic_install_never_reapplies_import_over_new_progress(tmp
     assert importer.pending_import_info(target) is None
 
 
+@pytest.mark.parametrize("already_installed,failure", [
+    (False, "directory_sync"), (False, "temporary_cleanup"),
+    (False, "manifest_cleanup"), (True, "directory_sync"), (True, "manifest_cleanup"),
+])
+def test_post_install_failure_reports_installed_and_retries_without_losing_progress(
+    tmp_path, failure, already_installed
+):
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    if already_installed:
+        child(
+            "replace = os.replace\n"
+            "def crash_after_install(source, dest):\n"
+            "    replace(source, dest)\n"
+            "    if Path(dest) == target:\n"
+            "        os._exit(37)\n"
+            "module.os.replace = crash_after_install\n"
+            "module.commit_pending_import(target)\n", target, expected=37,
+        )
+
+    child(
+        "token = module.pending_import_info(target)['token']\n"
+        "failure = sys.argv[3]\n"
+        "sync, cleanup, unlink = module._fsync_directory, module._remove_owned_copy, Path.unlink\n"
+        "def fail_sync(path):\n"
+        "    if path == target.parent and module._installed_token(target) == token:\n"
+        "        raise OSError('injected directory sync failure')\n"
+        "    return sync(path)\n"
+        "def fail_cleanup(path):\n"
+        "    if path.name.startswith('.ankimon-install-'):\n"
+        "        raise OSError('injected temporary cleanup failure')\n"
+        "    return cleanup(path)\n"
+        "def fail_unlink(path, *args, **kwargs):\n"
+        "    if path.name == 'pending.json':\n"
+        "        raise OSError('injected manifest cleanup failure')\n"
+        "    return unlink(path, *args, **kwargs)\n"
+        "if failure == 'directory_sync': module._fsync_directory = fail_sync\n"
+        "elif failure == 'temporary_cleanup': module._remove_owned_copy = fail_cleanup\n"
+        "else: Path.unlink = fail_unlink\n"
+        "try:\n"
+        "    module.commit_pending_import(target)\n"
+        "except Exception as error:\n"
+        "    assert type(error).__name__ == 'ImportInstalledError', repr(error)\n"
+        "    assert 'injected' in str(error)\n"
+        "else:\n"
+        "    raise AssertionError('Expected an installed-with-warning result')\n"
+        "assert module._installed_token(target) == token\n"
+        "assert module.commit_pending_import(target) is False\n", target, failure,
+    )
+    assert names(target) == ["incoming"]
+    assert importer.pending_import_info(target)["token"] == staged["token"]
+    with sqlite3.connect(target) as conn:
+        conn.execute("INSERT INTO captured_pokemon VALUES ('new-progress', '{}')")
+    commit_in_new_process(target)
+    assert names(target) == ["incoming", "new-progress"]
+    assert names(staged["recovery_path"]) == ["local"]
+    assert importer.pending_import_info(target) is None
+
+
 def test_staging_twice_requires_explicit_cancellation(tmp_path):
     importer = load_module()
     target = make_save(tmp_path / "ankimon.db", "local")
@@ -340,6 +418,29 @@ def test_new_recovery_directories_are_private_even_with_permissive_umask(tmp_pat
         assert stat.S_IMODE(staged["recovery_path"].parent.parent.stat().st_mode) == 0o700
         assert stat.S_IMODE(staged["recovery_path"].parent.stat().st_mode) == 0o700
         assert stat.S_IMODE(staged["recovery_path"].stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory permissions")
+def test_existing_recovery_directories_are_private_before_snapshot_access(tmp_path):
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    recovery_directory = staged["recovery_path"].parent
+    recovery_directory.mkdir(parents=True)
+    recovery_directory.chmod(0o777)
+    recovery_directory.parent.chmod(0o777)
+    child(
+        "import stat\n"
+        "snapshot = module._snapshot\n"
+        "def inspect_access(source, dest):\n"
+        "    assert stat.S_IMODE(dest.parent.stat().st_mode) == 0o700\n"
+        "    assert stat.S_IMODE(dest.parent.parent.stat().st_mode) == 0o700\n"
+        "    snapshot(source, dest)\n"
+        "module._snapshot = inspect_access\n"
+        "assert module.commit_pending_import(target) is True\n", target,
+    )
+    assert names(staged["recovery_path"]) == ["local"]
 
 
 def rebase_state(path, *, marker="1"):

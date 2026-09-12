@@ -2647,23 +2647,30 @@ def get_db(logger=None, db_path=None) -> AnkimonDB:
         # Pending transfers are installed before opening a connection or building
         # settings/game objects. A process identity gate refuses addon reloads
         # and profile switches in the process that staged the import.
-        from ..save_import import commit_pending_import
+        from ..save_import import ImportInstalledError, commit_pending_import
         from ..services import services
 
         targets = ([Path(db_path)] if db_path is not None else
                    [user_path / "ankimon.db", user_path / "ankimonDEV.db"])
         for target in targets:
+            installed = False
             try:
-                if commit_pending_import(target, logger):
-                    from ..events import events
-
-                    events.emit("save_import_installed", target=str(target))
+                installed = commit_pending_import(target, logger)
+            except ImportInstalledError as warning:
+                installed = True
+                warnings = getattr(services, "_save_import_warnings", [])
+                warnings.append(f"{target}: {warning}")
+                services._save_import_warnings = warnings
             except Exception as error:
                 failures = getattr(services, "_save_import_errors", [])
                 failures.append(f"{target}: {error}")
                 services._save_import_errors = failures
                 if logger is not None:
                     logger.log("error", f"Pending save import could not be installed: {error}")
+            if installed:
+                from ..events import events
+
+                events.emit("save_import_installed", target=str(target))
         _db_instance = AnkimonDB(logger, db_path=db_path)
     return _db_instance
 
