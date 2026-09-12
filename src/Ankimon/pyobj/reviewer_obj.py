@@ -399,7 +399,7 @@ class Reviewer_Manager:
         if self.settings.get("gui.hud_pokemon_gen"):
             enemy_parts.append(f"(Gen {generation})")
         if self.settings.get("gui.hud_pokemon_types"):
-            for t in getattr(self.enemy_pokemon, "types", []):
+            for t in getattr(self.enemy_pokemon, "type", []):
                 type_img_url = f"/_addons/{addon_package}/addon_sprites/Types/{t.lower()}.png"
                 enemy_parts.append(f'<img src="{type_img_url}" alt="{t}" style="height:12px; vertical-align:middle; margin-left:2px;">')
         if self.settings.get("gui.hud_pokemon_lvl"):
@@ -469,7 +469,7 @@ class Reviewer_Manager:
             if self.settings.get("gui.hud_pokemon_gen"):
                 main_parts.append(f"(Gen {main_generation})")
             if self.settings.get("gui.hud_pokemon_types"):
-                for t in getattr(self.main_pokemon, "types", []):
+                for t in getattr(self.main_pokemon, "type", []):
                     type_img_url = f"/_addons/{addon_package}/addon_sprites/Types/{t.lower()}.png"
                     main_parts.append(f'<img src="{type_img_url}" alt="{t}" style="height:12px; vertical-align:middle; margin-left:2px;">')
             if self.settings.get("gui.hud_pokemon_lvl"):
