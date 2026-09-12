@@ -1821,16 +1821,24 @@ def _schedule_migration_retry(settings_obj, logger) -> None:
         return
 
     def _retry() -> None:
+        # Cleared first, on every path. This flag is the only thing stopping a
+        # second timer from being scheduled, so a return that leaves it set
+        # costs the profile its retries for the rest of the process.
         _MIGRATION_SCAN_STATE["retry_scheduled"] = False
         try:
+            if getattr(mw, "col", None) is None:
+                # The profile closed inside the delay. Its own open rescans.
+                return
             start_media_migration(settings_obj, logger)
         except Exception:
             pass
 
     try:
         # A little past the throttle, so the pass it asks for is not refused by
-        # the very retry_at that scheduled it.
-        mw.progress.single_shot(int(_MIGRATION_RETRY_DELAY * 1000) + 250, _retry, True)
+        # the very retry_at that scheduled it. requires_collection is False and
+        # the check lives in _retry instead: Anki's own gate DROPS the call when
+        # the collection is gone, and a dropped call never clears the flag.
+        mw.progress.single_shot(int(_MIGRATION_RETRY_DELAY * 1000) + 250, _retry, False)
         _MIGRATION_SCAN_STATE["retry_scheduled"] = True
     except Exception:
         # No timer is a missed retry, not a failure: a manual sync and the next

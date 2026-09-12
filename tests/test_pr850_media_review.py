@@ -570,3 +570,47 @@ def test_the_gate_fails_open_when_the_profile_folder_cannot_be_read(
     monkeypatch.setattr(media_host.pm, "media_syncing_enabled", lambda: False,
                         raising=False)
     assert media_host.pm.media_syncing_enabled() is False
+
+
+def test_a_retry_that_cannot_run_still_lets_another_be_scheduled(
+    transfer, media_host, monkeypatch,
+):
+    """The scheduled flag is the only thing stopping a second timer.
+
+    Anki's own timer gate drops a call outright when the collection is gone
+    rather than deferring it, so a retry that returns without clearing the flag
+    would cost the profile every later retry for the life of the process.
+    """
+    source = media_host.media / "ankimon.db"
+    _make_save(source, pokemon=5)
+
+    def captures_nothing(media_dir):
+        return {"protected": {}, "unprotected": [source], "archives": [],
+                "archived_sources": [], "log": []}
+
+    monkeypatch.setattr(st, "_protect_bare_saves", captures_nothing)
+    timers = []
+    monkeypatch.setattr(st.mw.progress, "single_shot",
+                        lambda ms, func, *args: timers.append((ms, func, args)))
+    now = [100.0]
+    monkeypatch.setattr(st.time, "monotonic", lambda: now[0])
+
+    st.start_media_migration(None, _Logger())
+    media_host.finish()
+    retries = [entry for entry in timers
+               if entry[0] > st._MIGRATION_RETRY_DELAY * 1000]
+    assert len(retries) == 1
+    # Asked for unconditionally, because Anki's own condition would drop it.
+    assert retries[0][2] == (False,)
+
+    # The profile closes inside the delay.
+    monkeypatch.setattr(st.mw, "col", None)
+    now[0] += st._MIGRATION_RETRY_DELAY + 1
+    retries[0][1]()
+    assert media_host.queued == []
+    assert st._MIGRATION_SCAN_STATE.get("retry_scheduled") is False
+
+    # A later pass can still arm one.
+    st._schedule_migration_retry(None, _Logger())
+    assert len([entry for entry in timers
+                if entry[0] > st._MIGRATION_RETRY_DELAY * 1000]) == 2
