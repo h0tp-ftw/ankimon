@@ -672,5 +672,50 @@ def test_backup_restore_published_but_unfinished_is_reported_as_pending(transfer
     assert "PENDING" in message
     assert "Cancel Pending Save Import" in message
     assert "Failed to prepare" not in message
+    # Like Import, the restore does not close Anki on its own after an I/O
+    # failure; the user decides when to restart.
+    backup_manager.close_anki.assert_not_called()
     commit_in_new_process(transfer.active)
     assert st.get_db_stats(transfer.active)["pokemon"] == 11
+
+
+def test_backup_restore_that_cannot_announce_itself_is_not_called_a_failure(
+    transfer, monkeypatch, tmp_path,
+):
+    """Staging succeeded outright here, so "failed to prepare" is simply false."""
+    backup_dir = tmp_path / "backup_2026-02-02_00-00-00"
+    backup_dir.mkdir()
+    _make_save(backup_dir / transfer.active.name, pokemon=13, name="Restored")
+    manager = backup_manager.BackupManager(_Logger(), SimpleNamespace(get=lambda *a, **k: None))
+    monkeypatch.setattr(services, "db", SimpleNamespace(db_path=transfer.active))
+    warn = MagicMock()
+    monkeypatch.setattr(backup_manager, "showWarning", warn)
+    monkeypatch.setattr(backup_manager, "askUser", lambda *a, **k: True)
+    monkeypatch.setattr(backup_manager, "close_anki", MagicMock())
+
+    def broken_notice(*args, **kwargs):
+        raise RuntimeError("wrapped C/C++ object has been deleted")
+
+    monkeypatch.setattr(backup_manager, "showInfo", broken_notice)
+    manager.restore_backup(str(backup_dir))
+
+    assert "Failed to prepare backup restore" not in str(warn.call_args_list)
+    # And the restore really is staged, whatever the notice did.
+    commit_in_new_process(transfer.active)
+    assert st.get_db_stats(transfer.active)["pokemon"] == 13
+
+
+def test_import_that_cannot_announce_itself_is_not_called_an_abort(transfer, monkeypatch):
+    """The notice is the last thing that can fail, and it is not the import."""
+    def broken_notice(*args, **kwargs):
+        raise RuntimeError("wrapped C/C++ object has been deleted")
+
+    monkeypatch.setattr(st, "showInfo", broken_notice)
+    warn = MagicMock()
+    monkeypatch.setattr(st, "showWarning", warn)
+
+    assert st.import_save() is True
+    assert "aborted" not in str(warn.call_args_list).lower()
+    assert "Nothing was replaced" not in str(warn.call_args_list)
+    assert st.get_db_stats(transfer.active)["pokemon"] == 42
+

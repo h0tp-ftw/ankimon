@@ -29,6 +29,10 @@ class ImportInstalledError(RuntimeError):
     """The imported save is active, but its final sync or cleanup failed."""
 
 
+class ImportAlreadyPendingError(RuntimeError):
+    """Another import is staged for this save and has not been cancelled."""
+
+
 class ImportStagedError(RuntimeError):
     """The import is published and WILL install, but staging did not finish.
 
@@ -219,7 +223,8 @@ def stage_import(
     """
     target, directory = _paths(target)
     if pending_import_info(target) is not None:
-        raise RuntimeError("An import is already pending; cancel it before choosing another save")
+        raise ImportAlreadyPendingError(
+            "An import is already pending; cancel it before choosing another save")
     token = uuid.uuid4().hex
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     incoming = directory / f"{token}.db"
@@ -270,11 +275,13 @@ def stage_import(
 def cancel_pending_import(target: Path) -> bool:
     """Cancel staged work even if its manifest is damaged.
 
-    Removing and fsyncing the manifest is the cancellation commit point. Once
-    that succeeds, failure to delete an orphaned private staged copy must not
-    make the UI claim cancellation failed: without ``pending.json`` no startup
-    can install it. Invalid manifests are deliberately not trusted for paths;
-    only locally-generated 32-hex-token database names are cleaned up.
+    Removing the manifest is the cancellation commit point. Once that
+    succeeds, neither the durability flush nor a failure to delete an orphaned
+    private staged copy may make the UI claim cancellation failed: without
+    ``pending.json`` no startup can install it, and a caller told to "try
+    again" would be told on the retry that there was nothing pending. Invalid
+    manifests are deliberately not trusted for paths; only locally-generated
+    32-hex-token database names are cleaned up.
     """
     target, directory = _paths(target)
     manifest = directory / "pending.json"
@@ -288,7 +295,12 @@ def cancel_pending_import(target: Path) -> bool:
 
     # Commit cancellation before touching any staged data.
     manifest.unlink()
-    _fsync_directory(directory)
+    try:
+        _fsync_directory(directory)
+    except Exception:
+        # The manifest is already gone, so nothing can install. Only the
+        # crash-durability of that removal is in question here.
+        pass
 
     if info is not None:
         candidates = [info["pending_path"]]

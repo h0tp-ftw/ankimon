@@ -485,28 +485,20 @@ class BackupManager:
                 )
                 return
 
-            from ..save_import import ImportStagedError, stage_import
+            from ..save_import import (
+                ImportAlreadyPendingError, ImportStagedError, stage_import,
+            )
 
             pending = stage_import(
                 backup_file, target, sanitize_credentials=False
             )
-            showInfo(
-                "Backup restore prepared for the next full Anki restart.\n\n"
-                "Your current save stays active until Anki exits. At the next "
-                "start, its final state will be retained here before the selected "
-                "backup is installed:\n"
-                f"{pending['recovery_path']}\n\n"
-                "If you choose Keep Editing, the restore remains pending until "
-                "the next full restart."
+        except ImportAlreadyPendingError:
+            showWarning(
+                "A save import is already pending and will install at the next "
+                "full Anki restart.\n\nUse Ankimon → Cancel Pending Save Import "
+                "first if you want to restore this backup instead."
             )
-            try:
-                close_anki(raise_on_error=True)
-            except Exception as error:
-                showWarning(
-                    f"Anki could not close: {error}. Your current save is still "
-                    "active and the prepared restore remains pending."
-                )
-
+            return
         except ImportStagedError as e:
             # The restore is published and will install; calling it a failure
             # to prepare would hide an armed replacement from the user.
@@ -517,9 +509,37 @@ class BackupManager:
                 "PENDING and will install at the next full Anki restart. Use "
                 "Ankimon → Cancel Pending Save Import if you do not want it."
             )
+            return
         except Exception as e:
             self.logger.log("error", f"Failed to prepare backup restore: {e}")
             showWarning(f"Failed to prepare backup restore: {e}")
+            return
+
+        # Past staging, and outside the guard above: the restore is committed,
+        # so a failure to announce it must never be reported as one to prepare
+        # it. Import keeps its own notice outside its guard for the same reason.
+        try:
+            showInfo(
+                "Backup restore prepared for the next full Anki restart.\n\n"
+                "Your current save stays active until Anki exits. At the next "
+                "start, its final state will be retained here before the selected "
+                "backup is installed:\n"
+                f"{pending['recovery_path']}\n\n"
+                "If you choose Keep Editing, the restore remains pending until "
+                "the next full restart."
+            )
+        except Exception as error:
+            self.logger.log(
+                "error",
+                f"Backup restore is staged, but its notice could not be shown: {error}",
+            )
+        try:
+            close_anki(raise_on_error=True)
+        except Exception as error:
+            showWarning(
+                f"Anki could not close: {error}. Your current save is still "
+                "active and the prepared restore remains pending."
+            )
 
     def delete_backup(self, backup_path_str: str):
         """Deletes a selected backup."""

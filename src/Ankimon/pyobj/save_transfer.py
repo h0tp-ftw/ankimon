@@ -16,7 +16,9 @@ import hashlib
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -557,6 +559,16 @@ def _rebase_import_watermark(snapshot: Path, col) -> None:
         conn.close()
 
 
+def _log_transfer_failure(context: str, error: Exception) -> None:
+    """Record a non-fatal transfer problem without needing a logger argument."""
+    try:
+        from ..services import services
+
+        services.logger.log("error", f"Ankimon: {context}: {error}")
+    except Exception:
+        pass
+
+
 def _replace_active_save(source: Path, target: Path, what: str, *, collection,
                          local_revision=None, local_digest=None) -> bool:
     """Prepare the approved save for a fresh process; never replace live state.
@@ -569,7 +581,9 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
     published one but could not finish cleanly, which is reported as pending
     rather than aborted and must not lead a caller to offer another save.
     """
-    from ..save_import import ImportStagedError, stage_import
+    from ..save_import import (
+        ImportAlreadyPendingError, ImportStagedError, stage_import,
+    )
     from .ankimon_sync import get_ankimon_sync
 
     try:
@@ -585,6 +599,18 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
                 pending = stage_import(source, target)
         else:
             pending = stage_import(source, target)
+    except ImportAlreadyPendingError:
+        # An earlier choice is still staged. "Nothing was replaced" is true of
+        # this attempt and false of the session, which is the confusing half:
+        # the rescue offer can return after a staging failure, and answering it
+        # again must not read as though no import were coming.
+        showWarning(
+            f"{what} not started: a save import is already pending and will "
+            "install at the next full Anki restart.\n\n"
+            "Use Ankimon → Cancel Pending Save Import first if you want to "
+            "choose a different save instead."
+        )
+        return True
     except ImportStagedError as error:
         # Publication already happened, so this is not an abort: the save will
         # install at the next full start. Saying otherwise would leave the user
@@ -601,16 +627,23 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
         showWarning(f"{what} aborted: {error}. Your current save is unchanged.")
         return False
 
-    showInfo(
-        f"{what} prepared for the next full Anki restart.\n\n"
-        "Your current save stays active until Anki exits. At the next start, "
-        "its final progress will be saved in a separately retained recovery copy "
-        "before the imported save is installed:\n"
-        f"{pending['recovery_path']}\n\n"
-        "Please reopen Anki after it closes. If you keep editing, this import "
-        "stays pending; use Ankimon → Cancel Pending Save Import to discard it.\n\n"
-        "Leaderboard credentials are not imported. Sign in again after restart."
-    )
+    # Announcing the import is the last thing that can go wrong, and it can:
+    # showInfo reaches into Qt, and this runs in a shutdown-adjacent state.
+    # A torn-down parent widget must not travel back up to the caller's
+    # "aborted, nothing was replaced" handler over a save that is staged.
+    try:
+        showInfo(
+            f"{what} prepared for the next full Anki restart.\n\n"
+            "Your current save stays active until Anki exits. At the next start, "
+            "its final progress will be saved in a separately retained recovery copy "
+            "before the imported save is installed:\n"
+            f"{pending['recovery_path']}\n\n"
+            "Please reopen Anki after it closes. If you keep editing, this import "
+            "stays pending; use Ankimon → Cancel Pending Save Import to discard it.\n\n"
+            "Leaderboard credentials are not imported. Sign in again after restart."
+        )
+    except Exception as error:
+        _log_transfer_failure(f"{what} was prepared but its notice could not be shown", error)
     from ..events import events
 
     events.emit("save_import_prepared", target=str(target), recovery_path=str(pending["recovery_path"]))
@@ -1359,6 +1392,29 @@ def _resume_deferred_media_sync() -> None:
         pass
 
 
+def _reading_to_display_the_preference() -> bool:
+    """Is this gate being read by Anki's Preferences dialog rather than a sync?
+
+    ``Preferences.setup_network`` reads ``media_syncing_enabled()`` only to tick
+    its "Synchronize audio and images too" box, and ``update_network`` writes
+    whatever that box shows straight back into ``pm.profile`` on OK. Answering
+    False there would turn the user's real AnkiWeb preference off for good, and
+    they would never see it happen. The guard exists to delay a sync, never to
+    edit a setting, so it stands aside for that reader.
+
+    Failing open is the safe direction: Preferences starts no sync.
+    """
+    try:
+        frame = sys._getframe(1)
+        while frame is not None:
+            if frame.f_globals.get("__name__") == "aqt.preferences":
+                return True
+            frame = frame.f_back
+    except Exception:
+        pass
+    return False
+
+
 def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None:
     """Pause media sync for this profile only while original bytes are at risk.
 
@@ -1369,6 +1425,9 @@ def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None
 
     A sync turned away while the guard was up is remembered and re-requested
     when the guard clears, because Anki keeps no deferred request of its own.
+    Anki reads the gate on a background thread, so the record-and-release pair
+    is taken under a lock: without it a request could be remembered just after
+    the release that would have replayed it, and be dropped after all.
     """
     uncaptured = set(protection["unprotected"]) - set(protection["archived_sources"])
     pm = mw.pm
@@ -1377,28 +1436,36 @@ def _guard_uncaptured_media(media_dir: Path, protection: Dict[str, Any]) -> None
         if not uncaptured:
             return
         original = pm.media_syncing_enabled
-        state = {"blocked": set(), "deferred": set()}
+        state = {"blocked": set(), "deferred": set(), "lock": threading.Lock()}
 
         def enabled():
             folder = Path(pm.profileFolder()) / "collection.media"
             allowed = original()
-            if allowed and folder in state["blocked"]:
+            if not allowed or _reading_to_display_the_preference():
+                return allowed
+            with state["lock"]:
+                if folder not in state["blocked"]:
+                    return True
                 # Only a sync the user's own preference would have permitted
                 # counts as deferred; nothing else may be restarted later.
                 state["deferred"].add(folder)
-                return False
-            return allowed
+            return False
 
         pm.media_syncing_enabled = enabled
         pm._ankimon_media_protection_guard = state
     state.setdefault("deferred", set())
-    if uncaptured:
-        state["blocked"].add(media_dir)
-    else:
-        state["blocked"].discard(media_dir)
-        if media_dir in state["deferred"]:
+    lock = state.setdefault("lock", threading.Lock())
+    with lock:
+        if uncaptured:
+            state["blocked"].add(media_dir)
+            deferred = False
+        else:
+            state["blocked"].discard(media_dir)
+            deferred = media_dir in state["deferred"]
             state["deferred"].discard(media_dir)
-            _resume_deferred_media_sync()
+    # Outside the lock: restarting a sync re-enters Anki, which reads the gate.
+    if deferred:
+        _resume_deferred_media_sync()
 
 
 _LAST_PROTECTION_NOTICE = None

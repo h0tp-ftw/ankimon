@@ -631,3 +631,47 @@ def test_a_manifest_that_vanishes_before_read_back_leaves_nothing_staged(tmp_pat
     assert importer.pending_import_info(target) is None
     assert list(directory.glob("*.db")) == []
     assert names(target) == ["local"]
+
+
+def test_cancellation_holds_even_when_its_durability_flush_fails(tmp_path, monkeypatch):
+    """Removing the manifest is what stops the install, so say so.
+
+    Reporting "could not be cancelled, try again" after the manifest is gone
+    earns a "there is no pending save import" on the retry, and the user cannot
+    tell from Ankimon which of the two to believe.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    importer.stage_import(source, target)
+    fsync_directory = importer._fsync_directory
+    injecting = [True]
+
+    def failing_sync(path):
+        if injecting[0]:
+            raise OSError("injected cancellation flush failure")
+        return fsync_directory(path)
+
+    monkeypatch.setattr(importer, "_fsync_directory", failing_sync)
+    assert importer.cancel_pending_import(target) is True
+
+    injecting[0] = False
+    assert importer.pending_import_info(target) is None
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is False
+    assert names(target) == ["local"]
+
+
+def test_a_second_import_names_the_pending_one_it_is_refusing_for(tmp_path):
+    """The refusal has its own type: this is not "nothing is going to happen"."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    other = make_save(tmp_path / "other.db", "second")
+    importer.stage_import(source, target)
+
+    with pytest.raises(importer.ImportAlreadyPendingError):
+        importer.stage_import(other, target)
+    # The refusal leaves the first import exactly as it was.
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is True
+    assert names(target) == ["incoming"]
+

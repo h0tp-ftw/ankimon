@@ -348,3 +348,65 @@ def test_a_deferred_sync_is_resumed_only_once(transfer, media_host, media_syncer
     if media_host.queued:
         media_host.finish()
     assert media_syncer == [(True,)]
+
+
+def test_opening_preferences_does_not_report_media_sync_as_switched_off(
+    transfer, media_host, media_syncer, monkeypatch,
+):
+    """The guard delays a sync; it must never edit the user's setting.
+
+    Anki's Preferences dialog reads this same gate to tick "Synchronize audio
+    and images too", then writes whatever the box shows back into the profile
+    when the user presses OK. A blocked answer there would silently turn real
+    AnkiWeb media sync off for good.
+    """
+    _make_save(media_host.media / "ankimon.db", pokemon=5)
+    st.start_media_migration(None, _Logger())
+    # Read the guard's own state, not the gate: calling the gate is what a
+    # sync request does, and this test is about a caller that is not one.
+    assert media_host.media in media_host.pm._ankimon_media_protection_guard["blocked"]
+
+    # A function whose module really is aqt.preferences, the way the dialog's
+    # setup_network is, doing exactly what it does to draw the checkbox.
+    dialog = {"__name__": "aqt.preferences", "pm": media_host.pm}
+    exec("def setup_network():\n    return pm.media_syncing_enabled()\n", dialog)
+    assert dialog["setup_network"]() is True
+
+    # Drawing a checkbox is not a request, so nothing is replayed either.
+    media_host.finish()
+    assert media_syncer == []
+
+
+def test_the_gate_and_the_release_cannot_interleave(
+    transfer, media_host, media_syncer,
+):
+    """Anki reads the gate on a worker thread while release runs on the GUI.
+
+    aqt's sync_collection evaluates media_syncing_enabled() inside the lambda
+    it hands to the task manager, so the read lands on a background thread
+    while _guard_uncaptured_media runs on the main one. Unless recording a
+    turned-away request and replaying it are one atomic step, a request can be
+    remembered just after the release that would have replayed it and be
+    dropped anyway -- the same lost sync, reached through a race.
+    """
+    _make_save(media_host.media / "ankimon.db", pokemon=5)
+    st.start_media_migration(None, _Logger())
+    state = media_host.pm._ankimon_media_protection_guard
+    answers = []
+
+    with state["lock"]:
+        worker = threading.Thread(
+            target=lambda: answers.append(media_host.pm.media_syncing_enabled()))
+        worker.start()
+        worker.join(0.25)
+        # A release is mid-flight, so the gate may not answer yet.
+        assert worker.is_alive()
+        assert answers == []
+
+    worker.join(5)
+    assert answers == [False]
+    assert media_host.media in state["deferred"]
+
+    # And the request that was recorded under that lock is the one replayed.
+    media_host.finish()
+    assert media_syncer == [(True,)]

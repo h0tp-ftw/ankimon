@@ -168,3 +168,24 @@ A third review round raised four further findings, all accepted:
 - The shutdown backup's single budget now also covers summary generation, which
   fell back to reading the live database — and its own busy timeout — whenever
   the required snapshot had not been taken.
+
+Verifying those four fixes surfaced five more, all accepted:
+
+- The media-sync guard stands aside for Anki's Preferences dialog. That dialog
+  reads the same gate only to tick "Synchronize audio and images too" and
+  writes whatever the box shows back into the profile on OK, so a blocked
+  answer there would have silently switched the user's real AnkiWeb media-sync
+  preference off for good. The guard delays a sync; it never edits a setting.
+- Recording a turned-away sync and replaying it happen under one lock. Anki
+  evaluates the gate on a background thread, so without it a request could be
+  remembered just after the release that would have replayed it.
+- The success notices for Import, Rescue and Backup Restore are guarded. They
+  reach into Qt in a shutdown-adjacent state, and a failure there used to
+  surface as "aborted, nothing was replaced" over a save that was staged.
+- A second import attempt while one is pending has its own message naming the
+  pending import, instead of an abort notice that is true of the attempt and
+  misleading about the session.
+- Cancelling a pending import is committed by removing the manifest. A failure
+  of the durability flush that follows no longer reports "could not be
+  cancelled, try again", which the retry immediately contradicted with "there
+  is no pending save import".
