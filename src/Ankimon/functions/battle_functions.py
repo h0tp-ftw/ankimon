@@ -809,17 +809,8 @@ def calculate_hp(base_stat_hp, level, ev, iv):
     hp = int(((((2 * base_stat_hp) + iv_value + ev_value) * level) / 100) + level + 10)
     return hp
 
-def _get_effectiveness_text(effect_value, translator):
-    if effect_value == 0:
-        return translator.translate("effectiveness_missed")
-    elif effect_value <= 0.5:
-        return translator.translate("effectiveness_not_very")
-    elif effect_value <= 1.5:
-        return translator.translate("effectiveness_very")
-    elif effect_value <= 2:
-        return translator.translate("effectiveness_super")
-    else:
-        return translator.translate("effectiveness_normal")
+
+
 
 def _get_effectiveness_text(effect_value, translator):
     if effect_value == 0:
@@ -827,8 +818,8 @@ def _get_effectiveness_text(effect_value, translator):
     elif effect_value <= 0.5:
         return translator.translate("effectiveness_not_very")
     elif effect_value <= 1.5:
-        return translator.translate("effectiveness_very")
-    elif effect_value <= 2:
-        return translator.translate("effectiveness_super")
-    else:
         return translator.translate("effectiveness_normal")
+    elif effect_value <= 2.5:
+        return translator.translate("effectiveness_very")
+    else:
+        return translator.translate("effectiveness_super")
