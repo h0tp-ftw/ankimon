@@ -123,6 +123,7 @@ GROUPS = [
                 ("gui.hud_hp_text", "HP Values"),
                 ("gui.hud_pokemon_id", "Pokémon ID"),
                 ("gui.hud_pokemon_gen", "Pokémon Gen"),
+                ("gui.hud_pokemon_types", "Pokémon Types"),
                 ("gui.hud_pokemon_lvl", "Pokémon Lvl"),
                 ("gui.hud_pokemon_name", "Pokémon Name"),
                 ("gui.hud_status_badge", "Status Badge"),

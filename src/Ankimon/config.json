@@ -41,6 +41,7 @@
     "gui.hud_hp_text": true,
     "gui.hud_pokemon_id": true,
     "gui.hud_pokemon_gen": true,
+    "gui.hud_pokemon_types": true,
     "gui.hud_pokemon_lvl": true,
     "gui.hud_pokemon_name": true,
     "gui.hud_status_badge": true,

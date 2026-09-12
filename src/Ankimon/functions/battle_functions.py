@@ -3,6 +3,8 @@ import json
 from ..poke_engine import constants
 from ..pyobj.error_handler import show_warning_with_traceback
 from ..move_names import format_move_name
+from .battle_text_functions import effectiveness_text
+
 
 
 def update_pokemon_battle_status(battle_info: dict, enemy_pokemon, main_pokemon):
@@ -665,15 +667,30 @@ def process_battle_data(
 
         # 2. Enemy attack section
         if enemy_attack and enemy_attack != constants.DO_NOTHING_MOVE:
-            # --- NEW: Format enemy move name ---
-            formatted_enemy_attack = format_move_name(enemy_attack)
+            if battle_info.get("opponent_move_blocked_by_status"):
+                status_block = battle_info.get("opponent_move_blocked_by_status")
+                status_key = "pokemon_is_paralyzed" if status_block == "par" else "pokemon_is_sleeping"
+                message_parts.append(translator.translate(status_key, pokemon_name=enemy_pokemon.display_name))
+            elif battle_info.get("opponent_move_missed"):
+                missed_text = translator.translate("move_has_missed").lower()
+                missed_text = missed_text.replace("move ", "attack ")
+                message_parts.append(f"{enemy_pokemon.display_name}'s " + missed_text)
+            else:
+                # --- NEW: Format enemy move name ---
+                formatted_enemy_attack = format_move_name(enemy_attack)
 
-            enemy_attack_msg = translator.translate(
-                "enemy_attack_announcement",
-                pokemon_name=enemy_pokemon.display_name,
-                attack_name=formatted_enemy_attack,  # Use the formatted name
-            )
-            message_parts.append(enemy_attack_msg)
+                enemy_attack_msg = translator.translate(
+                    "enemy_attack_announcement",
+                    pokemon_name=enemy_pokemon.display_name,
+                    attack_name=formatted_enemy_attack,  # Use the formatted name
+                )
+
+                if battle_info.get("opponent_effectiveness") is not None:
+                    eff_val = battle_info.get("opponent_effectiveness")
+                    if eff_val != 1.0:
+                        # translate effective text using a new helper function
+                        enemy_attack_msg += " " + _get_effectiveness_text(eff_val, translator)
+                message_parts.append(enemy_attack_msg)
 
         # 3. User attack section
         if user_attack and user_attack != constants.DO_NOTHING_MOVE:
@@ -684,7 +701,16 @@ def process_battle_data(
                 )
                 if status_msg:
                     message_parts.append(status_msg)
-            else:
+
+            if battle_info.get("user_move_blocked_by_status"):
+                status_block = battle_info.get("user_move_blocked_by_status")
+                status_key = "pokemon_is_paralyzed" if status_block == "par" else "pokemon_is_sleeping"
+                message_parts.append(translator.translate(status_key, pokemon_name=main_pokemon.display_name))
+            elif battle_info.get("user_move_missed"):
+                missed_text = translator.translate("move_has_missed").lower()
+                missed_text = missed_text.replace("move ", "attack ")
+                message_parts.append(f"{main_pokemon.display_name}'s " + missed_text)
+            elif not battle_status or battle_status == "fighting":
                 # --- NEW: Format user move name ---
                 formatted_user_attack = format_move_name(user_attack)
 
@@ -694,6 +720,11 @@ def process_battle_data(
                     pokemon_name=main_pokemon.display_name,
                     attack_name=formatted_user_attack,  # Use the formatted name
                 )
+
+                if battle_info.get("user_effectiveness") is not None:
+                    eff_val = battle_info.get("user_effectiveness")
+                    if eff_val != 1.0:
+                        user_attack_msg += " " + _get_effectiveness_text(eff_val, translator)
                 message_parts.append(user_attack_msg)
 
         # 4. Process all other battle effect instructions
@@ -777,3 +808,18 @@ def calculate_hp(base_stat_hp, level, ev, iv):
     # hp = int(((iv + 2 * (base_stat_hp + ev) + 100) * level) / 100 + 10)
     hp = int(((((2 * base_stat_hp) + iv_value + ev_value) * level) / 100) + level + 10)
     return hp
+
+
+
+
+def _get_effectiveness_text(effect_value, translator):
+    if effect_value == 0:
+        return translator.translate("effectiveness_missed")
+    elif effect_value <= 0.5:
+        return translator.translate("effectiveness_not_very")
+    elif effect_value <= 1.5:
+        return translator.translate("effectiveness_normal")
+    elif effect_value <= 2.5:
+        return translator.translate("effectiveness_very")
+    else:
+        return translator.translate("effectiveness_super")
