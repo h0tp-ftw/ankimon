@@ -43,6 +43,7 @@
     "gui.hud_hp_text": "Show or hide the current/max HP values text on the reviewer HUD.",
     "gui.hud_pokemon_id": "Show or hide the Pokédex ID next to Pokémon names on the reviewer HUD.",
     "gui.hud_pokemon_gen": "Show or hide the generation next to Pokémon names on the reviewer HUD.",
+    "gui.hud_pokemon_types": "Show or hide the types next to Pokémon names on the reviewer HUD.",
     "gui.hud_pokemon_lvl": "Show or hide the level next to Pokémon names on the reviewer HUD.",
     "gui.hud_pokemon_name": "Show or hide Pokémon names on the reviewer HUD.",
     "gui.hud_status_badge": "Show or hide the wild Pokémon status/type badge on the reviewer HUD.",

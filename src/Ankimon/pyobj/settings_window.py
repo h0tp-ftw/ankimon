@@ -432,6 +432,7 @@ class SettingsWindow(QMainWindow):
                             "Show HP Text",
                             "Show Pokémon ID",
                             "Show Pokémon Generation",
+                            "Show Pokémon Types",
                             "Show Pokémon Level",
                             "Show Pokémon Name",
                             "Show Status Badge",

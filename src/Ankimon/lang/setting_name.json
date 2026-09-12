@@ -46,6 +46,7 @@
     "gui.hud_hp_text": "Show HP Text",
     "gui.hud_pokemon_id": "Show Pokémon ID",
     "gui.hud_pokemon_gen": "Show Pokémon Generation",
+    "gui.hud_pokemon_types": "Show Pokémon Types",
     "gui.hud_pokemon_lvl": "Show Pokémon Level",
     "gui.hud_pokemon_name": "Show Pokémon Name",
     "gui.hud_status_badge": "Show Status Badge",
