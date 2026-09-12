@@ -149,3 +149,22 @@ A second review round raised four further findings, all accepted:
   that the source held still while they were read, and only a capture bound to
   one observed revision releases the sync guard.
 - The worker/GUI-thread sentence above names preservation work as its subject.
+
+A third review round raised four further findings, all accepted:
+
+- Media capture is bound to a source revision observed both before and after
+  the copy. Verifying the copy's own bytes never established that the source
+  held still while they were read, so a writer landing mid-capture left a
+  recovery copy of the old version described by the new version's signature —
+  and the callback, comparing new against new, released the sync guard over
+  progress that had never been preserved.
+- Staging is split at its publication commit point. Once `pending.json` is in
+  place the import installs at the next full start whatever fails afterwards,
+  so Import, Rescue and Backup Restore report it as pending and name the cancel
+  action instead of announcing an abort with the current save unchanged.
+- A media sync the capture guard turned away is re-requested once capture
+  succeeds. Anki reads the gate only as a sync starts, so clearing it merely
+  permitted the next attempt while the suppressed request was gone.
+- The shutdown backup's single budget now also covers summary generation, which
+  fell back to reading the live database — and its own busy timeout — whenever
+  the required snapshot had not been taken.
