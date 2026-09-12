@@ -138,4 +138,8 @@ A second review round raised four further findings, all accepted:
   a save that is already gone, and the next pass rescans with sync still paused.
   The comparison uses the state the worker observed, so a transient metadata
   failure while the scan was being dispatched no longer costs an extra pass.
+  The worker reads that state both before and after the capture, so a writer
+  landing *during* the copy is caught too: the copy verifies its own bytes, not
+  that the source held still while they were read, and only a capture bound to
+  one observed revision releases the sync guard.
 - The worker/GUI-thread sentence above names preservation work as its subject.

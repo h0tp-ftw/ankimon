@@ -1041,6 +1041,10 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     regardless of ranking, verifying any existing protected copy before reuse.
     Rank candidates for display and freeze the chosen save in a private
     snapshot. The local revision lets the UI reject an outdated comparison.
+
+    The source signature is read before AND after the capture, and ``stable``
+    says whether they agreed. Only a capture bound to one observed revision can
+    release the media-sync guard.
     """
     notes: list = []
     unreadable: list = []
@@ -1052,15 +1056,26 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
     # media sync and must not make a settled media state look changed.
     entries = _media_fingerprint_entries(media_dir, target_db)
 
+    # The revision the capture is BOUND to, read before anything is copied.
+    # _preserve verifies the bytes it wrote, not that the source held still
+    # while it read them, so without this a writer landing mid-capture would
+    # leave a recovery copy of the old version described by the new version's
+    # signature — and the callback, comparing new against new, would release
+    # the sync guard over bytes that were never preserved.
+    _, before_protection = _pending_media_protection(media_dir, target)
+
     protection = _protect_bare_saves(media_dir)
     notes.extend(protection["log"])
     # The state this result actually describes. The caller's dispatch-time
     # signature is not it: a transient stat failure there reads as "unknown",
     # and comparing that against a readable file later would discard a sound
     # scan. Taken after protection, so a change during ranking or snapshotting
-    # still invalidates the result; changes during protection itself are
-    # caught by _preserve's content verification.
+    # still invalidates the result.
     _, captured_signature = _pending_media_protection(media_dir, target)
+    # Protection only ever reads collection.media (read-only SQLite opens; its
+    # copies and archives are written outside the folder), so an unequal pair
+    # means somebody else wrote, not that we did.
+    stable_capture = before_protection == captured_signature
 
     unreadable.extend(protection["unprotected"])
     written.extend(path for path in protection["protected"].values()
@@ -1083,6 +1098,7 @@ def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
             "fingerprint": _join_fingerprint(entries),
             "protection": protection,
             "signature": captured_signature,
+            "stable": stable_capture,
         }
         base.update(extra)
         return base
@@ -1646,12 +1662,14 @@ def start_media_migration(settings_obj, logger) -> None:
                         and _active_collection() is collection):
                     _, current_signature = _pending_media_protection(media_dir, target)
                     baseline = result.get("signature", signature)
-                    if current_signature != baseline:
-                        # A download or external writer changed the source after
-                        # the worker captured it. Keep sync paused until the next
-                        # pass and drop this result whole: its comparison figures
-                        # and its rescue snapshot describe a save that is already
-                        # gone, so offering either would stage stale bytes.
+                    if current_signature != baseline or not result.get("stable", True):
+                        # A download or external writer changed the source
+                        # during or after the capture. Keep sync paused until
+                        # the next pass and drop this result whole: its
+                        # comparison figures and its rescue snapshot describe a
+                        # save that is already gone, and the protected copy is
+                        # not of the version sitting there now, so releasing
+                        # the guard would expose unpreserved progress.
                         _MIGRATION_SCAN_STATE["rerun"] = True
                     else:
                         if result.get("protection"):

@@ -189,3 +189,66 @@ def test_scan_result_is_discarded_when_the_media_save_changes_mid_scan(
     assert len(media_host.queued) == 1
     media_host.finish()
     assert len(applied) == 1
+
+
+def test_capture_is_bound_to_a_revision_observed_across_the_copy(
+    transfer, media_host, monkeypatch,
+):
+    """A writer landing INSIDE the capture must not look like a settled scan.
+
+    _preserve verifies the bytes it wrote, not that the source held still while
+    it read them. Recording the source signature only afterwards described the
+    new version while the recovery copy held the old one, so the callback
+    compared new against new, agreed, and released the sync guard over progress
+    that had never been preserved.
+    """
+    source = _make_save(media_host.media / "ankimon.db", pokemon=2)
+    applied = []
+    monkeypatch.setattr(st, "_apply_migration_result",
+                        lambda result, logger: applied.append(result))
+    preserve, overwritten = st._preserve, []
+
+    def preserve_then_overwrite(at_risk, *args, **kwargs):
+        protected = preserve(at_risk, *args, **kwargs)
+        if Path(at_risk) == source and not overwritten:
+            overwritten.append(True)
+            source.unlink()
+            _make_save(source, pokemon=9)
+        return protected
+
+    monkeypatch.setattr(st, "_preserve", preserve_then_overwrite)
+    st.start_media_migration(None, _Logger())
+    media_host.finish()
+
+    # What is in the folder now was never captured, so nothing from this pass
+    # may be offered and media sync stays paused.
+    assert overwritten == [True]
+    assert applied == []
+    assert media_host.pm.media_syncing_enabled() is False
+    recovery = st._recovery_store(media_host.media)
+    assert [st.get_db_stats(copy)["pokemon"] for copy in recovery.glob("*.db")] == [2]
+    assert st.get_db_stats(source)["pokemon"] == 9
+
+    # The coalesced rerun captures what is actually there, and only that
+    # releases the guard.
+    assert len(media_host.queued) == 1
+    media_host.finish()
+    assert len(applied) == 1
+    assert media_host.pm.media_syncing_enabled() is True
+    assert sorted(st.get_db_stats(copy)["pokemon"] for copy in recovery.glob("*.db")) == [2, 9]
+
+
+def test_an_untouched_capture_still_settles_in_one_pass(transfer, media_host, monkeypatch):
+    """The stability check must not cost an extra pass on the normal path."""
+    _make_save(media_host.media / "ankimon.db", pokemon=2)
+    applied = []
+    monkeypatch.setattr(st, "_apply_migration_result",
+                        lambda result, logger: applied.append(result))
+
+    st.start_media_migration(None, _Logger())
+    media_host.finish()
+
+    assert len(applied) == 1
+    assert applied[0]["stable"] is True
+    assert media_host.queued == []
+    assert media_host.pm.media_syncing_enabled() is True
