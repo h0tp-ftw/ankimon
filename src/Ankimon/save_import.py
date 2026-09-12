@@ -29,6 +29,17 @@ class ImportInstalledError(RuntimeError):
     """The imported save is active, but its final sync or cleanup failed."""
 
 
+class ImportStagedError(RuntimeError):
+    """The import is published and WILL install, but staging did not finish.
+
+    Publishing ``pending.json`` is the commit point: after it, the next full
+    start installs the save whether or not the durability and read-back steps
+    that follow succeed. Callers must not report that as an abort — the user
+    would keep playing believing a replacement they were told had failed
+    cannot happen. Cancelling is the only way to stop it.
+    """
+
+
 def _process_identity() -> str:
     # sys survives add-on module purges. Include the PID so a subprocess/fork
     # cannot inherit the parent's identity while a reload keeps its identity.
@@ -201,6 +212,10 @@ def stage_import(
     ``sanitize_credentials`` is True for portable imports/rescues. Backup
     Manager restores may set it False because their source is already private
     local recovery material owned by this installation.
+
+    Raises ``ImportStagedError`` when publication succeeded but a later step
+    did not: the import is armed for the next start and can only be stopped by
+    cancelling it. Every other failure leaves nothing staged.
     """
     target, directory = _paths(target)
     if pending_import_info(target) is not None:
@@ -226,13 +241,26 @@ def stage_import(
             os.fsync(handle.fileno())
         os.replace(temp_manifest, directory / "pending.json")
         published = True
-        _fsync_directory(directory)
-        _fsync_directory(target.parent)
-        return pending_import_info(target)
     finally:
         temp_manifest.unlink(missing_ok=True)
         if not published:
             _remove_owned_copy(incoming)
+
+    # Past the commit point. Everything below is durability and read-back, and
+    # none of it can un-arm the install, so a failure here is reported as a
+    # staged import the user can cancel — never as "nothing was replaced".
+    try:
+        _fsync_directory(directory)
+        _fsync_directory(target.parent)
+        info = pending_import_info(target)
+    except Exception as error:
+        raise ImportStagedError(str(error)) from error
+    if info is None:
+        # The manifest vanished between publishing and reading it back, so
+        # nothing will install after all; do not strand the staged copy.
+        _remove_owned_copy(incoming)
+        raise OSError("The published pending import disappeared before it could be read back")
+    return info
 
 
 def cancel_pending_import(target: Path) -> bool:

@@ -520,3 +520,103 @@ def test_rebase_rolls_back_watermark_if_marker_cannot_be_retired(tmp_path):
         }
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("failure", ["staging_directory", "target_directory", "read_back"])
+def test_publication_failure_reports_a_pending_import_rather_than_an_abort(
+    tmp_path, monkeypatch, failure,
+):
+    """Replacing pending.json is the commit point; later steps cannot undo it.
+
+    Durability and read-back run after publication and deliberately keep the
+    staged copy when they fail. A caller told only "aborted" would leave the
+    user playing on into a replacement they believe cannot happen, so staging
+    reports this state with its own exception.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    _, directory = importer._paths(target)
+    injecting = [True]
+    fsync_directory, read_back = importer._fsync_directory, importer.pending_import_info
+
+    def failing_sync(path):
+        if injecting[0] and Path(path) == (
+            directory if failure == "staging_directory" else target.parent
+        ):
+            raise OSError(f"injected {failure} sync failure")
+        return fsync_directory(path)
+
+    published = []
+
+    def failing_read_back(path):
+        # The guard read at the start of staging must still work: only the
+        # read-back of what this call published is broken.
+        if injecting[0] and failure == "read_back" and published:
+            raise OSError("injected read-back failure")
+        published.append(path)
+        return read_back(path)
+
+    monkeypatch.setattr(importer, "_fsync_directory", failing_sync)
+    monkeypatch.setattr(importer, "pending_import_info", failing_read_back)
+
+    with pytest.raises(importer.ImportStagedError):
+        importer.stage_import(source, target)
+
+    injecting[0] = False
+    staged = importer.pending_import_info(target)
+    assert staged is not None and staged["pending_path"].is_file()
+    # Nothing was replaced yet, and the next full start still installs it.
+    assert names(target) == ["local"]
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is True
+    assert names(target) == ["incoming"]
+
+
+def test_publication_failure_can_still_be_cancelled(tmp_path, monkeypatch):
+    """The reported remedy has to work: cancelling stops the pending install."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    fsync_directory = importer._fsync_directory
+    injecting = [True]
+
+    def failing_sync(path):
+        if injecting[0] and Path(path) == target.parent:
+            raise OSError("injected sync failure")
+        return fsync_directory(path)
+
+    monkeypatch.setattr(importer, "_fsync_directory", failing_sync)
+    with pytest.raises(importer.ImportStagedError):
+        importer.stage_import(source, target)
+
+    injecting[0] = False
+    assert importer.cancel_pending_import(target) is True
+    assert importer.pending_import_info(target) is None
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is False
+    assert names(target) == ["local"]
+
+
+def test_a_manifest_that_vanishes_before_read_back_leaves_nothing_staged(tmp_path, monkeypatch):
+    """Nothing will install, so this really is an abort — and must not litter."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    _, directory = importer._paths(target)
+    read_back = importer.pending_import_info
+    published = []
+
+    def vanishing(path):
+        if published:
+            (directory / "pending.json").unlink(missing_ok=True)
+        published.append(path)
+        return read_back(path)
+
+    monkeypatch.setattr(importer, "pending_import_info", vanishing)
+    with pytest.raises(OSError) as raised:
+        importer.stage_import(source, target)
+    assert not isinstance(raised.value, importer.ImportStagedError)
+
+    monkeypatch.undo()
+    assert importer.pending_import_info(target) is None
+    assert list(directory.glob("*.db")) == []
+    assert names(target) == ["local"]

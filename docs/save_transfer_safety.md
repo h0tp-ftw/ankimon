@@ -18,6 +18,12 @@ retry through an add-on reload in that process. A token in the installed save
 prevents a crash immediately after replacement from repeating the import over
 later progress.
 
+Publishing `pending.json` is staging's commit point. Anything that fails after
+it — the directory syncs, the read-back — leaves an import that WILL install at
+the next full start, so it is reported as pending with the cancel instruction
+rather than as an abort. Only failures before publication say the current save
+is unchanged, and they leave nothing staged.
+
 Recovery copies live in `ankimon_recovery/pre-import-<token>/` beside the active
 database. The preparation message displays the reserved location, and
 **Browse Pre-import Recovery Saves…** opens the folder. Routine backup retention

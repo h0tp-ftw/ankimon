@@ -485,7 +485,7 @@ class BackupManager:
                 )
                 return
 
-            from ..save_import import stage_import
+            from ..save_import import ImportStagedError, stage_import
 
             pending = stage_import(
                 backup_file, target, sanitize_credentials=False
@@ -507,6 +507,16 @@ class BackupManager:
                     "active and the prepared restore remains pending."
                 )
 
+        except ImportStagedError as e:
+            # The restore is published and will install; calling it a failure
+            # to prepare would hide an armed replacement from the user.
+            self.logger.log("error", f"Backup restore staged but unfinished: {e}")
+            showWarning(
+                f"The backup restore could not be finished cleanly: {e}.\n\n"
+                "Your current save is still active, but the restore is now "
+                "PENDING and will install at the next full Anki restart. Use "
+                "Ankimon → Cancel Pending Save Import if you do not want it."
+            )
         except Exception as e:
             self.logger.log("error", f"Failed to prepare backup restore: {e}")
             showWarning(f"Failed to prepare backup restore: {e}")

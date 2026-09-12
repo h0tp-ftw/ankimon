@@ -564,8 +564,12 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
     Cancellation of Anki's asynchronous shutdown leaves the original runtime
     and database together. Installation and the final recovery snapshot happen
     before any database manager or game objects exist on the next full start.
+
+    True means an import is pending — including the case where staging
+    published one but could not finish cleanly, which is reported as pending
+    rather than aborted and must not lead a caller to offer another save.
     """
-    from ..save_import import stage_import
+    from ..save_import import ImportStagedError, stage_import
     from .ankimon_sync import get_ankimon_sync
 
     try:
@@ -581,6 +585,18 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
                 pending = stage_import(source, target)
         else:
             pending = stage_import(source, target)
+    except ImportStagedError as error:
+        # Publication already happened, so this is not an abort: the save will
+        # install at the next full start. Saying otherwise would leave the user
+        # playing on towards a replacement they were told could not happen.
+        showWarning(
+            f"{what} could not be finished cleanly: {error}.\n\n"
+            "Your current save is still active, but this import is now PENDING "
+            "and will install at the next full Anki restart. Its final progress "
+            "will still be retained in a recovery copy first. Use Ankimon → "
+            "Cancel Pending Save Import if you do not want it."
+        )
+        return True
     except Exception as error:
         showWarning(f"{what} aborted: {error}. Your current save is unchanged.")
         return False

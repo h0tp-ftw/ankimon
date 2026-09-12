@@ -608,3 +608,69 @@ def test_busy_snapshot_obeys_migration_budget_and_cleans_up(transfer):
         writer.rollback()
         writer.close()
     assert list(transfer.snapshots.iterdir()) == []
+
+
+def test_import_published_but_unfinished_is_reported_as_pending(transfer, monkeypatch):
+    """A staged import that will install must never be announced as aborted."""
+    from Ankimon import save_import
+
+    fsync_directory = save_import._fsync_directory
+    injecting = [True]
+
+    def failing_sync(path):
+        if injecting[0] and Path(path) == transfer.active.parent:
+            raise OSError("injected directory sync failure")
+        return fsync_directory(path)
+
+    monkeypatch.setattr(save_import, "_fsync_directory", failing_sync)
+    closed = []
+    monkeypatch.setattr(st, "close_anki", lambda **kwargs: closed.append(kwargs))
+
+    assert st.import_save() is True
+    injecting[0] = False
+    message = st.showWarning.call_args.args[0]
+    assert "PENDING" in message
+    assert "Cancel Pending Save Import" in message
+    assert "aborted" not in message.lower()
+    assert "unchanged" not in message.lower()
+    # Anki is not closed on our own initiative after an I/O failure, but the
+    # warning's claim is real: the save is armed for the next full start.
+    assert closed == []
+    assert st.get_db_stats(transfer.active)["pokemon"] == 3
+    commit_in_new_process(transfer.active)
+    assert st.get_db_stats(transfer.active)["pokemon"] == 42
+
+
+def test_backup_restore_published_but_unfinished_is_reported_as_pending(transfer, monkeypatch, tmp_path):
+    """Backup Restore shares the staging path and must share its honesty."""
+    from Ankimon import save_import
+
+    backup_dir = tmp_path / "backup_2026-01-01_00-00-00"
+    backup_dir.mkdir()
+    _make_save(backup_dir / transfer.active.name, pokemon=11, name="Restored")
+    manager = backup_manager.BackupManager(_Logger(), SimpleNamespace(get=lambda *a, **k: None))
+    monkeypatch.setattr(services, "db", SimpleNamespace(db_path=transfer.active))
+    warn = MagicMock()
+    monkeypatch.setattr(backup_manager, "showWarning", warn)
+    monkeypatch.setattr(backup_manager, "showInfo", MagicMock())
+    monkeypatch.setattr(backup_manager, "askUser", lambda *a, **k: True)
+    monkeypatch.setattr(backup_manager, "close_anki", MagicMock())
+
+    fsync_directory = save_import._fsync_directory
+    injecting = [True]
+
+    def failing_sync(path):
+        if injecting[0] and Path(path) == transfer.active.parent:
+            raise OSError("injected directory sync failure")
+        return fsync_directory(path)
+
+    monkeypatch.setattr(save_import, "_fsync_directory", failing_sync)
+    manager.restore_backup(str(backup_dir))
+    injecting[0] = False
+
+    message = warn.call_args.args[0]
+    assert "PENDING" in message
+    assert "Cancel Pending Save Import" in message
+    assert "Failed to prepare" not in message
+    commit_in_new_process(transfer.active)
+    assert st.get_db_stats(transfer.active)["pokemon"] == 11
