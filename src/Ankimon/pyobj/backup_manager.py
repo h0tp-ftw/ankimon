@@ -31,6 +31,8 @@ class BackupManager:
     # profile_will_close runs the automatic backup synchronously, so the whole
     # shutdown gets this budget once -- not one full SQLite timeout per file.
     SHUTDOWN_BACKUP_BUDGET = 30.0
+    # How old an abandoned staging directory must be before retention sweeps it.
+    STALE_STAGING_AGE = 3600.0
 
     def __init__(self, logger, settings_obj):
         self.logger = logger
@@ -213,7 +215,17 @@ class BackupManager:
                 showWarning(f"Failed to create backup: {e}")
 
         if success:
-            self.cleanup_backups()
+            # Retention is housekeeping, and this runs on Anki's synchronous
+            # profile_will_close hook, which does not catch what its handlers
+            # raise. An unremovable old backup -- a Windows lock, an antivirus
+            # scan, a permission change -- must not abort the close, and must
+            # not throw away the backup that was just published either. It also
+            # gets what is left of the shutdown budget: deleting directories is
+            # not work to do while the user waits for Anki to exit.
+            try:
+                self.cleanup_backups(deadline=deadline)
+            except Exception as error:
+                self.logger.log("error", f"Backup retention did not finish: {error}")
         elif created_directory:
             # Failed attempts stay outside listings and retention even if a
             # locked file prevents deletion. Remove only staging directories
@@ -230,7 +242,14 @@ class BackupManager:
 
         A checkpoint can return busy while leaving committed pages in WAL, so
         copying the main file is never sufficient. Read-only online backup also
-        works for an inactive database without mutating or creating its source.
+        works for an inactive database, and never writes to the save itself.
+
+        It is not, however, inert: reading a WAL-mode source through SQLite
+        materialises that source's ``-shm`` (and an empty ``-wal`` when none is
+        there) beside it, because a WAL reader needs the shared index. Nothing
+        in the save changes, but anything comparing stat signatures across such
+        a read has to expect it -- ``_pending_media_protection`` in
+        ``save_transfer`` leaves ``-shm`` out for exactly this reason.
         """
         deadline = time.monotonic() + timeout
         fd, name = tempfile.mkstemp(prefix=".snapshot-", suffix=".db", dir=destination_path.parent)
@@ -580,7 +599,24 @@ class BackupManager:
             self.logger.log("error", f"Failed to delete backup: {e}")
             showWarning(f"Failed to delete backup: {e}")
 
-    def cleanup_backups(self):
+    def _discard(self, directory: Path, what: str, deadline) -> bool:
+        """Remove one directory. Never raise, and never overrun the deadline.
+
+        Retention has no deadline of its own to defend: every removal it skips
+        is simply retried by the next backup. What it must not do is fail the
+        call that published a good backup, or keep Anki's close waiting.
+        """
+        if deadline is not None and time.monotonic() >= deadline:
+            return False
+        try:
+            shutil.rmtree(directory)
+        except Exception as error:
+            self.logger.log("error", f"Failed to delete {what} {directory.name}: {error}")
+            return True
+        self.logger.log("info", f"Deleted {what}: {directory.name}")
+        return True
+
+    def cleanup_backups(self, deadline: float = None):
         """Deletes old backups based on retention policy."""
         # Only published backups enter retention. Failed or interrupted staging
         # directories must not displace recoverable saves even if they remain.
@@ -594,8 +630,8 @@ class BackupManager:
         for backup_dir in backups:
             backup_time = datetime.datetime.fromtimestamp(os.path.getmtime(backup_dir))
             if (datetime.datetime.now() - backup_time).days > self.MAX_BACKUP_AGE_DAYS:
-                shutil.rmtree(backup_dir)
-                self.logger.log("info", f"Deleted old backup: {backup_dir.name}")
+                if not self._discard(backup_dir, "old backup", deadline):
+                    return
             else:
                 backups_to_keep.append(backup_dir)
 
@@ -603,8 +639,25 @@ class BackupManager:
         if not self.settings_obj.get("misc.developer_mode"):
             while len(backups_to_keep) > self.MAX_BACKUPS:
                 oldest_backup = backups_to_keep.pop(0)
-                shutil.rmtree(oldest_backup)
-                self.logger.log("info", f"Deleted oldest backup to maintain max count: {oldest_backup.name}")
+                if not self._discard(oldest_backup, "oldest backup", deadline):
+                    return
+
+        # An attempt whose own rmtree failed leaves a dot-prefixed staging
+        # directory holding a full copy of the save. Listing and retention both
+        # filter on "backup_", by design -- an incomplete attempt must never
+        # displace a recoverable one -- so nothing else would ever remove it.
+        # Age-gated because the name is only reserved while an attempt is live,
+        # and a snapshot takes seconds, never an hour.
+        for staging in self.backups_path.glob(".backup_*"):
+            try:
+                if not staging.is_dir():
+                    continue
+                if time.time() - os.path.getmtime(staging) < self.STALE_STAGING_AGE:
+                    continue
+            except OSError:
+                continue
+            if not self._discard(staging, "incomplete backup", deadline):
+                return
 
     def on_anki_close(self):
         """Creates a backup when Anki is about to close.

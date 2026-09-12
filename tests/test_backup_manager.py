@@ -707,3 +707,75 @@ def test_failed_shutdown_backup_does_not_read_the_locked_live_database(mock_env,
     assert elapsed < 1.0
     assert not list(bm.backups_path.glob("backup_*"))
     assert not list(bm.backups_path.glob(".backup_*"))
+
+
+def _fake_backups(bm, count):
+    """Published-looking backup directories, oldest first and all within the
+    age limit, so only the MAX_BACKUPS count rule decides what goes."""
+    made = []
+    now = time.time()
+    for index in range(count):
+        directory = bm.backups_path / f"backup_2020-01-01_00-00-{index:02d}"
+        directory.mkdir()
+        stamp = now - (count - index)
+        os.utime(directory, (stamp, stamp))
+        made.append(directory)
+    return made
+
+
+def test_retention_failure_cannot_abort_anki_closing(mock_env, monkeypatch):
+    """profile_will_close does not catch what its handlers raise.
+
+    Retention runs after a backup has already been published, and deleting an
+    old directory can fail for reasons that have nothing to do with it -- a
+    Windows lock, an antivirus scan, a permission change. Letting that escape
+    would take Anki's close down over housekeeping, and throw away the backup
+    the call had just made.
+    """
+    bm, _, _, _ = mock_env
+    _fake_backups(bm, bm.MAX_BACKUPS + 3)
+
+    def refuse(path, *args, **kwargs):
+        raise OSError("simulated lock on an old backup")
+
+    monkeypatch.setattr(_bm_mod.shutil, "rmtree", refuse)
+
+    bm.on_anki_close()
+
+    published = [p for p in bm.backups_path.iterdir()
+                 if p.name.startswith("backup_") and (p / "ankimon.db").is_file()]
+    assert len(published) == 1, "the shutdown backup was lost to a retention failure"
+    assert len(list(bm.backups_path.glob("backup_*"))) == bm.MAX_BACKUPS + 4
+
+
+def test_retention_does_not_spend_a_shutdown_budget_it_no_longer_has(mock_env, monkeypatch):
+    """Deleting directories is not work to do while the user waits to exit."""
+    bm, _, _, _ = mock_env
+    _fake_backups(bm, bm.MAX_BACKUPS + 3)
+    removed = []
+    monkeypatch.setattr(_bm_mod.shutil, "rmtree", lambda path, *a, **k: removed.append(Path(path)))
+
+    clock = [500.0]
+    monkeypatch.setattr(_bm_mod.time, "monotonic", lambda: clock[0])
+    bm.cleanup_backups(deadline=clock[0] - 1)
+    assert removed == []
+
+    # With budget left it does the same work as before.
+    bm.cleanup_backups(deadline=clock[0] + 60)
+    assert len(removed) == 3
+
+
+def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(mock_env, monkeypatch):
+    """Nothing else can remove it: listing and retention both filter on backup_."""
+    bm, _, _, _ = mock_env
+    stale = bm.backups_path / ".backup_2020-01-01_00-00-00"
+    stale.mkdir()
+    (stale / "ankimon.db").write_bytes(b"a whole save copy")
+    os.utime(stale, (1_600_000_000, 1_600_000_000))
+    live = bm.backups_path / ".backup_2020-01-01_00-00-01"
+    live.mkdir()
+
+    bm.cleanup_backups()
+
+    assert not stale.exists()
+    assert live.is_dir(), "a staging directory an attempt may still be using was removed"
