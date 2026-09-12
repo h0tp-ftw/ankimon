@@ -1692,13 +1692,24 @@ _MIGRATION_RETRY_DELAY = 30.0
 
 
 def _pending_media_protection(media_dir: Path, target: Optional[Path]):
-    """Stat both bare saves and sidecars without opening or copying their bytes."""
+    """Stat both bare saves and sidecars without opening or copying their bytes.
+
+    SHM is left out for the reason ``_local_save_revision`` leaves it out: it is
+    a rebuildable index rather than save content, and merely reading updates it.
+    This scan is one of those readers. Every read-only open it performs on a
+    WAL-mode media save -- ``get_db_stats``, ``_sqlite_backup`` under
+    ``_protect_bare_saves``, ``_snapshot_save`` -- creates that save's ``-shm``
+    or restamps the existing one. Counting that as a source change would make
+    the before/after pair in ``_migration_scan`` disagree on every single pass:
+    ``stable`` would never be true, so the media-sync guard would never release
+    and ``_done`` would re-dispatch the scan forever.
+    """
     protection = {"protected": {}, "unprotected": [], "archives": [],
                   "archived_sources": [], "log": []}
     signature = []
     for name in _SAVE_PREFIX:
         source = media_dir / name
-        for suffix in ("", "-wal", "-shm", "-journal"):
+        for suffix in ("", "-wal", "-journal"):
             path = Path(str(source) + suffix)
             try:
                 stat = path.stat()

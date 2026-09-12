@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
+import sqlite3
 import threading
 import sys
 from types import SimpleNamespace
@@ -416,3 +417,66 @@ def test_the_gate_and_the_release_cannot_interleave(
     # And the request that was recorded under that lock is the one replayed.
     media_host.finish()
     assert media_syncer == [(True,)]
+
+
+def _make_wal_save(path: Path, **kwargs) -> None:
+    """A save in WAL journal mode, as a peer's synced copy can easily be.
+
+    Closed cleanly, so no sidecar is on disk: the next reader materialises them.
+    """
+    _make_save(path, **kwargs)
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("INSERT INTO items VALUES ('elixir', 1)")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_capture_signature_ignores_reader_created_shm(transfer, media_host):
+    """Reading a WAL save restamps its -shm; that is not somebody else writing.
+
+    The capture signature is compared before and after preservation to decide
+    whether a writer landed mid-copy. Counting the scan's own -shm churn as a
+    change would make every pass over a WAL-mode media save look unstable.
+    """
+    source = media_host.media / "ankimon.db"
+    _make_wal_save(source, pokemon=2)
+    # The first reader materialises -wal and -shm; both are absent after a
+    # clean close. Settle that before measuring a reader's ongoing effect.
+    assert st.get_db_stats(source, timeout=5) is not None
+    shm = Path(str(source) + "-shm")
+    assert shm.is_file()
+    before_shm = shm.stat()
+    _, before = st._pending_media_protection(media_host.media, source)
+
+    assert st.get_db_stats(source, timeout=5) is not None
+    # A read's own restamp is not reliably observable inside one test run, so
+    # apply the change a reader makes explicitly as well.
+    stamp = before_shm.st_mtime_ns + 5_000_000_000
+    os.utime(shm, ns=(stamp, stamp))
+    assert shm.stat().st_mtime_ns != before_shm.st_mtime_ns
+
+    _, after = st._pending_media_protection(media_host.media, source)
+    assert after == before
+
+
+def test_wal_media_save_settles_instead_of_rescanning_forever(transfer, media_host):
+    """A WAL save must not re-arm the scan on its own sidecars, pass after pass.
+
+    ``stable`` gates the guard release, so a signature the scan perturbs itself
+    would keep dispatching workers and keep media sync paused indefinitely.
+    """
+    source = media_host.media / "ankimon.db"
+    _make_wal_save(source, pokemon=2)
+    st.start_media_migration(None, _Logger())
+    passes = 0
+    while media_host.queued and passes < 8:
+        media_host.finish()
+        passes += 1
+    assert not media_host.queued, "the scan never stopped re-dispatching itself"
+    # One extra pass is expected and bounded: the first reader creates -wal,
+    # which is a real content sidecar and stays in the signature.
+    assert passes <= 2
+    assert media_host.pm.media_syncing_enabled() is True
