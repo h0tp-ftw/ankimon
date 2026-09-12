@@ -633,3 +633,77 @@ def test_shutdown_backup_spends_one_budget_across_both_databases(mock_env, monke
     assert bm.create_backup(required_file="ankimon.db") is False
     assert [name for name, _ in attempts] == ["ankimon.db", "ankimonDEV.db"]
     assert {timeout for _, timeout in attempts} == {30.0}
+
+
+class _LockedLiveDatabase:
+    """A live handle with the accessors the backup summary reads.
+
+    Behaves like ``AnkimonDB`` towards ``backup_manager``, but every read opens
+    a real connection to a genuinely locked file, so its own busy timeout —
+    not a mocked clock — is what the shutdown budget has to keep out.
+    """
+
+    def __init__(self, path: Path, timeout: float):
+        self.db_path = path
+        self._timeout = timeout
+        self.live_reads = 0
+
+    def _read(self, statement, *parameters):
+        self.live_reads += 1
+        with closing(sqlite3.connect(self.db_path, timeout=self._timeout)) as conn:
+            return conn.execute(statement, parameters).fetchone()
+
+    def get_stats(self):
+        return {"pokemon": self._read("SELECT COUNT(*) FROM captured_pokemon")[0], "items": 0}
+
+    def get_config_value(self, key, default=None):
+        row = self._read("SELECT value FROM config WHERE key=?", key)
+        return row[0] if row else default
+
+    def get_main_pokemon(self):
+        return None
+
+    def close(self):
+        pass
+
+
+def test_failed_shutdown_backup_does_not_read_the_locked_live_database(mock_env, monkeypatch, tmp_path):
+    """The shutdown budget bounds the WHOLE call, summary generation included.
+
+    A summary is only ever published alongside a verified snapshot, so when the
+    required snapshot times out there is nothing to describe. Generating one
+    anyway sends ``_generate_summary`` down its live-database fallback and into
+    the same lock the deadline just gave up on, for a second full timeout.
+    """
+    bm, _, _, _ = mock_env
+    source = tmp_path / "profile" / "ankimon.db"
+    source.parent.mkdir()
+    _seed_db(source, "Locked", 7)
+    with closing(sqlite3.connect(source)) as setup:
+        # A rollback journal is what makes one writer exclude every reader,
+        # including the read-only connection the snapshot opens.
+        setup.execute("PRAGMA journal_mode=DELETE")
+
+    live = _LockedLiveDatabase(source, timeout=2.0)
+    monkeypatch.setattr(services, "db", live)
+    monkeypatch.setattr(bm, "SHUTDOWN_BACKUP_BUDGET", 0.1)
+
+    with closing(sqlite3.connect(source, check_same_thread=False)) as locker:
+        locker.execute("BEGIN EXCLUSIVE")
+        # Release even if a regression removes the bound, so a failing test
+        # cannot wedge the runner inside a multi-second busy wait.
+        release = threading.Timer(10.0, locker.rollback)
+        release.start()
+        started = time.monotonic()
+        try:
+            bm.on_anki_close()
+            elapsed = time.monotonic() - started
+        finally:
+            release.cancel()
+            release.join()
+            locker.rollback()
+
+    assert live.live_reads == 0
+    assert elapsed < 1.0
+    assert not list(bm.backups_path.glob("backup_*"))
+    assert not list(bm.backups_path.glob(".backup_*"))

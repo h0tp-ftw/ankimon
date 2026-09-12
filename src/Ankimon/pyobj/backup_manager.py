@@ -176,15 +176,19 @@ class BackupManager:
                     except Exception as e:
                         self.logger.log("error", f"Failed to back up {filename}: {e}")
 
-            summary = self._generate_summary(staging_dir)
-            summary['date'] = timestamp.replace("_", " ")
-            summary['manual'] = manual
-            with open(staging_dir / "summary.json", 'w', encoding='utf-8') as f:
-                json.dump(summary, f, indent=4)
-
             # A failed snapshot can leave a partial temporary file; only a
             # completed, verified snapshot authorizes a destructive overwrite.
+            # Summarise INSIDE that check: with no snapshot in staging,
+            # _generate_summary falls back to the live database, and its own
+            # busy timeout would re-enter the very lock wait `deadline` exists
+            # to bound — describing a backup that is about to be discarded.
             if needed in completed and (staging_dir / needed).is_file():
+                summary = self._generate_summary(staging_dir)
+                summary['date'] = timestamp.replace("_", " ")
+                summary['manual'] = manual
+                with open(staging_dir / "summary.json", 'w', encoding='utf-8') as f:
+                    json.dump(summary, f, indent=4)
+
                 if backup_dir.exists():
                     raise FileExistsError(f"Backup already exists: {backup_dir.name}")
                 staging_dir.rename(backup_dir)
