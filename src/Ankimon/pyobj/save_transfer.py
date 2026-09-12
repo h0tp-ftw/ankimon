@@ -569,6 +569,20 @@ def _log_transfer_failure(context: str, error: Exception) -> None:
         pass
 
 
+def _warn_about_pending_import(message: str, context: str) -> None:
+    """Show a staged-import warning that cannot unwind into an abort handler.
+
+    Every caller of this is reporting an import that IS armed. Letting Qt's
+    failure travel up would hand that report to a generic ``except Exception``
+    which says nothing was replaced -- the one thing that must never be said
+    about a published import.
+    """
+    try:
+        showWarning(message)
+    except Exception as error:
+        _log_transfer_failure(context, error)
+
+
 def _replace_active_save(source: Path, target: Path, what: str, *, collection,
                          local_revision=None, local_digest=None) -> bool:
     """Prepare the approved save for a fresh process; never replace live state.
@@ -582,7 +596,8 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
     rather than aborted and must not lead a caller to offer another save.
     """
     from ..save_import import (
-        ImportAlreadyPendingError, ImportStagedError, stage_import,
+        ImportAlreadyPendingError, ImportStagedError,
+        pending_import_is_installed, stage_import,
     )
     from .ankimon_sync import get_ankimon_sync
 
@@ -604,23 +619,49 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
         # this attempt and false of the session, which is the confusing half:
         # the rescue offer can return after a staging failure, and answering it
         # again must not read as though no import were coming.
-        showWarning(
+        #
+        # Both notices below are guarded for the reason the success notice is,
+        # and more sharply: showWarning reaches into Qt through
+        # mw.app.activeWindow(), this runs in a shutdown-adjacent state, and an
+        # exception escaping here does not merely lose a message -- it unwinds
+        # into import_save's "Import aborted: ... Nothing was replaced" handler
+        # over a published, armed import. That is the mis-report this branch
+        # exists to prevent.
+        if pending_import_is_installed(Path(target)):
+            # The record outlived the import it describes. Telling the user it
+            # "will install at the next restart" describes a replacement that
+            # has already happened, to somebody deciding what to do about the
+            # save they are looking at.
+            _warn_about_pending_import(
+                f"{what} not started: the previous import has ALREADY installed "
+                "and is the save you are playing now. Only its leftover record "
+                "could not be cleared.\n\n"
+                "Use Ankimon → Cancel Pending Save Import to clear that record, "
+                "then try again. Nothing will be installed a second time.",
+                f"{what} was refused over an already-installed import, "
+                "but the notice could not be shown",
+            )
+            return True
+        _warn_about_pending_import(
             f"{what} not started: a save import is already pending and will "
             "install at the next full Anki restart.\n\n"
             "Use Ankimon → Cancel Pending Save Import first if you want to "
-            "choose a different save instead."
+            "choose a different save instead.",
+            f"{what} was refused because an import is already pending, "
+            "but the notice could not be shown",
         )
         return True
     except ImportStagedError as error:
         # Publication already happened, so this is not an abort: the save will
         # install at the next full start. Saying otherwise would leave the user
         # playing on towards a replacement they were told could not happen.
-        showWarning(
+        _warn_about_pending_import(
             f"{what} could not be finished cleanly: {error}.\n\n"
             "Your current save is still active, but this import is now PENDING "
             "and will install at the next full Anki restart. Its final progress "
             "will still be retained in a recovery copy first. Use Ankimon → "
-            "Cancel Pending Save Import if you do not want it."
+            "Cancel Pending Save Import if you do not want it.",
+            f"{what} is staged but unfinished, and the notice could not be shown",
         )
         return True
     except Exception as error:
@@ -657,16 +698,27 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
 
 def cancel_pending_save_import() -> None:
     """Cancel a staged import and report filesystem failures through the menu."""
-    from ..save_import import cancel_pending_import
+    from ..save_import import cancel_pending_import, pending_import_is_installed
 
     target = _active_db_path()
     try:
+        # Asked BEFORE cancelling: removing the manifest is what makes the two
+        # states indistinguishable afterwards.
+        installed = target is not None and pending_import_is_installed(target)
         cancelled = target is not None and cancel_pending_import(target)
     except OSError as error:
         showWarning(f"The pending save import could not be cancelled: {error}. "
                     "Close anything using the Ankimon folder and try again.")
         return
-    if cancelled:
+    if cancelled and installed:
+        from ..events import events
+
+        events.emit("save_import_cancelled", target=str(target), installed=True)
+        showInfo("That import had already installed: the save you are playing IS the "
+                 "imported one. Only its leftover record was cleared, so nothing will "
+                 "be installed again.\n\nYour previous save was retained before the "
+                 "replacement — see Ankimon → Browse Recovered Saves.")
+    elif cancelled:
         from ..events import events
 
         events.emit("save_import_cancelled", target=str(target))

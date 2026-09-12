@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import stat
 import subprocess
@@ -280,6 +281,11 @@ def test_failed_replace_keeps_backup_and_retry_backs_up_latest_progress(tmp_path
     assert names(target) == ["incoming"]
     backups = list(staged["recovery_path"].parent.glob("*.db"))
     assert sorted(names(path) for path in backups) == [["after-failure", "local"], ["local"]]
+    # The advertised path is the only recovery filename the user is ever shown,
+    # so it must hold the LATEST pre-install save, not the first attempt's.
+    assert names(staged["recovery_path"]) == ["after-failure", "local"]
+    superseded = [path for path in backups if path != staged["recovery_path"]]
+    assert [names(path) for path in superseded] == [["local"]]
 
 
 def test_failed_startup_install_cannot_retry_after_runtime_and_module_reload(tmp_path):
@@ -675,3 +681,28 @@ def test_a_second_import_names_the_pending_one_it_is_refusing_for(tmp_path):
     assert json.loads(commit_in_new_process(target).stdout)["installed"] is True
     assert names(target) == ["incoming"]
 
+
+
+def test_a_record_left_over_from_an_installed_import_is_recognised(tmp_path):
+    """The manifest outlives the import when the final cleanup fails.
+
+    ``_finish_installed_import`` retires it after replacement, so what survives
+    that failure describes a save that has ALREADY been replaced. Nothing in the
+    menu could tell the two apart, and both its answers were the wrong way round.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    assert importer.pending_import_is_installed(target) is False
+
+    # Exactly what installation does, without the cleanup that follows it.
+    shutil.copyfile(staged["pending_path"], target)
+    assert names(target) == ["incoming"]
+    assert importer.pending_import_info(target)["token"] == staged["token"]
+    assert importer.pending_import_is_installed(target) is True
+
+    # A record for a DIFFERENT import is still ordinary pending work.
+    with sqlite3.connect(target) as conn:
+        conn.execute("UPDATE metadata SET value = 'another-token' WHERE key = 'import_token'")
+    assert importer.pending_import_is_installed(target) is False

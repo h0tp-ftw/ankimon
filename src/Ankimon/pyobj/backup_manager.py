@@ -451,6 +451,16 @@ class BackupManager:
 
         return summary
 
+    def _warn_about_pending_import(self, message: str) -> None:
+        """Report an armed import without letting Qt's failure escape."""
+        try:
+            showWarning(message)
+        except Exception as error:
+            self.logger.log(
+                "error",
+                f"A pending save import could not be reported to the user: {error}",
+            )
+
     def restore_backup(self, backup_path_str: str):
         """Stage the selected backup for the next full process start.
 
@@ -486,14 +496,29 @@ class BackupManager:
                 return
 
             from ..save_import import (
-                ImportAlreadyPendingError, ImportStagedError, stage_import,
+                ImportAlreadyPendingError, ImportStagedError,
+                pending_import_is_installed, stage_import,
             )
 
             pending = stage_import(
                 backup_file, target, sanitize_credentials=False
             )
         except ImportAlreadyPendingError:
-            showWarning(
+            # Guarded like the success notice below: showWarning reaches into
+            # Qt, and an exception raised inside an except clause is not caught
+            # by its siblings -- it would leave restore_backup entirely, with
+            # an import armed and nothing said about it.
+            if pending_import_is_installed(target):
+                # The record outlived the import; that replacement has already
+                # happened and no restart will repeat it.
+                self._warn_about_pending_import(
+                    "The previous save import has ALREADY installed and is the "
+                    "save you are playing now. Only its leftover record could "
+                    "not be cleared.\n\nUse Ankimon → Cancel Pending Save Import "
+                    "to clear that record, then restore this backup again."
+                )
+                return
+            self._warn_about_pending_import(
                 "A save import is already pending and will install at the next "
                 "full Anki restart.\n\nUse Ankimon → Cancel Pending Save Import "
                 "first if you want to restore this backup instead."
@@ -503,7 +528,7 @@ class BackupManager:
             # The restore is published and will install; calling it a failure
             # to prepare would hide an armed replacement from the user.
             self.logger.log("error", f"Backup restore staged but unfinished: {e}")
-            showWarning(
+            self._warn_about_pending_import(
                 f"The backup restore could not be finished cleanly: {e}.\n\n"
                 "Your current save is still active, but the restore is now "
                 "PENDING and will install at the next full Anki restart. Use "

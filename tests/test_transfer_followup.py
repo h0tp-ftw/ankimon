@@ -343,3 +343,86 @@ def test_import_without_config_cannot_resurrect_legacy_local_credentials(transfe
         assert loaded.get("leaderboard.api_key") == ""
     finally:
         imported_db.close()
+
+
+@pytest.mark.parametrize("outcome", ["staged", "already_pending"])
+def test_an_armed_import_is_never_reported_as_aborted_when_qt_fails(
+    transfer, monkeypatch, outcome
+):
+    """Losing the notice must not turn a published import into "nothing changed".
+
+    Both of these branches exist to say an import IS coming. They reach Qt
+    through mw.app.activeWindow() from a shutdown-adjacent stack, so the call
+    can raise -- and unguarded it lands in import_save's generic handler, which
+    tells the user nothing was replaced while the save is armed to install.
+    """
+    from Ankimon import save_import as importer
+
+    error = (
+        importer.ImportStagedError("injected durability failure")
+        if outcome == "staged"
+        else importer.ImportAlreadyPendingError("an import is already staged")
+    )
+
+    def refuse(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(importer, "stage_import", refuse)
+
+    shown = []
+
+    def torn_down_qt(message):
+        shown.append(message)
+        if len(shown) == 1:
+            raise RuntimeError("wrapped C/C++ object of type AnkiQt has been deleted")
+
+    monkeypatch.setattr(st, "showWarning", torn_down_qt)
+
+    assert st.import_save() is True
+    assert len(shown) == 1, f"a second message followed the lost notice: {shown[1:]}"
+    assert "pending" in shown[0].lower()
+    assert "aborted" not in shown[0].lower()
+
+
+def _install_without_cleanup(transfer):
+    """The state a failed post-install cleanup leaves: installed, record kept."""
+    import shutil
+
+    from Ankimon.save_import import stage_import
+
+    staged = stage_import(transfer.incoming, transfer.active)
+    shutil.copyfile(staged["pending_path"], transfer.active)
+    return staged
+
+
+def test_cancelling_a_record_for_an_installed_import_does_not_claim_nothing_changed(
+    transfer, monkeypatch
+):
+    """The save IS the imported one here, so "unchanged" is the opposite of true."""
+    from Ankimon.save_import import pending_import_info
+
+    _install_without_cleanup(transfer)
+    shown = []
+    monkeypatch.setattr(st, "showInfo", lambda message: shown.append(message))
+
+    st.cancel_pending_save_import()
+
+    assert pending_import_info(transfer.active) is None
+    assert len(shown) == 1
+    assert "already installed" in shown[0].lower()
+    assert "unchanged" not in shown[0].lower()
+
+
+def test_a_second_import_is_not_told_the_installed_one_is_still_coming(
+    transfer, monkeypatch
+):
+    """"Will install at the next restart" describes a replacement already made."""
+    _install_without_cleanup(transfer)
+    shown = []
+    monkeypatch.setattr(st, "showWarning", lambda message: shown.append(message))
+
+    assert st.import_save() is True
+
+    assert len(shown) == 1
+    assert "already installed" in shown[0].lower()
+    assert "will install at the next" not in shown[0].lower()

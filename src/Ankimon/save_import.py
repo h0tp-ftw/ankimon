@@ -339,6 +339,32 @@ def _installed_token(target: Path) -> str | None:
         conn.close()
 
 
+def pending_import_is_installed(target: Path) -> bool:
+    """True when the pending record describes an import that ALREADY installed.
+
+    ``_finish_installed_import`` retires the manifest after replacement, so this
+    is only reachable when that last step failed: the save on disk IS the
+    imported one and a stale ``pending.json`` is still sitting beside it, which
+    the next full start clears by itself.
+
+    ``commit_pending_import`` discriminates this state (it checks the installed
+    token before doing anything), but the menu did not, and answered for the
+    ordinary pending case: Cancel said the current save was unchanged when the
+    import had already replaced it, and a second import attempt was told the
+    first one "will install at the next full Anki restart". Both are the wrong
+    way round for a user deciding what to do about their save.
+    """
+    try:
+        info = pending_import_info(target)
+        if info is None:
+            return False
+        return _installed_token(target) == info["token"]
+    except Exception:
+        # An unreadable manifest or save is not evidence of an install, and this
+        # only ever chooses wording. Fall back to the ordinary pending case.
+        return False
+
+
 def _log(logger, level: str, message: str) -> None:
     if logger is not None:
         try:
@@ -403,9 +429,20 @@ def commit_pending_import(target: Path, logger=None) -> bool:
     recovery.parent.parent.chmod(0o700)
     recovery.parent.mkdir(mode=0o700, exist_ok=True)
     recovery.parent.chmod(0o700)
-    if recovery.exists():
-        # A failed previous replacement may be followed by more local play.
-        # Retain that attempt's backup and capture the current save again.
+    if recovery.is_file():
+        # A failed previous replacement may be followed by more local play, so
+        # the snapshot taken now is the one holding everything. Move the older
+        # attempt aside rather than redirecting this one: the canonical name is
+        # the only recovery filename the user is ever shown -- the staging
+        # notice quotes it once, before Anki closes, and nothing names the file
+        # again afterwards. Redirecting left that advertised path holding the
+        # stale first attempt while the genuinely final save sat beside it under
+        # a name nobody had been given.
+        os.replace(recovery, recovery.with_name(f"retry-{uuid.uuid4().hex}-{target.name}"))
+        _fsync_directory(recovery.parent)
+    elif recovery.exists():
+        # Something that is not a snapshot holds the name. Write beside it, as
+        # this has always done: replacing it would fail the install outright.
         recovery = recovery.with_name(f"retry-{uuid.uuid4().hex}-{target.name}")
 
     fd, name = tempfile.mkstemp(prefix=".backup-", suffix=".db", dir=recovery.parent)
