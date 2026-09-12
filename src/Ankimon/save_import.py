@@ -389,6 +389,36 @@ def _finish_installed_import(target, recovery, logger, install_temp=None) -> Non
         raise ImportInstalledError(message) from error
 
 
+def _prune_superseded_recovery(directory: Path, name: str, keep: int = 1) -> None:
+    """Keep the canonical snapshot and the newest superseded one, no more.
+
+    An install that cannot finish -- on Windows, any process holding the save
+    open is enough -- is retried on every start, and each attempt snapshots the
+    live save again before trying. Unbounded, that is a full extra copy of the
+    save in user_files per restart, for as long as the lock lasts, while the
+    failure notice says only that it will retry. Nothing else prunes this
+    directory: Backup Manager's retention works on a different tree entirely.
+
+    One superseded copy is kept because the newest snapshot is taken before the
+    install is attempted, so the one before it is the last state captured under
+    a different set of conditions. Older ones describe the same save with less
+    of the user's progress in it.
+    """
+    try:
+        superseded = sorted(
+            (path for path in directory.glob(f"retry-*-{name}") if path.is_file()),
+            key=lambda path: path.stat().st_mtime,
+        )
+    except OSError:
+        return
+    for stale in superseded[:-keep] if keep else superseded:
+        try:
+            stale.unlink()
+        except OSError:
+            # Retaining one copy too many is not worth failing an install over.
+            pass
+
+
 def commit_pending_import(target: Path, logger=None) -> bool:
     """Install before any runtime exists, refusing work staged in this process.
 
@@ -440,6 +470,7 @@ def commit_pending_import(target: Path, logger=None) -> bool:
         # a name nobody had been given.
         os.replace(recovery, recovery.with_name(f"retry-{uuid.uuid4().hex}-{target.name}"))
         _fsync_directory(recovery.parent)
+        _prune_superseded_recovery(recovery.parent, target.name)
     elif recovery.exists():
         # Something that is not a snapshot holds the name. Write beside it, as
         # this has always done: replacing it would fail the install outright.

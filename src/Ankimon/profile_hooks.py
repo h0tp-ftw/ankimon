@@ -10,7 +10,10 @@ from .services import services
 from .singletons import settings_obj, logger
 from .utils import test_online_connectivity
 from .pyobj.ankimon_sync import setup_ankimon_sync_hooks
-from .pyobj.save_transfer import register_media_migration_hooks
+from .pyobj.save_transfer import (
+    guard_media_saves_now,
+    register_media_migration_hooks,
+)
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
@@ -56,12 +59,11 @@ def _on_profile_close():
 
 def _on_profile_did_open(online_connectivity):
     def handler():
-        # Guard startup sync before any dialog can pump the event loop, then
-        # preserve bare media saves in the background before sync may proceed.
-        try:
-            register_media_migration_hooks(settings_obj, logger)
-        except Exception as e:
-            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
+        # Pause media sync for any uncaptured original BEFORE the first dialog
+        # below can pump the event loop. Stat calls only; the scan that can
+        # release this guard is dispatched at the very end of this handler,
+        # where nothing runs after it to deliver its callback re-entrantly.
+        guard_media_saves_now(logger)
 
         # Re-warm the static evolution table _on_profile_close just dropped.
         # The boot warm (startup.run_startup_background_checks) runs once per
@@ -216,6 +218,30 @@ def _on_profile_did_open(online_connectivity):
                 )
 
         mw.taskman.run_in_background(check_connectivity_bg, on_done)
+
+        # One-shot per-profile cleanup after the removal of the AnkiWeb
+        # file-sync: protect whatever that feature left in collection.media from
+        # Anki's "Delete Unused Files", and offer to rescue it if it holds more
+        # progress than the local save.
+        #
+        # LAST in this handler, deliberately. The scan runs on mw.taskman and
+        # its decisions come back through a main-thread callback, which a nested
+        # event loop -- any modal dialog above -- would deliver in the middle of
+        # that dialog. Nothing after this line pumps the loop, so the callback
+        # lands on a clean stack, which is what _offer_rescue_later's zero-delay
+        # timer relies on to defer a shutdown until profile-open has returned.
+        # The guard itself is already up, from the top of this handler.
+        #
+        # This registers a media-sync-completion hook AND starts one scan now.
+        # Both are needed: Anki fires profile_did_open one line BEFORE it starts
+        # its own sync (aqt/main.py:568-569), so on a second device this first
+        # scan sees a media folder the peer's save has not reached yet, and only
+        # the post-sync pass can find it. Local files only, no network, never
+        # raises.
+        try:
+            register_media_migration_hooks(settings_obj, logger)
+        except Exception as e:
+            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
 
     return handler
 

@@ -1841,6 +1841,36 @@ def _pending_media_protection(media_dir: Path, target: Optional[Path]):
     return protection, (tuple(signature), tuple(sorted(entries.items())))
 
 
+def guard_media_saves_now(logger) -> None:
+    """Pause media sync for uncaptured originals, synchronously and cheaply.
+
+    Split out of ``start_media_migration`` so profile-open can arm the guard as
+    its very first act while leaving the SCAN where it has to be: last, after
+    everything in that handler which opens a modal dialog.
+
+    A modal spins a nested event loop, which delivers taskman's queued main-
+    thread callbacks. Dispatching the scan early therefore let its completion
+    run re-entrantly inside those dialogs -- nesting its own warnings and rescue
+    prompt inside them, and, if the user accepted, reaching ``close_anki`` while
+    Anki's ``loadProfile`` was still on the stack. ``_offer_rescue_later`` posts
+    its work with a zero-delay timer precisely to get off that stack, which only
+    works if nothing after the dispatch pumps the loop.
+
+    Only stat calls: no SQLite, no thread, nothing that can block a profile open.
+    """
+    try:
+        media_dir = _media_dir()
+        if media_dir is None or not media_dir.is_dir():
+            return
+        protection, _ = _pending_media_protection(media_dir, _active_db_path())
+        _guard_uncaptured_media(media_dir, protection)
+    except Exception as e:
+        try:
+            logger.log("error", f"Could not pause media sync for uncaptured saves: {e}")
+        except Exception:
+            pass
+
+
 def start_media_migration(settings_obj, logger) -> None:
     """Scan on a background worker, then apply decisions on the main thread.
 

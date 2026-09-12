@@ -706,3 +706,37 @@ def test_a_record_left_over_from_an_installed_import_is_recognised(tmp_path):
     with sqlite3.connect(target) as conn:
         conn.execute("UPDATE metadata SET value = 'another-token' WHERE key = 'import_token'")
     assert importer.pending_import_is_installed(target) is False
+
+
+def test_repeated_failed_installs_do_not_grow_the_recovery_folder_forever(tmp_path):
+    """Every attempt snapshots the live save again before it tries to install.
+
+    A lock that does not clear -- the Windows case -- means one attempt per
+    restart, indefinitely, and nothing else prunes this directory: Backup
+    Manager's retention works on a different tree.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+
+    refuse_install = (
+        "real_replace = os.replace\n"
+        "def fail_install(source, dest):\n"
+        "    if Path(dest) == target:\n"
+        "        raise PermissionError('simulated antivirus lock')\n"
+        "    return real_replace(source, dest)\n"
+        "module.os.replace = fail_install\n"
+        "module.commit_pending_import(target)\n"
+    )
+    for attempt in range(4):
+        child(refuse_install, target, expected=1)
+        with sqlite3.connect(target) as conn:
+            conn.execute("INSERT INTO captured_pokemon VALUES (?, '{}')", (f"run-{attempt}",))
+
+    copies = list(staged["recovery_path"].parent.glob("*.db"))
+    assert len(copies) == 2, sorted(path.name for path in copies)
+    # The advertised path still holds the most recent attempt's progress.
+    assert names(staged["recovery_path"]) == [
+        "local", "run-0", "run-1", "run-2",
+    ]
