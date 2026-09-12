@@ -15,12 +15,20 @@ damaging Electric moves, Thunderbolt included. A test that only ever fired Shock
 would pass against that broken shape, so ``test_thunderbolt_...`` below is the point
 of this file.
 
+The item is consumed by the boost, as the real one is, so several tests here are
+about what must NOT happen twice or on an outcome that never earned it: a hit taken
+by a Substitute made earlier in the same turn, a holder already at the stat cap, and
+a second Electric hit after the first spent the battery. Contrary is covered because
+the engine runs a defender's ability before its item, which would otherwise hand a
+Contrary holder the +1 it is supposed to lose.
+
 Both the registration and the wrapper run inside ``_apply_engine_patch``, which
 swallows the exception and merely logs, so a regression here would be silent in
 production. These checks are what make it loud.
 """
 
 import importlib.util
+import math
 import sys
 import types
 from collections import defaultdict
@@ -108,15 +116,69 @@ def _installed():
     test_review_based_damage_multiplier installs the same wrapper at collection time
     and asserts it is still in place when its own tests run.
 
-    The ``cellbattery`` entry is left in the engine's item lookup, as harmless as the
-    MOVE_TARGET_SELF append that test_allies_move_target leaves behind -- it changes
-    nothing unless a battler is actually holding the item.
+    Everything else this module reaches into is engine-wide singleton state, so it is
+    all put back on the way out: the ``cellbattery`` entry in the item lookup, and
+    ShowdownConfig's damage calculation mode. These assertions want one averaged
+    damage roll rather than the engine default of every roll, and leaving that set
+    would quietly change what every test module collected after this one computes.
     """
     global hook
     previous_damage_fn = instruction_generator.get_instructions_from_damage
+    previous_calc_type = ShowdownConfig.damage_calc_type
+    lookup = modify_attack_against.item_lookup
+    had_cellbattery = "cellbattery" in lookup
+    previous_cellbattery = lookup.get("cellbattery")
+    ShowdownConfig.damage_calc_type = "average"
     hook = _load_hook()
     yield hook
     instruction_generator.get_instructions_from_damage = previous_damage_fn
+    ShowdownConfig.damage_calc_type = previous_calc_type
+    if had_cellbattery:
+        lookup["cellbattery"] = previous_cellbattery
+    else:
+        lookup.pop("cellbattery", None)
+
+
+def _legacy_v1_wrapper(original):
+    """A stand-in for the damage wrapper that shipped before on-hit items existed.
+
+    It scales review-based damage and nothing else, marks itself with the bare
+    boolean that generation used, and reaches its pristine original through a module
+    global rather than an attribute -- which is the shape the upgrade path has to
+    recognise and unwind. Built through FunctionType because a function's
+    ``__globals__`` cannot be reassigned afterwards.
+    """
+
+    def template(mutator, defender, damage, accuracy, attacking_move, instruction):
+        if (
+            defender == constants.OPPONENT
+            and hasattr(mutator, "review_based_damage_multiplier")
+            and damage is not None
+        ):
+            if damage > 0:
+                damage = max(
+                    1, math.floor(damage * mutator.review_based_damage_multiplier)
+                )
+            else:
+                damage = math.floor(damage * mutator.review_based_damage_multiplier)
+            mutator.review_based_damage_multiplier_applied = True
+        # Resolved out of the namespace handed to FunctionType below, not this
+        # module -- which is the whole point of building the stand-in that way.
+        return _original_get_instructions_from_damage(  # noqa: F821
+            mutator, defender, damage, accuracy, attacking_move, instruction
+        )
+
+    legacy = types.FunctionType(
+        template.__code__,
+        {
+            "constants": constants,
+            "math": math,
+            "_original_get_instructions_from_damage": original,
+        },
+        "legacy_v1_get_instructions_from_damage",
+    )
+    legacy._ankimon_review_wrapped = True
+    return legacy
 
 
 def _side(species, level=50):
@@ -141,9 +203,9 @@ def _state(
     attacker_level=50,
     volatile=None,
     attack_boost=0,
+    holder_speed=None,
 ):
     """Singles state whose USER side holds the item and receives the attack."""
-    ShowdownConfig.damage_calc_type = "average"
     state = State(
         _side(holder, holder_level),
         _side(attacker, attacker_level),
@@ -157,25 +219,44 @@ def _state(
         state.user.active.ability = ability
     if volatile is not None:
         state.user.active.volatile_status.add(volatile)
+    if holder_speed is not None:
+        state.user.active.speed = holder_speed
     return state
 
 
-def _outcomes(incoming_move, **kwargs):
-    """Every outcome of the opponent using ``incoming_move`` while the user Splashes."""
+def _outcomes(incoming_move, user_move="splash", **kwargs):
+    """Every outcome of the opponent using ``incoming_move`` against the holder."""
     mutator = StateMutator(_state(**kwargs))
-    return get_all_state_instructions(mutator, "splash", incoming_move)
+    return get_all_state_instructions(mutator, user_move, incoming_move)
 
 
-def _boosts(incoming_move, side=constants.USER, **kwargs):
+def _of_type(outcomes, mutator_type, side=constants.USER):
     return [
         instr
-        for outcome in _outcomes(incoming_move, **kwargs)
+        for outcome in outcomes
         for instr in outcome.instructions
-        if instr[0] == constants.MUTATOR_BOOST and instr[1] == side
+        if instr[0] == mutator_type and instr[1] == side
     ]
 
 
+def _boosts(incoming_move, side=constants.USER, **kwargs):
+    return _of_type(_outcomes(incoming_move, **kwargs), constants.MUTATOR_BOOST, side)
+
+
+def _opponent_damage(multiplier):
+    """Damage dealt TO the opponent with the review multiplier set to ``multiplier``."""
+    mutator = StateMutator(_state())
+    mutator.review_based_damage_multiplier = multiplier
+    return _of_type(
+        get_all_state_instructions(mutator, "tackle", "splash"),
+        constants.MUTATOR_DAMAGE,
+        constants.OPPONENT,
+    )
+
+
 _ATTACK_UP = (constants.MUTATOR_BOOST, constants.USER, constants.ATTACK, 1)
+_ATTACK_DOWN = (constants.MUTATOR_BOOST, constants.USER, constants.ATTACK, -1)
+_SPENT = (constants.MUTATOR_CHANGE_ITEM, constants.USER, None, "cellbattery")
 
 
 def test_cellbattery_is_registered_by_importing_the_hooks():
@@ -313,18 +394,100 @@ def test_weaknesspolicy_is_left_alone():
     ]
 
 
-def test_boost_is_capped_at_max_boosts():
-    # At +6 the engine's boost generator yields a zero-magnitude no-op, never a +7.
-    assert _boosts("shockwave", attack_boost=constants.MAX_BOOSTS) == [
-        (constants.MUTATOR_BOOST, constants.USER, constants.ATTACK, 0)
-    ]
+def test_a_holder_at_the_stat_cap_keeps_its_item():
+    """At +6 Attack there is no stage to gain, so Cell Battery is not spent.
+
+    The engine's boost generator would happily emit a zero-magnitude no-op here;
+    consuming an item to pay for one is what the mechanic explicitly does not do.
+    """
+    outcomes = _outcomes("shockwave", attack_boost=constants.MAX_BOOSTS)
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
+def test_contrary_holder_loses_attack_instead():
+    """Contrary reverses the item's boost, so the holder drops to -1 Attack.
+
+    The engine runs a defender's ability hook before its item hook, so a boost the
+    item adds afterwards never meets Contrary on its own; the effect replays it
+    through the engine's own ability hook to get this. (Shock Wave rather than
+    Thunderbolt only to keep this to one outcome -- a paralysis chance would branch
+    it and say nothing about Contrary.)
+    """
+    assert _boosts("shockwave", ability="contrary") == [_ATTACK_DOWN]
+
+
+def test_contrary_holder_is_consumed_at_the_top_of_the_range():
+    # +6 is the cap that stops a normal holder, and no obstacle at all to a drop.
+    assert _boosts(
+        "shockwave", ability="contrary", attack_boost=constants.MAX_BOOSTS
+    ) == [_ATTACK_DOWN]
+
+
+def test_contrary_holder_at_the_bottom_of_the_range_keeps_its_item():
+    # Under Contrary the cap that matters is -6, not +6.
+    outcomes = _outcomes(
+        "shockwave", ability="contrary", attack_boost=-1 * constants.MAX_BOOSTS
+    )
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
+def test_substitute_made_earlier_in_the_turn_does_not_trigger():
+    """A holder that Substitutes first must not read its own HP cost as a hit.
+
+    An instruction set is cumulative over the whole turn: the 25% self-damage that
+    paid for the Substitute is still in the list when the Electric move resolves
+    against the Substitute. Only the instructions this hit added may be inspected.
+    """
+    outcomes = _outcomes("thunderbolt", user_move="substitute", holder_speed=999)
+    hp_costs = _of_type(outcomes, constants.MUTATOR_DAMAGE)
+    assert hp_costs, "expected the Substitute's own HP cost in the instruction set"
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
+def test_the_item_is_consumed_by_the_boost():
+    """Cell Battery is a consumable: the boost comes with a change_item instruction.
+
+    ``modify_attack_against`` returns a move dict and cannot emit an instruction,
+    which is why the engine models its own one-shot items as reusable -- but this
+    effect does its work in the damage wrapper, where the instruction is expressible
+    and reversible.
+    """
+    outcomes = _outcomes("shockwave")
+    for outcome in outcomes:
+        assert _ATTACK_UP in outcome.instructions
+        assert _SPENT in outcome.instructions
+        # Spent after the boost it paid for, so reversing the set restores both.
+        assert outcome.instructions.index(_SPENT) > outcome.instructions.index(
+            _ATTACK_UP
+        )
+
+
+def test_a_spent_cell_battery_does_not_fire_again():
+    """The direct refutation of "repeat triggers are bounded by MAX_BOOSTS".
+
+    One outcome is applied to the state, exactly as simulate_battle_with_poke_engine
+    does, and the holder is hit a second time.
+    """
+    mutator = StateMutator(_state())
+    first = get_all_state_instructions(mutator, "splash", "shockwave")[0]
+    assert _ATTACK_UP in first.instructions
+    mutator.apply(first.instructions)
+    assert mutator.state.user.active.item is None
+    assert mutator.state.user.active.hp > 0, "expected the holder to survive the hit"
+
+    second = get_all_state_instructions(mutator, "splash", "shockwave")
+    assert _of_type(second, constants.MUTATOR_BOOST) == []
+    assert _of_type(second, constants.MUTATOR_CHANGE_ITEM) == []
 
 
 def test_reload_installs_one_wrapper_and_one_effect():
-    """A module reload must not stack a second damage wrapper or re-register.
+    """Reloading the current generation must not stack a second damage wrapper.
 
-    A second layer would also lose the ``_ankimon_review_wrapped`` flag, and the next
-    import would wrap again -- scaling review-based damage twice.
+    A second layer would delegate to a function that already scales review-based
+    damage, scaling it twice.
     """
     damage_fn = instruction_generator.get_instructions_from_damage
     effect = modify_attack_against.item_lookup["cellbattery"]
@@ -334,17 +497,76 @@ def test_reload_installs_one_wrapper_and_one_effect():
     assert _boosts("shockwave") == [_ATTACK_UP]
 
 
+def test_upgrade_over_the_previous_wrapper_generation():
+    """Loading over the wrapper that shipped before on-hit items must replace it.
+
+    That generation marked itself with a bare boolean, so a guard that only asks
+    "already wrapped?" skips the new definition on an in-process reload and leaves a
+    wrapper that has never heard of on-hit items installed for the rest of the
+    session -- Cell Battery inert until Anki is restarted. The replacement has to
+    take over the ORIGINAL that wrapper was calling, not the wrapper itself, or
+    review-based damage would be scaled once per layer.
+    """
+    installed = instruction_generator.get_instructions_from_damage
+    pristine = hook._original_get_instructions_from_damage
+    legacy = _legacy_v1_wrapper(pristine)
+    instruction_generator.get_instructions_from_damage = legacy
+    try:
+        upgraded = _load_hook()
+        assert instruction_generator.get_instructions_from_damage is not legacy
+        assert upgraded._original_get_instructions_from_damage is pristine
+        assert _boosts("shockwave") == [_ATTACK_UP]
+        assert _opponent_damage(0.5)[0][2] == _opponent_damage(1.0)[0][2] // 2
+    finally:
+        instruction_generator.get_instructions_from_damage = installed
+
+
+def test_a_stale_item_shim_is_replaced_on_reload():
+    """A shim from an older generation is upgraded, not left registered.
+
+    Its payload shape is whatever that generation stashed on the move, which the
+    current wrapper has no contract with.
+    """
+    lookup = modify_attack_against.item_lookup
+    current = lookup["cellbattery"]
+
+    def stale(attacking_move, attacking_pokemon, defending_pokemon):
+        return attacking_move
+
+    stale._ankimon_on_hit_item_version = 0
+    lookup["cellbattery"] = stale
+    try:
+        _load_hook()
+        assert lookup["cellbattery"] is not stale
+        assert _boosts("shockwave") == [_ATTACK_UP]
+    finally:
+        lookup["cellbattery"] = current
+
+
+def test_a_native_engine_implementation_wins_over_the_shim():
+    """A submodule bump that implements the item for real must not be displaced.
+
+    The engine's own entries are recognised by the module they are defined in,
+    which is how test_weaknesspolicy_is_left_alone identifies them too.
+    """
+    lookup = modify_attack_against.item_lookup
+    current = lookup["cellbattery"]
+
+    def native(attacking_move, attacking_pokemon, defending_pokemon):
+        return attacking_move
+
+    native.__module__ = modify_attack_against.__name__
+    lookup["cellbattery"] = native
+    try:
+        _load_hook()
+        assert lookup["cellbattery"] is native
+    finally:
+        lookup["cellbattery"] = current
+
+
 def test_review_based_damage_multiplier_still_scales():
     """The boost fan-out was added inside the F37 wrapper; F37 must still work."""
-    unscaled, scaled = [], []
-    for multiplier, sink in ((1.0, unscaled), (0.5, scaled)):
-        mutator = StateMutator(_state())
-        mutator.review_based_damage_multiplier = multiplier
-        sink += [
-            instr[2]
-            for outcome in get_all_state_instructions(mutator, "tackle", "splash")
-            for instr in outcome.instructions
-            if instr[0] == constants.MUTATOR_DAMAGE and instr[1] == constants.OPPONENT
-        ]
+    unscaled = _opponent_damage(1.0)
+    scaled = _opponent_damage(0.5)
     assert unscaled and scaled
-    assert scaled[0] == unscaled[0] // 2
+    assert scaled[0][2] == unscaled[0][2] // 2
