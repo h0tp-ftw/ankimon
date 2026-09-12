@@ -13,6 +13,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   tier1:
     name: Tier 1 — logic gate + functionality sweep (no Qt)
@@ -34,7 +37,6 @@ jobs:
         run: |
           python3 harness/scenarios/economy.py
           python3 harness/scenarios/longrun.py 3000
-          python3 harness/scenarios/sync_fuzz.py 100
 
   tier2:
     name: Tier 2 — real add-on, offscreen Qt
@@ -63,6 +65,8 @@ jobs:
         run: |
           xvfb-run -a python3 -m harness.checks.probe_real_boot
           xvfb-run -a python3 -m harness.checks.probe_real_play
+          xvfb-run -a python3 -m harness.checks.probe_real_move_selection
+          xvfb-run -a python3 -m harness.checks.probe_real_tm_learnsets
 
   tier2_webengine:
     name: Tier 2 WebEngine — real Settings shell
@@ -91,4 +95,6 @@ jobs:
           QT_QPA_PLATFORM: xcb
           QTWEBENGINE_DISABLE_SANDBOX: '1'
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-dev-shm-usage
-        run: xvfb-run -a python3 -m harness.checks.probe_real_webengine
+        run: |
+          xvfb-run -a python3 -m harness.checks.probe_real_webengine
+          xvfb-run -a python3 -m harness.checks.probe_real_item_evolutions

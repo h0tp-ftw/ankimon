@@ -45,17 +45,58 @@ from .move_names import format_move_name
 # Audio is optional. Under Anki these construct real Qt players; headless (the
 # agent harness / tests) there is no QtMultimedia, so we degrade to "no audio"
 # and play_sound/play_effect_sound become event-only.
+#
+# Construction is deferred to the first sound for two independent reasons:
+# at module scope it can hang indefinitely on Linux when the audio backend
+# (e.g. pipewire/pulseaudio dbus) is unresponsive, and building these QObjects
+# with no QApplication -- or off its thread -- is undefined behaviour that can
+# abort the process natively, beyond what try/except can catch.
 try:
     from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-    audio_output = QAudioOutput()
-    media_player = QMediaPlayer()
-    media_player.setAudioOutput(audio_output)
     _HAVE_AUDIO = True
 except Exception:
-    audio_output = None
-    media_player = None
     _HAVE_AUDIO = False
+
+audio_output = None
+media_player = None
+
+
+def _audio_thread_ready() -> bool:
+    """True when a Qt application exists and we are running on its thread.
+
+    Anki calls the sound helpers from its GUI thread, so this is normally True
+    by the time the first sound plays. Headless imports and background workers
+    get False and stay silent instead of risking a native abort.
+    """
+    try:
+        from PyQt6.QtCore import QCoreApplication, QThread
+
+        app = QCoreApplication.instance()
+        if app is None:
+            return False
+        return QThread.currentThread() == app.thread()
+    except Exception:
+        return False
+
+
+def _get_media_player():
+    global audio_output, media_player
+    if not _HAVE_AUDIO:
+        return None
+    if media_player is None:
+        if not _audio_thread_ready():
+            # Deliberately leave the globals unset: a later call from the
+            # application thread must still be able to build a real player.
+            return None
+        try:
+            audio_output = QAudioOutput()
+            media_player = QMediaPlayer()
+            media_player.setAudioOutput(audio_output)
+        except Exception:
+            audio_output = None
+            media_player = None
+    return media_player
 
 
 def showInfo(message, *args, **kwargs):
@@ -70,6 +111,7 @@ def showInfo(message, *args, **kwargs):
 def showWarning(message, *args, **kwargs):
     """Headless-safe stand-in for ``aqt.utils.showWarning``."""
     services.ui.notify("warning", str(message))
+
 
 with open(pokedex_path, "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -407,6 +449,21 @@ def random_item() -> Optional[str]:
     return item_name
 
 
+# Supply missing icons for older downloaded packs.
+_BUNDLED_ITEM_SPRITES = {
+    "linking-cord": addon_dir / "addon_sprites" / "items" / "linking-cord.png",
+}
+
+
+def get_item_sprite_path(item_name):
+    """Resolve an item icon, falling back to a bundled addition when needed."""
+    downloaded = items_path / f"{item_name}.png"
+    bundled = _BUNDLED_ITEM_SPRITES.get(item_name)
+    if bundled is not None and not downloaded.is_file():
+        return bundled
+    return downloaded
+
+
 # Function to get the list of daily items
 def daily_item_list():
     """
@@ -424,8 +481,12 @@ def daily_item_list():
     excluded_suffixes = ["dust", "-piece", "-nugget", "-berry"]
     # Add full item names here to exclude them from the daily shop, e.g., ["master-ball"]
 
+    files = os.listdir(items_path)
+    files.extend(
+        f"{name}.png" for name in _BUNDLED_ITEM_SPRITES if f"{name}.png" not in files
+    )
     item_names = []
-    for file in os.listdir(items_path):
+    for file in files:
         if not file.endswith(".png"):
             continue
 
@@ -454,13 +515,13 @@ def daily_item_list():
 def give_item(item_name: str, item_type: Optional[str] = None):
     """Gives an item to the user."""
     db = services.db
-    
+
     # Get current item or create new
     existing = db.get_item(item_name)
     if existing:
         db.update_item_quantity(item_name, 1)
         return
-    
+
     extra_data = {"type": item_type} if item_type else None
     db.add_item(item_name, 1, extra_data)
 
@@ -536,14 +597,10 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
                     id = row["id"]
                     return int(id)
     except (OSError, KeyError) as e:
-        show_warning_with_traceback(
-            exception=e, message="Error reading item data:"
-        )
+        show_warning_with_traceback(exception=e, message="Error reading item data:")
         return 4
     except Exception as e:
-        show_warning_with_traceback(
-            exception=e, message=f"Unexpected error: {e}"
-        )
+        show_warning_with_traceback(exception=e, message=f"Unexpected error: {e}")
         return 4
 
 
@@ -654,6 +711,7 @@ def load_custom_font(font_size, language):
     # FcFontSetSort). Qt imported lazily so utils stays importable headless
     # (custom fonts are a GUI-only concern).
     from PyQt6.QtGui import QFontDatabase, QFont
+
     if font_file not in _registered_fonts:
         # addApplicationFont() returns -1 on failure. Only cache the file as
         # "registered" when it actually succeeded — caching a failure here
@@ -718,9 +776,12 @@ def play_effect_sound(settings_obj, sound_type):
         if not _HAVE_AUDIO:
             return
         from PyQt6.QtCore import QUrl
-        audio_output.setVolume(settings_obj.get("audio.volume"))
-        media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
-        media_player.play()
+
+        player = _get_media_player()
+        if player is not None and audio_output is not None:
+            audio_output.setVolume(settings_obj.get("audio.volume"))
+            player.setSource(QUrl.fromLocalFile(str(audio_path)))
+            player.play()
     else:
         pass
 
@@ -760,15 +821,18 @@ def save_error_code(error_code, logger=None):
 
 def get_main_pokemon_data():
     main_pokemon_data = services.db.get_main_pokemon()
-    
+
     if not main_pokemon_data:
         return None
 
     _name = main_pokemon_data["name"]
-    if not main_pokemon_data.get('nickname') or main_pokemon_data.get('nickname') is None:
+    if (
+        not main_pokemon_data.get("nickname")
+        or main_pokemon_data.get("nickname") is None
+    ):
         _nickname = None
     else:
-        _nickname = main_pokemon_data['nickname']
+        _nickname = main_pokemon_data["nickname"]
     _id = main_pokemon_data["id"]
     _ability = main_pokemon_data["ability"]
     _type = main_pokemon_data["type"]
@@ -794,14 +858,31 @@ def get_main_pokemon_data():
     _status = main_pokemon_data.get("status")
 
     return {
-        "name": _name, "nickname": _nickname, "id": _id, "ability": _ability,
-        "type": _type, "stats": _stats, "attacks": _attacks,
-        "level": _level, "hp": _hp_base_stat, "growth_rate": _growth_rate,
-        "base_experience": _base_experience, "ev": _ev, "iv": _iv,
-        "gender": _gender, "shiny": _shiny, "individual_id": _individual_id,
-        "pokemon_defeated": _pokemon_defeated, "current_hp": _current_hp, "xp": _xp,
-        "max_moves": _max_moves, "mega": _mega, "everstone": _everstone,
-        "friendship": _friendship, "held_item": _held_item, "status": _status
+        "name": _name,
+        "nickname": _nickname,
+        "id": _id,
+        "ability": _ability,
+        "type": _type,
+        "stats": _stats,
+        "attacks": _attacks,
+        "level": _level,
+        "hp": _hp_base_stat,
+        "growth_rate": _growth_rate,
+        "base_experience": _base_experience,
+        "ev": _ev,
+        "iv": _iv,
+        "gender": _gender,
+        "shiny": _shiny,
+        "individual_id": _individual_id,
+        "pokemon_defeated": _pokemon_defeated,
+        "current_hp": _current_hp,
+        "xp": _xp,
+        "max_moves": _max_moves,
+        "mega": _mega,
+        "everstone": _everstone,
+        "friendship": _friendship,
+        "held_item": _held_item,
+        "status": _status,
     }
 
 
@@ -814,9 +895,12 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
             if not _HAVE_AUDIO:
                 return
             from PyQt6.QtCore import QUrl
-            audio_output.setVolume(settings_obj.get("audio.volume"))
-            media_player.setSource(QUrl.fromLocalFile(str(audio_path)))
-            media_player.play()
+
+            player = _get_media_player()
+            if player is not None and audio_output is not None:
+                audio_output.setVolume(settings_obj.get("audio.volume"))
+                player.setSource(QUrl.fromLocalFile(str(audio_path)))
+                player.play()
 
 
 def load_collected_pokemon_ids() -> set:
@@ -1049,6 +1133,7 @@ def safe_get_random_move(
         )
     return find_details_move(format_move_name("splash"))
 
+
 def png_to_base64(path: str) -> str:
     """Convert a PNG file to a base64 data URI for embedding into HTML.
 
@@ -1069,6 +1154,7 @@ def close_anki():
     # Guarded: only meaningful inside Anki. No-op headless.
     try:
         from aqt import mw
+
         mw.close()
     except Exception:
         pass
@@ -1081,6 +1167,7 @@ def close_anki():
 # Re-fit verbatim from BRRRR_Experimental (utils.is_main_thread / is_alive);
 # both use function-local imports so importing utils never drags in PyQt6.
 
+
 def is_main_thread() -> bool:
     """True when called on Qt's GUI thread (or when there is no QApplication yet).
 
@@ -1091,6 +1178,7 @@ def is_main_thread() -> bool:
     # Consult sys.modules rather than importing PyQt6: force-loading Qt in an
     # aqt-free context (Tier-1 harness) can crash. No Qt loaded → headless → main.
     import sys
+
     qtwidgets = sys.modules.get("PyQt6.QtWidgets")
     qtcore = sys.modules.get("PyQt6.QtCore")
     if qtwidgets is None or qtcore is None:
@@ -1123,6 +1211,7 @@ def is_dev_mode() -> bool:
         # Check Anki profile name (case-insensitive check for 'dev' triggers)
         try:
             from aqt import mw
+
             if mw and mw.pm and mw.pm.name:
                 profile_name = mw.pm.name.lower()
                 if "dev_" in profile_name or "_dev" in profile_name:

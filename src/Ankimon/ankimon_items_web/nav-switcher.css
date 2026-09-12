@@ -72,10 +72,30 @@
     gap: 2px;
     animation: navMenuPop 0.16s cubic-bezier(0.22, 1, 0.36, 1);
     transform-origin: top left;
+    max-height: min(60vh, 400px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .nav-menu.hidden {
     display: none;
+}
+
+.nav-menu::-webkit-scrollbar {
+    width: 4px;
+}
+
+.nav-menu::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.nav-menu::-webkit-scrollbar-thumb {
+    background: var(--border-main);
+    border-radius: 4px;
+}
+
+.nav-menu::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
 }
 
 @keyframes navMenuPop {
@@ -97,6 +117,7 @@
     font-family: inherit;
     text-align: left;
     transition: 0.15s ease;
+    flex-shrink: 0;
 }
 
 .nav-menu-item:hover {
@@ -146,6 +167,7 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
 }
 
 .nav-menu-title {

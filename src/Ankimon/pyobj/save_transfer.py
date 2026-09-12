@@ -1,0 +1,1483 @@
+"""Manual save export/import and migration from the removed AnkiWeb file sync.
+
+Exports use SQLite snapshots with local credentials removed. Imports and rescues
+require a verified snapshot, explicit confirmation, a safety backup and atomic
+replacement. The migration preserves bare media saves under underscore-prefixed
+names, which Anki excludes from Delete Unused Files. Progress counters select a
+candidate for comparison; they do not prove one save contains another.
+
+The automatic file sync was removed because Anki media downloads have local
+arrival timestamps, so mtimes cannot identify the save with newer progress.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import sqlite3
+import tempfile
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from aqt import mw
+from aqt.utils import askUser, showInfo, showWarning
+from PyQt6.QtWidgets import QFileDialog
+
+from ..resources import user_path
+from ..utils import close_anki
+
+# Leading underscores protect saves from Anki's Delete Unused Files. Keep
+# normal/developer partitions separate and name each distinct save by content.
+# Existing names must be verified before reuse; damaged copies keep their names.
+_SAVE_PREFIX = {"ankimon.db": "_ankimon_save_", "ankimonDEV.db": "_ankimon_save_dev_"}
+
+# Use 128 bits of SHA-256 for compact protected filenames.
+_DIGEST_CHARS = 32
+
+# Settle when every candidate is readable and the comparison is resolved, or
+# when the partition holds no candidate at all. Unreadable saves and failed
+# rescues must remain eligible for a later scan. The profile flag stores the
+# media files' stat fingerprint, so a download after startup re-arms migration —
+# which is what makes settling on an empty folder safe: a save that lands later
+# changes the fingerprint, and the next boot or media-sync stop rescans. A
+# media-sync stop triggers a scan; it does not establish that the download
+# succeeded.
+_MIGRATION_FLAG = "ankimonMediaSyncRemovedV1"
+
+# What the flag stores for a partition that was examined and held no candidate.
+# Distinct from "" (nothing was computed), which never settles, and from every
+# real fingerprint, which always contains a ":".
+_EMPTY_MEDIA_FINGERPRINT = "empty"
+
+# Remember the answered snapshot/folder independently: an unreadable neighbor
+# requires another scan without repeating an already answered rescue prompt.
+_MIGRATION_ANSWERED_FLAG = "ankimonMediaSyncRemovedAnsweredV1"
+
+# Bound automatic probes so locks and oversized saves do not delay rescanning.
+# Manual export/import retain their longer timeout for user-requested transfers.
+MIGRATION_PROBE_TIMEOUT = 0.5
+
+# Reload safety (F31): the (hook, handler) pair this module last registered,
+# anchored on the services registry so it survives a re-execution of this module
+# and can be removed before re-appending.
+_MIGRATION_HOOK_RECORD = "_ankimon_media_migration_handlers"
+
+
+# ---------------------------------------------------------------------------
+# Reading a save without opening it read-write
+# ---------------------------------------------------------------------------
+
+def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
+    """Summarise an Ankimon save for side-by-side display.
+
+    Returns ``None`` when the file cannot be read, so the caller can say
+    "couldn't read this side" instead of rendering a healthy save as an empty
+    one. That distinction matters: the previous dialog swallowed read errors and
+    displayed ``Level: 1, Cash: 0``, which invites a user to overwrite the save
+    that actually holds their progress.
+
+    Opened read-only through a percent-encoded URI so a profile path containing
+    spaces or non-ASCII characters still resolves, with an explicit busy timeout
+    — the default 5 s is easy to exceed while the live connection is mid-write,
+    and a timeout here would otherwise look like a corrupt file.
+
+    ``timeout`` is generous (30 s) for the user-initiated Export/Import. The
+    automatic migration passes ``MIGRATION_PROBE_TIMEOUT`` instead: a file it
+    cannot read this second is rescanned on a later pass.
+    """
+    try:
+        if not Path(db_path).is_file():
+            return None
+        uri = Path(db_path).resolve().as_uri() + "?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+        # Same wall-clock bound as _verify_sqlite_integrity: connect(timeout=)
+        # covers lock waiting only, and the COUNT(*)s below scan whole tables.
+        # Aborting surfaces as an exception and is read as "could not read this
+        # side", which is the honest answer and keeps the migration armed.
+        _deadline = time.monotonic() + timeout
+        conn.set_progress_handler(
+            lambda: 1 if time.monotonic() > _deadline else 0, 2000
+        )
+    except Exception:
+        return None
+
+    stats: Dict[str, Any] = {
+        "trainer_name": "-",
+        "trainer_level": 0,
+        "trainer_cash": 0,
+        "pokemon": 0,
+        "items": 0,
+        "badges": 0,
+        "history": 0,
+    }
+    try:
+        conn.execute(f"PRAGMA busy_timeout = {int(timeout * 1000)};")
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+
+        def _scalar(sql: str, params=(), default=0):
+            """One value, tolerating a save written by an older schema.
+
+            A missing column or renamed table reports the fields the save does
+            have instead of reading as unreadable. A statement the progress
+            handler ABORTED is not that: it means the probe budget ran out
+            mid-count, and swallowing it would return 0 for a table that may
+            hold thousands of rows — "unknown" indistinguishable from "empty",
+            the one thing this function exists to keep apart, and a false
+            (0, 0, 0) feeds straight into a comparison that can authorise a
+            rescue over the save that actually holds the progress. So a
+            deadline overrun, or an interruption raised by other means
+            (``interrupt()``, a handler a test installed), is re-raised.
+            """
+            try:
+                row = conn.execute(sql, params).fetchone()
+                return row[0] if row and row[0] is not None else default
+            except Exception as e:
+                if time.monotonic() > _deadline:
+                    raise
+                if isinstance(e, sqlite3.OperationalError) and "interrupt" in str(e).lower():
+                    raise
+                return default
+
+        def _as_int(value, default=0):
+            # Tolerates only the CONVERSION failing — a level stored as '' or
+            # 'None' by an older build — so _scalar's re-raise still stands.
+            try:
+                return int(value)
+            except Exception:
+                return default
+
+        if "captured_pokemon" in tables:
+            stats["pokemon"] = _scalar("SELECT COUNT(*) FROM captured_pokemon")
+        if "items" in tables:
+            stats["items"] = _scalar("SELECT SUM(quantity) FROM items")
+        if "pokemon_history" in tables:
+            stats["history"] = _scalar("SELECT COUNT(*) FROM pokemon_history")
+        if "badges" in tables:
+            # The achieved flag has been written as 1, 'true' and 'True' by
+            # different generations of the badge code; match badges_functions
+            # rather than only the integer form, or a healthy save reads as
+            # zero badges.
+            stats["badges"] = _scalar(
+                "SELECT COUNT(*) FROM badges "
+                "WHERE achieved IN (1, 'true', 'True')"
+            )
+        if "config" in tables:
+            cfg = "SELECT value FROM config WHERE key = ?"
+            stats["trainer_name"] = _scalar(cfg, ("trainer.name",), "-")
+            stats["trainer_level"] = _as_int(_scalar(cfg, ("trainer.level",)))
+            stats["trainer_cash"] = _as_int(_scalar(cfg, ("trainer.cash",)))
+        return stats
+    except Exception:
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _format_stats(stats: Optional[Dict[str, Any]]) -> str:
+    if stats is None:
+        return "  (could not read this file)"
+    return (
+        f"  Trainer: {stats['trainer_name']}\n"
+        f"  Level: {stats['trainer_level']}\n"
+        f"  Cash: {stats['trainer_cash']}\n"
+        f"  Pokemon: {stats['pokemon']}\n"
+        f"  Items: {stats['items']}\n"
+        f"  Badges: {stats['badges']}\n"
+        f"  History entries: {stats['history']}"
+    )
+
+
+def _progress_key(stats: Optional[Dict[str, Any]]) -> tuple:
+    """Rank candidates by captures, badges and history entries.
+
+    These aggregates can decrease and do not establish containment. Tuple
+    ordering only selects a candidate to display; rescue eligibility uses
+    ``_dominates`` so a higher capture count cannot hide fewer badges.
+    Cash and trainer level are excluded because spending and XP-curve changes
+    can lower them without losing progress.
+    """
+    if stats is None:
+        return (-1, -1, -1)
+    return (stats["pokemon"], stats["badges"], stats["history"])
+
+
+def _dominates(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> bool:
+    """Whether ``a`` meets every progress count in ``b`` and exceeds at least one.
+
+    This decides whether to offer rescue, never authorizes replacement or
+    proves containment. An unreadable save neither dominates nor is dominated.
+    """
+    if a is None or b is None:
+        return False
+    ka, kb = _progress_key(a), _progress_key(b)
+    return ka != kb and all(x >= y for x, y in zip(ka, kb))
+
+
+# ---------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------
+
+def _active_db_path() -> Optional[Path]:
+    try:
+        from ..services import services
+
+        if services.db is not None and getattr(services.db, "db_path", None):
+            return Path(services.db.db_path)
+    except Exception:
+        pass
+    fallback = user_path / "ankimon.db"
+    return fallback if fallback.is_file() else None
+
+
+def _sqlite_backup(source: Path, dest: Path, timeout: float = 30.0) -> None:
+    """Take a consistent snapshot, including committed WAL pages.
+
+    SQLite's online backup works in every journal mode. Opening the source
+    read-only prevents creating a missing file or recovering its journal in
+    place. Both lock retries and copying are bounded by ``timeout``.
+    """
+    # Imports and migration candidates are external files. A read-only source
+    # must neither create a missing file nor recover a hot journal in place.
+    uri = Path(source).resolve().as_uri() + "?mode=ro"
+    src_conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+    try:
+        dest_conn = sqlite3.connect(str(dest), timeout=timeout)
+        try:
+            deadline = time.monotonic() + timeout
+
+            def check_deadline(status, remaining, total):
+                # backup() retries SQLITE_BUSY itself, beyond connect's busy
+                # timeout. Bound both those retries and a large unlocked copy.
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Timed out taking a save snapshot")
+
+            src_conn.backup(dest_conn, pages=256, progress=check_deadline, sleep=0.05)
+        finally:
+            dest_conn.close()
+    finally:
+        src_conn.close()
+
+
+def _snapshot_save(source: Path, timeout: float = 30.0) -> Path:
+    """Return a private verified snapshot; its owner must discard it afterwards.
+
+    The same file supplies the displayed stats and the eventual replacement.
+    A cloud download can replace the original pathname while a dialog or the
+    safety backup runs, without changing the save the user approved.
+    """
+    from .ankimon_sync import _verify_sqlite_integrity
+
+    fd, name = tempfile.mkstemp(prefix="ankimon-snapshot-", suffix=".db")
+    os.close(fd)
+    snapshot = Path(name)
+    try:
+        _sqlite_backup(source, snapshot, timeout=timeout)
+        if not _verify_sqlite_integrity(snapshot, timeout=timeout):
+            raise ValueError("The selected file is not a valid Ankimon save")
+        return snapshot
+    except BaseException:
+        _discard_snapshot(snapshot)
+        raise
+
+
+def _discard_snapshot(snapshot: Optional[Path]) -> None:
+    """Release only a caller-owned temporary snapshot and its SQLite sidecars."""
+    if snapshot is not None:
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            try:
+                Path(str(snapshot) + suffix).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _is_same_file(a: Path, b: Path) -> bool:
+    """True if ``a`` and ``b`` name the same file on disk.
+
+    ``resolve()`` catches the ordinary cases and works when the destination does
+    not exist yet; ``os.path.samefile`` additionally catches hard links and
+    aliases, but raises when either side is missing, so it only runs when both
+    do.
+    """
+    try:
+        if Path(a).resolve() == Path(b).resolve():
+            return True
+    except Exception:
+        pass
+    try:
+        if Path(a).exists() and Path(b).exists():
+            return os.path.samefile(str(a), str(b))
+    except Exception:
+        pass
+    return False
+
+
+def _strip_local_secrets(db_path: Path) -> None:
+    """Strip current and legacy credentials from the private export copy.
+
+    Developer saves may still use ``user_data.api_key`` without a config table.
+    VACUUM removes freed pages so deleted secrets cannot be recovered from the
+    exported bytes. Any failure aborts export without touching the live save.
+    """
+    conn = sqlite3.connect(str(db_path), timeout=30)
+    try:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        conn.execute("PRAGMA secure_delete = ON;")
+        if "config" in tables:
+            conn.execute("DELETE FROM config WHERE key = ?", ("leaderboard.api_key",))
+        if "user_data" in tables:
+            conn.execute("DELETE FROM user_data WHERE key = ?", ("api_key",))
+        conn.commit()
+        conn.execute("VACUUM;")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def export_save(parent=None) -> bool:
+    """Write the ACTIVE Ankimon save to a file the user chooses."""
+    from .ankimon_sync import (
+        SYNC_LOCK_MESSAGE, _is_lock_error, _retry_on_lock, _verify_sqlite_integrity,
+    )
+
+    parent = parent or mw
+    source = _active_db_path()
+    if source is None or not source.is_file():
+        showWarning("No Ankimon save was found to export.")
+        return False
+
+    stats = get_db_stats(source)
+    trainer = (stats or {}).get("trainer_name") or "trainer"
+    safe_trainer = "".join(c for c in str(trainer) if c.isalnum() or c in "-_") or "trainer"
+    suggested = str(Path.home() / f"ankimon-save-{safe_trainer}.db")
+
+    dest_str, _ = QFileDialog.getSaveFileName(
+        parent, "Export Ankimon save", suggested, "Ankimon save (*.db)"
+    )
+    if not dest_str:
+        return False
+    dest = Path(dest_str)
+    if dest.suffix.lower() != ".db":
+        dest = dest.with_suffix(".db")
+
+    # Refuse to export ONTO the live save. import_save has always guarded the
+    # mirror image of this; without it here, os.replace() swaps the pathname
+    # underneath the add-on's open SQLite connection — the handle keeps the old,
+    # now-unlinked inode while ankimon.db names a new file, so subsequent writes
+    # land where nothing will ever read them again (and on Windows it throws
+    # WinError 5 instead). Checked after the .db normalisation, since that is
+    # what can turn a different-looking choice into the same path.
+    if _is_same_file(dest, source):
+        showWarning(
+            "That is the save Ankimon is currently using.\n\nChoose a different "
+            "file or folder for the export — exporting onto the live save would "
+            "replace the file Ankimon has open."
+        )
+        return False
+
+    # The picker confirmed dest_str, which can differ from the normalized
+    # filename. Never silently overwrite an existing archive.db when the user
+    # selected a nonexistent archive.txt (or archive with no extension).
+    if dest != Path(dest_str) and dest.exists() and not askUser(
+        f"The export will be saved as:\n{dest}\n\n"
+        "That file already exists. Replace it?",
+        parent=parent,
+        defaultno=True,
+    ):
+        return False
+
+    # Build into a temp file beside the destination and move it into place only
+    # after it verifies, so an interrupted or failed export can never leave a
+    # half-written file the user might later import over a good save.
+    tmp = None
+    try:
+        fd, tmp_name = tempfile.mkstemp(prefix="ankimon-export-", suffix=".db", dir=str(dest.parent))
+        os.close(fd)
+        tmp = Path(tmp_name)
+        _sqlite_backup(source, tmp)
+        _strip_local_secrets(tmp)
+
+        if not _verify_sqlite_integrity(tmp):
+            showWarning(
+                "Export failed: the exported file did not pass an integrity "
+                "check, so it was discarded. Your save is unchanged."
+            )
+            return False
+
+        # Same lock ladder the import path uses. Exporting over an existing
+        # file inside a OneDrive/Dropbox folder is the obvious thing a
+        # two-desktop user does, and a bare os.replace there throws WinError 5
+        # with no actionable text (issue #636).
+        def publish():
+            """Refuse an archive whose journal could replay over the export."""
+            # Check immediately before every replace attempt, including retries:
+            # a writer may have opened the archive while the snapshot was built.
+            # Sidecars can also survive a crash with no open handles. They
+            # belong to the destination, so never delete or recover them here.
+            if any(Path(str(dest) + suffix).exists()
+                   for suffix in ("-wal", "-shm", "-journal")):
+                raise RuntimeError(
+                    "The destination is in use or has an unfinished database "
+                    "transaction. Choose a different file name for the export."
+                )
+            os.replace(tmp, dest)
+
+        _retry_on_lock(publish)
+        tmp = None
+    except Exception as e:
+        if _is_lock_error(e):
+            showWarning(SYNC_LOCK_MESSAGE)
+        else:
+            showWarning(f"Export failed: {e}\n\nYour save is unchanged.")
+        return False
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    showInfo(
+        f"Save exported to:\n{dest}\n\n{_format_stats(stats)}\n\n"
+        "Copy this file to your other computer and use "
+        "Ankimon → Import Save File… there."
+    )
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Import
+# ---------------------------------------------------------------------------
+
+def import_save(parent=None) -> bool:
+    """Replace the ACTIVE Ankimon save with a file the user chooses."""
+    parent = parent or mw
+    target = _active_db_path()
+    collection = _active_collection()
+    if target is None:
+        showWarning("The Ankimon database is not ready yet; try again once Anki has finished loading.")
+        return False
+
+    src_str, _ = QFileDialog.getOpenFileName(
+        parent, "Import Ankimon save", str(Path.home()), "Ankimon save (*.db)"
+    )
+    if not src_str:
+        return False
+    source = Path(src_str)
+
+    if _is_same_file(source, target):
+        showWarning("That file is the save Ankimon is already using. Nothing was changed.")
+        return False
+
+    snapshot = None
+    try:
+        snapshot = _snapshot_save(source)
+        incoming = get_db_stats(snapshot)
+        current = get_db_stats(target)
+        if not askUser(
+            "Replace your current Ankimon save with this file?\n\n"
+            f"FILE YOU CHOSE\n{_format_stats(incoming)}\n\n"
+            f"YOUR CURRENT SAVE\n{_format_stats(current)}\n\n"
+            "Your current save will be backed up first, and Anki will close so the "
+            "new save is loaded cleanly.",
+            parent=parent,
+            defaultno=True,
+        ):
+            return False
+
+        return _replace_active_save(snapshot, target, "Import", collection=collection)
+    except Exception as e:
+        showWarning(f"Import aborted: {e}. Nothing was replaced.")
+        return False
+    finally:
+        _discard_snapshot(snapshot)
+
+
+def _active_collection():
+    """The collection whose review history belongs to the active profile."""
+    from ..services import services
+
+    return services.col if services.col is not None else mw.col
+
+
+def _rebase_import_watermark(snapshot: Path, col) -> None:
+    """Exclude this collection's existing reviews in the private imported copy.
+
+    Restart does not reset a stored nonzero watermark, and shutdown itself can
+    sync before restarting. Stamp MAX(revlog.id) before publishing the save,
+    even when the source's watermark is ahead of this collection's. Future
+    reviews remain detectable. A missing/unreadable collection aborts import.
+    """
+    if col is None:
+        raise RuntimeError("The Anki collection is not available")
+    watermark = col.db.scalar("SELECT MAX(id) FROM revlog")
+    if watermark is None:
+        watermark = 0
+    if type(watermark) is not int or watermark < 0:
+        raise ValueError("Could not read the collection's review watermark")
+    conn = sqlite3.connect(str(snapshot), timeout=30)
+    try:
+        with conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_revlog_watermark', ?)",
+                (str(watermark),),
+            )
+    finally:
+        conn.close()
+
+
+def _replace_active_save(source: Path, target: Path, what: str, *, collection,
+                         local_revision=None, local_digest=None) -> bool:
+    """Back up, then install the private snapshot the caller showed the user.
+
+    ``source`` must be a caller-owned snapshot, never the original external
+    pathname. Rebase its review watermark and verify it before the backup; a
+    failed backup REFUSES the replacement — never overwrite the live save with
+    no recovery path. The replace itself goes through ``_atomic_replace``, which
+    closes the live connection, writes a temp on the same volume,
+    ``os.replace``s it into place (retrying a transient OneDrive/antivirus lock)
+    and reaps stale ``-wal`` / ``-shm`` sidecars belonging to the old file.
+
+    Rescue validates the local content again after active writers drain. Its
+    snapshot digest ignores harmless WAL checkpoints performed by the backup.
+    Anki then closes to reload live objects; the watermark is already rebased.
+    """
+    from .ankimon_sync import (
+        get_ankimon_sync, _handle_manual_sync_error, _verify_sqlite_integrity,
+    )
+
+    try:
+        if _active_db_path() != Path(target) or _active_collection() is not collection:
+            raise RuntimeError("The active profile or save changed; please try the import again")
+        _rebase_import_watermark(source, collection)
+    except Exception as e:
+        showWarning(f"{what} aborted: {e}. Your save is unchanged.")
+        return False
+
+    if not _verify_sqlite_integrity(Path(source)):
+        showWarning(
+            f"{what} aborted: the save file no longer passes an integrity check "
+            "(it may have changed since it was checked), so nothing was "
+            "replaced. Your save is unchanged."
+        )
+        return False
+
+    sync = get_ankimon_sync()
+    if local_revision is not None and _local_save_revision(target) != local_revision:
+        return False
+    if not sync._backup_before_overwrite(Path(target).name):
+        showWarning(
+            f"{what} aborted: a safety backup of your current save could not be "
+            "created, so nothing was replaced. Your save is unchanged."
+        )
+        return False
+
+    local_changed = False
+
+    def validate_target():
+        """Check content after active writers drain, tolerating WAL checkpoints."""
+        nonlocal local_changed
+        if _save_snapshot_digest(target) != local_digest:
+            local_changed = True
+            raise RuntimeError("The local save changed after rescue confirmation")
+
+    try:
+        if local_digest is None:
+            sync._atomic_replace(Path(source), Path(target))
+        else:
+            sync._atomic_replace(Path(source), Path(target), validate_target=validate_target)
+    except Exception as e:
+        if local_changed:
+            return False
+        return _handle_manual_sync_error(e, f"{what} failed")
+
+    showInfo(
+        f"{what} complete. Anki will now close — please reopen it to start "
+        "playing with the restored save."
+    )
+    close_anki()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# One-shot migration off the removed feature
+# ---------------------------------------------------------------------------
+
+def _media_dir() -> Optional[Path]:
+    try:
+        folder = mw.pm.profileFolder()
+        if not folder:
+            return None
+        return Path(folder) / "collection.media"
+    except Exception:
+        return None
+
+
+def _profile_flag(key: str):
+    """A per-profile marker, or ``None`` when no profile is loaded."""
+    try:
+        return mw.pm.profile.get(key)
+    except Exception:
+        return None
+
+
+def _set_profile_flag(key: str, value: str) -> None:
+    try:
+        mw.pm.profile[key] = value
+        mw.pm.save()
+    except Exception:
+        pass
+
+
+def _migration_done() -> bool:
+    """Is this profile finished — for the media folder AS IT IS RIGHT NOW?
+
+    The stored value is a fingerprint of the partition's media files, not a bare
+    True, so "finished" expires the moment one of those files changes (see the
+    migration flag policy above). Absent — or the bare ``True`` an earlier build
+    wrote, which settled permanently — reads as not finished: one more pass, and
+    it re-settles with a fingerprint unless there is real work.
+    """
+    stored = _profile_flag(_MIGRATION_FLAG)
+    if not stored:
+        return False
+    try:
+        return stored == _join_fingerprint(_current_fingerprint_entries())
+    except Exception:
+        return False
+
+
+def _mark_migration_done(fingerprint: str) -> None:
+    """Record WHAT was resolved, not merely THAT something was.
+
+    ``fingerprint`` comes from the scan that reached this resolution — it
+    describes the folder AS EXAMINED, not as it stands now. Those differ: the
+    scan runs on a worker while Anki's media sync is running, so a download can
+    land between the read and this call, and storing the folder's current state
+    would settle on a file nothing ever looked at. A fingerprint that could not
+    be computed is the empty string, which ``_migration_done`` reads as
+    not-settled: the cost is one more scan, where the cost of wrongly settling
+    is a save nobody offers back. A folder that was examined and held nothing
+    is ``_EMPTY_MEDIA_FINGERPRINT`` instead, and does settle.
+    """
+    _set_profile_flag(_MIGRATION_FLAG, fingerprint)
+
+
+def _current_fingerprint_entries() -> Dict[str, str]:
+    media_dir = _media_dir()
+    if media_dir is None:
+        return {}
+    target = _active_db_path()
+    return _media_fingerprint_entries(media_dir, Path(target).name if target else "ankimon.db")
+
+
+def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str]:
+    """``{filename: stat signature}`` for the partition's media saves.
+
+    Deliberately cheap — no SQLite, no reads — because it runs on the
+    profile-open stack before anything is dispatched. Size and mtime together
+    are enough: Anki stamps a downloaded media file's mtime from the local clock
+    at the moment it writes it, so a save that arrives from a peer always looks
+    different from the one it replaced, and it only downloads at all when the
+    sha1 differs. Missing paths are omitted; other stat failures retain an
+    empty-string entry so the whole fingerprint stays unknown, including when
+    other candidates are readable. An unreadable newcomer must not match a
+    previously settled empty folder or subset of saves.
+
+    Returned as a dict so the scan can amend it with only the files it wrote
+    ITSELF — which is what separates "the folder the scan resolved" from "the
+    folder as it stands after an unrelated download".
+    """
+    entries: Dict[str, str] = {}
+    for path in _media_candidate_paths(media_dir, target_db):
+        entry = _fingerprint_entry(path)
+        if entry is not None:
+            entries[path.name] = entry
+    return entries
+
+
+def _fingerprint_entry(path: Path) -> Optional[str]:
+    """A stat signature, ``None`` for absence, or ``""`` for unknown metadata."""
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return ""
+    return f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
+
+
+def _join_fingerprint(entries: Dict[str, str]) -> str:
+    """One string for a partition's entries, shared by the scan and the settle.
+
+    An examined partition with no candidate is a real state, not an unknown
+    one, so it gets a non-empty value of its own: the profile can settle on it,
+    and ``_migration_done`` — which recomputes through this same function —
+    expires that settle the moment a save lands. An unknown entry makes the
+    entire fingerprint unknown (the empty string), which never settles.
+    """
+    if "" in entries.values():
+        return ""
+    return "|".join(sorted(entries.values())) or _EMPTY_MEDIA_FINGERPRINT
+
+
+def _target_db_for(candidate: Path) -> str:
+    """Which local database a media candidate belongs to.
+
+    Developer mode keeps a separate ``ankimonDEV.db``, and the old sync wrote
+    both under their own media names. Ranking them in one list would let a
+    developer save with more test captures be crowned "best" and be offered as a
+    rescue over the real save (or the reverse, in developer mode). Compare like
+    with like instead.
+
+    Content-addressed copies carry no "ankimonDEV", and the normal prefix is a
+    prefix OF the developer one, so the developer test comes first. A digest can
+    never spell "dev_" (v is not a hex digit), so the two prefixes cannot be
+    confused in the other direction.
+    """
+    name = candidate.name
+    if name.startswith(_SAVE_PREFIX["ankimonDEV.db"]):
+        return "ankimonDEV.db"
+    if name.startswith(_SAVE_PREFIX["ankimon.db"]):
+        return "ankimon.db"
+    return "ankimonDEV.db" if "ankimonDEV" in name else "ankimon.db"
+
+
+def _protected_copy_name(target_db: str, digest: str) -> str:
+    """Where a save with content ``digest`` is preserved in this partition."""
+    return f"{_SAVE_PREFIX[target_db]}{digest}.db"
+
+
+def _content_digest(path: Path) -> Optional[str]:
+    """Return a digest of the file bytes, or ``None`` if unreadable.
+
+    Preservation compares content rather than progress counters so distinct
+    saves remain separate even when their summaries match.
+    """
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()[:_DIGEST_CHARS]
+    except Exception:
+        return None
+
+
+def _local_save_revision(path: Path) -> Optional[tuple]:
+    """Cheap change token for the local DB and its writable SQLite sidecars.
+
+    Include WAL commits and changes that leave the displayed counters equal.
+    Exclude SHM: readers update it without changing the save. These stat calls
+    let the UI reject stale worker results without opening SQLite on startup.
+    """
+    entries = []
+    for suffix in ("", "-wal", "-journal"):
+        try:
+            stat = Path(str(path) + suffix).stat()
+            entries.append((stat.st_dev, stat.st_ino, stat.st_size,
+                            stat.st_mtime_ns, stat.st_ctime_ns))
+        except FileNotFoundError:
+            if not suffix:
+                return None
+            entries.append(None)
+        except OSError:
+            return None
+    return tuple(entries)
+
+
+def _save_snapshot_digest(path: Path) -> Optional[str]:
+    """Identify committed content consistently across SQLite checkpoints."""
+    snapshot = _snapshot_save(path, timeout=MIGRATION_PROBE_TIMEOUT)
+    try:
+        return _content_digest(snapshot)
+    finally:
+        _discard_snapshot(snapshot)
+
+
+def _rescan_local_save(logger) -> None:
+    """Discard an outdated comparison and request current statistics."""
+    from ..services import services
+
+    start_media_migration(services.settings, logger)
+
+
+def _media_candidate_paths(media_dir: Path, target_db: str) -> list:
+    """Every path in ``media_dir`` that could hold a save for ``target_db``.
+
+    ONE definition, shared by the scanner and by the settle fingerprint. If
+    those two ever drift, the fingerprint stops noticing a file the scanner
+    would have acted on — which silently re-opens the stale-settle hole the
+    fingerprint exists to close.
+
+    Three kinds of name: the bare one the removed feature wrote; the
+    content-addressed copies this migration writes; and the pre-2024 legacy
+    names, which are GLOBBED rather than reconstructed. The old code built them
+    from ``Path(__file__).parents[2].name``, which is ``addons21`` in a normal
+    install and ``src`` in a git checkout, and real profiles have been seen
+    carrying the numeric package id instead — so the exact prefix cannot be
+    computed after the fact, only matched.
+    """
+    paths = [media_dir / target_db]
+    try:
+        for pattern in (f"_*_{target_db}", _SAVE_PREFIX[target_db] + "*.db"):
+            for path in sorted(media_dir.glob(pattern)):
+                # The normal partition's glob deliberately over-matches — it
+                # catches the developer partition's content-addressed names too
+                # — so the partition is re-checked explicitly rather than
+                # trusted to the pattern.
+                if _target_db_for(path) == target_db and path not in paths:
+                    paths.append(path)
+    except Exception:
+        pass
+    return paths
+
+
+def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
+    """Every Ankimon save in collection.media belonging to ``target_db``.
+
+    Returns ``(candidates, unreadable)``. A file that exists but will not open
+    lands in ``unreadable`` rather than being silently dropped: it may be a real
+    save merely locked by another process this second, and the caller must stay
+    armed and rescan rather than settle as though the folder held nothing.
+    """
+    from .ankimon_sync import _verify_sqlite_integrity
+
+    candidates = []
+    unreadable = []
+    seen = set()
+
+    for path in _media_candidate_paths(media_dir, target_db):
+        try:
+            resolved = path.resolve()
+        except Exception:
+            continue
+        if resolved in seen or not path.is_file():
+            continue
+        # Only ever touch a file that positively identifies as an Ankimon save.
+        # Bare names like ankimon.db are specific enough, but the check also
+        # guards against a same-named file another tool put there.
+        if not _verify_sqlite_integrity(path, timeout=MIGRATION_PROBE_TIMEOUT):
+            unreadable.append(path)
+            continue
+        seen.add(resolved)
+        candidates.append(path)
+    return candidates, unreadable
+
+
+def _offer_rescue_later(snapshot: Path, target: Path, collection,
+                        local_revision: tuple, local_digest: str, logger) -> None:
+    """Defer shutdown until profile-open returns; revalidate the approved save.
+
+    Startup sync and modal dialogs can advance local progress before this
+    callback runs. A changed save needs a fresh comparison and confirmation.
+    """
+    media_dir = _media_dir()
+
+    def _go():
+        try:
+            if (_media_dir() != media_dir or _active_db_path() != target
+                    or _active_collection() is not collection):
+                return
+            if _local_save_revision(target) != local_revision:
+                _rescan_local_save(logger)
+                return
+            replaced = _replace_active_save(
+                snapshot, target, "Rescue", collection=collection,
+                local_revision=local_revision, local_digest=local_digest,
+            )
+            if not replaced and _local_save_revision(target) != local_revision:
+                _rescan_local_save(logger)
+        except Exception:
+            pass
+        finally:
+            _discard_snapshot(snapshot)
+
+    try:
+        mw.progress.single_shot(0, _go, False)
+    except Exception:
+        _go()
+
+
+def _notify_affected_user(logger) -> None:
+    """Tell the users who actually had the feature ON that it is gone.
+
+    Without this the removal is silent for exactly the population it affects: a
+    two-device user learns nothing unless the rescue prompt happens to fire, and
+    that only fires when the media copy is ahead of the local save on every
+    counter — two devices that happen to be level produce no message at all.
+
+    The stored ``misc.ankiweb_sync`` row is the only reliable way to identify
+    them. The key is gone from DEFAULT_CONFIG, but the row persists in the
+    config table (writes were INSERT OR REPLACE only, nothing ever deleted), so
+    it can still be read here. It is deleted afterwards, so this is safe to run
+    on every pass and cannot repeat. Clear the live settings cache as well so
+    a later settings save cannot reinsert the retired row.
+    """
+    try:
+        from ..services import services
+
+        db = services.db
+        if db is None:
+            return
+        raw = db.get_config_value("misc.ankiweb_sync", None)
+        if raw in (None, "", False, 0, "0", "false", "False"):
+            return
+
+        showInfo(
+            "Ankimon's automatic AnkiWeb save-sync has been removed.\n\n"
+            "It decided which device's save was newer by comparing file "
+            "timestamps, but AnkiWeb never sends a save's authoring time — so it "
+            "could pick the wrong one and overwrite newer progress. It could not "
+            "be made reliable, so it has been taken out rather than left to lose "
+            "data.\n\n"
+            "Your save on this computer is untouched, and any copy in your media "
+            "folder has been preserved.\n\n"
+            "To move a save between computers now, use Ankimon → Export Save "
+            "File… on one and Import Save File… on the other."
+        )
+        try:
+            # Through the committing helper, not a bare ``db.execute``: that
+            # left the DELETE in an open transaction — invisible to the next
+            # boot, so the notice repeated, and holding this connection's write
+            # lock until some unrelated write happened to commit it.
+            db.delete_config_value("misc.ankiweb_sync")
+            config = getattr(getattr(services, "settings", None), "config", None)
+            if config is not None:
+                config.pop("misc.ankiweb_sync", None)
+        except Exception:
+            # Non-fatal: the worst case is the notice appearing once more.
+            logger.log("info", "Could not clear the legacy misc.ankiweb_sync row.")
+    except Exception as e:
+        try:
+            logger.log("error", f"Could not show the sync-removal notice: {e}")
+        except Exception:
+            pass
+
+
+def _migration_scan(media_dir: Path, target: Optional[Path]) -> Dict[str, Any]:
+    """Discover and protect media saves, then prepare a rescue comparison.
+
+    Runs on a worker and returns plain data. Preserve the bare media save
+    regardless of ranking, verifying any existing protected copy before reuse.
+    Rank candidates for display and freeze the chosen save in a private
+    snapshot. The local revision lets the UI reject an outdated comparison.
+    """
+    notes: list = []
+    unreadable: list = []
+    written: list = []
+    target_db = Path(target).name if target else "ankimon.db"
+
+    # Taken BEFORE anything is read or written, and amended below with only the
+    # files this scan wrote itself, so the settle describes the folder this pass
+    # actually examined — a peer's save landing mid-scan is not recorded as
+    # resolved.
+    entries = _media_fingerprint_entries(media_dir, target_db)
+
+    saves, integrity_failures = _find_media_saves(media_dir, target_db)
+    unreadable.extend(integrity_failures)
+
+    def _result(outcome: str, **extra) -> Dict[str, Any]:
+        for path in written:
+            entry = _fingerprint_entry(path)
+            if entry is None:
+                entries.pop(path.name, None)
+            else:
+                entries[path.name] = entry
+        base = {
+            "outcome": outcome,
+            "notify": False,
+            "log": notes,
+            "media_dir": media_dir,
+            "target": target,
+            "unreadable": unreadable,
+            "media_path": None,
+            "media_stats": None,
+            "local_stats": None,
+            "fingerprint": _join_fingerprint(entries),
+        }
+        base.update(extra)
+        return base
+
+    if not saves:
+        if unreadable:
+            # Something is there that could not be judged this pass — a lock,
+            # or damage that may yet be repaired — so stay armed to retry it.
+            # The removal notice is independent of that and safe to run on
+            # every pass.
+            return _result("armed", notify=True)
+        # Nothing at all for this partition. The folder may simply not have
+        # received the peer's save yet — but that is what the fingerprint
+        # settle is for: the save landing later changes it, and the next boot
+        # or media-sync stop rescans. Staying armed instead dispatched a scan —
+        # two glob passes over collection.media — on every profile open and
+        # every media-sync stop, forever, for the majority of profiles that
+        # never had the removed feature on. Settle on the examined-empty
+        # fingerprint; the removal notice still runs from this result.
+        return _result("empty", notify=True)
+
+    # Read each candidate exactly ONCE: every one is a SQLite open on a file
+    # that may be locked, so re-reading a path to re-compare it multiplies the
+    # worst case by the number of comparisons.
+    stats: Dict[Path, Dict[str, Any]] = {}
+    for path in saves:
+        summary = get_db_stats(path, timeout=MIGRATION_PROBE_TIMEOUT)
+        if summary is None:
+            unreadable.append(path)
+        else:
+            stats[path] = summary
+
+    if not stats:
+        notes.append((
+            "info",
+            "Ankimon: no save in the media folder could be read this pass; "
+            "rescanning later.",
+        ))
+        return _result("armed")
+
+    # PROTECT. Exactly ONE file in this partition can be taken by Anki's "Delete
+    # Unused Files": the bare ``ankimon.db`` / ``ankimonDEV.db``. Every other
+    # candidate already begins with an underscore. So the protect step has one
+    # job, on one file, and it is unconditional: it does not rank, does not
+    # compare, and does not write over anything.
+    at_risk = media_dir / target_db
+    preserved = (
+        _preserve(at_risk, media_dir, target_db, notes, unreadable, written)
+        if at_risk in stats
+        else None
+    )
+
+    local_revision = _local_save_revision(target) if target else None
+    local_stats = (
+        get_db_stats(target, timeout=MIGRATION_PROBE_TIMEOUT) if target else None
+    )
+
+    # JUDGE. Prefer eligible rescues before ranking by raw counters. Otherwise
+    # a divergent save with more captures can hide an eligible copy and settle
+    # the folder without ever offering it. With no eligible copy, keep the
+    # highest-ranked candidate for the existing divergence/equality handling.
+    best = max(stats, key=lambda p: (
+        _dominates(stats[p], local_stats), _progress_key(stats[p]),
+    ))
+    media_path, media_stats = best, stats[best]
+    if best == at_risk and preserved is not None and (
+        preserved in written or preserved in stats
+    ):
+        # Prefer the protected path only if this scan read or verified it.
+        media_path = preserved
+
+    local_digest = None
+    if target is not None and local_stats is not None:
+        try:
+            local_digest = _save_snapshot_digest(target)
+        except Exception:
+            pass
+
+    # A save that will not open is UNKNOWN, never empty — the distinction the
+    # whole comparison rests on, and one _progress_key cannot make on its own,
+    # since it floors an unreadable save to (-1, -1, -1). A local save merely
+    # locked this second would otherwise lose to any readable media copy, be
+    # offered against a side the dialog renders as "could not read this file",
+    # and then, if the user sensibly declined, settle the profile on a
+    # comparison that never happened.
+    if target is not None and (
+        local_stats is None or local_revision is None or local_digest is None
+    ):
+        notes.append((
+            "info",
+            f"Ankimon: {Path(target).name} could not be read this pass; "
+            "not comparing saves, rescanning later.",
+        ))
+        return _result("armed", media_path=media_path, media_stats=media_stats)
+
+    # Freeze the chosen file on this worker, then read the displayed statistics
+    # from that snapshot. Ranking/preservation above can span a media download;
+    # their earlier stats must never describe different bytes from the rescue.
+    snapshot = None
+    try:
+        snapshot = _snapshot_save(media_path, timeout=MIGRATION_PROBE_TIMEOUT)
+        media_stats = get_db_stats(snapshot, timeout=MIGRATION_PROBE_TIMEOUT)
+        if media_stats is None:
+            raise ValueError("Could not read the rescue snapshot")
+        # Remember the content actually shown, not just the folder's stat
+        # signature: releasing a lock can expose a different candidate without
+        # changing any file's size or mtime. Hash the private verified snapshot
+        # here on the worker, never the mutable media path on the UI thread.
+        candidate_digest = _content_digest(snapshot)
+        if candidate_digest is None:
+            raise ValueError("Could not identify the rescue snapshot")
+    except Exception as e:
+        _discard_snapshot(snapshot)
+        notes.append(("info", f"Could not snapshot {media_path.name}: {e}; rescanning later."))
+        return _result("armed")
+
+    return _result(
+        "compare",
+        snapshot_path=snapshot,
+        candidate_digest=candidate_digest,
+        media_path=media_path,
+        media_stats=media_stats,
+        local_stats=local_stats,
+        local_revision=local_revision,
+        local_digest=local_digest,
+    )
+
+
+def _preserve(at_risk: Path, media_dir: Path, target_db: str,
+              notes: list, unreadable: list, written: list) -> Optional[Path]:
+    """Keep a verified protected copy without changing any existing media file.
+
+    Reuse a digest-named copy only when its bytes still match. If that name is
+    occupied by damaged or different content, try numbered alternatives. Copy
+    the static media file as bytes to avoid SQLite recovering its journal in
+    place; verify the temporary copy before publishing it atomically.
+    """
+    from .ankimon_sync import _atomic_write_over, _verify_sqlite_integrity
+
+    tmp = None
+    dest = None
+    try:
+        def destination(digest):
+            """Find an identical copy or an unused name, skipping damaged copies."""
+            base = media_dir / _protected_copy_name(target_db, digest)
+            candidate, suffix = base, 0
+            while candidate.exists() or candidate.is_symlink():
+                if _content_digest(candidate) == digest:
+                    return candidate
+                suffix += 1
+                candidate = base.with_name(f"{base.stem}-{suffix}.db")
+            return candidate
+
+        probe = _content_digest(at_risk)
+        if probe is not None:
+            settled = destination(probe)
+            if settled.is_file():
+                return settled
+
+        fd, name = tempfile.mkstemp(prefix="ankimon-protect-", suffix=".db")
+        os.close(fd)
+        tmp = Path(name)
+        shutil.copy2(at_risk, tmp)
+        digest = _content_digest(tmp)
+        if digest is None:
+            raise OSError(f"could not read back the copy of {at_risk.name}")
+        dest = destination(digest)
+        if dest.is_file():
+            return dest
+        if not _verify_sqlite_integrity(tmp, timeout=MIGRATION_PROBE_TIMEOUT):
+            raise OSError(f"the copy of {at_risk.name} did not verify")
+        _atomic_write_over(tmp, dest)
+        written.append(dest)
+        notes.append((
+            "info",
+            f"Ankimon: preserved {at_risk.name} as {dest.name} "
+            "(protected from Anki's Delete Unused Files). Nothing was deleted "
+            "or overwritten.",
+        ))
+        return dest
+    except Exception as e:
+        notes.append(("error", f"Could not preserve {at_risk.name} in media: {e}"))
+        # Stay armed and retry next pass: the at-risk file is still sitting
+        # there under a name a media check can delete.
+        unreadable.append(dest if dest is not None else at_risk)
+        return None
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def _apply_migration_result(result: Dict[str, Any], logger) -> None:
+    """Apply a scan and release its snapshot unless a deferred rescue owns it."""
+    try:
+        _apply_migration_decision(result, logger)
+    finally:
+        _discard_snapshot(result.pop("snapshot_path", None))
+
+
+def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
+    """Log, prompt and update profile flags on the main thread.
+
+    Recheck the local revision before displaying worker statistics or saving
+    an answer. Accepted rescues recheck again in their deferred callback.
+    """
+    for level, message in result.get("log", ()):
+        try:
+            logger.log(level, message)
+        except Exception:
+            pass
+
+    if result.get("notify"):
+        _notify_affected_user(logger)
+
+    outcome = result.get("outcome")
+    if outcome == "empty":
+        # Nothing in this partition: settle on the examined-empty fingerprint,
+        # unless the active save changed partitions while the worker ran and
+        # the scan described the wrong one. ``_migration_done`` would catch
+        # that on its own recompute; the guard only saves a pointless write.
+        if _active_db_path() == result.get("target"):
+            _mark_migration_done(result.get("fingerprint", ""))
+        return
+    if outcome != "compare":
+        return
+
+    target = result.get("target")
+    collection = _active_collection()
+    local_revision = result.get("local_revision")
+    local_digest = result.get("local_digest")
+    if target is not None:
+        if _active_db_path() != Path(target):
+            return
+        if (local_revision is None or local_digest is None
+                or _local_save_revision(target) != local_revision):
+            _rescan_local_save(logger)
+            return
+    media_stats = result.get("media_stats")
+    local_stats = result.get("local_stats")
+    fingerprint = result.get("fingerprint", "")
+    # A pass that must stay armed for an unreadable file never settles, so the
+    # answer is remembered on its own or the question repeats every boot. Scope
+    # it to BOTH this folder and the chosen snapshot: a previously locked save
+    # can become the best candidate without changing the folder fingerprint.
+    # Legacy folder-only answers safely reoffer once.
+    candidate_digest = result.get("candidate_digest")
+    answer_identity = (
+        f"v2:{candidate_digest}:{fingerprint}"
+        if fingerprint and candidate_digest else ""
+    )
+    answered = bool(answer_identity) and _profile_flag(_MIGRATION_ANSWERED_FLAG) == answer_identity
+
+    if target is not None and _dominates(media_stats, local_stats) and not answered:
+        if askUser(
+            "Ankimon's automatic AnkiWeb save-sync has been removed — it "
+            "could not tell reliably which device's save was newer, and "
+            "sometimes overwrote the wrong one.\n\n"
+            "A save left in your Anki media folder (synced from AnkiWeb, if "
+            "media sync is on) is further along than the save on this computer "
+            "on every count Ankimon can compare:\n\n"
+            f"IN YOUR MEDIA FOLDER\n{_format_stats(media_stats)}\n\n"
+            f"ON THIS COMPUTER\n{_format_stats(local_stats)}\n\n"
+            "Load the media-folder copy? Compare the two above first — Ankimon "
+            "counts what each save holds, it cannot tell whether one contains "
+            "the other. Your current save will be backed up before anything is "
+            "replaced, and Anki will close so the copy can be loaded cleanly."
+            "\n\n"
+            "If you say no, nothing changes — the copy stays in your media "
+            "folder either way, and you will not be asked about it again "
+            "unless a different copy arrives there.",
+            parent=mw,
+            defaultno=True,
+        ):
+            # Deliberately NOT settled here. On success the replace closes Anki;
+            # the next boot re-runs this, finds the media copy no longer ahead of
+            # the (now equal) local save, skips the prompt and settles then. On
+            # FAILURE — a refused backup, a persisting file lock — the flag is
+            # still unset, so the user is offered the rescue again next launch
+            # instead of silently losing their only route back to that data.
+            _offer_rescue_later(
+                result.pop("snapshot_path"), Path(target), collection,
+                local_revision, local_digest, logger,
+            )
+            return
+        if _active_collection() is not collection or _active_db_path() != Path(target):
+            return
+        if _local_save_revision(target) != local_revision:
+            _rescan_local_save(logger)
+            return
+        # Declined: remember this candidate in this folder, whether or not this
+        # pass goes on to settle.
+        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, answer_identity)
+    elif (
+        not answered
+        and target is not None
+        and media_stats is not None
+        and local_stats is not None
+        and not _dominates(local_stats, media_stats)
+        and _progress_key(media_stats) != _progress_key(local_stats)
+    ):
+        # DIVERGED from the local save. Neither side is a superset, so there is
+        # no version of "load this one" that does not throw away progress, and
+        # offering the replace would be the same lie the removed sync told. Say
+        # what is true and leave both files alone.
+        showInfo(
+            "Ankimon's automatic AnkiWeb save-sync has been removed — it "
+            "could not tell reliably which device's save was newer.\n\n"
+            "There is a save in your Anki media folder that has DIVERGED from "
+            "the one on this computer: each contains progress the other does "
+            "not, so neither can simply replace the other.\n\n"
+            f"IN YOUR MEDIA FOLDER ({Path(result['media_path']).name})\n"
+            f"{_format_stats(media_stats)}\n\n"
+            f"ON THIS COMPUTER\n{_format_stats(local_stats)}\n\n"
+            "Nothing has been changed and nothing has been deleted. If you want "
+            "the media-folder copy, copy it out of your collection.media folder "
+            "and load it with Ankimon → Import Save File… — your current save is "
+            "backed up before it is replaced."
+        )
+        _set_profile_flag(_MIGRATION_ANSWERED_FLAG, answer_identity)
+
+    if result.get("unreadable"):
+        # Something in the folder exists but could not be judged this pass — a
+        # lock, or damage that may yet be repaired. Notify, but stay armed so a
+        # later scan can still protect and offer it.
+        _notify_affected_user(logger)
+        try:
+            logger.log(
+                "info",
+                "Ankimon: "
+                + ", ".join(sorted(p.name for p in result["unreadable"]))
+                + " could not be read this pass; rescanning later.",
+            )
+        except Exception:
+            pass
+        return
+
+    # A genuine terminal state: every candidate readable and the rescue
+    # answered. The notice runs here too — the users most likely to have nothing
+    # left in media are the most likely to have had the feature on — and it
+    # cannot repeat, because it deletes the config row it keys off.
+    _notify_affected_user(logger)
+    _mark_migration_done(fingerprint)
+
+
+def run_media_migration(settings_obj, logger) -> None:
+    """Protect, and offer to rescue, whatever the removed sync left in media.
+
+    The SYNCHRONOUS form: scan and act on the calling thread. Used directly by
+    tests, and as the fallback when Anki's task manager is unavailable. Anki's
+    own callers go through ``start_media_migration``, which keeps the file work
+    off the profile-open stack.
+
+    Runs until it RESOLVES for a profile, and re-arms whenever the media folder
+    changes underneath a resolution. Failures are logged and swallowed so the
+    migration cannot stop Ankimon from loading.
+    """
+    try:
+        if _migration_done():
+            return
+        media_dir = _media_dir()
+        if media_dir is None or not media_dir.is_dir():
+            return          # no profile / no media folder — retry later
+        _apply_migration_result(_migration_scan(media_dir, _active_db_path()), logger)
+    except Exception as e:
+        try:
+            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
+        except Exception:
+            pass
+
+
+# In-flight state for the backgrounded form. ``rerun`` is what makes a request
+# that arrives mid-scan safe to accept: dropping it would lose the post-sync
+# pass whenever the boot scan is still running when the download lands, which is
+# exactly the ordering the post-sync pass exists to cover.
+_MIGRATION_SCAN_STATE = {"running": False, "rerun": False}
+
+
+def start_media_migration(settings_obj, logger) -> None:
+    """Scan on a background worker, then apply decisions on the main thread.
+
+    Cheap guards avoid dispatching scans for an unchanged, settled profile.
+    ``uses_collection=False`` keeps inspection off Anki's collection executor,
+    where it would delay startup sync. Requests arriving during a scan are
+    coalesced into a later pass, and profile changes invalidate its result.
+    """
+    try:
+        if _migration_done():
+            return
+        media_dir = _media_dir()
+        if media_dir is None or not media_dir.is_dir():
+            return
+        target = _active_db_path()
+        collection = _active_collection()
+
+        if _MIGRATION_SCAN_STATE["running"]:
+            _MIGRATION_SCAN_STATE["rerun"] = True
+            return
+
+        def _scan():
+            return _migration_scan(media_dir, target)
+
+        def _done(future) -> None:
+            result = None
+            try:
+                result = future.result()
+                # A profile switch during the scan would leave us applying one
+                # profile's media folder to another's flag and another's save.
+                # mw.pm has already moved on by the time this runs, so compare.
+                if (result is not None and _media_dir() == media_dir
+                        and _active_collection() is collection):
+                    _apply_migration_result(result, logger)
+            except Exception as e:
+                try:
+                    logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
+                except Exception:
+                    pass
+            finally:
+                if result is not None:
+                    _discard_snapshot(result.pop("snapshot_path", None))
+                _MIGRATION_SCAN_STATE["running"] = False
+                if _MIGRATION_SCAN_STATE["rerun"]:
+                    _MIGRATION_SCAN_STATE["rerun"] = False
+                    start_media_migration(settings_obj, logger)
+
+        _MIGRATION_SCAN_STATE["running"] = True
+        try:
+            mw.taskman.run_in_background(_scan, _done, uses_collection=False)
+        except Exception:
+            # No task manager (or it refused): correctness beats responsiveness.
+            _MIGRATION_SCAN_STATE["running"] = False
+            run_media_migration(settings_obj, logger)
+    except Exception as e:
+        try:
+            logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")
+        except Exception:
+            pass
+
+
+def register_media_migration_hooks(settings_obj, logger) -> None:
+    """Register a rescan on media-sync stop and start the initial scan.
+
+    A stop signal means only that the worker stopped, including failure or
+    cancellation. Fingerprints determine whether the migration is settled.
+    Remember handlers in services so reloading removes the previous callbacks;
+    catch exceptions because Anki unregisters callbacks that raise.
+    """
+    from aqt import gui_hooks
+    from ..services import services
+
+    for hook, handler in getattr(services, _MIGRATION_HOOK_RECORD, ()):
+        try:
+            hook.remove(handler)
+        except Exception:
+            pass
+
+    def on_media_sync_state(running: bool) -> None:
+        try:
+            if not running:
+                start_media_migration(settings_obj, logger)
+        except Exception:
+            pass
+
+    handlers = ((gui_hooks.media_sync_did_start_or_stop, on_media_sync_state),)
+    for hook, handler in handlers:
+        hook.append(handler)
+    setattr(services, _MIGRATION_HOOK_RECORD, handlers)
+
+    start_media_migration(settings_obj, logger)

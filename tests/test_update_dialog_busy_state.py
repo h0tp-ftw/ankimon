@@ -5,6 +5,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 
 _SRC = Path(__file__).parent.parent / "src"
 
@@ -664,6 +666,54 @@ def test_sprite_workflows_share_busy_lifecycle(tmp_path):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = module
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "crash", "closing"])
+def test_updates_dialog_refreshes_sprite_cache(monkeypatch, tmp_path, outcome):
+    """The central Updates dialog must invalidate partial sprite installations."""
+    from Ankimon import resources
+    from Ankimon.functions import sprite_functions as sf
+
+    root = tmp_path / "sprites"
+    (root / "front_default").mkdir(parents=True)
+    (root / "front_default" / "25.png").touch()
+    monkeypatch.setattr(sf, "pkmnimgfolder", root)
+    monkeypatch.setattr(sf.services, "logger", types.SimpleNamespace(log=lambda *args: None))
+    monkeypatch.setattr(resources, "user_path_sprites", root)
+    worker_module = types.ModuleType("Ankimon.pyobj.sprite_updater")
+    worker_module.SpriteUpdateDiffThread = _FakeSpriteThread
+    monkeypatch.setitem(sys.modules, worker_module.__name__, worker_module)
+    monkeypatch.setattr(
+        update_dialog, "mw",
+        types.SimpleNamespace(taskman=types.SimpleNamespace(run_on_main=lambda fn: fn())),
+    )
+    sf._clear_sprite_cache()
+    try:
+        assert sf.get_sprite_path("front", "png", 25, False, "F") == (
+            f"{root}/front_default/25.png"
+        )
+        dialog, _buttons = _make_dialog()
+        dialog.sprites_added = []
+        dialog.sprites_modified = []
+        dialog.sprites_deleted = []
+        dialog.sprites_remote_sha = "abc123"
+        dialog.reject = lambda: None
+        update_dialog.UpdateDialog._start_sprites_download(dialog)
+        thread = dialog.sprites_thread
+
+        preferred = root / "front_default" / "female" / "25.png"
+        preferred.parent.mkdir()
+        preferred.touch()
+        if outcome == "closing":
+            dialog._closing = True
+        if outcome != "crash":
+            thread.finished_signal.emit(outcome == "success", "Update finished")
+        thread.running = False
+        thread.finished.emit()
+
+        assert sf.get_sprite_path("front", "png", 25, False, "F") == str(preferred)
+    finally:
+        sf._clear_sprite_cache()
 
 
 def test_branch_progress_malformed_result_uses_failure_path():

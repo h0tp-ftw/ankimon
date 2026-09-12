@@ -29,6 +29,7 @@ from .utils import (
 )
 from .functions.encounter_functions import generate_random_pokemon
 from .functions.pokedex_functions import warm_evolution_caches
+from .functions.tm_learnset import warm_tm_learnset_cache
 from .functions.badges_functions import get_achieved_badges
 from .functions.rate_addon_functions import rate_this_addon
 from .gui_entities import CheckFiles
@@ -129,6 +130,15 @@ def run_startup_background_checks(backup_manager=None):
         warm_evolution_caches()
     except Exception as e:
         logger.log("error", f"Error warming evolution caches: {e}")
+
+    # TM learnsets are another bundled static table. Parse them on the same
+    # background boot path so opening the TM picker never pays for JSON I/O.
+    # Keep this guard independent from the evolution warm: either optimization
+    # may fail without preventing Ankimon from finishing startup.
+    try:
+        warm_tm_learnset_cache()
+    except Exception as e:
+        logger.log("error", f"Error warming TM learnset cache: {e}")
 
     # 6. First enemy + starter/rating preconditions (DB/CPU); the Qt side of
     #    each (stat application, starter window, rate dialog) runs in
