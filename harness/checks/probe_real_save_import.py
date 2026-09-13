@@ -144,6 +144,11 @@ def _phase_two(user_path: pathlib.Path) -> int:
     return 0
 
 
+# Each phase boots the real add-on once; CI finishes both in well under a
+# minute. A startup that hangs must fail this probe, not occupy the job.
+PHASE_TIMEOUT = 300
+
+
 def main() -> int:
     phase = None
     user_path = None
@@ -165,12 +170,18 @@ def main() -> int:
     environment = dict(os.environ)
     environment.setdefault("QT_QPA_PLATFORM", "offscreen")
     for step in ("1", "2"):
-        result = subprocess.run(
-            [sys.executable, "-m", "harness.checks.probe_real_save_import",
-             f"--phase={step}", f"--user={user_path}"],
-            cwd=str(pathlib.Path(__file__).resolve().parents[2]),
-            env=environment,
-        )
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "harness.checks.probe_real_save_import",
+                 f"--phase={step}", f"--user={user_path}"],
+                cwd=str(pathlib.Path(__file__).resolve().parents[2]),
+                env=environment,
+                timeout=PHASE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"probe_real_save_import: phase {step} did not finish within "
+                  f"{PHASE_TIMEOUT}s", file=sys.stderr)
+            return 1
         if result.returncode != 0:
             print(f"probe_real_save_import: phase {step} FAILED", file=sys.stderr)
             return result.returncode
