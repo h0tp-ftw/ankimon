@@ -22,7 +22,9 @@ Publishing `pending.json` is staging's commit point. Anything that fails after
 it — the directory syncs, the read-back — leaves an import that WILL install at
 the next full start, so it is reported as pending with the cancel instruction
 rather than as an abort. Only failures before publication say the current save
-is unchanged, and they leave nothing staged.
+is unchanged, and they leave nothing staged. The one exception after publication
+is a manifest that has vanished by read-back: then nothing will install, so
+staging removes its staged copy and fails as an ordinary abort.
 
 Recovery copies live in `ankimon_recovery/pre-import-<token>/` beside the active
 database. The preparation message displays the reserved location, and
@@ -161,7 +163,9 @@ A third review round raised four further findings, all accepted:
 - Staging is split at its publication commit point. Once `pending.json` is in
   place the import installs at the next full start whatever fails afterwards,
   so Import, Rescue and Backup Restore report it as pending and name the cancel
-  action instead of announcing an abort with the current save unchanged.
+  action instead of announcing an abort with the current save unchanged. The
+  exception is a manifest that has vanished by read-back, which leaves nothing
+  to install and is reported as an abort.
 - A media sync the capture guard turned away is re-requested once capture
   succeeds. Anki reads the gate only as a sync starts, so clearing it merely
   permitted the next attempt while the suppressed request was gone.
@@ -185,10 +189,11 @@ Verifying those four fixes surfaced five more, all accepted:
 - A second import attempt while one is pending has its own message naming the
   pending import, instead of an abort notice that is true of the attempt and
   misleading about the session.
-- Cancelling a pending import is committed by removing the manifest. A failure
+- Cancelling a pending import is committed before anything is removed. A failure
   of the durability flush that follows no longer reports "could not be
   cancelled, try again", which the retry immediately contradicted with "there
-  is no pending save import".
+  is no pending save import". The fifth round moved that commit onto a synced
+  rewrite of the record, so a crash cannot undo it either.
 
 An external review of the branch's own fixes found no surviving instance of the
 four findings it re-checked. Verifying them adversarially instead surfaced
@@ -248,3 +253,61 @@ the real add-on: stage over the live save, keep editing, exit, start again, and
 check that the runtime is on the imported save with the final pre-import
 progress in the recovery copy and nothing left staged. Windows file locking and
 authenticated AnkiWeb behaviour remain outside this validation.
+
+A fifth round left ten review threads open, and the User Data Safety pre-merge
+check failed on two claims. Nine threads led to changes. The `-shm` thread and
+the retention half of the pre-merge check were refuted on the source, the second
+with a regression test.
+
+Cancellation and the pending record:
+
+- Cancelling is durable before it is reported. `pending.json` is rewritten in
+  place as a cancelled record and synced as a file, and only then unlinked. A
+  file sync needs no directory sync, which is the step whose failure the third
+  round had to tolerate, so a crash that undoes the unlink or the staged copy's
+  removal brings back a record that installs nothing. If the rewrite itself
+  cannot be synced, Cancel reports failure and puts the original record back, so
+  the retry it asks for still finds the import. A separate tombstone file was not
+  used: its directory entry would need the very sync that failed.
+- Whether a pending record describes an already-installed import has three
+  answers. The check runs on the GUI thread only to choose wording, so the save
+  gets two seconds rather than SQLite's 30-second busy timeout. A locked or
+  unreadable save answers "unknown", and Import, Backup Restore and Cancel word
+  that as neither pending nor installed; the cancellation event carries
+  `installed=None`.
+- A cancellation that succeeds for one save mode and fails for the other names
+  both outcomes.
+- A manifest that has vanished by read-back is the one failure after publication
+  that stays an ordinary abort: nothing will install, and the staged copy goes.
+
+Startup and shutdown budgets:
+
+- The startup install checks its shared budget between blocks of the digest and
+  of the copy into place, and before each file sync. An fsync already in flight
+  cannot be abandoned, and nothing is checked after the atomic replacement.
+- Retention, and the removal of a failed backup attempt, delete one entry at a
+  time under the shutdown deadline instead of calling `shutil.rmtree`.
+- Retention renames a doomed directory out of the `backup_` namespace before
+  deleting anything in it, and a later pass finishes what is left. Deleting
+  entries restamps a directory's mtime and retention orders by mtime, so a
+  removal cut short in place, by the deadline or by one locked file, left remains
+  that sorted as the newest backup and evicted a good one on the next pass. This
+  turned up while checking the refuted claim below.
+
+Refuted:
+
+- *A backup that fails to delete lets retention evict a newer one.* Retention only
+  ever attempts the oldest directories beyond `MAX_BACKUPS`, and a failure adds no
+  attempt, so nothing in the kept set is touched. Stopping at the first failure,
+  as suggested, would let one permanently locked directory grow the backup folder
+  without bound. The test locks the oldest backup and checks that exactly the next
+  one goes and the newest five stay.
+- *The `-shm` assertion can fail on other SQLite builds.* The last connection
+  `get_db_stats` closes is read-only. SQLite removes `-wal` and `-shm` on close
+  only after a checkpoint, which a read-only connection cannot run, so the sidecar
+  is still there on every build.
+
+Also: a deferred media sync that cannot be restarted is logged (the request itself
+has been kept since the fourth round), each phase of the Tier-2 import probe is
+bounded at 300 seconds, and the preference-off guard test now drives the user's
+preference through the installed wrapper instead of replacing it.
