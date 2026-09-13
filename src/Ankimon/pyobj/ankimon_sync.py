@@ -225,11 +225,13 @@ def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
         if not db_file.is_file() or db_file.stat().st_size < 512:
             return False
         import sqlite3
-        # Build the read-only URI via as_uri() so a profile path with spaces
-        # or unicode (e.g. C:\Users\John Doe\...) is percent-encoded correctly
-        # — a raw f-string URI would fail to open a perfectly valid DB and
-        # wrongly refuse the import.
-        uri = db_file.resolve().as_uri() + "?mode=ro"
+        from ..save_import import _sqlite_uri
+        # A percent-encoded read-only URI, so a profile path with spaces or
+        # unicode (e.g. C:\Users\John Doe\...) or on a network share
+        # (\\server\share\...) opens — a raw f-string URI, or as_uri()'s
+        # server-in-the-authority form, would fail to open a perfectly valid
+        # DB and wrongly refuse the import.
+        uri = _sqlite_uri(db_file, "ro")
         conn = sqlite3.connect(uri, uri=True, timeout=timeout)
         # connect(timeout=) bounds only the wait for a LOCK. PRAGMA quick_check
         # scans the whole database, so on a big enough save it can run well past
@@ -508,6 +510,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                     MOBILE_QUEUE_CAP,
                 )
                 from ..menu_buttons import update_mobile_badge
+                from ..save_import import rebase_after_import
 
                 dev_db_path = user_path / "ankimonDEV.db"
                 original_db_name = db.db_path.name
@@ -548,6 +551,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                         # 1. Queue to ankimon.db
                         if db.db_path.name != "ankimon.db":
                             db.switch_database("ankimon.db")
+                        rebase_after_import(db, col)
                         watermark_normal = db.get_mobile_watermark()
                         all_mobile_normal = detect_mobile_reviews(col, watermark_normal, desktop_ids)
                         if all_mobile_normal:
@@ -565,6 +569,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                         if dev_db_path.is_file():
                             if db.db_path.name != "ankimonDEV.db":
                                 db.switch_database("ankimonDEV.db")
+                            rebase_after_import(db, col)
                             watermark_dev = db.get_mobile_watermark()
                             all_mobile_dev = detect_mobile_reviews(col, watermark_dev, desktop_ids)
                             if all_mobile_dev:

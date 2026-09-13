@@ -105,7 +105,9 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.pyobj.save_transfer",
-        _stub_module("Ankimon.pyobj.save_transfer", register_media_migration_hooks=MagicMock()),
+        _stub_module("Ankimon.pyobj.save_transfer",
+                     register_media_migration_hooks=MagicMock(),
+                     guard_media_saves_now=MagicMock()),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -262,7 +264,8 @@ class _Future:
         return self._value
 
 
-def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True, warm_error=None):
+def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True, warm_error=None,
+                           record=None):
     """Register hooks, then fire the profile_did_open handler with the given
     settings.
 
@@ -274,6 +277,16 @@ def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True, warm_error=None)
     profile_hooks = _exec_profile_hooks(monkeypatch, gui_hooks)
     if warm_error is not None:
         profile_hooks._warm.side_effect = warm_error
+    if record is not None:
+        # side_effect rather than replacement: profile_hooks binds these names
+        # at import time, so the mock objects themselves have to stay.
+        for module_name, attribute in (
+            ("Ankimon.pyobj.save_transfer", "guard_media_saves_now"),
+            ("Ankimon.pyobj.tip_of_the_day", "show_tip_of_the_day"),
+            ("Ankimon.pyobj.save_transfer", "register_media_migration_hooks"),
+        ):
+            mock = getattr(sys.modules[module_name], attribute)
+            mock.side_effect = (lambda name: lambda *a, **k: record.append(name))(attribute)
 
     def _get(key, default=None):
         return {
@@ -319,6 +332,30 @@ def test_media_migration_hooks_registered_on_profile_open(monkeypatch):
     _, _, transfer_mod = _fire_profile_did_open(monkeypatch)
 
     transfer_mod.register_media_migration_hooks.assert_called_once()
+    transfer_mod.guard_media_saves_now.assert_called_once()
+
+
+def test_the_media_guard_precedes_every_dialog_and_the_scan_follows_them(monkeypatch):
+    """A modal spins a nested event loop, which delivers taskman callbacks.
+
+    So the scan must be dispatched with nothing left in this handler that can
+    pump the loop -- otherwise its completion runs re-entrantly inside a dialog,
+    and the rescue it may offer reaches close_anki while Anki's loadProfile is
+    still on the stack. The guard is the opposite case: it has to be up before
+    the first of those dialogs, so it is called separately, first.
+    """
+    order = []
+    profile_hooks, _, transfer_mod = _fire_profile_did_open(
+        monkeypatch,
+        record=order,
+    )
+
+    assert order, "no ordered calls were recorded"
+    assert order[0] == "guard_media_saves_now"
+    assert order[-1] == "register_media_migration_hooks"
+    assert "show_tip_of_the_day" in order
+    assert order.index("guard_media_saves_now") < order.index("show_tip_of_the_day")
+    assert order.index("show_tip_of_the_day") < order.index("register_media_migration_hooks")
 
 
 # --- Static-data re-warm on profile open ------------------------------------

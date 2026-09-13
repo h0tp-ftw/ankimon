@@ -10,7 +10,10 @@ from .services import services
 from .singletons import settings_obj, logger
 from .utils import test_online_connectivity
 from .pyobj.ankimon_sync import setup_ankimon_sync_hooks
-from .pyobj.save_transfer import register_media_migration_hooks
+from .pyobj.save_transfer import (
+    guard_media_saves_now,
+    register_media_migration_hooks,
+)
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
@@ -56,6 +59,12 @@ def _on_profile_close():
 
 def _on_profile_did_open(online_connectivity):
     def handler():
+        # Pause media sync for any uncaptured original BEFORE the first dialog
+        # below can pump the event loop. Stat calls only; the scan that can
+        # release this guard is dispatched at the very end of this handler,
+        # where nothing runs after it to deliver its callback re-entrantly.
+        guard_media_saves_now(logger)
+
         # Re-warm the static evolution table _on_profile_close just dropped.
         # The boot warm (startup.run_startup_background_checks) runs once per
         # Anki PROCESS, so a profile SWITCH leaves pokemon_evolution.csv
@@ -81,6 +90,12 @@ def _on_profile_did_open(online_connectivity):
             if db is not None and col is not None:
                 from .functions.mobile_sync import clear_desktop_session
                 from .menu_buttons import update_mobile_badge
+                from .save_import import rebase_after_import
+
+                # Addon construction precedes opening the Anki collection.
+                # Rebase an installed import now, including shutdown-sync reviews,
+                # before any old reviews can be queued as mobile battles.
+                rebase_after_import(db, col)
 
                 watermark = db.get_mobile_watermark()
                 if watermark == 0:
@@ -114,6 +129,40 @@ def _on_profile_did_open(online_connectivity):
                 update_mobile_badge(pending)
         except Exception as e:
             logger.log("error", f"Failed to initialize mobile watermark: {e}")
+
+        # Delivery goes through QtPresenter.warn -> showWarning in production, so
+        # it can raise. Report each list in its own guarded block and clear it
+        # only once the user has actually been told: a lost warning would leave
+        # the import outcome invisible, and an escaping one would take the sync
+        # hook registration below down with it.
+        failures = getattr(services, "_save_import_errors", [])
+        if failures:
+            try:
+                # Only the listed saves were left alone. get_db tries both save
+                # modes at every start, so the other one may have been replaced
+                # in this same start; "no save was replaced" denied that.
+                services.ui.warn(
+                    "Ankimon could not install the pending imports listed below, "
+                    "so those saves were not replaced. They will retry on a full "
+                    "restart, or use Ankimon → Game → Cancel Pending Save Import, "
+                    "which covers both save modes.\n\n" +
+                    "\n".join(failures)
+                )
+                services._save_import_errors = []
+            except Exception as e:
+                logger.log("error", f"Failed to report pending save import failures: {e}")
+        warnings = getattr(services, "_save_import_warnings", [])
+        if warnings:
+            try:
+                services.ui.warn(
+                    "Ankimon installed the imported saves listed below, and they are active. "
+                    "A final disk sync or cleanup step failed. Any remaining pending "
+                    "work will retry on a full restart without applying the import again.\n\n" +
+                    "\n".join(warnings)
+                )
+                services._save_import_warnings = []
+            except Exception as e:
+                logger.log("error", f"Failed to report save import finalization warnings: {e}")
 
         # Register the AnkiWeb sync hooks SYNCHRONOUSLY here — not in the
         # backgrounded connectivity callback below. Anki fires profile_did_open
@@ -179,18 +228,20 @@ def _on_profile_did_open(online_connectivity):
         # Anki's "Delete Unused Files", and offer to rescue it if it holds more
         # progress than the local save.
         #
+        # LAST in this handler, deliberately. The scan runs on mw.taskman and
+        # its decisions come back through a main-thread callback, which a nested
+        # event loop -- any modal dialog above -- would deliver in the middle of
+        # that dialog. Nothing after this line pumps the loop, so the callback
+        # lands on a clean stack, which is what _offer_rescue_later's zero-delay
+        # timer relies on to defer a shutdown until profile-open has returned.
+        # The guard itself is already up, from the top of this handler.
+        #
         # This registers a media-sync-completion hook AND starts one scan now.
         # Both are needed: Anki fires profile_did_open one line BEFORE it starts
         # its own sync (aqt/main.py:568-569), so on a second device this first
         # scan sees a media folder the peer's save has not reached yet, and only
         # the post-sync pass can find it. Local files only, no network, never
         # raises.
-        #
-        # The scan itself runs on a background thread (mw.taskman): it opens
-        # SQLite saves, and a locked or oversized one must not be waited on here,
-        # where the wait is a frozen startup. Only the decisions come back to
-        # this thread. A profile that has already resolved its media folder is a
-        # handful of stat calls and starts no thread at all.
         try:
             register_media_migration_hooks(settings_obj, logger)
         except Exception as e:

@@ -278,28 +278,20 @@ def _make_backup_manager(tmp_path, monkeypatch):
     monkeypatch.setattr(bm, "backups_path", tmp_path / "backups")
     (tmp_path / "backups").mkdir()
     monkeypatch.setattr(bm, "_generate_summary", lambda d: {})
-    monkeypatch.setattr(bm, "cleanup_backups", lambda: None)
+    # The real signature. create_backup passes the deadline, so a stub that
+    # cannot take it raised, and the retention guard logged that as a failure.
+    bm.retention_calls = []
+    monkeypatch.setattr(bm, "cleanup_backups",
+                        lambda deadline=None: bm.retention_calls.append(deadline))
     return bm
 
 
-def _flaky_copy_factory(fail_substr):
-    real = shutil.copy2
-
-    def flaky(src, dst, *a, **k):
-        if fail_substr in str(src):
-            raise OSError(f"simulated failure copying {src}")
-        return real(src, dst, *a, **k)
-
-    return flaky
-
-
 def test_backup_required_file_success_isolated_from_other_file_failure(tmp_path, monkeypatch):
-    """A failed ankimonDEV.db copy must NOT blank a successful ankimon.db backup
+    """A failed ankimonDEV.db snapshot must NOT blank a successful ankimon.db backup
     — otherwise a perfectly safe import would be needlessly aborted."""
-    (tmp_path / "ankimon.db").write_bytes(b"MAIN" + b"\x00" * 600)
+    _make_ankimon_db(tmp_path / "ankimon.db")
     (tmp_path / "ankimonDEV.db").write_bytes(b"DEV" + b"\x00" * 600)
     bm = _make_backup_manager(tmp_path, monkeypatch)
-    monkeypatch.setattr(shutil, "copy2", _flaky_copy_factory("ankimonDEV.db"))
 
     prev = services.db
     services.db = None   # active-mode default is "ankimon.db"
@@ -308,13 +300,20 @@ def test_backup_required_file_success_isolated_from_other_file_failure(tmp_path,
     finally:
         services.db = prev
 
-    assert ok is True   # ankimon.db was backed up despite the DEV copy failing
+    assert ok is True   # ankimon.db was backed up despite the corrupt DEV file
+    assert bm.retention_calls == [None]   # retention ran, with no shutdown deadline
+    backup_dir = next(bm.backups_path.glob("backup_*"))
+    conn = sqlite3.connect(backup_dir / "ankimon.db")
+    try:
+        assert conn.execute("SELECT * FROM captured_pokemon").fetchall() == [(1, "x")]
+    finally:
+        conn.close()
+    assert not (backup_dir / "ankimonDEV.db").exists()
 
 
 def test_backup_returns_false_when_required_file_not_backed_up(tmp_path, monkeypatch):
     (tmp_path / "ankimon.db").write_bytes(b"MAIN" + b"\x00" * 600)
     bm = _make_backup_manager(tmp_path, monkeypatch)
-    monkeypatch.setattr(shutil, "copy2", _flaky_copy_factory("ankimon.db"))
 
     prev = services.db
     services.db = None

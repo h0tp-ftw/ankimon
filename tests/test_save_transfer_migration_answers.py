@@ -8,7 +8,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from test_save_transfer import _Logger, _make_save, st
+from test_save_transfer import _Logger, _make_save, _protected, st
 from Ankimon.pyobj import ankimon_sync
 from Ankimon.services import services
 
@@ -126,9 +126,11 @@ def test_eligible_rescue_is_offered_before_a_higher_ranked_diverged_save(
     assert len(m.prompts) == 1
     assert diverged.read_bytes() == original
     if diverged_name == "ankimon.db":
-        protected = list(m.folder.glob("_ankimon_save_*.db"))
+        protected = _protected(m.folder)
         assert len(protected) == 1
-        assert protected[0].read_bytes() == original
+        assert protected[0].parent == st._recovery_store(m.folder)
+        assert not list(m.folder.glob("_ankimon_save_*.db"))
+        assert st.get_db_stats(protected[0]) == st.get_db_stats(diverged)
 
 
 @pytest.mark.parametrize("target_db", ["ankimon.db", "ankimonDEV.db"])
@@ -153,13 +155,15 @@ def test_preservation_verifies_existing_copy_and_keeps_both_files(
     result = st._migration_scan(migration.folder, active)
     st._discard_snapshot(result.get("snapshot_path"))
 
-    protected = [p for p in migration.folder.glob(f"{prefix}*.db") if p != damaged]
+    protected = [p for p in _protected(migration.folder, target_db) if p != damaged]
     assert len(protected) == 1
-    assert protected[0].read_bytes() == original
+    assert protected[0].parent == st._recovery_store(migration.folder)
+    assert st.get_db_stats(protected[0])["pokemon"] == 4
     assert source.read_bytes() == original
     assert damaged.read_bytes() == damaged_bytes
 
     written = []
     assert st._preserve(source, migration.folder, target_db, [], [], written) == protected[0]
     assert written == []
-    assert len(list(migration.folder.glob(f"{prefix}*.db"))) == 2
+    assert list(migration.folder.glob(f"{prefix}*.db")) == [damaged]
+    assert len(_protected(migration.folder, target_db)) == 2

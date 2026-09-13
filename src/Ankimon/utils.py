@@ -1150,14 +1150,17 @@ def png_to_base64(path: str) -> str:
         return "data:image/png;base64," + base64.b64encode(f.read()).decode("utf-8")
 
 
-def close_anki():
-    # Guarded: only meaningful inside Anki. No-op headless.
+def close_anki(*, raise_on_error=False):
+    """Request shutdown, optionally exposing failures to callers with pending work."""
+    # Legacy callers remain guarded and do nothing headless. Restore/import
+    # callers opt in so they can explain that their prepared change is pending.
     try:
         from aqt import mw
 
         mw.close()
     except Exception:
-        pass
+        if raise_on_error:
+            raise
 
 
 # --- Thread / Qt-liveness helpers (Stage A scaffolding) ---------------------
