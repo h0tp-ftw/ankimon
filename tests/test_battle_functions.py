@@ -63,3 +63,57 @@ def test_validate_pokemon_status_without_the_attribute():
         hp = 50
 
     assert validate_pokemon_status(Bare()) == "fighting"
+
+
+class _Holder:
+    """Enough of a PokemonObject for the effect messages to name it."""
+
+    def __init__(self, name, held_item=None):
+        self.display_name = name
+        self.name = name
+        self.held_item = held_item
+
+
+def _effects(changes, main=None, enemy=None):
+    from Ankimon.functions.battle_functions import _process_battle_effects
+
+    return _process_battle_effects(
+        [], None, main_pokemon=main, enemy_pokemon=enemy, changes=changes,
+    )
+
+
+def test_a_spent_held_item_is_announced_with_the_name_the_player_knows():
+    """The engine id has the hyphen stripped; the holder still has the real one.
+
+    Without this the only thing a Cell Battery holder sees is an unattributed
+    stat change, and every screen that shows the held item still shows it.
+    """
+    messages = _effects(
+        [
+            {"key": "user.active.attack_boost", "before": 0, "after": 1},
+            {"key": "user.active.item", "before": "cellbattery", "after": None},
+        ],
+        main=_Holder("Snorlax", held_item="cell-battery"),
+    )
+
+    assert any("Cell Battery" in message and "Snorlax" in message
+               for message in messages), messages
+
+
+def test_an_item_arriving_is_not_reported_as_one_being_used_up():
+    """Thief, Trick and a switch-in all change this key the other way."""
+    messages = _effects(
+        [{"key": "opponent.active.item", "before": None, "after": "leftovers"}],
+        enemy=_Holder("Rattata"),
+    )
+
+    assert not any("used up" in message for message in messages), messages
+
+
+def test_a_spent_item_is_named_from_the_engine_id_when_the_holder_has_moved_on():
+    messages = _effects(
+        [{"key": "opponent.active.item", "before": "absorbbulb", "after": None}],
+        enemy=_Holder("Rattata", held_item="oran-berry"),
+    )
+
+    assert any("Absorbbulb" in message for message in messages), messages

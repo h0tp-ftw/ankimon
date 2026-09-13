@@ -1092,3 +1092,33 @@ def test_user_data_to_config_migration_rolls_back_on_write_failure(temp_env):
     assert db.get_user_data("username") == "legacy-user"
     assert db.get_user_data("api_key") == "legacy-key"
 
+
+def test_delete_config_value_is_durable_for_other_connections(temp_env):
+    """The sync-removal notice keys off a config row and deletes it so it cannot
+    re-fire, through this helper. A bare ``execute("DELETE ...")`` would not
+    do: sqlite3 opens an implicit transaction on DML, so the row would stay
+    visible to the next boot's connection (the notice repeats) and this
+    connection would hold its write lock until some unrelated write happened
+    to commit it. The helper has to commit, and deleting a row that is not
+    there has to be a quiet no-op."""
+    db, _ = temp_env
+    key = "misc.ankiweb_sync"
+
+    def _row_on_disk():
+        raw = sqlite3.connect(str(db.db_path), timeout=1.0)
+        try:
+            return raw.execute(
+                "SELECT value FROM config WHERE key = ?", (key,)
+            ).fetchone()
+        finally:
+            raw.close()
+
+    db.set_config_value(key, True)
+    assert _row_on_disk() is not None
+
+    db.delete_config_value(key)
+
+    assert _row_on_disk() is None
+    assert db._get_connection()._conn.in_transaction is False
+    db.delete_config_value(key)          # absent: a no-op, not an error
+    assert _row_on_disk() is None

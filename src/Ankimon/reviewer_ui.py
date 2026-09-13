@@ -76,7 +76,10 @@ def cycle_team_pokemon():
     global _team_cycle_index, _team_cycle_pokemon_ids
 
     try:
-        from .functions.update_main_pokemon import save_main_pokemon
+        from .functions.update_main_pokemon import (
+            _apply_loaded_hp,
+            save_main_pokemon,
+        )
 
         cycle_count = _team_cycle_count()
         if cycle_count <= 1:
@@ -129,8 +132,12 @@ def cycle_team_pokemon():
             pokemon_data["base_stats"] = base_stats
 
             main_pokemon.update_stats(**pokemon_data)
-            main_pokemon.max_hp = main_pokemon.calculate_max_hp()
-            main_pokemon.hp = main_pokemon.max_hp
+            # update_stats only overwrites the HP keys the incoming row carries,
+            # so hp/current_hp can still hold the outgoing Pokemon's values.
+            # Resolve HP from the incoming row like the launch-time loader does
+            # (current_hp, then hp, then max HP) and write it to both fields;
+            # this also recalculates max_hp.
+            _apply_loaded_hp(main_pokemon, pokemon_data)
             main_pokemon.reset_bonuses()
 
             save_main_pokemon(main_pokemon)
