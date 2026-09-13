@@ -53,7 +53,7 @@
     "audio.sounds": "Enable general Pokémon sounds during interactions.",
     "audio.battle_sounds": "Enable recurring battle cries every 10 cards.",
     "audio.volume": "[0 to 1] volume of audio.",
-    "misc.active_region": "Restrict wild encounters to Pokémon native to the selected region. Choose 'No Region' to allow encounters from all enabled generations.",
+    "misc.active_region": "Boost the chance of encountering wild Pokémon native to the selected region (typically by 30%). Choose 'No Region' to encounter Pokémon evenly from all enabled generations.",
     "misc.gen1": "Include Pokémon from Generation 1.",
     "misc.gen2": "Include Pokémon from Generation 2.",
     "misc.gen3": "Include Pokémon from Generation 3.",
