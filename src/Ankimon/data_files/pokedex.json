@@ -179,7 +179,7 @@
       "H": "Chlorophyll"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 250,
     "color": "Green",
     "eggGroups": [
       "Monster",
@@ -405,7 +405,7 @@
       "H": "Solar Power"
     },
     "heightm": 28,
-    "weightkg": 0,
+    "weightkg": 226.2,
     "color": "Red",
     "eggGroups": [
       "Monster",
@@ -590,7 +590,7 @@
       "H": "Rain Dish"
     },
     "heightm": 25,
-    "weightkg": 0,
+    "weightkg": 213.8,
     "color": "Blue",
     "eggGroups": [
       "Monster",
@@ -718,7 +718,7 @@
       "H": "Tinted Lens"
     },
     "heightm": 17,
-    "weightkg": 0,
+    "weightkg": 80,
     "color": "White",
     "eggGroups": [
       "Bug"
@@ -1865,7 +1865,7 @@
       "H": "Lightning Rod"
     },
     "heightm": 21,
-    "weightkg": 0,
+    "weightkg": 15,
     "color": "Yellow",
     "eggGroups": [
       "Field",
@@ -3269,7 +3269,7 @@
       "H": "Unnerve"
     },
     "heightm": 33,
-    "weightkg": 0,
+    "weightkg": 10.5,
     "color": "Yellow",
     "eggGroups": [
       "Field"
@@ -4020,7 +4020,7 @@
       "H": "Steadfast"
     },
     "heightm": 25,
-    "weightkg": 0,
+    "weightkg": 325,
     "color": "Gray",
     "eggGroups": [
       "Human-Like"
@@ -5404,7 +5404,7 @@
       "0": "Cursed Body"
     },
     "heightm": 20,
-    "weightkg": 0,
+    "weightkg": 101.2,
     "color": "Purple",
     "eggGroups": [
       "Amorphous"
@@ -5594,7 +5594,7 @@
       "H": "Sheer Force"
     },
     "heightm": 19,
-    "weightkg": 0,
+    "weightkg": 150,
     "color": "Red",
     "eggGroups": [
       "Water 3"
@@ -7212,7 +7212,7 @@
       "H": "Hydration"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 550,
     "color": "Blue",
     "eggGroups": [
       "Monster",
@@ -7362,7 +7362,7 @@
       "H": "Anticipation"
     },
     "heightm": 18,
-    "weightkg": 0,
+    "weightkg": 16.2,
     "color": "Brown",
     "eggGroups": [
       "Field"
@@ -7794,7 +7794,7 @@
       "H": "Gluttony"
     },
     "heightm": 35,
-    "weightkg": 0,
+    "weightkg": 1150,
     "color": "Black",
     "eggGroups": [
       "Monster"
@@ -25768,7 +25768,7 @@
       "H": "Aftermath"
     },
     "heightm": 21,
-    "weightkg": 0,
+    "weightkg": 268.2,
     "color": "Green",
     "eggGroups": [
       "Mineral"
@@ -37400,7 +37400,7 @@
       "0": "Iron Fist"
     },
     "heightm": 25,
-    "weightkg": 0,
+    "weightkg": 2000,
     "color": "Gray",
     "eggGroups": [
       "Undiscovered"
@@ -37542,7 +37542,7 @@
       "H": "Grassy Surge"
     },
     "heightm": 28,
-    "weightkg": 0,
+    "weightkg": 225,
     "color": "Green",
     "eggGroups": [
       "Field",
@@ -37685,7 +37685,7 @@
       "H": "Libero"
     },
     "heightm": 27,
-    "weightkg": 0,
+    "weightkg": 82.5,
     "color": "White",
     "eggGroups": [
       "Field",
@@ -37828,7 +37828,7 @@
       "H": "Sniper"
     },
     "heightm": 40,
-    "weightkg": 0,
+    "weightkg": 113,
     "color": "Blue",
     "eggGroups": [
       "Water 1",
@@ -38017,7 +38017,7 @@
       "H": "Mirror Armor"
     },
     "heightm": 14,
-    "weightkg": 0,
+    "weightkg": 187.5,
     "color": "Purple",
     "eggGroups": [
       "Flying"
@@ -38150,7 +38150,7 @@
       "H": "Telepathy"
     },
     "heightm": 14,
-    "weightkg": 0,
+    "weightkg": 102,
     "color": "Red",
     "eggGroups": [
       "Bug"
@@ -38437,7 +38437,7 @@
       "H": "Swift Swim"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 288.8,
     "color": "Green",
     "eggGroups": [
       "Monster",
@@ -38629,7 +38629,7 @@
       "H": "Flash Fire"
     },
     "heightm": 42,
-    "weightkg": 0,
+    "weightkg": 776.2,
     "color": "Black",
     "eggGroups": [
       "Mineral"
@@ -38731,7 +38731,7 @@
       "H": "Hustle"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 2.5,
     "color": "Green",
     "eggGroups": [
       "Grass",
@@ -38799,7 +38799,7 @@
       "H": "Thick Fat"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 32.5,
     "color": "Green",
     "eggGroups": [
       "Grass",
@@ -38896,7 +38896,7 @@
       "H": "Sand Veil"
     },
     "heightm": 22,
-    "weightkg": 0,
+    "weightkg": 163.8,
     "color": "Green",
     "eggGroups": [
       "Field",
@@ -39195,7 +39195,7 @@
       "H": "Technician"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 100,
     "color": "Purple",
     "eggGroups": [
       "Human-Like"
@@ -39228,7 +39228,7 @@
       "H": "Technician"
     },
     "heightm": 24,
-    "weightkg": 0,
+    "weightkg": 100,
     "color": "Purple",
     "eggGroups": [
       "Human-Like"
@@ -39328,7 +39328,7 @@
       "H": "Flame Body"
     },
     "heightm": 75,
-    "weightkg": 0,
+    "weightkg": 300,
     "color": "Red",
     "eggGroups": [
       "Bug"
@@ -39669,7 +39669,7 @@
       "H": "Magic Bounce"
     },
     "heightm": 26,
-    "weightkg": 0,
+    "weightkg": 12.8,
     "color": "Pink",
     "eggGroups": [
       "Fairy"
@@ -39807,7 +39807,7 @@
       "H": "Pickpocket"
     },
     "heightm": 32,
-    "weightkg": 0,
+    "weightkg": 152.5,
     "color": "Purple",
     "eggGroups": [
       "Fairy",
@@ -40121,7 +40121,7 @@
       "H": "Aroma Veil"
     },
     "heightm": 30,
-    "weightkg": 0,
+    "weightkg": 1.2,
     "color": "Yellow",
     "eggGroups": [
       "Fairy",
@@ -40604,7 +40604,7 @@
       "H": "Heavy Metal"
     },
     "heightm": 23,
-    "weightkg": 0,
+    "weightkg": 1625,
     "color": "Green",
     "eggGroups": [
       "Field",
@@ -40796,7 +40796,7 @@
       "H": "Stalwart"
     },
     "heightm": 43,
-    "weightkg": 0,
+    "weightkg": 100,
     "color": "White",
     "eggGroups": [
       "Mineral",
@@ -41267,7 +41267,7 @@
       "0": "Unseen Fist"
     },
     "heightm": 29,
-    "weightkg": 0,
+    "weightkg": 262.5,
     "color": "Gray",
     "eggGroups": [
       "Undiscovered"
@@ -41302,7 +41302,7 @@
       "0": "Unseen Fist"
     },
     "heightm": 26,
-    "weightkg": 0,
+    "weightkg": 262.5,
     "color": "Gray",
     "eggGroups": [
       "Undiscovered"
