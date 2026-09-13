@@ -605,10 +605,14 @@ def test_custom_active_filename_summary_describes_its_snapshot(mock_env, tmp_pat
         active.close()
 
 
-def test_shutdown_backup_spends_one_budget_across_both_databases(mock_env, monkeypatch):
+@pytest.mark.parametrize("active_name", ["ankimon.db", "ankimonDEV.db"])
+def test_shutdown_backup_spends_one_budget_across_both_databases(mock_env, monkeypatch, active_name):
     """Two locked saves must not each hold the close for a full timeout."""
-    bm, _, user_files_dir, _ = mock_env
+    bm, db, user_files_dir, _ = mock_env
     _seed_db(user_files_dir / "ankimonDEV.db", "Dev", 1)
+    # FILES_TO_BACKUP lists ankimon.db first anyway, so only a developer-mode
+    # active save shows that the active save really is the one tried first.
+    monkeypatch.setattr(db, "db_path", user_files_dir / active_name)
     clock = [100.0]
     monkeypatch.setattr(_bm_mod.time, "monotonic", lambda: clock[0])
     attempts = []
@@ -624,7 +628,7 @@ def test_shutdown_backup_spends_one_budget_across_both_databases(mock_env, monke
 
     # The active save goes first and consumes the whole shutdown budget; the
     # companion database is refused rather than given a second full timeout.
-    assert [name for name, _ in attempts] == ["ankimon.db"]
+    assert [name for name, _ in attempts] == [active_name]
     assert attempts[0][1] == pytest.approx(bm.SHUTDOWN_BACKUP_BUDGET)
     assert clock[0] - 100.0 <= bm.SHUTDOWN_BACKUP_BUDGET
 
@@ -853,6 +857,26 @@ def test_a_removal_stops_between_entries_once_the_shutdown_budget_is_spent(mock_
     assert len(list(leftover.iterdir())) == 2
     bm.cleanup_backups()
     assert not leftover.exists()
+
+
+def test_a_removal_that_starts_after_the_budget_does_not_list_the_directory(mock_env):
+    """iterdir reads the whole listing before it yields the first entry.
+
+    So a deadline checked only inside the loop is checked after that read.
+    """
+    bm, _, _, _ = mock_env
+    doomed = bm.backups_path / ".discard_00000000_backup_2020-01-01_00-00-00"
+    doomed.mkdir(parents=True)
+    (doomed / "ankimon.db").write_bytes(b"x")
+
+    with patch.object(_bm_mod.time, "monotonic", return_value=10.0), \
+         patch.object(Path, "iterdir", side_effect=AssertionError("listed after the deadline")):
+        assert bm._remove_tree(doomed, deadline=5.0) is False
+        assert (doomed / "ankimon.db").exists()
+        # An empty one needs no listing, so it still goes.
+        (doomed / "ankimon.db").unlink()
+        assert bm._remove_tree(doomed, deadline=5.0) is True
+    assert not doomed.exists()
 
 
 def test_restore_over_an_import_of_unknown_state_claims_neither_answer(mock_env, monkeypatch):

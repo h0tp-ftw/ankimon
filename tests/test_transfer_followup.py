@@ -1,6 +1,8 @@
 """Real-file regressions for the follow-up safety review of #797."""
 import os
+import re
 import sqlite3
+import urllib.parse
 import zipfile
 from pathlib import Path
 from concurrent.futures import Future
@@ -572,3 +574,55 @@ def test_a_second_import_over_a_record_of_unknown_state_claims_neither_answer(
     assert "could not tell whether" in shown[0]
     assert "will install at the next" not in shown[0].lower()
     assert "is the save you are playing" not in shown[0]
+
+
+def test_every_menu_path_an_import_or_recovery_notice_names_exists():
+    """These notices are the only pointer to Cancel and to the recovery copies.
+
+    One named an item that never existed ("Browse Recovered Saves"), and every
+    path left out the Game submenu the actions actually live in.
+    """
+    root = Path(__file__).resolve().parents[1] / "src" / "Ankimon"
+    menu = (root / "menu_buttons.py").read_text(encoding="utf-8")
+    game_items = [label for variable, label in
+                  re.findall(r'(\w+) = QAction\("([^"]+)", mw\)', menu)
+                  if f"game_menu.addAction({variable})" in menu]
+    assert "Cancel Pending Save Import" in game_items
+    assert "Browse Pre-import Recovery Saves…" in game_items
+
+    checked = 0
+    for path in (root / "save_import.py", root / "profile_hooks.py",
+                 root / "pyobj" / "save_transfer.py", root / "pyobj" / "backup_manager.py"):
+        # Join implicitly concatenated literals, so a path split across two
+        # source lines is read the way the user reads it.
+        text = re.sub(r'"\s*\n\s*f?"', "", path.read_text(encoding="utf-8"))
+        text = text.replace("\\u2192", "→")
+        for match in re.finditer("Ankimon → ", text):
+            rest = text[match.end():]
+            assert rest.startswith("Game → ") and any(
+                rest[len("Game → "):].startswith(label) for label in game_items
+            ), f"{path.name}: Ankimon → {rest[:60]!r}"
+            checked += 1
+    assert checked >= 10
+
+
+def test_every_read_only_open_works_on_a_network_path(transfer, tmp_path, monkeypatch):
+    """Path.as_uri gives a UNC path a server authority, and SQLite refuses it.
+
+    On a redirected AppData folder every one of these failed: stats, verification,
+    snapshots and backups alike.
+    """
+    from Ankimon.pyobj.ankimon_sync import _verify_sqlite_integrity
+    from Ankimon.pyobj.backup_manager import BackupManager
+
+    save = _make_save(tmp_path / "shared-ankimon.db", pokemon=4)
+    copy, snapshot = tmp_path / "copy.db", tmp_path / "snapshot.db"
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "as_uri",
+                        lambda self: "file://server" + urllib.parse.quote(str(self)))
+        assert st.get_db_stats(save)["pokemon"] == 4
+        assert _verify_sqlite_integrity(save) is True
+        st._sqlite_backup(save, copy)
+        BackupManager._snapshot_database(save, snapshot)
+    assert st.get_db_stats(copy)["pokemon"] == 4
+    assert st.get_db_stats(snapshot)["pokemon"] == 4

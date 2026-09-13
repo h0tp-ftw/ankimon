@@ -8,6 +8,7 @@ game objects. This module deliberately has no Anki, Qt, or services imports.
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -17,6 +18,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+import urllib.parse
 import uuid
 
 
@@ -70,6 +72,16 @@ def _fsync_file(path: Path) -> None:
         os.fsync(handle.fileno())
 
 
+# What a filesystem that cannot sync a directory answers: a VirtualBox shared
+# folder, some network mounts. SQLite ignores these in its own directory sync.
+# Raising on them left a staged import that could never install on that volume.
+_NO_DIRECTORY_SYNC = frozenset(
+    code for code in (errno.EINVAL, getattr(errno, "ENOTSUP", None),
+                      getattr(errno, "EOPNOTSUPP", None))
+    if code is not None
+)
+
+
 def _fsync_directory(path: Path) -> None:
     # Windows does not allow opening directories this way. File fsync and the
     # same-volume replace still apply there.
@@ -78,6 +90,10 @@ def _fsync_directory(path: Path) -> None:
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     try:
         os.fsync(descriptor)
+    except OSError as error:
+        # A real I/O failure (EIO, ENOSPC) still stops the import.
+        if error.errno not in _NO_DIRECTORY_SYNC:
+            raise
     finally:
         os.close(descriptor)
 
@@ -96,9 +112,29 @@ def _budget(deadline: float | None) -> float:
     return min(_TIMEOUT, remaining)
 
 
+def _sqlite_uri(path, mode: str) -> str:
+    """A SQLite URI for ``path`` that a Windows network path can use too.
+
+    ``as_uri`` percent-encodes spaces and non-ASCII names, which a bare f-string
+    URI gets wrong. For a UNC path, though, it puts the server in the URI
+    authority (``file://server/share/...``), and SQLite refuses every authority
+    but an empty one or ``localhost``: "invalid uri authority". That is any
+    profile on a redirected AppData folder, or on a mapped drive ``resolve``
+    rewrites to UNC. SQLite's URI syntax has no network-path form, so that case
+    percent-encodes the whole native path into ``file:`` with no authority.
+    SQLite decodes it back to exactly the filename a plain ``connect`` would
+    open, and ``mode`` still applies.
+    """
+    resolved = Path(path).resolve()
+    uri = resolved.as_uri()
+    if not uri.startswith("file:///"):
+        uri = "file:" + urllib.parse.quote(str(resolved), safe="")
+    return f"{uri}?mode={mode}"
+
+
 def _connect_readonly(path: Path, deadline: float = None):
     timeout = _budget(deadline)
-    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout)
+    conn = sqlite3.connect(_sqlite_uri(path, "ro"), uri=True, timeout=timeout)
     limit = time.monotonic() + timeout
     conn.set_progress_handler(lambda: int(time.monotonic() > limit), 2000)
     return conn
@@ -469,6 +505,13 @@ def pending_import_is_installed(target: Path) -> bool | None:
         info = pending_import_info(target)
         if info is None:
             return False
+        if not Path(target).is_file():
+            # No save on disk can be the imported one. The recovery copy is written
+            # just before replacement, so without one no install ever got that
+            # far, and "unknown" would send the user after a copy that was never
+            # made. With one, an install may have replaced the save before it went
+            # missing, and only "unknown" points the user at that copy.
+            return None if info["recovery_path"].is_file() else False
         deadline = time.monotonic() + _WORDING_BUDGET
         return _installed_token(target, deadline) == info["token"]
     except Exception:
@@ -481,6 +524,33 @@ def _log(logger, level: str, message: str) -> None:
             logger.log(level, message)
         except Exception:
             pass
+
+
+# A volume whose permissions are fixed by how it is mounted (FAT or exFAT, some
+# network shares) refuses chmod outright. Nothing can ever tighten a folder
+# there, so refusing the install over it refused it at every start.
+_FIXED_PERMISSIONS = frozenset(
+    code for code in (errno.EPERM, getattr(errno, "ENOTSUP", None),
+                      getattr(errno, "EOPNOTSUPP", None))
+    if code is not None
+)
+
+
+def _restrict_directory(path: Path, logger=None) -> None:
+    """Make a recovery folder private to this user where the volume allows it.
+
+    Tolerated only for a folder this user owns. EPERM is also the answer for a
+    folder that belongs to another account, and a copy of the save, credentials
+    included, does not go into a folder somebody else controls.
+    """
+    try:
+        path.chmod(0o700)
+    except OSError as error:
+        getuid = getattr(os, "getuid", None)
+        owned = getuid is None or path.stat().st_uid == getuid()
+        if error.errno not in _FIXED_PERMISSIONS or not owned:
+            raise
+        _log(logger, "warning", f"Could not restrict access to {path}: {error}")
 
 
 def _finish_installed_import(target, recovery, logger, install_temp=None) -> None:
@@ -565,7 +635,8 @@ def commit_pending_import(target: Path, logger=None, deadline: float = None) -> 
         # save is never recreated, so that is forever.
         raise FileNotFoundError(
             f"{target.name} no longer exists, so the save import prepared for it "
-            "cannot be installed. Use Ankimon \u2192 Cancel Pending Save Import to "
+            "cannot be installed. Use Ankimon \u2192 Game \u2192 Cancel Pending Save "
+            "Import to "
             "discard it."
         )
 
@@ -581,9 +652,9 @@ def commit_pending_import(target: Path, logger=None, deadline: float = None) -> 
     # mkdir(mode=...) does not tighten pre-existing directories. Restrict both
     # levels before inspecting or writing private recovery material.
     recovery.parent.parent.mkdir(mode=0o700, exist_ok=True)
-    recovery.parent.parent.chmod(0o700)
+    _restrict_directory(recovery.parent.parent, logger)
     recovery.parent.mkdir(mode=0o700, exist_ok=True)
-    recovery.parent.chmod(0o700)
+    _restrict_directory(recovery.parent, logger)
     if recovery.is_file():
         # A failed previous replacement may be followed by more local play, so
         # the snapshot taken now is the one holding everything. Move the older
@@ -616,7 +687,7 @@ def commit_pending_import(target: Path, logger=None, deadline: float = None) -> 
     # Let SQLite merge and remove the OLD database's journals itself. Never
     # delete a WAL before replacement: a crash in that gap would lose committed
     # progress. A busy external connection refuses the mode change and import.
-    conn = sqlite3.connect(target.as_uri() + "?mode=rw", uri=True, timeout=_budget(deadline))
+    conn = sqlite3.connect(_sqlite_uri(target, "rw"), uri=True, timeout=_budget(deadline))
     try:
         mode = conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
         if str(mode).lower() != "delete":

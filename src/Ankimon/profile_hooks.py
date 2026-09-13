@@ -138,11 +138,14 @@ def _on_profile_did_open(online_connectivity):
         failures = getattr(services, "_save_import_errors", [])
         if failures:
             try:
+                # Only the listed saves were left alone. get_db tries both save
+                # modes at every start, so the other one may have been replaced
+                # in this same start; "no save was replaced" denied that.
                 services.ui.warn(
-                    "Ankimon could not install the pending imports listed below. "
-                    "No save was replaced. They will retry on a full restart, or "
-                    "use Cancel Pending Save Import, which now covers both save "
-                    "modes.\n\n" +
+                    "Ankimon could not install the pending imports listed below, "
+                    "so those saves were not replaced. They will retry on a full "
+                    "restart, or use Ankimon → Game → Cancel Pending Save Import, "
+                    "which covers both save modes.\n\n" +
                     "\n".join(failures)
                 )
                 services._save_import_errors = []

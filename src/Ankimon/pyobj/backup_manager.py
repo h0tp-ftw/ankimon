@@ -263,7 +263,9 @@ class BackupManager:
         os.close(fd)
         temporary = Path(name)
         try:
-            uri = source_path.resolve().as_uri() + "?mode=ro"
+            from ..save_import import _sqlite_uri
+
+            uri = _sqlite_uri(source_path, "ro")
             with closing(sqlite3.connect(uri, uri=True, timeout=timeout)) as source, \
                  closing(sqlite3.connect(temporary, timeout=timeout)) as snapshot:
                 def check_deadline(status, remaining, total):
@@ -541,7 +543,7 @@ class BackupManager:
                 self._warn_about_pending_import(
                     "The previous save import has ALREADY installed and is the "
                     "save you are playing now. Only its leftover record could "
-                    "not be cleared.\n\nUse Ankimon → Cancel Pending Save Import "
+                    "not be cleared.\n\nUse Ankimon → Game → Cancel Pending Save Import "
                     "to clear that record, then restore this backup again."
                 )
                 return
@@ -551,13 +553,13 @@ class BackupManager:
                 self._warn_about_pending_import(
                     "A save import is already recorded for this save, and Ankimon "
                     "could not tell whether it has already installed."
-                    "\n\nUse Ankimon → Cancel Pending Save Import to "
+                    "\n\nUse Ankimon → Game → Cancel Pending Save Import to "
                     "clear that record, then restore this backup again."
                 )
                 return
             self._warn_about_pending_import(
                 "A save import is already pending and will install at the next "
-                "full Anki restart.\n\nUse Ankimon → Cancel Pending Save Import "
+                "full Anki restart.\n\nUse Ankimon → Game → Cancel Pending Save Import "
                 "first if you want to restore this backup instead."
             )
             return
@@ -569,7 +571,7 @@ class BackupManager:
                 f"The backup restore could not be finished cleanly: {e}.\n\n"
                 "Your current save is still active, but the restore is now "
                 "PENDING and will install at the next full Anki restart. Use "
-                "Ankimon → Cancel Pending Save Import if you do not want it."
+                "Ankimon → Game → Cancel Pending Save Import if you do not want it."
             )
             return
         except Exception as e:
@@ -657,7 +659,18 @@ class BackupManager:
         if self._is_link(directory):
             directory.unlink()
             return True
-        for entry in list(directory.iterdir()):
+        if deadline is not None and time.monotonic() >= deadline:
+            # Past the deadline, list nothing: iterdir reads the whole directory
+            # before it yields the first entry, so a check inside the loop only
+            # runs after that read. An empty directory -- a failed attempt's
+            # staging folder, typically -- still goes, in the one call that needs
+            # no listing.
+            try:
+                directory.rmdir()
+            except OSError:
+                return False
+            return True
+        for entry in directory.iterdir():
             if deadline is not None and time.monotonic() >= deadline:
                 return False
             if entry.is_dir() and not self._is_link(entry):

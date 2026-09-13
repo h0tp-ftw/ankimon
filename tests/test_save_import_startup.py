@@ -81,6 +81,10 @@ def test_startup_reports_the_save_that_is_active(tmp_path, monkeypatch, installe
         else:
             assert "could not install" in message
             assert "injected replacement failure" in message
+            # Only the listed saves were left alone: get_db tries both modes,
+            # and the other may have been replaced in this same start.
+            assert "no save was replaced" not in message
+            assert "ankimon → game → cancel pending save import" in message
         assert not getattr(services, "_save_import_errors", [])
         assert not getattr(services, "_save_import_warnings", [])
         hooks._on_profile_did_open(False)()

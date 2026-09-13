@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import time
+import urllib.parse
 from types import SimpleNamespace
 
 import pytest
@@ -245,6 +246,24 @@ def test_damaged_pending_snapshot_refuses_install_and_remains_recoverable(tmp_pa
     assert names(target) == ["local"]
     assert importer.pending_import_info(target) is not None
     assert not staged["recovery_path"].exists()
+
+
+def test_a_pending_save_swapped_for_another_valid_save_is_refused(tmp_path):
+    """Size and integrity checks pass for any real save; only the digest knows.
+
+    A truncated file never reaches the digest comparison: the size check refuses
+    it first. This one is a complete Ankimon save, just not the confirmed one.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    shutil.copyfile(make_save(tmp_path / "other.db", "other"), staged["pending_path"])
+
+    result = child("module.commit_pending_import(target)\n", target, expected=1)
+    assert "changed after it was confirmed" in result.stderr
+    assert names(target) == ["local"]
+    assert importer.pending_import_info(target) is not None
 
 
 def test_backup_failure_refuses_replacement_and_preserves_pending(tmp_path):
@@ -840,6 +859,9 @@ def test_repeated_failed_installs_do_not_grow_the_recovery_folder_forever(tmp_pa
 
     copies = list(staged["recovery_path"].parent.glob("*.db"))
     assert len(copies) == 2, sorted(path.name for path in copies)
+    # The superseded copy kept is the newest one, not the first attempt's.
+    [retry] = [path for path in copies if path != staged["recovery_path"]]
+    assert names(retry) == ["local", "run-0", "run-1"]
     # The advertised path still holds the most recent attempt's progress.
     assert names(staged["recovery_path"]) == [
         "local", "run-0", "run-1", "run-2",
@@ -1011,3 +1033,153 @@ def test_a_locked_save_answers_unknown_within_the_wording_budget(tmp_path):
         locker.execute("ROLLBACK")
         locker.close()
     assert importer.pending_import_is_installed(target) is False
+
+
+def test_a_record_for_a_save_that_no_longer_exists_was_not_installed(tmp_path):
+    """There is no save on disk, so it is not the imported one.
+
+    Answering "unknown" made Cancel send the user after a recovery copy of a
+    save that was never there to copy. Once a recovery copy exists, an install
+    may have replaced the save before it went missing, and "unknown" is the
+    answer that points at that copy.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimonDEV.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    target.unlink()
+    assert importer.pending_import_is_installed(target) is False
+
+    staged["recovery_path"].parent.mkdir(parents=True)
+    shutil.copyfile(source, staged["recovery_path"])
+    assert importer.pending_import_is_installed(target) is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows never syncs a directory")
+@pytest.mark.parametrize("code, installs", [
+    ("EINVAL", True), ("EOPNOTSUPP", True), ("EIO", False),
+])
+def test_a_volume_that_cannot_sync_directories_still_installs(tmp_path, code, installs):
+    """A VirtualBox shared folder answers a directory fsync with EINVAL.
+
+    SQLite ignores that in its own directory sync. Treating it as fatal left an
+    import that could never install on that volume. A real I/O error still stops
+    the install before anything is replaced.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    importer.stage_import(source, target)
+    child(
+        "import errno, stat\n"
+        "real_fsync = os.fsync\n"
+        "def directory_refuses(fd):\n"
+        "    if stat.S_ISDIR(os.fstat(fd).st_mode):\n"
+        f"        raise OSError(errno.{code}, 'directory fsync refused')\n"
+        "    return real_fsync(fd)\n"
+        "module.os.fsync = directory_refuses\n"
+        "module.commit_pending_import(target)\n",
+        target, expected=0 if installs else 1,
+    )
+    assert names(target) == (["incoming"] if installs else ["local"])
+    assert (importer.pending_import_info(target) is None) is installs
+
+
+REFUSE_CHMOD = (
+    "import errno\n"
+    "def fixed_permissions(self, mode, *args, **kwargs):\n"
+    "    raise PermissionError(errno.EPERM, 'Operation not permitted', str(self))\n"
+    "module.Path.chmod = fixed_permissions\n"
+)
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="POSIX ownership")
+def test_a_recovery_folder_that_refuses_chmod_does_not_block_the_install(tmp_path):
+    """FAT and exFAT volumes fix permissions when mounted, and refuse chmod.
+
+    Nothing can ever tighten such a folder, so refusing over it refused the
+    install at every start.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    child(REFUSE_CHMOD + "module.commit_pending_import(target)\n", target)
+    assert names(target) == ["incoming"]
+    assert names(staged["recovery_path"]) == ["local"]
+
+
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="POSIX ownership")
+def test_a_recovery_folder_owned_by_another_account_is_still_refused(tmp_path):
+    """EPERM is also chmod's answer about somebody else's folder.
+
+    A copy of the save, credentials included, does not go into a folder another
+    account controls.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    result = child(
+        REFUSE_CHMOD
+        + "real_getuid = os.getuid\n"
+        "module.os.getuid = lambda: real_getuid() + 1\n"
+        "module.commit_pending_import(target)\n",
+        target, expected=1,
+    )
+    assert "Operation not permitted" in result.stderr
+    assert names(target) == ["local"]
+    assert not staged["recovery_path"].exists()
+
+
+def unc_as_uri(self):
+    """What Path.as_uri gives a UNC path on Windows: the server as the authority."""
+    return "file://server" + urllib.parse.quote(str(self))
+
+
+def test_a_network_path_gets_a_uri_sqlite_accepts(tmp_path, monkeypatch):
+    """SQLite refuses any URI authority but an empty one or localhost.
+
+    Linux has no UNC paths, so as_uri is made to answer the way it does on
+    Windows for one. The file must still open, read-only, even with URI
+    delimiters in its name, and a missing one must not be created.
+    """
+    importer = load_module()
+    # "?" is not a legal Windows filename character; "#" and "%" still need escaping.
+    folder = tmp_path / ("share #1 %" if os.name == "nt" else "share #1 ?%")
+    folder.mkdir()
+    save = make_save(folder / "ankimon.db", "local")
+    monkeypatch.setattr(importer.Path, "as_uri", unc_as_uri)
+
+    with pytest.raises(sqlite3.OperationalError, match="authority"):
+        sqlite3.connect(save.as_uri() + "?mode=ro", uri=True)
+    conn = sqlite3.connect(importer._sqlite_uri(save, "ro"), uri=True)
+    try:
+        assert conn.execute("SELECT individual_id FROM captured_pokemon").fetchall() == [("local",)]
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            conn.execute("DELETE FROM captured_pokemon")
+    finally:
+        conn.close()
+    missing = folder / "missing.db"
+    with pytest.raises(sqlite3.OperationalError):
+        sqlite3.connect(importer._sqlite_uri(missing, "ro"), uri=True)
+    assert not missing.exists()
+
+
+def test_an_import_stages_and_installs_on_a_network_path(tmp_path, monkeypatch):
+    """Every SQLite open on the import path, staging and startup, takes the helper."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    with monkeypatch.context() as patched:
+        patched.setattr(importer.Path, "as_uri", unc_as_uri)
+        staged = importer.stage_import(source, target)
+
+    child(
+        "import urllib.parse\n"
+        "module.Path.as_uri = lambda self: 'file://server' + urllib.parse.quote(str(self))\n"
+        "assert module.commit_pending_import(target) is True\n",
+        target,
+    )
+    assert names(target) == ["incoming"]
+    assert names(staged["recovery_path"]) == ["local"]

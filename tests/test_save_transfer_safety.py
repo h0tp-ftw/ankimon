@@ -719,3 +719,23 @@ def test_import_that_cannot_announce_itself_is_not_called_an_abort(transfer, mon
     assert "Nothing was replaced" not in str(warn.call_args_list)
     assert st.get_db_stats(transfer.active)["pokemon"] == 42
 
+
+def test_a_rescue_that_cannot_quiet_the_save_says_why_nothing_happened(transfer):
+    """The user said yes. A silent False left no rescue, no message and no reason,
+    and the same question came back at the next launch."""
+    from Ankimon import save_import
+
+    @contextmanager
+    def still_busy(target):
+        yield False
+
+    transfer.sync._quiesce_live_db_connection = still_busy
+    digest = st._save_snapshot_digest(transfer.active)
+    assert st._replace_active_save(transfer.incoming, transfer.active, "Rescue",
+                                   collection=transfer.col, local_digest=digest) is False
+    message = st.showWarning.call_args.args[0]
+    assert message.startswith("Rescue aborted:")
+    assert "did not stop in time" in message
+    # No menu action starts a rescue; the next scan offers it again.
+    assert "offered again after the next sync or restart" in message
+    assert save_import.pending_import_info(transfer.active) is None

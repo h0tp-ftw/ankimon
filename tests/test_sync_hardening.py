@@ -278,7 +278,11 @@ def _make_backup_manager(tmp_path, monkeypatch):
     monkeypatch.setattr(bm, "backups_path", tmp_path / "backups")
     (tmp_path / "backups").mkdir()
     monkeypatch.setattr(bm, "_generate_summary", lambda d: {})
-    monkeypatch.setattr(bm, "cleanup_backups", lambda: None)
+    # The real signature. create_backup passes the deadline, so a stub that
+    # cannot take it raised, and the retention guard logged that as a failure.
+    bm.retention_calls = []
+    monkeypatch.setattr(bm, "cleanup_backups",
+                        lambda deadline=None: bm.retention_calls.append(deadline))
     return bm
 
 
@@ -297,6 +301,7 @@ def test_backup_required_file_success_isolated_from_other_file_failure(tmp_path,
         services.db = prev
 
     assert ok is True   # ankimon.db was backed up despite the corrupt DEV file
+    assert bm.retention_calls == [None]   # retention ran, with no shutdown deadline
     backup_dir = next(bm.backups_path.glob("backup_*"))
     conn = sqlite3.connect(backup_dir / "ankimon.db")
     try:

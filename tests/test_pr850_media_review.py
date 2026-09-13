@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import threading
 import sys
+import zipfile
 from types import SimpleNamespace
 
 import pytest
@@ -173,6 +174,25 @@ def test_browse_tightens_existing_recovery_directory(transfer, monkeypatch):
     st.browse_recovered_saves()
     assert recovery.stat().st_mode & 0o777 == 0o700
     assert opened == [str(recovery)]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX directory permissions")
+def test_browse_still_opens_a_folder_whose_permissions_cannot_change(transfer, monkeypatch):
+    """A FAT or exFAT volume refuses chmod; the folder can still be shown."""
+    import errno
+
+    recovery = transfer.active.parent / "ankimon_recovery"
+    recovery.mkdir()
+    opened = []
+    monkeypatch.setattr(sys.modules["aqt.utils"], "openFolder", lambda path: opened.append(path), raising=False)
+
+    def fixed_permissions(self, mode, *args, **kwargs):
+        raise PermissionError(errno.EPERM, "Operation not permitted", str(self))
+
+    monkeypatch.setattr(Path, "chmod", fixed_permissions)
+    st.browse_recovered_saves()
+    assert opened == [str(recovery)]
+    st.showWarning.assert_not_called()
 
 
 def test_scan_result_is_discarded_when_the_media_save_changes_mid_scan(
@@ -458,7 +478,10 @@ def test_capture_signature_ignores_reader_created_shm(transfer, media_host):
     # clean close. Settle that before measuring a reader's ongoing effect.
     assert st.get_db_stats(source, timeout=5) is not None
     shm = Path(str(source) + "-shm")
-    assert shm.is_file()
+    if not shm.is_file():
+        # A build or VFS that removes the index when the reader closes cannot
+        # restamp it, so the churn this test guards against cannot happen there.
+        pytest.skip("this SQLite build removes -shm when a read-only reader closes")
     before_shm = shm.stat()
     _, before = st._pending_media_protection(media_host.media, source)
 
@@ -651,3 +674,205 @@ def test_a_retry_that_cannot_run_still_lets_another_be_scheduled(
     st._schedule_migration_retry(None, _Logger())
     assert len([entry for entry in timers
                 if entry[0] > st._MIGRATION_RETRY_DELAY * 1000]) == 2
+
+
+def test_reopening_a_profile_captured_earlier_this_session_resumes_media_sync(
+    transfer, media_host,
+):
+    """guard_media_saves_now only stats files, so a reopen re-arms the guard.
+
+    The scan that follows finds the folder already settled and returns early.
+    Nothing after that return lifted the guard, and while it is up no media-sync
+    hook fires to bring a rescan: media sync stayed paused until Anki restarted.
+    """
+    _make_save(media_host.media / "ankimon.db", pokemon=1)
+    log = _Logger()
+    st.guard_media_saves_now(log)
+    st.start_media_migration(None, log)
+    media_host.finish()
+    assert st._migration_done()
+    assert media_host.pm.media_syncing_enabled() is True
+
+    # File > Switch Profile, and back to this one.
+    st.guard_media_saves_now(log)
+    assert media_host.pm.media_syncing_enabled() is False
+    st.start_media_migration(None, log)
+
+    assert media_host.queued == []
+    assert media_host.pm.media_syncing_enabled() is True
+
+
+def test_a_retry_that_fires_before_the_throttle_ends_arms_another(
+    transfer, media_host, monkeypatch,
+):
+    """Qt rounds a 30 s timer to whole seconds and can fire it half a second early.
+
+    The throttle turns that retry away, as it does a timer armed for an earlier
+    pass after a later failed pass moved retry_at on. The return scheduled
+    nothing, so the guard stayed up with no retry left to lift it.
+    """
+    source = media_host.media / "ankimon.db"
+    _make_save(source, pokemon=5)
+
+    def captures_nothing(media_dir):
+        return {"protected": {}, "unprotected": [source], "archives": [],
+                "archived_sources": [], "log": []}
+
+    monkeypatch.setattr(st, "_protect_bare_saves", captures_nothing)
+    timers = []
+    monkeypatch.setattr(st.mw.progress, "single_shot",
+                        lambda ms, func, *args: timers.append((ms, func)))
+    now = [100.0]
+    monkeypatch.setattr(st.time, "monotonic", lambda: now[0])
+
+    st.start_media_migration(None, _Logger())
+    media_host.finish()
+    [(_, retry)] = [entry for entry in timers
+                    if entry[0] > st._MIGRATION_RETRY_DELAY * 1000]
+
+    now[0] += st._MIGRATION_RETRY_DELAY - 0.5
+    timers.clear()
+    retry()
+    assert media_host.queued == []
+    assert media_host.pm.media_syncing_enabled() is False
+    # One more timer, for what is left of the throttle rather than a full delay.
+    [(delay, retry)] = timers
+    assert 500 <= delay < st._MIGRATION_RETRY_DELAY * 1000
+
+    now[0] += delay / 1000
+    retry()
+    assert len(media_host.queued) == 1, "the re-armed retry did not dispatch a scan"
+
+
+def test_a_rerun_for_a_profile_that_closed_mid_scan_is_dropped(
+    transfer, media_host, monkeypatch,
+):
+    """File > Switch Profile during a scan leaves the profile manager showing.
+
+    The media folder still resolves by profile name, so a pass dispatched then
+    put its warnings and the rescue prompt over the profile picker.
+    """
+    from Ankimon.services import services
+
+    _make_save(media_host.media / "ankimon.db", pokemon=5)
+    st.start_media_migration(None, _Logger())
+    st.start_media_migration(None, _Logger())  # a media-sync stop during the scan
+    assert st._MIGRATION_SCAN_STATE["rerun"] is True
+
+    monkeypatch.setattr(services, "col", None)
+    monkeypatch.setattr(st.mw, "col", None, raising=False)
+    media_host.finish()
+
+    assert media_host.queued == []
+    assert st._MIGRATION_SCAN_STATE["rerun"] is False
+
+
+def test_an_unreadable_wal_save_is_archived_once_however_often_it_is_read(
+    transfer, media_host,
+):
+    """Every read-only open restamps -shm, so archiving it made each pass new.
+
+    Each pass then wrote another full-size archive and showed the warning again.
+    """
+    source = media_host.media / "ankimon.db"
+    source.write_bytes(b"unreadable database" * 100)
+    Path(str(source) + "-wal").write_bytes(b"wal frames" * 10)
+    shm = Path(str(source) + "-shm")
+    shm.write_bytes(b"index" * 10)
+    first = st._protect_bare_saves(media_host.media)
+    shm.write_bytes(b"rebuilt index" * 10)
+    stamp = shm.stat().st_mtime_ns + 5_000_000_000
+    os.utime(shm, ns=(stamp, stamp))
+    second = st._protect_bare_saves(media_host.media)
+
+    assert first["archives"] == second["archives"]
+    [archive] = first["archives"]
+    with zipfile.ZipFile(archive) as bundle:
+        assert sorted(bundle.namelist()) == ["ankimon.db", "ankimon.db-wal"]
+
+
+def _pause_notice():
+    [text] = [call.args[0] for call in st.showWarning.call_args_list
+              if "Media sync is paused" in call.args[0]]
+    return text
+
+
+def test_the_pause_notice_promises_a_timed_retry_when_one_is_armed(
+    transfer, media_host, monkeypatch,
+):
+    """The guard rescans by itself; a restart mid-review is what its timer avoids."""
+    source = media_host.media / "ankimon.db"
+    _make_save(source, pokemon=1)
+
+    def captures_nothing(media_dir):
+        return {"protected": {}, "unprotected": [source], "archives": [],
+                "archived_sources": [], "log": []}
+
+    monkeypatch.setattr(st, "_protect_bare_saves", captures_nothing)
+    monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)
+    monkeypatch.setattr(st.mw.progress, "single_shot", lambda *args: None)
+    st.start_media_migration(None, _Logger())
+    media_host.finish()
+
+    assert st._MIGRATION_SCAN_STATE.get("retry_scheduled") is True
+    text = _pause_notice()
+    assert "about every 30 seconds" in text
+    assert "restart Anki to retry" not in text
+
+
+def test_a_scan_that_could_not_be_dispatched_promises_no_timed_retry(
+    transfer, media_host, monkeypatch,
+):
+    """No timer is armed there, and arming one would repeat its own warning.
+
+    The dispatch failure shows a second warning of its own, so a 30-second timer
+    would bring both back every 30 seconds for as long as the executor refused.
+    """
+    _make_save(media_host.media / "ankimon.db", pokemon=17)
+
+    def refused(*args, **kwargs):
+        raise RuntimeError("executor stopped")
+
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
+    monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)
+    st.start_media_migration(None, _Logger())
+
+    assert not st._MIGRATION_SCAN_STATE.get("retry_scheduled")
+    text = _pause_notice()
+    assert "restart Anki to retry" in text
+    assert "about every 30 seconds" not in text
+
+
+def test_reopening_within_the_throttle_restores_a_verdict_that_released_the_guard(
+    transfer, media_host, monkeypatch,
+):
+    """An archived but unverified save leaves nothing uncaptured and arms no retry.
+
+    A reopen inside the 30-second throttle re-arms the stat-only guard, and the
+    throttled return is all that runs next. Only putting that pass's verdict
+    back lifts the guard: without it media sync stayed paused with no timer.
+    """
+    source = media_host.media / "ankimon.db"
+    _make_save(source, pokemon=1)
+    archive = media_host.media.parent / "ankimon-media-recovery" / "unverified.zip"
+
+    def archives_without_verifying(media_dir):
+        return {"protected": {}, "unprotected": [source], "archives": [archive],
+                "archived_sources": [source], "log": []}
+
+    monkeypatch.setattr(st, "_protect_bare_saves", archives_without_verifying)
+    monkeypatch.setattr(st.time, "monotonic", lambda: 100.0)
+    log = _Logger()
+    st.guard_media_saves_now(log)
+    st.start_media_migration(None, log)
+    media_host.finish()
+    assert media_host.pm.media_syncing_enabled() is True
+    assert not st._MIGRATION_SCAN_STATE.get("retry_scheduled")
+
+    # File > Switch Profile and back, well inside the throttle.
+    st.guard_media_saves_now(log)
+    assert media_host.pm.media_syncing_enabled() is False
+    st.start_media_migration(None, log)
+
+    assert media_host.queued == []
+    assert media_host.pm.media_syncing_enabled() is True

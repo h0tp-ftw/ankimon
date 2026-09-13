@@ -9,7 +9,8 @@ Import prepares a private, verified save for the next **full Anki restart**.
 It never replaces the database used by the current game objects. Choosing
 **Keep Editing** during shutdown, a shutdown exception, and shutdown-triggered
 sync therefore leave the current runtime and save together. The menu action
-**Cancel Pending Save Import** discards a prepared import for the active mode.
+**Cancel Pending Save Import** discards prepared imports for both save modes
+(`ankimon.db` and `ankimonDEV.db`).
 
 Before constructing database managers or game objects at the next process
 start, Ankimon captures the final current save using SQLite's backup API,
@@ -30,7 +31,8 @@ Recovery copies live in `ankimon_recovery/pre-import-<token>/` beside the active
 database. The preparation message displays the reserved location, and
 **Browse Pre-import Recovery Saves…** opens the folder. Routine backup retention
 does not delete these copies. Import a recovery `.db` through the same import
-flow to restore it. Failed installation retries retain earlier recovery copies.
+flow to restore it. A failed installation retry keeps the newest snapshot under
+the advertised name, plus the one it superseded; older retry copies are pruned.
 
 Imports require leaderboard sign-in again. Incoming current and legacy
 credentials are removed; explicit empty authentication settings prevent legacy
@@ -66,12 +68,16 @@ still leaving old underscore-prefixed migration copies readable for backwards
 compatibility. Only saves in the active mode are compared for recovery.
 
 If SQLite cannot read a source, Ankimon retains a labelled **unverified** ZIP of
-the raw database and its available sidecars in the same local recovery
-directory. This is recovery material, not a guarantee that the archive contains
-a consistent save. Existing copies and raw archives must match their content
-before reuse. Damaged files remain untouched. If even raw capture fails, media
-sync pauses for that profile in memory until capture succeeds. Sync preferences
-are not changed. Close anything locking the files and restart Anki to retry.
+the raw database and its WAL or rollback journal in the same local recovery
+directory. `-shm` is left out: it is a rebuildable index, and every read-only
+open restamps it, which gave an unchanged save a new archive on every pass. This
+is recovery material, not a guarantee that the archive contains a consistent
+save. Existing copies and raw archives must match their content before reuse.
+Damaged files remain untouched. If even raw capture fails, media sync pauses for
+that profile in memory until capture succeeds. Sync preferences are not changed.
+Close anything locking the files. After a completed scan, Ankimon retries about
+every 30 seconds while Anki is open; if the scan itself could not run, restart Anki
+to retry.
 
 Preservation status is separate from the feature-removal announcement. Worker
 and dispatch failures remain retryable and visible. Preservation work runs on
@@ -309,9 +315,11 @@ Refuted:
   without bound. The test locks the oldest backup and checks that exactly the next
   one goes and the newest five stay.
 - *The `-shm` assertion can fail on other SQLite builds.* The last connection
-  `get_db_stats` closes is read-only. SQLite removes `-wal` and `-shm` on close
-  only after a checkpoint, which a read-only connection cannot run, so the sidecar
-  is still there on every build.
+  `get_db_stats` closes is read-only, and SQLite removes `-wal` and `-shm` on
+  close only after a checkpoint, which a read-only connection cannot run. That
+  holds for the builds it was checked against, but it is not a guarantee for
+  every build or VFS; since the sixth round the test skips where the index is
+  gone instead of asserting that it never is.
 
 Also: a deferred media sync that cannot be restarted is logged (the request itself
 has been kept since the fourth round), each phase of the Tier-2 import probe is
@@ -325,3 +333,106 @@ truncate, the Delete button's in-place removal, a linked backup being walked, an
 no test driving the digest and recovery-sync budget checks through the install
 itself. The `-shm` refutation was re-checked against SQLite 3.46.1's Windows VFS,
 which also refuses a read-only handle the exclusive lock a checkpoint needs.
+
+A sixth round came from a quality pass over the whole branch, two further
+CodeRabbit threads, and its Anki and PyQt compatibility check. Each fix below has
+a test that fails without it.
+
+Media sync:
+
+- Reopening a profile that was already captured this session left media sync
+  paused until Anki restarted. `guard_media_saves_now` only stats files, so the
+  reopen re-armed the guard, and the settled scan that followed returned before
+  the one call that lifts it.
+- A retry that the throttle turned away scheduled nothing. Qt rounds a 30-second
+  timer to whole seconds and can fire it half a second early, and a timer armed
+  for an earlier pass can land after a later failed pass moved the throttle on.
+  Either way the guard stayed up with no retry left. A pass the throttle turns
+  away now asks for a timer covering what is left of it.
+- A rerun requested during a scan ran even when the profile had closed meanwhile,
+  and put its warnings and the rescue prompt over the profile manager.
+- A raw archive no longer includes `-shm`, so an unreadable WAL-mode save is
+  archived once rather than once per pass, with a warning each time.
+- The pause notice says Ankimon retries by itself about every 30 seconds when a
+  retry timer is armed. A scan that failed or could not be dispatched arms none, so
+  there it still says to restart Anki: a timer would repeat that path's own warning
+  every 30 seconds.
+- A reopen inside the 30-second throttle puts the earlier pass's verdict back over
+  the re-armed guard, so a save that was archived but not verified does not leave
+  media sync paused either.
+
+Import and recovery:
+
+- SQLite opens work on a Windows network path. `Path.as_uri` puts a UNC server in
+  the URI authority, and SQLite refuses every authority but an empty one or
+  `localhost`, so a profile on a redirected AppData folder could not back up,
+  restore, import, export or compare saves. That case now percent-encodes the
+  whole native path into `file:` with no authority, which SQLite decodes to
+  exactly the filename a plain open would use, with `mode=ro` still applied. The
+  same helper covers the two opens in `save_transfer` and `ankimon_sync` that
+  predate this branch. It was exercised on Linux with `as_uri` answering the way it
+  does on Windows, not on a real share.
+- A filesystem that cannot sync a directory (EINVAL, ENOTSUP) no longer blocks an
+  install at every start. Nor does a recovery folder on a volume that refuses
+  chmod, provided this user owns it. A real I/O error, and a folder owned by
+  another account, still stop the install before anything is replaced.
+- An accepted rescue that could not quiet the live save did nothing and said
+  nothing. It now reports why, as `main` did, and that the rescue will be offered
+  again after the next sync or restart.
+- Cancel over a record whose save no longer exists says the import was cancelled,
+  not that Ankimon could not tell whether it had installed. The exception is a
+  record with a recovery copy beside it: an install got as far as replacing that
+  save, so the answer stays unknown and points at the copy.
+- Every menu path the import and recovery notices name exists. One pointed at
+  "Browse Recovered Saves",
+  which never existed, and all of them left out the Game submenu the actions live
+  in. A test reads the menu to keep it that way.
+- The startup failure notice no longer says that no save was replaced. `get_db`
+  tries both save modes, and the other one may have installed in the same start.
+
+CodeRabbit:
+
+- `_remove_tree` checks the shutdown deadline before listing a directory as well
+  as between entries. Iterating `iterdir()` lazily does not help on its own:
+  `Path.iterdir` reads the whole listing before it yields anything, through
+  `os.listdir` on Python 3.12 and `list(os.scandir(...))` on 3.14. Past the
+  deadline an empty directory is still removed, since `rmdir` needs no listing;
+  a failed shutdown attempt's staging folder is empty, and a test pins that it
+  does not outlive the attempt.
+- The `-shm` test skips where the index is gone after the read-only close, and the
+  refutation above no longer claims every build.
+- The compatibility check objected to installing synchronously while the add-on
+  loads. It has to: the install must finish before any database manager or game
+  object opens the save, or the runtime writes into a save that is being replaced,
+  which is the #797 defect. An ordinary start pays one failed open of
+  `pending.json` per save mode. A 100 MB save installed in 1.15 seconds in testing, 10 MB in
+  0.27 seconds, and the 30-second budget is a ceiling for a locked save, after
+  which the import stays pending.
+
+Tests only: the prune test checks that the superseded copy it keeps is the newest,
+a staged save swapped for another valid save now reaches the digest refusal
+instead of the size check, the shutdown-budget test covers a developer-mode active
+save, and the sync-hardening stub of `cleanup_backups` takes its real signature.
+
+Deferred, with reasons:
+
+- Windows lock retries for the backup's publishing rename and the import's
+  `os.replace` calls (#636). These are real regressions from `main` in that
+  environment, but a fix needs the lock-retry helpers in a module the stdlib-only
+  import code can load, and a Windows runner to exercise them. That is its own
+  change.
+- A current save that fails `quick_check` but still works blocks imports and
+  Backup Restore, because the safety snapshot of it fails verification. Repairing
+  the snapshot changes what gets retained, so it needs its own review.
+- Retention orders backups by directory mtime, which a read of a WAL-mode backup
+  restamps. Ordering by the timestamp in the name has to handle legacy names.
+- A staged import for `ankimon.db` whose file is deleted before the next start is
+  reported as impossible to install. `get_db` then creates a fresh save, and the
+  following start installs the import over it without a notice; only the recovery
+  copy keeps what was played in between. Which save should win is a product
+  decision.
+- Smaller items: a staged rescue can be offered again by a later scan in the same
+  session; the unverified-archive warning repeats at every start for a permanently
+  damaged file; temporary copies left by a force-quit install or an interrupted
+  cancel are not swept; the import lifecycle is thinly logged; and a handful of
+  paths are covered only indirectly by tests.
