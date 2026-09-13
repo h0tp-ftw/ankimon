@@ -2,7 +2,6 @@
 import base64
 import json
 import os
-import shutil
 import datetime
 import sqlite3
 import tempfile
@@ -547,11 +546,12 @@ class BackupManager:
                 )
                 return
             if installed is None:
-                # The save could not be read in time to tell, so claim neither.
+                # The record or the save could not be read in time to tell, so
+                # claim neither.
                 self._warn_about_pending_import(
                     "A save import is already recorded for this save, and Ankimon "
-                    "could not read the save to tell whether it has already "
-                    "installed.\n\nUse Ankimon → Cancel Pending Save Import to "
+                    "could not tell whether it has already installed."
+                    "\n\nUse Ankimon → Cancel Pending Save Import to "
                     "clear that record, then restore this backup again."
                 )
                 return
@@ -604,18 +604,42 @@ class BackupManager:
             )
 
     def delete_backup(self, backup_path_str: str):
-        """Deletes a selected backup."""
+        """Deletes a selected backup.
+
+        Renamed out of the ``backup_`` namespace first, as retention does. A
+        removal that failed part-way in place restamped the directory's mtime,
+        and retention, which orders by mtime, then kept those hidden remains as
+        the newest backup and evicted a good one to make room for them.
+        """
         backup_path = Path(backup_path_str)
         if not backup_path.is_dir():
             showWarning("Selected backup path does not exist.")
             return
         try:
-            shutil.rmtree(backup_path)
-            self.logger.log("info", f"Deleted backup: {backup_path.name}")
-            showInfo("Backup deleted successfully.")
+            doomed = backup_path.rename(self._discard_name(backup_path))
         except Exception as e:
             self.logger.log("error", f"Failed to delete backup: {e}")
             showWarning(f"Failed to delete backup: {e}")
+            return
+        try:
+            self._remove_tree(doomed, None)
+            self.logger.log("info", f"Deleted backup: {backup_path.name}")
+        except Exception as e:
+            # Out of the listing and the count already; retention finishes it.
+            self.logger.log("error", f"Backup {backup_path.name} is deleted, but some "
+                            f"of its files remain until the next backup: {e}")
+        showInfo("Backup deleted successfully.")
+
+    def _discard_name(self, directory: Path) -> Path:
+        return directory.with_name(
+            f"{self.DISCARD_PREFIX}{uuid.uuid4().hex[:8]}_{directory.name.lstrip('.')}")
+
+    @staticmethod
+    def _is_link(path: Path) -> bool:
+        # A Windows junction is not a symlink to pathlib, and walking one deletes
+        # what it points at; shutil.rmtree guards against both.
+        isjunction = getattr(os.path, "isjunction", None)
+        return path.is_symlink() or bool(isjunction and isjunction(path))
 
     def _remove_tree(self, directory: Path, deadline) -> bool:
         """Delete a directory one entry at a time, stopping at the deadline.
@@ -625,11 +649,18 @@ class BackupManager:
         the shutdown budget had run out. Checking between entries bounds the
         overrun to the single unlink already in flight. Returns False when the
         deadline stopped it; filesystem errors propagate.
+
+        A link, the root included, is removed as a link. ``shutil.rmtree``
+        refuses one; walking it would delete the files it points at, outside
+        the backups folder.
         """
+        if self._is_link(directory):
+            directory.unlink()
+            return True
         for entry in list(directory.iterdir()):
             if deadline is not None and time.monotonic() >= deadline:
                 return False
-            if entry.is_dir() and not entry.is_symlink():
+            if entry.is_dir() and not self._is_link(entry):
                 if not self._remove_tree(entry, deadline):
                     return False
             else:
@@ -659,8 +690,7 @@ class BackupManager:
             return False
         doomed = directory
         if not directory.name.startswith(self.DISCARD_PREFIX):
-            doomed = directory.with_name(
-                f"{self.DISCARD_PREFIX}{uuid.uuid4().hex[:8]}_{directory.name.lstrip('.')}")
+            doomed = self._discard_name(directory)
             try:
                 directory.rename(doomed)
             except Exception as error:
@@ -679,8 +709,9 @@ class BackupManager:
         """Deletes old backups based on retention policy."""
         # Taken before this pass renames anything, so a removal that fails now
         # is retried by the next pass rather than twice in this one.
+        # A link counts even when dangling: _remove_tree removes the link itself.
         leftovers = [p for p in self.backups_path.glob(f"{self.DISCARD_PREFIX}*")
-                     if p.is_dir()]
+                     if p.is_dir() or p.is_symlink()]
         # Only published backups enter retention. Failed or interrupted staging
         # directories must not displace recoverable saves even if they remain.
         backups = sorted(

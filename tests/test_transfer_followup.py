@@ -480,15 +480,65 @@ def test_a_partial_cancellation_names_what_was_cancelled_as_well_as_what_failed(
 
     message = st.showWarning.call_args.args[0]
     assert "ankimonDEV.db: manifest locked" in message
-    assert "Cancelled successfully: ankimon.db" in message
+    assert "ankimon.db: the pending import was cancelled" in message
     assert save_import.pending_import_info(transfer.active) is None
     assert save_import.pending_import_info(developer) is not None
+
+
+def test_a_partial_cancellation_does_not_call_an_installed_import_cancelled(
+    transfer, tmp_path, monkeypatch
+):
+    """The side that succeeded may be a record for an import that already installed."""
+    from Ankimon import save_import
+
+    monkeypatch.setattr(st, "user_path", tmp_path)
+    developer = _make_save(tmp_path / "ankimonDEV.db", pokemon=1, name="Dev")
+    _install_without_cleanup(transfer)
+    save_import.stage_import(transfer.incoming, developer)
+    cancel = save_import.cancel_pending_import
+
+    def locked_for_developer(target):
+        if Path(target).name == "ankimonDEV.db":
+            raise PermissionError("manifest locked")
+        return cancel(target)
+
+    monkeypatch.setattr(save_import, "cancel_pending_import", locked_for_developer)
+
+    st.cancel_pending_save_import()
+
+    message = st.showWarning.call_args.args[0]
+    assert "ankimonDEV.db: manifest locked" in message
+    assert "ankimon.db: that import had ALREADY installed" in message
+    assert "ankimon.db: the pending import was cancelled" not in message
+
+
+def test_mixed_outcomes_are_each_named_against_their_own_save(
+    transfer, tmp_path, monkeypatch
+):
+    """An installed record for one save must not speak for the other save's cancel."""
+    import shutil
+
+    from Ankimon import save_import
+
+    monkeypatch.setattr(st, "user_path", tmp_path)
+    developer = _make_save(tmp_path / "ankimonDEV.db", pokemon=1, name="Dev")
+    save_import.stage_import(transfer.incoming, transfer.active)
+    staged = save_import.stage_import(transfer.incoming, developer)
+    shutil.copyfile(staged["pending_path"], developer)
+    shown = []
+    monkeypatch.setattr(st, "showInfo", lambda message: shown.append(message))
+
+    st.cancel_pending_save_import()
+
+    assert len(shown) == 1
+    assert "ankimon.db: the pending import was cancelled. This save is unchanged." in shown[0]
+    assert "ankimonDEV.db: that import had ALREADY installed" in shown[0]
 
 
 def test_a_record_whose_install_state_cannot_be_read_is_cancelled_without_guessing(
     transfer, monkeypatch
 ):
-    """A locked save gives no answer in time; neither confident message is safe."""
+    """A damaged record or a locked save gives no answer in time; neither guess is safe."""
     from Ankimon import save_import
 
     save_import.stage_import(transfer.incoming, transfer.active)
@@ -500,7 +550,8 @@ def test_a_record_whose_install_state_cannot_be_read_is_cancelled_without_guessi
 
     assert save_import.pending_import_info(transfer.active) is None
     assert len(shown) == 1
-    assert "could not read the save" in shown[0]
+    assert "could not tell whether" in shown[0]
+    assert "could not read the save" not in shown[0]
     assert "unchanged" not in shown[0].lower()
     assert "is the imported one" not in shown[0]
 
@@ -518,6 +569,6 @@ def test_a_second_import_over_a_record_of_unknown_state_claims_neither_answer(
     assert st.import_save() is True
 
     assert len(shown) == 1
-    assert "could not read the save" in shown[0]
+    assert "could not tell whether" in shown[0]
     assert "will install at the next" not in shown[0].lower()
     assert "is the save you are playing" not in shown[0]

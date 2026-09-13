@@ -644,12 +644,12 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
             )
             return True
         if installed is None:
-            # The save could not be read in time to tell. Either confident
-            # answer could be the wrong way round, so claim neither.
+            # The record or the save could not be read in time to tell. Either
+            # confident answer could be the wrong way round, so claim neither.
             _warn_about_pending_import(
                 f"{what} not started: a save import is already recorded for this "
-                "save, and Ankimon could not read the save to tell whether it "
-                "has already installed.\n\n"
+                "save, and Ankimon could not tell whether it has already "
+                "installed.\n\n"
                 "Use Ankimon → Cancel Pending Save Import to clear that record, "
                 "then try again.",
                 f"{what} was refused over an import record of unknown state, "
@@ -756,35 +756,42 @@ def cancel_pending_save_import() -> None:
         events.emit("save_import_cancelled", target=str(target),
                     installed=installed)
 
+    # One line per save. Their outcomes can differ -- one import may already
+    # have installed while the other was only pending, or one may cancel while
+    # the other fails -- and a sentence chosen for one reads as the answer for
+    # both, including "the save you are playing" about a save nobody is playing.
+    outcomes = []
+    for target in cancelled:
+        if target in already_installed:
+            outcomes.append(
+                f"{target.name}: that import had ALREADY installed, so this save IS "
+                "the imported one. Only its leftover record was cleared, and nothing "
+                "will be installed again. The save it replaced was retained first — "
+                "see Ankimon → Browse Recovered Saves.")
+        elif target in undetermined:
+            outcomes.append(
+                f"{target.name}: the import record was cleared, so nothing will be "
+                "installed from it. Ankimon could not tell whether that import had "
+                "already installed; if it had, the save it replaced was retained "
+                "first — see Ankimon → Browse Recovered Saves.")
+        else:
+            outcomes.append(f"{target.name}: the pending import was cancelled. "
+                            "This save is unchanged.")
+
     if failures:
         message = ("The pending save import could not be cancelled:\n\n"
                    + "\n".join(failures))
-        if cancelled:
-            # The other save mode may already be cancelled, its event emitted.
-            # Naming only the failure would tell the user that did not happen.
-            message += ("\n\nCancelled successfully: "
-                        + ", ".join(target.name for target in cancelled))
+        if outcomes:
+            # Another save may already be settled, its event emitted. Naming only
+            # the failure would tell the user that did not happen.
+            message += "\n\nMeanwhile:\n\n" + "\n\n".join(outcomes)
         showWarning(message
                     + "\n\nClose anything using the Ankimon folder and try again.")
         return
-    if not cancelled:
+    if not outcomes:
         showInfo("There is no pending save import for either save mode.")
         return
-    named = ", ".join(target.name for target in cancelled)
-    if already_installed:
-        showInfo(f"That import ({', '.join(t.name for t in already_installed)}) had "
-                 "already installed: the save you are playing IS the imported one. "
-                 "Only its leftover record was cleared, so nothing will be installed "
-                 "again.\n\nYour previous save was retained before the replacement — "
-                 "see Ankimon → Browse Recovered Saves.")
-    elif undetermined:
-        showInfo(f"The pending save import record was cleared ({named}), so nothing "
-                 "will be installed from it. Ankimon could not read the save to tell "
-                 "whether that import had already installed; if it had, your previous "
-                 "save was retained first — see Ankimon → Browse Recovered Saves.")
-    else:
-        showInfo(f"The pending save import was cancelled ({named}). "
-                 "Your current save is unchanged.")
+    showInfo("\n\n".join(outcomes))
 
 
 def browse_recovered_saves() -> None:

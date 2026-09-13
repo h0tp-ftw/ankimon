@@ -870,11 +870,60 @@ def test_restore_over_an_import_of_unknown_state_claims_neither_answer(mock_env,
         with patch.object(_bm_mod, "showWarning") as warning:
             bm.restore_backup(str(backup_dir))
         message = warning.call_args.args[0]
-        assert "could not read the save" in message
+        assert "could not tell whether" in message
         assert "will install at the next" not in message
         assert "is the save you are playing" not in message
     finally:
         save_import.cancel_pending_import(db.db_path)
+
+
+def test_a_manual_delete_that_fails_part_way_cannot_pose_as_the_newest_backup(mock_env):
+    """The Delete button had the same restamped-remains problem as retention."""
+    bm, _, _, _ = mock_env
+    made = _fake_backups(bm, bm.MAX_BACKUPS)
+    for name in ("ankimon.db", "ankimonDEV.db", "summary.json"):
+        (made[1] / name).write_bytes(b"x")
+    unlink, calls = os.unlink, []
+
+    def second_file_locked(path, *args, **kwargs):
+        calls.append(path)
+        if len(calls) == 2:
+            raise PermissionError("simulated lock on one file of the backup")
+        return unlink(path, *args, **kwargs)
+
+    with patch.object(os, "unlink", side_effect=second_file_locked), \
+         patch.object(_bm_mod, "showInfo"), patch.object(_bm_mod, "showWarning"):
+        bm.delete_backup(str(made[1]))
+    assert len(calls) == 2, "the removal was not cut short part-way"
+
+    newest = bm.backups_path / "backup_2020-01-01_00-01-00"
+    newest.mkdir()
+    bm.cleanup_backups()
+
+    kept = sorted(path.name for path in bm.backups_path.glob("backup_*"))
+    assert kept == sorted([made[0].name] + [path.name for path in made[2:]] + [newest.name])
+    assert not list(bm.backups_path.glob(".discard_*")), "retention should finish the removal"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+def test_retention_removes_a_linked_backup_without_emptying_what_it_points_at(mock_env, tmp_path):
+    """shutil.rmtree refuses a link; walking one deletes files outside the folder."""
+    bm, _, _, _ = mock_env
+    elsewhere = tmp_path / "backup-on-another-drive"
+    elsewhere.mkdir()
+    (elsewhere / "ankimon.db").write_bytes(b"a save the user moved and linked back")
+    stamp = time.time() - 3600
+    os.utime(elsewhere, (stamp, stamp))
+    made = _fake_backups(bm, bm.MAX_BACKUPS)
+    link = bm.backups_path / "backup_2019-01-01_00-00-00"
+    link.symlink_to(elsewhere, target_is_directory=True)
+
+    bm.cleanup_backups()
+
+    assert (elsewhere / "ankimon.db").is_file()
+    assert not link.exists() and not link.is_symlink()
+    assert all(path.is_dir() for path in made)
+    assert not list(bm.backups_path.glob(".discard_*"))
 
 
 def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(mock_env, monkeypatch):

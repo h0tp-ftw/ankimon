@@ -660,6 +660,7 @@ def test_a_cancellation_survives_a_crash_that_undoes_its_removals(tmp_path, monk
     source = make_save(tmp_path / "source.db", "incoming")
     staged = importer.stage_import(source, target)
     manifest = staged["pending_path"].parent / "pending.json"
+    original_length = manifest.stat().st_size
     unlink = Path.unlink
 
     def undone_by_the_crash(path, *args, **kwargs):
@@ -676,8 +677,10 @@ def test_a_cancellation_survives_a_crash_that_undoes_its_removals(tmp_path, monk
     assert importer.cancel_pending_import(target) is True
     monkeypatch.undo()
 
-    # The crash left both files in place, and play went on afterwards.
+    # The crash left both files in place, and play went on afterwards. The
+    # record was rewritten at its own length: no truncate, so no torn tail.
     assert manifest.is_file() and staged["pending_path"].is_file()
+    assert manifest.stat().st_size == original_length
     with sqlite3.connect(target) as conn:
         conn.execute("INSERT INTO captured_pokemon VALUES ('after-cancel', '{}')")
     assert importer.pending_import_info(target) is None
@@ -909,6 +912,56 @@ def test_whole_file_reads_and_copies_check_the_budget_between_blocks(tmp_path, m
     with pytest.raises(TimeoutError):
         importer._copy_within(source, tmp_path / "copy.db", deadline=2.5)
     assert (tmp_path / "copy.db").stat().st_size < source.stat().st_size
+
+
+@pytest.mark.parametrize("step", ["digest", "recovery_sync"])
+def test_the_startup_budget_reaches_the_digest_and_the_recovery_sync(tmp_path, step):
+    """The install passes its budget into each whole-file step, not just the copy.
+
+    Checked by where the TimeoutError is raised: a call site that dropped the
+    deadline would let the step finish and fail later, somewhere else.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    with sqlite3.connect(source) as conn:
+        # More than one digest block, so a check between blocks can fire.
+        conn.execute("CREATE TABLE ballast (data BLOB)")
+        conn.execute("INSERT INTO ballast VALUES (?)", (os.urandom(3 * 1024 * 1024),))
+    staged = importer.stage_import(source, target)
+
+    child(
+        "import time, traceback\n"
+        "step = sys.argv[3]\n"
+        "deadline = time.monotonic() + 60\n"
+        "def expire():\n"
+        "    module.time.monotonic = lambda: deadline + 1\n"
+        "if step == 'digest':\n"
+        "    real_sha = module.hashlib.sha256\n"
+        "    class SlowDisk:\n"
+        "        def __init__(self): self.inner = real_sha()\n"
+        "        def update(self, block): expire(); self.inner.update(block)\n"
+        "        def hexdigest(self): return self.inner.hexdigest()\n"
+        "    module.hashlib.sha256 = SlowDisk\n"
+        "    expected = '_digest'\n"
+        "else:\n"
+        "    verify = module._verify_save\n"
+        "    def verify_then_stall(path, deadline=None):\n"
+        "        verify(path, deadline)\n"
+        "        if Path(path).name.startswith('.backup-'): expire()\n"
+        "    module._verify_save = verify_then_stall\n"
+        "    expected = '_snapshot'\n"
+        "try:\n"
+        "    module.commit_pending_import(target, deadline=deadline)\n"
+        "except TimeoutError as error:\n"
+        "    frames = [frame.name for frame in traceback.extract_tb(error.__traceback__)]\n"
+        "    assert frames[-2:] == [expected, '_budget'], frames\n"
+        "else:\n"
+        "    raise AssertionError('the budget was not checked at ' + step)\n",
+        target, step,
+    )
+    assert names(target) == ["local"]
+    assert importer.pending_import_info(target)["token"] == staged["token"]
 
 
 def test_a_budget_spent_during_the_install_copy_leaves_the_old_save_pending(tmp_path):

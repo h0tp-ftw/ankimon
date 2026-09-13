@@ -320,14 +320,19 @@ def _write_cancelled_record(manifest: Path, target: Path) -> None:
     only needs its file synced. If the write or its sync fails, the original
     bytes are put back before raising, so this session still sees the import
     its caller is about to report could not be cancelled.
+
+    The record is padded with whitespace, which JSON ignores, to the original
+    length, so no truncate follows the write. A crash between a shorter write
+    and its truncate left the new record followed by the old one's tail, which
+    parses as neither -- and after an install, that made every later start
+    report a replacement that had already happened as one that had failed.
     """
     record = json.dumps({"version": 1, "target": str(target), "cancelled": True})
     with manifest.open("r+b") as handle:
         original = handle.read()
         try:
             handle.seek(0)
-            handle.write(record.encode("utf-8"))
-            handle.truncate()
+            handle.write(record.encode("utf-8").ljust(len(original), b" "))
             handle.flush()
             os.fsync(handle.fileno())
         except Exception:
