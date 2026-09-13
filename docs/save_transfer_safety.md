@@ -268,15 +268,18 @@ Cancellation and the pending record:
   removal brings back a record that installs nothing. If the rewrite itself
   cannot be synced, Cancel reports failure and puts the original record back, so
   the retry it asks for still finds the import. A separate tombstone file was not
-  used: its directory entry would need the very sync that failed.
+  used: its directory entry would need the very sync that failed. The record is
+  padded to the old one's length, so no truncate follows the write for a crash to
+  split from it.
 - Whether a pending record describes an already-installed import has three
   answers. The check runs on the GUI thread only to choose wording, so the save
-  gets two seconds rather than SQLite's 30-second busy timeout. A locked or
-  unreadable save answers "unknown", and Import, Backup Restore and Cancel word
-  that as neither pending nor installed; the cancellation event carries
-  `installed=None`.
-- A cancellation that succeeds for one save mode and fails for the other names
-  both outcomes.
+  gets two seconds rather than SQLite's 30-second busy timeout. A damaged record
+  or a locked or unreadable save answers "unknown", and Import, Backup Restore
+  and Cancel word that as neither pending nor installed, without guessing which
+  of the two could not be read; the cancellation event carries `installed=None`.
+- Cancel reports one line per save. A cancellation that succeeds for one save and
+  fails for the other names both outcomes, and an import that had already
+  installed on one save is no longer described as if it were the other's.
 - A manifest that has vanished by read-back is the one failure after publication
   that stays an ordinary abort: nothing will install, and the staged copy goes.
 
@@ -292,7 +295,10 @@ Startup and shutdown budgets:
   entries restamps a directory's mtime and retention orders by mtime, so a
   removal cut short in place, by the deadline or by one locked file, left remains
   that sorted as the newest backup and evicted a good one on the next pass. This
-  turned up while checking the refuted claim below.
+  turned up while checking the refuted claim below. Backup Manager's Delete
+  button had the same problem and now renames first too. A linked backup is
+  removed as a link: walking it would delete the files it points at, which
+  `shutil.rmtree` refused to do.
 
 Refuted:
 
@@ -311,3 +317,11 @@ Also: a deferred media sync that cannot be restarted is logged (the request itse
 has been kept since the fourth round), each phase of the Tier-2 import probe is
 bounded at 300 seconds, and the preference-off guard test now drives the user's
 preference through the installed wrapper instead of replacing it.
+
+These changes were checked adversarially before they were pushed. That found seven
+gaps in them, each now fixed with a test: three ways Cancel's wording could be
+wrong across two saves, a record rewrite that a crash could split from its
+truncate, the Delete button's in-place removal, a linked backup being walked, and
+no test driving the digest and recovery-sync budget checks through the install
+itself. The `-shm` refutation was re-checked against SQLite 3.46.1's Windows VFS,
+which also refuses a read-only handle the exclusive lock a checkpoint needs.
