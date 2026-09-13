@@ -341,7 +341,7 @@ class ImprovedPokemonDataSync(QDialog):
             """Returns stats-based comparison for the database."""
             local_lines = []
             remote_lines = []
-            
+
             def get_db_stats(db_path: Path) -> Dict[str, Any]:
                 stats = {
                     "pokemon": 0,
@@ -360,43 +360,43 @@ class ImprovedPokemonDataSync(QDialog):
                     conn = sqlite3.connect(str(db_path))
                     conn.row_factory = sqlite3.Row
                     cursor = conn.cursor()
-                    
+
                     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
                     tables = {row["name"] for row in cursor.fetchall()}
-                    
+
                     if "captured_pokemon" in tables:
                         cursor.execute("SELECT COUNT(*) as count FROM captured_pokemon")
                         stats["pokemon"] = cursor.fetchone()["count"]
-                    
+
                     if "items" in tables:
                         cursor.execute("SELECT SUM(quantity) as count FROM items")
                         res = cursor.fetchone()
                         stats["items"] = res["count"] if res and res["count"] is not None else 0
-                    
+
                     if "pokemon_history" in tables:
                         cursor.execute("SELECT COUNT(*) as count FROM pokemon_history")
                         stats["history"] = cursor.fetchone()["count"]
-                        
+
                     if "badges" in tables:
                         cursor.execute("SELECT COUNT(*) as count FROM badges WHERE achieved = 1")
                         stats["badges"] = cursor.fetchone()["count"]
-                        
+
                     if "config" in tables:
                         cursor.execute("SELECT value FROM config WHERE key = 'trainer.name'")
                         row = cursor.fetchone()
                         if row:
                             stats["trainer_name"] = row["value"]
-                            
+
                         cursor.execute("SELECT value FROM config WHERE key = 'trainer.level'")
                         row = cursor.fetchone()
                         if row:
                             stats["trainer_level"] = int(row["value"])
-                            
+
                         cursor.execute("SELECT value FROM config WHERE key = 'trainer.cash'")
                         row = cursor.fetchone()
                         if row:
                             stats["trainer_cash"] = int(row["value"])
-                    
+
                 except Exception as e:
                     self.logger.log("error", f"Failed to get stats for {db_path.name}: {e}")
                 finally:
@@ -406,9 +406,9 @@ class ImprovedPokemonDataSync(QDialog):
 
             source_file = self.sync_handler._get_source_path(filename)
             media_file = self.sync_handler._get_media_path(filename)
-            
+
             local_stats = get_db_stats(source_file)
-            
+
             local_lines.append(f"Trainer: {local_stats['trainer_name']}")
             local_lines.append(f"Level: {local_stats['trainer_level']}")
             local_lines.append(f"Cash: {local_stats['trainer_cash']}")
@@ -416,7 +416,7 @@ class ImprovedPokemonDataSync(QDialog):
             local_lines.append(f"Total Items: {local_stats['items']}")
             local_lines.append(f"Badges: {local_stats['badges']}")
             local_lines.append(f"History: {local_stats['history']}")
-            
+
             if media_file.is_file():
                 remote_stats = get_db_stats(media_file)
                 remote_lines.append(f"Trainer: {remote_stats['trainer_name']}")
@@ -429,14 +429,14 @@ class ImprovedPokemonDataSync(QDialog):
             else:
                 remote_lines.append("(No database file exists on AnkiWeb)")
                 remote_lines.extend([""] * 6)
-                
+
             return local_lines, remote_lines
 
         def detect_structure_and_compare(local_data: Any, remote_data: Any, filename: str) -> Tuple[List[str], List[str]]:
             """Detect the data structure and apply appropriate comparison."""
             if filename == 'ankimon.db':
                 return compare_databases(filename)
-            
+
             return ["(Settings file)"], ["(Settings file)"]
 
         # Main display logic
@@ -761,9 +761,9 @@ class AnkimonDataSync:
             deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
         return json.loads(deobfuscated_bytes.decode('utf-8'))
 
-    
 
-    
+
+
 
     def save_configs(self) -> List[str]:
         """
