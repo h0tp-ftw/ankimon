@@ -20,26 +20,152 @@ from ..pyobj.error_handler import show_warning_with_traceback
 ankimon_tracker_obj = None
 settings_obj = None
 
+# Private keys that ``_install_on_hit_boost_items`` stashes on a move dict and the
+# damage wrapper below consumes: the boost payload the holder's item is about to
+# add, and the item that is spent adding it. They ride on the move instead of the
+# move's ``BOOSTS`` because the engine resolves a boost payload through one elif
+# chain (find_state_instructions) in which a SECONDARY always wins: a top-level
+# BOOSTS is read only for a move that has no secondary effect, which silently drops
+# it for 17 of the engine's 37 damaging Electric moves, Thunderbolt included.
+_ON_HIT_BOOSTS_KEY = "_ankimon_on_hit_boosts"
+_ON_HIT_ITEM_KEY = "_ankimon_on_hit_item"
+
+
+def _effective_boost(active, stat, stages):
+    """The stage change the engine's boost generator would actually emit.
+
+    Mirrors ``get_instructions_from_boosts``: a raise clamps at MAX_BOOSTS, and a
+    drop is refused outright by Clear Body and friends. A zero result means the item
+    has nothing left to do -- which is also the one condition under which a
+    consumable on-hit item is NOT spent (Cell Battery is held onto at +6 Attack, and
+    under Contrary at -6).
+    """
+    current = active.get_boost_from_boost_string(stat)
+    if stages > 0:
+        return min(current + stages, constants.MAX_BOOSTS) - current
+    if (
+        active.ability in constants.IMMUNE_TO_STAT_LOWERING_ABILITIES
+        or active.item in constants.IMMUNE_TO_STAT_LOWERING_ITEMS
+    ):
+        return 0
+    return max(current + stages, -1 * constants.MAX_BOOSTS) - current
+
+
+def _on_hit_item_triggers(mutator, instruction_set, defender, boosts, first_added):
+    """Whether an on-hit held item should fire for this one outcome.
+
+    The engine's ``frozen`` flag already covers a miss and an immune hit, but three
+    conditions it does not express are checked here:
+
+      * this hit actually took HP off the defender. Only the instructions from
+        ``first_added`` on are inspected: an instruction set is cumulative over the
+        whole turn, so a holder that made a Substitute earlier in the turn has its
+        own 25% HP cost sitting in the list, and reading the whole list would take
+        that for a hit on the holder and boost a Pokemon that was never struck.
+        Within this hit, a blow absorbed by a Substitute adds no damage instruction
+        against the defender either, which is the same non-trigger for the same
+        reason.
+      * the defender is still standing afterwards. The engine's own faint check in
+        ``get_instructions_from_damage`` reads HP from before the killing blow is
+        added to the instruction set, so a Pokemon that is about to faint is never
+        frozen and would otherwise collect a boost on its way out.
+      * the boost has somewhere to go. At the stat cap the engine emits a
+        zero-magnitude no-op, and a consumable must not be spent on one.
+    """
+    if not any(
+        instr[0] == constants.MUTATOR_DAMAGE and instr[1] == defender and instr[2] > 0
+        for instr in instruction_set.instructions[first_added:]
+    ):
+        return False
+    # Balanced apply/reverse, exactly as get_instructions_from_boosts does a moment
+    # later, so the state this wrapper was handed is left as it was found.
+    mutator.apply(instruction_set.instructions)
+    try:
+        active = instruction_generator.get_side_from_state(
+            mutator.state, defender
+        ).active
+        if active.hp <= 0:
+            return False
+        return any(
+            _effective_boost(active, stat, stages) for stat, stages in boosts.items()
+        )
+    finally:
+        mutator.reverse(instruction_set.instructions)
+
+
 # --- F37: review-based damage multiplier, applied at the poke-engine level ---
 # poke_engine.find_state_instructions calls
 # ``instruction_generator.get_instructions_from_damage`` via module attribute, so
 # wrapping that attribute scales opponent-directed damage by the reviewer
 # multiplier during instruction generation (and flags it so the post-hoc pass in
-# ``simulate_battle_with_poke_engine`` does not double-apply). Guarded against
-# double-wrapping on module reload (reload-safe singletons): capture the pristine
-# original and install the wrapper only once.
-if not getattr(
-    instruction_generator.get_instructions_from_damage,
-    "_ankimon_review_wrapped",
-    False,
+# ``simulate_battle_with_poke_engine`` does not double-apply).
+#
+# The same wrapper also fans out the on-hit held-item boosts described above. They
+# belong in this one wrapper rather than a second layer over it: a wrapper wrapping
+# the wrapper would delegate to a function that already scales damage, and the next
+# import would have no way to tell the two layers apart.
+#
+# Installation is versioned rather than merely guarded (reload-safe singletons). A
+# bare "already wrapped?" guard is only correct while the wrapper never gains a
+# feature: an in-process reload on top of an older generation would find the flag
+# set, skip the definition, and leave that older wrapper running -- which is exactly
+# how a Cell Battery holder would sit through a whole session doing nothing after an
+# update, since the item registration below would still stash a payload that the
+# older wrapper does not know how to read.
+_DAMAGE_WRAPPER_VERSION = 2
+
+
+def _damage_wrapper_version(fn):
+    """Which generation of the Ankimon damage wrapper ``fn`` is; 0 for none."""
+    version = getattr(fn, "_ankimon_damage_wrapper_version", None)
+    if version is not None:
+        return version
+    # Version 1 predates the version attribute and marked itself with a boolean.
+    return 1 if getattr(fn, "_ankimon_review_wrapped", False) else 0
+
+
+def _pristine_damage_fn(fn, version):
+    """The untouched engine function underneath ``fn``, or None if unrecoverable.
+
+    Replacing an older wrapper means calling what IT was calling; delegating to the
+    old wrapper itself would scale review damage twice.
+    """
+    if version == 0:
+        return fn
+    original = getattr(fn, "_ankimon_wrapped_function", None)
+    if original is None:
+        # Version 1 kept the original in a module global instead of an attribute --
+        # this very dict on an in-place reload, and the superseded module's dict
+        # when the add-on is reloaded into a fresh module object.
+        original = getattr(fn, "__globals__", {}).get(
+            "_original_get_instructions_from_damage"
+        )
+    if original is None or _damage_wrapper_version(original):
+        return None
+    return original
+
+
+_installed_damage_fn = instruction_generator.get_instructions_from_damage
+_installed_damage_wrapper_version = _damage_wrapper_version(_installed_damage_fn)
+_original_get_instructions_from_damage = _pristine_damage_fn(
+    _installed_damage_fn, _installed_damage_wrapper_version
+)
+
+if (
+    _original_get_instructions_from_damage is not None
+    and _installed_damage_wrapper_version < _DAMAGE_WRAPPER_VERSION
 ):
-    _original_get_instructions_from_damage = (
-        instruction_generator.get_instructions_from_damage
-    )
 
     def _wrapped_get_instructions_from_damage(
         mutator, defender, damage, accuracy, attacking_move, instruction
     ):
+        # Everything this call appends starts here. The instruction set arrives
+        # carrying the whole turn so far, and an on-hit item must only read the
+        # blow it is reacting to. Read before delegating, and only for a move that
+        # actually carries a payload -- callers that do not (the F37 unit tests
+        # among them) hand this wrapper an opaque instruction stand-in.
+        on_hit_boosts = attacking_move.get(_ON_HIT_BOOSTS_KEY)
+        first_added = len(instruction.instructions) if on_hit_boosts else 0
         if (
             defender == constants.OPPONENT
             and hasattr(mutator, "review_based_damage_multiplier")
@@ -52,11 +178,47 @@ if not getattr(
             else:
                 damage = math.floor(damage * mutator.review_based_damage_multiplier)
             mutator.review_based_damage_multiplier_applied = True
-        return _original_get_instructions_from_damage(
+        results = _original_get_instructions_from_damage(
             mutator, defender, damage, accuracy, attacking_move, instruction
         )
 
+        # Reaching this call already establishes what an on-hit item needs: the move
+        # survived every ability and item hook as a damaging move, so the Electric
+        # absorbers (Volt Absorb / Lightning Rod / Motor Drive) are out. The engine
+        # then freezes the instruction on a miss and on an immune hit (damage == 0),
+        # and ``_on_hit_item_triggers`` covers the rest.
+        if on_hit_boosts:
+            spent_item = attacking_move.get(_ON_HIT_ITEM_KEY)
+            boosted = []
+            for instruction_set in results:
+                if not _on_hit_item_triggers(
+                    mutator, instruction_set, defender, on_hit_boosts, first_added
+                ):
+                    boosted.append(instruction_set)
+                    continue
+                for fired in instruction_generator.get_instructions_from_boosts(
+                    mutator, defender, on_hit_boosts, True, instruction_set
+                ):
+                    if spent_item is not None:
+                        fired.add_instruction(
+                            (
+                                constants.MUTATOR_CHANGE_ITEM,
+                                defender,
+                                None,
+                                spent_item,
+                            )
+                        )
+                    boosted.append(fired)
+            results = boosted
+        return results
+
     _wrapped_get_instructions_from_damage._ankimon_review_wrapped = True
+    _wrapped_get_instructions_from_damage._ankimon_damage_wrapper_version = (
+        _DAMAGE_WRAPPER_VERSION
+    )
+    _wrapped_get_instructions_from_damage._ankimon_wrapped_function = (
+        _original_get_instructions_from_damage
+    )
     instruction_generator.get_instructions_from_damage = (
         _wrapped_get_instructions_from_damage
     )
@@ -225,6 +387,211 @@ def _install_stancechange_compat():
     before_move.stancechange = patched_stancechange
 
 
+# Abilities the ENGINE implements that do nothing to an incoming boost payload but
+# transform it, and so may be replayed over an on-hit item's boost. The allowlist is
+# load-bearing rather than cautious: most of the engine's defender-ability hooks
+# REPLACE a move's BOOSTS (stamina sets {defense: 1}), which would swallow the item's
+# payload and hand back the ability's own.
+_STAT_STAGE_ABILITIES = frozenset({"contrary"})
+
+# Stage multipliers the engine does NOT implement, mapped to their factor. Replaying
+# a payload through the engine only works for an ability it has a handler for, and
+# 'simple' appears nowhere in its ability hooks -- only in BYPASSABLE_ABILITIES -- so
+# the engine would hand the payload straight back and the battery would be spent on
+# an undoubled +1. These are applied on this side instead, which is why they cannot
+# simply join the allowlist above.
+_STAGE_MULTIPLIER_ABILITIES = {"simple": 2}
+
+# Abilities that switch a held item off. The engine models no item-disabling ability
+# at all -- 'klutz' appears nowhere in it, and ``item_modify_attack_against`` invokes
+# a registered callback unconditionally -- and nothing upstream strips the item
+# either, since ``to_engine_format`` passes ability and held item through side by
+# side. So an on-hit item has to ask this itself before it fires.
+_ITEM_DISABLING_ABILITIES = frozenset({"klutz"})
+
+# Bumped when the shape of what an on-hit effect stashes on a move changes, or when
+# what it stashes it FOR does, so an in-process reload replaces an older shim instead
+# of leaving it registered. Version 2 added the Simple and Klutz interactions: a v1
+# shim stashes a payload this wrapper still understands, but one that is +1 under
+# Simple and present at all under Klutz.
+_ON_HIT_ITEM_VERSION = 2
+
+
+def _ability_suppressed(attacking_pokemon, defending_pokemon):
+    """Whether the engine would treat the defender's ability as switched off.
+
+    Mirrors the guard at the top of the engine's ``ability_modify_attack_against``:
+    Neutralizing Gas on either side turns both abilities off, and a mold-breaker
+    attacker ignores a defender ability the engine lists as bypassable.
+
+    Mirrored rather than read back out of that dispatcher by probing it with an
+    ability it does implement, because such a probe answers this question only for as
+    long as the ability probed with stays implemented AND stays a detectable
+    transform. A submodule bump that renamed Contrary's handler would leave the probe
+    reporting every defender as suppressed -- Simple quietly no longer doubling and,
+    worse, Klutz quietly no longer disabling. Only the three-line structure is copied
+    here: WHICH abilities suppress and which are bypassable is still read from the
+    engine's own constants, so a bump that adds to either set is picked up for free.
+    """
+    if (
+        attacking_pokemon.ability == "neutralizinggas"
+        or defending_pokemon.ability == "neutralizinggas"
+    ):
+        return True
+    return (
+        attacking_pokemon.ability in constants.ABILITIES_THAT_IGNORE_OTHER_ABILITIES
+        and defending_pokemon.ability in constants.BYPASSABLE_ABILITIES
+    )
+
+
+def _install_on_hit_boost_items():
+    """Give Cell Battery its battle effect: +1 Attack when hit by an Electric move.
+
+    Ankimon sells Cell Battery (items.csv id 589) and lets any Pokemon hold it, and
+    the held item does reach the engine -- ``to_engine_format`` normalizes
+    "cell-battery" to "cellbattery" and passes it to ``Pokemon.item``. The engine
+    just has no entry for it in ``item_modify_attack_against``, so the item sat on
+    its holder doing nothing at all. The engine is a git submodule (edits there are
+    lost on ``git submodule update``), so the effect is registered from this side.
+
+    The engine's own equivalent, ``weaknesspolicy``, sets the move's ``BOOSTS`` and
+    lets find_state_instructions apply them to the defender. That route is not usable
+    here: the boost payload is resolved by one elif chain in which a SECONDARY wins,
+    so a top-level BOOSTS never survives Thunderbolt, Thunder, Spark, Thunder Punch,
+    Discharge or Volt Tackle -- 17 of the 37 damaging Electric moves. (The same
+    shadowing already makes weaknesspolicy and the on-hit abilities Stamina,
+    Justified, Weak Armor and Steam Engine inert against those moves. Repairing the
+    chain would move outcomes for about ten abilities, so it is left alone here.)
+    Instead the boost is stashed on the move under ``_ON_HIT_BOOSTS_KEY`` and fanned
+    out by the damage wrapper at the top of this module, which also means the
+    ability's own ``BOOSTS`` is never touched.
+
+    Cell Battery is consumed, as the real item is: the wrapper emits a reversible
+    change_item instruction alongside the boost, and only when the boost has a stage
+    left to move. That is a deliberate difference from the engine's own one-shot
+    items (weaknesspolicy, whiteherb, airballoon), which it models as reusable
+    because ``modify_attack_against`` returns a move dict and cannot emit an
+    instruction -- a limit of that hook, not of the engine. This effect does its work
+    in the instruction wrapper, where the instruction is expressible. Consumption is
+    scoped to the encounter: the item lives on the engine State, which
+    ``simulate_battle_with_poke_engine`` never writes back to the Pokemon object and
+    rebuilds from it on every reset.
+
+    Three holder abilities change the outcome here and the engine applies none of
+    them on this path: Contrary inverts the boost, Simple doubles it, and Klutz stops
+    the item firing at all. Each is handled on this side, and each honours the
+    engine's own suppression rules -- so Neutralizing Gas hands a Klutz holder its
+    battery back, and a mold-breaker attacker leaves Simple's doubling off.
+    """
+    from ..poke_engine.damage_calculator import type_effectiveness_modifier
+    from ..poke_engine.special_effects.abilities.modify_attack_against import (
+        ability_modify_attack_against,
+    )
+    from ..poke_engine.special_effects.items import modify_attack_against
+
+    def _through_stat_stage_ability(boosts, attacking_pokemon, defending_pokemon):
+        """Replay the holder's stat-stage ability over the boost the item adds.
+
+        poke-engine runs a defender's ability hook BEFORE its item hook, so a boost
+        an item adds afterwards never meets Contrary: the holder would gain +1 Attack
+        where the mechanic says it loses one. The payload is handed back to the
+        engine's own ability hook on a synthetic opponent-targeting move carrying
+        nothing but these boosts, so the suppression rules (neutralizinggas,
+        mold-breaker-style bypass) stay the engine's rather than a second copy of
+        them, and only the abilities on ``_STAT_STAGE_ABILITIES`` are routed through
+        it.
+
+        Simple has to be applied on this side instead. It doubles a stage change, but
+        the engine has no handler for it, so replaying the payload would return it
+        unchanged and spend the battery on a +1. No Pokemon has both abilities, so
+        the two branches never compete for one payload. The doubled payload is
+        deliberately NOT clamped here: ``_effective_boost`` already decides whether a
+        partial raise is still worth spending the item on and the engine's boost
+        generator clamps what it emits, so a Simple holder at +5 takes the one stage
+        it has left and a holder at the cap keeps its battery.
+        """
+        if defending_pokemon.ability in _STAT_STAGE_ABILITIES:
+            probe = ability_modify_attack_against(
+                defending_pokemon.ability,
+                {
+                    constants.TARGET: constants.NORMAL,
+                    constants.BOOSTS: dict(boosts),
+                    constants.SECONDARY: None,
+                },
+                attacking_pokemon,
+                defending_pokemon,
+            )
+            return probe.get(constants.BOOSTS) or boosts
+        multiplier = _STAGE_MULTIPLIER_ABILITIES.get(defending_pokemon.ability)
+        if multiplier is not None and not _ability_suppressed(
+            attacking_pokemon, defending_pokemon
+        ):
+            return {stat: stages * multiplier for stat, stages in boosts.items()}
+        return boosts
+
+    def _on_hit_boost(move_type, stat, stages):
+        def effect(attacking_move, attacking_pokemon, defending_pokemon):
+            # Klutz switches the item off, so the hit lands but the battery neither
+            # boosts nor is spent -- refusing here, before anything is stashed, is
+            # what keeps BOTH of those out of the wrapper's hands. Suppression-aware
+            # on purpose: Neutralizing Gas turns Klutz off as well, and then the
+            # battery works normally, so an unconditional check on the ability name
+            # would be wrong in exactly that matchup.
+            if defending_pokemon.ability in _ITEM_DISABLING_ABILITIES and (
+                not _ability_suppressed(attacking_pokemon, defending_pokemon)
+            ):
+                return attacking_move
+            # Requiring a damaging category rules out the Electric-absorbing
+            # abilities (Volt Absorb / Lightning Rod / Motor Drive): they run first
+            # and turn the move into a STATUS move carrying their own boost.
+            if (
+                attacking_move[constants.CATEGORY] not in constants.DAMAGING_CATEGORIES
+                or attacking_move[constants.TYPE] != move_type
+            ):
+                return attacking_move
+            try:
+                if type_effectiveness_modifier(move_type, defending_pokemon.types) == 0:
+                    return attacking_move
+            except KeyError:
+                # Unrecognised type id. The engine's own damage path raises on this
+                # same lookup moments later; an item must not be what breaks first.
+                return attacking_move
+
+            attacking_move = attacking_move.copy()
+            attacking_move[_ON_HIT_BOOSTS_KEY] = _through_stat_stage_ability(
+                {stat: stages}, attacking_pokemon, defending_pokemon
+            )
+            attacking_move[_ON_HIT_ITEM_KEY] = defending_pokemon.item
+            return attacking_move
+
+        return effect
+
+    # item id -> (triggering move type, boosted stat, stages). Absorb Bulb (588),
+    # Snowball (689) and Luminous Moss (688) are the same shape and are also in
+    # Ankimon's item list; they are left for a follow-up so this change stays
+    # reviewable against one item's documented behaviour.
+    on_hit_boosts = {
+        "cellbattery": ("electric", constants.ATTACK, 1),
+    }
+    for item_name, (move_type, stat, stages) in on_hit_boosts.items():
+        installed = modify_attack_against.item_lookup.get(item_name)
+        if installed is not None and (
+            getattr(installed, "__module__", None) == modify_attack_against.__name__
+            or getattr(installed, "_ankimon_on_hit_item_version", 0)
+            >= _ON_HIT_ITEM_VERSION
+        ):
+            # An entry defined in the engine's own module means a submodule bump
+            # implements the item natively now, and that must win over this shim;
+            # the same shim version means a reload is a no-op. Anything older is
+            # replaced -- leaving an earlier shim installed would pair a stale
+            # payload with the current wrapper.
+            continue
+        effect = _on_hit_boost(move_type, stat, stages)
+        effect.__name__ = item_name
+        effect._ankimon_on_hit_item_version = _ON_HIT_ITEM_VERSION
+        modify_attack_against.item_lookup[item_name] = effect
+
+
 def _apply_engine_patch(patch):
     """Apply one hardening patch, recording a failure without propagating it.
 
@@ -257,6 +624,7 @@ def _apply_engine_patch(patch):
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
+_apply_engine_patch(_install_on_hit_boost_items)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
