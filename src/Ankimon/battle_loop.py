@@ -350,7 +350,7 @@ def on_review_card(*args):
         if cry_counter == 10 and battle_sounds is True:
             play_sound(enemy_pokemon.id, settings_obj)
 
-        if main_pokemon.hp < 1:
+        if main_pokemon.hp < 1 and enemy_pokemon.hp > 0:
             # Liveness guard (F24): hand the faint handler a live window or None
             # (new_pokemon already None-checks before painting).
             main_faint_window = services.test_window

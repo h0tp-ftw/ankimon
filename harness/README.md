@@ -92,6 +92,7 @@ source .tier2/env.sh               # LD_LIBRARY_PATH + QT_QPA_PLATFORM=offscreen
 python -m harness.checks.probe_real_boot   # real add-on boots; objects are the REAL classes
 python -m harness.checks.probe_real_play   # plays via real hooks: real windows, real battles
 python -m harness.checks.probe_real_move_selection  # real modal input + cancellation + deletion
+python -m harness.checks.probe_real_tm_learnsets  # both TM screens: form filtering + SQLite saves
 ```
 
 The move-selection probe restores the real modal event loop for that dialog
@@ -100,6 +101,13 @@ numeric and navigation key events through Qt, including the synchronous
 `focusObject()` press/release sequence used by Contanki. It covers duplicate
 input, cancellation, nested dialogs, modifiers, keypad input, and deletion.
 It runs in Tier-2 CI and through an isolated subprocess in the pytest suite.
+
+The TM probe also restores its dialog's native modal loop. It learns TMs through
+both the PC move manager and Pokémon details, checks exact owned/form-specific
+move lists against bundled tables, verifies SQLite saves and cancellation, and
+fails if either screen rereads the startup-warmed TM file. Set
+`ANKIMON_TM_SCREENSHOTS=/path/to/artifacts` to capture the Aegislash and Blaze
+Tauros pickers. It runs in Tier-2 CI and in an isolated pytest subprocess.
 
 This verifies controllers that **emit mapped keyboard events**. It does not
 emulate a physical controller or Contanki's mapping/state dispatch. In upstream

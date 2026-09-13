@@ -240,6 +240,14 @@ def startup_env(monkeypatch, tmp_path):
     )
     monkeypatch.setitem(
         sys.modules,
+        "Ankimon.functions.tm_learnset",
+        _stub_module(
+            "Ankimon.functions.tm_learnset",
+            warm_tm_learnset_cache=rec("warm_tm_learnset_cache", 1500),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
         "Ankimon.utils",
         _stub_module(
             "Ankimon.utils",
@@ -386,6 +394,7 @@ def test_background_checks_do_no_ui_work_and_return_contract(startup_env):
     assert _called(env, "generate_random_pokemon")
     assert _called(env, "count_items_and_rewrite")
     assert _called(env, "warm_evolution_caches")
+    assert _called(env, "warm_tm_learnset_cache")
 
 
 def test_background_checks_warm_the_evolution_table(startup_env):
@@ -403,6 +412,14 @@ def test_background_checks_warm_the_evolution_table(startup_env):
     env.mod.run_startup_background_checks()
 
     assert len(_called(env, "warm_evolution_caches")) == 1
+
+
+def test_background_checks_warm_the_tm_learnset_table(startup_env):
+    """TM JSON is bundled static data and must be parsed off the GUI path."""
+    env = startup_env
+    env.mod.run_startup_background_checks()
+
+    assert len(_called(env, "warm_tm_learnset_cache")) == 1
 
 
 def test_evolution_table_is_warmed_even_when_assets_are_missing(startup_env):
@@ -438,6 +455,24 @@ def test_a_failing_warm_cannot_fail_the_boot(startup_env, monkeypatch):
     assert _called(env, "count_items_and_rewrite")
     assert any(
         call[0] == "log" and call[1] == "error" and "data_files unreadable" in call[2]
+        for call in env.calls
+    )
+
+
+def test_a_failing_tm_warm_cannot_fail_the_boot(startup_env, monkeypatch):
+    env = startup_env
+
+    def boom():
+        raise OSError("TM data unreadable")
+
+    monkeypatch.setattr(env.mod, "warm_tm_learnset_cache", boom)
+
+    results = env.mod.run_startup_background_checks()
+
+    assert results["database_complete"] is True
+    assert _called(env, "count_items_and_rewrite")
+    assert any(
+        call[0] == "log" and call[1] == "error" and "TM data unreadable" in call[2]
         for call in env.calls
     )
 
