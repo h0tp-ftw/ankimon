@@ -20,8 +20,10 @@ def media_host(transfer, tmp_path, monkeypatch):
     media = tmp_path / "collection.media"
     media.mkdir()
     queued = []
+    # The user's own preference, read through whatever guard gets installed.
+    preference = [True]
     pm = SimpleNamespace(profile={}, profileFolder=lambda: str(tmp_path),
-                         media_syncing_enabled=lambda: True, save=lambda: None)
+                         media_syncing_enabled=lambda: preference[0], save=lambda: None)
     monkeypatch.setattr(st.mw, "pm", pm)
     monkeypatch.setattr(st, "_MIGRATION_SCAN_STATE", {"running": False, "rerun": False})
     monkeypatch.setattr(st.mw.taskman, "run_in_background",
@@ -34,7 +36,8 @@ def media_host(transfer, tmp_path, monkeypatch):
             future.result()
         done(future)
 
-    return SimpleNamespace(media=media, pm=pm, queued=queued, finish=finish)
+    return SimpleNamespace(media=media, pm=pm, queued=queued, finish=finish,
+                           preference=preference)
 
 
 @pytest.mark.parametrize("readable", [False, True])
@@ -137,14 +140,22 @@ def test_cancel_menu_reports_manifest_lock_without_losing_pending_import(transfe
     from Ankimon import save_import
 
     info = save_import.stage_import(transfer.incoming, transfer.active)
-    unlink = Path.unlink
+    unlink, open_path = Path.unlink, Path.open
 
-    def locked(path, *args, **kwargs):
+    # A lock that keeps the cancellation from being written keeps it from
+    # happening at all, so it must hold the writer out as well as the unlink.
+    def locked_unlink(path, *args, **kwargs):
         if path.name == "pending.json":
             raise PermissionError("manifest locked")
         return unlink(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "unlink", locked)
+    def locked_open(path, mode="r", *args, **kwargs):
+        if path.name == "pending.json" and mode != "r":
+            raise PermissionError("manifest locked")
+        return open_path(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", locked_unlink)
+    monkeypatch.setattr(Path, "open", locked_open)
     st.cancel_pending_save_import()
     assert save_import.pending_import_info(transfer.active)["token"] == info["token"]
     assert "could not be cancelled" in st.showWarning.call_args.args[0]
@@ -560,16 +571,42 @@ def test_the_gate_fails_open_when_the_profile_folder_cannot_be_read(
     st.start_media_migration(None, _Logger())
     assert media_host.pm.media_syncing_enabled() is False
 
+    folder_reads = []
+
     def gone():
+        folder_reads.append(True)
         raise OSError("the profile volume went away")
 
     monkeypatch.setattr(media_host.pm, "profileFolder", gone)
     assert media_host.pm.media_syncing_enabled() is True
+    assert folder_reads == [True]
 
-    # A user who has media sync switched off is answered without touching disk.
-    monkeypatch.setattr(media_host.pm, "media_syncing_enabled", lambda: False,
-                        raising=False)
+    # A user who has media sync switched off is answered without touching disk,
+    # by the guard that is installed rather than by a replacement for it.
+    media_host.preference[0] = False
     assert media_host.pm.media_syncing_enabled() is False
+    assert folder_reads == [True]
+
+
+def test_a_deferred_sync_that_cannot_be_restarted_is_logged_and_kept(
+    transfer, media_host, media_syncer, monkeypatch,
+):
+    """The request stays owed for a later release; the log is the only trace why."""
+    from Ankimon.services import services
+
+    def refuse(*args):
+        raise RuntimeError("the media syncer is shutting down")
+
+    monkeypatch.setattr(st.mw.media_syncer, "start", refuse)
+    _make_save(media_host.media / "ankimon.db", pokemon=5)
+    st.start_media_migration(None, _Logger())
+    assert media_host.pm.media_syncing_enabled() is False
+
+    media_host.finish()
+
+    assert media_host.media in media_host.pm._ankimon_media_protection_guard["deferred"]
+    assert any("deferred media sync" in message and "shutting down" in message
+               for message in services.logger.errors)
 
 
 def test_a_retry_that_cannot_run_still_lets_another_be_scheduled(

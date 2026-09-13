@@ -9,6 +9,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -369,6 +370,7 @@ def test_post_install_failure_reports_installed_and_retries_without_losing_progr
         "token = module.pending_import_info(target)['token']\n"
         "failure = sys.argv[3]\n"
         "sync, cleanup, unlink = module._fsync_directory, module._remove_owned_copy, Path.unlink\n"
+        "open_path = Path.open\n"
         "def fail_sync(path):\n"
         "    if path == target.parent and module._installed_token(target) == token:\n"
         "        raise OSError('injected directory sync failure')\n"
@@ -381,9 +383,15 @@ def test_post_install_failure_reports_installed_and_retries_without_losing_progr
         "    if path.name == 'pending.json':\n"
         "        raise OSError('injected manifest cleanup failure')\n"
         "    return unlink(path, *args, **kwargs)\n"
+        # Retiring the record is committed by rewriting it, so a lock has to
+        # hold the writer out, not only the unlink, to leave it unretired.
+        "def fail_retire(path, mode='r', *args, **kwargs):\n"
+        "    if path.name == 'pending.json' and mode != 'r':\n"
+        "        raise OSError('injected manifest cleanup failure')\n"
+        "    return open_path(path, mode, *args, **kwargs)\n"
         "if failure == 'directory_sync': module._fsync_directory = fail_sync\n"
         "elif failure == 'temporary_cleanup': module._remove_owned_copy = fail_cleanup\n"
-        "else: Path.unlink = fail_unlink\n"
+        "else: Path.unlink, Path.open = fail_unlink, fail_retire\n"
         "try:\n"
         "    module.commit_pending_import(target)\n"
         "except Exception as error:\n"
@@ -639,12 +647,105 @@ def test_a_manifest_that_vanishes_before_read_back_leaves_nothing_staged(tmp_pat
     assert names(target) == ["local"]
 
 
-def test_cancellation_holds_even_when_its_durability_flush_fails(tmp_path, monkeypatch):
-    """Removing the manifest is what stops the install, so say so.
+def test_a_cancellation_survives_a_crash_that_undoes_its_removals(tmp_path, monkeypatch):
+    """Cancel is committed on disk before anything is removed.
 
-    Reporting "could not be cancelled, try again" after the manifest is gone
+    Without a directory sync, a crash can bring back both ``pending.json`` and
+    the staged copy, and the next start would install over progress made after
+    the user was told the import was cancelled. The record is rewritten in place
+    and synced as a file first, so what a crash brings back installs nothing.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+    manifest = staged["pending_path"].parent / "pending.json"
+    unlink = Path.unlink
+
+    def undone_by_the_crash(path, *args, **kwargs):
+        if path == manifest:
+            return None
+        return unlink(path, *args, **kwargs)
+
+    def failing_sync(path):
+        raise OSError("injected cancellation flush failure")
+
+    monkeypatch.setattr(importer, "_fsync_directory", failing_sync)
+    monkeypatch.setattr(importer, "_remove_owned_copy", lambda path: None)
+    monkeypatch.setattr(Path, "unlink", undone_by_the_crash)
+    assert importer.cancel_pending_import(target) is True
+    monkeypatch.undo()
+
+    # The crash left both files in place, and play went on afterwards.
+    assert manifest.is_file() and staged["pending_path"].is_file()
+    with sqlite3.connect(target) as conn:
+        conn.execute("INSERT INTO captured_pokemon VALUES ('after-cancel', '{}')")
+    assert importer.pending_import_info(target) is None
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is False
+    assert names(target) == ["after-cancel", "local"]
+
+    # Finishing off the leftover is not reported as a second cancellation.
+    assert importer.cancel_pending_import(target) is False
+    assert not manifest.exists()
+    assert not staged["pending_path"].exists()
+
+
+def test_a_cancellation_that_cannot_reach_the_disk_is_reported_and_kept(tmp_path, monkeypatch):
+    """If the commit itself cannot be synced, the import has not been cancelled.
+
+    A crash could bring it back as it was, so "cancelled" would be a promise
+    nobody kept. The record is put back for this session too: the retry that
+    the warning asks for must find something to cancel.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    staged = importer.stage_import(source, target)
+
+    def failing_fsync(descriptor):
+        raise OSError("injected file sync failure")
+
+    monkeypatch.setattr(importer.os, "fsync", failing_fsync)
+    with pytest.raises(OSError, match="injected file sync failure"):
+        importer.cancel_pending_import(target)
+    monkeypatch.undo()
+
+    assert importer.pending_import_info(target)["token"] == staged["token"]
+    assert staged["pending_path"].is_file()
+    assert importer.cancel_pending_import(target) is True
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is False
+    assert names(target) == ["local"]
+
+
+def test_a_new_import_can_be_staged_over_a_cancelled_record(tmp_path, monkeypatch):
+    """A cancelled record that could not be removed blocks nothing."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    first = make_save(tmp_path / "first.db", "first")
+    second = make_save(tmp_path / "second.db", "second")
+    staged = importer.stage_import(first, target)
+    manifest = staged["pending_path"].parent / "pending.json"
+    unlink = Path.unlink
+    monkeypatch.setattr(
+        Path, "unlink",
+        lambda path, *args, **kwargs: None if path == manifest else unlink(path, *args, **kwargs),
+    )
+    assert importer.cancel_pending_import(target) is True
+    monkeypatch.undo()
+    assert manifest.is_file()
+
+    importer.stage_import(second, target)
+    assert json.loads(commit_in_new_process(target).stdout)["installed"] is True
+    assert names(target) == ["second"]
+
+
+def test_cancellation_holds_even_when_its_directory_flush_fails(tmp_path, monkeypatch):
+    """The synced cancelled record is what stops the install, so say so.
+
+    Reporting "could not be cancelled, try again" once that record is on disk
     earns a "there is no pending save import" on the retry, and the user cannot
-    tell from Ankimon which of the two to believe.
+    tell from Ankimon which of the two to believe. Some network and FUSE mounts
+    refuse a directory sync outright, which would fail every cancellation.
     """
     importer = load_module()
     target = make_save(tmp_path / "ankimon.db", "local")
@@ -788,3 +889,72 @@ def test_a_spent_startup_budget_refuses_rather_than_waiting_again(tmp_path):
     )
     assert names(target) == ["local"]
     assert importer.pending_import_info(target) is not None
+
+
+def test_whole_file_reads_and_copies_check_the_budget_between_blocks(tmp_path, monkeypatch):
+    """One large save must not carry a startup install past its budget."""
+    importer = load_module()
+    source = tmp_path / "large.db"
+    source.write_bytes(b"\0" * (3 * 1024 * 1024))
+    clock = [0.0]
+
+    def tick():
+        clock[0] += 1
+        return clock[0]
+
+    monkeypatch.setattr(importer.time, "monotonic", tick)
+    with pytest.raises(TimeoutError):
+        importer._digest(source, deadline=2.5)
+    clock[0] = 0.0
+    with pytest.raises(TimeoutError):
+        importer._copy_within(source, tmp_path / "copy.db", deadline=2.5)
+    assert (tmp_path / "copy.db").stat().st_size < source.stat().st_size
+
+
+def test_a_budget_spent_during_the_install_copy_leaves_the_old_save_pending(tmp_path):
+    """Copying the save into place is the largest step, and the last one checked."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    importer.stage_import(source, target)
+
+    child(
+        "import time\n"
+        "copy = module._copy_within\n"
+        "def slow_disk(source, dest, deadline=None):\n"
+        "    module.time.monotonic = lambda: deadline + 1\n"
+        "    return copy(source, dest, deadline)\n"
+        "module._copy_within = slow_disk\n"
+        "try:\n"
+        "    module.commit_pending_import(target, deadline=time.monotonic() + 60)\n"
+        "except TimeoutError:\n"
+        "    pass\n"
+        "else:\n"
+        "    raise AssertionError('the install copy ignored its budget')\n",
+        target,
+    )
+    assert names(target) == ["local"]
+    assert importer.pending_import_info(target) is not None
+    assert not list(tmp_path.glob(".ankimon-install-*"))
+
+
+def test_a_locked_save_answers_unknown_within_the_wording_budget(tmp_path):
+    """The menu asks this on the GUI thread, only to choose its wording.
+
+    SQLite's own busy timeout here would be 30 seconds of a frozen Anki, and a
+    save that cannot be read is evidence of neither answer.
+    """
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    importer.stage_import(source, target)
+    locker = sqlite3.connect(target, isolation_level=None)
+    try:
+        locker.execute("BEGIN EXCLUSIVE")
+        started = time.monotonic()
+        assert importer.pending_import_is_installed(target) is None
+        assert time.monotonic() - started < importer._WORDING_BUDGET + 3
+    finally:
+        locker.execute("ROLLBACK")
+        locker.close()
+    assert importer.pending_import_is_installed(target) is False

@@ -7,6 +7,7 @@ import datetime
 import sqlite3
 import tempfile
 import time
+import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -33,6 +34,9 @@ class BackupManager:
     SHUTDOWN_BACKUP_BUDGET = 30.0
     # How old an abandoned staging directory must be before retention sweeps it.
     STALE_STAGING_AGE = 3600.0
+    # Retention renames a directory to this prefix before deleting inside it,
+    # taking it out of the listing and the count; a later pass finishes it.
+    DISCARD_PREFIX = ".discard_"
 
     def __init__(self, logger, settings_obj):
         self.logger = logger
@@ -230,8 +234,12 @@ class BackupManager:
             # Failed attempts stay outside listings and retention even if a
             # locked file prevents deletion. Remove only staging directories
             # created by this attempt, never a pre-existing timestamp collision.
+            # Entry by entry under the shutdown deadline, as retention is: the
+            # attempt may hold a whole companion save.
             try:
-                shutil.rmtree(staging_dir)
+                if not self._remove_tree(staging_dir, deadline):
+                    self.logger.log("error", "The shutdown budget ran out removing an "
+                                    "incomplete backup; retention sweeps it once stale")
             except OSError as error:
                 self.logger.log("error", f"Failed to remove incomplete backup: {error}")
         return success
@@ -527,7 +535,8 @@ class BackupManager:
             # Qt, and an exception raised inside an except clause is not caught
             # by its siblings -- it would leave restore_backup entirely, with
             # an import armed and nothing said about it.
-            if pending_import_is_installed(target):
+            installed = pending_import_is_installed(target)
+            if installed:
                 # The record outlived the import; that replacement has already
                 # happened and no restart will repeat it.
                 self._warn_about_pending_import(
@@ -535,6 +544,15 @@ class BackupManager:
                     "save you are playing now. Only its leftover record could "
                     "not be cleared.\n\nUse Ankimon → Cancel Pending Save Import "
                     "to clear that record, then restore this backup again."
+                )
+                return
+            if installed is None:
+                # The save could not be read in time to tell, so claim neither.
+                self._warn_about_pending_import(
+                    "A save import is already recorded for this save, and Ankimon "
+                    "could not read the save to tell whether it has already "
+                    "installed.\n\nUse Ankimon → Cancel Pending Save Import to "
+                    "clear that record, then restore this backup again."
                 )
                 return
             self._warn_about_pending_import(
@@ -599,25 +617,70 @@ class BackupManager:
             self.logger.log("error", f"Failed to delete backup: {e}")
             showWarning(f"Failed to delete backup: {e}")
 
+    def _remove_tree(self, directory: Path, deadline) -> bool:
+        """Delete a directory one entry at a time, stopping at the deadline.
+
+        ``shutil.rmtree`` cannot be interrupted, and a backup holds whole save
+        copies, so one large or stalled deletion could keep Anki closing after
+        the shutdown budget had run out. Checking between entries bounds the
+        overrun to the single unlink already in flight. Returns False when the
+        deadline stopped it; filesystem errors propagate.
+        """
+        for entry in list(directory.iterdir()):
+            if deadline is not None and time.monotonic() >= deadline:
+                return False
+            if entry.is_dir() and not entry.is_symlink():
+                if not self._remove_tree(entry, deadline):
+                    return False
+            else:
+                entry.unlink()
+        directory.rmdir()
+        return True
+
     def _discard(self, directory: Path, what: str, deadline) -> bool:
         """Remove one directory. Never raise, and never overrun the deadline.
 
-        Retention has no deadline of its own to defend: every removal it skips
-        is simply retried by the next backup. What it must not do is fail the
-        call that published a good backup, or keep Anki's close waiting.
+        Returns False only when the deadline has passed, telling the caller to
+        stop: every removal it skips is simply retried by the next backup. A
+        removal that fails is logged and retention carries on. Every removal a
+        pass attempts was due regardless of the others, so a directory that
+        cannot be deleted costs one extra retained copy -- never the eviction
+        of a backup the policy keeps.
+
+        The directory leaves the ``backup_`` namespace by rename before anything
+        inside it is deleted. Deleting entries updates a directory's mtime, and
+        retention orders by mtime, so a removal cut short in place -- by the
+        deadline, or by one locked file -- would leave remains that sort as the
+        NEWEST backup and displace a good one at the next pass. A failed rename
+        changes nothing; after a successful one, the worst left behind is a
+        hidden ``.discard_`` directory that a later pass finishes.
         """
         if deadline is not None and time.monotonic() >= deadline:
             return False
+        doomed = directory
+        if not directory.name.startswith(self.DISCARD_PREFIX):
+            doomed = directory.with_name(
+                f"{self.DISCARD_PREFIX}{uuid.uuid4().hex[:8]}_{directory.name.lstrip('.')}")
+            try:
+                directory.rename(doomed)
+            except Exception as error:
+                self.logger.log("error", f"Failed to delete {what} {directory.name}: {error}")
+                return True
         try:
-            shutil.rmtree(directory)
+            finished = self._remove_tree(doomed, deadline)
         except Exception as error:
-            self.logger.log("error", f"Failed to delete {what} {directory.name}: {error}")
+            self.logger.log("error", f"Failed to finish deleting {what} {directory.name}: {error}")
             return True
-        self.logger.log("info", f"Deleted {what}: {directory.name}")
-        return True
+        if finished:
+            self.logger.log("info", f"Deleted {what}: {directory.name}")
+        return finished
 
     def cleanup_backups(self, deadline: float = None):
         """Deletes old backups based on retention policy."""
+        # Taken before this pass renames anything, so a removal that fails now
+        # is retried by the next pass rather than twice in this one.
+        leftovers = [p for p in self.backups_path.glob(f"{self.DISCARD_PREFIX}*")
+                     if p.is_dir()]
         # Only published backups enter retention. Failed or interrupted staging
         # directories must not displace recoverable saves even if they remain.
         backups = sorted(
@@ -657,6 +720,12 @@ class BackupManager:
             except OSError:
                 continue
             if not self._discard(staging, "incomplete backup", deadline):
+                return
+
+        # What an earlier pass renamed out of the listing but could not finish
+        # deleting -- stopped by the deadline, or by a locked file -- ends here.
+        for leftover in leftovers:
+            if not self._discard(leftover, "discarded backup", deadline):
                 return
 
     def on_anki_close(self):

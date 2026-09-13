@@ -627,7 +627,8 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
         # into import_save's "Import aborted: ... Nothing was replaced" handler
         # over a published, armed import. That is the mis-report this branch
         # exists to prevent.
-        if pending_import_is_installed(Path(target)):
+        installed = pending_import_is_installed(Path(target))
+        if installed:
             # The record outlived the import it describes. Telling the user it
             # "will install at the next restart" describes a replacement that
             # has already happened, to somebody deciding what to do about the
@@ -639,6 +640,19 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
                 "Use Ankimon → Cancel Pending Save Import to clear that record, "
                 "then try again. Nothing will be installed a second time.",
                 f"{what} was refused over an already-installed import, "
+                "but the notice could not be shown",
+            )
+            return True
+        if installed is None:
+            # The save could not be read in time to tell. Either confident
+            # answer could be the wrong way round, so claim neither.
+            _warn_about_pending_import(
+                f"{what} not started: a save import is already recorded for this "
+                "save, and Ankimon could not read the save to tell whether it "
+                "has already installed.\n\n"
+                "Use Ankimon → Cancel Pending Save Import to clear that record, "
+                "then try again.",
+                f"{what} was refused over an import record of unknown state, "
                 "but the notice could not be shown",
             )
             return True
@@ -723,7 +737,7 @@ def cancel_pending_save_import() -> None:
     from ..events import events
     from ..save_import import cancel_pending_import, pending_import_is_installed
 
-    cancelled, already_installed, failures = [], [], []
+    cancelled, already_installed, undetermined, failures = [], [], [], []
     for target in _import_targets():
         try:
             # Asked BEFORE cancelling: removing the manifest is what makes the
@@ -737,12 +751,20 @@ def cancel_pending_save_import() -> None:
         cancelled.append(target)
         if installed:
             already_installed.append(target)
+        elif installed is None:
+            undetermined.append(target)
         events.emit("save_import_cancelled", target=str(target),
                     installed=installed)
 
     if failures:
-        showWarning("The pending save import could not be cancelled:\n\n"
-                    + "\n".join(failures)
+        message = ("The pending save import could not be cancelled:\n\n"
+                   + "\n".join(failures))
+        if cancelled:
+            # The other save mode may already be cancelled, its event emitted.
+            # Naming only the failure would tell the user that did not happen.
+            message += ("\n\nCancelled successfully: "
+                        + ", ".join(target.name for target in cancelled))
+        showWarning(message
                     + "\n\nClose anything using the Ankimon folder and try again.")
         return
     if not cancelled:
@@ -755,6 +777,11 @@ def cancel_pending_save_import() -> None:
                  "Only its leftover record was cleared, so nothing will be installed "
                  "again.\n\nYour previous save was retained before the replacement — "
                  "see Ankimon → Browse Recovered Saves.")
+    elif undetermined:
+        showInfo(f"The pending save import record was cleared ({named}), so nothing "
+                 "will be installed from it. Ankimon could not read the save to tell "
+                 "whether that import had already installed; if it had, your previous "
+                 "save was retained first — see Ankimon → Browse Recovered Saves.")
     else:
         showInfo(f"The pending save import was cancelled ({named}). "
                  "Your current save is unchanged.")
@@ -1480,8 +1507,10 @@ def _resume_deferred_media_sync() -> bool:
             return False
         syncer.start(True)
         return True
-    except Exception:
-        # Never let a restart attempt keep the guard from being released.
+    except Exception as error:
+        # Never let a restart attempt keep the guard from being released. The
+        # caller keeps the request for a later release; the log says why.
+        _log_transfer_failure("could not re-request the deferred media sync", error)
         return False
 
 

@@ -471,7 +471,8 @@ def test_incomplete_backup_survives_failed_removal_without_evicting_valid_backup
     with patch.object(_bm_mod.datetime, "datetime", wraps=datetime.datetime) as clock, \
          patch.object(db, "db_path", source):
         clock.now.return_value = now
-        with patch.object(_bm_mod.shutil, "rmtree", side_effect=PermissionError("file locked")):
+        with patch.object(_bm_mod.BackupManager, "_remove_tree",
+                          side_effect=PermissionError("file locked")):
             assert bm.create_backup() is False
 
         assert all(path.read_bytes() == content for path, content in prior.items())
@@ -735,10 +736,14 @@ def test_retention_failure_cannot_abort_anki_closing(mock_env, monkeypatch):
     bm, _, _, _ = mock_env
     _fake_backups(bm, bm.MAX_BACKUPS + 3)
 
-    def refuse(path, *args, **kwargs):
-        raise OSError("simulated lock on an old backup")
+    rename = Path.rename
 
-    monkeypatch.setattr(_bm_mod.shutil, "rmtree", refuse)
+    def refuse(path, *args, **kwargs):
+        if path.name.startswith("backup_2020"):
+            raise OSError("simulated lock on an old backup")
+        return rename(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rename", refuse)
 
     bm.on_anki_close()
 
@@ -753,16 +758,123 @@ def test_retention_does_not_spend_a_shutdown_budget_it_no_longer_has(mock_env, m
     bm, _, _, _ = mock_env
     _fake_backups(bm, bm.MAX_BACKUPS + 3)
     removed = []
-    monkeypatch.setattr(_bm_mod.shutil, "rmtree", lambda path, *a, **k: removed.append(Path(path)))
+    monkeypatch.setattr(_bm_mod.BackupManager, "_remove_tree",
+                        lambda self, path, deadline: removed.append(Path(path)) or True)
 
     clock = [500.0]
     monkeypatch.setattr(_bm_mod.time, "monotonic", lambda: clock[0])
     bm.cleanup_backups(deadline=clock[0] - 1)
     assert removed == []
+    assert not list(bm.backups_path.glob(".discard_*"))
 
     # With budget left it does the same work as before.
     bm.cleanup_backups(deadline=clock[0] + 60)
     assert len(removed) == 3
+
+
+def test_a_backup_that_cannot_be_removed_never_costs_one_the_policy_keeps(mock_env, monkeypatch):
+    """Only removals that were due are attempted, and a failure adds none.
+
+    The oldest backup is locked and the next one is not. Stopping at the lock
+    would let one stuck directory grow the folder without bound; carrying on
+    removes only what lay outside the newest MAX_BACKUPS anyway.
+    """
+    bm, _, _, _ = mock_env
+    made = _fake_backups(bm, bm.MAX_BACKUPS + 2)
+    rename = Path.rename
+
+    def oldest_locked(path, *args, **kwargs):
+        if path == made[0]:
+            raise PermissionError("simulated lock on the oldest backup")
+        return rename(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "rename", oldest_locked)
+    bm.cleanup_backups()
+
+    assert made[0].is_dir(), "the locked backup should simply remain"
+    assert not made[1].exists()
+    assert all(path.is_dir() for path in made[2:])
+    assert not list(bm.backups_path.glob(".discard_*"))
+
+
+def test_a_removal_that_fails_part_way_cannot_pose_as_the_newest_backup(mock_env):
+    """Deleting inside a directory restamps its mtime, and retention sorts by mtime.
+
+    Emptied in place, what a failed removal leaves behind would sort as the
+    newest backup, and the next pass would evict a good one to keep it.
+    """
+    bm, _, _, _ = mock_env
+    made = _fake_backups(bm, bm.MAX_BACKUPS + 1)
+    for name in ("ankimon.db", "ankimonDEV.db", "summary.json"):
+        (made[0] / name).write_bytes(b"x")
+    stamp = time.time() - 3600
+    os.utime(made[0], (stamp, stamp))
+    unlink, calls = os.unlink, []
+
+    def second_file_locked(path, *args, **kwargs):
+        calls.append(path)
+        if len(calls) == 2:
+            raise PermissionError("simulated lock on one file of the oldest backup")
+        return unlink(path, *args, **kwargs)
+
+    with patch.object(os, "unlink", side_effect=second_file_locked):
+        bm.cleanup_backups()
+    assert len(calls) == 2, "the removal was not cut short part-way"
+
+    newest = bm.backups_path / "backup_2020-01-01_00-01-00"
+    newest.mkdir()
+    bm.cleanup_backups()
+
+    kept = sorted(path.name for path in bm.backups_path.glob("backup_*"))
+    assert kept == sorted([path.name for path in made[2:]] + [newest.name])
+
+
+def test_a_removal_stops_between_entries_once_the_shutdown_budget_is_spent(mock_env):
+    """shutil.rmtree cannot be interrupted; one entry at a time can."""
+    bm, _, _, _ = mock_env
+    doomed = bm.backups_path / "backup_2020-01-01_00-00-00"
+    doomed.mkdir()
+    for name in ("ankimon.db", "ankimonDEV.db", "summary.json"):
+        (doomed / name).write_bytes(b"x")
+    clock = [0.0]
+    unlink = os.unlink
+
+    def slow_disk(path, *args, **kwargs):
+        clock[0] += 10  # every deletion outlasts the whole budget
+        return unlink(path, *args, **kwargs)
+
+    with patch.object(_bm_mod.time, "monotonic", side_effect=lambda: clock[0]), \
+         patch.object(os, "unlink", side_effect=slow_disk):
+        assert bm._discard(doomed, "old backup", deadline=5.0) is False
+
+    # Out of the listing at once, one entry gone, the rest left for later.
+    assert not doomed.exists()
+    [leftover] = bm.backups_path.glob(".discard_*")
+    assert len(list(leftover.iterdir())) == 2
+    bm.cleanup_backups()
+    assert not leftover.exists()
+
+
+def test_restore_over_an_import_of_unknown_state_claims_neither_answer(mock_env, monkeypatch):
+    """A locked save gives no answer in time; neither confident message is safe."""
+    bm, db, _, _ = mock_env
+    from Ankimon import save_import
+
+    backup_dir = bm.backups_path / "backup_2026-06-02_12-00-00"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    _seed_db(backup_dir / "ankimon.db", "Blue", 999)
+    bm.restore_backup(str(backup_dir))
+    assert save_import.pending_import_info(db.db_path) is not None
+    monkeypatch.setattr(save_import, "pending_import_is_installed", lambda target: None)
+    try:
+        with patch.object(_bm_mod, "showWarning") as warning:
+            bm.restore_backup(str(backup_dir))
+        message = warning.call_args.args[0]
+        assert "could not read the save" in message
+        assert "will install at the next" not in message
+        assert "is the save you are playing" not in message
+    finally:
+        save_import.cancel_pending_import(db.db_path)
 
 
 def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(mock_env, monkeypatch):

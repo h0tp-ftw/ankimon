@@ -13,7 +13,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import sqlite3
 import sys
 import tempfile
@@ -145,15 +144,27 @@ def _snapshot(source: Path, dest: Path, deadline: float = None) -> None:
     finally:
         source_conn.close()
     _verify_save(dest, deadline)
+    # An fsync in flight cannot be abandoned, so the budget is checked before
+    # one starts rather than trusted to cover it.
+    _budget(deadline)
     _fsync_file(dest)
 
 
-def _digest(path: Path) -> str:
+def _digest(path: Path, deadline: float = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
+            _budget(deadline)
             digest.update(block)
     return digest.hexdigest()
+
+
+def _copy_within(source: Path, dest: Path, deadline: float = None) -> None:
+    """``shutil.copyfile`` that checks a shared budget between blocks."""
+    with source.open("rb") as reader, dest.open("wb") as writer:
+        for block in iter(lambda: reader.read(1024 * 1024), b""):
+            _budget(deadline)
+            writer.write(block)
 
 
 def _prepare_incoming(
@@ -211,6 +222,10 @@ def pending_import_info(target: Path) -> dict | None:
             record = json.load(handle)
     except FileNotFoundError:
         return None
+    if _is_cancelled_record(record):
+        # What a crash can bring back after Cancel: it installs nothing, and a
+        # new import may publish over it.
+        return None
     if not isinstance(record, dict):
         raise ValueError("The pending import record is damaged")
     token = record.get("token", "")
@@ -241,7 +256,10 @@ def stage_import(
 
     Raises ``ImportStagedError`` when publication succeeded but a later step
     did not: the import is armed for the next start and can only be stopped by
-    cancelling it. Every other failure leaves nothing staged.
+    cancelling it. Every other failure leaves nothing staged -- including the
+    one after publication that is not ``ImportStagedError``: a manifest gone
+    by read-back raises plain ``OSError``, because then nothing will install,
+    and the staged copy is removed with it.
     """
     target, directory = _paths(target)
     if pending_import_info(target) is not None:
@@ -294,14 +312,62 @@ def stage_import(
     return info
 
 
+def _write_cancelled_record(manifest: Path, target: Path) -> None:
+    """Overwrite the manifest in place with a record that installs nothing.
+
+    In place rather than by rename: a new directory entry would need the very
+    directory sync whose failure this has to survive, while the existing entry
+    only needs its file synced. If the write or its sync fails, the original
+    bytes are put back before raising, so this session still sees the import
+    its caller is about to report could not be cancelled.
+    """
+    record = json.dumps({"version": 1, "target": str(target), "cancelled": True})
+    with manifest.open("r+b") as handle:
+        original = handle.read()
+        try:
+            handle.seek(0)
+            handle.write(record.encode("utf-8"))
+            handle.truncate()
+            handle.flush()
+            os.fsync(handle.fileno())
+        except Exception:
+            try:
+                handle.seek(0)
+                handle.write(original)
+                handle.truncate()
+                handle.flush()
+            except Exception:
+                pass
+            raise
+
+
+def _is_cancelled_record(record) -> bool:
+    return isinstance(record, dict) and record.get("cancelled") is True
+
+
+def _manifest_is_cancelled(manifest: Path) -> bool:
+    try:
+        with manifest.open(encoding="utf-8") as handle:
+            return _is_cancelled_record(json.load(handle))
+    except Exception:
+        return False
+
+
 def cancel_pending_import(target: Path) -> bool:
     """Cancel staged work even if its manifest is damaged.
 
-    Removing the manifest is the cancellation commit point. Once that
-    succeeds, neither the durability flush nor a failure to delete an orphaned
-    private staged copy may make the UI claim cancellation failed: without
-    ``pending.json`` no startup can install it, and a caller told to "try
-    again" would be told on the retry that there was nothing pending. Invalid
+    The commit point is ``pending.json`` rewritten in place as a cancelled
+    record and synced as a FILE. Its directory entry already exists, so that
+    is durable even where the directory itself cannot be synced, and a crash
+    that undoes the unlink below brings back a record that installs nothing --
+    not the import the user was told had been cancelled. If the rewrite or its
+    sync fails this raises with the pending import left as it was, so the
+    caller can say cancellation failed and a retry still finds it to cancel.
+
+    Past that commit, neither the unlink, the directory sync nor a failure to
+    delete an orphaned private staged copy may make the UI claim cancellation
+    failed. A cancelled record that an earlier call committed but could not
+    remove is synced again, removed, and reported as nothing pending. Invalid
     manifests are deliberately not trusted for paths; only locally-generated
     32-hex-token database names are cleaned up.
     """
@@ -314,14 +380,22 @@ def cancel_pending_import(target: Path) -> bool:
         info = pending_import_info(target)
     except Exception:
         info = None
+    already_cancelled = info is None and _manifest_is_cancelled(manifest)
 
     # Commit cancellation before touching any staged data.
-    manifest.unlink()
     try:
+        if already_cancelled:
+            _fsync_file(manifest)
+        else:
+            _write_cancelled_record(manifest, target)
+    except FileNotFoundError:
+        return False
+    try:
+        manifest.unlink()
         _fsync_directory(directory)
     except Exception:
-        # The manifest is already gone, so nothing can install. Only the
-        # crash-durability of that removal is in question here.
+        # The synced cancelled record already stops every install, including
+        # one after a crash that brings this directory entry back.
         pass
 
     if info is not None:
@@ -336,16 +410,16 @@ def cancel_pending_import(target: Path) -> bool:
         try:
             _remove_owned_copy(path)
         except OSError:
-            # The manifest is already durably gone, so this is only an orphaned
+            # The cancellation is already on disk, so this is only an orphaned
             # private file. A later cleanup/stage can retry without any chance
             # of installing it.
             pass
     try:
         _fsync_directory(directory)
     except OSError:
-        # The cancellation itself was already fsynced above.
+        # Only the durability of those orphan removals is in question here.
         pass
-    return True
+    return not already_cancelled
 
 
 def _installed_token(target: Path, deadline: float = None) -> str | None:
@@ -361,10 +435,15 @@ def _installed_token(target: Path, deadline: float = None) -> str | None:
         conn.close()
 
 
-def pending_import_is_installed(target: Path) -> bool:
-    """True when the pending record describes an import that ALREADY installed.
+# Choosing a message is not worth freezing the menu for: a save something else
+# holds locked answers "unknown" within this long, not after SQLite's full timeout.
+_WORDING_BUDGET = 2.0
 
-    ``_finish_installed_import`` retires the manifest after replacement, so this
+
+def pending_import_is_installed(target: Path) -> bool | None:
+    """Whether the pending record describes an import that ALREADY installed.
+
+    ``_finish_installed_import`` retires the manifest after replacement, so True
     is only reachable when that last step failed: the save on disk IS the
     imported one and a stale ``pending.json`` is still sitting beside it, which
     the next full start clears by itself.
@@ -375,16 +454,20 @@ def pending_import_is_installed(target: Path) -> bool:
     import had already replaced it, and a second import attempt was told the
     first one "will install at the next full Anki restart". Both are the wrong
     way round for a user deciding what to do about their save.
+
+    None means the answer could not be read -- a damaged record, or a save that
+    is locked or unreadable -- and callers word it as unknown rather than as
+    either case. Callers run on the GUI thread, so the save gets
+    ``_WORDING_BUDGET`` rather than SQLite's 30-second busy timeout.
     """
     try:
         info = pending_import_info(target)
         if info is None:
             return False
-        return _installed_token(target) == info["token"]
+        deadline = time.monotonic() + _WORDING_BUDGET
+        return _installed_token(target, deadline) == info["token"]
     except Exception:
-        # An unreadable manifest or save is not evidence of an install, and this
-        # only ever chooses wording. Fall back to the ordinary pending case.
-        return False
+        return None
 
 
 def _log(logger, level: str, message: str) -> None:
@@ -487,7 +570,7 @@ def commit_pending_import(target: Path, logger=None, deadline: float = None) -> 
 
     incoming = info["pending_path"]
     _verify_save(incoming, deadline)
-    if _digest(incoming) != info["digest"]:
+    if _digest(incoming, deadline) != info["digest"]:
         raise ValueError("The pending save changed after it was confirmed")
     recovery = info["recovery_path"]
     # mkdir(mode=...) does not tighten pre-existing directories. Restrict both
@@ -542,7 +625,8 @@ def commit_pending_import(target: Path, logger=None, deadline: float = None) -> 
     os.close(fd)
     install_temp = Path(name)
     try:
-        shutil.copyfile(incoming, install_temp)
+        _copy_within(incoming, install_temp, deadline)
+        _budget(deadline)
         _fsync_file(install_temp)
         os.replace(install_temp, target)
     except Exception:
