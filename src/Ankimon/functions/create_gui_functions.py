@@ -45,8 +45,8 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
 
         if pokemon and settings_obj.get("gui.hud_pokemon_types"):
             for t in getattr(pokemon, "type", []):
-                type_img_url = f"/_addons/{addon_package}/addon_sprites/types/{t.lower()}.png"
-                badge_html += f'<img src="{type_img_url}" alt="{t}" style="margin-right: 4px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
+                type_img_url = f"/_addons/{addon_package}/addon_sprites/Types/{t.lower()}.png"
+                badge_html += f'<img src="{type_img_url}" alt="{t}" style="margin-right: 4px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0; vertical-align:middle;">'
 
         status_html = ""
         if settings_obj.get("gui.hud_status_badge"):
