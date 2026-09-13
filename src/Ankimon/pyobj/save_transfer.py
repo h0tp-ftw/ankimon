@@ -719,8 +719,14 @@ def _replace_active_save(source: Path, target: Path, what: str, *, collection,
     try:
         close_anki(raise_on_error=True)
     except Exception as error:
-        showWarning(f"Anki could not close: {error}. Your current save is still active. "
-                    "The prepared import will run on the next full restart, or you can cancel it.")
+        # The import is published by now, so this notice is guarded like every
+        # other one about an armed import: its own failure would otherwise reach
+        # the caller's "aborted, nothing was replaced" handler.
+        _warn_about_pending_import(
+            f"Anki could not close: {error}. Your current save is still active. "
+            "The prepared import will run on the next full restart, or you can cancel it.",
+            f"{what} is staged and Anki could not close, but the notice could not be shown",
+        )
     return True
 
 

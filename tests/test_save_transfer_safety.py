@@ -652,6 +652,8 @@ def test_backup_restore_published_but_unfinished_is_reported_as_pending(transfer
     monkeypatch.setattr(services, "db", SimpleNamespace(db_path=transfer.active))
     warn = MagicMock()
     monkeypatch.setattr(backup_manager, "showWarning", warn)
+    # Warnings about an armed restore go through the presenter port.
+    monkeypatch.setattr(services, "ui", SimpleNamespace(warn=warn))
     monkeypatch.setattr(backup_manager, "showInfo", MagicMock())
     monkeypatch.setattr(backup_manager, "askUser", lambda *a, **k: True)
     monkeypatch.setattr(backup_manager, "close_anki", MagicMock())
@@ -739,3 +741,27 @@ def test_a_rescue_that_cannot_quiet_the_save_says_why_nothing_happened(transfer)
     # No menu action starts a rescue; the next scan offers it again.
     assert "offered again after the next sync or restart" in message
     assert save_import.pending_import_info(transfer.active) is None
+
+
+def test_a_close_failure_notice_that_cannot_be_shown_is_not_called_an_abort(transfer, monkeypatch):
+    """The import is published before Anki is asked to close.
+
+    A warning about the failed close that raised unwound into import_save's
+    "Import aborted ... Nothing was replaced" handler, over a staged import.
+    """
+    from Ankimon import save_import
+
+    shown = []
+
+    def refuse_close(**kwargs):
+        raise RuntimeError("no main window")
+
+    def broken_warning(message, *args, **kwargs):
+        shown.append(message)
+        raise RuntimeError("wrapped C/C++ object has been deleted")
+
+    monkeypatch.setattr(st, "close_anki", refuse_close)
+    monkeypatch.setattr(st, "showWarning", broken_warning)
+    assert st.import_save() is True
+    assert [message.split(":")[0] for message in shown] == ["Anki could not close"]
+    assert save_import.pending_import_info(transfer.active) is not None

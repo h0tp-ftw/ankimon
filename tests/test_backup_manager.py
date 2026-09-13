@@ -319,9 +319,10 @@ def test_restore_stays_pending_when_real_close_helper_cannot_exit(mock_env, clos
     try:
         with patch.dict(sys.modules, {"aqt": aqt}), \
              patch.object(_bm_mod, "close_anki", close_anki), \
-             patch.object(_bm_mod, "showWarning") as warning:
+             patch.object(services, "ui", MagicMock()) as ui:
             bm.restore_backup(str(backup_dir))
 
+        warning = ui.warn
         assert pending_import_info(db.db_path) is not None
         assert db.get_config_value("trainer.name") == "Red"
         if close_error is not None:
@@ -891,9 +892,9 @@ def test_restore_over_an_import_of_unknown_state_claims_neither_answer(mock_env,
     assert save_import.pending_import_info(db.db_path) is not None
     monkeypatch.setattr(save_import, "pending_import_is_installed", lambda target: None)
     try:
-        with patch.object(_bm_mod, "showWarning") as warning:
+        with patch.object(services, "ui", MagicMock()) as ui:
             bm.restore_backup(str(backup_dir))
-        message = warning.call_args.args[0]
+        message = ui.warn.call_args.args[0]
         assert "could not tell whether" in message
         assert "will install at the next" not in message
         assert "is the save you are playing" not in message
@@ -964,3 +965,31 @@ def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(mock_env, monk
 
     assert not stale.exists()
     assert live.is_dir(), "a staging directory an attempt may still be using was removed"
+
+
+def test_a_restore_close_failure_notice_that_cannot_be_shown_does_not_escape(mock_env):
+    """The restore is staged before Anki is asked to close.
+
+    Its warning goes through the presenter port like the other notices about an
+    armed restore, and a presenter that fails is logged rather than raised.
+    """
+    bm, db, _, _ = mock_env
+    from Ankimon import save_import
+
+    backup_dir = bm.backups_path / "backup_2026-06-04_12-00-00"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    _seed_db(backup_dir / "ankimon.db", "Blue", 999)
+    shown = []
+
+    def broken(message):
+        shown.append(message)
+        raise RuntimeError("wrapped C/C++ object has been deleted")
+
+    try:
+        with patch.object(services, "ui", types.SimpleNamespace(warn=broken)), \
+             patch.object(_bm_mod, "close_anki", side_effect=RuntimeError("no main window")):
+            bm.restore_backup(str(backup_dir))
+        assert [message.split(":")[0] for message in shown] == ["Anki could not close"]
+        assert save_import.pending_import_info(db.db_path) is not None
+    finally:
+        save_import.cancel_pending_import(db.db_path)

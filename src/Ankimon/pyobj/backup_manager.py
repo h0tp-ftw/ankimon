@@ -480,9 +480,9 @@ class BackupManager:
         return summary
 
     def _warn_about_pending_import(self, message: str) -> None:
-        """Report an armed import without letting Qt's failure escape."""
+        """Report an armed import without letting the presenter's failure escape."""
         try:
-            showWarning(message)
+            services.ui.warn(message)
         except Exception as error:
             self.logger.log(
                 "error",
@@ -600,7 +600,8 @@ class BackupManager:
         try:
             close_anki(raise_on_error=True)
         except Exception as error:
-            showWarning(
+            # The restore is staged by now; report it like any other armed import.
+            self._warn_about_pending_import(
                 f"Anki could not close: {error}. Your current save is still "
                 "active and the prepared restore remains pending."
             )

@@ -409,6 +409,21 @@ CodeRabbit:
   0.27 seconds, and the 30-second budget is a ceiling for a locked save, after
   which the import stays pending.
 
+After CodeRabbit re-reviewed that push:
+
+- The notice that Anki could not close after an import or a restore was staged is
+  guarded like every other notice about an armed import. Its own failure reached
+  `import_save`'s "Import aborted ... Nothing was replaced" handler.
+- Backup Manager's warnings about an armed restore go through `services.ui`, as
+  new popups should. In Anki that presenter shows the same `showWarning` dialog.
+- *The missing-save probes in `pending_import_is_installed` can freeze the GUI
+  thread on a disconnected network profile.* Not changed. `pending_import_info`
+  runs first in the same call: it resolves the save's path and opens
+  `pending.json` beside it synchronously, so a dead mount blocks there before
+  either probe. The callers have just done synchronous file work on that volume by
+  design, and the two-second budget bounds SQLite's wait on a locked save, not a
+  mount that has gone away.
+
 Tests only: the prune test checks that the superseded copy it keeps is the newest,
 a staged save swapped for another valid save now reaches the digest refusal
 instead of the size check, the shutdown-budget test covers a developer-mode active
