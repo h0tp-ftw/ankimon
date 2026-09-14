@@ -38,7 +38,7 @@ class FakeCursor:
         self._found = found
 
     def fetchone(self):
-        return (1,) if self._found else None
+        return (100,) if self._found else (None,)
 
 
 class FakeDB:
@@ -118,6 +118,7 @@ class FakePokemon:
         self.pokedex_id = pid
         self.generation = 1
         self.growth_rate = "medium"
+        self.iv = {"hp": 10, "atk": 10, "def": 10, "spa": 10, "spd": 10, "spe": 10}
 
     def get_sprite_path(self, side, image_format):
         return "/tmp/sprite." + image_format
@@ -224,7 +225,7 @@ def test_update_life_bar_populates_and_reuses_ownership_cache():
     reviewer = MagicMock()
 
     mgr.update_life_bar(reviewer, 0, 0)
-    assert mgr._ownership_cache == {25: True}
+    assert mgr._ownership_cache == {25: (True, False)}
     assert db.query_count == 1
 
     # Second repaint of the same enemy uses the cache — no new DB query.
@@ -243,6 +244,7 @@ def test_reset_forces_a_fresh_ownership_query():
     mgr.reviewer_reset_life_bar_inject()
     mgr.update_life_bar(reviewer, 0, 0)
     assert db.query_count == 2
+    assert mgr._ownership_cache == {25: (True, False)}
 
 
 def test_ownership_read_goes_through_services_db_not_mw():
@@ -253,7 +255,7 @@ def test_ownership_read_goes_through_services_db_not_mw():
     _, mgr = _new_manager(fake_services, enemy_id=99)
     mgr.update_life_bar(MagicMock(), 0, 0)
     assert db.query_count == 1
-    assert mgr._ownership_cache == {99: False}
+    assert mgr._ownership_cache == {99: (False, False)}
 
 
 def test_ease_guard_blocks_answer_hook_calls():
