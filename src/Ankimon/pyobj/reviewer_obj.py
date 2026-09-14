@@ -32,7 +32,7 @@ class Reviewer_Manager:
         self.seconds = 0
         self.myseconds = 0
         # === PERFORMANCE STATE ===
-        self._ownership_cache = {}  # {pokemon_id: bool} — cache HUD ownership DB reads
+        self._ownership_cache = {}  # {pokemon_id: tuple(bool, bool)} — cache HUD ownership (is_owned, has_superior_ivs)
         self._last_state = None  # skip redundant HUD repaints when nothing changed
         self._listener_registered = (
             False  # JS keydown listener registered once per view
@@ -210,19 +210,38 @@ class Reviewer_Manager:
         )
 
         # 1. Ownership cache (avoid a DB query on every repaint of the same enemy).
-        is_pokemon_owned = self._ownership_cache.get(self.enemy_pokemon.id)
-        if is_pokemon_owned is None:
-            is_pokemon_owned = False
+        ownership_data = self._ownership_cache.get(self.enemy_pokemon.id)
+        is_pokemon_owned = False
+        has_superior_ivs = False
+        if ownership_data is None:
             try:
                 db = services.db
+                # Get the maximum total IV of any captured pokemon of this species
                 cursor = db.execute(
-                    "SELECT 1 FROM captured_pokemon WHERE pokedex_id = ? LIMIT 1",
+                    """
+                    SELECT MAX(
+                        json_extract(data, '$.iv.hp') +
+                        json_extract(data, '$.iv.atk') +
+                        json_extract(data, '$.iv.def') +
+                        json_extract(data, '$.iv.spa') +
+                        json_extract(data, '$.iv.spd') +
+                        json_extract(data, '$.iv.spe')
+                    )
+                    FROM captured_pokemon WHERE pokedex_id = ?
+                    """,
                     (self.enemy_pokemon.id,),
                 )
-                is_pokemon_owned = cursor.fetchone() is not None
-                self._ownership_cache[self.enemy_pokemon.id] = is_pokemon_owned
+                row = cursor.fetchone()
+                if row and row[0] is not None:
+                    is_pokemon_owned = True
+                    max_caught_iv_total = row[0]
+                    enemy_iv_total = sum(self.enemy_pokemon.iv.values())
+                    has_superior_ivs = enemy_iv_total > max_caught_iv_total
+                self._ownership_cache[self.enemy_pokemon.id] = (is_pokemon_owned, has_superior_ivs)
             except Exception:
                 pass
+        else:
+            is_pokemon_owned, has_superior_ivs = ownership_data
 
         # Register keydown listener (8) to toggle HUD visibility. Called every
         # time because Anki reloads the webview on card switches; the JS itself
@@ -314,6 +333,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_pokemon_name"),
             self.settings.get("gui.hud_status_badge"),
             self.settings.get("gui.hud_owned_indicator"),
+            has_superior_ivs,
             self.settings.get("gui.hud_enemy_shiny_indicator"),
             self.settings.get("gui.hud_player_shiny_indicator"),
             self.settings.get("gui.reviewer_text_message_box"),
@@ -413,10 +433,11 @@ class Reviewer_Manager:
                 self.settings,
                 is_pokemon_owned,
                 addon_package,
+                has_superior_ivs=has_superior_ivs,
             )
         else:
             hud_html += create_status_html(
-                "fainted", self.settings, is_pokemon_owned, addon_package
+                "fainted", self.settings, is_pokemon_owned, addon_package, has_superior_ivs=has_superior_ivs
             )
 
         if self.settings.get("gui.hud_hp_text"):
