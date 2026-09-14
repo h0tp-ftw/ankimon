@@ -123,6 +123,7 @@ def item_window_mod():
         "Ankimon.functions.pokedex_functions",
         "Ankimon.functions.badges_functions",
         "Ankimon.functions.pokemon_functions",
+        "Ankimon.functions.update_main_pokemon",
         "Ankimon.resources",
         "Ankimon.utils",
         "Ankimon.pyobj.item_window",

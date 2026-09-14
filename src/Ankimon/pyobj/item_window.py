@@ -40,6 +40,7 @@ from ..functions.pokedex_functions import (
 from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
+from ..functions.update_main_pokemon import save_main_pokemon
 from ..services import services
 from ..utils import get_item_sprite_path, play_effect_sound, is_alive
 from .error_handler import show_warning_with_traceback
@@ -786,6 +787,7 @@ class ItemWindow(QWidget):
         check = check_for_badge(achievements, 20)
         if check is False:
             receive_badge(20, achievements)
+        save_main_pokemon(self.main_pokemon)
         self._refresh_bag()
         play_effect_sound(self.settings_obj, "HpHeal")
         self.logger.log_and_showinfo(
