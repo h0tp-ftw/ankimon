@@ -1205,6 +1205,63 @@ def test_restore_over_a_damaged_save_asks_before_anything_is_staged(mock_env, cu
         cancel_pending_import(db.db_path)
 
 
+def test_restore_over_a_damaged_save_installs_after_restart_and_keeps_original(mock_env):
+    """Exercise Backup Manager's accepted recovery path through a fresh process.
+
+    Removing ``retain_unverified`` from the restore call, replacing the live
+    database before restart, or dropping the raw recovery copy breaks this test.
+    """
+    bm, db, _, _ = mock_env
+    from test_save_import import (
+        commit_in_new_process,
+        damage_a_table,
+        quick_check_passes,
+    )
+
+    from Ankimon.save_import import pending_import_info
+
+    target = Path(db.db_path)
+    damage_a_table(target)
+    original_bytes = target.read_bytes()
+    backup_dir = bm.backups_path / "backup_2026-06-07_12-00-00"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    _seed_db(backup_dir / "ankimon.db", "Blue", 999)
+
+    with patch.object(_bm_mod, "askUser", return_value=True), \
+         patch.object(_bm_mod, "showInfo"):
+        bm.restore_backup(str(backup_dir))
+
+    staged = pending_import_info(target)
+    assert staged is not None and staged["retain_unverified"] is True
+    assert target.read_bytes() == original_bytes
+    assert quick_check_passes(target) is False
+    with closing(sqlite3.connect(target)) as still_active:
+        assert still_active.execute(
+            "SELECT value FROM config WHERE key='trainer.name'"
+        ).fetchone() == ("Red",)
+    assert not staged["recovery_path"].exists()
+    assert not staged["unverified_path"].exists()
+
+    # The startup installer must run without the current process's live handle.
+    db.close()
+    result = commit_in_new_process(target)
+    assert json.loads(result.stdout) == {"installed": True}
+
+    with closing(sqlite3.connect(target)) as restored:
+        assert restored.execute(
+            "SELECT value FROM config WHERE key='trainer.name'"
+        ).fetchone() == ("Blue",)
+
+    kept = staged["unverified_path"]
+    assert kept.is_file()
+    assert quick_check_passes(kept) is False
+    with closing(sqlite3.connect(kept)) as original:
+        assert original.execute(
+            "SELECT value FROM config WHERE key='trainer.name'"
+        ).fetchone() == ("Red",)
+    assert pending_import_info(target) is None
+
+
 def test_a_backup_publishes_through_locks_that_clear(mock_env, monkeypatch):
     """On Windows a scanner reading the snapshot just written blocks, for a moment,
     both its rename into the backup folder and the folder's rename into place."""

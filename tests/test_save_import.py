@@ -1,5 +1,6 @@
 """Exercise staged imports across real process and SQLite boundaries."""
 
+from contextlib import closing
 import errno
 import importlib.util
 import json
@@ -29,7 +30,9 @@ def load_module():
 
 
 def make_save(path, name):
-    with sqlite3.connect(path) as conn:
+    # A sqlite3 connection's context manager ends the transaction but does not
+    # close the connection. That leaked handle blocks replacement on Windows.
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.executescript(
             "CREATE TABLE captured_pokemon (individual_id TEXT PRIMARY KEY, data TEXT);"
             "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);"
@@ -48,7 +51,7 @@ def make_save(path, name):
 
 
 def names(path):
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         return [row[0] for row in conn.execute(
             "SELECT individual_id FROM captured_pokemon ORDER BY individual_id"
         )]
@@ -2049,6 +2052,19 @@ def test_staging_publishes_its_record_through_a_lock_that_clears(tmp_path, monke
     staged = importer.stage_import(source, target)
     assert len(refused) == 1
     assert importer.pending_import_info(target)["token"] == staged["token"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="needs a real Windows sharing violation")
+def test_the_windows_handle_held_by_the_importer_is_released_before_replacement(
+    tmp_path,
+):
+    """The startup checks themselves must not keep the destination locked."""
+    importer = load_module()
+    target = make_save(tmp_path / "ankimon.db", "local")
+    source = make_save(tmp_path / "source.db", "incoming")
+    child("module.stage_import(Path(sys.argv[3]), target)\n", target, source)
+    assert importer.commit_pending_import(target, deadline=time.monotonic() + 30) is True
+    assert names(target) == ["incoming"]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="needs a real Windows sharing violation")
