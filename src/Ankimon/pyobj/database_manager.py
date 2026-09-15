@@ -17,7 +17,15 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import csv
-from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpokemon_path, items_path, badges_path, team_pokemon_path as team_path
+from ..resources import (
+    user_path,
+    csv_file_items_cost,
+    mypokemon_path,
+    mainpokemon_path,
+    items_path,
+    badges_path,
+    team_pokemon_path as team_path,
+)
 
 
 # --- Thread-safe connection layer (Stage A scaffolding) --------------------
@@ -28,6 +36,7 @@ from ..resources import user_path, csv_file_items_cost, mypokemon_path, mainpoke
 # Kept aqt-free (the thread check imports PyQt6 lazily and degrades to "main
 # thread" when there is no QApplication). Backward compatible: on the GUI thread
 # callers get the same single shared connection they always did, now WAL-mode.
+
 
 class CursorWrapper:
     """Wraps a sqlite3.Cursor, proxying everything, holding a connection lease
@@ -146,7 +155,11 @@ class ConnectionWrapper:
                     # heal, a revived fossil. Reporting success for a decrement that
                     # the repair threw away is exactly the free-heal those callers
                     # exist to prevent. See the __exit__ comment below.
-                    if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+                    if (
+                        self._db_mgr
+                        and ("malformed" in msg or "disk image" in msg)
+                        and not self._db_mgr._is_repairing
+                    ):
                         self.release_lease()
                         lease_released = True
                         try:
@@ -196,12 +209,20 @@ class ConnectionWrapper:
             return CursorWrapper(res, self)
         except sqlite3.DatabaseError as e:
             msg = str(e).lower()
-            if self._db_mgr and isinstance(e, sqlite3.ProgrammingError) and "closed database" in msg:
+            if (
+                self._db_mgr
+                and isinstance(e, sqlite3.ProgrammingError)
+                and "closed database" in msg
+            ):
                 self.release_lease()
                 lease_released = True
                 fresh = self._db_mgr._get_connection()
                 return fresh.execute(*args, **kwargs)
-            if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+            if (
+                self._db_mgr
+                and ("malformed" in msg or "disk image" in msg)
+                and not self._db_mgr._is_repairing
+            ):
                 self.release_lease()
                 lease_released = True
                 self._db_mgr.repair_database()
@@ -221,12 +242,20 @@ class ConnectionWrapper:
             return CursorWrapper(res, self)
         except sqlite3.DatabaseError as e:
             msg = str(e).lower()
-            if self._db_mgr and isinstance(e, sqlite3.ProgrammingError) and "closed database" in msg:
+            if (
+                self._db_mgr
+                and isinstance(e, sqlite3.ProgrammingError)
+                and "closed database" in msg
+            ):
                 self.release_lease()
                 lease_released = True
                 fresh = self._db_mgr._get_connection()
                 return fresh.executemany(*args, **kwargs)
-            if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+            if (
+                self._db_mgr
+                and ("malformed" in msg or "disk image" in msg)
+                and not self._db_mgr._is_repairing
+            ):
                 self.release_lease()
                 lease_released = True
                 self._db_mgr.repair_database()
@@ -245,10 +274,18 @@ class ConnectionWrapper:
         except sqlite3.DatabaseError as e:
             self.release_lease()
             msg = str(e).lower()
-            if self._db_mgr and isinstance(e, sqlite3.ProgrammingError) and "closed database" in msg:
+            if (
+                self._db_mgr
+                and isinstance(e, sqlite3.ProgrammingError)
+                and "closed database" in msg
+            ):
                 fresh = self._db_mgr._get_connection()
                 return fresh.cursor(*args, **kwargs)
-            if self._db_mgr and ("malformed" in msg or "disk image" in msg) and not self._db_mgr._is_repairing:
+            if (
+                self._db_mgr
+                and ("malformed" in msg or "disk image" in msg)
+                and not self._db_mgr._is_repairing
+            ):
                 self._db_mgr.repair_database()
                 fresh = self._db_mgr._get_connection()
                 return fresh.cursor(*args, **kwargs)
@@ -301,7 +338,6 @@ class ConnectionWrapper:
             self.release_lease()
 
 
-
 def _is_main_thread() -> bool:
     """True on Qt's GUI thread, or whenever Qt is not loaded (headless / the
     Tier-1 no-Qt harness / tests).
@@ -312,6 +348,7 @@ def _is_main_thread() -> bool:
     QCoreApplication'. If Qt has not been loaded, we are headless → treat as main
     thread. In real Anki, Qt is always already loaded, so the real check runs."""
     import sys
+
     qtwidgets = sys.modules.get("PyQt6.QtWidgets")
     qtcore = sys.modules.get("PyQt6.QtCore")
     if qtwidgets is None or qtcore is None:
@@ -350,6 +387,12 @@ def canonical_pokemon_name(name: Any) -> str:
     return str(name or "").replace(" ", "").replace("-", "").replace("_", "").lower()
 
 
+def legacy_species_id(record: Dict[str, Any]) -> str:
+    """Return a comparable species key across legacy ``id`` aliases."""
+    value = record.get("species_id", record.get("id"))
+    return "" if value is None else str(value)
+
+
 def coerce_item_quantity(value: Any) -> Optional[int]:
     """Normalise a legacy item quantity to a positive int, or None if invalid.
 
@@ -373,7 +416,9 @@ def coerce_item_quantity(value: Any) -> Optional[int]:
     return quantity if quantity > 0 else None
 
 
-def normalize_legacy_item(item: Any) -> Optional[Tuple[str, int, Optional[Dict[str, Any]]]]:
+def normalize_legacy_item(
+    item: Any,
+) -> Optional[Tuple[str, int, Optional[Dict[str, Any]]]]:
     """Return ``(item_name, quantity, extra_data)`` for one items.json entry, or None to skip it.
 
     Accepts the flat-string format (``"potion"``) and dict entries under any of
@@ -406,7 +451,9 @@ def normalize_legacy_item(item: Any) -> Optional[Tuple[str, int, Optional[Dict[s
     return (name, quantity, item)
 
 
-def aggregate_legacy_items(items_list: Any) -> Dict[str, Tuple[int, Optional[Dict[str, Any]]]]:
+def aggregate_legacy_items(
+    items_list: Any,
+) -> Dict[str, Tuple[int, Optional[Dict[str, Any]]]]:
     """Fold an items.json list into ``{name: (total_quantity, extra_data)}``.
 
     Duplicate entries accumulate and invalid entries are dropped. Writing the
@@ -422,11 +469,16 @@ def aggregate_legacy_items(items_list: Any) -> Dict[str, Tuple[int, Optional[Dic
             continue
         name, quantity, extra_data = normalized
         prev_quantity, prev_extra = totals.get(name, (0, None))
-        totals[name] = (prev_quantity + quantity, prev_extra if prev_extra is not None else extra_data)
+        totals[name] = (
+            prev_quantity + quantity,
+            prev_extra if prev_extra is not None else extra_data,
+        )
     return totals
 
 
-def find_matching_captured(main_pokemon: Dict[str, Any], all_captured: Iterable[Any]) -> Optional[Dict[str, Any]]:
+def find_matching_captured(
+    main_pokemon: Dict[str, Any], all_captured: Iterable[Any]
+) -> Optional[Dict[str, Any]]:
     """Locate the captured record that is the same Pokémon as ``main_pokemon``.
 
     Legacy ``mainpokemon.json`` rarely carries an individual_id, so match on
@@ -437,25 +489,32 @@ def find_matching_captured(main_pokemon: Dict[str, Any], all_captured: Iterable[
     for candidate in all_captured or ():
         if not isinstance(candidate, dict):
             continue
-        if (candidate.get("id") == main_pokemon.get("id")
-                and candidate.get("level") == main_pokemon.get("level")
-                and canonical_pokemon_name(candidate.get("name")) == target_name
-                and candidate.get("iv") == main_pokemon.get("iv")):
+        if (
+            legacy_species_id(candidate) == legacy_species_id(main_pokemon)
+            and candidate.get("level") == main_pokemon.get("level")
+            and canonical_pokemon_name(candidate.get("name")) == target_name
+            and candidate.get("iv") == main_pokemon.get("iv")
+        ):
             return candidate
     return None
 
 
 class AnkimonDB:
     """Handles all database operations for Ankimon. Stores data in SQLite."""
-    
+
     DB_FILENAME = "ankimon.db"
 
     # Every connection (GUI + per-background-thread) waits this long for a
     # write lock before sqlite raises "database is locked". See _prepare_connection.
     _BUSY_TIMEOUT_MS = 30000
 
-    def __init__(self, logger=None, db_path: Optional[Union[str, Path]] = None,
-                 *, wal: bool = False):
+    def __init__(
+        self,
+        logger=None,
+        db_path: Optional[Union[str, Path]] = None,
+        *,
+        wal: bool = False,
+    ):
         self.logger = logger
         # db_path override supports multi-profile / account switching (switch_database).
         if db_path:
@@ -467,8 +526,8 @@ class AnkimonDB:
         # which would miss WAL's ``-wal`` sidecar. A deferred concurrent-writer leaf
         # (mobile-sync) turns WAL on together with a checkpoint-before-copy backup fix.
         self._wal = wal
-        self._connection: Optional[ConnectionWrapper] = None       # GUI-thread connection
-        self._local_conn = threading.local()                       # per-background-thread
+        self._connection: Optional[ConnectionWrapper] = None  # GUI-thread connection
+        self._local_conn = threading.local()  # per-background-thread
         self._all_connections = []
         self._conn_lock = threading.RLock()
         # Serialises the read-modify-write of the pokedex_caught / pokedex_seen
@@ -549,10 +608,13 @@ class AnkimonDB:
             epoch = self._connection_epoch
             if not _is_main_thread():
                 local = self._local_conn
-                if (not hasattr(local, "conn") or local.conn is None
-                        or getattr(local.conn, "_closed", False)
-                        or getattr(local, "db_path", None) != self.db_path
-                        or getattr(local, "epoch", -1) != epoch):
+                if (
+                    not hasattr(local, "conn")
+                    or local.conn is None
+                    or getattr(local.conn, "_closed", False)
+                    or getattr(local, "db_path", None) != self.db_path
+                    or getattr(local, "epoch", -1) != epoch
+                ):
                     if getattr(local, "conn", None) is not None:
                         try:
                             local.conn.close()
@@ -568,9 +630,11 @@ class AnkimonDB:
                     local.epoch = epoch
                 return local.conn
 
-            if (self._connection is None
-                    or getattr(self._connection, "_closed", False)
-                    or self._connection_epoch_gui != epoch):
+            if (
+                self._connection is None
+                or getattr(self._connection, "_closed", False)
+                or self._connection_epoch_gui != epoch
+            ):
                 if self._connection:
                     try:
                         self._connection.close()
@@ -639,32 +703,37 @@ class AnkimonDB:
         if self._is_repairing:
             return
         self._is_repairing = True
-        self._log("warning", "SQLite database corruption detected! Initiating out-of-place self-healing repair...")
-        
+        self._log(
+            "warning",
+            "SQLite database corruption detected! Initiating out-of-place self-healing repair...",
+        )
+
         try:
             db_file = self.db_path
             tmp_db = db_file.with_name(db_file.name + ".tmp")
             backup_db = db_file.with_name(db_file.name + ".corrupt_backup")
-            
+
             if tmp_db.exists():
                 try:
                     tmp_db.unlink()
                 except Exception:
                     pass
-                    
+
             # Dump current database safely
             src_conn = sqlite3.connect(str(db_file))
             try:
                 lines = list(src_conn.iterdump())
             finally:
                 src_conn.close()
-            
+
             # Modify schema to define generated columns as physical columns initially,
             # which allows SQL dump inserts (which contain all values) to succeed.
             # We also disable the unique constraint.
             modified_sql = []
             for line in lines:
-                if line.startswith("CREATE INDEX") or line.startswith("CREATE UNIQUE INDEX"):
+                if line.startswith("CREATE INDEX") or line.startswith(
+                    "CREATE UNIQUE INDEX"
+                ):
                     if "captured_pokemon" in line:
                         continue
                 if "CREATE TABLE captured_pokemon" in line:
@@ -677,13 +746,13 @@ class AnkimonDB:
                     line = line.replace("INSERT INTO ", "INSERT OR REPLACE INTO ", 1)
                 modified_sql.append(line)
             full_sql = "\n".join(modified_sql)
-            
+
             # Write to temporary file
             dest_conn = sqlite3.connect(str(tmp_db))
             dest_conn.executescript(full_sql)
-            
+
             cursor = dest_conn.cursor()
-            
+
             # Propagate is_main flag to all duplicates of the main Pokémon so the highest-progress survivor inherits it
             cursor.execute("""
                 UPDATE captured_pokemon 
@@ -708,10 +777,12 @@ class AnkimonDB:
                     ) WHERE rn = 1
                 )
             """)
-            
+
             # Clean duplicate keys in pending_mobile_battles if table exists
             try:
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='pending_mobile_battles'")
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_mobile_battles'"
+                )
                 if cursor.fetchone():
                     cursor.execute("""
                         DELETE FROM pending_mobile_battles 
@@ -723,9 +794,11 @@ class AnkimonDB:
                     """)
             except Exception:
                 pass
-                
+
             # Restore unique PRIMARY KEY table definition
-            cursor.execute("ALTER TABLE captured_pokemon RENAME TO captured_pokemon_old")
+            cursor.execute(
+                "ALTER TABLE captured_pokemon RENAME TO captured_pokemon_old"
+            )
             cursor.execute("""
                 CREATE TABLE captured_pokemon (
                     individual_id TEXT PRIMARY KEY,
@@ -742,16 +815,28 @@ class AnkimonDB:
                 SELECT individual_id, is_main, data FROM captured_pokemon_old
             """)
             cursor.execute("DROP TABLE captured_pokemon_old")
-            
+
             # Recreate secondary indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_name ON captured_pokemon(name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pokemon_name ON captured_pokemon(name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)"
+            )
 
             # Normalize base stats in the temp db during repair
             try:
-                from ..functions.pokedex_functions import is_valid_base_stats, search_pokedex
+                from ..functions.pokedex_functions import (
+                    is_valid_base_stats,
+                    search_pokedex,
+                )
+
                 cursor.execute("SELECT individual_id, data FROM captured_pokemon")
                 rows = cursor.fetchall()
                 updates = []
@@ -760,29 +845,35 @@ class AnkimonDB:
                     pokemon_data = self._deobfuscate(obfuscated_data)
                     if not pokemon_data:
                         continue
-                    
+
                     base_stats = pokemon_data.get("base_stats")
                     if not is_valid_base_stats(base_stats):
-                        base_stats = search_pokedex(pokemon_data.get("name", ""), "baseStats") or {}
+                        base_stats = (
+                            search_pokedex(pokemon_data.get("name", ""), "baseStats")
+                            or {}
+                        )
                         if is_valid_base_stats(base_stats):
                             pokemon_data["base_stats"] = base_stats
                             new_obfuscated = self._obfuscate(pokemon_data)
                             updates.append((new_obfuscated, ind_id))
-                
+
                 if updates:
-                    cursor.executemany("UPDATE captured_pokemon SET data = ? WHERE individual_id = ?", updates)
+                    cursor.executemany(
+                        "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
+                        updates,
+                    )
             except Exception as e:
                 self._log("error", f"Failed to normalize base_stats in repair: {e}")
-            
+
             # Rebuild index and verify
             cursor.execute("REINDEX")
             cursor.execute("PRAGMA integrity_check")
             check_result = cursor.fetchone()[0]
-            
+
             if check_result == "ok":
                 dest_conn.commit()
                 dest_conn.close()
-                
+
                 # Keep connection creation blocked until the repaired file is in
                 # place; otherwise a new raw handle can appear after close() but
                 # before either rename.
@@ -805,7 +896,10 @@ class AnkimonDB:
                                 break
                             except Exception as e:
                                 if attempt == 2:
-                                    self._log("warning", f"Failed to backup corrupt database: {e}")
+                                    self._log(
+                                        "warning",
+                                        f"Failed to backup corrupt database: {e}",
+                                    )
                                     break
                                 time.sleep(0.1)
                                 gc.collect()
@@ -830,7 +924,10 @@ class AnkimonDB:
                                     sidecar_file.unlink()
                             except Exception:
                                 pass
-                        self._log("info", "SQLite self-healing completed successfully! Database index repaired.")
+                        self._log(
+                            "info",
+                            "SQLite self-healing completed successfully! Database index repaired.",
+                        )
                     except Exception as e:
                         self._log("error", f"Failed to swap repaired database: {e}")
                         if backup_db.exists() and not db_file.exists():
@@ -841,7 +938,9 @@ class AnkimonDB:
             else:
                 dest_conn.rollback()
                 dest_conn.close()
-                self._log("error", f"Integrity check on repaired DB failed: {check_result}")
+                self._log(
+                    "error", f"Integrity check on repaired DB failed: {check_result}"
+                )
                 if tmp_db.exists():
                     tmp_db.unlink()
         except Exception as e:
@@ -937,21 +1036,35 @@ class AnkimonDB:
                 level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_name ON captured_pokemon(name)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pokemon_name ON captured_pokemon(name)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pokemon_pokedex_id ON captured_pokemon(pokedex_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pokemon_shiny ON captured_pokemon(shiny)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)"
+        )
 
         # Check if is_main column exists (for migration from old schema)
         cursor.execute("PRAGMA table_info(captured_pokemon)")
         columns = [row[1] for row in cursor.fetchall()]
         if "is_main" not in columns:
             self._log("info", "Migrating schema: adding is_main column...")
-            cursor.execute("ALTER TABLE captured_pokemon ADD COLUMN is_main INTEGER DEFAULT 0")
+            cursor.execute(
+                "ALTER TABLE captured_pokemon ADD COLUMN is_main INTEGER DEFAULT 0"
+            )
             # Migrate data from old main_pokemon table if it exists
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='main_pokemon'")
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='main_pokemon'"
+            )
             if cursor.fetchone():
-                cursor.execute("SELECT individual_id, data FROM main_pokemon WHERE id = 1")
+                cursor.execute(
+                    "SELECT individual_id, data FROM main_pokemon WHERE id = 1"
+                )
                 row = cursor.fetchone()
                 if row:
                     main_id = row[0]
@@ -959,7 +1072,7 @@ class AnkimonDB:
                     # Update the existing pokemon to be main, or insert if not exists
                     cursor.execute(
                         "INSERT OR REPLACE INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
-                        (main_id, main_data)
+                        (main_id, main_data),
                     )
                 cursor.execute("DROP TABLE main_pokemon")
                 self._log("info", "Migrated main_pokemon table to is_main flag")
@@ -1060,7 +1173,9 @@ class AnkimonDB:
                 cash_gained       INTEGER DEFAULT 0
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_timestamp ON mobile_battle_history(timestamp)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_history_timestamp ON mobile_battle_history(timestamp)"
+        )
 
         # Durable record of revlog ids Ankimon already turned into battle progress
         # on desktop. Consulted by the mobile-review detection pass to exclude them
@@ -1090,7 +1205,9 @@ class AnkimonDB:
                 )
                 conn.commit()
         except Exception as e:
-            self._log("error", f"Failed to run base_stats normalization on startup: {e}")
+            self._log(
+                "error", f"Failed to run base_stats normalization on startup: {e}"
+            )
 
     def _normalize_pokemon_base_stats(self):
         """Sweeps all captured pokemon to ensure base_stats is populated (for older databases)."""
@@ -1098,28 +1215,36 @@ class AnkimonDB:
         cursor = conn.cursor()
         cursor.execute("SELECT individual_id, data FROM captured_pokemon")
         rows = cursor.fetchall()
-        
+
         from ..functions.pokedex_functions import is_valid_base_stats, search_pokedex
+
         updates = []
         for row in rows:
             ind_id, obfuscated_data = row
             pokemon_data = self._deobfuscate(obfuscated_data)
             if not pokemon_data:
                 continue
-            
+
             base_stats = pokemon_data.get("base_stats")
 
             # If base_stats is completely missing or empty/lacking stat keys or invalid values
             if not is_valid_base_stats(base_stats):
-                base_stats = search_pokedex(pokemon_data.get("name", ""), "baseStats") or {}
+                base_stats = (
+                    search_pokedex(pokemon_data.get("name", ""), "baseStats") or {}
+                )
                 if is_valid_base_stats(base_stats):
                     pokemon_data["base_stats"] = base_stats
                     new_obfuscated = self._obfuscate(pokemon_data)
                     updates.append((new_obfuscated, ind_id))
 
         if updates:
-            self._log("info", f"Normalizing base_stats for {len(updates)} legacy pokemon records...")
-            cursor.executemany("UPDATE captured_pokemon SET data = ? WHERE individual_id = ?", updates)
+            self._log(
+                "info",
+                f"Normalizing base_stats for {len(updates)} legacy pokemon records...",
+            )
+            cursor.executemany(
+                "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?", updates
+            )
             conn.commit()
             self._clear_reviewer_ownership_cache()
 
@@ -1135,22 +1260,25 @@ class AnkimonDB:
         obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # Check if pokemon already exists to preserve is_main flag
-        cursor.execute("SELECT is_main FROM captured_pokemon WHERE individual_id = ?", (individual_id,))
+        cursor.execute(
+            "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
+            (individual_id,),
+        )
         row = cursor.fetchone()
-        
+
         if row:
             # Update existing - preserve is_main
             cursor.execute(
                 "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
-                (obfuscated_data, individual_id)
+                (obfuscated_data, individual_id),
             )
         else:
             # Insert new with is_main = 0
             cursor.execute(
                 "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?)",
-                (individual_id, obfuscated_data)
+                (individual_id, obfuscated_data),
             )
         conn.commit()
         self._clear_reviewer_ownership_cache()
@@ -1172,7 +1300,7 @@ class AnkimonDB:
         """Retrieves a specific pokemon by its individual_id."""
         cursor = self.execute(
             "SELECT data FROM captured_pokemon WHERE individual_id = ?",
-            (individual_id,)
+            (individual_id,),
         )
         row = cursor.fetchone()
         if row:
@@ -1195,7 +1323,10 @@ class AnkimonDB:
         Efficiently checks if a pokemon with the given name exists in the collection.
         Uses a direct SQL query on the virtual name index.
         """
-        cursor = self.execute("SELECT 1 FROM captured_pokemon WHERE LOWER(name) = LOWER(?) LIMIT 1", (name,))
+        cursor = self.execute(
+            "SELECT 1 FROM captured_pokemon WHERE LOWER(name) = LOWER(?) LIMIT 1",
+            (name,),
+        )
         return cursor.fetchone() is not None
 
     def _clear_reviewer_ownership_cache(self):
@@ -1211,6 +1342,7 @@ class AnkimonDB:
         self._all_pokemon_ids_cache = None
         try:
             from ..services import services
+
             reviewer = services.reviewer
             if reviewer is not None and hasattr(reviewer, "invalidate_hud_cache"):
                 reviewer.invalidate_hud_cache()
@@ -1220,14 +1352,15 @@ class AnkimonDB:
     def delete_pokemon(self, individual_id: str) -> bool:
         """Deletes a pokemon from the captured collection."""
         cursor = self.execute(
-            "DELETE FROM captured_pokemon WHERE individual_id = ?",
-            (individual_id,)
+            "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
         )
         self._get_connection().commit()
         self._clear_reviewer_ownership_cache()
         return cursor.rowcount > 0
 
-    def replace_pokemon(self, pokemon_data: Dict[str, Any], old_individual_id: str) -> bool:
+    def replace_pokemon(
+        self, pokemon_data: Dict[str, Any], old_individual_id: str
+    ) -> bool:
         """Replaces a pokemon with the given individual_id with the given pokemon_data."""
 
         obfuscated_data = self._obfuscate(pokemon_data)
@@ -1238,19 +1371,23 @@ class AnkimonDB:
 
         # Are we trying to replace ourselves?
         if new_individual_id == old_individual_id:
-            self._log("error", f"You already have this {pokemon_data['name']} in your collection!")
+            self._log(
+                "error",
+                f"You already have this {pokemon_data['name']} in your collection!",
+            )
             return False
-
 
         # Does the pokemon being replaced exist?
         cursor.execute(
             "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
-            (old_individual_id,)
+            (old_individual_id,),
         )
         row = cursor.fetchone()
 
         if row is None:
-            self._log("error", f"No Pokémon found with individual_id {old_individual_id}")
+            self._log(
+                "error", f"No Pokémon found with individual_id {old_individual_id}"
+            )
             return False
 
         is_main = row[0]
@@ -1258,10 +1395,13 @@ class AnkimonDB:
         # Does the incoming Pokémon already exist somewhere else?
         cursor.execute(
             "SELECT 1 FROM captured_pokemon WHERE individual_id = ?",
-            (new_individual_id,)
+            (new_individual_id,),
         )
         if cursor.fetchone() is not None:
-            self._log("error", f"You already have this {pokemon_data['name']} in your collection!")
+            self._log(
+                "error",
+                f"You already have this {pokemon_data['name']} in your collection!",
+            )
             return False
 
         # You passed all the checks. Full steam ahead!
@@ -1272,7 +1412,7 @@ class AnkimonDB:
             SET individual_id = ?, is_main = ?, data = ?
             WHERE individual_id = ?
             """,
-            (new_individual_id, is_main, obfuscated_data, old_individual_id)
+            (new_individual_id, is_main, obfuscated_data, old_individual_id),
         )
 
         conn.commit()
@@ -1297,7 +1437,9 @@ class AnkimonDB:
                 cursor.execute(query, parameters)
                 return cursor
         except sqlite3.DatabaseError as e:
-            if ("malformed" in str(e).lower() or "disk image" in str(e).lower()) and not self._is_repairing:
+            if (
+                "malformed" in str(e).lower() or "disk image" in str(e).lower()
+            ) and not self._is_repairing:
                 self.repair_database()
                 # Retry once after repair
                 with self.lease_connection() as conn:
@@ -1311,7 +1453,10 @@ class AnkimonDB:
         if not ids:
             return []
         placeholders = ",".join("?" for _ in ids)
-        cursor = self.execute(f"SELECT data FROM captured_pokemon WHERE individual_id IN ({placeholders})", ids)
+        cursor = self.execute(
+            f"SELECT data FROM captured_pokemon WHERE individual_id IN ({placeholders})",
+            ids,
+        )
         results = []
         for row in cursor.fetchall():
             pokemon = self._deobfuscate(row["data"])
@@ -1321,7 +1466,9 @@ class AnkimonDB:
 
     def get_all_pokemon_ids(self) -> set:
         """Returns a set of all captured pokemon's pokedex IDs using the virtual index."""
-        cursor = self.execute("SELECT pokedex_id FROM captured_pokemon WHERE pokedex_id IS NOT NULL")
+        cursor = self.execute(
+            "SELECT pokedex_id FROM captured_pokemon WHERE pokedex_id IS NOT NULL"
+        )
         return {row[0] for row in cursor.fetchall()}
 
     # --- Main Pokemon Operations ---
@@ -1336,14 +1483,14 @@ class AnkimonDB:
         obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # Clear the main flag from all pokemon first
         cursor.execute("UPDATE captured_pokemon SET is_main = 0 WHERE is_main = 1")
-        
+
         # Save/update this pokemon and set as main
         cursor.execute(
             "INSERT OR REPLACE INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
-            (individual_id, obfuscated_data)
+            (individual_id, obfuscated_data),
         )
         conn.commit()
         self._clear_reviewer_ownership_cache()
@@ -1372,22 +1519,34 @@ class AnkimonDB:
         """Sets a pokemon as the main pokemon by individual_id. Returns False if pokemon not found."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # Check if pokemon exists
-        cursor.execute("SELECT individual_id FROM captured_pokemon WHERE individual_id = ?", (individual_id,))
+        cursor.execute(
+            "SELECT individual_id FROM captured_pokemon WHERE individual_id = ?",
+            (individual_id,),
+        )
         if not cursor.fetchone():
             return False
-        
+
         # Clear old main
         cursor.execute("UPDATE captured_pokemon SET is_main = 0 WHERE is_main = 1")
         # Set new main
-        cursor.execute("UPDATE captured_pokemon SET is_main = 1 WHERE individual_id = ?", (individual_id,))
+        cursor.execute(
+            "UPDATE captured_pokemon SET is_main = 1 WHERE individual_id = ?",
+            (individual_id,),
+        )
         conn.commit()
         return True
 
     # --- Item Operations ---
 
-    def add_item(self, item_name: str, quantity: int = 1, extra_data: Optional[Dict] = None, commit: bool = True) -> bool:
+    def add_item(
+        self,
+        item_name: str,
+        quantity: int = 1,
+        extra_data: Optional[Dict] = None,
+        commit: bool = True,
+    ) -> bool:
         """
         Adds a new item to the database with metadata discovery from items.csv.
         Use this for the first time an item is introduced (e.g. migration, looting).
@@ -1401,59 +1560,122 @@ class AnkimonDB:
         # Look up metadata from items.csv
         if Path(csv_file_items_cost).is_file():
             try:
-                with open(csv_file_items_cost, 'r', encoding='utf-8') as f:
+                with open(csv_file_items_cost, "r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
                     for r in reader:
-                        if r['identifier'] == item_name:
-                            item_id = int(r['id'])
-                            if r.get('category_id'): category_id = int(r['category_id'])
-                            if r.get('cost'): cost = int(r['cost'])
-                            if r.get('fling_power'): fling_power = int(r['fling_power'])
-                            if r.get('fling_effect_id'): fling_effect_id = int(r['fling_effect_id'])
+                        if r["identifier"] == item_name:
+                            item_id = int(r["id"])
+                            if r.get("category_id"):
+                                category_id = int(r["category_id"])
+                            if r.get("cost"):
+                                cost = int(r["cost"])
+                            if r.get("fling_power"):
+                                fling_power = int(r["fling_power"])
+                            if r.get("fling_effect_id"):
+                                fling_effect_id = int(r["fling_effect_id"])
                             break
             except Exception as e:
-                self._log("error", f"Failed to look up item '{item_name}' in items.csv: {e}")
+                self._log(
+                    "error", f"Failed to look up item '{item_name}' in items.csv: {e}"
+                )
 
         return self.save_item(
-            item_id, item_name, quantity, extra_data,
-            category_id=category_id, cost=cost,
-            fling_power=fling_power, fling_effect_id=fling_effect_id,
-            commit=commit
+            item_id,
+            item_name,
+            quantity,
+            extra_data,
+            category_id=category_id,
+            cost=cost,
+            fling_power=fling_power,
+            fling_effect_id=fling_effect_id,
+            commit=commit,
         )
 
-    def save_item(self, item_id: Optional[int], item_name: str, quantity: int, extra_data: Optional[Dict] = None,
-                  category_id: Optional[int] = None, cost: Optional[int] = None, 
-                  fling_power: Optional[int] = None, fling_effect_id: Optional[int] = None,
-                  commit: bool = True) -> bool:
+    def save_item(
+        self,
+        item_id: Optional[int],
+        item_name: str,
+        quantity: int,
+        extra_data: Optional[Dict] = None,
+        category_id: Optional[int] = None,
+        cost: Optional[int] = None,
+        fling_power: Optional[int] = None,
+        fling_effect_id: Optional[int] = None,
+        commit: bool = True,
+    ) -> bool:
         """
-        Low-level upsert for items. Lenient with metadata: if missing, tries to fetch from 
+        Low-level upsert for items. Lenient with metadata: if missing, tries to fetch from
         existing DB records but DOES NOT perform CSV lookups.
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
         # Lenient metadata resolution: try to fetch existing metadata from DB if NOT provided
-        if item_name and (item_id is None or cost is None or category_id is None):
-            cursor.execute("SELECT id, category_id, cost, fling_power, fling_effect_id FROM items WHERE item_name = ?", (item_name,))
-            row = cursor.fetchone()
-            if row:
-                if item_id is None: item_id = row["id"]
-                if category_id is None: category_id = row["category_id"]
-                if cost is None: cost = row["cost"]
-                if fling_power is None: fling_power = row["fling_power"]
-                if fling_effect_id is None: fling_effect_id = row["fling_effect_id"]
+        existing = None
+        if item_name:
+            cursor.execute(
+                "SELECT id, category_id, cost, fling_power, fling_effect_id FROM items WHERE item_name = ?",
+                (item_name,),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                if item_id is None:
+                    item_id = existing["id"]
+                if category_id is None:
+                    category_id = existing["category_id"]
+                if cost is None:
+                    cost = existing["cost"]
+                if fling_power is None:
+                    fling_power = existing["fling_power"]
+                if fling_effect_id is None:
+                    fling_effect_id = existing["fling_effect_id"]
+
+        def next_uncatalogued_id() -> int:
+            row = cursor.execute("SELECT MIN(id) AS min_id FROM items").fetchone()
+            minimum = row["min_id"]
+            return -1 if minimum is None or minimum >= 0 else minimum - 1
+
+        if item_id is None:
+            # PokeAPI catalogue IDs are positive. Keeping locally-known items in
+            # the negative range prevents a later catalogue insert from
+            # replacing an automatically numbered row with the same ID.
+            item_id = next_uncatalogued_id()
+        else:
+            # Older databases may already contain an uncatalogued row under a
+            # positive SQLite-assigned ID. Relocate it before claiming the
+            # catalogue ID; both statements share this transaction.
+            occupied = cursor.execute(
+                "SELECT item_name FROM items WHERE id = ? AND item_name <> ?",
+                (item_id, item_name),
+            ).fetchone()
+            if occupied:
+                cursor.execute(
+                    "UPDATE items SET id = ? WHERE id = ?",
+                    (next_uncatalogued_id(), item_id),
+                )
 
         # Ensure type: "TM" for UI filtering if applicable
         if category_id == 37:
-            if extra_data is None: extra_data = {}
-            if extra_data.get("type") != "TM": extra_data["type"] = "TM"
+            if extra_data is None:
+                extra_data = {}
+            if extra_data.get("type") != "TM":
+                extra_data["type"] = "TM"
 
         obfuscated_data = self._obfuscate(extra_data) if extra_data else None
         cursor.execute(
             """INSERT OR REPLACE INTO items 
                (id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (item_id, item_name, quantity, obfuscated_data, category_id, cost, fling_power, fling_effect_id)
+            (
+                item_id,
+                item_name,
+                quantity,
+                obfuscated_data,
+                category_id,
+                cost,
+                fling_power,
+                fling_effect_id,
+            ),
         )
         if commit:
             conn.commit()
@@ -1461,14 +1683,16 @@ class AnkimonDB:
 
     def get_item(self, identifier: Any) -> Optional[Dict[str, Any]]:
         """Retrieves an item by name (identifier) or integer ID."""
-        if isinstance(identifier, int) or (isinstance(identifier, str) and identifier.isdigit()):
+        if isinstance(identifier, int) or (
+            isinstance(identifier, str) and identifier.isdigit()
+        ):
             field = "id"
         else:
             field = "item_name"
-            
+
         cursor = self.execute(
             f"SELECT id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id FROM items WHERE {field} = ?",
-            (identifier,)
+            (identifier,),
         )
         row = cursor.fetchone()
         if row:
@@ -1480,25 +1704,29 @@ class AnkimonDB:
                 "category_id": row["category_id"],
                 "cost": row["cost"],
                 "fling_power": row["fling_power"],
-                "fling_effect_id": row["fling_effect_id"]
+                "fling_effect_id": row["fling_effect_id"],
             }
         return None
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         """Retrieves all items."""
-        cursor = self.execute("SELECT id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id FROM items")
+        cursor = self.execute(
+            "SELECT id, item_name, quantity, data, category_id, cost, fling_power, fling_effect_id FROM items"
+        )
         results = []
         for row in cursor.fetchall():
-            results.append({
-                "id": row["id"],
-                "item_name": row["item_name"],
-                "quantity": row["quantity"],
-                "extra_data": self._deobfuscate(row["data"]) if row["data"] else {},
-                "category_id": row["category_id"],
-                "cost": row["cost"],
-                "fling_power": row["fling_power"],
-                "fling_effect_id": row["fling_effect_id"]
-            })
+            results.append(
+                {
+                    "id": row["id"],
+                    "item_name": row["item_name"],
+                    "quantity": row["quantity"],
+                    "extra_data": self._deobfuscate(row["data"]) if row["data"] else {},
+                    "category_id": row["category_id"],
+                    "cost": row["cost"],
+                    "fling_power": row["fling_power"],
+                    "fling_effect_id": row["fling_effect_id"],
+                }
+            )
         return results
 
     def update_item_quantity(self, item_name: str, delta: int) -> int:
@@ -1521,7 +1749,7 @@ class AnkimonDB:
         if new_qty > 0:
             cursor.execute(
                 "UPDATE items SET quantity = ? WHERE item_name = ?",
-                (new_qty, item_name)
+                (new_qty, item_name),
             )
         else:
             cursor.execute("DELETE FROM items WHERE item_name = ?", (item_name,))
@@ -1569,13 +1797,13 @@ class AnkimonDB:
             cursor.execute(
                 "UPDATE items SET quantity = quantity - ? "
                 "WHERE item_name = ? AND quantity >= ?",
-                (count, item_name, count)
+                (count, item_name, count),
             )
             consumed = cursor.rowcount == 1
             if consumed:
                 cursor.execute(
                     "DELETE FROM items WHERE item_name = ? AND quantity <= 0",
-                    (item_name,)
+                    (item_name,),
                 )
             conn.commit()
         except Exception:
@@ -1590,7 +1818,7 @@ class AnkimonDB:
         if not consumed:
             self._log(
                 "warning",
-                f"Item '{item_name}' could not be consumed: fewer than {count} in inventory."
+                f"Item '{item_name}' could not be consumed: fewer than {count} in inventory.",
             )
         return consumed
 
@@ -1603,7 +1831,7 @@ class AnkimonDB:
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO badges (badge_id, achieved) VALUES (?, ?)",
-            (badge_id, achieved)
+            (badge_id, achieved),
         )
         conn.commit()
         return True
@@ -1613,10 +1841,7 @@ class AnkimonDB:
         cursor = self.execute("SELECT * FROM badges WHERE badge_id = ?", (badge_id,))
         row = cursor.fetchone()
         if row:
-            return {
-                "badge_id": row["badge_id"],
-                "achieved": row["achieved"]
-            }
+            return {"badge_id": row["badge_id"], "achieved": row["achieved"]}
         return None
 
     def get_all_badges(self) -> List[Dict[str, Any]]:
@@ -1624,36 +1849,36 @@ class AnkimonDB:
         cursor = self.execute("SELECT badge_id, achieved FROM badges")
         results = []
         for row in cursor.fetchall():
-            badge = {
-                "badge_id": row["badge_id"],
-                "achieved": row["achieved"]
-            }
+            badge = {"badge_id": row["badge_id"], "achieved": row["achieved"]}
             results.append(badge)
         return results
 
     # --- Team Operations ---
 
-    def save_team(self, team_list: List[Dict[str, Any]]):
-        """Saves the team composition. Replaces existing team."""
+    def save_team(self, team_list: List[Dict[str, Any]], *, commit: bool = True):
+        """Replace the team; commit=False lets a caller include it in a transaction."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         # clear existing team
         cursor.execute("DELETE FROM team")
-        
+
         for i, member in enumerate(team_list):
             individual_id = member.get("individual_id")
             if individual_id:
                 cursor.execute(
                     "INSERT INTO team (slot_position, individual_id) VALUES (?, ?)",
-                    (i + 1, individual_id)
+                    (i + 1, individual_id),
                 )
-        conn.commit()
+        if commit:
+            conn.commit()
         return True
 
     def get_team(self) -> List[Dict[str, Any]]:
         """Retrieves the current team as a list of dicts with individual_id."""
-        cursor = self.execute("SELECT individual_id FROM team ORDER BY slot_position ASC")
+        cursor = self.execute(
+            "SELECT individual_id FROM team ORDER BY slot_position ASC"
+        )
         results = []
         for row in cursor.fetchall():
             results.append({"individual_id": row["individual_id"]})
@@ -1665,14 +1890,14 @@ class AnkimonDB:
         """Adds a released pokemon to history."""
         # Ensure individual_id exists to avoid duplicates if possible, or just generate one
         individual_id = pokemon_data.get("individual_id") or str(uuid.uuid4())
-        
+
         obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
                 "INSERT INTO pokemon_history (individual_id, data) VALUES (?, ?)",
-                (individual_id, obfuscated_data)
+                (individual_id, obfuscated_data),
             )
             conn.commit()
             return True
@@ -1695,13 +1920,15 @@ class AnkimonDB:
     def set_user_data(self, key: str, value: Any):
         """Sets a user data key-value pair."""
         # Store as simple string if possible, or JSON string for complex objects
-        str_value = json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
-        
+        str_value = (
+            json.dumps(value) if isinstance(value, (dict, list, bool)) else str(value)
+        )
+
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
-            (key, str_value)
+            (key, str_value),
         )
         conn.commit()
         return True
@@ -1741,7 +1968,9 @@ class AnkimonDB:
                 continue
         return ids
 
-    def _append_pokedex_ids(self, additions: Dict[str, Iterable[Any]]) -> Dict[str, int]:
+    def _append_pokedex_ids(
+        self, additions: Dict[str, Iterable[Any]]
+    ) -> Dict[str, int]:
         """Append ids to the pokedex ``user_data`` lists in ONE transaction.
 
         ``additions`` maps ``"pokedex_caught"`` / ``"pokedex_seen"`` to the ids
@@ -1854,7 +2083,9 @@ class AnkimonDB:
                 self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
             )
         except Exception as e:
-            self._log("warning", f"Pokedex reconcile: could not read captured_pokemon: {e}")
+            self._log(
+                "warning", f"Pokedex reconcile: could not read captured_pokemon: {e}"
+            )
 
         # Released Pokemon: still caught for Pokedex purposes. Wrapped separately
         # so an older DB without pokemon_history still reconciles the owned rows.
@@ -1866,7 +2097,9 @@ class AnkimonDB:
                 self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
             )
         except Exception as e:
-            self._log("warning", f"Pokedex reconcile: could not read pokemon_history: {e}")
+            self._log(
+                "warning", f"Pokedex reconcile: could not read pokemon_history: {e}"
+            )
 
         if not ids:
             return
@@ -1886,7 +2119,9 @@ class AnkimonDB:
 
     def get_caught_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs explicitly marked as caught."""
-        return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", [])))
+        return set(
+            self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", []))
+        )
 
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
@@ -1968,9 +2203,9 @@ class AnkimonDB:
 
                 # Legacy Python boolean spellings only apply to boolean settings.
                 if isinstance(DEFAULT_CONFIG.get(key), bool) and isinstance(val, str):
-                    if val.lower() == 'true':
+                    if val.lower() == "true":
                         return True
-                    elif val.lower() == 'false':
+                    elif val.lower() == "false":
                         return False
                 return val
         return default
@@ -1988,9 +2223,9 @@ class AnkimonDB:
                 from .settings import DEFAULT_CONFIG
 
                 if isinstance(DEFAULT_CONFIG.get(key), bool) and isinstance(val, str):
-                    if val.lower() == 'true':
+                    if val.lower() == "true":
                         result[key] = True
-                    elif val.lower() == 'false':
+                    elif val.lower() == "false":
                         result[key] = False
                     else:
                         result[key] = val
@@ -2006,10 +2241,12 @@ class AnkimonDB:
             if isinstance(value, bool):
                 str_value = "true" if value else "false"
             else:
-                str_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                str_value = (
+                    json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                )
             cursor.execute(
                 "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-                (key, str_value)
+                (key, str_value),
             )
         conn.commit()
         return True
@@ -2021,7 +2258,9 @@ class AnkimonDB:
         if isinstance(value, bool):
             str_value = "true" if value else "false"
         else:
-            str_value = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            str_value = (
+                json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+            )
         conn = self._get_connection()
         conn.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
@@ -2048,287 +2287,66 @@ class AnkimonDB:
         """Returns a summary of database contents for synchronization/backup comparison."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         stats = {}
-        
+
         # Count pokemon
         cursor.execute("SELECT COUNT(*) as count FROM captured_pokemon")
         stats["pokemon"] = cursor.fetchone()["count"]
-        
+
         # Count items
         cursor.execute("SELECT COUNT(*) as count FROM items")
         stats["items"] = cursor.fetchone()["count"]
-        
+
         # Count history
         cursor.execute("SELECT COUNT(*) as count FROM pokemon_history")
         stats["history"] = cursor.fetchone()["count"]
-        
+
         # Count badges
         cursor.execute("SELECT COUNT(*) as count FROM badges")
         stats["badges"] = cursor.fetchone()["count"]
-        
+
         return stats
 
     # --- Migration from JSON Files ---
 
-    def migrate_from_json(self, mypokemon_path: Path, mainpokemon_path: Path,
-                          items_path: Path, badges_path: Path,
-                          team_path: Path = None, history_path: Path = None,
-                          data_path: Path = None, rate_path: Path = None) -> Dict[str, int]:
+    def migrate_from_json(
+        self,
+        mypokemon_path: Path,
+        mainpokemon_path: Path,
+        items_path: Path,
+        badges_path: Path,
+        team_path: Path = None,
+        history_path: Path = None,
+        data_path: Path = None,
+        rate_path: Path = None,
+        *,
+        progress=None,
+        cancelled=None,
+    ) -> Dict[str, Any]:
+        """Import legacy saves through the same verified path as the upgrade dialog.
+
+        Optional callbacks report ``progress(percent, message)`` and cancellation.
+        The result contains counts plus ``errors``/``cancelled`` on an incomplete
+        import. Only a verified import sets the migration completion markers.
         """
-        Migrates data from JSON files to the database.
-        Returns a dict with counts of migrated items.
-        """
-        stats = {"pokemon": 0, "main": 0, "items": 0, "badges": 0, 
-                 "team": 0, "history": 0, "userdata": 0}
+        from .legacy_migration import LegacyMigration
 
-        # Check if already migrated
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM metadata WHERE key = 'migrated_phase2'")
-        if cursor.fetchone():
-            self._log("info", "Database Phase 2 (full) already migrated. Checking Phase 1...")
-            # If Phase 2 is done, Phase 1 is definitely done.
-            return stats
-        
-        # Check Phase 1 migration (captured, items, badges)
-        cursor.execute("SELECT value FROM metadata WHERE key = 'migrated'")
-        phase1_done = cursor.fetchone() is not None
-
-        if not phase1_done:
-            # Any Phase 1 source that fails leaves the phase UNMARKED so the next
-            # run retries it; marking it would make a partial import permanent.
-            phase1_errors = []
-
-            # Migrate mypokemon.json
-            if mypokemon_path.is_file():
-                try:
-                    with open(mypokemon_path, 'r', encoding='utf-8') as f:
-                        pokemon_list = json.load(f)
-                    seen_ids = set()
-                    # A Retry re-reads the same JSON. Pokémon that carry no usable
-                    # individual_id would be inserted again under fresh UUIDs, so
-                    # hand each one the row an earlier pass already wrote for it.
-                    reusable_rows = [
-                        p for p in self.get_all_pokemon()
-                        if isinstance(p, dict) and is_valid_individual_id(p.get("individual_id"))
-                    ]
-                    for pokemon in pokemon_list:
-                        if not isinstance(pokemon, dict):
-                            continue
-                        ind_id = pokemon.get("individual_id")
-                        if not is_valid_individual_id(ind_id):
-                            match = find_matching_captured(pokemon, reusable_rows)
-                            if match is not None:
-                                reusable_rows.remove(match)
-                                pokemon["individual_id"] = match["individual_id"]
-                            else:
-                                pokemon["individual_id"] = str(uuid.uuid4())
-                        elif ind_id in seen_ids:
-                            pokemon["individual_id"] = str(uuid.uuid4())
-                        seen_ids.add(pokemon["individual_id"])
-                        if self.save_pokemon(pokemon):
-                            stats["pokemon"] += 1
-                    self._log("info", f"Migrated {stats['pokemon']} pokemon from mypokemon.json")
-                except Exception as e:
-                    phase1_errors.append(f"mypokemon.json: {e}")
-                    self._log("error", f"Failed to migrate mypokemon.json: {e}")
-
-            # Migrate mainpokemon.json
-            if mainpokemon_path.is_file():
-                try:
-                    with open(mainpokemon_path, 'r', encoding='utf-8') as f:
-                        main_data = json.load(f)
-                    if main_data:
-                        # mainpokemon.json is a list with one item
-                        main_pokemon = main_data[0] if isinstance(main_data, list) else main_data
-                        if isinstance(main_pokemon, dict):
-                            if not is_valid_individual_id(main_pokemon.get("individual_id")):
-                                # Reuse the captured row's id so the starter is not
-                                # duplicated as a second captured Pokémon.
-                                match = find_matching_captured(main_pokemon, self.get_all_pokemon())
-                                if match and is_valid_individual_id(match.get("individual_id")):
-                                    main_pokemon["individual_id"] = match["individual_id"]
-                                else:
-                                    main_pokemon["individual_id"] = str(uuid.uuid4())
-                            if self.save_main_pokemon(main_pokemon):
-                                stats["main"] = 1
-                    self._log("info", "Migrated main pokemon from mainpokemon.json")
-                except Exception as e:
-                    phase1_errors.append(f"mainpokemon.json: {e}")
-                    self._log("error", f"Failed to migrate mainpokemon.json: {e}")
-
-            # Migrate items.json
-            if items_path.is_file():
-                try:
-                    with open(items_path, 'r', encoding='utf-8') as f:
-                        items_list = json.load(f)
-                    
-                    # Fold duplicates and coerce quantities first, then upsert each
-                    # name once: a Retry after a partial failure must not double
-                    # anyone's inventory.
-                    if not isinstance(items_list, list):
-                        self._log("warning", f"Unexpected items.json format: {type(items_list).__name__}; skipped")
-                        items_list = []
-                    item_totals = aggregate_legacy_items(items_list)
-                    skipped = sum(1 for entry in items_list if normalize_legacy_item(entry) is None)
-                    if skipped:
-                        self._log("warning", f"Skipped {skipped} unreadable entries in items.json")
-                    for item_name, (quantity, extra_data) in item_totals.items():
-                        if self.add_item(item_name, quantity, extra_data=extra_data, commit=False):
-                            stats["items"] += 1
-                    
-                    self._get_connection().commit()
-                    self._log("info", f"Migrated {stats['items']} items from items.json")
-                except Exception as e:
-                    phase1_errors.append(f"items.json: {e}")
-                    self._log("error", f"Failed to migrate items.json: {e}")
-                    # Item rows are written with commit=False; drop the partial batch
-                    # so a retry starts from the pre-items state.
-                    try:
-                        self._get_connection().rollback()
-                    except Exception as rollback_error:
-                        self._log("error", f"Could not roll back partial items.json import: {rollback_error}")
-
-            # Migrate badges.json - handles both [1, 2, 3] and [{"id": 1}, ...] formats
-            if badges_path.is_file():
-                try:
-                    with open(badges_path, 'r', encoding='utf-8') as f:
-                        badges_list = json.load(f)
-                    for badge in badges_list:
-                        # Handle both integer, string, and dict formats
-                        if isinstance(badge, (int, str)):
-                            badge_id = str(badge)
-                            badge_data = {"achieved": True}
-                        elif isinstance(badge, dict):
-                            badge_id = str(badge.get("id", badge.get("badge_id", "")))
-                            # Ensure we have achieved status preserved
-                            badge_data = badge
-                            badge_data["achieved"] = True
-                        else:
-                            continue
-                                
-                        if badge_id:
-                            self.save_badge(badge_id, badge_data)
-                            stats["badges"] += 1
-                    self._log("info", f"Migrated {stats['badges']} badges from badges.json")
-                except Exception as e:
-                    phase1_errors.append(f"badges.json: {e}")
-                    self._log("error", f"Failed to migrate badges.json: {e}")
-
-            if phase1_errors:
-                stats["errors"] = phase1_errors
-                self._log(
-                    "error",
-                    f"Phase 1 migration incomplete; left unmarked so the next run retries it: {phase1_errors}",
-                )
-                return stats
-
-            # Mark Phase 1 as done
-            cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES ('migrated', 'true')")
-
-        # --- Phase 2 Migration (Team, History, UserData) ---
-        
-        # Migrate team.json
-        if team_path and team_path.is_file():
-            try:
-                with open(team_path, 'r', encoding='utf-8') as f:
-                    team_list = json.load(f)
-                if self.save_team(team_list):
-                    stats["team"] = len(team_list)
-                self._log("info", f"Migrated {stats['team']} team members from team.json")
-            except Exception as e:
-                self._log("error", f"Failed to migrate team.json: {e}")
-
-        # Migrate pokemon_history.json
-        if history_path and history_path.is_file():
-            try:
-                with open(history_path, 'r', encoding='utf-8') as f:
-                    history_list = json.load(f)
-                for pokemon in history_list:
-                    if self.add_to_history(pokemon):
-                        stats["history"] += 1
-                self._log("info", f"Migrated {stats['history']} history entries from pokemon_history.json")
-            except Exception as e:
-                self._log("error", f"Failed to migrate pokemon_history.json: {e}")
-
-        # Migrate data.json (User Credentials)
-        if data_path and data_path.is_file():
-            try:
-                with open(data_path, 'r', encoding='utf-8') as f:
-                    user_data = json.load(f)
-                count = 0
-                for key, value in user_data.items():
-                    self.set_user_data(key, value)
-                    count += 1
-                stats["userdata"] = count
-                self._log("info", f"Migrated {stats['userdata']} keys from data.json")
-            except Exception as e:
-                self._log("error", f"Failed to migrate data.json: {e}")
-
-        # Step 8: Migrate rate_this.json
-        if rate_path and rate_path.is_file():
-            try:
-                with open(rate_path, 'r', encoding='utf-8') as f:
-                    rate_data = json.load(f)
-                
-                if isinstance(rate_data, dict) and rate_data.get("rate_this") in (True, "true"):
-                    self.set_user_data("rate_this", True)
-                    self._log("info", "Migrated rate_this.json")
-            except Exception as e:
-                self._log("error", f"Failed to migrate rate_this.json: {e}")
-
-        # Mark Phase 2 as done
-        cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES ('migrated_phase2', 'true')")
-        conn.commit()
-
-        # --- Integrity Check ---
-        # Verify that database counts match expected counts from JSON files
-        integrity_issues = []
-        
-        # Count JSON entries
-        json_counts = {"pokemon": 0, "items": 0, "badges": 0}
-        try:
-            # Count only what the loops above could have migrated, and compare
-            # item QUANTITIES (duplicates fold together) against SUM(quantity).
-            if mypokemon_path.is_file():
-                with open(mypokemon_path, 'r', encoding='utf-8') as f:
-                    json_counts["pokemon"] = sum(1 for p in json.load(f) if isinstance(p, dict))
-            if items_path.is_file():
-                with open(items_path, 'r', encoding='utf-8') as f:
-                    json_counts["items"] = sum(
-                        quantity for quantity, _ in aggregate_legacy_items(json.load(f)).values()
-                    )
-            if badges_path.is_file():
-                with open(badges_path, 'r', encoding='utf-8') as f:
-                    json_counts["badges"] = sum(1 for b in json.load(f) if isinstance(b, (int, str, dict)))
-        except Exception as e:
-            self._log("warning", f"Could not read JSON files for integrity check: {e}")
-        
-        # Count database entries
-        db_counts = {"pokemon": 0, "items": 0, "badges": 0}
-        cursor.execute("SELECT COUNT(*) FROM captured_pokemon")
-        db_counts["pokemon"] = cursor.fetchone()[0]
-        cursor.execute("SELECT COALESCE(SUM(quantity), 0) FROM items")
-        db_counts["items"] = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM badges")
-        db_counts["badges"] = cursor.fetchone()[0]
-        
-        # Compare counts
-        for key in ["pokemon", "items", "badges"]:
-            if json_counts[key] > 0 and db_counts[key] < json_counts[key]:
-                integrity_issues.append(
-                    f"{key}: JSON has {json_counts[key]} entries but DB only has {db_counts[key]}"
-                )
-        
-        if integrity_issues:
-            self._log("warning", f"Migration integrity issues detected: {integrity_issues}")
-            stats["integrity_issues"] = integrity_issues
-        else:
-            self._log("info", "Migration integrity check passed - all counts match.")
-
-        self._log("info", f"Migration complete: {stats}")
-        return stats
+        return LegacyMigration(
+            self,
+            {
+                "mypokemon": mypokemon_path,
+                "mainpokemon": mainpokemon_path,
+                "items": items_path,
+                "badges": badges_path,
+                "team": team_path,
+                "history": history_path,
+                "data": data_path,
+                "rate": rate_path,
+            },
+            progress=progress,
+            cancelled=cancelled,
+        ).run()
 
     # --- Utility ---
 
@@ -2366,6 +2384,7 @@ class AnkimonDB:
             # force=False path of ``set_mobile_watermark`` calls back into
             # this getter to clamp monotonically, which would recurse forever.
             import time
+
             now_ms = int(time.time() * 1000)
             self.set_mobile_watermark(now_ms, force=True)
             return now_ms
@@ -2383,7 +2402,7 @@ class AnkimonDB:
         with self._get_connection():
             self._get_connection().execute(
                 "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_revlog_watermark', ?)",
-                (str(watermark_ms),)
+                (str(watermark_ms),),
             )
             # Any desktop-processed id at or below the watermark is already
             # excluded by the `id > watermark` detection filter, so the explicit
@@ -2391,12 +2410,14 @@ class AnkimonDB:
             try:
                 self._get_connection().execute(
                     "DELETE FROM desktop_processed_reviews WHERE revlog_id <= ?",
-                    (int(watermark_ms),)
+                    (int(watermark_ms),),
                 )
             except Exception:
                 pass
 
-    def record_desktop_processed_review(self, revlog_id: int, card_id: Optional[int] = None) -> None:
+    def record_desktop_processed_review(
+        self, revlog_id: int, card_id: Optional[int] = None
+    ) -> None:
         """Durably record a revlog id Ankimon handled on desktop, so a mid-session
         restart can't re-expose it as a mobile review on the next sync."""
         if not revlog_id:
@@ -2404,13 +2425,15 @@ class AnkimonDB:
         with self._get_connection():
             self._get_connection().execute(
                 "INSERT OR IGNORE INTO desktop_processed_reviews (revlog_id, card_id) VALUES (?, ?)",
-                (int(revlog_id), card_id)
+                (int(revlog_id), card_id),
             )
 
     def get_desktop_processed_revlog_ids(self) -> set:
         """Return the durably-recorded desktop-processed revlog ids."""
         try:
-            rows = self.execute("SELECT revlog_id FROM desktop_processed_reviews").fetchall()
+            rows = self.execute(
+                "SELECT revlog_id FROM desktop_processed_reviews"
+            ).fetchall()
             return {int(r[0]) for r in rows}
         except Exception:
             return set()
@@ -2422,6 +2445,7 @@ class AnkimonDB:
     def queue_mobile_battles(self, reviews: list[dict]) -> int:
         """Insert mobile reviews into pending queue. Returns count inserted (skips duplicates)."""
         import time
+
         now = int(time.time() * 1000)
         inserted = 0
         conn = self._get_connection()
@@ -2431,7 +2455,7 @@ class AnkimonDB:
                     """INSERT OR IGNORE INTO pending_mobile_battles
                        (revlog_id, card_id, ease, review_time, review_type, queued_at)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (r["id"], r["cid"], r["ease"], r["time"], r["type"], now)
+                    (r["id"], r["cid"], r["ease"], r["time"], r["type"], now),
                 )
                 inserted += cursor.rowcount
         return inserted
@@ -2449,22 +2473,32 @@ class AnkimonDB:
                WHERE resolved = 0
                ORDER BY revlog_id ASC
                LIMIT ?""",
-            (limit,)
+            (limit,),
         ).fetchall()
-        keys = ["queue_id", "revlog_id", "card_id", "ease", "review_time", "review_type"]
+        keys = [
+            "queue_id",
+            "revlog_id",
+            "card_id",
+            "ease",
+            "review_time",
+            "review_type",
+        ]
         return [dict(zip(keys, r)) for r in rows]
 
     def mark_mobile_battle_resolved(self, queue_id: int) -> None:
         import time
+
         now = int(time.time() * 1000)
-        cursor = self.execute("SELECT revlog_id FROM pending_mobile_battles WHERE id = ?", (queue_id,))
+        cursor = self.execute(
+            "SELECT revlog_id FROM pending_mobile_battles WHERE id = ?", (queue_id,)
+        )
         row = cursor.fetchone()
         revlog_id = row[0] if row else None
 
         with self._get_connection():
             self._get_connection().execute(
                 "UPDATE pending_mobile_battles SET resolved=1, resolved_at=? WHERE id=?",
-                (now, queue_id)
+                (now, queue_id),
             )
 
         if revlog_id:
@@ -2485,6 +2519,7 @@ class AnkimonDB:
         """Sync all deferred resolutions to the mirror DB and stop deferring.
         Call only AFTER the bulk transaction has committed successfully."""
         import time
+
         ids = self._deferred_mirror_revlog_ids
         self._deferred_mirror_revlog_ids = None
         if ids:
@@ -2533,7 +2568,7 @@ class AnkimonDB:
                             _clean_val(entry.get("cash_gained"), 0),
                         )
                         for entry in entries
-                    ]
+                    ],
                 )
                 conn.execute(
                     """DELETE FROM mobile_battle_history
@@ -2558,12 +2593,21 @@ class AnkimonDB:
                    FROM mobile_battle_history
                    ORDER BY timestamp DESC, id DESC
                    LIMIT ?""",
-                (limit,)
+                (limit,),
             ).fetchall()
             keys = [
-                "id", "timestamp", "enemy_id", "enemy_name", "enemy_level", "enemy_shiny",
-                "companion_name", "companion_level", "outcome", "xp_gained",
-                "trainer_xp_gained", "cash_gained"
+                "id",
+                "timestamp",
+                "enemy_id",
+                "enemy_name",
+                "enemy_level",
+                "enemy_shiny",
+                "companion_name",
+                "companion_level",
+                "outcome",
+                "xp_gained",
+                "trainer_xp_gained",
+                "cash_gained",
             ]
             result = []
             for r in rows:
@@ -2586,7 +2630,9 @@ class AnkimonDB:
             self._log("error", f"Failed to clear mobile history: {e}")
             return False
 
-    def sync_resolutions_to_other_db(self, revlog_ids: list[int], resolved_at: int) -> None:
+    def sync_resolutions_to_other_db(
+        self, revlog_ids: list[int], resolved_at: int
+    ) -> None:
         """
         If the other database exists (normal vs dev), sync the resolved status of the given
         revlog_ids to it directly.
@@ -2608,6 +2654,7 @@ class AnkimonDB:
 
         try:
             import sqlite3
+
             conn = sqlite3.connect(str(other_path), timeout=5.0)
             try:
                 conn.execute("""
@@ -2626,7 +2673,7 @@ class AnkimonDB:
                 placeholders = ",".join("?" for _ in revlog_ids)
                 conn.execute(
                     f"UPDATE pending_mobile_battles SET resolved=1, resolved_at=? WHERE revlog_id IN ({placeholders})",
-                    [resolved_at] + list(revlog_ids)
+                    [resolved_at] + list(revlog_ids),
                 )
                 conn.commit()
             finally:
@@ -2654,20 +2701,28 @@ def get_db(logger=None, db_path=None) -> AnkimonDB:
         # settings/game objects. A process identity gate refuses addon reloads
         # and profile switches in the process that staged the import.
         from ..save_import import (
-            STARTUP_IMPORT_BUDGET, ImportInstalledError, ImportUnsafeToOpenError,
-            commit_pending_import, refuse_to_open_over_journals,
+            STARTUP_IMPORT_BUDGET,
+            ImportInstalledError,
+            ImportUnsafeToOpenError,
+            commit_pending_import,
+            refuse_to_open_over_journals,
         )
         from ..services import services
 
-        targets = ([Path(db_path)] if db_path is not None else
-                   [user_path / "ankimon.db", user_path / "ankimonDEV.db"])
+        targets = (
+            [Path(db_path)]
+            if db_path is not None
+            else [user_path / "ankimon.db", user_path / "ankimonDEV.db"]
+        )
         # One budget for the whole installation. This runs inside add-on import,
         # which Anki performs in AnkiQt.__init__ -- before any window exists, let
         # alone a progress dialog -- so a locked save here is Anki looking hung
         # with nothing on screen and no way to cancel. Anything not installed in
         # time stays pending and is retried on the next start.
         deadline = time.monotonic() + STARTUP_IMPORT_BUDGET
-        opening = Path(db_path) if db_path is not None else user_path / AnkimonDB.DB_FILENAME
+        opening = (
+            Path(db_path) if db_path is not None else user_path / AnkimonDB.DB_FILENAME
+        )
         causes = {}
         for target in targets:
             installed = False
@@ -2693,7 +2748,9 @@ def get_db(logger=None, db_path=None) -> AnkimonDB:
                 failures.append(f"{target}: {reason}")
                 services._save_import_errors = failures
                 if logger is not None:
-                    logger.log("error", f"Pending save import could not be installed: {error}")
+                    logger.log(
+                        "error", f"Pending save import could not be installed: {error}"
+                    )
             if installed:
                 from ..events import events
 

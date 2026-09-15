@@ -37,12 +37,18 @@ def qapp():
 
 def _pokemon(name, species_id, level, **overrides):
     record = {
-        "name": name, "nickname": None, "gender": "M", "level": level, "id": species_id,
-        "ability": "Blaze", "type": ["Fire", "Flying"],
+        "name": name,
+        "nickname": None,
+        "gender": "M",
+        "level": level,
+        "id": species_id,
+        "ability": "Blaze",
+        "type": ["Fire", "Flying"],
         "stats": {"hp": 78, "atk": 84, "def": 78, "spa": 109, "spd": 85, "spe": 100},
         "ev": {"hp": 56, "atk": 73, "def": 63, "spa": 35, "spd": 31, "spe": 43},
         "iv": {"hp": 5, "atk": 11, "def": 2, "spa": 23, "spd": 9, "spe": 31},
-        "attacks": ["flamethrower", "airslash"], "base_experience": 267,
+        "attacks": ["flamethrower", "airslash"],
+        "base_experience": 267,
         "growth_rate": "medium-slow",
     }
     record.update(overrides)
@@ -75,9 +81,20 @@ def _clear_migration_flags(db):
 @pytest.mark.parametrize(
     "value, expected",
     [
-        (3, 3), ("2", 2), (" 7 ", 7), (2.0, 2),
-        (None, None), (0, None), (-1, None), (True, None), (False, None),
-        ("many", None), ("", None), (1.5, None), ([2], None), ({"n": 2}, None),
+        (3, 3),
+        ("2", 2),
+        (" 7 ", 7),
+        (2.0, 2),
+        (None, None),
+        (0, None),
+        (-1, None),
+        (True, None),
+        (False, None),
+        ("many", None),
+        ("", None),
+        (1.5, None),
+        ([2], None),
+        ({"n": 2}, None),
     ],
 )
 def test_coerce_item_quantity(value, expected):
@@ -92,7 +109,10 @@ def test_coerce_item_quantity(value, expected):
         ("Potion", ("potion", 1, None)),
         ({"item": "PP-Max"}, ("pp-max", 1, {"item": "PP-Max"})),
         ("", None),
-        ({"item": "potion", "quantity": "2"}, ("potion", 2, {"item": "potion", "quantity": "2"})),
+        (
+            {"item": "potion", "quantity": "2"},
+            ("potion", 2, {"item": "potion", "quantity": "2"}),
+        ),
         ({"name": "ether", "amount": 3}, ("ether", 3, {"name": "ether", "amount": 3})),
         ({"item_name": "elixir"}, ("elixir", 1, {"item_name": "elixir"})),
         ({"item": "potion", "quantity": None}, None),
@@ -100,7 +120,9 @@ def test_coerce_item_quantity(value, expected):
         ({"item": "potion", "quantity": -4}, None),
         ({"quantity": 2}, None),
         ({"item": "", "quantity": 2}, None),
-        (42, None), (None, None), ([], None),
+        (42, None),
+        (None, None),
+        ([], None),
     ],
 )
 def test_normalize_legacy_item(item, expected):
@@ -109,29 +131,54 @@ def test_normalize_legacy_item(item, expected):
 
 def test_aggregate_legacy_items_folds_duplicates_and_drops_junk():
     totals = aggregate_legacy_items(
-        ["potion", {"item": "potion", "quantity": "2"}, "wide-lens", "wide-lens", None, 7, {"item": "ether", "quantity": 0}]
+        [
+            "potion",
+            {"item": "potion", "quantity": "2"},
+            "wide-lens",
+            "wide-lens",
+            None,
+            7,
+            {"item": "ether", "quantity": 0},
+        ]
     )
-    assert totals == {"potion": (3, {"item": "potion", "quantity": "2"}), "wide-lens": (2, None)}
+    assert totals == {
+        "potion": (3, {"item": "potion", "quantity": "2"}),
+        "wide-lens": (2, None),
+    }
     assert aggregate_legacy_items({"potion": 2}) == {}
     assert aggregate_legacy_items(None) == {}
 
 
 def test_aggregate_legacy_items_folds_case_variants():
-    totals = aggregate_legacy_items(["Potion", "potion", {"item": "POTION", "quantity": 2}])
+    totals = aggregate_legacy_items(
+        ["Potion", "potion", {"item": "POTION", "quantity": 2}]
+    )
     assert totals == {"potion": (4, {"item": "POTION", "quantity": 2})}
 
 
 @pytest.mark.parametrize(
     "value, expected",
-    [("abc", True), (" x ", True), ("", False), ("   ", False), (None, False),
-     (5, False), (["a"], False), ({"id": "a"}, False)],
+    [
+        ("abc", True),
+        (" x ", True),
+        ("", False),
+        ("   ", False),
+        (None, False),
+        (5, False),
+        (["a"], False),
+        ({"id": "a"}, False),
+    ],
 )
 def test_is_valid_individual_id(value, expected):
     assert is_valid_individual_id(value) is expected
 
 
 def test_canonical_pokemon_name():
-    assert canonical_pokemon_name("Mr-Mime") == canonical_pokemon_name("mr mime") == "mrmime"
+    assert (
+        canonical_pokemon_name("Mr-Mime")
+        == canonical_pokemon_name("mr mime")
+        == "mrmime"
+    )
     assert canonical_pokemon_name(None) == ""
 
 
@@ -142,10 +189,22 @@ def test_migrate_from_json_legacy_files(tmp_path):
     """Legacy save: no individual_ids, flat string items, starter duplicated in mainpokemon.json."""
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")
     charizard = _pokemon("Charizard", 6, 59)
-    pikachu = _pokemon("Pikachu", 25, 25, nickname="Sparky", ability="Static", type=["Electric"],
-                       iv={"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15})
-    paths = _write_save(tmp_path, [charizard, pikachu], [charizard],
-                        ["potion", "pp-max", "wide-lens", "wide-lens"], [1, 2, 3, 4])
+    pikachu = _pokemon(
+        "Pikachu",
+        25,
+        25,
+        nickname="Sparky",
+        ability="Static",
+        type=["Electric"],
+        iv={"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15},
+    )
+    paths = _write_save(
+        tmp_path,
+        [charizard, pikachu],
+        [charizard],
+        ["potion", "pp-max", "wide-lens", "wide-lens"],
+        [1, 2, 3, 4],
+    )
 
     stats = db.migrate_from_json(**paths)
 
@@ -238,12 +297,16 @@ def test_migrate_from_json_flags_lost_item_quantity(tmp_path):
     with patch.object(db, "add_item", side_effect=lossy_add_item):
         stats = db.migrate_from_json(**paths)
 
-    assert any(issue.startswith("items:") for issue in stats.get("integrity_issues", []))
+    assert any(
+        issue.startswith("items:") for issue in stats.get("integrity_issues", [])
+    )
 
 
 def test_migrate_from_json_case_variants_share_one_row(tmp_path):
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")
-    paths = _write_save(tmp_path, [], [], ["Potion", "potion", {"item": "POTION", "quantity": 2}], [])
+    paths = _write_save(
+        tmp_path, [], [], ["Potion", "potion", {"item": "POTION", "quantity": 2}], []
+    )
 
     stats = db.migrate_from_json(**paths)
 
@@ -256,7 +319,9 @@ def test_migrate_from_json_failed_items_step_leaves_phase1_unmarked(tmp_path):
     """A failure inside Phase 1 must not write the marker, or Retry would skip the phase for good."""
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")
     charizard = _pokemon("Charizard", 6, 59)
-    paths = _write_save(tmp_path, [charizard], [charizard], ["potion", "wide-lens"], [1])
+    paths = _write_save(
+        tmp_path, [charizard], [charizard], ["potion", "wide-lens"], [1]
+    )
     original = db.add_item
     calls = {"n": 0}
 
@@ -289,8 +354,13 @@ def test_migrate_from_json_retry_does_not_double_anything(tmp_path):
     """Re-running Phase 1 (what Retry does) must not duplicate Pokémon or stack items twice."""
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")
     charizard = _pokemon("Charizard", 6, 59)
-    paths = _write_save(tmp_path, [charizard, _pokemon("Pikachu", 25, 25)], [charizard],
-                        ["wide-lens", "wide-lens", {"item": "potion", "quantity": 3}], [1, 2])
+    paths = _write_save(
+        tmp_path,
+        [charizard, _pokemon("Pikachu", 25, 25)],
+        [charizard],
+        ["wide-lens", "wide-lens", {"item": "potion", "quantity": 3}],
+        [1, 2],
+    )
 
     first = db.migrate_from_json(**paths)
     _clear_migration_flags(db)
@@ -314,7 +384,9 @@ def _dialog(db, paths):
 def test_migration_dialog_legacy_files(qapp, tmp_path):
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")
     charizard = _pokemon("Charizard", 6, 59)
-    paths = _write_save(tmp_path, [charizard], [charizard], ["potion", "wide-lens", "wide-lens"], [1, 2])
+    paths = _write_save(
+        tmp_path, [charizard], [charizard], ["potion", "wide-lens", "wide-lens"], [1, 2]
+    )
     dialog = _dialog(db, paths)
 
     with patch("PyQt6.QtWidgets.QApplication.processEvents"):
@@ -336,14 +408,23 @@ def test_migration_dialog_canonical_match_and_junk_ids(qapp, tmp_path):
         _pokemon("Pikachu", 25, 25, individual_id=None),
     ]
     main = _pokemon("MR MIME", 122, 30)
-    items = [{"item": "potion", "quantity": "2"}, {"item": "ether", "quantity": None}, "potion"]
+    items = [
+        {"item": "potion", "quantity": "2"},
+        {"item": "ether", "quantity": None},
+        "potion",
+    ]
     paths = _write_save(tmp_path, box, [main], items, [1])
     dialog = _dialog(db, paths)
 
     with patch("PyQt6.QtWidgets.QApplication.processEvents"):
         dialog._run_migration()
 
-    assert dialog.migration_successful, dialog.log_area.toPlainText()
+    # Valid records are imported, but an unreadable Pokemon keeps the source
+    # available for repair instead of silently archiving an incomplete save.
+    assert not dialog.migration_successful
+    assert not db.is_migrated()
+    assert paths["mypokemon_path"].exists()
+    assert "1 Pokemon failed" in dialog.log_area.toPlainText()
     assert db.get_pokemon_count() == 2
     assert canonical_pokemon_name(db.get_main_pokemon()["name"]) == "mrmime"
     assert db.get_item("potion")["quantity"] == 3
@@ -359,12 +440,19 @@ def test_migration_dialog_retry_after_partial_failure_does_not_double(qapp, tmp_
     """
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")
     charizard = _pokemon("Charizard", 6, 59)
-    paths = _write_save(tmp_path, [charizard, _pokemon("Pikachu", 25, 25)], [charizard],
-                        ["wide-lens", "wide-lens", {"item": "potion", "quantity": 3}], [1, 2])
+    paths = _write_save(
+        tmp_path,
+        [charizard, _pokemon("Pikachu", 25, 25)],
+        [charizard],
+        ["wide-lens", "wide-lens", {"item": "potion", "quantity": 3}],
+        [1, 2],
+    )
     dialog = _dialog(db, paths)
 
-    with patch("PyQt6.QtWidgets.QApplication.processEvents"), \
-            patch.object(db, "save_badge", side_effect=RuntimeError("disk full")):
+    with (
+        patch("PyQt6.QtWidgets.QApplication.processEvents"),
+        patch.object(db, "save_badge", side_effect=RuntimeError("disk full")),
+    ):
         dialog._run_migration()
     assert not dialog.migration_successful
     assert db.get_item("wide-lens")["quantity"] == 2
