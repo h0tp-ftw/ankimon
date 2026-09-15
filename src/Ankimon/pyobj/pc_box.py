@@ -57,6 +57,7 @@ from ..resources import (
     items_path,
     csv_file_items_cost,
     poke_evo_path,
+    pokemon_tm_learnset_path,
     addon_dir,
 )
 from ..business import calculate_cp_from_dict
@@ -67,7 +68,6 @@ from ..functions.pokedex_functions import (
     get_pretty_name_for_name,
     search_pokedex_by_id,
 )
-from ..functions.tm_learnset import get_tm_learnset
 from ..functions.gui_functions import type_icon_path, move_category_path
 
 MOVE_TYPE_COLORS = {
@@ -451,14 +451,21 @@ class MoveManagerWidget(QWidget):
             )
             return
 
-        # 2. Resolve form aliases/base-species fallback through the shared
-        # startup-warmed TM cache. search_pokedex_by_id() above has already
-        # populated the Pokédex cache used for form metadata.
+        # Normalize: strip hyphens and everything after the first hyphen to try base species
+        # e.g. "venusaur-mega" -> "venusaur"
+        base_name = internal_name.split("-")[0].lower()
+        internal_name = internal_name.lower()
+
+        # 2. Load TM learnsets
         try:
-            valid_tms = get_tm_learnset(internal_name)
+            with open(pokemon_tm_learnset_path, "r", encoding="utf-8") as f:
+                tm_learnsets = json.load(f)
         except Exception as e:
             self.logger.log_and_showinfo("error", f"Failed to load TM learnsets: {e}")
             return
+
+        # 3. Get valid TMs for this species (check specific form then base species)
+        valid_tms = tm_learnsets.get(internal_name) or tm_learnsets.get(base_name)
         if not valid_tms:
             self.logger.log_and_showinfo(
                 "info", f"This Pokémon cannot learn any moves from TMs."
@@ -622,7 +629,19 @@ class PokemonSlotButton(QPushButton):
     rightClicked = pyqtSignal()
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.RightButton:
+        is_right_click = event.button() == Qt.MouseButton.RightButton
+
+        # Handle Mac trackpad control+click as right click
+        # On macOS, Qt.KeyboardModifier.MetaModifier maps to the physical Control key
+        import sys
+        is_ctrl_click = False
+        if sys.platform == "darwin":
+            is_ctrl_click = (
+                event.button() == Qt.MouseButton.LeftButton and
+                bool(event.modifiers() & Qt.KeyboardModifier.MetaModifier)
+            )
+
+        if is_right_click or is_ctrl_click:
             self.rightClicked.emit()
         super().mouseReleaseEvent(event)
 
@@ -1539,9 +1558,7 @@ class PokemonPC(QDialog):
                         )
                     )
 
-                    level_text = self.translator.translate(
-                        "level_label", level=pokemon.get("level", 1)
-                    )
+                    level_text = self.translator.translate("level_label", level=pokemon.get('level', 1))
                     level_label = QLabel(level_text)
                     level_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     level_label.setStyleSheet(f"""
@@ -2075,9 +2092,7 @@ class PokemonPC(QDialog):
         target_stat = stat_map.get(sort_key_str)
 
         if sort_key_str == "date":
-            order_clause = (
-                f"ORDER BY captured_date {direction}, original_index {direction}"
-            )
+            order_clause = f"ORDER BY captured_date {direction}, original_index {direction}"
         elif sort_key_str == "name":
             order_clause = f"ORDER BY name {direction}, json_extract(data, '$.nickname') {direction}"
         elif sort_key_str == "level":
@@ -2459,9 +2474,10 @@ class PokemonPC(QDialog):
                         # Keep the live main-pokemon singleton in step with a
                         # moveset edit, mirroring give_held_item/remove_held_item.
                         main_pkmn = services.main_pokemon
-                        if main_pkmn is not None and getattr(
-                            main_pkmn, "individual_id", None
-                        ) == data.get("individual_id"):
+                        if (
+                            main_pkmn is not None
+                            and getattr(main_pkmn, "individual_id", None) == data.get("individual_id")
+                        ):
                             main_pkmn.attacks = data.get("attacks", main_pkmn.attacks)
                         self.show_pokemon_details(pokemon)
 
@@ -2820,7 +2836,6 @@ class PokemonPC(QDialog):
 
     def reject(self):  # Called when pressing Escape
         import base64
-
         try:
             mw.pm.profile[self.GEOMETRY_KEY] = base64.b64encode(
                 bytes(self.saveGeometry())

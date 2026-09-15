@@ -355,6 +355,7 @@ class SettingsWindow(QMainWindow):
                         "settings": [
                             "SSH Access",
                             "Prevent Ankimon News on Startup",
+                            "AnkiWeb Sync",
                             "Developer Mode",
                         ]
                     },

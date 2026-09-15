@@ -1,4 +1,3 @@
-from copy import deepcopy
 import random
 from typing import Optional
 
@@ -20,11 +19,8 @@ from PyQt6.QtWidgets import (
 )
 
 from ..services import services
-from ..functions.item_evolution import save_item_evolution
 from ..utils import load_custom_font, is_alive
 from ..functions.pokedex_functions import (
-    evolution_required_time,
-    evolution_time_allows,
     get_base_experience,
     get_growth_rate,
     return_name_for_id,
@@ -371,7 +367,6 @@ class EvoWindow(QWidget):
         db = services.db
 
         try:
-            source_db_path = db.db_path if item_name else None
             pokemon = db.get_pokemon(individual_id)
             if not pokemon:
                 self.logger.log(
@@ -391,11 +386,14 @@ class EvoWindow(QWidget):
                 )
                 return
 
-            # Detect record changes made during move dialogs’ nested event loops.
-            expected_pokemon = deepcopy(pokemon) if item_name else None
-
-            # Record the old species before replacing its only recoverable record.
-            if not item_name and hasattr(db, "mark_as_caught"):
+            # Persist the pre-evolved species as caught before the id changes so
+            # the Pokédex keeps crediting the earlier form (no-op on stores that
+            # predate mark_as_caught — arrives with the PC-box/Pokédex leaf).
+            # Logged as an error, not a warning: unlike a failed mark on an
+            # ordinary save, this one is NOT recoverable. Once the id below is
+            # overwritten the pre-evolution is gone from captured_pokemon, so
+            # _reconcile_pokedex_history has nothing left to re-derive it from.
+            if hasattr(db, "mark_as_caught"):
                 try:
                     db.mark_as_caught(int(prevo_id))
                 except Exception as e:
@@ -412,7 +410,6 @@ class EvoWindow(QWidget):
             new_attacks = _moves_gained_on_evolution(
                 evo_name.lower(), int(pokemon["level"])
             )
-            replaced_moves = []
             for new_attack in new_attacks:
                 if new_attack not in attacks:
                     if len(attacks) < 4:
@@ -441,7 +438,14 @@ class EvoWindow(QWidget):
                             try:
                                 index_to_replace = attacks.index(selected_attack)
                                 attacks[index_to_replace] = new_attack
-                                replaced_moves.append((selected_attack, new_attack))
+                                self.logger.log_and_showinfo(
+                                    "info",
+                                    self.translator.translate(
+                                        "replaced_attack",
+                                        selected_attack=selected_attack,
+                                        new_attack=new_attack,
+                                    ),
+                                )
                             except ValueError:
                                 self.logger.log_and_showinfo(
                                     "info",
@@ -530,59 +534,15 @@ class EvoWindow(QWidget):
             # the auto prompt resumes for the new form's future evolutions.
             pokemon["evolution_rejected"] = False
 
-            # Commit only after all move dialogs finish.
-            if item_name:
-                target_data = {
-                    "evoCondition": search_pokedex(evo_name.lower(), "evoCondition")
-                }
-                if not evolution_time_allows(target_data):
-                    required_time = evolution_required_time(target_data)
-                    self.logger.log_and_showinfo(
-                        "info",
-                        f"This Pokemon evolves with this item only during the "
-                        f"{required_time}. Nothing was used; try again then.",
-                    )
-                    return
-                try:
-                    committed = (
-                        services.db is db
-                        and db.db_path == source_db_path
-                        and save_item_evolution(
-                            db, expected_pokemon, pokemon, item_name
-                        )
-                    )
-                except Exception as e:
-                    # Persistence failures roll back; log the cause and offer a retry.
-                    self.logger.log(
-                        "error", f"Item evolution could not be committed: {e}"
-                    )
-                    committed = False
-                if not committed:
-                    self.logger.log_and_showinfo(
-                        "warning",
-                        "Evolution could not be completed because the Pokémon, "
-                        "item, or profile changed, or the database was busy. "
-                        "Nothing was used — please try again.",
-                    )
-                    return
-            elif not db.save_pokemon(pokemon):
-                self.logger.log(
-                    "error", f"Failed to save evolved pokemon {individual_id}"
-                )
+            # Save to database before awarding any evolution achievements.
+            if not db.save_pokemon(pokemon):
+                self.logger.log("error", f"Failed to save evolved pokemon {individual_id}")
                 return
 
-            for selected_attack, new_attack in replaced_moves:
-                self.logger.log_and_showinfo(
-                    "info",
-                    self.translator.translate(
-                        "replaced_attack",
-                        selected_attack=selected_attack,
-                        new_attack=new_attack,
-                    ),
-                )
-
-            # The item charge has committed; refresh any open item windows.
+            # Consume the evolution stone (if this evolution was item-triggered)
+            # and refresh any open item windows so the count updates live.
             if item_name:
+                db.update_item_quantity(item_name, -1)
                 from ..singletons import get_item_window, get_items_window
 
                 item_w = get_item_window()
@@ -598,7 +558,6 @@ class EvoWindow(QWidget):
             # and skip the achievement.
             try:
                 from ..resources import POKEMON_TIERS
-
                 if int(evo_id) in POKEMON_TIERS.get("Fossil", []):
                     check_fossil = check_for_badge(self.achievements, 19)
                     if check_fossil is False:

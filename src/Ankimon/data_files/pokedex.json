@@ -3833,7 +3833,7 @@
     "weightkg": 48,
     "color": "Brown",
     "prevo": "Kadabra",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Human-Like"
     ],
@@ -3845,8 +3845,7 @@
       "Alakazam-Mega"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "alakazammega": {
     "species_id": 65,
@@ -3984,14 +3983,13 @@
     "weightkg": 130,
     "color": "Gray",
     "prevo": "Machoke",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Human-Like"
     ],
     "canGigantamax": "G-Max Chi Strike",
     "tier": "Illegal",
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "machampgmax": {
     "species_id": 68,
@@ -4402,7 +4400,7 @@
     "weightkg": 300,
     "color": "Brown",
     "prevo": "Graveler",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Mineral"
     ],
@@ -4413,8 +4411,7 @@
       "Golem",
       "Golem-Alola"
     ],
-    "tier": "ZU",
-    "evoItem": "Linking Cord"
+    "tier": "ZU"
   },
   "golemalola": {
     "species_id": 76,
@@ -4443,12 +4440,11 @@
     "weightkg": 316,
     "color": "Gray",
     "prevo": "Graveler-Alola",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Mineral"
     ],
-    "tier": "ZU",
-    "evoItem": "Linking Cord"
+    "tier": "ZU"
   },
   "ponyta": {
     "species_id": 77,
@@ -5336,7 +5332,7 @@
     "weightkg": 40.5,
     "color": "Purple",
     "prevo": "Haunter",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Amorphous"
     ],
@@ -5348,8 +5344,7 @@
       "Gengar-Mega"
     ],
     "canGigantamax": "G-Max Terror",
-    "tier": "RU",
-    "evoItem": "Linking Cord"
+    "tier": "RU"
   },
   "gengarmega": {
     "species_id": 94,
@@ -6285,7 +6280,7 @@
     "weightkg": 34.6,
     "color": "Pink",
     "prevo": "Happiny",
-    "evoType": "useItem",
+    "evoType": "levelHold",
     "evoItem": "Oval Stone",
     "evoCondition": "during the day",
     "evos": [
@@ -23872,13 +23867,12 @@
     "weightkg": 260,
     "color": "Blue",
     "prevo": "Boldore",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Mineral"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "woobat": {
     "species_id": 527,
@@ -24217,12 +24211,11 @@
     "weightkg": 87,
     "color": "Brown",
     "prevo": "Gurdurr",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Human-Like"
     ],
-    "tier": "UU",
-    "evoItem": "Linking Cord"
+    "tier": "UU"
   },
   "tympole": {
     "species_id": 535,
@@ -31785,13 +31778,12 @@
     "weightkg": 71,
     "color": "Brown",
     "prevo": "Phantump",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Grass",
       "Amorphous"
     ],
-    "tier": "ZU",
-    "evoItem": "Linking Cord"
+    "tier": "ZU"
   },
   "pumpkaboo": {
     "species_id": 710,
@@ -31966,7 +31958,7 @@
     "weightkg": 12.5,
     "color": "Brown",
     "prevo": "Pumpkaboo",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Amorphous"
     ],
@@ -31982,8 +31974,7 @@
       "Gourgeist-Super"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "gourgeistsmall": {
     "species_id": 711,
@@ -32012,12 +32003,11 @@
     "weightkg": 9.5,
     "color": "Brown",
     "prevo": "Pumpkaboo-Small",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Amorphous"
     ],
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "gourgeistlarge": {
     "species_id": 711,
@@ -32046,12 +32036,11 @@
     "weightkg": 14,
     "color": "Brown",
     "prevo": "Pumpkaboo-Large",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Amorphous"
     ],
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "gourgeistsuper": {
     "species_id": 711,
@@ -32080,12 +32069,11 @@
     "weightkg": 39,
     "color": "Brown",
     "prevo": "Pumpkaboo-Super",
-    "evoType": "useItem",
+    "evoType": "trade",
     "eggGroups": [
       "Amorphous"
     ],
-    "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "isNonstandard": "Past"
   },
   "bergmite": {
     "species_id": 712,

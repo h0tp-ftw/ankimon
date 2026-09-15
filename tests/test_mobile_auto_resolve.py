@@ -114,6 +114,7 @@ def wired(tmp_path, monkeypatch):
     def build(review_ids, resolution_mode="manual", mobile_enabled=True):
         services.col = _FakeCol(review_ids)
         settings = _Settings({
+            "misc.ankiweb_sync": True,
             "mobile.enabled": mobile_enabled,
             "mobile.resolution_mode": resolution_mode,
         })
@@ -179,7 +180,7 @@ def test_setup_hooks_reload_safe(wired):
     re-appending (F31), so on_sync_did_finish is never double-registered."""
     db, build, tooltip, mock_bridge = wired
     settings = _Settings({
-        "mobile.enabled": True,
+        "misc.ankiweb_sync": True, "mobile.enabled": True,
         "mobile.resolution_mode": "manual",
     })
     sdf = MagicMock()
@@ -198,7 +199,7 @@ def test_setup_hooks_reload_safe(wired):
     assert sdf.remove.call_args[0][0] is first_handler
 
 
-def test_mobile_detection_registers_with_shipped_defaults(wired):
+def test_mobile_detection_registers_without_ankiweb_sync(wired):
     """Regression guard for the mobile-sync decoupling fix.
 
     Mobile reviews arrive via Anki's own AnkiWeb sync, independent of Ankimon's
@@ -210,6 +211,7 @@ def test_mobile_detection_registers_with_shipped_defaults(wired):
     db, build, tooltip, mock_bridge = wired
 
     settings = _Settings({
+        "misc.ankiweb_sync": False,   # the shipped default — the case that was broken
         "mobile.enabled": True,
         "mobile.resolution_mode": "manual",
     })
