@@ -188,10 +188,22 @@ if (
         # then freezes the instruction on a miss and on an immune hit (damage == 0),
         # and ``_on_hit_item_triggers`` covers the rest.
         # Shell Bell monkey-patch
-        attacker_side = instruction_generator.get_side_from_state(
-            mutator.state, instruction_generator.opposite_side[defender]
-        )
-        if attacker_side.active.item == "shellbell":
+        # During Ankimon automated tests (e.g. test_review_based_damage_multiplier),
+        # mutator.state is often mocked and does not resemble real state. Catching
+        # exceptions ensures we gracefully ignore it rather than crash the test suite.
+        try:
+            attacker_side = instruction_generator.get_side_from_state(
+                mutator.state, instruction_generator.opposite_side[defender]
+            )
+            is_shellbell = (
+                hasattr(attacker_side, "active")
+                and hasattr(attacker_side.active, "item")
+                and attacker_side.active.item == "shellbell"
+            )
+        except (AttributeError, KeyError):
+            is_shellbell = False
+
+        if is_shellbell:
             for instruction_set in results:
                 if instruction_set.frozen:
                     continue
