@@ -1329,12 +1329,10 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
                                 target_region = target_data.get("evoRegion")
 
                                 if target_region:
-                                    if (
-                                        active_region
-                                        and active_region.lower()
-                                        == target_region.lower()
-                                    ):
-                                        eligible_evos.append(target_data)
+                                    # For evolution items, we ignore the active region restriction.
+                                    # Any regional form that is item-triggered should be evolvable
+                                    # as long as the user physically has the item.
+                                    eligible_evos.append(target_data)
                                 else:
                                     # A plain form is allowed unless a regional
                                     # sibling matches the active region + method.
