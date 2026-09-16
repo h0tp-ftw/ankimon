@@ -187,6 +187,25 @@ if (
         # absorbers (Volt Absorb / Lightning Rod / Motor Drive) are out. The engine
         # then freezes the instruction on a miss and on an immune hit (damage == 0),
         # and ``_on_hit_item_triggers`` covers the rest.
+        # Shell Bell monkey-patch
+        attacker_side = instruction_generator.get_side_from_state(
+            mutator.state, instruction_generator.opposite_side[defender]
+        )
+        if attacker_side.active.item == "shellbell":
+            for instruction_set in results:
+                if instruction_set.frozen:
+                    continue
+                actual_damage = 0
+                for single_instr in instruction_set.instructions[first_added:]:
+                    if single_instr[0] == constants.MUTATOR_DAMAGE and single_instr[1] == defender:
+                        actual_damage = single_instr[2]
+                        break
+                if actual_damage > 0 and attacker_side.active.hp < attacker_side.active.maxhp:
+                    heal_amt = min(max(1, actual_damage // 8), attacker_side.active.maxhp - attacker_side.active.hp)
+                    instruction_set.add_instruction(
+                        (constants.MUTATOR_HEAL, instruction_generator.opposite_side[defender], heal_amt)
+                    )
+
         if on_hit_boosts:
             spent_item = attacking_move.get(_ON_HIT_ITEM_KEY)
             boosted = []
