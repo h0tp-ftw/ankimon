@@ -125,6 +125,7 @@ GROUPS = [
                 ("gui.hud_pokemon_gen", "Pokémon Gen"),
                 ("gui.hud_pokemon_lvl", "Pokémon Lvl"),
                 ("gui.hud_pokemon_name", "Pokémon Name"),
+                ("gui.hud_quick_heal_button", "Quick Heal Button"),
                 ("gui.hud_status_badge", "Status Badge"),
                 ("gui.hud_owned_indicator", "Pokeball Icon"),
                 ("gui.hud_enemy_shiny_indicator", "Enemy Shiny Star"),

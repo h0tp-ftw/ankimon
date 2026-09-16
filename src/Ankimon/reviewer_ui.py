@@ -226,6 +226,17 @@ def team_cycle_shortcut_function():
     cycle_team_pokemon()
 
 
+def heal_shortcut_function():
+    """Trigger the quick heal dialog."""
+    from .pyobj.quick_heal_dialog import QuickHealDialog
+    try:
+        from aqt import mw
+        dialog = QuickHealDialog(mw)
+        dialog.exec()
+    except Exception as e:
+        import traceback
+        print(f"Error opening Quick Heal dialog: {e}\n{traceback.format_exc()}")
+
 def test_encounter_shortcut_function():
     """Dev-only hotkey (0): trigger a new pokemon encounter immediately."""
     if is_dev_mode():
@@ -320,6 +331,9 @@ def setup_reviewer_ui(
             elif url == "defeat":
                 defeat_shortcut_function()
                 return True
+            elif url == "heal":
+                heal_shortcut_function()
+                return True
             elif url == "team_cycle":
                 team_cycle_shortcut_function()
                 return True
@@ -327,6 +341,9 @@ def setup_reviewer_ui(
                 return _old(self, url)
 
         def _bottomHTML_wrap(self, _old):
+            show_heal = bool(services.settings.get("gui.hud_quick_heal_button", True))
+            heal_button_html = '<button onclick="pycmd(\'heal\');">Heal Pokemon</button>' if show_heal else ''
+
             return _bottomHTML_template % dict(
                 edit=tr.studying_edit(),
                 editkey=tr.actions_shortcut_key(val="E"),
@@ -336,6 +353,7 @@ def setup_reviewer_ui(
                 time=self.card.time_taken() // 1000,
                 CatchKey=tr.actions_shortcut_key(val=f"{_current_keys['catch']}"),
                 DefeatKey=tr.actions_shortcut_key(val=f"{_current_keys['defeat']}"),
+                HealButton=heal_button_html,
                 TeamCycleKey=tr.actions_shortcut_key(
                     val=f"{_current_keys['team_cycle']}"
                 ),
