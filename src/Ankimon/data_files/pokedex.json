@@ -41659,7 +41659,7 @@
     "color": "Brown",
     "prevo": "Scyther",
     "evoType": "useItem",
-    "evoCondition": "Black Augurite",
+    "evoItem": "Black Augurite",
     "eggGroups": [
       "Bug"
     ],
