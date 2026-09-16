@@ -4,7 +4,8 @@ import os
 from ..services import services
 from ..singletons import main_pokemon, achievements, reviewer_obj, logger
 from ..functions.badges_functions import check_for_badge, receive_badge
-from ..utils import play_effect_sound, safe_int
+from ..utils import play_effect_sound
+from ..functions.pokedex_functions import safe_int
 
 class QuickHealDialog(QDialog):
     def __init__(self, parent=None):
