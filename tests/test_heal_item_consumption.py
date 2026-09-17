@@ -175,6 +175,8 @@ def _make_window(mod, db, main_pokemon=None):
     win.hp_heal_items = {"potion": 20, "fullrestore": 0}
     win.fossil_pokemon = {}
     win.pokeball_chances = {}
+    win.stat_boost_items = {}
+    win.evolution_items = {}
     win._item_action_in_progress = False
     mod.services.db = db
     # Badge bookkeeping is imported by name into the module namespace.
