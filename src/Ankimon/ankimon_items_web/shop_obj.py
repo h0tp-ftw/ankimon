@@ -1706,12 +1706,19 @@ class AnkimonItemsWeb(QDialog):
                 (shop_entry or {}).get("is_tm")
                 or (owned_entry or {}).get("category_id") == 37
             )
+            # If the item isn't in the shop, fall back to its DB price so it
+            # can still be sold for its standard value. TMs use the global TM price.
+            if shop_entry:
+                item_price = shop_entry.get("price")
+            else:
+                item_price = sm.tm_price if is_tm and sm else self._lookup_price(name)
+
             items.append(
                 self._serialize_item(
                     name=name,
                     is_tm=is_tm,
                     in_shop=bool(shop_entry),
-                    shop_price=(shop_entry or {}).get("price"),
+                    shop_price=item_price,
                     item_type=(shop_entry or {}).get("item_type"),
                     owned_quantity=(owned_entry or {}).get("quantity", 0),
                     equipped_instances=equipped_by_map.get(name, []),
