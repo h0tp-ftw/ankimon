@@ -227,15 +227,17 @@ def team_cycle_shortcut_function():
 
 
 def heal_shortcut_function():
-    """Trigger the quick heal dialog."""
-    from .pyobj.quick_heal_dialog import QuickHealDialog
+    """Trigger the item window automatically filtered for healing."""
     try:
-        from aqt import mw
-        dialog = QuickHealDialog(mw)
-        dialog.exec()
+        from .singletons import get_item_window
+        win = get_item_window()
+        win.category.setCurrentIndex(3) # Heal items
+        win.show()
+        win.raise_()
+        win.activateWindow()
     except Exception as e:
         import traceback
-        print(f"Error opening Quick Heal dialog: {e}\n{traceback.format_exc()}")
+        print(f"Error opening Item window for quick heal: {e}\n{traceback.format_exc()}")
 
 def test_encounter_shortcut_function():
     """Dev-only hotkey (0): trigger a new pokemon encounter immediately."""
