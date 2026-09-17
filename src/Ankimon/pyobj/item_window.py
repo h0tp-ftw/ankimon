@@ -72,6 +72,37 @@ class ItemWindow(QWidget):
         self.initUI()
 
     def initUI(self):
+        self.stat_boost_items = {
+            "x-attack": ("atk", 2),
+            "x-defense": ("def", 2),
+            "x-sp-atk": ("spa", 2),
+            "x-sp-def": ("spd", 2),
+            "x-speed": ("spe", 2),
+            "x-accuracy": ("accuracy", 2),
+            "dire-hit": ("atk", 0), # Handled specially or ignore, maybe implement later
+
+            "x-attack-2": ("atk", 2),
+            "x-defense-2": ("def", 2),
+            "x-sp-atk-2": ("spa", 2),
+            "x-sp-def-2": ("spd", 2),
+            "x-speed-2": ("spe", 2),
+            "x-accuracy-2": ("accuracy", 2),
+
+            "x-attack-3": ("atk", 3),
+            "x-defense-3": ("def", 3),
+            "x-sp-atk-3": ("spa", 3),
+            "x-sp-def-3": ("spd", 3),
+            "x-speed-3": ("spe", 3),
+            "x-accuracy-3": ("accuracy", 3),
+
+            "x-attack-6": ("atk", 6),
+            "x-defense-6": ("def", 6),
+            "x-sp-atk-6": ("spa", 6),
+            "x-sp-def-6": ("spd", 6),
+            "x-speed-6": ("spe", 6),
+            "x-accuracy-6": ("accuracy", 6),
+        }
+
         self.hp_heal_items = {
             "potion": 20,
             "sweet-heart": 20,
@@ -138,7 +169,7 @@ class ItemWindow(QWidget):
         # Add dropdown menu for generation filtering
         self.category = QComboBox()
         self.category.addItem("All")
-        self.category.addItems(["Fossils", "TMs and HMs", "Heal", "Evolution Items"])
+        self.category.addItems(["Fossils", "TMs and HMs", "Heal", "Evolution Items", "Battle Items"])
         self.category.currentIndexChanged.connect(self.filter_items)
 
         # Add widgets to layout
@@ -279,6 +310,15 @@ class ItemWindow(QWidget):
                     and item["item"] in self.pokeball_chances
                 ]
 
+            elif category_index == 6:  # Battle Items
+                filtered_items = [
+                    item
+                    for item in filtered_items
+                    if isinstance(item, dict)
+                    and "item" in item
+                    and item["item"] in self.stat_boost_items
+                ]
+
             # Now filter by search
             filtered_items = list(
                 filter(lambda item: search_text in item["item"].lower(), filtered_items)
@@ -399,6 +439,11 @@ class ItemWindow(QWidget):
             use_item_button.clicked.connect(
                 lambda: self._heal_main_pokemon(item_name, hp_heal)
             )
+        elif item_name in self.stat_boost_items:
+            use_item_button = QPushButton("Boost Mainpokemon")
+            use_item_button.clicked.connect(
+                lambda: self._boost_main_pokemon(item_name)
+            )
         elif item_name in self.fossil_pokemon:
             fossil_id = self.fossil_pokemon[item_name]
             fossil_pokemon_name = search_pokedex_by_id(fossil_id)
@@ -465,6 +510,16 @@ class ItemWindow(QWidget):
                 "message": "TMs are taught from the move-learning flow, not used directly.",
             }
         try:
+            if name in self.stat_boost_items:
+                if not self.main_pokemon:
+                    return {"ok": False, "message": "No active Pokémon to boost."}
+                if not self.Check_Boost_Item(name):
+                    return {"ok": False, "message": f"No {name} left in your bag."}
+                return {
+                    "ok": True,
+                    "message": f"Boosted {self.main_pokemon.name}'s stats with {name}.",
+                }
+
             if name in self.hp_heal_items:
                 if not self.main_pokemon:
                     return {"ok": False, "message": "No active Pokémon to heal."}
@@ -792,6 +847,52 @@ class ItemWindow(QWidget):
             "info", f"{prevo_name} was healed for {heal_points}"
         )
         return True
+
+    def Check_Boost_Item(self, item_name: str) -> bool:
+        if self.main_pokemon is None:
+            self.logger.log_and_showinfo("error", "No active Pokemon to boost.")
+            return False
+
+        if item_name not in self.stat_boost_items:
+            return False
+
+        if not self._consume_one(item_name):
+            self.logger.log_and_showinfo("info", f"You have no {item_name} left.")
+            return False
+
+        stat_name, boost_amount = self.stat_boost_items[item_name]
+
+        # Determine actual friendly name
+        friendly_stat_names = {
+            "atk": "Attack",
+            "def": "Defense",
+            "spa": "Special Attack",
+            "spd": "Special Defense",
+            "spe": "Speed",
+            "accuracy": "Accuracy"
+        }
+        friendly_name = friendly_stat_names.get(stat_name, stat_name)
+
+        # Apply the boost. Limit cap is traditionally 6 in Pokemon.
+        current_boost = self.main_pokemon.stat_stages.get(stat_name, 0)
+        new_boost = min(6, current_boost + boost_amount)
+        self.main_pokemon.stat_stages[stat_name] = new_boost
+
+        # Persist the change
+        from ..functions.update_main_pokemon import save_main_pokemon
+        save_main_pokemon(self.main_pokemon)
+
+        self._refresh_bag()
+        play_effect_sound(self.settings_obj, "HpHeal")  # Reusing heal sound for buff
+
+        self.logger.log_and_showinfo(
+            "info",
+            f"{self.main_pokemon.name}'s {friendly_name} sharply rose!" if boost_amount >= 2 else f"{self.main_pokemon.name}'s {friendly_name} rose!"
+        )
+        return True
+
+    def _boost_main_pokemon(self, item_name: str) -> bool:
+        return self.Check_Boost_Item(item_name)
 
     def _heal_main_pokemon(self, item_name: str, heal_points: int) -> bool:
         """Bag-button entry point for a healing item.
