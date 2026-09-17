@@ -3597,6 +3597,18 @@ body {
     box-shadow: 0 4px 14px rgba(63, 185, 80, 0.28);
 }
 
+.det-action-btn.sell {
+    background: linear-gradient(135deg, var(--accent-red), #d62f2f);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(237, 66, 69, 0.28);
+}
+
+.det-action-btn.sell:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(237, 66, 69, 0.45);
+    background: linear-gradient(135deg, #ff6b6b, var(--accent-red));
+}
+
 .det-action-btn.use:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(63, 185, 80, 0.45);
