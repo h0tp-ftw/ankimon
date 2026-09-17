@@ -291,6 +291,12 @@ class ItemsBridge(QObject):
         self._w.push_screen_data()
         return result
 
+    @pyqtSlot(str, result="QVariant")
+    def sellItem(self, item_name):
+        result = self._w.handle_sell(item_name)
+        self._w.push_screen_data()
+        return result
+
     # In-shell Pokémon picker — replaces the legacy QInputDialog flow for
     # evolution items + held items. JS calls getPokemonChoices() to populate
     # the modal, then useItemOnPokemon() with the chosen individual_id.
@@ -1952,6 +1958,34 @@ class AnkimonItemsWeb(QDialog):
             return {"ok": False, "message": f"Reroll failed: {e}"}
 
         return {"ok": True, "message": f"Rerolled stock for {cost}¥"}
+
+    def handle_sell(self, item_name):
+        item = self._find_serialized(item_name)
+        if not item:
+            return {"ok": False, "message": "Item not found in your bag."}
+        if (item.get("owned_quantity") or 0) <= 0:
+            return {"ok": False, "message": "You don't own that item."}
+
+        ui_name = item["ui_name"]
+        sell_price = int(item.get("price") or 0)
+
+        try:
+            services.db.update_item_quantity(item_name, -1)
+
+            cash = int(self.shop_manager.get_callback("trainer.cash") or 0)
+            self.shop_manager.set_callback("trainer.cash", int(cash + sell_price))
+
+            # Use notify_stats_changed to update the UI
+            try:
+                from ..singletons import notify_stats_changed
+                notify_stats_changed()
+            except Exception:
+                pass
+
+        except Exception as e:
+            return {"ok": False, "message": f"Sell failed: {e}"}
+
+        return {"ok": True, "message": f"Sold {ui_name} for {sell_price}¥"}
 
     def handle_use(self, item_name):
         item = self._find_serialized(item_name)

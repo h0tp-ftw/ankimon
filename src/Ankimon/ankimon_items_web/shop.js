@@ -625,6 +625,14 @@
             actions.appendChild(use);
         }
 
+        if (ownedQty > 0) {
+            const sell = document.createElement('button');
+            sell.className = 'det-action-btn sell';
+            sell.innerHTML = '<span>Sell</span><span class="det-action-meta">' + formatMoney(item.price || 0) + '¥</span>';
+            sell.onclick = () => onSell(item);
+            actions.appendChild(sell);
+        }
+
         if (actions.childElementCount === 0) {
             hint.textContent = 'Nothing to do for this item right now.';
         } else if (item.in_shop && unaffordable && !blockedTm) {
@@ -690,6 +698,14 @@
         bridge.buy(item.name, !!item.is_tm, function (result) {
             if (!result) return;
             showToast(result.message || (result.ok ? 'Purchased!' : 'Purchase failed.'), !result.ok);
+        });
+    }
+
+    function onSell(item) {
+        if (!bridge || !bridge.sellItem) return;
+        bridge.sellItem(item.name, function (result) {
+            if (!result) return;
+            showToast(result.message || (result.ok ? 'Sold!' : 'Sell failed.'), !result.ok);
         });
     }
 
