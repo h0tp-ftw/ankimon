@@ -4,6 +4,7 @@ from ..functions.pokemon_functions import find_experience_for_level
 from ..functions.create_css_for_reviewer import create_css_for_reviewer
 import json
 import os
+from ..functions.pokedex_functions import _load_poke_species_cache, safe_int
 from ..functions.create_gui_functions import create_status_html
 from ..services import services
 
@@ -216,9 +217,44 @@ class Reviewer_Manager:
         if ownership_data is None:
             try:
                 db = services.db
-                # Get the maximum total IV of any captured pokemon of this species
+                # First find all family members
+                poke_species_data = _load_poke_species_cache()
+                family_ids = set([self.enemy_pokemon.id])
+
+                # Find the base form
+                current_id = self.enemy_pokemon.id
+                while True:
+                    found_parent = None
+                    for row in poke_species_data.values():
+                        if safe_int(row.get("id")) == current_id:
+                            parent_id = safe_int(row.get("evolves_from_species_id"))
+                            if parent_id is not None and parent_id != 0:
+                                found_parent = parent_id
+                                break
+                    if found_parent:
+                        current_id = found_parent
+                        family_ids.add(current_id)
+                    else:
+                        break
+
+                # Find all evolutions starting from the base form
+                base_id = current_id
+                queue = [base_id]
+                while queue:
+                    current = queue.pop(0)
+                    for row in poke_species_data.values():
+                        if safe_int(row.get("evolves_from_species_id")) == current:
+                            evo_id = safe_int(row.get("id"))
+                            if evo_id not in family_ids:
+                                family_ids.add(evo_id)
+                                queue.append(evo_id)
+
+                family_ids_list = list(family_ids)
+                placeholders = ",".join("?" for _ in family_ids_list)
+
+                # Get the maximum total IV of any captured pokemon of this species or its family
                 cursor = db.execute(
-                    """
+                    f"""
                     SELECT MAX(
                         json_extract(data, '$.iv.hp') +
                         json_extract(data, '$.iv.atk') +
@@ -227,9 +263,9 @@ class Reviewer_Manager:
                         json_extract(data, '$.iv.spd') +
                         json_extract(data, '$.iv.spe')
                     )
-                    FROM captured_pokemon WHERE pokedex_id = ?
+                    FROM captured_pokemon WHERE pokedex_id IN ({placeholders})
                     """,
-                    (self.enemy_pokemon.id,),
+                    tuple(family_ids_list),
                 )
                 row = cursor.fetchone()
                 if row and row[0] is not None:

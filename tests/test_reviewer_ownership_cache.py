@@ -191,6 +191,18 @@ def _load_reviewer_obj(fake_services):
 
 
 def _new_manager(fake_services, enemy_id=25):
+    import sys
+    from unittest.mock import MagicMock
+    if "Ankimon.functions.pokedex_functions" not in sys.modules:
+        sys.modules["Ankimon.functions.pokedex_functions"] = MagicMock()
+    mod = sys.modules["Ankimon.functions.pokedex_functions"]
+    mod._load_poke_species_cache = MagicMock(return_value={
+        "25": {"id": "25", "evolves_from_species_id": "172"},
+        "172": {"id": "172", "evolves_from_species_id": ""},
+        "26": {"id": "26", "evolves_from_species_id": "25"}
+    })
+    mod.safe_int = lambda x: int(x) if x else None
+
     mod = _load_reviewer_obj(fake_services)
     mgr = mod.Reviewer_Manager(
         FakeSettings(), FakePokemon(1), FakePokemon(enemy_id), MagicMock()
