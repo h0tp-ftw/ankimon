@@ -65,6 +65,7 @@ jobs:
         run: |
           xvfb-run -a python3 -m harness.checks.probe_real_boot
           xvfb-run -a python3 -m harness.checks.probe_real_play
+          xvfb-run -a python3 -m harness.checks.probe_real_migration
           xvfb-run -a python3 -m harness.checks.probe_real_move_selection
           xvfb-run -a python3 -m harness.checks.probe_real_save_import
           xvfb-run -a python3 -m harness.checks.probe_real_tm_learnsets
