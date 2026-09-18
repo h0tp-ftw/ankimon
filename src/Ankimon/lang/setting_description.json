@@ -1,5 +1,5 @@
 {
-    "battle.automatic_battle": "Set automatic battle mode for wild Pokémon interactions when enemy HP is 0. \n[0: Disabled, 1: Auto-catch, 2: Auto-defeat (to gain XP), 3: Catch if NEW Pokémon (not in collection), otherwise defeat].",
+    "battle.automatic_battle": "Set automatic battle mode for wild Pokémon interactions when enemy HP is 0. \n[0: Disabled, 1: Auto-catch, 2: Auto-defeat (to gain XP), 3: Catch if NEW Pokémon (not in collection), otherwise defeat, 4: Catch if NEW or if it has superior IVs to your best family member, otherwise defeat].",
     "battle.auto_catch_wishlist": "List of Pokémon IDs that are always caught when encountered, regardless of other auto-catch settings.",
     "battle.auto_catch_legendary": "Always catch Legendary Pokémon when encountered.",
     "battle.auto_catch_mythical": "Always catch Mythical Pokémon when encountered.",

@@ -235,7 +235,7 @@ _auto_battle_override: Optional[Literal["catch", "defeat"]] = None
 
 
 def get_auto_battle_setting(settings_source=None) -> int:
-    """Read ``battle.automatic_battle`` clamped to the valid [0, 3] range.
+    """Read ``battle.automatic_battle`` clamped to the valid [0, 4] range.
 
     Centralizes the parse-with-fallback logic that used to be copy-pasted
     across ``handle_enemy_faint`` and the reviewer-button shortcut functions
@@ -245,7 +245,7 @@ def get_auto_battle_setting(settings_source=None) -> int:
     source = settings_source if settings_source is not None else settings_obj
     try:
         value = int(source.get("battle.automatic_battle"))
-        if not (0 <= value <= 3):
+        if not (0 <= value <= 4):
             return 0
         return value
     except (ValueError, TypeError):
@@ -2076,13 +2076,75 @@ def handle_enemy_faint(
     should_catch_always = _enemy_protected_by_auto_catch(enemy_pokemon)
 
     # --- Normal auto-battle logic (no override) ---
-    if auto_battle_setting == 3:  # Catch if uncollected
+    if auto_battle_setting == 3 or auto_battle_setting == 4:  # Catch if uncollected (or superior IVs for setting 4)
         enemy_id = enemy_pokemon.id
         # Check cache instead of file
+
+        has_superior_ivs = False
+        if auto_battle_setting == 4:
+            from ..pyobj.database_manager import DatabaseManager
+            db = ankimon_db
+            if hasattr(db, "execute"):
+                try:
+                    from .pokedex_functions import _load_poke_species_cache, safe_int
+                    poke_species_data = _load_poke_species_cache()
+                    family_ids = set([enemy_pokemon.id])
+                    current_id = enemy_pokemon.id
+                    while True:
+                        found_parent = None
+                        for row in poke_species_data.values():
+                            if safe_int(row.get("id")) == current_id:
+                                parent_id = safe_int(row.get("evolves_from_species_id"))
+                                if parent_id is not None and parent_id != 0:
+                                    found_parent = parent_id
+                                    break
+                        if found_parent:
+                            current_id = found_parent
+                            family_ids.add(current_id)
+                        else:
+                            break
+
+                    base_id = current_id
+                    queue = [base_id]
+                    while queue:
+                        current = queue.pop(0)
+                        for row in poke_species_data.values():
+                            if safe_int(row.get("evolves_from_species_id")) == current:
+                                evo_id = safe_int(row.get("id"))
+                                if evo_id not in family_ids:
+                                    family_ids.add(evo_id)
+                                    queue.append(evo_id)
+
+                    family_ids_list = list(family_ids)
+                    placeholders = ",".join("?" for _ in family_ids_list)
+
+                    cursor = db.execute(
+                        f"""
+                        SELECT MAX(
+                            json_extract(data, '$.iv.hp') +
+                            json_extract(data, '$.iv.atk') +
+                            json_extract(data, '$.iv.def') +
+                            json_extract(data, '$.iv.spa') +
+                            json_extract(data, '$.iv.spd') +
+                            json_extract(data, '$.iv.spe')
+                        )
+                        FROM captured_pokemon WHERE pokedex_id IN ({placeholders})
+                        """,
+                        tuple(family_ids_list),
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0] is not None:
+                        max_caught_iv_total = row[0]
+                        enemy_iv_total = sum(enemy_pokemon.iv.values())
+                        has_superior_ivs = enemy_iv_total > max_caught_iv_total
+                except Exception:
+                    pass
+
         if (
             enemy_id not in collected_pokemon_ids
             or enemy_pokemon.shiny
             or should_catch_always
+            or has_superior_ivs
         ):
             ankimon_tracker_obj.faint_processed = True
             catch_pokemon(

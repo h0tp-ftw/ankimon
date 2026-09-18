@@ -1408,8 +1408,65 @@ def _run_mobile_battles_impl(
                     caught = False
                     if auto_battle_setting == 1: caught = True
                     elif auto_battle_setting == 2: caught = (current_enemy_pokemon.shiny or should_catch_always)
-                    elif auto_battle_setting == 3:
-                        caught = (current_enemy_pokemon.id not in collected_ids or current_enemy_pokemon.shiny or should_catch_always)
+                    elif auto_battle_setting == 3 or auto_battle_setting == 4:
+                        has_superior_ivs = False
+                        if auto_battle_setting == 4:
+                            try:
+                                from .pokedex_functions import _load_poke_species_cache, safe_int
+                                poke_species_data = _load_poke_species_cache()
+                                family_ids = set([current_enemy_pokemon.id])
+                                current_id = current_enemy_pokemon.id
+                                while True:
+                                    found_parent = None
+                                    for row in poke_species_data.values():
+                                        if safe_int(row.get("id")) == current_id:
+                                            parent_id = safe_int(row.get("evolves_from_species_id"))
+                                            if parent_id is not None and parent_id != 0:
+                                                found_parent = parent_id
+                                                break
+                                    if found_parent:
+                                        current_id = found_parent
+                                        family_ids.add(current_id)
+                                    else:
+                                        break
+
+                                base_id = current_id
+                                queue = [base_id]
+                                while queue:
+                                    current = queue.pop(0)
+                                    for row in poke_species_data.values():
+                                        if safe_int(row.get("evolves_from_species_id")) == current:
+                                            evo_id = safe_int(row.get("id"))
+                                            if evo_id not in family_ids:
+                                                family_ids.add(evo_id)
+                                                queue.append(evo_id)
+
+                                family_ids_list = list(family_ids)
+                                placeholders = ",".join("?" for _ in family_ids_list)
+
+                                cursor = services.db.execute(
+                                    f"""
+                                    SELECT MAX(
+                                        json_extract(data, '$.iv.hp') +
+                                        json_extract(data, '$.iv.atk') +
+                                        json_extract(data, '$.iv.def') +
+                                        json_extract(data, '$.iv.spa') +
+                                        json_extract(data, '$.iv.spd') +
+                                        json_extract(data, '$.iv.spe')
+                                    )
+                                    FROM captured_pokemon WHERE pokedex_id IN ({placeholders})
+                                    """,
+                                    tuple(family_ids_list),
+                                )
+                                row = cursor.fetchone()
+                                if row and row[0] is not None:
+                                    max_caught_iv_total = row[0]
+                                    enemy_iv_total = sum(current_enemy_pokemon.iv.values())
+                                    has_superior_ivs = enemy_iv_total > max_caught_iv_total
+                            except Exception:
+                                pass
+
+                        caught = (current_enemy_pokemon.id not in collected_ids or current_enemy_pokemon.shiny or should_catch_always or has_superior_ivs)
                     
                     if caught:
                         collected_ids.add(current_enemy_pokemon.id)
