@@ -96,6 +96,9 @@ Setting `catch_key` to a letter allows you to catch pokemons inside of the revie
 Setting `defeat_key` to a letter allows you to defeat pokemons inside of the reviewer when their hp reaches 0 by pressing control and your letter - default is F.
 - `defeat_key` [A - Z]
 
+Setting `controls.allow_to_choose_moves` to `true` allows the player to manually pick attack moves in battles with Keys 1-4 or by clicking them. Note: Enabling this applies a 50% penalty to all Pokémon XP and Trainer XP earned.
+- `controls.allow_to_choose_moves` [True/False]
+
 `review_hp_bar_thickness` sets the pixel thickness of the HP bar in the reviewer. 
 - Setting it to `2` will result in an 8px thickness.
 - Setting it to `3` will result in a 12px thickness.

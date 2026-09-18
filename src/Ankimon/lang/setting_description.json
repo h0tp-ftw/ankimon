@@ -20,7 +20,7 @@
     "controls.catch_key": "Key for catching Pokémon when its HP is 0. [A-Z]",
     "controls.team_cycle_key": "Key for cycling to the next Pokémon in your team. [A-Z or 0-9]",
     "controls.key_for_opening_closing_ankimon": "Key to open/close Ankimon interface with control/command key. Write the keys like 'Shift+N' you can also add things like Ctrl, Shift, and multiple button combinations",
-    "controls.allow_to_choose_moves": "Allows player to manually pick attack moves in battles with Keys 1-4 or fast click.",
+    "controls.allow_to_choose_moves": "Allows player to manually pick attack moves in battles with Keys 1-4 or fast click. Note: Enabling this applies a 50% penalty to all Pokémon XP and Trainer XP earned.",
     "gui.animate_time": "Enable a small animation for Pokémon interactions. This animation is displayed when you or the wild Pokémon is taking damage.",
     "gui.gif_in_collection": "Show animated sprites (GIFs) instead of static sprites in the collection view.",
     "gui.show_sprites_across_ankimon": "Disable this setting to hide all Ankimon-related visual elements, such as sprites, GIFs, and HP/XP bars. This includes images in the Pokémon PC, Trainer Card, Item Shop, and reviewer. Text and descriptions will be retained. Great for focus sessions or a word-based presentation. Only exclusion: Mon sprites are still shown in the Ankimon Window (Ctrl+Shift+P).",
