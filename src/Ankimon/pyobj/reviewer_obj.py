@@ -256,12 +256,12 @@ class Reviewer_Manager:
                 cursor = db.execute(
                     f"""
                     SELECT MAX(
-                        json_extract(data, '$.iv.hp') +
-                        json_extract(data, '$.iv.atk') +
-                        json_extract(data, '$.iv.def') +
-                        json_extract(data, '$.iv.spa') +
-                        json_extract(data, '$.iv.spd') +
-                        json_extract(data, '$.iv.spe')
+                        COALESCE(json_extract(data, '$.iv.hp'), 0) +
+                        COALESCE(json_extract(data, '$.iv.atk'), 0) +
+                        COALESCE(json_extract(data, '$.iv.def'), 0) +
+                        COALESCE(json_extract(data, '$.iv.spa'), 0) +
+                        COALESCE(json_extract(data, '$.iv.spd'), 0) +
+                        COALESCE(json_extract(data, '$.iv.spe'), 0)
                     )
                     FROM captured_pokemon WHERE pokedex_id IN ({placeholders})
                     """,
