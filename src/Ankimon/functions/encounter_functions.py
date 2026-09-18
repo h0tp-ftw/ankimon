@@ -2082,7 +2082,7 @@ def handle_enemy_faint(
 
         has_superior_ivs = False
         if auto_battle_setting == 4:
-            from ..pyobj.database_manager import DatabaseManager
+            from ..pyobj.database_manager import AnkimonDB
             db = ankimon_db
             if hasattr(db, "execute"):
                 try:
