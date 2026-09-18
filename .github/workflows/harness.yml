@@ -50,7 +50,8 @@ jobs:
           python-version: '3.12'
       - name: System deps (Qt + xvfb)
         run: |
-          sudo apt-get update -qq
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list || true
+        sudo apt-get update -qq || true
           sudo apt-get install -y -qq --no-install-recommends \
             xvfb libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 \
@@ -81,7 +82,8 @@ jobs:
           python-version: '3.12'
       - name: System deps (Chromium + xvfb)
         run: |
-          sudo apt-get update -qq
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list || true
+        sudo apt-get update -qq || true
           sudo apt-get install -y -qq --no-install-recommends \
             xvfb x11-utils libegl1 libgbm1 libnss3 libpulse0 libasound2t64 \
             libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
