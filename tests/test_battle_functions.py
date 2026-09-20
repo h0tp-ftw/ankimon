@@ -82,6 +82,25 @@ def _effects(changes, main=None, enemy=None):
     )
 
 
+@pytest.mark.parametrize("before", ["fighting", "brn"])
+def test_fainting_does_not_announce_status_application_or_recovery(before):
+    messages = _effects(
+        [{"key": "user.active.status", "before": before, "after": "fainted"}],
+        main=_Holder("Snorlax"),
+    )
+
+    assert messages == []
+
+
+def test_regular_status_recovery_is_still_announced():
+    messages = _effects(
+        [{"key": "user.active.status", "before": "brn", "after": "fighting"}],
+        main=_Holder("Snorlax"),
+    )
+
+    assert messages == ["Snorlax recovers from Brn!"]
+
+
 def test_a_spent_held_item_is_announced_with_the_name_the_player_knows():
     """The engine id has the hyphen stripped; the holder still has the real one.
 

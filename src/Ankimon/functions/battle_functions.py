@@ -200,7 +200,7 @@ def _process_battle_effects(
         if (
             key.endswith(".status")
             and before in ("fighting", None)
-            and after not in ("fighting", None)
+            and after not in ("fighting", None, "fainted")
         ):
             target = "user" if key.startswith("user.") else "opponent"
             newly_applied_statuses.add((target, normalize_status_name(after)))
@@ -325,7 +325,7 @@ def _process_battle_effects(
                 pokemon_name = get_pokemon_name(target)
 
                 # Status applied
-                if before in ("fighting", None) and after not in ("fighting", None):
+                if before in ("fighting", None) and after not in ("fighting", None, "fainted"):
                     normalized_status = normalize_status_name(after)
                     translation_key = f"status_{normalized_status}_apply"
 
