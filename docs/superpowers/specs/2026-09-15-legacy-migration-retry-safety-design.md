@@ -1,165 +1,91 @@
-# Legacy Migration Retry Safety Design
+# Legacy migration retry safety
 
-## Context
+`LegacyMigration` is the shared Qt-free runner for the database entry point and
+upgrade dialog. Verified work survives a later source failure or cancellation.
+Retry may import pending records, but must preserve subsequent gameplay changes
+and releases. Tests and harness tooling stay outside the shipped `src/Ankimon/`.
 
-The shared `LegacyMigration` runner commits some legacy sources before the
-entire migration finishes. That is intentional: large saves should retain
-verified work after a later source fails. The current checkpoints do not carry
-enough identity information, however, and the collection checkpoint is written
-only after items and badges succeed. A user who resumes gameplay after a
-cancelled or failed dialog can therefore have live Pokemon changes reverted on
-Retry, or have an as-yet-unmigrated team become impossible to match.
+## Identity ownership
 
-Inventory migration has a separate integrity gap. `items.id` is an integer
-primary key, uncatalogued items currently receive SQLite's next positive row
-ID, and catalogued items use their positive PokeAPI IDs. `INSERT OR REPLACE`
-can consequently delete a previously verified uncatalogued stack. Per-write
-read-back checks cannot detect a stack displaced by a later write.
+Collection and main mappings store an assigned individual ID separately from the
+original legacy ID, canonical name, normalized species ID, level, and IVs. These
+immutable matching fields remain valid after the live Pokemon changes. Generated
+IDs depend on source contents and entry position, preserving identical twins and
+remapped duplicate IDs across retries.
 
-## Required Outcomes
+Fresh main imports and pending collection reconciliation use `resolve_member()`:
+an explicit main ID denotes a separate Pokemon unless the collection claims that
+ID; an ID-less main can match either an ID-less or explicit collection entry by
+species, name, level, and IVs. Missing IDs never constitute an exact ID match.
+On Retry, the main checkpoint's original ID is used for this decision, not its
+generated assigned ID.
 
-1. An uncatalogued item and a catalogued item with a colliding positive ID both
-   survive migration with their expected quantities.
-2. Inventory is verified as a complete batch after all writes and before
-   commit. Any missing or mismatched stack rolls back the batch and leaves
-   Phase 1 incomplete.
-3. A team member using `species_id` matches the corresponding captured record
-   using `id` even when IV data is present. Species aliases are normalized
-   before the IV-aware comparison; matching must not fall back to a weaker
-   identity.
-4. A verified legacy collection retains a durable mapping from every legacy
-   record to its assigned individual ID, including reused IDs and remapped
-   duplicate IDs.
-5. If migration is cancelled before the team is saved, Retry uses the durable
-   mapping rather than mutable live Pokemon fields. A level change between
-   attempts must not break team migration.
-6. Collection and main-Pokemon checkpoints are committed immediately after
-   their own save/read-back verification, independently of inventory and
-   badges. A later item failure followed by live level changes or releases must
-   not let Retry overwrite or recreate those Pokemon.
-7. Existing successful migration, duplicate-ID, main-Pokemon, team, history,
-   cancellation, and archiving behavior remains covered and passing.
+A checkpointed main can own one compatible pending collection entry. Multiple
+compatible entries require explicit recovery; Retry does not guess. IDs already
+reserved by other collection entries or checkpoints cannot be claimed by a twin.
+An explicit collection alias mapped to a generated main ID remains available for
+team resolution. Resolving a team slot consumes all aliases for its assigned ID,
+and the live row must exist before the team can be saved.
 
-## Design
+## Permitted retry writes
 
-### Collision-safe item identities
+- A committed collection entry is skipped, even if its Pokemon has since changed
+  or been released. Pending entries cannot reuse its assigned identity.
+- A pending collection entry mapped to a checkpointed main preserves the live
+  row. If that row is missing, migration stops instead of recreating it.
+- A pending main may replace an unchanged collection snapshot it owns. Later live
+  changes take precedence; a missing owned row requires explicit recovery.
+- A verified main, inventory, or team source is skipped. Item consumption and team
+  changes after a partial import survive Retry.
+- An older Phase-1 marker without row snapshots permits conservative continuation:
+  existing identities can be reconciled without overwriting live data, but missing
+  or unresolvable Pokemon require recovery. The marker remains present on failure.
 
-`AnkimonDB.save_item()` will assign newly encountered uncatalogued items
-negative IDs, below the smallest existing negative ID. PokeAPI catalogue IDs
-remain positive. Before inserting a catalogued item, the method will detect a
-different row already occupying that catalogue ID and relocate the occupant to
-a negative ID within the same SQLite transaction. This also protects databases
-that already contain an uncatalogued item with an old automatically allocated
-positive ID.
+## Checkpoints and verification
 
-The existing item-name uniqueness contract and metadata lookup remain intact.
-An existing uncatalogued item keeps its current ID during ordinary updates;
-when that same item later becomes catalogued, it can move to the catalogue ID
-without deleting another stack.
+Each collection row commits atomically with its identity mapping and imported
+snapshot. The main row and its mapping also commit together. A complete collection
+checkpoint is written only when every entry has succeeded. Unsupported checkpoints,
+invalid assigned IDs, and null collection snapshots fail closed.
 
-### Whole-batch inventory verification
+The runner fingerprints each parsed source before its first possible write and
+validates pinned fingerprints before trusting checkpoints and before completion.
+Changed or removed sources, including formatting-only edits, require explicit
+reconciliation. Older ownership checkpoints without fingerprints cannot certify
+the current source. JSON that failed parsing before any import can be repaired.
 
-`LegacyMigration.migrate_items()` will retain the immediate checks that localize
-a failed write, then perform a second pass over every expected normalized item
-name and quantity after all writes. It will commit only when the whole set is
-present and correct. Any mismatch records an integrity issue, raises through
-the existing step boundary, and rolls back every uncommitted item write.
+Read-back checks verify writes immediately and at source/completion boundaries.
+Final Pokemon verification failures persist as expected rows in metadata; Retry
+cannot clear them by trusting earlier checkpoints. Cancellation rolls back the
+current transaction while keeping previously verified work.
 
-### Normalized Pokemon species matching
+The Phase-1 marker follows successful collection, main, inventory, and badges.
+Full completion follows team, history, settings, and final verification. The dialog
+checks fingerprints again after its last progress callback and archives only on
+complete success. The runner never modifies source files.
 
-A shared legacy species-key helper will read `species_id` or `id` and normalize
-their values for comparison. `find_matching_captured()` and the reduced team
-identity comparison will use that helper before comparing name, level, and IVs.
-The IV-aware matcher remains the primary path, so two same-species Pokemon with
-different IVs cannot be accidentally interchanged.
+## Inventory integrity
 
-### Durable source identity checkpoints
+Ordinary `AnkimonDB.save_item()` writes and migration share collision-safe item
+allocation. New uncatalogued items receive negative IDs; catalogue IDs remain
+positive. A conflicting occupant moves to a negative ID in the same transaction.
+Existing uncatalogued IDs remain stable during ordinary updates. A writer lock
+protects allocation, and a savepoint makes relocation and upsert atomic within a
+caller's transaction.
 
-The `migration_verified_collection` metadata value will become a versioned JSON
-payload containing duplicate legacy IDs plus an ordered list of compact mapping
-records. Each mapping record stores:
+Inventory migration verifies every normalized stack after all writes, then commits
+the entire batch with its checkpoint. A missing or mismatched stack rolls back the
+batch without undoing previously verified Pokemon sources.
 
-- the assigned individual ID;
-- the original valid legacy individual ID, if one existed;
-- canonical name, normalized species ID, level, and IVs.
+## Recovery and validation
 
-Those fields reproduce the runner's existing strong matching identity without
-copying an entire save into metadata. The assigned ID is recorded only after
-the corresponding captured row passes read-back verification. A complete
-collection mapping is checkpointed only when every collection entry succeeds.
+Completed migrations are not reopened automatically. Changed sources, ambiguous
+ownership, missing pending identities, and unresolved verification failures require
+inspection of the original files and current database. Deleting checkpoints loses
+the evidence protecting live progress. See the [recovery guide](../../legacy_migration_recovery.md).
 
-A separate `migration_verified_main` checkpoint stores the equivalent compact
-mapping for the verified main Pokemon, including a main Pokemon outside the
-collection. This makes an id-less main record available to pending team
-matching after live state changes.
-
-On Retry, a valid checkpoint causes that source to be skipped regardless of the
-broader Phase-1 marker. The compact legacy snapshots are restored as matching
-candidates, while the runner reads the assigned IDs from the live database when
-saving the team. Missing live rows are never recreated: a released Pokemon can
-only make a legacy team reference fail explicitly, not resurrect the row.
-
-Collection and main checkpoints are committed directly after their respective
-final verification. Items and badges then run, and the existing `migrated`
-Phase-1 marker is written only when all Phase-1 sources have succeeded. The
-`migrated_phase2` marker and JSON archiving remain gated on complete success.
-
-## Failure Handling
-
-- Invalid or incomplete checkpoint payloads fail closed with a migration error;
-  the runner does not guess identities or replay legacy records over live state.
-- A collection entry that fails to save or verify prevents creation of the
-  collection checkpoint.
-- A main-Pokemon failure leaves a valid collection checkpoint intact and Retry
-  attempts only the unverified main source.
-- Inventory mismatches roll back the item transaction and leave both completion
-  markers unset while preserving earlier source checkpoints.
-- Team resolution always verifies that the mapped assigned ID still references
-  a captured Pokemon before replacing the team.
-
-## Verification
-
-Tests will use the real `AnkimonDB`, disposable SQLite files, and the shared
-migration runner. They will first fail against `a31c0b67` and then cover:
-
-- uncatalogued/catalogued item-ID collision survival;
-- deliberate loss of an earlier item during a later write, proving final batch
-  verification and rollback;
-- cancellation immediately before team migration, live level-up, then Retry;
-- `species_id` versus `id` with matching non-empty IV dictionaries;
-- item failure, live level-up and release, then Retry without reversion or
-  resurrection.
-
-After targeted migration tests pass, run the full Python suite, the Tier-1
-`harness/check.py` gate, and the real migration probe required by the branch.
-
-## PR #861 review corrections — 2026-09-16
-
-The source boundaries above are insufficient for collection and main records
-that share a captured-Pokemon row. The implementation now adds per-entry
-collection provenance: the assigned identity and imported snapshot commit
-atomically with the row. A partial Retry skips these owned entries, including
-rows subsequently released, and reserves their assigned IDs before matching
-pending entries. Main ownership is restored before pending collection writes.
-Main writes and their checkpoint also commit together. A pending main source
-can replace an unchanged imported collection snapshot; later live changes take
-precedence. Older source checkpoints without row snapshots preserve live data.
-
-An old Phase-1 marker without collection provenance enables conservative
-continuation only. Existing rows can be identified without overwriting them;
-missing or unresolvable records produce an explicit-recovery error and retain
-all sources. The old marker remains present across errors, including final
-read-back failure, so Retry cannot accidentally become a fresh import. No
-relaxation of level or IV matching is permitted.
-
-Collection, main and live snapshots remain matching aliases for each assigned
-ID. Resolving one team slot consumes all aliases for that ID. Inventory now
-commits its verified batch and checkpoint together, preserving consumption
-after a later badge failure. Missing source files initialize empty counters;
-null species_id falls back to id; cancellation during generic error reporting
-returns the ordinary cancelled result.
-
-Completed migrations are still not reopened. Recovery of an already-completed
-historical save requires inspecting its original sources and live database.
-See [the review correction plan](../plans/2026-09-16-pr861-review-fixes.md) for
-verification evidence.
+`tests/test_migration_recovery.py` exercises real `AnkimonDB` and disposable SQLite
+files, including independent collection/main ID formats, team aliases, database
+reopening, level-ups, releases, twins, rollback, and source preservation.
+`harness/checks/probe_real_migration.py` exercises the real Qt dialog and archive
+boundary; `python3 harness/check.py` supplies the zero-dependency Tier-1 gate.
