@@ -8546,6 +8546,7 @@
     "actual_id": 10233,
     "name": "Typhlosion-Hisui",
     "baseSpecies": "Typhlosion",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Fire",
@@ -23093,6 +23094,7 @@
     "actual_id": 10236,
     "name": "Samurott-Hisui",
     "baseSpecies": "Samurott",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Water",
@@ -24764,6 +24766,7 @@
     "actual_id": 10237,
     "name": "Lilligant-Hisui",
     "baseSpecies": "Lilligant",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Grass",
@@ -27933,6 +27936,7 @@
     "actual_id": 10240,
     "name": "Braviary-Hisui",
     "baseSpecies": "Braviary",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Psychic",
@@ -31596,6 +31600,7 @@
     "actual_id": 10241,
     "name": "Sliggoo-Hisui",
     "baseSpecies": "Sliggoo",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Steel",
@@ -32163,6 +32168,7 @@
     "actual_id": 10243,
     "name": "Avalugg-Hisui",
     "baseSpecies": "Avalugg",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Ice",
@@ -32803,6 +32809,7 @@
     "actual_id": 10244,
     "name": "Decidueye-Hisui",
     "baseSpecies": "Decidueye",
+    "evoRegion": "Hisui",
     "forme": "Hisui",
     "types": [
       "Grass",
