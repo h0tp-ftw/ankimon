@@ -107,7 +107,7 @@ class EvoWindow(QWidget):
         except Exception:
             return True
 
-    def display_evo_complete(self, prevo_id: int, evo_id: int):
+    def display_evo_complete(self, prevo_id: int, evo_id: int, is_shiny: bool = False):
         """
         Displays the GUI notification that the given Pokemon has evolved.
 
@@ -120,7 +120,7 @@ class EvoWindow(QWidget):
         """
         self.clear_layout(self.layout())
         layout = self.layout()
-        pkmn_label = self._display_evo_complete_layout(prevo_id, evo_id)
+        pkmn_label = self._display_evo_complete_layout(prevo_id, evo_id, is_shiny)
         layout.addWidget(pkmn_label)
         # Give the celebration screen an explicit way to dismiss itself instead
         # of leaving the user to find the OS window-close button (the only exit
@@ -134,7 +134,7 @@ class EvoWindow(QWidget):
         self.setMaximumHeight(300)
         self.show()
 
-    def _display_evo_complete_layout(self, prevo_id: int, evo_id: int):
+    def _display_evo_complete_layout(self, prevo_id: int, evo_id: int, is_shiny: bool = False):
         """
         Creates the GUI layout for the successful evolution.
 
@@ -169,7 +169,10 @@ class EvoWindow(QWidget):
         show_sprites = self._should_show_sprites()
         if show_sprites:
             # Display the Pokémon image
-            image_path = frontdefault / f"{evo_id}.png"
+            if is_shiny and (frontdefault / "shiny" / f"{evo_id}.png").exists():
+                image_path = frontdefault / "shiny" / f"{evo_id}.png"
+            else:
+                image_path = frontdefault / f"{evo_id}.png"
             image_pixmap = QPixmap()
             image_pixmap.load(str(image_path))
             image_pixmap = resize_pixmap_img(image_pixmap, 250)
@@ -219,8 +222,16 @@ class EvoWindow(QWidget):
         self.setMaximumHeight(530)
         self.clear_layout(self.layout())
         layout = self.layout()
+        is_shiny = False
+        try:
+            pokemon = services.db.get_pokemon(individual_id)
+            if pokemon:
+                is_shiny = pokemon.get("shiny", False)
+        except Exception:
+            pass
+
         pokemon_images, evolve_button, dont_evolve_button = (
-            self._ask_pokemon_evo_layout(individual_id, prevo_id, evo_id, item_name)
+            self._ask_pokemon_evo_layout(individual_id, prevo_id, evo_id, item_name, is_shiny)
         )
         layout.addWidget(pokemon_images)
         layout.addWidget(evolve_button)
@@ -235,6 +246,7 @@ class EvoWindow(QWidget):
         prevo_id: int,
         evo_id: int,
         item_name: Optional[str] = None,
+        is_shiny: bool = False,
     ):
         """
         Creates the GUI layout for the upcoming evolution.
@@ -273,11 +285,19 @@ class EvoWindow(QWidget):
         # Only load, resize, and draw Pokémon sprites if sprites are enabled
         if show_sprites:
             # Display the Pokémon image
-            pkmnimage_path = frontdefault / f"{prevo_id}.png"
+            if is_shiny and (frontdefault / "shiny" / f"{prevo_id}.png").exists():
+                pkmnimage_path = frontdefault / "shiny" / f"{prevo_id}.png"
+            else:
+                pkmnimage_path = frontdefault / f"{prevo_id}.png"
+
             pkmnpixmap = QPixmap()
             pkmnpixmap.load(str(pkmnimage_path))
 
-            pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
+            if is_shiny and (frontdefault / "shiny" / f"{evo_id}.png").exists():
+                pkmnimage_path2 = frontdefault / "shiny" / f"{evo_id}.png"
+            else:
+                pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
+
             pkmnpixmap2 = QPixmap()
             pkmnpixmap2.load(str(pkmnimage_path2))
 
@@ -644,7 +664,14 @@ class EvoWindow(QWidget):
                 exception=e,
                 message="Error occured in updating main_pokemon obj",
             )
-        self.display_evo_complete(prevo_id, evo_id)
+        is_shiny = False
+        try:
+            pokemon = services.db.get_pokemon(individual_id)
+            if pokemon:
+                is_shiny = pokemon.get("shiny", False)
+        except Exception:
+            pass
+        self.display_evo_complete(prevo_id, evo_id, is_shiny)
         check = check_for_badge(self.achievements, 16)
         if check is False:
             receive_badge(16, self.achievements)
