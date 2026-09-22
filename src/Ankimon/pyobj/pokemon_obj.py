@@ -49,6 +49,8 @@ class PokemonObject:
         pokemon_defeated=0,
         is_favorite=False,
         held_item: Union[str, None] = None,
+        is_trainer: bool = False,
+        trainer_sprite: Optional[str] = None,
         **kwargs,
     ):
         # Unique identifier
@@ -65,6 +67,8 @@ class PokemonObject:
         self.everstone = everstone
         self.evolution_rejected = evolution_rejected
         self.pokemon_defeated = pokemon_defeated
+        self.is_trainer = is_trainer
+        self.trainer_sprite = trainer_sprite
 
         if not ability or str(ability).strip().lower() in ("none", "no ability", ""):
             self.ability = "Run Away"
@@ -449,6 +453,8 @@ class PokemonObject:
             # Additional fields from your example
             "current_hp": getattr(self, "current_hp", self.hp),
             "held_item": self.held_item,
+            "is_trainer": getattr(self, "is_trainer", False),
+            "trainer_sprite": getattr(self, "trainer_sprite", None),
         }
 
     @classmethod
@@ -469,7 +475,7 @@ class PokemonObject:
         "moves", "base_experience", "growth_rate", "xp", "friendship",
         "battle_status", "position", "stat_stages", "volatile_status", "nature",
         "held_item", "hp", "current_hp", "is_favorite", "captured_date",
-        "mega", "special_form"
+        "mega", "special_form", "is_trainer", "trainer_sprite"
     })
 
     @staticmethod

@@ -331,34 +331,70 @@ def on_review_card(*args):
                 else:
                     color = "#F0B27A"
 
-            results = simulate_battle_with_poke_engine(
-                main_pokemon,
-                enemy_pokemon,
-                user_attack,
-                enemy_attack,
-                s.mutator_full_reset,
-                s.new_state,
-            )
 
-            battle_info = results[0]
-            s.new_state = copy.deepcopy(results[1])
-            s.dmg_from_enemy_move = results[2]
-            s.dmg_from_user_move = results[3]
-            s.mutator_full_reset = results[4]
-            current_battle_info_changes = results[5]
-            instructions = results[0]["instructions"]
-            heals_to_user = sum(
-                inst[2] for inst in instructions if inst[0:2] == ["heal", "user"]
-            )
-            heals_to_opponent = sum(
-                inst[2] for inst in instructions if inst[0:2] == ["heal", "opponent"]
-            )
-            true_dmg_from_enemy_move = sum(
-                inst[2] for inst in instructions if inst[0:2] == ["damage", "user"]
-            )
-            true_dmg_from_user_move = sum(
-                inst[2] for inst in instructions if inst[0:2] == ["damage", "opponent"]
-            )
+            if enemy_pokemon.id in (9998, 9999):
+                # Process Special Events
+                if enemy_pokemon.id == 9999:  # Nurse Joy
+                    try:
+                        db = services.db
+                        db.heal_all_pokemon()
+                        services.ui.show_info("Nurse Joy fully healed your party!")
+                    except Exception:
+                        pass
+                elif enemy_pokemon.id == 9998:  # Merchant
+                    try:
+                        db = services.db
+                        from .pyobj.ankimon_shop import PokemonShopManager
+                        # Create temporary shop manager to trigger reroll
+                        def dummy_set(k, v): pass
+                        def dummy_get(k): return 0
+                        shop_manager = PokemonShopManager(logger, settings_obj, dummy_set, dummy_get)
+                        shop_manager.todays_daily_items = []
+                        shop_manager.todays_daily_tms = []
+                        services.ui.show_info("The merchant brought new items to the shop!")
+                    except Exception:
+                        pass
+
+                enemy_pokemon.hp = 0
+                s.dmg_from_user_move = 9999
+                s.dmg_from_enemy_move = 0
+                instructions = []
+                heals_to_user = 0
+                heals_to_opponent = 0
+                current_battle_info_changes = {}
+            else:
+                results = simulate_battle_with_poke_engine(
+                    main_pokemon,
+                    enemy_pokemon,
+                    user_attack,
+                    enemy_attack,
+                    s.mutator_full_reset,
+                    s.new_state,
+                )
+
+                battle_info = results[0]
+                s.new_state = copy.deepcopy(results[1])
+                s.dmg_from_enemy_move = results[2]
+                s.dmg_from_user_move = results[3]
+                s.mutator_full_reset = results[4]
+                current_battle_info_changes = results[5]
+                instructions = results[0]["instructions"]
+                heals_to_user = sum(
+                    inst[2] for inst in instructions if inst[0:2] == ["heal", "user"]
+                )
+                heals_to_opponent = sum(
+                    inst[2] for inst in instructions if inst[0:2] == ["heal", "opponent"]
+                )
+            if enemy_pokemon.id in (9998, 9999):
+                true_dmg_from_enemy_move = 0
+                true_dmg_from_user_move = 9999
+            else:
+                true_dmg_from_enemy_move = sum(
+                    inst[2] for inst in instructions if inst[0:2] == ["damage", "user"]
+                )
+                true_dmg_from_user_move = sum(
+                    inst[2] for inst in instructions if inst[0:2] == ["damage", "opponent"]
+                )
 
             if true_dmg_from_enemy_move < 0:
                 # abs() must be taken BEFORE zeroing, or the heal tooltip always
@@ -369,33 +405,41 @@ def on_review_card(*args):
                 heals_to_opponent += abs(true_dmg_from_user_move)
                 true_dmg_from_user_move = 0
 
-            main_pokemon.hp = s.new_state.user.active.hp
-            main_pokemon.current_hp = s.new_state.user.active.hp
-            enemy_pokemon.hp = s.new_state.opponent.active.hp
-            enemy_pokemon.current_hp = s.new_state.opponent.active.hp
+            if enemy_pokemon.id not in (9998, 9999):
+                main_pokemon.hp = s.new_state.user.active.hp
+                main_pokemon.current_hp = s.new_state.user.active.hp
+                enemy_pokemon.hp = s.new_state.opponent.active.hp
+                enemy_pokemon.current_hp = s.new_state.opponent.active.hp
 
-            enemy_status_changed, main_status_changed = update_pokemon_battle_status(
-                battle_info, enemy_pokemon, main_pokemon
-            )
+            if enemy_pokemon.id not in (9998, 9999):
+                enemy_status_changed, main_status_changed = update_pokemon_battle_status(
+                    battle_info, enemy_pokemon, main_pokemon
+                )
+            else:
+                enemy_status_changed, main_status_changed = False, False
             enemy_pokemon.battle_status = validate_pokemon_status(enemy_pokemon)
             main_pokemon.battle_status = validate_pokemon_status(main_pokemon)
 
-            formatted_battle_log = process_battle_data(
-                battle_info=battle_info,
-                multiplier=multiplier,
-                main_pokemon=main_pokemon,
-                enemy_pokemon=enemy_pokemon,
-                user_attack=user_attack,
-                enemy_attack=enemy_attack,
-                dmg_from_user_move=true_dmg_from_user_move,
-                dmg_from_enemy_move=true_dmg_from_enemy_move,
-                user_hp_after=main_pokemon.hp,
-                opponent_hp_after=enemy_pokemon.hp,
-                battle_status=main_pokemon.battle_status,
-                pokemon_encounter=ankimon_tracker_obj.pokemon_encounter,
-                translator=translator,
-                changes=current_battle_info_changes,
-            )
+            if enemy_pokemon.id not in (9998, 9999):
+                formatted_battle_log = process_battle_data(
+                    battle_info=battle_info,
+                    multiplier=multiplier,
+                    main_pokemon=main_pokemon,
+                    enemy_pokemon=enemy_pokemon,
+                    user_attack=user_attack,
+                    enemy_attack=enemy_attack,
+                    dmg_from_user_move=true_dmg_from_user_move,
+                    dmg_from_enemy_move=true_dmg_from_enemy_move,
+                    user_hp_after=main_pokemon.hp,
+                    opponent_hp_after=enemy_pokemon.hp,
+                    battle_status=main_pokemon.battle_status,
+                    pokemon_encounter=ankimon_tracker_obj.pokemon_encounter,
+                    translator=translator,
+                    changes=current_battle_info_changes,
+                )
+            else:
+                formatted_battle_log = "Special event processed!"
+
 
             tooltipWithColour(formatted_battle_log, color)
 
@@ -418,7 +462,7 @@ def on_review_card(*args):
                 tooltipWithColour(f" -{true_dmg_from_enemy_move} HP ", "#F06060", x=-200)
                 play_effect_sound(settings_obj, "HurtNormal")
 
-            if true_dmg_from_user_move > 0:
+            if true_dmg_from_user_move > 0 and true_dmg_from_user_move != 9999:
                 reviewer_obj.seconds = settings_obj.compute_special_variable("animate_time")
                 tooltipWithColour(f" -{true_dmg_from_user_move} HP ", "#F06060", x=200)
                 if multiplier == 1:

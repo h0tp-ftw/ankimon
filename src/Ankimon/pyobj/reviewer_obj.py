@@ -446,6 +446,11 @@ class Reviewer_Manager:
             enemy_poke_animation_style = (
                 f"animation: ankimon-shake-normal {self.seconds}s ease;"
             )
+            if getattr(self.enemy_pokemon, "is_trainer", False) and getattr(self.enemy_pokemon, "trainer_sprite", None):
+                trainer_sprite_name = self.enemy_pokemon.trainer_sprite
+                trainer_url = f"/_addons/{addon_package}/user_files/sprites/trainers/{trainer_sprite_name}"
+                hud_html += f'<div id="TrainerImage" class="Ankimon" style="position: absolute; right: 10px; top: 10px; z-index: -1;"><img src="{trainer_url}" alt="TrainerImage" style="max-height: 150px; opacity: 0.8;"></div>'
+
             hud_html += f'<div id="PokeImage" class="Ankimon"><img src="{enemy_sprite_url}" alt="PokeImage" style="{enemy_poke_animation_style}"></div>'
 
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:

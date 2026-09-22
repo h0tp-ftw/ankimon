@@ -920,6 +920,8 @@ def generate_random_pokemon(
             - ev_yield (dict): Effort values (EVs) awarded upon defeating the Pokémon.
             - is_shiny (bool): Indicates whether the Pokémon is shiny.
             - nature (str): Randomly assigned nature.
+            - is_trainer (bool): Indicates if this is a trainer encounter.
+            - trainer_sprite (str): Sprite name for the trainer.
 
     Raises:
         ValueError: If no valid Pokémon can be generated (highly unlikely under normal conditions).
@@ -1164,6 +1166,39 @@ def generate_random_pokemon(
     nature = random.choice(ALL_NATURES)
     final_stats = base_stats
 
+    # Event / Boss logic
+    is_trainer = False
+    trainer_sprite = None
+    event_roll = random.random()
+    if event_roll < 0.01:
+        # Nurse Joy Event
+        pokemon_id = 9999
+        name = "Nurse Joy"
+        is_trainer = True
+        trainer_sprite = "nurse-gen6.png"  # Using a placeholder
+    elif event_roll < 0.02:
+        # Merchant Event
+        pokemon_id = 9998
+        name = "Merchant"
+        is_trainer = True
+        trainer_sprite = "gentleman-gen6.png"  # Using a placeholder
+    elif event_roll < 0.07:
+        # Trainer Boss Encounter (5% chance)
+        is_trainer = True
+        import os
+        from ..resources import addon_dir
+        trainers_dir = os.path.join(addon_dir, "addon_sprites", "trainers")
+        try:
+            trainers = [f for f in os.listdir(trainers_dir) if f.endswith(".png")]
+            trainer_sprite = random.choice(trainers) if trainers else "ace-gen6.png"
+        except Exception:
+            trainer_sprite = "ace-gen6.png"
+
+        # Boost stats
+        wild_pokemon_lvl = min(100, int(wild_pokemon_lvl * 1.5))
+        iv = {stat: 31 for stat in stat_names}
+        ev = scale_ev_spread_to_level(get_ev_spread("uniform"), wild_pokemon_lvl)
+
     ankimon_tracker_obj.pokemon_encounter = 0  # 0: Start of Battle: 1: Current Battle
     ankimon_tracker_obj.cards_battle_round = 0  # Amount of cards in this current battle
 
@@ -1186,6 +1221,8 @@ def generate_random_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        is_trainer,
+        trainer_sprite,
     )
 
 
@@ -1270,6 +1307,8 @@ def new_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        is_trainer,
+        trainer_sprite,
     ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
     pokemon_data = {
         "name": name,
@@ -1300,6 +1339,8 @@ def new_pokemon(
         "tier": tier,
         "ev_yield": ev_yield,
         "shiny": is_shiny,
+        "is_trainer": is_trainer,
+        "trainer_sprite": trainer_sprite,
     }
     pokemon.update_stats(**pokemon_data)
     max_hp = pokemon.calculate_max_hp()
@@ -1799,6 +1840,14 @@ def kill_pokemon(
         trainer_card.gain_xp(
             enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves")
         )
+        if getattr(enemy_pokemon, "is_trainer", False):
+            # Give cash reward for defeating a trainer
+            trainer_card.cash += 500
+            try:
+                from ..services import services
+                services.ui.show_info(f"You defeated {enemy_pokemon.name}! Received ¥500.")
+            except Exception:
+                pass
 
     # Calculate experience based on whether moves are chosen manually
     exp = calc_experience(enemy_pokemon.base_experience, enemy_pokemon.level)

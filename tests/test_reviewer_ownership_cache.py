@@ -592,24 +592,8 @@ def _load_encounter_functions():
     ef.events = MagicMock()
     # Canned generator so new_pokemon does no RNG work.
     ef.generate_random_pokemon = lambda *a, **k: (
-        "Pikachu",
-        25,
-        5,
-        "static",
-        ["electric"],
-        {},
-        [],
-        112,
-        "medium",
-        {},
-        {},
-        "N",
-        "",
-        {},
-        "Normal",
-        {},
-        False,
-        "hardy",
+        "name", 25, 50, "ability", ["type"], {}, [], 100, "fast", {}, {},
+        "male", "fighting", {}, "Normal", {}, False, "nature", False, None
     )
     return ef
 
