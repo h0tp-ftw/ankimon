@@ -663,7 +663,7 @@ def process_battle_data(
             )
         )
 
-        # 2. Enemy attack section
+# 2. Enemy attack section
         if enemy_attack and enemy_attack != constants.DO_NOTHING_MOVE:
             # --- NEW: Format enemy move name ---
             formatted_enemy_attack = format_move_name(enemy_attack)
@@ -674,6 +674,29 @@ def process_battle_data(
                 attack_name=formatted_enemy_attack,  # Use the formatted name
             )
             message_parts.append(enemy_attack_msg)
+
+            if battle_info.get("opponent_move_blocked_by_status"):
+                status_block = battle_info.get("opponent_move_blocked_by_status")
+                if status_block == "paralyzed":
+                    message_parts.append(f"{enemy_pokemon.display_name} is fully paralyzed and can't move!")
+                elif status_block == "asleep":
+                    message_parts.append(f"{enemy_pokemon.display_name} is fast asleep.")
+                elif status_block == "frozen":
+                    message_parts.append(f"{enemy_pokemon.display_name} is frozen solid!")
+                elif status_block == "confusion":
+                    message_parts.append(f"{enemy_pokemon.display_name} hurt itself in its confusion!")
+                elif status_block == "flinch":
+                    message_parts.append(f"{enemy_pokemon.display_name} flinched and couldn't move!")
+                elif status_block == "taunt":
+                    message_parts.append(f"{enemy_pokemon.display_name} can't use {formatted_enemy_attack} after the taunt!")
+            elif battle_info.get("opponent_move_missed"):
+                message_parts.append(translator.translate("move_has_missed"))
+            elif battle_info.get("opponent_effectiveness") is not None:
+                eff = battle_info.get("opponent_effectiveness")
+                from .battle_text_functions import effectiveness_text
+                eff_txt = effectiveness_text(eff)
+                if "not very effective" in eff_txt or "super effective" in eff_txt or "very effective" in eff_txt:
+                    message_parts.append(eff_txt)
 
         # 3. User attack section
         if user_attack and user_attack != constants.DO_NOTHING_MOVE:
@@ -696,6 +719,28 @@ def process_battle_data(
                 )
                 message_parts.append(user_attack_msg)
 
+                if battle_info.get("user_move_blocked_by_status"):
+                    status_block = battle_info.get("user_move_blocked_by_status")
+                    if status_block == "paralyzed":
+                        message_parts.append(f"{main_pokemon.display_name} is fully paralyzed and can't move!")
+                    elif status_block == "asleep":
+                        message_parts.append(f"{main_pokemon.display_name} is fast asleep.")
+                    elif status_block == "frozen":
+                        message_parts.append(f"{main_pokemon.display_name} is frozen solid!")
+                    elif status_block == "confusion":
+                        message_parts.append(f"{main_pokemon.display_name} hurt itself in its confusion!")
+                    elif status_block == "flinch":
+                        message_parts.append(f"{main_pokemon.display_name} flinched and couldn't move!")
+                    elif status_block == "taunt":
+                        message_parts.append(f"{main_pokemon.display_name} can't use {formatted_user_attack} after the taunt!")
+                elif battle_info.get("user_move_missed"):
+                    message_parts.append(translator.translate("move_has_missed"))
+                elif battle_info.get("user_effectiveness") is not None:
+                    eff = battle_info.get("user_effectiveness")
+                    from .battle_text_functions import effectiveness_text
+                    eff_txt = effectiveness_text(eff)
+                    if "not very effective" in eff_txt or "super effective" in eff_txt or "very effective" in eff_txt:
+                        message_parts.append(eff_txt)
         # 4. Process all other battle effect instructions
         if isinstance(battle_info, dict) and "instructions" in battle_info:
             try:

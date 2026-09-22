@@ -53,6 +53,7 @@ DEFAULT_CONFIG = {
     "gui.hud_hp_text": True,
     "gui.hud_pokemon_id": True,
     "gui.hud_pokemon_gen": True,
+    "gui.hud_pokemon_types": True,
     "gui.hud_pokemon_lvl": True,
     "gui.hud_pokemon_name": True,
     "gui.hud_status_badge": True,

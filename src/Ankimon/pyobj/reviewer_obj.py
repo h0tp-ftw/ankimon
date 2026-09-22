@@ -310,6 +310,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_hp_text"),
             self.settings.get("gui.hud_pokemon_id"),
             self.settings.get("gui.hud_pokemon_gen"),
+            self.settings.get("gui.hud_pokemon_types"),
             self.settings.get("gui.hud_pokemon_lvl"),
             self.settings.get("gui.hud_pokemon_name"),
             self.settings.get("gui.hud_status_badge"),
@@ -397,6 +398,8 @@ class Reviewer_Manager:
             enemy_parts.append("⭐")
         if self.settings.get("gui.hud_pokemon_gen"):
             enemy_parts.append(f"(Gen {generation})")
+        if self.settings.get("gui.hud_pokemon_types"):
+            enemy_parts.append(f"[{'/'.join(t.capitalize() for t in getattr(self.enemy_pokemon, 'types', []))}]")
         if self.settings.get("gui.hud_pokemon_lvl"):
             enemy_parts.append(f"LvL: {self.enemy_pokemon.level}")
 
@@ -463,6 +466,8 @@ class Reviewer_Manager:
                 main_parts.append("⭐")
             if self.settings.get("gui.hud_pokemon_gen"):
                 main_parts.append(f"(Gen {main_generation})")
+            if self.settings.get("gui.hud_pokemon_types"):
+                main_parts.append(f"[{'/'.join(t.capitalize() for t in getattr(self.main_pokemon, 'types', []))}]")
             if self.settings.get("gui.hud_pokemon_lvl"):
                 main_parts.append(f"LvL: {self.main_pokemon.level}")
 
