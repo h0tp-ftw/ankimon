@@ -37,6 +37,9 @@ Reviewer Pop Up Messages:
 Decide if you would like to see the anki popup messages in the anki reviewer when your pokemon levels up or when a wild pokemon is defeated
 - `pop_up_dialog_message_on_defeat` [True/False]
 
+Setting `gui.pop_up_dialog_message_on_encounter` to `true` pauses the review and shows a pop-up message when you encounter a Shiny or rare (tier 4 or higher) wild Pokémon.
+- `gui.pop_up_dialog_message_on_encounter` [True/False]
+
 Sounds:
 You can decide if you want Pokemon Battle Cries in the anki reviewer once a pokemon appears.
 - `sounds` [True/False]
