@@ -205,19 +205,30 @@ class AnkimonTracker:
         """Retrieve stats of a specific Pokémon by its ID."""
         return self.pokemon_stats.get(pokemon_id)
 
-    def review(self, grade):
-        """Track review statistics based on the grade."""
+    def review(self, grade, *, multiplier_grade=None):
+        """Track review statistics based on the grade.
+
+        ``multiplier_grade``, when set, is the grade that enters the
+        battle-damage window. Streak and the session grade tallies still
+        follow ``grade``, so Ignore Learning Cards can keep a learning
+        answer from lowering damage without recording a button the user
+        did not press.
+        """
+        if multiplier_grade is None:
+            multiplier_grade = grade
+        if grade not in ("again", "hard", "good", "easy"):
+            raise ValueError("Invalid grade type")
+        if multiplier_grade not in ("again", "hard", "good", "easy"):
+            raise ValueError("Invalid grade type")
 
         if grade == "again":
             # Reset streak
             self.card_streak = 0
-        elif grade in ["good", "hard", "easy"]:
+        else:
             # Increment streak
             self.card_streak += 1
-        else:
-            raise ValueError("Invalid grade type")
         self.card_ratings_count[grade] += 1
-        self.multiplier_card_ratings_count[grade] += 1
+        self.multiplier_card_ratings_count[multiplier_grade] += 1
 
         # Stop the card timer after answering
         self.reset_card_timer()
