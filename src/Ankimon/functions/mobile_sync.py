@@ -195,6 +195,62 @@ def _parse_cards_per_round(settings_obj) -> tuple[int, int]:
     cpr_split = cards_per_round
     return cards_per_round, cpr_split
 
+
+# Anki revlog review kind. 0 is learning, which covers a new card's first
+# answer and every learning step. Relearning is 2 and is not included.
+_REVLOG_LEARNING = 0
+_MULTIPLIER_POINTS = {1: 0, 2: 5, 3: 10, 4: 20}
+
+
+def _ignore_learning_cards(settings_obj) -> bool:
+    if settings_obj is None:
+        return False
+    try:
+        return bool(settings_obj.get("battle.ignore_learning_cards", False))
+    except Exception:
+        return False
+
+
+def ease_for_multiplier(review, ignore_learning: bool) -> int:
+    """Ease that feeds the battle-damage multiplier.
+
+    The stored ease is left as the button the user pressed. When Ignore
+    Learning Cards is on, a learning revlog row (type 0) contributes Good
+    (ease 3) instead.
+    """
+    ease = 3
+    review_type = None
+    if isinstance(review, dict):
+        raw_ease = review.get("ease")
+        if raw_ease:
+            ease = raw_ease
+        review_type = review.get("review_type")
+        if review_type is None:
+            review_type = review.get("type")
+    try:
+        ease = int(ease)
+    except (TypeError, ValueError):
+        ease = 3
+    if ignore_learning:
+        try:
+            if int(review_type) == _REVLOG_LEARNING:
+                return 3
+        except (TypeError, ValueError):
+            pass
+    return ease
+
+
+def multiplier_from_reviews(reviews, settings_obj) -> float:
+    """Same points scale as the desktop tracker (Again 0, Hard 5, Good 10, Easy 20)."""
+    ignore = _ignore_learning_cards(settings_obj)
+    total_points = sum(
+        _MULTIPLIER_POINTS.get(ease_for_multiplier(review, ignore), 10)
+        for review in reviews
+    )
+    max_points = 10.0 * len(reviews)
+    return total_points / max_points if max_points > 0 else 1.0
+
+
 def _xp_share_split(earned_xp: int, earner_id, settings_obj, db=None) -> tuple[int, dict]:
     """Split one companion's battle XP under XP Share.
 
@@ -972,10 +1028,7 @@ def _run_mobile_battles_impl(
             else:
                 enemy_attack = "splash"
 
-            points_map = {1: 0, 2: 5, 3: 10, 4: 20}
-            total_points = sum(points_map.get(r.get("ease") or 3, 10) for r in chunk)
-            max_points = 10.0 * len(chunk)
-            turn_multiplier = total_points / max_points if max_points > 0 else 1.0
+            turn_multiplier = multiplier_from_reviews(chunk, settings_obj)
 
             orig_multiplier = 1.0
             has_tracker = tracker and hasattr(tracker, "multiplier")
@@ -1409,10 +1462,7 @@ def _run_mobile_battles_impl(
                 else:
                     enemy_attack = "splash"
 
-                points_map = {1: 0, 2: 5, 3: 10, 4: 20}
-                total_points = sum(points_map.get(r.get("ease") or 3, 10) for r in current_turn_reviews)
-                max_points = 10.0 * len(current_turn_reviews)
-                turn_multiplier = total_points / max_points if max_points > 0 else 1.0
+                turn_multiplier = multiplier_from_reviews(current_turn_reviews, settings_obj)
 
                 orig_multiplier = 1.0
                 has_tracker = tracker and hasattr(tracker, "multiplier")
