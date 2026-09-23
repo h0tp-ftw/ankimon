@@ -208,14 +208,34 @@ def test_unknown_ease_does_not_record_a_grade(hooks, monkeypatch):
     assert tracker.calls == []
 
 
+def _load_tracker_cls():
+    """Import the real tracker even if an earlier test left a MagicMock in sys.modules."""
+    import importlib
+
+    name = "Ankimon.pyobj.ankimon_tracker"
+    existing = sys.modules.get(name)
+    cls = getattr(existing, "AnkimonTracker", None) if existing is not None else None
+    if isinstance(cls, type):
+        return cls
+    sys.modules.pop(name, None)
+    parent = sys.modules.get("Ankimon.pyobj")
+    if parent is not None and hasattr(parent, "ankimon_tracker"):
+        delattr(parent, "ankimon_tracker")
+    mod = importlib.import_module(name)
+    cls = mod.AnkimonTracker
+    if not isinstance(cls, type):
+        raise AssertionError("AnkimonTracker did not load from source")
+    return cls
+
+
 def test_multiplier_window_uses_good_but_tallies_keep_again(monkeypatch):
-    from Ankimon.pyobj.ankimon_tracker import AnkimonTracker
     from Ankimon.services import services
 
+    AnkimonTracker = _load_tracker_cls()
     monkeypatch.setattr(
         services,
         "db",
-        types.SimpleNamespace(get_all_pokemon_ids=lambda: []),
+        types.SimpleNamespace(get_all_pokemon_ids=list),
         raising=False,
     )
     tracker = AnkimonTracker(trainer_card=None)
