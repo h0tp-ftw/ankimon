@@ -199,6 +199,12 @@ GROUPS = [
         },
     },
     {
+        "label": "Special Evolutions",
+        "settings": [
+            "misc.enable_megas",
+        ],
+    },
+    {
         "label": "Mobile Reviews",
         "settings": [
             {
