@@ -235,7 +235,7 @@ class Reviewer_Manager:
             is_pokemon_owned = False
             try:
                 db = services.db
-                is_pokemon_owned = db.has_caught_pokedex_id(self.enemy_pokemon.id)
+                is_pokemon_owned = self.enemy_pokemon.id in db.get_caught_ids()
                 self._ownership_cache[self.enemy_pokemon.id] = is_pokemon_owned
             except Exception:
                 pass

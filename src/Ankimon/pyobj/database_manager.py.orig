@@ -757,8 +757,8 @@ class AnkimonDB:
 
             # Propagate is_main flag to all duplicates of the main Pokémon so the highest-progress survivor inherits it
             cursor.execute("""
-                UPDATE captured_pokemon 
-                SET is_main = 1 
+                UPDATE captured_pokemon
+                SET is_main = 1
                 WHERE individual_id IN (
                     SELECT individual_id FROM captured_pokemon WHERE is_main = 1
                 )
@@ -766,15 +766,15 @@ class AnkimonDB:
 
             # Prune duplicate captured_pokemon rows by highest Level and XP
             cursor.execute("""
-                DELETE FROM captured_pokemon 
+                DELETE FROM captured_pokemon
                 WHERE rowid NOT IN (
                     SELECT rowid FROM (
                         SELECT rowid, ROW_NUMBER() OVER (
-                            PARTITION BY individual_id 
-                            ORDER BY 
-                                CAST(json_extract(data, '$.level') AS INTEGER) DESC, 
+                            PARTITION BY individual_id
+                            ORDER BY
+                                CAST(json_extract(data, '$.level') AS INTEGER) DESC,
                                 CAST(json_extract(data, '$.xp') AS INTEGER) DESC
-                        ) as rn 
+                        ) as rn
                         FROM captured_pokemon
                     ) WHERE rn = 1
                 )
@@ -787,10 +787,10 @@ class AnkimonDB:
                 )
                 if cursor.fetchone():
                     cursor.execute("""
-                        DELETE FROM pending_mobile_battles 
+                        DELETE FROM pending_mobile_battles
                         WHERE rowid NOT IN (
-                            SELECT MIN(rowid) 
-                            FROM pending_mobile_battles 
+                            SELECT MIN(rowid)
+                            FROM pending_mobile_battles
                             GROUP BY id
                         )
                     """)
@@ -2146,10 +2146,6 @@ class AnkimonDB:
         return set(
             self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", []))
         )
-
-    def has_caught_pokedex_id(self, pokemon_id: int) -> bool:
-        """Checks if a given pokemon ID is marked as caught."""
-        return pokemon_id in self.get_caught_ids()
 
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
