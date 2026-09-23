@@ -169,6 +169,7 @@ Support my Caffeine Addiction (something that helps building this Addon):
 
 - **Pokémon Collection:** Catch and collect Pokémon as you progress through your Anki decks.
 - **Training:** Train your Pokémon to improve their abilities and strengths.
+- **Review Milestone Badges:** Earn badges for 100, 200, 300, 500, 1,000, and 2,000 reviews in an Anki day. If your review count passes a milestone, you still receive its badge and any other unearned milestones you've reached.
 - **Battles:** Engage in battles with other users on Pokémon Showdown to test your knowledge and skills.
 - **Interactive Learning:** Ankimon integrates seamlessly with Anki, enhancing your learning process by adding an element of excitement and challenge.
 
