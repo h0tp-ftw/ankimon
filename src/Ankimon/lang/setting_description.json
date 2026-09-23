@@ -74,8 +74,8 @@
     "misc.show_tip_on_startup": "If enabled, a window with a helpful tip about Ankimon will be shown when you start Anki!",
     "misc.developer_mode": "Enable developer mode. This will create a backup every time Anki is opened.",
     "trainer.name": "Set the name of your trainer.",
-    "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 400]. NOTE: To prevent exploits, the payout is capped based on your daily economy limit and subject to a hard daily cap of 400¥.",
-    "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily cap of 400¥.",
+    "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 400]. NOTE: To prevent exploits, the payout is subject to a hard daily limit.",
+    "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily limit.",
     "leaderboard.username": "Your username for the Ankimon leaderboard. This will be displayed publicly on the leaderboard.",
     "leaderboard.api_key": "Your API key for the Ankimon leaderboard. Get one from the Ankimon website at https://leaderboard.ankimon.com/"
 }

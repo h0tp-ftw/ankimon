@@ -299,6 +299,7 @@ class ProfileData:
             "cash": _safe(lambda: int(tc.cash), 0),
             "cash_earned_today": _safe(lambda: int(self.settings_obj.get("trainer.cash_earned_today", 0)), 0),
             "mobile_cash_earned_today": _safe(lambda: int(self.settings_obj.get("trainer.mobile_cash_earned_today", 0)), 0),
+            "max_daily_cash": _safe(lambda: int(self.settings_obj.get("trainer.daily_cash_limit", 400)), 400),
             "favorite_pokemon": format_pokemon_name(
                 getattr(tc, "favorite_pokemon", "") or "None"
             ),

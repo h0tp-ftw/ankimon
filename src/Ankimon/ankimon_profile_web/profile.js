@@ -176,7 +176,8 @@
         const desktopCashEarned = Number(data.cash_earned_today) || 0;
         const mobileCashEarned = Number(data.mobile_cash_earned_today) || 0;
         const dailyCash = desktopCashEarned + mobileCashEarned;
-        const cashValue = `${num(data.cash)} ¥<div style="font-size:0.7em; opacity:0.8; margin-top:4px;">Daily Limit: ${num(dailyCash)} / 400 ¥</div>`;
+        const maxDailyCash = Number(data.max_daily_cash) || 400; // default fallback
+        const cashValue = `${num(data.cash)} ¥<div style="font-size:0.7em; opacity:0.8; margin-top:4px;">Daily Limit: ${num(dailyCash)} / ${maxDailyCash} ¥</div>`;
 
         const tiles = [
             ['Cash', cashValue, 'var(--accent-gold)'],

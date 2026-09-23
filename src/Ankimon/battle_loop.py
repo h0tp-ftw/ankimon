@@ -153,8 +153,9 @@ def on_review_card(*args):
                 cash_earned_today = 0
                 settings_obj.set("trainer.last_cash_reward_date", today_str)
             
-            if cash_earned_today < 400:
-                allowed_amount = min(cash_amount, 400 - cash_earned_today)
+            max_daily_cash = int(settings_obj.get("trainer.daily_cash_limit", 400))
+            if cash_earned_today < max_daily_cash:
+                allowed_amount = min(cash_amount, max_daily_cash - cash_earned_today)
                 if allowed_amount > 0:
                     settings_obj.set("trainer.cash_earned_today", cash_earned_today + allowed_amount)
                     settings_obj.set("trainer.cash", settings_obj.get("trainer.cash") + allowed_amount)

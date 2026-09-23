@@ -1302,8 +1302,9 @@ def _run_mobile_battles_impl(
                 except Exception:
                     pass
             if commit and ci > 0 and (payout_start + total_reviews_processed) % ci == 0:
-                if mobile_cash_earned_today + accumulated_cash_earned_this_batch < 400:
-                    allowed = min(ca, 400 - (mobile_cash_earned_today + accumulated_cash_earned_this_batch))
+                max_daily_cash = int(settings_obj.get("trainer.daily_cash_limit", 400)) if settings_obj else 400
+                if mobile_cash_earned_today + accumulated_cash_earned_this_batch < max_daily_cash:
+                    allowed = min(ca, max_daily_cash - (mobile_cash_earned_today + accumulated_cash_earned_this_batch))
                     current_battle_cash += allowed
                     accumulated_cash_earned_this_batch += allowed
             cards_battle_round += 1
@@ -1852,8 +1853,9 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                 settings_obj.set("trainer.last_mobile_cash_reward_date", today_str)
                 settings_obj.set("trainer.mobile_cash_earned_today", 0)
 
-            if mobile_cash_earned_today < 400:
-                gained_cash = min(raw_gained_cash, 400 - mobile_cash_earned_today)
+            max_daily_cash = int(settings_obj.get("trainer.daily_cash_limit", 400))
+            if mobile_cash_earned_today < max_daily_cash:
+                gained_cash = min(raw_gained_cash, max_daily_cash - mobile_cash_earned_today)
             else:
                 gained_cash = 0
 
