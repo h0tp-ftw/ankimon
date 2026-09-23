@@ -215,7 +215,11 @@ def _run(seed, steps, journal_path, world=None, verbose=False):
         app.processEvents()
         for ev in list(ret or []) + d.events.drain():
             if isinstance(ev, dict) and ev.get("type") == "error":
-                log("  CAUGHT error event: %s" % (ev.get("message") or ev.get("exception")))
+                message = ev.get("message") or "error"
+                exception = ev.get("exception")
+                if exception and exception not in message:
+                    message = "%s %s" % (message, exception)
+                log("  CAUGHT error event: %s" % message)
 
     # Worlds with a populated box: open the PC box once up front so its slots are
     # live for right-click AND so a corrupt row is actually LOADED/rendered — else
@@ -294,8 +298,29 @@ def _run(seed, steps, journal_path, world=None, verbose=False):
             log("  CAUGHT exception: %s: %s" % (type(ex).__name__, str(ex)[:160]))
     rssN = _rss_mb()
     log("RSS final: %.1f MB (delta %+.1f over %d steps)" % (rssN, rssN - rss0, steps))
+
+    # Do not leave QtWebEngine cleanup to Python interpreter finalization: pages
+    # can outlive their profiles there and segfault after every action survived.
+    # Use the add-on's real hot-reload teardown so shutdown itself is exercised
+    # and journaled as a reproducible final action.
+    log("teardown: close Ankimon windows and flush deferred Qt deletes")
+    try:
+        from Ankimon.reloader import teardown_ankimon
+
+        teardown_ankimon("Ankimon")
+        app.processEvents()
+    except Exception as ex:
+        log("  CAUGHT exception in teardown: %s: %s" % (type(ex).__name__, str(ex)[:160]))
+
     log("SURVIVED all %d steps" % steps)
     j.close()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    # QtWebEngine can segfault during CPython's nondeterministic global-object
+    # destruction even after every page/window was explicitly torn down. The
+    # child has no state left to preserve, so exit without running those unsafe
+    # interpreter-finalization destructors.
+    os._exit(0)
 
 
 def _fuzz_value(rng, default):
@@ -318,6 +343,15 @@ def _signature(caught_line):
         if cut in s:
             s = s.split(cut)[0]
     return s[:90]
+
+
+def _last_action(lines):
+    """Return the last journaled user/teardown action, not trailing diagnostics."""
+    prefixes = ("step ", "warmup:", "teardown:", "CONTEXT-ACTION")
+    for line in reversed(lines):
+        if line.strip().startswith(prefixes):
+            return line
+    return lines[-1] if lines else "(no journal written)"
 
 
 def _run_one(seed, steps, world):
@@ -369,7 +403,8 @@ def sweep(n_seeds=12, steps=80, world=None, parallel=1):
                     delta = float(l.split("delta")[1].split("over")[0])
                 except Exception:
                     pass
-        survived = bool(lines) and lines[-1].startswith("SURVIVED")
+        journal_survived = bool(lines) and lines[-1].startswith("SURVIVED")
+        survived = journal_survived and rc == 0
         if survived:
             rc_count = sum(1 for l in lines if "RIGHT-CLICK" in l)
             ctx_count = sum(1 for l in lines if "CONTEXT-ACTION" in l)
@@ -379,7 +414,10 @@ def sweep(n_seeds=12, steps=80, world=None, parallel=1):
             print("  seed %3d [%-9s]: survived %d steps  (%d right-clicks, %d context-actions, %d soft errors)%s"
                   % (seed, w, steps, rc_count, ctx_count, len(caught), mem))
         else:
-            culprit = next((l for l in reversed(lines) if not l.startswith("RSS")), lines[-1] if lines else "(no journal written)")
+            if journal_survived:
+                culprit = "process crashed during Qt teardown after completing all actions"
+            else:
+                culprit = _last_action(lines)
             crashers.append((seed, w, rc, culprit))
             print("  seed %3d [%-9s]: HARD CRASH (exit %d) — last action before death:\n           %s"
                   % (seed, w, rc, culprit))
