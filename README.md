@@ -180,6 +180,8 @@ Support my Caffeine Addiction (something that helps building this Addon):
 
 2. **Catch Pokémon:** As you review your Anki cards, encounter and catch Pokémon to add to your collection.
 3. **Training:** Train your Pokémon using various methods to strengthen them for battles.
+
+   A Pokémon holding an Everstone will not evolve. Removing it or replacing it with another held item clears that effect. If a Pokémon remains unable to evolve after a previous item change, equip an item or remove its current held item to clear the old Everstone flag.
 4. **Battles:** Challenge other users on Pokémon Showdown to battles using your trained Pokémon.
 5. **Bug Reporting:** If you encounter any issues or bugs, please report them on the [GitHub Issues Page](https://github.com/Unlucky-Life/ankimon/issues). Your feedback helps improve the addon for everyone.
 
