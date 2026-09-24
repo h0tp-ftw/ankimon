@@ -381,12 +381,14 @@ USELESS_ITEMS = {
 
 
 _random_item_cache = None
+_random_item_cache_path = None
 
 
 def clear_utils_caches():
     """Clear performance caches in utils.py when profile closes."""
-    global _random_item_cache
+    global _random_item_cache, _random_item_cache_path
     _random_item_cache = None
+    _random_item_cache_path = None
 
 
 def random_item() -> Optional[str]:
@@ -396,8 +398,8 @@ def random_item() -> Optional[str]:
     present files may be filtered out. In that case there is no renderable reward,
     so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
     """
-    global _random_item_cache
-    if _random_item_cache is None:
+    global _random_item_cache, _random_item_cache_path
+    if _random_item_cache is None or _random_item_cache_path != items_path:
         item_names: list[str] = []
 
         try:
@@ -433,6 +435,7 @@ def random_item() -> Optional[str]:
 
             item_names.append(name)
         _random_item_cache = item_names
+        _random_item_cache_path = items_path
     else:
         item_names = _random_item_cache
 
