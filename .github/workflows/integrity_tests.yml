@@ -42,7 +42,7 @@ jobs:
         uv pip install --system -r requirements.txt
     - name: Set PYTHONPATH
       run: |
-        echo "PYTHONPATH=$GITHUB_WORKSPACE/src" >> $GITHUB_ENV
+        echo "PYTHONPATH=$GITHUB_WORKSPACE/src:$GITHUB_WORKSPACE" >> $GITHUB_ENV
     - name: Run tests with xvfb
       run: |
         xvfb-run -a env QT_QPA_PLATFORM=offscreen pytest tests/
