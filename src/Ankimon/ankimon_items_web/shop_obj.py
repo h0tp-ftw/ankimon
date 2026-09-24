@@ -1972,6 +1972,8 @@ class AnkimonItemsWeb(QDialog):
             return {"ok": False, "message": "Item not found in your bag."}
         if (item.get("owned_quantity") or 0) <= 0:
             return {"ok": False, "message": "You don't own that item."}
+        if item.get("is_tm"):
+            return {"ok": False, "message": "TMs cannot be sold."}
 
         ui_name = item["ui_name"]
         sell_price = int(item.get("price") or 0)

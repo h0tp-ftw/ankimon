@@ -625,7 +625,7 @@
             actions.appendChild(use);
         }
 
-        if (ownedQty > 0) {
+        if (ownedQty > 0 && !item.is_tm) {
             const sell = document.createElement('button');
             sell.className = 'det-action-btn sell';
             sell.innerHTML = '<span>Sell</span><span class="det-action-meta">' + formatMoney(item.price || 0) + '¥</span>';
