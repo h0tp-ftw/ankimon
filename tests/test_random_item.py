@@ -30,6 +30,7 @@ def test_random_item_grants_an_eligible_item(monkeypatch, tmp_path):
     granted = []
     monkeypatch.setattr(utils, "items_path", tmp_path)
     monkeypatch.setattr(utils, "give_item", granted.append)
+    utils._random_item_cache = None
 
     assert utils.random_item() == "potion"
     assert granted == ["potion"]
