@@ -590,6 +590,7 @@ def _load_encounter_functions():
     ef.trainer_card = MagicMock()
     ef.services = MagicMock()
     ef.events = MagicMock()
+    ef.translator = MagicMock()
     # Canned generator so new_pokemon does no RNG work.
     ef.generate_random_pokemon = lambda *a, **k: (
         "Pikachu",
