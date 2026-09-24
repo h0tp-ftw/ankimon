@@ -2273,8 +2273,7 @@ class AnkimonItemsWeb(QDialog):
         # so invalidate up front regardless of which path runs.
         self._invalidate_pokemon_cache()
         try:
-            category = item.get("category")
-            if category == "evolution":
+            if item.get("category") == "evolution":
                 # Check_Evo_Item needs the pre-evo's pokedex id to match
                 # against the evolution table. Pull it from the proven
                 # get_pokemon() API.
@@ -2298,41 +2297,6 @@ class AnkimonItemsWeb(QDialog):
                     individual_id, pokedex_id, item_name, pokemon_data=pokemon_data
                 )
                 return {"ok": True, "message": ""}
-            elif category == "heal":
-                # Handle healing a specific Pokémon from the picker
-                try:
-                    pokemon_data = services.db.get_pokemon(individual_id)
-                    if not pokemon_data:
-                        return {"ok": False, "message": "Could not look up that Pokémon."}
-
-                    from ..pyobj.pokemon_obj import PokemonObject
-                    target_pokemon = PokemonObject.from_dict(pokemon_data)
-
-                    if target_pokemon.hp >= target_pokemon.calculate_max_hp():
-                        return {"ok": False, "message": f"{target_pokemon.name} is already fully healed."}
-
-                    hp_heal = bag.hp_heal_items.get(item_name.lower(), 0)
-                    if not hp_heal:
-                         return {"ok": False, "message": f"Could not determine heal amount for {item_name}."}
-
-                    # We must momentarily swap main_pokemon so Check_Heal_Item targets the right one,
-                    # since Check_Heal_Item hardcodes `self.main_pokemon`.
-                    # A cleaner refactor would separate the bag logic from the main_pokemon state,
-                    # but this is the safest targeted fix without rearchitecting the whole file.
-                    original_main = bag.main_pokemon
-                    bag.main_pokemon = target_pokemon
-
-                    try:
-                        success = bag.Check_Heal_Item(target_pokemon.name, hp_heal, item_name, bag.achievements)
-                        if success:
-                           return {"ok": True, "message": f"Healed {target_pokemon.name} with {item_name}."}
-                        else:
-                           return {"ok": False, "message": f"Failed to heal {target_pokemon.name}."}
-                    finally:
-                        bag.main_pokemon = original_main
-
-                except Exception as e:
-                    return {"ok": False, "message": f"Could not heal: {e}"}
 
             # Held items (and anything else routed through the give-item
             # flow) — the legacy method already surfaces success/error via
