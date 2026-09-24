@@ -399,7 +399,7 @@ def random_item() -> Optional[str]:
     so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
     """
     global _random_item_cache, _random_item_cache_path
-    if _random_item_cache is None or _random_item_cache_path != items_path:
+    if not _random_item_cache or _random_item_cache_path != items_path:
         item_names: list[str] = []
 
         try:
