@@ -4,40 +4,47 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version string (e.g., 2.04 or 2.04-E)"
+        description: "Version number (e.g., 2.32 or 2.4)"
         required: true
+        type: string
+      experimental:
+        description: "Experimental release (-E suffix & auto-publish)?"
+        required: true
+        type: boolean
+        default: true
       highlights:
         description: "Highlights/What's new summary (optional)"
         required: false
         type: string
 
 # This workflow runs the whole release end to end — prepare -> integrity test ->
-# commit + tag -> build, then a manual approval gate, then publish — without any
-# long-lived stored credential. It deliberately does NOT hand off to main.yml via
-# a tag push: GitHub won't trigger a second workflow from a tag pushed with
-# GITHUB_TOKEN, and a PAT just to trigger that hand-off is a fragile, expiring
-# dependency to have to store and rotate. Folding the build+publish in here
-# removes it entirely.
+# commit + tag -> build -> publish — without any long-lived stored credential.
+# It deliberately does NOT hand off to main.yml via a tag push: GitHub won't
+# trigger a second workflow from a tag pushed with GITHUB_TOKEN, and a PAT just to
+# trigger that hand-off is a fragile, expiring dependency to have to store and
+# rotate. Folding the build+publish in here removes it entirely.
 #
 # On tokens: GITHUB_TOKEN is scoped to a single job. Actions mints a fresh one
 # per job and it dies when that job ends (6h ceiling on hosted runners), so it is
 # not one token spanning the run. That is precisely what makes the approval gate
-# safe to wait on for days: `publish` is issued its own new token when it finally
-# starts, rather than needing one to survive the wait. The tag push and the
+# safe to wait on for days: `publish-stable` is issued its own new token when it
+# finally starts, rather than needing one to survive the wait. The tag push and the
 # release creation each use their job's GITHUB_TOKEN; the push to `main` needs
 # more than that, and uses the App installation token — see the NOTE below.
 #
-# It is split across two jobs on purpose. AnkiWeb must be updated BEFORE the
-# GitHub release exists, because Anki decides an add-on is out of date by
-# comparing timestamps rather than version numbers — whichever channel publishes
-# last looks newer, so a GitHub-first release leaves in-app updater users being
-# offered the AnkiWeb build. AnkiWeb has no upload API (scripting the private one
-# is against its Terms), so the upload is a human step and the `ankiweb`
-# environment gate is what forces it to happen in the right order.
+# Release channel routing:
+# - Stable releases (no `-E` suffix): uploaded to AnkiWeb BEFORE the GitHub release
+#   exists. Anki compares upload timestamps rather than version numbers (whichever
+#   channel publishes last looks newer), so a GitHub-first release leaves in-app
+#   updater users being offered the AnkiWeb build. The `ankiweb` environment gate
+#   holds `publish-stable` until manually approved after AnkiWeb upload.
 #
-#   dispatch -> build (bump, tag, package) -> [you upload to AnkiWeb, approve] -> publish
+# - Experimental releases (`-E` suffix): never uploaded to AnkiWeb, so they route
+#   to `publish-experimental` and publish automatically with zero manual gates.
 #
-# The step-by-step is on the `publish` job below.
+#   dispatch -> build (bump, tag, package)
+#                 ├── if version ends with '-E' -> publish-experimental (immediate)
+#                 └── if stable -> [you upload to AnkiWeb, approve] -> publish-stable
 #
 # NOTE: pushing the version-bump commit to `main` uses a GitHub App installation
 # token (minted below via create-github-app-token) — `main` has a ruleset that
@@ -60,16 +67,36 @@ jobs:
     outputs:
       release_tag: ${{ steps.vars.outputs.release_tag }}
       module_name: ${{ steps.vars.outputs.module_name }}
+      is_experimental: ${{ steps.vars.outputs.is_experimental }}
     # Bind the workflow_dispatch inputs to env vars once, then reference them as
-    # "$VERSION" / "$HIGHLIGHTS" in every run: block. Expanding
+    # "$RAW_VERSION" / "$IS_EXPERIMENTAL" / "$HIGHLIGHTS". Expanding
     # ${{ github.event.inputs.* }} straight into a shell script is a
     # template-injection vector (a value containing quotes or $(...) would
     # execute); a shell reading an env var is safe.
     env:
-      VERSION: ${{ github.event.inputs.version }}
+      RAW_VERSION: ${{ github.event.inputs.version }}
+      IS_EXPERIMENTAL: ${{ github.event.inputs.experimental }}
       HIGHLIGHTS: ${{ github.event.inputs.highlights }}
 
     steps:
+      - name: Resolve release version
+        id: resolve-version
+        shell: bash
+        run: |
+          # Strip any leading 'v' or trailing '-E' if typed by habit
+          RAW_VER="${RAW_VERSION#v}"
+          BASE_VER="${RAW_VER%-E}"
+          if [ "${IS_EXPERIMENTAL}" = "true" ] || [ "${IS_EXPERIMENTAL}" = "True" ]; then
+            FINAL_VER="${BASE_VER}-E"
+            IS_EXP="true"
+          else
+            FINAL_VER="${BASE_VER}"
+            IS_EXP="false"
+          fi
+          echo "VERSION=${FINAL_VER}" >> $GITHUB_ENV
+          echo "IS_EXP=${IS_EXP}" >> $GITHUB_ENV
+          echo "Resolved version: ${FINAL_VER} (experimental: ${IS_EXP})"
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -238,6 +265,7 @@ jobs:
           # Tags in this repo are unprefixed; strip a leading 'v' defensively.
           echo "release_tag=${VERSION}" >> $GITHUB_OUTPUT
           echo "version_no_prefix=${VERSION#v}" >> $GITHUB_OUTPUT
+          echo "is_experimental=${IS_EXP}" >> $GITHUB_OUTPUT
 
       - name: Get previous tag
         id: previoustag
@@ -329,7 +357,9 @@ jobs:
   #   1. Download the "ankiaddon" artifact from this run.
   #   2. Upload Ankimon.ankiaddon at https://ankiweb.net/shared/addons/
   #   3. Approve this job. The GitHub release then goes out, dated after it.
-  publish:
+  publish-stable:
+    name: Publish Stable (AnkiWeb Gate)
+    if: ${{ needs.build.outputs.is_experimental != 'true' }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -384,6 +414,55 @@ jobs:
           # and AnkiWeb already updated. The two guards are independent — this
           # one keeps holding if the glob above ever drifts from the one the
           # verification step checks.
+          fail_on_unmatched_files: true
+          draft: false
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Experimental (-E) releases: never uploaded to AnkiWeb, so they publish
+  # automatically without waiting on the manual ankiweb environment gate.
+  publish-experimental:
+    name: Publish Experimental (Direct)
+    if: ${{ needs.build.outputs.is_experimental == 'true' }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the package built above
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ankiaddon
+
+      - name: Verify the artifact is complete
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          if [ ! -s patched_changelog.md ]; then
+            echo "::error::patched_changelog.md is missing or empty — the release body would be blank."
+            exit 1
+          fi
+          packages=(build/*.ankiaddon)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "::error::No build/*.ankiaddon in the artifact — the release would ship without the add-on."
+            ls -R . || true
+            exit 1
+          fi
+          # The changelog's download link is hard-coded to this exact filename.
+          if [ ! -s build/Ankimon.ankiaddon ]; then
+            echo "::error::build/Ankimon.ankiaddon is missing or empty — the changelog's download link would 404."
+            exit 1
+          fi
+          echo "Publishing ${#packages[@]} package(s): ${packages[*]}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          tag_name: ${{ needs.build.outputs.release_tag }}
+          name: "${{ needs.build.outputs.module_name }} v${{ needs.build.outputs.release_tag }}"
+          body_path: patched_changelog.md
+          files: build/*.ankiaddon
           fail_on_unmatched_files: true
           draft: false
           generate_release_notes: false
