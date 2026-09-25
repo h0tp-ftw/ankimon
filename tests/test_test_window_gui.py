@@ -211,6 +211,7 @@ def make_window(tw_module):
         main = main or _FakePokemon("pikachu", 25, type=["electric"])
         enemy = enemy or _FakePokemon("charizard", 6, type=["fire", "flying"])
         tracker = tracker or _FakeTracker()
+
         win = tw_module.TestWindow(
             main_pokemon=main,
             enemy_pokemon=enemy,

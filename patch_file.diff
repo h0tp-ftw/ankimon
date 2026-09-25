@@ -1,0 +1,75 @@
+<<<<<<< SEARCH
+from ..functions.pokedex_functions import (
+    get_pokemon_diff_lang_name,
+    get_pretty_name_for_name,
+    search_pokedex,
+)
+=======
+from ..functions.pokedex_functions import (
+    get_pokemon_diff_lang_name,
+    get_pretty_name_for_name,
+    search_pokedex,
+)
+
+from ..utils import load_collected_pokemon_ids
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    def pokemon_display_dead_pokemon(self):
+        caught = self.ankimon_tracker_obj.caught
+        id = self.enemy_pokemon.id
+        level = self.enemy_pokemon.level
+        type = self.enemy_pokemon.type
+
+        # Create the dialog
+        lang_name = self._get_display_name(self.enemy_pokemon)
+=======
+    def pokemon_display_dead_pokemon(self):
+        caught = self.ankimon_tracker_obj.caught
+        id = self.enemy_pokemon.id
+        level = self.enemy_pokemon.level
+        type = self.enemy_pokemon.type
+
+        is_already_caught = id in load_collected_pokemon_ids()
+
+        # Create the dialog
+        lang_name = self._get_display_name(self.enemy_pokemon)
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+        # Create a painter to add text on top of the image
+        painter2 = QPainter(pkmnpixmap_bckg)
+        painter2.drawPixmap(15, 15, pkmnpixmap)
+
+        # Create level text
+        # Draw the text on top of the image
+        font = QFont()
+        font.setPointSize(20)  # Adjust the font size as needed
+        painter2.setFont(font)
+
+        painter2.drawText(270, 107, f"{lang_name}")
+
+        font.setPointSize(17)  # Adjust the font size as needed
+        painter2.setFont(font)
+=======
+        # Create a painter to add text on top of the image
+        painter2 = QPainter(pkmnpixmap_bckg)
+        painter2.drawPixmap(15, 15, pkmnpixmap)
+
+        # Create level text
+        # Draw the text on top of the image
+        font = QFont()
+        font.setPointSize(20)  # Adjust the font size as needed
+        painter2.setFont(font)
+
+        painter2.drawText(270, 107, f"{lang_name}")
+
+        if is_already_caught:
+            from ..resources import pokeball_path
+            pokeball_pixmap = QPixmap(str(pokeball_path)).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+            fm = QFontMetrics(font)
+            text_width = fm.horizontalAdvance(lang_name)
+            painter2.drawPixmap(270 + text_width + 5, 87, pokeball_pixmap)
+
+        font.setPointSize(17)  # Adjust the font size as needed
+        painter2.setFont(font)
+>>>>>>> REPLACE
