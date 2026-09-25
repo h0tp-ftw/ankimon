@@ -305,15 +305,14 @@ class _FormTolerantPokedex:
 
 
 
-
 def _install_ohko_moves():
     from ..poke_engine.damage_calculator import SPECIAL_LOGIC_MOVES, type_effectiveness_modifier
 
     if "guillotine" not in SPECIAL_LOGIC_MOVES:
-        SPECIAL_LOGIC_MOVES["guillotine"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("normal", defender.types) > 0.125 else None
-        SPECIAL_LOGIC_MOVES["fissure"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("ground", defender.types) > 0.125 else None
-        SPECIAL_LOGIC_MOVES["horndrill"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("normal", defender.types) > 0.125 else None
-        SPECIAL_LOGIC_MOVES["sheercold"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and "ice" not in defender.types else None
+        SPECIAL_LOGIC_MOVES["guillotine"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("normal", defender.types) > 0.125 else [0]
+        SPECIAL_LOGIC_MOVES["fissure"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("ground", defender.types) > 0.125 else [0]
+        SPECIAL_LOGIC_MOVES["horndrill"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("normal", defender.types) > 0.125 else [0]
+        SPECIAL_LOGIC_MOVES["sheercold"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("ice", defender.types) > 0.125 else [0]
 
 def _patch_engine_constants():
     # 'allies' is the doubles target for Howl, Life Dew, Jungle Healing and Lunar
