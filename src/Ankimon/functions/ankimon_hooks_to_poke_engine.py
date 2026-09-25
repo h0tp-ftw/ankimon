@@ -304,6 +304,16 @@ class _FormTolerantPokedex:
         return self._base.items()
 
 
+
+def _install_ohko_moves():
+    from ..poke_engine.damage_calculator import SPECIAL_LOGIC_MOVES, type_effectiveness_modifier
+
+    if "guillotine" not in SPECIAL_LOGIC_MOVES:
+        SPECIAL_LOGIC_MOVES["guillotine"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("normal", defender.types) > 0.125 else [0]
+        SPECIAL_LOGIC_MOVES["fissure"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("ground", defender.types) > 0.125 else [0]
+        SPECIAL_LOGIC_MOVES["horndrill"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("normal", defender.types) > 0.125 else [0]
+        SPECIAL_LOGIC_MOVES["sheercold"] = lambda attacker, defender: [int(defender.hp)] if attacker.level >= defender.level and type_effectiveness_modifier("ice", defender.types) > 0.125 else [0]
+
 def _patch_engine_constants():
     # 'allies' is the doubles target for Howl, Life Dew, Jungle Healing and Lunar
     # Blessing, but the engine never listed it as self-targeting, so anything keyed
@@ -625,6 +635,7 @@ _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
+_apply_engine_patch(_install_ohko_moves)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
