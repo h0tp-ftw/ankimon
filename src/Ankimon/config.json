@@ -44,6 +44,7 @@
     "gui.hud_pokemon_gen": true,
     "gui.hud_pokemon_lvl": true,
     "gui.hud_pokemon_name": true,
+    "gui.hud_quick_heal_button": true,
     "gui.hud_status_badge": true,
     "gui.hud_owned_indicator": true,
     "gui.hud_enemy_shiny_indicator": true,
