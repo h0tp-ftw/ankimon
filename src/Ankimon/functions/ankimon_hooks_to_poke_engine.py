@@ -592,6 +592,43 @@ def _install_on_hit_boost_items():
         modify_attack_against.item_lookup[item_name] = effect
 
 
+
+def _install_reversal_flail_logic():
+    """Install HP-scaling logic for Reversal and Flail.
+
+    Both moves have 0 base power in moves.json and need custom logic to scale
+    their power based on the user's remaining HP percentage. Since poke-engine
+    is a submodule, this is patched in dynamically.
+    """
+    from ..poke_engine import constants
+    from ..poke_engine.special_effects.moves.modify_move import move_lookup
+
+    def reversal(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+        hp_ratio = attacking_pokemon.hp / attacking_pokemon.max_hp
+        attacking_move = attacking_move.copy()
+        if hp_ratio > 0.6875:
+            attacking_move[constants.BASE_POWER] = 20
+        elif hp_ratio > 0.34375:
+            attacking_move[constants.BASE_POWER] = 40
+        elif hp_ratio > 0.2083:
+            attacking_move[constants.BASE_POWER] = 60
+        elif hp_ratio > 0.1042:
+            attacking_move[constants.BASE_POWER] = 80
+        elif hp_ratio > 0.0417:
+            attacking_move[constants.BASE_POWER] = 100
+        else:
+            attacking_move[constants.BASE_POWER] = 150
+        return attacking_move
+
+    def flail(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+        return reversal(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain)
+
+    if "reversal" not in move_lookup:
+        move_lookup["reversal"] = reversal
+    if "flail" not in move_lookup:
+        move_lookup["flail"] = flail
+
+
 def _apply_engine_patch(patch):
     """Apply one hardening patch, recording a failure without propagating it.
 
@@ -625,6 +662,7 @@ _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
+_apply_engine_patch(_install_reversal_flail_logic)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
