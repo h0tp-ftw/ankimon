@@ -36,24 +36,26 @@ import pytest
 _src = Path(__file__).parent.parent / "src"
 
 ENEMY_INFO = (
-    "Pikachu",  # name
-    25,  # id
-    7,  # level
-    "static",  # ability
-    ["electric"],  # type
-    {"hp": 35},  # base_stats
-    ["thunder-shock"],  # enemy_attacks
-    112,  # base_experience
-    "medium",  # growth_rate
-    {"hp": 0},  # ev
-    {"hp": 1},  # iv
-    "male",  # gender
-    None,  # battle_status
-    {},  # battle_stats
-    "Normal",  # tier
-    {"hp": 0},  # ev_yield
-    False,  # shiny
-    "hardy",  # nature
+    "Pikachu",
+    25,
+    7,
+    "static",
+    ["electric"],
+    {"hp": 35},
+    ["thunder-shock"],
+    112,
+    "medium",
+    {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+    {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15},
+    "male",
+    "fighting",
+    {"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90},
+    "Normal",
+    {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 2},
+    False,
+    "hardy",
+    False,
+    None,
 )
 
 AUTO_CATCH_KEYS = (

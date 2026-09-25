@@ -338,6 +338,8 @@ def _apply_first_enemy(enemy_info):
         ev_yield,
         shiny,
         nature,
+        is_trainer,
+        trainer_sprite,
     ) = enemy_info
 
     enemy_pokemon.update_stats(
