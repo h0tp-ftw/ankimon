@@ -398,12 +398,7 @@ class Reviewer_Manager:
             enemy_parts.append("⭐")
         if self.settings.get("gui.hud_pokemon_gen"):
             enemy_parts.append(f"(Gen {generation})")
-        if self.settings.get("gui.hud_pokemon_types"):
-            types_html = ""
-            for t in getattr(self.enemy_pokemon, "type", []):
-                type_img_url = f"/_addons/{addon_package}/addon_sprites/Types/{t.lower()}.png"
-                types_html += f'<img src="{type_img_url}" alt="{t}" style="margin-left: 4px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0; vertical-align:middle;">'
-            enemy_parts.append(f'<span style="display:inline-block; vertical-align:middle;">{types_html}</span>')
+
         if self.settings.get("gui.hud_pokemon_lvl"):
             enemy_parts.append(f"LvL: {self.enemy_pokemon.level}")
 
@@ -420,10 +415,11 @@ class Reviewer_Manager:
                 self.settings,
                 is_pokemon_owned,
                 addon_package,
+                self.enemy_pokemon
             )
         else:
             hud_html += create_status_html(
-                "fainted", self.settings, is_pokemon_owned, addon_package
+                "fainted", self.settings, is_pokemon_owned, addon_package, self.enemy_pokemon
             )
 
         if self.settings.get("gui.hud_hp_text"):
@@ -470,12 +466,7 @@ class Reviewer_Manager:
                 main_parts.append("⭐")
             if self.settings.get("gui.hud_pokemon_gen"):
                 main_parts.append(f"(Gen {main_generation})")
-            if self.settings.get("gui.hud_pokemon_types"):
-                types_html = ""
-                for t in getattr(self.main_pokemon, "type", []):
-                    type_img_url = f"/_addons/{addon_package}/addon_sprites/Types/{t.lower()}.png"
-                    types_html += f'<img src="{type_img_url}" alt="{t}" style="margin-left: 4px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0; vertical-align:middle;">'
-                main_parts.append(f'<span style="display:inline-block; vertical-align:middle;">{types_html}</span>')
+
             if self.settings.get("gui.hud_pokemon_lvl"):
                 main_parts.append(f"LvL: {self.main_pokemon.level}")
 

@@ -29,7 +29,7 @@ def create_status_label(status_name):
 
     return label
 
-def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_package=""):
+def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_package="", pokemon=None):
     xp_bar_spacer = settings_obj.compute_special_variable('xp_bar_spacer')
     hp_bar_thickness = settings_obj.get("gui.review_hp_bar_thickness") * 4
     show_mainpkmn_in_reviewer = int(settings_obj.get("gui.show_mainpkmn_in_reviewer"))
@@ -41,7 +41,12 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
         badge_html = ''
         if is_pokemon_owned and settings_obj.get("gui.hud_owned_indicator"):
             pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
-            badge_html = f'<img id="owned-indicator-badge" src="{pokeball_url}" style="margin-right: 8px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
+            badge_html += f'<img id="owned-indicator-badge" src="{pokeball_url}" style="margin-right: 4px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
+
+        if pokemon and settings_obj.get("gui.hud_pokemon_types"):
+            for t in getattr(pokemon, "type", []):
+                type_img_url = f"/_addons/{addon_package}/addon_sprites/types/{t.lower()}.png"
+                badge_html += f'<img src="{type_img_url}" alt="{t}" style="margin-right: 4px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
 
         status_html = ""
         if settings_obj.get("gui.hud_status_badge"):
