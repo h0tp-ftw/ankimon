@@ -1974,6 +1974,8 @@ class AnkimonItemsWeb(QDialog):
             return {"ok": False, "message": "You don't own that item."}
         if item.get("is_tm"):
             return {"ok": False, "message": "TMs cannot be sold."}
+        if item_name.startswith("relic-"):
+            return {"ok": False, "message": "Relic items cannot be sold directly. Wait for the billionaire maniac!"}
 
         ui_name = item["ui_name"]
         sell_price = int(item.get("price") or 0)
