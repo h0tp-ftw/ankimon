@@ -20,45 +20,59 @@ sys.modules["PyQt6.QtCore"] = MagicMock()
 # Instead of direct import, use importlib to avoid breaking conftest's module stubbing
 _src = Path(__file__).parent.parent / "src"
 spec = importlib.util.spec_from_file_location(
-    "Ankimon.pyobj.pokemon_trade",
-    _src / "Ankimon" / "pyobj" / "pokemon_trade.py",
+    "Ankimon.pyobj.monthly_challenge",
+    _src / "Ankimon" / "pyobj" / "monthly_challenge.py",
 )
-pokemon_trade_module = importlib.util.module_from_spec(spec)
-sys.modules["Ankimon.pyobj.pokemon_trade"] = pokemon_trade_module
-spec.loader.exec_module(pokemon_trade_module)
-check_and_award_monthly_pokemon = pokemon_trade_module.check_and_award_monthly_pokemon
-
+monthly_challenge_module = importlib.util.module_from_spec(spec)
+sys.modules["Ankimon.pyobj.monthly_challenge"] = monthly_challenge_module
+spec.loader.exec_module(monthly_challenge_module)
+check_and_award_monthly_pokemon = (
+    monthly_challenge_module.check_and_award_monthly_pokemon
+)
 
 
 class MockLogger:
     def log(self, level, message):
         print(f"[{level}] {message}")
 
+
 @pytest.fixture
 def mock_db():
     db = MagicMock()
     return db
 
+
 @pytest.fixture
 def mock_mw(mock_db):
     # The module reads the database through the services seam
     # (`services.db`); keep mw.ankimon_db set too for any legacy access.
-    with patch("Ankimon.pyobj.pokemon_trade.mw") as mw_mock, \
-         patch("Ankimon.pyobj.pokemon_trade.services.db", mock_db):
+    with (
+        patch("Ankimon.pyobj.monthly_challenge.mw") as mw_mock,
+        patch("Ankimon.pyobj.monthly_challenge.services.db", mock_db),
+    ):
         mw_mock.ankimon_db = mock_db
         yield mw_mock
 
+
 @pytest.fixture
 def mock_requests():
-    with patch("Ankimon.pyobj.pokemon_trade.requests.get") as get_mock:
+    with patch("Ankimon.pyobj.monthly_challenge.requests.get") as get_mock:
         yield get_mock
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_rate_this_check(show_info_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+def test_rate_this_check(
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     logger = MockLogger()
 
     # Setup datetime to return known values
@@ -71,11 +85,7 @@ def test_rate_this_check(show_info_mock, acceptance_dialog_mock, dialog_mock, ad
     mock_response.json.return_value = [
         {
             "month": "January 2024",
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
@@ -95,7 +105,7 @@ def test_rate_this_check(show_info_mock, acceptance_dialog_mock, dialog_mock, ad
 
     # Test case 3: user rated using old 'true' string
     mock_db.get_user_data.return_value = "true"
-    mock_db.get_pokemon.return_value = None # Pokémon not found yet
+    mock_db.get_pokemon.return_value = None  # Pokémon not found yet
     check_and_award_monthly_pokemon(logger, defer=False)
     mock_requests.assert_called_once()
     add_pokemon_mock.assert_called_once()
@@ -113,12 +123,19 @@ def test_rate_this_check(show_info_mock, acceptance_dialog_mock, dialog_mock, ad
     acceptance_dialog_mock.assert_called_once()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_previous_challenge_pokemon_null_check(show_info_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+def test_previous_challenge_pokemon_null_check(
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     logger = MockLogger()
 
     # Setup datetime to return known values
@@ -133,11 +150,7 @@ def test_previous_challenge_pokemon_null_check(show_info_mock, acceptance_dialog
             "month": "January 2024",
             "previous_challenge_individual_id": "prev-id",
             "defeat_threshold": 10,
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
@@ -150,9 +163,9 @@ def test_previous_challenge_pokemon_null_check(show_info_mock, acceptance_dialog
     # Setup get_pokemon to handle target and previous pokemon
     def get_pokemon_side_effect(individual_id):
         if individual_id == "test-id":
-            return None # Don't have target
+            return None  # Don't have target
         if individual_id == "prev-id":
-            return None # Simulate user missing the previous challenge pokemon
+            return None  # Simulate user missing the previous challenge pokemon
         return None
 
     mock_db.get_pokemon.side_effect = get_pokemon_side_effect
@@ -167,12 +180,19 @@ def test_previous_challenge_pokemon_null_check(show_info_mock, acceptance_dialog
     acceptance_dialog_mock.assert_called_once()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_previous_challenge_pokemon_has_enough_defeats(show_info_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+def test_previous_challenge_pokemon_has_enough_defeats(
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     logger = MockLogger()
 
     dt_mock = MagicMock()
@@ -186,11 +206,7 @@ def test_previous_challenge_pokemon_has_enough_defeats(show_info_mock, acceptanc
             "month": "January 2024",
             "previous_challenge_individual_id": "prev-id",
             "defeat_threshold": 10,
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
@@ -217,11 +233,12 @@ def test_previous_challenge_pokemon_has_enough_defeats(show_info_mock, acceptanc
     acceptance_dialog_mock.assert_called_once()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_monthly_challenge_rejected_status(show_info_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+def test_monthly_challenge_rejected_status(
+    dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db
+):
     """Test that monthly_status == 2 causes early return without awarding Pokémon."""
     logger = MockLogger()
 
@@ -234,17 +251,13 @@ def test_monthly_challenge_rejected_status(show_info_mock, dialog_mock, add_poke
     mock_response.json.return_value = [
         {
             "month": "January 2024",
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
 
     mock_db.get_user_data.return_value = True
-    
+
     # Set monthly_status to 2 (rejected) and monthly_challenge_id to current ID
     def get_user_data_side_effect(key, default=None):
         if key == "monthly_challenge":
@@ -252,7 +265,7 @@ def test_monthly_challenge_rejected_status(show_info_mock, dialog_mock, add_poke
         if key == "monthly_challenge_id":
             return "test-id"  # Match current ID to prevent reset
         return True
-    
+
     mock_db.get_user_data.side_effect = get_user_data_side_effect
     mock_db.get_pokemon.return_value = None
 
@@ -263,11 +276,12 @@ def test_monthly_challenge_rejected_status(show_info_mock, dialog_mock, add_poke
     dialog_mock.assert_not_called()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_monthly_challenge_reconciliation_branch(show_info_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+def test_monthly_challenge_reconciliation_branch(
+    dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db
+):
     """Test reconciliation when Pokémon exists but tracking is stale/missing."""
     logger = MockLogger()
 
@@ -280,17 +294,13 @@ def test_monthly_challenge_reconciliation_branch(show_info_mock, dialog_mock, ad
     mock_response.json.return_value = [
         {
             "month": "January 2024",
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
 
     mock_db.get_user_data.return_value = True
-    
+
     # Simulate Pokémon exists in collection but tracking is stale
     def get_user_data_side_effect(key, default=None):
         if key == "monthly_challenge_id":
@@ -298,32 +308,39 @@ def test_monthly_challenge_reconciliation_branch(show_info_mock, dialog_mock, ad
         if key == "monthly_challenge":
             return 0  # Unclaimed status
         return True
-    
+
     mock_db.get_user_data.side_effect = get_user_data_side_effect
-    
+
     def get_pokemon_side_effect(individual_id):
         if individual_id == "test-id":
             return {"name": "TestMon", "id": 1}  # Pokémon exists
         return None
-    
+
     mock_db.get_pokemon.side_effect = get_pokemon_side_effect
 
     check_and_award_monthly_pokemon(logger, defer=False)
 
     # Should reconcile tracking values using set_monthly_challenge_state
     mock_db.set_monthly_challenge_state.assert_called_with("test-id", 1)
-    
+
     # Should NOT add Pokémon (already exists) or show dialog
     add_pokemon_mock.assert_not_called()
     dialog_mock.assert_not_called()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_monthly_challenge_add_failure_leaves_status_unclaimed(show_info_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+def test_monthly_challenge_add_failure_leaves_status_unclaimed(
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     """A failed save leaves the initially unclaimed decision intact."""
     logger = MockLogger()
 
@@ -336,11 +353,7 @@ def test_monthly_challenge_add_failure_leaves_status_unclaimed(show_info_mock, a
     mock_response.json.return_value = [
         {
             "month": "January 2024",
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
@@ -350,7 +363,7 @@ def test_monthly_challenge_add_failure_leaves_status_unclaimed(show_info_mock, a
 
     # User accepts the Pokémon
     dialog_mock.return_value = True
-    
+
     # Simulate add_pokemon_to_collection failure
     add_pokemon_mock.return_value = False
 
@@ -358,23 +371,30 @@ def test_monthly_challenge_add_failure_leaves_status_unclaimed(show_info_mock, a
 
     # Should have attempted to add Pokémon
     add_pokemon_mock.assert_called_once()
-    
+
     # Only initialize the new challenge; do not write a failure "rollback"
     # after the save helper, which can open a modal error dialog.
     mock_db.set_monthly_challenge_state.assert_called_once_with("test-id", 0)
-    
+
     # Should show the challenge dialog (user accepted)
     dialog_mock.assert_called_once()
     # Should NOT show acceptance dialog (since add failed)
     acceptance_dialog_mock.assert_not_called()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_rejection_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.utils.showInfo")
-def test_monthly_challenge_rejection_sets_status(show_info_mock, rejection_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_rejection_dialog")
+def test_monthly_challenge_rejection_sets_status(
+    rejection_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     """Test that rejecting the monthly challenge sets monthly_challenge to 2."""
     logger = MockLogger()
 
@@ -387,11 +407,7 @@ def test_monthly_challenge_rejection_sets_status(show_info_mock, rejection_dialo
     mock_response.json.return_value = [
         {
             "month": "January 2024",
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
@@ -406,10 +422,10 @@ def test_monthly_challenge_rejection_sets_status(show_info_mock, rejection_dialo
 
     # Should NOT add Pokémon
     add_pokemon_mock.assert_not_called()
-    
+
     # Should set monthly_challenge to 2 (rejected) using set_monthly_challenge_state
     mock_db.set_monthly_challenge_state.assert_called_with("test-id", 2)
-    
+
     # Should show the challenge dialog and rejection dialog
     dialog_mock.assert_called_once()
     rejection_dialog_mock.assert_called_once()
@@ -435,11 +451,7 @@ def _serve_january_challenge(datetime_mock, mock_requests):
     mock_response.json.return_value = [
         {
             "month": "January 2024",
-            "pokemon": {
-                "name": "TestMon",
-                "id": 1,
-                "individual_id": "test-id"
-            }
+            "pokemon": {"name": "TestMon", "id": 1, "individual_id": "test-id"},
         }
     ]
     mock_requests.return_value = mock_response
@@ -453,24 +465,37 @@ def _user_data(challenge_id, status):
         if key == "monthly_challenge":
             return status
         return True
+
     return get_user_data
 
 
 def _capture_background_task(mock_mw):
     scheduled = []
-    mock_mw.taskman.run_in_background.side_effect = (
-        lambda task, on_done: scheduled.append((task, on_done))
+    mock_mw.taskman.run_in_background.side_effect = lambda task, on_done: (
+        scheduled.append((task, on_done))
     )
     return scheduled
 
 
-@pytest.mark.parametrize("switch", ["switch_database", "replace_services_db", "reopen_profile"])
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_rejection_dialog")
-def test_deferred_result_is_discarded_when_session_changes_mid_fetch(rejection_dialog_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, switch, mock_requests, mock_mw, mock_db):
+@pytest.mark.parametrize(
+    "switch", ["switch_database", "replace_services_db", "reopen_profile"]
+)
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_rejection_dialog")
+def test_deferred_result_is_discarded_when_session_changes_mid_fetch(
+    rejection_dialog_mock,
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    switch,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     """The check is dispatched against one database and profile, one of them
     changes while the request is in flight, and the late result must not read,
     prompt for or award into whatever is active when it lands."""
@@ -493,7 +518,7 @@ def test_deferred_result_is_discarded_when_session_changes_mid_fetch(rejection_d
         if switch == "switch_database":
             mock_db.identity_token.return_value = ("ankimonDEV.db", 1)
         elif switch == "replace_services_db":
-            pokemon_trade_module.services.db = other_db
+            monthly_challenge_module.services.db = other_db
         else:
             # The Ankimon DB is shared across Anki profiles; a reopened
             # profile shows up as a different collection object.
@@ -522,11 +547,19 @@ def test_deferred_result_is_discarded_when_session_changes_mid_fetch(rejection_d
         db.set_monthly_challenge_state.assert_not_called()
 
 
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-def test_deferred_result_is_applied_when_database_is_unchanged(acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+def test_deferred_result_is_applied_when_database_is_unchanged(
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     """The deferred path still offers and awards the Pokémon when nothing switched."""
     logger = MockLogger()
     _serve_january_challenge(datetime_mock, mock_requests)
@@ -554,12 +587,22 @@ def test_deferred_result_is_applied_when_database_is_unchanged(acceptance_dialog
 
 
 @pytest.mark.parametrize("accepted", [True, False])
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_rejection_dialog")
-def test_decision_is_not_recorded_when_database_switches_while_dialog_is_open(rejection_dialog_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, accepted, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_rejection_dialog")
+def test_decision_is_not_recorded_when_database_switches_while_dialog_is_open(
+    rejection_dialog_mock,
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    accepted,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     """The decision dialog spins an event loop; a switch during it drops the decision."""
     logger = MockLogger()
     _serve_january_challenge(datetime_mock, mock_requests)
@@ -583,12 +626,22 @@ def test_decision_is_not_recorded_when_database_switches_while_dialog_is_open(re
 
 
 @pytest.mark.parametrize("restored", [True, False])
-@patch("Ankimon.pyobj.pokemon_trade.datetime")
-@patch("Ankimon.pyobj.pokemon_trade.add_pokemon_to_collection")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_challenge_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_acceptance_dialog")
-@patch("Ankimon.pyobj.pokemon_trade.show_monthly_rejection_dialog")
-def test_accepted_challenge_with_missing_pokemon_is_re_awarded_without_prompt(rejection_dialog_mock, acceptance_dialog_mock, dialog_mock, add_pokemon_mock, datetime_mock, restored, mock_requests, mock_mw, mock_db):
+@patch("Ankimon.pyobj.monthly_challenge.datetime")
+@patch("Ankimon.pyobj.monthly_challenge.add_pokemon_to_collection")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_challenge_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_acceptance_dialog")
+@patch("Ankimon.pyobj.monthly_challenge.show_monthly_rejection_dialog")
+def test_accepted_challenge_with_missing_pokemon_is_re_awarded_without_prompt(
+    rejection_dialog_mock,
+    acceptance_dialog_mock,
+    dialog_mock,
+    add_pokemon_mock,
+    datetime_mock,
+    restored,
+    mock_requests,
+    mock_mw,
+    mock_db,
+):
     """Status 1 means the user already accepted: a missing Pokémon is restored
     directly, and a failed restore leaves the status at 1 for the next retry."""
     logger = MockLogger()
@@ -612,8 +665,15 @@ def monthly_case(mock_db, mock_mw, mock_requests):
     """Mutable decision state: expose writes and nested-loop changes to reads."""
     from types import SimpleNamespace
     from contextlib import ExitStack
-    state = {"rate_this": True, "monthly_challenge_id": "test-id", "monthly_challenge": 0}
-    mock_db.get_user_data.side_effect = lambda key, default=None: state.get(key, default)
+
+    state = {
+        "rate_this": True,
+        "monthly_challenge_id": "test-id",
+        "monthly_challenge": 0,
+    }
+    mock_db.get_user_data.side_effect = lambda key, default=None: state.get(
+        key, default
+    )
     mock_db.set_monthly_challenge_state.side_effect = lambda iid, status: state.update(
         monthly_challenge_id=iid, monthly_challenge=status
     )
@@ -621,21 +681,54 @@ def monthly_case(mock_db, mock_mw, mock_requests):
     mock_db.identity_token.return_value = ("save-A", 0)
     scheduled = _capture_background_task(mock_mw)
     with ExitStack() as stack:
-        date = stack.enter_context(patch.object(pokemon_trade_module, "datetime"))
+        date = stack.enter_context(patch.object(monthly_challenge_module, "datetime"))
         _serve_january_challenge(date, mock_requests)
-        decision = stack.enter_context(patch.object(pokemon_trade_module, "show_monthly_challenge_dialog", return_value=True))
-        add = stack.enter_context(patch.object(pokemon_trade_module, "add_pokemon_to_collection", return_value=True))
+        decision = stack.enter_context(
+            patch.object(
+                monthly_challenge_module,
+                "show_monthly_challenge_dialog",
+                return_value=True,
+            )
+        )
+        add = stack.enter_context(
+            patch.object(
+                monthly_challenge_module, "add_pokemon_to_collection", return_value=True
+            )
+        )
+
         def save_award(pokemon, **kwargs):
             if add.return_value and kwargs.get("accept_monthly_challenge"):
-                state.update(monthly_challenge_id=pokemon["individual_id"], monthly_challenge=1)
+                state.update(
+                    monthly_challenge_id=pokemon["individual_id"], monthly_challenge=1
+                )
             return add.return_value
+
         add.side_effect = save_award
-        stack.enter_context(patch.object(pokemon_trade_module, "_refresh_collection"))
-        stack.enter_context(patch.object(pokemon_trade_module, "show_monthly_acceptance_dialog"))
-        stack.enter_context(patch.object(pokemon_trade_module, "show_monthly_rejection_dialog"))
-        stack.enter_context(patch.object(pokemon_trade_module.services, "_monthly_challenge_request", None, create=True))
-        yield SimpleNamespace(state=state, queued=scheduled, decision=decision, add=add,
-                              db=mock_db, mw=mock_mw)
+        stack.enter_context(
+            patch.object(monthly_challenge_module, "_refresh_collection")
+        )
+        stack.enter_context(
+            patch.object(monthly_challenge_module, "show_monthly_acceptance_dialog")
+        )
+        stack.enter_context(
+            patch.object(monthly_challenge_module, "show_monthly_rejection_dialog")
+        )
+        stack.enter_context(
+            patch.object(
+                monthly_challenge_module.services,
+                "_monthly_challenge_request",
+                None,
+                create=True,
+            )
+        )
+        yield SimpleNamespace(
+            state=state,
+            queued=scheduled,
+            decision=decision,
+            add=add,
+            db=mock_db,
+            mw=mock_mw,
+        )
 
 
 def test_monthly_coalesces_fetch_and_nested_dialog_requests(monthly_case):
@@ -644,25 +737,31 @@ def test_monthly_coalesces_fetch_and_nested_dialog_requests(monthly_case):
     check_and_award_monthly_pokemon(logger)
     check_and_award_monthly_pokemon(logger)
     assert len(c.queued) == 1
+
     def nested_request(*args, **kwargs):
         check_and_award_monthly_pokemon(logger, reclaim=True)
         assert len(c.queued) == 1
         return True
+
     c.decision.side_effect = nested_request
     task, done = c.queued[0]
     done(_Future(task()))
     assert c.state["monthly_challenge"] == 1
     c.add.assert_called_once()
-    assert pokemon_trade_module.services._monthly_challenge_request is None
+    assert monthly_challenge_module.services._monthly_challenge_request is None
 
 
 @pytest.mark.parametrize("failure", ["dispatch", "fetch", "future", "dialog"])
-def test_monthly_pending_request_is_released_after_failure(monthly_case, mock_requests, failure):
+def test_monthly_pending_request_is_released_after_failure(
+    monthly_case, mock_requests, failure
+):
     c = monthly_case
     if failure == "dispatch":
         c.mw.taskman.run_in_background.side_effect = RuntimeError("dispatch failed")
     elif failure == "fetch":
-        mock_requests.side_effect = pokemon_trade_module.requests.exceptions.ConnectionError("offline")
+        mock_requests.side_effect = (
+            monthly_challenge_module.requests.exceptions.ConnectionError("offline")
+        )
     elif failure == "dialog":
         c.decision.side_effect = RuntimeError("dialog failed")
     check_and_award_monthly_pokemon(MockLogger())
@@ -674,8 +773,10 @@ def test_monthly_pending_request_is_released_after_failure(monthly_case, mock_re
         else:
             future = _Future(task())
         done(future)
-    assert pokemon_trade_module.services._monthly_challenge_request is None
-    c.mw.taskman.run_in_background.side_effect = lambda task, done: c.queued.append((task, done))
+    assert monthly_challenge_module.services._monthly_challenge_request is None
+    c.mw.taskman.run_in_background.side_effect = lambda task, done: c.queued.append(
+        (task, done)
+    )
     check_and_award_monthly_pokemon(MockLogger())
     assert len(c.queued) == 1
 
@@ -687,27 +788,31 @@ def test_old_completion_cannot_release_new_sessions_request(monthly_case):
     old_task, old_done = c.queued.pop()
     c.db.identity_token.return_value = ("save-B", 1)
     check_and_award_monthly_pokemon(logger)
-    new_request = pokemon_trade_module.services._monthly_challenge_request
+    new_request = monthly_challenge_module.services._monthly_challenge_request
     old_done(_Future(old_task()))
-    assert pokemon_trade_module.services._monthly_challenge_request is new_request
+    assert monthly_challenge_module.services._monthly_challenge_request is new_request
     check_and_award_monthly_pokemon(logger)
     assert len(c.queued) == 1
     task, done = c.queued.pop()
     done(_Future(task()))
     c.add.assert_called_once()
-    assert pokemon_trade_module.services._monthly_challenge_request is None
+    assert monthly_challenge_module.services._monthly_challenge_request is None
 
 
 @pytest.mark.parametrize("choice", [True, False])
 @pytest.mark.parametrize("change", ["decision", "collection"])
-def test_stale_prompt_cannot_overwrite_new_decision_or_owned_progress(monthly_case, choice, change):
+def test_stale_prompt_cannot_overwrite_new_decision_or_owned_progress(
+    monthly_case, choice, change
+):
     c = monthly_case
+
     def change_while_open(*args, **kwargs):
         if change == "decision":
             c.state["monthly_challenge"] = 2
         else:
             c.db.get_pokemon.return_value = {"individual_id": "test-id", "level": 70}
         return choice
+
     c.decision.side_effect = change_while_open
     check_and_award_monthly_pokemon(MockLogger(), defer=False)
     c.db.set_monthly_challenge_state.assert_not_called()
@@ -730,9 +835,11 @@ def test_reclaim_offers_rejected_reward_without_resetting_it_first(monthly_case)
     c.state["monthly_challenge"] = 2
     check_and_award_monthly_pokemon(MockLogger(), defer=False)
     c.decision.assert_not_called()
+
     def accept(*args, **kwargs):
         assert c.state["monthly_challenge"] == 2
         return True
+
     c.decision.side_effect = accept
     check_and_award_monthly_pokemon(MockLogger(), defer=False, reclaim=True)
     assert c.state["monthly_challenge"] == 1
@@ -741,10 +848,12 @@ def test_reclaim_offers_rejected_reward_without_resetting_it_first(monthly_case)
 
 def test_save_error_dialog_switch_cannot_write_new_account(monthly_case):
     c = monthly_case
+
     def fail_and_switch(*args, **kwargs):
         c.db.identity_token.return_value = ("save-B", 1)
         c.state.update(monthly_challenge_id="B", monthly_challenge=2)
         return False
+
     c.add.side_effect = fail_and_switch
     check_and_award_monthly_pokemon(MockLogger(), defer=False)
     assert c.state["monthly_challenge_id"] == "B"
@@ -755,9 +864,11 @@ def test_save_error_dialog_switch_cannot_write_new_account(monthly_case):
 @pytest.mark.parametrize("accepted", [True, False])
 def test_decision_preserves_remote_rating_eligibility_check(monthly_case, accepted):
     c = monthly_case
+
     def change_eligibility(*args, **kwargs):
         c.state["rate_this"] = False
         return accepted
+
     c.decision.side_effect = change_eligibility
     check_and_award_monthly_pokemon(MockLogger(), defer=False)
     c.add.assert_not_called()
@@ -765,14 +876,22 @@ def test_decision_preserves_remote_rating_eligibility_check(monthly_case, accept
 
 
 @pytest.mark.parametrize("outcome", ["rejected", "owned", "offline"])
-def test_menu_request_during_automatic_fetch_keeps_explicit_intent(monthly_case, mock_requests, outcome):
+def test_menu_request_during_automatic_fetch_keeps_explicit_intent(
+    monthly_case, mock_requests, outcome
+):
     c = monthly_case
     c.state["monthly_challenge"] = 2
     if outcome == "owned":
-        c.db.get_pokemon.return_value = {"name": "Pikachu", "level": 70, "pokemon_defeated": 42}
+        c.db.get_pokemon.return_value = {
+            "name": "Pikachu",
+            "level": 70,
+            "pokemon_defeated": 42,
+        }
     elif outcome == "offline":
-        mock_requests.side_effect = pokemon_trade_module.requests.exceptions.ConnectionError("offline")
-    with patch.object(pokemon_trade_module.services, "ui") as ui:
+        mock_requests.side_effect = (
+            monthly_challenge_module.requests.exceptions.ConnectionError("offline")
+        )
+    with patch.object(monthly_challenge_module.services, "ui") as ui:
         check_and_award_monthly_pokemon(MockLogger())
         check_and_award_monthly_pokemon(MockLogger(), reclaim=True)
         check_and_award_monthly_pokemon(MockLogger())
@@ -788,5 +907,9 @@ def test_menu_request_during_automatic_fetch_keeps_explicit_intent(monthly_case,
             c.add.assert_not_called()
             kind, message = ui.notify.call_args.args
             assert kind == ("info" if outcome == "owned" else "warning")
-            assert ("70" in message and "42" in message) if outcome == "owned" else "try again" in message
-        assert pokemon_trade_module.services._monthly_challenge_request is None
+            assert (
+                ("70" in message and "42" in message)
+                if outcome == "owned"
+                else "try again" in message
+            )
+        assert monthly_challenge_module.services._monthly_challenge_request is None
