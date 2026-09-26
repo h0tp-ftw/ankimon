@@ -1,0 +1,11 @@
+<<<<<<< SEARCH
+    def load_collected_pokemon_ids() -> set:
+        """Loads all captured pokemon IDs from the database."""
+        return services.db.get_all_pokemon_ids()
+=======
+    def load_collected_pokemon_ids() -> set:
+        """Loads all captured pokemon IDs from the database."""
+        if getattr(services, 'db', None) is None:
+            return set()
+        return services.db.get_all_pokemon_ids()
+>>>>>>> REPLACE
