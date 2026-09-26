@@ -57,6 +57,10 @@ class FakeDB:
         pid = params[0] if params else None
         return FakeCursor(pid in self.owned)
 
+    def has_caught_pokedex_id(self, pokemon_id):
+        self.query_count += 1
+        return pokemon_id in self.owned
+
     def get_team(self):
         self.get_team_calls += 1
         return self._team

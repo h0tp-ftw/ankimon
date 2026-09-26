@@ -2178,6 +2178,10 @@ class AnkimonDB:
             self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", []))
         )
 
+    def has_caught_pokedex_id(self, pokemon_id: int) -> bool:
+        """Checks if a given pokemon ID is marked as caught."""
+        return pokemon_id in self.get_caught_ids()
+
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
         return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_seen", [])))

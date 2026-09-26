@@ -665,7 +665,8 @@ def _player_owns_base_form(actual_id: int, collected_ids: set) -> bool:
     species_id = safe_int(search_pokedex(name, "species_id"))
     if not species_id:
         return True
-    return species_id in collected_ids
+    from ..utils import load_collected_pokemon_ids
+    return species_id in load_collected_pokemon_ids()
 
 
 def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
