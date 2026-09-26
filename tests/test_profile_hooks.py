@@ -413,3 +413,25 @@ def test_profile_open_warm_failure_does_not_break_the_rest_of_the_handler(monkey
         "error",
         "Error warming evolution caches on profile open: data_files unreadable",
     )
+
+
+def test_connectivity_completions_belong_to_the_opening_collection(monkeypatch):
+    _fresh_services(monkeypatch)
+    hooks = _exec_profile_hooks(monkeypatch, _fresh_gui_hooks())
+    hooks.settings_obj.get.side_effect = lambda key, default=None: False
+    queued = []
+    hooks.mw.taskman = SimpleNamespace(run_in_background=lambda task, done: queued.append(done))
+    hooks.mw.col = object()
+    handler = hooks._on_profile_did_open(True)
+    handler()
+    old_done = queued.pop()
+    hooks.mw.col = object()
+    handler()
+    new_done = queued.pop()
+    old_done(_Future(True))
+    hooks.check_and_award_monthly_pokemon.assert_not_called()
+    new_done(_Future(True))
+    hooks.check_and_award_monthly_pokemon.assert_called_once_with(hooks.logger)
+    hooks.mw.col = None
+    new_done(_Future(True))
+    hooks.check_and_award_monthly_pokemon.assert_called_once()

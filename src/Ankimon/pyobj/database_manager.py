@@ -689,6 +689,17 @@ class AnkimonDB:
             self._local_conn.conn = None
         return True
 
+    def identity_token(self) -> tuple:
+        """Identify the database generation currently behind this manager.
+
+        ``switch_database`` and a live file replacement both drain the current
+        connection generation, so either one changes this token. Work that
+        captures it, leaves the GUI thread and comes back can compare it to
+        tell whether it is still talking to the same save.
+        """
+        with self._conn_lock:
+            return (str(self.db_path), self._connection_epoch)
+
     def close(self, wait_seconds: float = 0.0) -> bool:
         """Close the current generation within one shared deadline."""
         with self._conn_lock:
@@ -1252,8 +1263,12 @@ class AnkimonDB:
 
     # --- Captured Pokemon Operations ---
 
-    def save_pokemon(self, pokemon_data: Dict[str, Any]):
-        """Saves or updates a captured pokemon. Preserves is_main flag if pokemon already exists."""
+    def save_pokemon(self, pokemon_data: Dict[str, Any], *, accept_monthly_challenge=False):
+        """Save a Pokemon, optionally accepting its monthly challenge atomically.
+
+        Preserve an existing Pokemon's is_main flag. Cache invalidation and
+        Pokedex updates happen only after the collection/state commit succeeds.
+        """
         individual_id = pokemon_data.get("individual_id")
         if not individual_id:
             self._log("error", "Cannot save pokemon without individual_id")
@@ -1263,26 +1278,34 @@ class AnkimonDB:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Check if pokemon already exists to preserve is_main flag
-        cursor.execute(
-            "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
-            (individual_id,),
-        )
-        row = cursor.fetchone()
+        try:
+            # Check if pokemon already exists to preserve is_main flag
+            cursor.execute(
+                "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
+                (individual_id,),
+            )
+            row = cursor.fetchone()
 
-        if row:
-            # Update existing - preserve is_main
-            cursor.execute(
-                "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
-                (obfuscated_data, individual_id),
-            )
-        else:
-            # Insert new with is_main = 0
-            cursor.execute(
-                "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?)",
-                (individual_id, obfuscated_data),
-            )
-        conn.commit()
+            if row:
+                # Update existing - preserve is_main
+                cursor.execute(
+                    "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
+                    (obfuscated_data, individual_id),
+                )
+            else:
+                # Insert new with is_main = 0
+                cursor.execute(
+                    "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 0, ?)",
+                    (individual_id, obfuscated_data),
+                )
+            if accept_monthly_challenge:
+                self._write_monthly_challenge_state(cursor, individual_id, 1)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
         self._clear_reviewer_ownership_cache()
 
         # Automatically mark the pokemon as caught. The row is already committed,
@@ -1986,6 +2009,28 @@ class AnkimonDB:
             (key, str_value),
         )
         conn.commit()
+        return True
+
+    @staticmethod
+    def _write_monthly_challenge_state(cursor, challenge_id, status):
+        """Write both metadata keys inside the caller's transaction."""
+        cursor.executemany(
+            "INSERT OR REPLACE INTO user_data (key, value) VALUES (?, ?)",
+            (("monthly_challenge_id", str(challenge_id)), ("monthly_challenge", str(status))),
+        )
+
+    def set_monthly_challenge_state(self, challenge_id: str, status: int):
+        """Persist the monthly challenge id and status in one transaction."""
+        if status not in (0, 1, 2):
+            raise ValueError("Monthly challenge status must be 0, 1, or 2")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            self._write_monthly_challenge_state(cursor, challenge_id, status)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         return True
 
     def get_user_data(self, key: str, default: Any = None) -> Any:

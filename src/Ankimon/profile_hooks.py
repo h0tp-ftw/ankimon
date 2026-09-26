@@ -61,6 +61,8 @@ def _on_profile_close():
 
 def _on_profile_did_open(online_connectivity):
     def handler():
+        profile_col = getattr(mw, "col", None)
+
         # Pause media sync for any uncaptured original BEFORE the first dialog
         # below can pump the event loop. Stat calls only; the scan that can
         # release this guard is dispatched at the very end of this handler,
@@ -208,6 +210,8 @@ def _on_profile_did_open(online_connectivity):
             return online_connectivity
 
         def on_done(future) -> None:
+            if profile_col is None or mw.col is not profile_col:
+                return
             is_online = future.result()
             # We want to use the result of the background check
             try:
