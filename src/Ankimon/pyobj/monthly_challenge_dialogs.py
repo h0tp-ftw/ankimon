@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
 )
@@ -224,7 +225,18 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
     else:
         desc_label.setText("A special Pokémon awaits you!")
     desc_layout.addWidget(desc_label)
-    content_layout.addWidget(desc_box)
+    # Remote descriptions can exceed the available screen height. Keep the
+    # decision buttons visible while allowing every line to be read.
+    description_scroll = QScrollArea()
+    description_scroll.setFrameShape(QFrame.Shape.NoFrame)
+    description_scroll.setWidgetResizable(True)
+    description_scroll.setHorizontalScrollBarPolicy(
+        Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    )
+    description_scroll.setMinimumHeight(160)
+    description_scroll.setStyleSheet("QScrollArea { background: transparent; }")
+    description_scroll.setWidget(desc_box)
+    content_layout.addWidget(description_scroll)
     layout.addLayout(content_layout)
 
     discord_label = QLabel(

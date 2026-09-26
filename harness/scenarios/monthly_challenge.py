@@ -28,6 +28,7 @@ SCENARIOS = (
     "stale_decision",
     "sprites",
     "dialogs",
+    "long_description",
 )
 
 
@@ -131,6 +132,9 @@ def run(scenario):
             try:
                 action()
             except BaseException as error:
+                import traceback
+
+                traceback.print_exc()
                 timer_errors.append(error)
                 dialog = QApplication.activeModalWidget()
                 if dialog:
@@ -429,6 +433,61 @@ def run(scenario):
                     assert box.grab().save(str(Path(output) / f"monthly-{size}.png"))
                 box.close()
                 hidden.close()
+
+        elif scenario == "long_description":
+            from PyQt6.QtCore import QPoint, QRect, Qt
+            from PyQt6.QtGui import QTextDocument
+            from PyQt6.QtTest import QTest
+            from PyQt6.QtWidgets import QScrollArea
+
+            description = "\n".join(
+                f"Step {index}: Keep <literal> instructions & train your Pokémon."
+                for index in range(1, 41)
+            )
+
+            def read_to_end():
+                dialog = QApplication.activeModalWidget()
+                assert dialog is not None
+                dialog.resize(620, 380)
+                QApplication.processEvents()
+                label = dialog.findChild(QLabel, "descLabel")
+                document = QTextDocument()
+                document.setHtml(label.text())
+                assert document.toPlainText().replace("\u2028", "\n") == description
+                needed = label.heightForWidth(label.width())
+                assert label.height() >= needed, (label.height(), needed)
+                scroll = dialog.findChild(QScrollArea)
+                assert scroll is not None, "Long descriptions need a way to scroll"
+                bar = scroll.verticalScrollBar()
+                assert bar.maximum() > 0
+                scroll.setFocus()
+                for _ in range(40):
+                    QTest.keyClick(scroll, Qt.Key.Key_PageDown)
+                QApplication.processEvents()
+                assert bar.value() == bar.maximum()
+                last_line = label.mapTo(
+                    scroll.viewport(), QPoint(0, label.height() - 1)
+                )
+                assert scroll.viewport().rect().contains(last_line)
+                assert dialog.height() <= 600
+                for name in ("rejectBtn", "acceptBtn"):
+                    button = dialog.findChild(QPushButton, name)
+                    rect = QRect(button.mapTo(dialog, QPoint()), button.size())
+                    assert dialog.rect().contains(rect)
+                output = os.environ.get("ANKIMON_MONTHLY_SCREENSHOTS")
+                if output:
+                    Path(output).mkdir(parents=True, exist_ok=True)
+                    assert dialog.grab().save(
+                        str(Path(output) / "monthly-long-description.png")
+                    )
+                press("acceptBtn")
+
+            later(read_to_end)
+            accepted = dialogs.show_monthly_challenge_dialog(
+                payload["pokemon"], description, parent_window=d.aqt.mw
+            )
+            assert not timer_errors, timer_errors
+            assert accepted
 
         elif scenario == "dialogs":
             from PyQt6.QtCore import QPoint, QRect

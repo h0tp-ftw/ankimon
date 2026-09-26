@@ -15,7 +15,7 @@ def test_monthly_challenge_real_dialogs():
         env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
         capture_output=True,
         text=True,
-        timeout=435,
+        timeout=480,
     )
     if result.returncode == 77 and "NO_QT:" in result.stdout:
         pytest.skip("requires Tier-2 PyQt6 environment")
