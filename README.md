@@ -190,6 +190,7 @@ Support my Caffeine Addiction (something that helps building this Addon):
 - **Linux OS** Before reporting an issue on Linux, make sure you check if it works with the package downloaded directly from the [Anki github](https://github.com/ankitects/anki/releases) as it could be a problem with the package maintained by a third party (distro maintainer or flatpak)
 - **Addon Status:** Ankimon is still in development. Please report any bugs you encounter to help improve the addon.
 - **Backup Files:** Migrating your legacy save now preserves "mypokemon.json" and "mainpokemon.json" and only archives them once the import is verified successful, so a failed or cancelled migration is safe to retry. We still recommend copying these files before updating as an extra precaution. Please check out my GitHub Ankimon Page before updating - I will let you know when an update is coming in.
+- **Backup Manager:** Legacy backups move from `ankimon_backups` beside the add-on to `Ankimon_Backups` in the current Anki profile. If that move is interrupted, Ankimon preserves originals whose copies cannot be verified and protects the migration's recovery copies from deletion; unrelated backups can still be deleted or rotated. Restore and Delete selections remain usable after a backup moves. If migration is running when you select one, try again shortly.
 - **Compatibility:** Currently, Ankimon is **only compatible with PyQt6**. Updates for compatibility with other versions will be provided in the future.
 
 ## Screenshots
