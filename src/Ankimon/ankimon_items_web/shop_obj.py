@@ -306,6 +306,12 @@ class ItemsBridge(QObject):
         self._w.push_screen_data()
         return result
 
+    @pyqtSlot(str, result="QVariant")
+    def sellItem(self, item_name):
+        result = self._w.handle_sell(item_name)
+        self._w.push_screen_data()
+        return result
+
     # In-shell Pokémon picker — replaces the legacy QInputDialog flow for
     # evolution items + held items. JS calls getPokemonChoices() to populate
     # the modal, then useItemOnPokemon() with the chosen individual_id.
@@ -1727,12 +1733,19 @@ class AnkimonItemsWeb(QDialog):
                 (shop_entry or {}).get("is_tm")
                 or (owned_entry or {}).get("category_id") == 37
             )
+            # If the item isn't in the shop, fall back to its DB price so it
+            # can still be sold for its standard value. TMs use the global TM price.
+            if shop_entry:
+                item_price = shop_entry.get("price")
+            else:
+                item_price = sm.tm_price if is_tm and sm else self._lookup_price(name)
+
             items.append(
                 self._serialize_item(
                     name=name,
                     is_tm=is_tm,
                     in_shop=bool(shop_entry),
-                    shop_price=(shop_entry or {}).get("price"),
+                    shop_price=item_price,
                     item_type=(shop_entry or {}).get("item_type"),
                     owned_quantity=(owned_entry or {}).get("quantity", 0),
                     equipped_instances=equipped_by_map.get(name, []),
@@ -1992,6 +2005,38 @@ class AnkimonItemsWeb(QDialog):
             return {"ok": False, "message": f"Reroll failed: {e}"}
 
         return {"ok": True, "message": f"Rerolled stock for {cost}¥"}
+
+    def handle_sell(self, item_name):
+        item = self._find_serialized(item_name)
+        if not item:
+            return {"ok": False, "message": "Item not found in your bag."}
+        if (item.get("owned_quantity") or 0) <= 0:
+            return {"ok": False, "message": "You don't own that item."}
+        if item.get("is_tm"):
+            return {"ok": False, "message": "TMs cannot be sold."}
+        if item_name.startswith("relic-"):
+            return {"ok": False, "message": "Relic items cannot be sold directly. Wait for the billionaire maniac!"}
+
+        ui_name = item["ui_name"]
+        sell_price = int(item.get("price") or 0)
+
+        try:
+            services.db.update_item_quantity(item_name, -1)
+
+            cash = int(self.shop_manager.get_callback("trainer.cash") or 0)
+            self.shop_manager.set_callback("trainer.cash", int(cash + sell_price))
+
+            # Use notify_stats_changed to update the UI
+            try:
+                from ..singletons import notify_stats_changed
+                notify_stats_changed()
+            except Exception:
+                pass
+
+        except Exception as e:
+            return {"ok": False, "message": f"Sell failed: {e}"}
+
+        return {"ok": True, "message": f"Sold {ui_name} for {sell_price}¥"}
 
     def handle_use(self, item_name):
         item = self._find_serialized(item_name)
