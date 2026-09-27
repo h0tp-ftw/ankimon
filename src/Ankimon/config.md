@@ -37,9 +37,6 @@ Reviewer Pop Up Messages:
 Decide if you would like to see the anki popup messages in the anki reviewer when your pokemon levels up or when a wild pokemon is defeated
 - `pop_up_dialog_message_on_defeat` [True/False]
 
-Setting `gui.pop_up_dialog_message_on_encounter` to `true` pauses the review and shows a pop-up message when you encounter a Shiny wild Pokémon or one in the Starter, Ultra, Gmax, Legendary, Mega, or Mythical tier.
-- `gui.pop_up_dialog_message_on_encounter` [True/False]
-
 Sounds:
 You can decide if you want Pokemon Battle Cries in the anki reviewer once a pokemon appears.
 - `sounds` [True/False]
@@ -62,6 +59,9 @@ Set `animate_time` to `true` to enable a small animation in the reviewer. This a
 
 Set `gif_in_collection` to `true` to view GIF images instead of sprites of your caught Pokémon in your collection.
 - `gif_in_collection` [True/False]
+
+`gui.show_sprites_across_ankimon` also controls sprites in the evolution prompt and completion screen. When enabled, shiny Pokémon use shiny sprites on both screens; if either shiny sprite is missing, that image uses the ordinary sprite. Set it to `false` to hide sprites on both evolution screens.
+- `gui.show_sprites_across_ankimon` [True/False] (default: True)
 
 Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface.
 - `gui.hud_hp_bars` [True/False]
@@ -98,9 +98,6 @@ Setting `catch_key` to a letter allows you to catch pokemons inside of the revie
 
 Setting `defeat_key` to a letter allows you to defeat pokemons inside of the reviewer when their hp reaches 0 by pressing control and your letter - default is F.
 - `defeat_key` [A - Z]
-
-Setting `controls.allow_to_choose_moves` to `true` allows the player to manually pick attack moves in battles with Keys 1-4 or by clicking them. Note: Enabling this applies a 50% penalty to all Pokémon XP and Trainer XP earned.
-- `controls.allow_to_choose_moves` [True/False]
 
 `review_hp_bar_thickness` sets the pixel thickness of the HP bar in the reviewer. 
 - Setting it to `2` will result in an 8px thickness.
