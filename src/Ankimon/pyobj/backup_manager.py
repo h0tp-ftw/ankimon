@@ -15,9 +15,10 @@ from contextlib import closing
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from aqt.utils import showInfo, showWarning
-
+from aqt.utils import showInfo, showWarning, askUser
+from ..utils import close_anki
 from ..services import services
+
 from ..resources import user_path, addon_dir
 
 class BackupManager:
