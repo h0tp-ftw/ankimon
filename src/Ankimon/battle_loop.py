@@ -111,8 +111,8 @@ def on_review_card(*args):
         s.item_receive_value -= 1
         if s.item_receive_value <= 0:
 
-            # 0.3% chance for the billionaire maniac instead of a normal item
-            if random.random() < 0.003:
+            # 0.35% chance for the billionaire maniac instead of a normal item
+            if random.random() < 0.0035:
                 try:
                     inventory = services.db.get_all_items()
                     has_relic = False
