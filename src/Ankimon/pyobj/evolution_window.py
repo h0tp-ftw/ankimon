@@ -128,9 +128,10 @@ class EvoWindow(QWidget):
         super().closeEvent(event)
 
     def hideEvent(self, event):
-        # Window-manager minimization emits a spontaneous hide. Keep the
-        # pending result/actions valid when the user restores that window.
-        if not event.spontaneous():
+        # Minimize/exposure notifications can leave the widget logically
+        # visible. Only an explicit hide dismisses the request, including a
+        # hide() while already minimized (isMinimized() alone misses that).
+        if not event.spontaneous() and self.isHidden():
             self._display_request = None
         super().hideEvent(event)
 

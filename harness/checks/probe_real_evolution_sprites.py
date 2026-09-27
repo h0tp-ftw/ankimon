@@ -22,7 +22,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, QObject, QTimer
-from PyQt6.QtGui import QColor, QImage, QPixmap
+from PyQt6.QtGui import QColor, QHideEvent, QImage, QPixmap
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QLabel, QPushButton
 
@@ -567,6 +567,60 @@ class EvolutionSpriteTests(unittest.TestCase):
                 with patch.object(self.window, "evolve_pokemon") as evolve:
                     self.buttons()["Evolve Pokémon"].click()
                     evolve.assert_called_once()
+
+    def test_minimized_nonspontaneous_hide_preserves_pending_and_ready_prompts(self):
+        iid = self.pokemon(True)
+        for pending in (True, False):
+            with self.subTest(pending=pending):
+                self.window.ask_pokemon_evo(iid, 1, 2)
+                if not pending:
+                    self.finish_latest()
+                self.window.showMinimized()
+                self.driver.env.app.processEvents()
+                self.assertTrue(self.window.isMinimized())
+                self.assertFalse(self.window.isHidden())
+                # Synthetic portability guard: the request depends on explicit
+                # widget visibility, not a platform's event-spontaneity choice.
+                event = QHideEvent()
+                self.assertFalse(event.spontaneous())
+                QCoreApplication.sendEvent(self.window, event)
+                if pending:
+                    self.finish_latest()
+                self.window.showNormal()
+                self.flush()
+                self.prompt_colors(self.SHINY[1], self.SHINY[2])
+                with patch.object(self.window, "evolve_pokemon") as evolve:
+                    self.buttons()["Evolve Pokémon"].click()
+                    evolve.assert_called_once()
+
+    def test_explicit_hide_while_minimized_invalidates_pending_and_ready_prompts(self):
+        iid = self.pokemon(True)
+        for pending in (True, False):
+            with self.subTest(pending=pending):
+                self.window.showNormal()
+                self.window.ask_pokemon_evo(iid, 1, 2)
+                if not pending:
+                    self.finish_latest()
+                buttons = self.buttons()
+                self.window.showMinimized()
+                self.driver.env.app.processEvents()
+                self.assertTrue(self.window.isMinimized())
+                self.window.hide()
+                self.assertTrue(self.window.isHidden())
+                if pending:
+                    self.finish_latest()
+                else:
+                    with (
+                        patch.object(self.window, "evolve_pokemon") as evolve,
+                        patch.object(self.window, "cancel_evolution") as cancel,
+                    ):
+                        buttons["Evolve Pokémon"].click()
+                        buttons["Cancel Evolution"].click()
+                        evolve.assert_not_called()
+                        cancel.assert_not_called()
+                self.flush()
+                self.assertTrue(self.window.isHidden())
+                self.assertFalse(self.window.isVisible())
 
     def test_old_close_buttons_cannot_dismiss_newer_prompt(self):
         iid = self.pokemon(True)
