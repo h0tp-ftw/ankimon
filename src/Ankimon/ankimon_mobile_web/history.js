@@ -1,11 +1,3 @@
-// Escape HTML metacharacters before interpolating user-controlled strings
-// (Pokemon nicknames) into innerHTML — prevents stored-XSS from malicious names.
-function escapeHtml(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-}
-
 function showConfirm(message, onConfirm, onCancel = null) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -104,6 +96,13 @@ function showAlert(message, onOk = null) {
     document.body.appendChild(overlay);
 }
 
+const OUTCOME_META = Object.freeze({
+    caught: ['badge-caught', 'CAUGHT'],
+    defeated: ['badge-defeated', 'DEFEATED'],
+    lost: ['badge-lost', 'LOST'],
+    escaped: ['badge-escaped', 'ESCAPED'],
+});
+
 let mobileBridge = null;
 let nav = null;
 
@@ -147,11 +146,35 @@ window.liveRefreshHistory = function(historyList) {
     renderHistory(historyList);
 };
 
+function finiteNumber(value, fallback) {
+    if (typeof value !== 'number' && typeof value !== 'string') return fallback;
+    if (typeof value === 'string' && value.trim() === '') return fallback;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+}
+
+function positiveNumber(value) {
+    const number = finiteNumber(value, 0);
+    return number > 0 ? number : 0;
+}
+
+function makeElement(tag, className, text) {
+    const element = document.createElement(tag);
+    if (className) element.className = className;
+    if (text !== undefined) element.textContent = String(text);
+    return element;
+}
+
+function appendText(element, text) {
+    element.appendChild(document.createTextNode(String(text)));
+}
+
 function renderHistory(historyList) {
     const emptyEl = document.getElementById('history-empty');
     const listEl = document.getElementById('history-list');
-    
-    if (!historyList || historyList.length === 0) {
+
+    const entries = Array.isArray(historyList) ? historyList : [];
+    if (entries.length === 0) {
         if (emptyEl) emptyEl.classList.remove('hidden');
         if (listEl) listEl.classList.add('hidden');
         return;
@@ -160,54 +183,61 @@ function renderHistory(historyList) {
     if (emptyEl) emptyEl.classList.add('hidden');
     if (listEl) listEl.classList.remove('hidden');
     
-    listEl.innerHTML = '';
-    
-    historyList.forEach(entry => {
-        const item = document.createElement('div');
-        item.className = `history-item outcome-${entry.outcome}`;
-        
-        let outcomeBadge = '';
-        if (entry.outcome === 'caught') {
-            outcomeBadge = '<span class="outcome-badge badge-caught">CAUGHT</span>';
-        } else if (entry.outcome === 'defeated') {
-            outcomeBadge = '<span class="outcome-badge badge-defeated">DEFEATED</span>';
-        } else if (entry.outcome === 'lost') {
-            outcomeBadge = '<span class="outcome-badge badge-lost">LOST</span>';
-        } else if (entry.outcome === 'escaped') {
-            outcomeBadge = '<span class="outcome-badge badge-escaped">ESCAPED</span>';
-        }
-        
-        const shinyTag = entry.enemy_shiny ? '✨ ' : '';
-        const companionName = escapeHtml(entry.companion_name || 'Companion');
-        const enemyName = escapeHtml(entry.enemy_name || '???');
-        const vsDetails = `Your <strong>${companionName}</strong> (Lv.${entry.companion_level || 5}) vs wild <strong>${shinyTag}${enemyName}</strong> (Lv.${entry.enemy_level || 5})`;
-        
-        let rewards = [];
-        if (entry.xp_gained > 0) {
-            rewards.push(`<span class="reward-val reward-xp">+${entry.xp_gained} XP</span>`);
-        }
-        if (entry.trainer_xp_gained > 0) {
-            rewards.push(`<span class="reward-val reward-txp">+${entry.trainer_xp_gained} Trainer XP</span>`);
-        }
-        if (entry.cash_gained > 0) {
-            rewards.push(`<span class="reward-val reward-cash">+${entry.cash_gained}¥</span>`);
-        }
-        
-        const rewardsSection = rewards.length > 0 
-            ? `<div class="history-item-rewards">${rewards.join(' ')}</div>`
+    listEl.replaceChildren();
+
+    entries.forEach(entry => {
+        if (!entry || typeof entry !== 'object') return;
+
+        const outcome = Object.prototype.hasOwnProperty.call(OUTCOME_META, entry.outcome)
+            ? String(entry.outcome)
             : '';
-            
-        item.innerHTML = `
-            <div class="history-item-main">
-                <div class="history-item-left">
-                    ${outcomeBadge}
-                    <span class="history-item-details">${vsDetails}</span>
-                </div>
-                <span class="history-item-time">${formatTime(entry.timestamp)}</span>
-            </div>
-            ${rewardsSection}
-        `;
-        
+        const outcomeMeta = outcome ? OUTCOME_META[outcome] : null;
+        const item = document.createElement('div');
+        item.className = 'history-item' + (outcome ? ` outcome-${outcome}` : '');
+
+        const main = makeElement('div', 'history-item-main');
+        const left = makeElement('div', 'history-item-left');
+        if (outcomeMeta) {
+            left.appendChild(makeElement(
+                'span',
+                `outcome-badge ${outcomeMeta[0]}`,
+                outcomeMeta[1]
+            ));
+        }
+
+        const details = makeElement('span', 'history-item-details');
+        appendText(details, 'Your ');
+        details.appendChild(makeElement('strong', '', entry.companion_name || 'Companion'));
+        appendText(details, ` (Lv.${finiteNumber(entry.companion_level, 5)}) vs wild `);
+        details.appendChild(makeElement(
+            'strong',
+            '',
+            (entry.enemy_shiny ? '✨ ' : '') + (entry.enemy_name || '???')
+        ));
+        appendText(details, ` (Lv.${finiteNumber(entry.enemy_level, 5)})`);
+        left.appendChild(details);
+        main.appendChild(left);
+        main.appendChild(makeElement('span', 'history-item-time', formatTime(entry.timestamp)));
+        item.appendChild(main);
+
+        const rewardValues = [
+            [entry.xp_gained, 'reward-xp', ' XP'],
+            [entry.trainer_xp_gained, 'reward-txp', ' Trainer XP'],
+            [entry.cash_gained, 'reward-cash', '¥'],
+        ];
+        const rewards = makeElement('div', 'history-item-rewards');
+        rewardValues.forEach(([rawValue, rewardClass, suffix]) => {
+            const value = positiveNumber(rawValue);
+            if (!value) return;
+            if (rewards.childNodes.length) appendText(rewards, ' ');
+            rewards.appendChild(makeElement(
+                'span',
+                `reward-val ${rewardClass}`,
+                `+${value}${suffix}`
+            ));
+        });
+        if (rewards.childNodes.length) item.appendChild(rewards);
+
         listEl.appendChild(item);
     });
 }

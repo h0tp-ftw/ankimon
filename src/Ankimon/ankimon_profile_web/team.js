@@ -55,10 +55,17 @@
         return base;
     }
 
-    function esc(s) {
-        const d = document.createElement('div');
-        d.textContent = s == null ? '' : String(s);
-        return d.innerHTML;
+    // This helper is used for both text nodes and quoted HTML attributes.
+    // Serialising a temporary text node only escapes &, < and >; quotes remain
+    // dangerous when the result is interpolated into src/alt/data-* attributes.
+    function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        })[char]);
     }
     function num(n) { return (Number(n) || 0).toLocaleString(); }
     function setText(id, t) { const el = document.getElementById(id); if (el) el.textContent = t; }
@@ -185,7 +192,7 @@
                     <button class="slot-corner slot-star${isXp ? ' on' : ''}" data-act="xp" data-slot="${i}"
                             title="${isXp ? 'Remove XP Share' : 'Set as XP Share'}">★</button>
                     <button class="slot-corner slot-remove" data-act="remove" data-slot="${i}" title="Remove">✕</button>
-                    <div class="slot-sprite-wrap"><img src="${spriteUrl(m)}" alt="${esc(m.n)}"
+                    <div class="slot-sprite-wrap"><img src="${esc(spriteUrl(m))}" alt="${esc(m.n)}"
                          onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='${FALLBACK}'; }"></div>
                     <div class="slot-name">${esc(m.n)}${m.s ? ' <span class="shiny-dot">★</span>' : ''}</div>
                     ${types ? `<div class="slot-types">${types}</div>` : ''}
@@ -260,7 +267,7 @@
         if (m) {
             holder.innerHTML = `
                 <div class="xps-card" title="Change XP Share">
-                    <img class="xps-sprite" src="${spriteUrl(m)}" alt="${esc(m.n)}"
+                    <img class="xps-sprite" src="${esc(spriteUrl(m))}" alt="${esc(m.n)}"
                          onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='${FALLBACK}'; }">
                     <div class="xps-name">${esc(m.n)}${m.s ? ' <span class="shiny-dot">★</span>' : ''}</div>
                     <div class="xps-lv">★ Lv ${esc(m.l)}</div>
@@ -508,7 +515,7 @@
             const types = typeBadges(c);
             const cp = (c.cp != null && c.cp > 0) ? num(c.cp) : '—';
             card.innerHTML = `
-                <img class="rc-sprite" src="${spriteUrl(c)}" alt="${esc(c.n)}" onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='${FALLBACK}'; }">
+                <img class="rc-sprite" src="${esc(spriteUrl(c))}" alt="${esc(c.n)}" onerror="if (this.src.indexOf('_gif') !== -1) { this.src = this.src.replace('_gif', '').replace('.gif', '.png'); } else { this.onerror=null; this.src='${FALLBACK}'; }">
                 <div class="rc-name">${esc(c.n)}${c.s ? ' <span class="shiny-dot">★</span>' : ''}</div>
                 ${types ? `<div class="rc-types">${types}</div>` : ''}
                 <div class="rc-stats"><span>Lv ${esc(c.l)}</span><span>·</span><span class="rc-cp">${cp}</span><span>CP</span></div>
