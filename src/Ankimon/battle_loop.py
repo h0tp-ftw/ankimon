@@ -110,6 +110,43 @@ def on_review_card(*args):
 
         s.item_receive_value -= 1
         if s.item_receive_value <= 0:
+
+            import random
+            # 1% chance for the billionaire maniac instead of a normal item
+            if random.random() < 0.001:
+                try:
+                    from .services import services
+                    inventory = services.db.get_all_items()
+                    has_relic = False
+                    relic_item = None
+                    for item in inventory:
+                        name = item.get("item_name") or item.get("name")
+                        if name and name.startswith("relic-") and int(item.get("quantity") or 0) > 0:
+                            has_relic = True
+                            relic_item = name
+                            break
+                    if has_relic:
+                        services.db.update_item_quantity(relic_item, -1)
+                        if relic_item == "relic-copper": val = 1000
+                        elif relic_item == "relic-silver": val = 3000
+                        elif relic_item == "relic-gold": val = 10000
+                        elif relic_item == "relic-vase": val = 50000
+                        elif relic_item == "relic-band": val = 100000
+                        elif relic_item == "relic-statue": val = 200000
+                        elif relic_item == "relic-crown": val = 300000
+                        else: val = 10000
+                        settings_obj.set("trainer.cash", settings_obj.get("trainer.cash") + val)
+                        trainer_card.cash = settings_obj.get("trainer.cash")
+                        try:
+                            from .singletons import notify_stats_changed
+                            notify_stats_changed()
+                        except Exception:
+                            pass
+                        from .utils import tooltip
+                        tooltip(f"Billionaire maniac bought your {relic_item.replace('-', ' ').title()} for {val}¥!")
+                        return
+                except Exception:
+                    pass
             s.item_receive_value = random.randint(3, 385)
             # Reward the item every time this trigger fires (main granted it
             # unconditionally). display_item() both rolls+grants the reward (via
