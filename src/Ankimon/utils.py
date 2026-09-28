@@ -904,8 +904,10 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
 
 
 def load_collected_pokemon_ids() -> set:
-    """Loads all captured pokemon IDs from the database."""
-    return services.db.get_all_pokemon_ids()
+    """Loads all captured pokemon IDs from the pokedex history."""
+    if services.db:
+        return services.db.get_caught_ids()
+    return set()
 
 
 def limit_ev_yield(

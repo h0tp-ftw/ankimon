@@ -670,6 +670,8 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
     Prerequisite chains are defined in encounter_data.PREREQUISITES.
     Handles forms by checking the species_id prerequisites.
     """
+    from ..utils import load_collected_pokemon_ids
+    caught_ids = load_collected_pokemon_ids()
     check_id = pokemon_id
     if pokemon_id not in encounter_data.PREREQUISITES:
         if pokemon_id >= 10000:
@@ -684,10 +686,10 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
 
     if isinstance(required, tuple) and len(required) == 2 and required[0] == "OR":
         # Any of these must be present
-        return any(rid in collected_ids for rid in required[1])
+        return any(rid in caught_ids for rid in required[1])
 
     # All must be present (default behavior for sets)
-    return required.issubset(collected_ids)
+    return required.issubset(caught_ids)
 
 
 def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=None):
@@ -2142,8 +2144,9 @@ def handle_enemy_faint(
     if auto_battle_setting == 3:  # Catch if uncollected
         enemy_id = enemy_pokemon.id
         # Check cache instead of file
+        from ..utils import load_collected_pokemon_ids
         if (
-            enemy_id not in collected_pokemon_ids
+            enemy_id not in load_collected_pokemon_ids()
             or enemy_pokemon.shiny
             or should_catch_always
         ):
