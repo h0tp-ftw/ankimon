@@ -235,7 +235,11 @@ class Reviewer_Manager:
             is_pokemon_owned = False
             try:
                 db = services.db
-                is_pokemon_owned = db.has_caught_pokedex_id(self.enemy_pokemon.id)
+                cursor = db.execute(
+                    "SELECT 1 FROM captured_pokemon WHERE pokedex_id = ? LIMIT 1",
+                    (self.enemy_pokemon.id,),
+                )
+                is_pokemon_owned = cursor.fetchone() is not None
                 self._ownership_cache[self.enemy_pokemon.id] = is_pokemon_owned
             except Exception:
                 pass
