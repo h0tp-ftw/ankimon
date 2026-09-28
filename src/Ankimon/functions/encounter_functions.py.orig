@@ -687,10 +687,10 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
 
     if isinstance(required, tuple) and len(required) == 2 and required[0] == "OR":
         # Any of these must be present
-        return any(rid in caught_ids for rid in required[1])
+        return any(rid in collected_ids for rid in required[1])
 
     # All must be present (default behavior for sets)
-    return required.issubset(caught_ids)
+    return required.issubset(collected_ids)
 
 
 def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=None):
