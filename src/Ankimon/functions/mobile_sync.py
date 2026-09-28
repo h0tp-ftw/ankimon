@@ -3096,7 +3096,7 @@ def _attribute_xp_and_evs_to_companion(
     if pkmndata.get("held_item") == "soothe-bell":
         friendship_gain = int(friendship_gain * 1.5)
     friendship += friendship_gain
-    pkmndata["friendship"] = min(255, friendship)
+    pkmndata["friendship"] = friendship
 
     pkmndata["pokemon_defeated"] = (
         int(pkmndata.get("pokemon_defeated", 0)) + battles_fought
