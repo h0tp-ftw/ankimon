@@ -661,8 +661,7 @@ def _player_owns_base_form(actual_id: int, collected_ids: set) -> bool:
     species_id = safe_int(search_pokedex(name, "species_id"))
     if not species_id:
         return True
-    from ..utils import load_collected_pokemon_ids
-    return species_id in load_collected_pokemon_ids()
+    return species_id in collected_ids
 
 
 def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
@@ -671,8 +670,6 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
     Prerequisite chains are defined in encounter_data.PREREQUISITES.
     Handles forms by checking the species_id prerequisites.
     """
-    from ..utils import load_collected_pokemon_ids
-    caught_ids = load_collected_pokemon_ids()
     check_id = pokemon_id
     if pokemon_id not in encounter_data.PREREQUISITES:
         if pokemon_id >= 10000:
@@ -687,10 +684,10 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
 
     if isinstance(required, tuple) and len(required) == 2 and required[0] == "OR":
         # Any of these must be present
-        return any(rid in caught_ids for rid in required[1])
+        return any(rid in collected_ids for rid in required[1])
 
     # All must be present (default behavior for sets)
-    return required.issubset(caught_ids)
+    return required.issubset(collected_ids)
 
 
 def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=None):
