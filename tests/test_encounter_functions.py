@@ -112,7 +112,7 @@ def test_starter_generation_uses_real_eligibility_guards(monkeypatch):
     for name in ("_pokemon_csv_cache", "_stats_csv_cache", "_poke_species_cache", "_moves_cache"):
         monkeypatch.setattr(pdx, name, None)
     settings = mock.MagicMock()
-    settings.get.side_effect = lambda key: (
+    settings.get.side_effect = lambda key, default=None: (
         True if key.startswith("misc.gen") else None
     )
     monkeypatch.setattr(ef, "settings_obj", settings)
@@ -925,3 +925,59 @@ def test_new_pokemon_tolerates_a_player_without_volatile_status(monkeypatch):
         pass
 
     assert not hasattr(player, "volatile_status")
+
+def test_generate_random_pokemon_level_cap(monkeypatch):
+    """Test that generated wild pokemon respect the 100 level cap when enabled."""
+    ef = sys.modules["Ankimon.functions.encounter_functions"]
+    import random
+    from unittest import mock
+
+    settings = mock.MagicMock()
+    # Mock settings so remove_level_cap is False
+    settings.get.side_effect = lambda key, default=None: (
+        False if key == "misc.remove_level_cap" else (True if str(key).startswith("misc.gen") else default)
+    )
+    monkeypatch.setattr(ef, "settings_obj", settings)
+    monkeypatch.setattr(ef, "load_collected_pokemon_ids", lambda: set())
+
+    # Mock to ensure it attempts to pick high variation
+    monkeypatch.setattr(random, "randint", lambda a, b: b)
+
+    # Mock these so the rest of the generation passes without needing full DB/Tracker setup
+    monkeypatch.setattr(ef, "get_tier", lambda *args, **kwargs: "Normal")
+    monkeypatch.setattr(ef, "get_all_pokemon_in_tier", lambda tier: [1])
+    monkeypatch.setattr(ef, "search_pokedex_by_id", lambda id: "bulbasaur")
+    monkeypatch.setattr(ef, "check_id_ok", lambda id: True)
+    monkeypatch.setattr(ef, "check_min_generate_level", lambda name: 1)
+    monkeypatch.setattr(ef, "_meets_prerequisites", lambda id, ids: True)
+    monkeypatch.setattr(ef, "search_pokedex", lambda name, field: ["Grass"] if field == "types" else (1 if field == "actual_id" else {}))
+    monkeypatch.setattr(ef, "get_base_experience", lambda id: 64)
+    monkeypatch.setattr(ef, "get_growth_rate", lambda name: "medium")
+    pass
+
+    tracker = mock.MagicMock()
+    tracker.get_total_reviews.return_value = 100
+
+    # If main pokemon is 99, range is 96-102. With randint mocked to b (102),
+    # it should be capped at 100.
+    result = ef.generate_random_pokemon(
+        99, tracker, trainer_level=1, main_level=99, collected_ids=set()
+    )
+    assert result[2] == 100
+
+    # Same with 98
+    result2 = ef.generate_random_pokemon(
+        98, tracker, trainer_level=1, main_level=98, collected_ids=set()
+    )
+    assert result2[2] == 100
+
+    # Now set remove_cap to True
+    settings.get.side_effect = lambda key, default=None: (
+        True if key == "misc.remove_level_cap" else (True if str(key).startswith("misc.gen") else default)
+    )
+
+    # With cap removed, 99 + 3 = 102 should be allowed
+    result3 = ef.generate_random_pokemon(
+        99, tracker, trainer_level=1, main_level=99, collected_ids=set()
+    )
+    assert result3[2] == 102
