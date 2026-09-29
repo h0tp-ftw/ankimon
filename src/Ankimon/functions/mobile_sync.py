@@ -2853,6 +2853,7 @@ def _attribute_xp_and_evs_to_companion(
     db=None,
     logger=None,
 ) -> None:
+    """Persist mobile rewards and uncapped friendship, then refresh active state."""
     if xp_gained <= 0 and not any(ev_yield_gained.values()) and battles_fought <= 0:
         return
 
@@ -3096,6 +3097,7 @@ def _attribute_xp_and_evs_to_companion(
     if pkmndata.get("held_item") == "soothe-bell":
         friendship_gain = int(friendship_gain * 1.5)
     friendship += friendship_gain
+    # Keep lifetime friendship uncapped, matching desktop and XP Share rewards.
     pkmndata["friendship"] = friendship
 
     pkmndata["pokemon_defeated"] = (
