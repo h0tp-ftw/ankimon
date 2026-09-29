@@ -750,11 +750,29 @@ def test_soothe_bell_boosts_friendship_gain_by_half(monkeypatch):
 
         enemy = types.SimpleNamespace(ev_yield={})
 
+        import Ankimon.functions.trainer_functions as tf
+
         main_no_item = _make_main(None)
         ef.services.db.get_main_pokemon.return_value = {
+                "name": "Pikachu",
+                "level": 50,
+                "growth_rate": "medium",
                 "attacks": ["Tackle"],
                 "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+                "friendship": 300,
             }
+
+        tf.services = ef.services
+        tf.settings_obj = ef.settings_obj
+        tf.find_experience_for_level = lambda *a, **k: 10**9  # never level up
+        tf.check_evolution_for_pokemon = mock.MagicMock(return_value=None)
+        tf.check_friendship_evolution_for_pokemon = mock.MagicMock(return_value=None)
+        monkeypatch.setattr(tf.random, "randint", lambda a, b: 6)
+
+        no_item_dict = ef.services.db.get_main_pokemon.return_value.copy()
+        ef.services.db.get_pokemon = mock.MagicMock(return_value=no_item_dict)
+
+        main_no_item = _make_main(None)
         ef.save_main_pokemon_progress(main_no_item, enemy, 5, {}, mock.MagicMock(), None)
 
         main_soothe = _make_main("soothe-bell")

@@ -1,3 +1,4 @@
+import random
 from .badges_functions import get_achieved_badges
 from .pokemon_functions import find_experience_for_level
 from .pokedex_functions import check_evolution_for_pokemon, return_name_for_id
@@ -167,6 +168,12 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
                 break
         pokemon["level"] = current_level
         pokemon["xp"] = 0 if exp < 0 else exp
+
+    # Add friendship gain (same logic as encounter_functions.py)
+    friendship_gain = random.randint(5, 9)
+    if pokemon.get("held_item") == "soothe-bell":
+        friendship_gain = int(friendship_gain * 1.5)
+    pokemon["friendship"] = pokemon.get("friendship", 0) + friendship_gain
 
     # Check for evolution
     evo_id = check_evolution_for_pokemon(
