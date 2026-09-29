@@ -17,7 +17,7 @@ from datetime import datetime
 from aqt import QDialog, QVBoxLayout, QWebEngineView, QWebEnginePage, mw
 from aqt.qt import Qt, QUrl, QFrame, QWebEngineProfile
 from PyQt6.QtCore import QObject, pyqtSlot, QTimer, QByteArray
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QIcon
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWidgets import QStackedWidget
 import csv
@@ -32,7 +32,7 @@ except ImportError:  # dev helper not landed yet (thread-reload-and-misc-utils u
         return False
 
 
-from ..resources import items_path, csv_file_items_cost, csv_file_descriptions
+from ..resources import items_path, csv_file_items_cost, csv_file_descriptions, icon_path
 
 
 class SafeWebEnginePage(QWebEnginePage):
@@ -83,6 +83,7 @@ from ..business import calculate_cp_from_dict
 from ..ankimon_profile_web.profile_data import ProfileData
 from ..services import services
 from ..events import events
+from .channel_policy import register_screen_bridges
 
 # NOTE: functions/mobile_sync.py is a later (mobile) unit and is intentionally
 # NOT a module-load dependency of the web-shell host. The MobileBridge slots
@@ -1099,6 +1100,7 @@ class AnkimonItemsWeb(QDialog):
         self._live_refresh_pending = False
         self.current_screen = None
         self.setWindowTitle("Ankimon")
+        self.setWindowIcon(QIcon(str(icon_path)))
 
         # Paint the shell dark from the first frame. The web views set their
         # own page background, but the surrounding QDialog/QFrame/QStackedWidget
@@ -1192,21 +1194,24 @@ class AnkimonItemsWeb(QDialog):
         self.team_bridge = TeamBridge(self)
         self._mobile_bridge = MobileBridge(self)
 
-        # Each screen gets its own channel, but every channel registers the
-        # same bridge objects so any page can navigate / call any action.
+        bridges_by_name = {
+            "bridge": self.bridge,
+            "nav": self.nav,
+            "settings": self.settings_bridge,
+            "trainer": self.trainer_bridge,
+            "team": self.team_bridge,
+            "mobile": self._mobile_bridge,
+        }
+
+        # Each page gets a separate channel containing only its native bridge
+        # and navigation. This limits what a compromised page can invoke.
         for screen, view in self._views.items():
             view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
             view.page().setBackgroundColor(QColor("#0d1117"))
             self.stack.addWidget(view)
 
             channel = QWebChannel(view)
-            channel.registerObject("bridge", self.bridge)
-            channel.registerObject("nav", self.nav)
-            channel.registerObject("settings", self.settings_bridge)
-            channel.registerObject("trainer", self.trainer_bridge)
-            channel.registerObject("team", self.team_bridge)
-            if screen in (SCREEN_MOBILE, SCREEN_HISTORY):
-                channel.registerObject("mobile", self._mobile_bridge)
+            register_screen_bridges(channel, screen, bridges_by_name)
             view.page().setWebChannel(channel)
 
             view.loadFinished.connect(

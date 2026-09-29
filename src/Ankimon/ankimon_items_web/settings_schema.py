@@ -66,6 +66,7 @@ GROUPS = [
                 "settings": [
                     "Cards per Round",
                     "Review Based Damage",
+                    "Ignore Learning Cards",
                     "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",
@@ -127,6 +128,7 @@ GROUPS = [
             "View Main Pokémon Front",
             "XP Bar Location",
             "Pop-Up on Defeat",
+            "Pop-Up on Special Encounter",
             "Pop-Up on Item Receive",
         ],
         "chip_group": {

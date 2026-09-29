@@ -14,11 +14,13 @@ _desktop_session_revlog_ids: set[int] = set()
 _desktop_session_card_ids: set[int] = set()
 MOBILE_QUEUE_CAP = 10_000
 
+
 def _mobile_battle_language() -> str:
     """Short language code (jp / sp / es_latam / en / ...) for the mobile battle
     narration. Mirrors move_names._current_lang_code; never raises."""
     try:
         from ..move_names import _current_lang_code
+
         return _current_lang_code()
     except Exception:
         return "en"
@@ -45,6 +47,7 @@ def _mobile_sync_configured(settings) -> bool:
     except Exception:
         return True
 
+
 def record_desktop_review(revlog_id: int, card_id: int = None) -> None:
     """Record a revlog.id that Ankimon handled on desktop this inter-sync interval.
 
@@ -65,6 +68,7 @@ def record_desktop_review(revlog_id: int, card_id: int = None) -> None:
         _desktop_session_revlog_ids.add(revlog_id)
         try:
             from ..services import services
+
             if _mobile_sync_configured(services.settings):
                 db = services.db
                 if db is not None:
@@ -74,12 +78,14 @@ def record_desktop_review(revlog_id: int, card_id: int = None) -> None:
     if card_id is not None:
         _desktop_session_card_ids.add(card_id)
 
+
 def get_desktop_session_revlog_ids(col=None) -> frozenset[int]:
     ids = set(_desktop_session_revlog_ids)
     # Merge the durably-recorded desktop-processed ids so a restart that cleared
     # the in-memory set can't re-expose those reviews as mobile battles.
     try:
         from ..services import services
+
         db = services.db
         if db is not None:
             ids |= db.get_desktop_processed_revlog_ids()
@@ -90,7 +96,7 @@ def get_desktop_session_revlog_ids(col=None) -> frozenset[int]:
             placeholders = ",".join("?" for _ in _desktop_session_card_ids)
             rows = col.db.list(
                 f"SELECT id FROM revlog WHERE cid IN ({placeholders})",
-                *list(_desktop_session_card_ids)
+                *list(_desktop_session_card_ids),
             )
             for r_id in rows:
                 ids.add(r_id)
@@ -98,9 +104,11 @@ def get_desktop_session_revlog_ids(col=None) -> frozenset[int]:
             pass
     return frozenset(ids)
 
+
 def clear_desktop_session() -> None:
     _desktop_session_revlog_ids.clear()
     _desktop_session_card_ids.clear()
+
 
 class TempTracker:
     def __init__(self, total_reviews: int):
@@ -111,9 +119,10 @@ class TempTracker:
     def get_total_reviews(self) -> int:
         return self.total_reviews
 
+
 def _get_team_max_level(team_clones: list, db, settings_obj, main_pokemon) -> int:
     """Get the maximum level of any companion in the team, including inactive ones.
-    
+
     This ensures that activating or deactivating a companion does not shift the
     encounter generation level (and thus the seed/pool of valid wild species).
     """
@@ -122,8 +131,10 @@ def _get_team_max_level(team_clones: list, db, settings_obj, main_pokemon) -> in
         lvl = getattr(c, "level", None)
         if lvl is not None and isinstance(lvl, (int, float)):
             levels.append(int(lvl))
-            
-    inactive = settings_obj.get("mobile.inactive_companions", []) if settings_obj else []
+
+    inactive = (
+        settings_obj.get("mobile.inactive_companions", []) if settings_obj else []
+    )
     if inactive and db is not None:
         # Fast path: fetch every inactive companion in a single query. If the
         # batched read fails for any reason, fall through to per-id accessor reads
@@ -133,7 +144,7 @@ def _get_team_max_level(team_clones: list, db, settings_obj, main_pokemon) -> in
             placeholders = ",".join("?" for _ in inactive)
             cursor = db.execute(
                 f"SELECT data FROM captured_pokemon WHERE individual_id IN ({placeholders})",
-                inactive
+                inactive,
             )
             for row in cursor.fetchall():
                 data = db._deobfuscate(row["data"])
@@ -154,16 +165,17 @@ def _get_team_max_level(team_clones: list, db, settings_obj, main_pokemon) -> in
                             levels.append(int(lvl))
                 except Exception:
                     pass
-                
+
     if levels:
         return max(levels)
-        
+
     if main_pokemon:
         lvl = getattr(main_pokemon, "level", 5)
         if isinstance(lvl, (int, float)):
             return int(lvl)
-            
+
     return 5
+
 
 def _parse_cards_per_round(settings_obj) -> tuple[int, int]:
     """Reads settings_obj.get('battle.cards_per_round', 2) and returns (cards_per_round, cpr_split)."""
@@ -195,7 +207,65 @@ def _parse_cards_per_round(settings_obj) -> tuple[int, int]:
     cpr_split = cards_per_round
     return cards_per_round, cpr_split
 
-def _xp_share_split(earned_xp: int, earner_id, settings_obj, db=None) -> tuple[int, dict]:
+
+# Anki revlog review kind. 0 is learning, which covers a new card's first
+# answer and every learning step. Relearning is 2 and is not included.
+_REVLOG_LEARNING = 0
+_MULTIPLIER_POINTS = {1: 0, 2: 5, 3: 10, 4: 20}
+
+
+def _ignore_learning_cards(settings_obj) -> bool:
+    if settings_obj is None:
+        return False
+    try:
+        return bool(settings_obj.get("battle.ignore_learning_cards", False))
+    except Exception:
+        return False
+
+
+def ease_for_multiplier(review, ignore_learning: bool) -> int:
+    """Ease that feeds the battle-damage multiplier.
+
+    The stored ease is left as the button the user pressed. When Ignore
+    Learning Cards is on, a learning revlog row (type 0) contributes Good
+    (ease 3) instead.
+    """
+    ease = 3
+    review_type = None
+    if isinstance(review, dict):
+        raw_ease = review.get("ease")
+        if raw_ease:
+            ease = raw_ease
+        review_type = review.get("review_type")
+        if review_type is None:
+            review_type = review.get("type")
+    try:
+        ease = int(ease)
+    except (TypeError, ValueError):
+        ease = 3
+    if ignore_learning:
+        try:
+            if int(review_type) == _REVLOG_LEARNING:
+                return 3
+        except (TypeError, ValueError):
+            pass
+    return ease
+
+
+def multiplier_from_reviews(reviews, settings_obj) -> float:
+    """Same points scale as the desktop tracker (Again 0, Hard 5, Good 10, Easy 20)."""
+    ignore = _ignore_learning_cards(settings_obj)
+    total_points = sum(
+        _MULTIPLIER_POINTS.get(ease_for_multiplier(review, ignore), 10)
+        for review in reviews
+    )
+    max_points = 10.0 * len(reviews)
+    return total_points / max_points if max_points > 0 else 1.0
+
+
+def _xp_share_split(
+    earned_xp: int, earner_id, settings_obj, db=None
+) -> tuple[int, dict]:
     """Split one companion's battle XP under XP Share.
 
     Mirrors desktop's ``trainer_functions.xp_share_gain_exp`` — two modes,
@@ -213,7 +283,11 @@ def _xp_share_split(earned_xp: int, earner_id, settings_obj, db=None) -> tuple[i
     if earned_xp <= 0:
         return earned_xp, {}
 
-    mode = settings_obj.get("trainer.xp_share_mode", "classic") if settings_obj else "classic"
+    mode = (
+        settings_obj.get("trainer.xp_share_mode", "classic")
+        if settings_obj
+        else "classic"
+    )
 
     if mode == "oras":
         if db is None:
@@ -237,28 +311,38 @@ def _xp_share_split(earned_xp: int, earner_id, settings_obj, db=None) -> tuple[i
     share_half = int(earned_xp * 0.5)
     return earned_xp - share_half, {xp_share_id: share_half}
 
+
 def _compute_initial_reviews(db, tracker, day_cutoff: int) -> int:
     """Computes the adjusted total review count for encounter seeding based on day_cutoff."""
     initial_reviews = tracker.get_total_reviews() if tracker else 0
     try:
         if db:
             cutoff_ms = (day_cutoff - 86400) * 1000
-            
+
             # Subtract all mobile reviews done today (both resolved and unresolved)
             # to get today's desktop-only baseline.
             cursor = db.execute(
                 "SELECT COUNT(*) FROM pending_mobile_battles WHERE revlog_id >= ?",
-                (cutoff_ms,)
+                (cutoff_ms,),
             )
             row = cursor.fetchone()
             mobile_reviews_today = row[0] if row else 0
-            
+
             initial_reviews = max(0, initial_reviews - mobile_reviews_today)
     except Exception:
         pass
     return initial_reviews
 
-def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=None, pokedex_cache=None, trainer_card=None, main_pokemon=None) -> dict | None:
+
+def _generate_encounter(
+    level: int,
+    tracker,
+    collected_ids=None,
+    settings_obj=None,
+    pokedex_cache=None,
+    trainer_card=None,
+    main_pokemon=None,
+) -> dict | None:
     """Generates a random wild Pokémon encounter."""
     from .encounter_functions import generate_random_pokemon
     from .. import utils
@@ -279,12 +363,32 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
     utils.load_collected_pokemon_ids = lambda: collected_ids
     try:
         res = generate_random_pokemon(
-            level, tracker, collected_ids=collected_ids,
-            trainer_level=trainer_level, main_level=main_level,
+            level,
+            tracker,
+            collected_ids=collected_ids,
+            trainer_level=trainer_level,
+            main_level=main_level,
         )
-        pkmn_name, pkmn_id, pkmn_lvl, ability, pkmn_type, base_stats, \
-        enemy_attacks, base_exp, growth_rate, ev, iv, gender, \
-        battle_status, battle_stats, pkmn_tier, ev_yield, pkmn_shiny, nature = res
+        (
+            pkmn_name,
+            pkmn_id,
+            pkmn_lvl,
+            ability,
+            pkmn_type,
+            base_stats,
+            enemy_attacks,
+            base_exp,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            pkmn_tier,
+            ev_yield,
+            pkmn_shiny,
+            nature,
+        ) = res
     except Exception:
         pkmn_name = "Pikachu"
         pkmn_id = 25
@@ -325,8 +429,9 @@ def _generate_encounter(level: int, tracker, collected_ids=None, settings_obj=No
         "tier": pkmn_tier,
         "ev_yield": ev_yield,
         "shiny": pkmn_shiny,
-        "nature": nature
+        "nature": nature,
     }
+
 
 def _normalize_ev_yield(raw: dict) -> dict:
     """Renames EV keys and returns the normalized dict."""
@@ -337,9 +442,10 @@ def _normalize_ev_yield(raw: dict) -> dict:
         "defense": "def",
         "special-attack": "spa",
         "special-defense": "spd",
-        "speed": "spe"
+        "speed": "spe",
     }
     return {mapping.get(k.lower(), k.lower()): v for k, v in raw.items()}
+
 
 def _heal_to_full(p) -> None:
     """Restore a companion clone to full HP and clear its battle bonuses.
@@ -364,7 +470,10 @@ def _heal_to_full(p) -> None:
     except Exception:
         pass
 
-def detect_mobile_reviews(col, watermark_ms: int, desktop_revlog_ids: frozenset[int]) -> list[dict]:
+
+def detect_mobile_reviews(
+    col, watermark_ms: int, desktop_revlog_ids: frozenset[int]
+) -> list[dict]:
     """
     Returns revlog rows that are:
     - Newer than watermark_ms
@@ -379,7 +488,7 @@ def detect_mobile_reviews(col, watermark_ms: int, desktop_revlog_ids: frozenset[
           AND type IN (0, 1, 2, 3)
         ORDER BY id ASC
         """,
-        watermark_ms
+        watermark_ms,
     )
     return [
         {"id": r[0], "cid": r[1], "ease": r[2], "time": r[3], "type": r[4]}
@@ -459,6 +568,7 @@ def process_mobile_reviews_after_sync(col, ankimon_db, settings_obj, logger) -> 
         logger.log("error", f"Mobile sync error: {e}")
         return 0
 
+
 def load_active_team_clones(ankimon_db, settings_obj, main_pokemon_fallback) -> list:
     """
     Load the current team from DB, filter out inactive companions, and return
@@ -475,8 +585,16 @@ def load_active_team_clones(ankimon_db, settings_obj, main_pokemon_fallback) -> 
     if ankimon_db is not None:
         try:
             team_rows = ankimon_db.get_team()
-            inactive = set(settings_obj.get("mobile.inactive_companions", [])) if settings_obj else set()
-            active_ids = [t.get("individual_id") for t in team_rows if t.get("individual_id") and t.get("individual_id") not in inactive]
+            inactive = (
+                set(settings_obj.get("mobile.inactive_companions", []))
+                if settings_obj
+                else set()
+            )
+            active_ids = [
+                t.get("individual_id")
+                for t in team_rows
+                if t.get("individual_id") and t.get("individual_id") not in inactive
+            ]
             if active_ids:
                 # Active teams are small (a handful at most), so load each member
                 # via the DB accessor rather than hand-rolling batched SQL —
@@ -490,8 +608,12 @@ def load_active_team_clones(ankimon_db, settings_obj, main_pokemon_fallback) -> 
                     except Exception as e:
                         try:
                             from ..services import services
+
                             if services.logger:
-                                services.logger.log("warning", f"load_active_team_clones: skipping {ind_id}: {e}")
+                                services.logger.log(
+                                    "warning",
+                                    f"load_active_team_clones: skipping {ind_id}: {e}",
+                                )
                         except Exception:
                             pass
         except Exception:
@@ -515,7 +637,7 @@ def load_active_team_clones(ankimon_db, settings_obj, main_pokemon_fallback) -> 
 
     def heal_clone(p):
         p_clone = make_safe_clone(p)
-            
+
         max_hp_val = getattr(p_clone, "max_hp", 100)
         if isinstance(max_hp_val, (int, float)):
             p_clone.hp = max_hp_val
@@ -561,6 +683,7 @@ def select_best_companion(team_clones: list, enemy_pokemon) -> object:
         chart = _load_type_chart()
         if not chart:
             from ..business import type_compatibility_multiplier
+
             return type_compatibility_multiplier([move_type], defender_types)
         if not move_type or not defender_types:
             return 1.0
@@ -629,7 +752,7 @@ def select_best_companion(team_clones: list, enemy_pokemon) -> object:
         for move_name in moves:
             if not move_name or not isinstance(move_name, str):
                 continue
-            
+
             # Retrieve move details from cache
             move = moves_data.get(move_name.lower())
             if not move:
@@ -686,30 +809,42 @@ def select_best_companion(team_clones: list, enemy_pokemon) -> object:
     return best_clone
 
 
-def _compute_encounter_idx(all_reviews: list[dict], db, settings_obj, tracker, trainer_card, main_pokemon, commit: bool = True) -> int:
+def _compute_encounter_idx(
+    all_reviews: list[dict],
+    db,
+    settings_obj,
+    tracker,
+    trainer_card,
+    main_pokemon,
+    commit: bool = True,
+) -> int:
     if not all_reviews:
         return 0
 
     if db is not None:
         try:
             # Try to get the cached count
-            cursor = db.execute("SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'")
+            cursor = db.execute(
+                "SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'"
+            )
             row = cursor.fetchone()
             if row is not None:
                 return int(row[0])
-            
+
             # If missing, calculate starting index using resolved reviews (never use pruned history)
-            cursor = db.execute("SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1")
+            cursor = db.execute(
+                "SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1"
+            )
             resolved_reviews = cursor.fetchone()[0]
             cards_per_round, _ = _parse_cards_per_round(settings_obj)
             approx_count = resolved_reviews // cards_per_round
-            
+
             if commit:
                 conn = db._get_connection()
                 with conn:
                     conn.execute(
                         "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_resolved_encounters_count', ?)",
-                        (str(approx_count),)
+                        (str(approx_count),),
                     )
             return approx_count
         except Exception:
@@ -735,7 +870,7 @@ def run_mobile_battles(
     day_cutoff=0,
     limit=None,
     mode="all",
-    progress_callback=None
+    progress_callback=None,
 ) -> dict:
     with _mobile_sync_lock:
         return _run_mobile_battles_impl(
@@ -751,7 +886,7 @@ def run_mobile_battles(
             day_cutoff=day_cutoff,
             limit=limit,
             mode=mode,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
         )
 
 
@@ -769,7 +904,7 @@ def _run_mobile_battles_impl(
     day_cutoff=0,
     limit=None,
     mode="all",
-    progress_callback=None
+    progress_callback=None,
 ) -> dict:
     """
     Unified engine for:
@@ -778,6 +913,7 @@ def _run_mobile_battles_impl(
     - Turn-by-turn manual battle simulation (commit=True/False, mode="next")
     """
     from aqt import mw
+
     if day_cutoff == 0:
         day_cutoff = mw.col.sched.day_cutoff if (mw and mw.col) else 0
 
@@ -836,10 +972,13 @@ def _run_mobile_battles_impl(
 
         # We will simulate turn-by-turn until enemy or companion faints
         from ..utils import load_collected_pokemon_ids
+
         collected_ids = set(load_collected_pokemon_ids())
         team_clones = load_active_team_clones(db, settings_obj, main_pokemon)
-        stable_max_level = _get_team_max_level(team_clones, db, settings_obj, main_pokemon)
-        
+        stable_max_level = _get_team_max_level(
+            team_clones, db, settings_obj, main_pokemon
+        )
+
         # Calculate active_max_level (max level of active team clones only)
         active_levels = []
         for c in team_clones:
@@ -862,32 +1001,62 @@ def _run_mobile_battles_impl(
         # Initial seed of the encounter using stable index
         first_review = all_unresolved[0]
         resolved_count = sum(1 for r in all_reviews if r.get("resolved") == 1)
-        encounter_idx = _compute_encounter_idx(all_reviews, db, settings_obj, tracker, trainer_card, main_pokemon, commit=commit)
+        encounter_idx = _compute_encounter_idx(
+            all_reviews,
+            db,
+            settings_obj,
+            tracker,
+            trainer_card,
+            main_pokemon,
+            commit=commit,
+        )
         seed_idx = cards_per_round - 1  # default when all_reviews is empty
         if all_reviews:
-            seed_idx = min(len(all_reviews) - 1, (encounter_idx + 1) * cards_per_round - 1)
+            seed_idx = min(
+                len(all_reviews) - 1, (encounter_idx + 1) * cards_per_round - 1
+            )
             seed_review = all_reviews[seed_idx]
             enc_seed = seed_review.get("revlog_id") or seed_review.get("id") or 42
         else:
             enc_seed = 42
         random.seed(enc_seed)
 
-        initial_reviews = _compute_initial_reviews(
-            db,
-            tracker,
-            day_cutoff
-        )
+        initial_reviews = _compute_initial_reviews(db, tracker, day_cutoff)
         cards_in_encounter = seed_idx + 1
         temp_tracker = TempTracker(initial_reviews + cards_in_encounter)
 
-        enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None, trainer_card, main_pokemon)
-        adjusted_level = max(1, active_max_level + (enc_data["level"] - stable_max_level))
+        enc_data = _generate_encounter(
+            stable_max_level,
+            temp_tracker,
+            collected_ids,
+            settings_obj,
+            None,
+            trainer_card,
+            main_pokemon,
+        )
+        adjusted_level = max(
+            1, active_max_level + (enc_data["level"] - stable_max_level)
+        )
         current_enemy_pokemon = PokemonObject(
-            type=enc_data["type"], name=enc_data["name"], id=enc_data["id"], shiny=enc_data["shiny"],
-            level=adjusted_level, ability=enc_data["ability"], gender=enc_data["gender"], growth_rate=enc_data["growth_rate"],
-            captured_date=None, tier=enc_data["tier"], individual_id=str(uuid.uuid4()),
-            base_stats=enc_data["base_stats"], attacks=enc_data["attacks"], base_experience=enc_data["base_experience"],
-            ev=enc_data["ev"], iv=enc_data["iv"], battle_status=enc_data["battle_status"], ev_yield=enc_data["ev_yield"], nature=enc_data["nature"]
+            type=enc_data["type"],
+            name=enc_data["name"],
+            id=enc_data["id"],
+            shiny=enc_data["shiny"],
+            level=adjusted_level,
+            ability=enc_data["ability"],
+            gender=enc_data["gender"],
+            growth_rate=enc_data["growth_rate"],
+            captured_date=None,
+            tier=enc_data["tier"],
+            individual_id=str(uuid.uuid4()),
+            base_stats=enc_data["base_stats"],
+            attacks=enc_data["attacks"],
+            base_experience=enc_data["base_experience"],
+            ev=enc_data["ev"],
+            iv=enc_data["iv"],
+            battle_status=enc_data["battle_status"],
+            ev_yield=enc_data["ev_yield"],
+            nature=enc_data["nature"],
         )
 
         selected_override = None
@@ -906,6 +1075,7 @@ def _run_mobile_battles_impl(
                     data = db.get_pokemon(companion_override_id)
                     if data:
                         from ..pyobj.pokemon_obj import PokemonObject
+
                         pkmn = PokemonObject(**data)
                         max_hp_val = getattr(pkmn, "max_hp", 100)
                         if isinstance(max_hp_val, (int, float)):
@@ -923,18 +1093,23 @@ def _run_mobile_battles_impl(
         if selected_override is not None:
             main_pokemon_clone = selected_override
         else:
-            main_pokemon_clone = select_best_companion(team_clones, current_enemy_pokemon)
+            main_pokemon_clone = select_best_companion(
+                team_clones, current_enemy_pokemon
+            )
 
         if main_pokemon_clone is None:
             # No active companion, no override, and no main-Pokemon fallback: without
             # a battler simulate_battle_with_poke_engine(None, ...) raises, is swallowed
             # into enemy.hp = 0, and every review is auto-won for free. Bail out the
             # same way the mode=="all" path does instead of proceeding to the loop.
-            return {"success": False, "error": "No active companion or main Pokémon available to battle."}
+            return {
+                "success": False,
+                "error": "No active companion or main Pokémon available to battle.",
+            }
 
         mutator_full_reset = 1
         engine_state = None
-        
+
         reviews_list = []
         turns_log = []
         accumulated_evs = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
@@ -947,7 +1122,10 @@ def _run_mobile_battles_impl(
             if settings_obj.get("controls.allow_to_choose_moves", False):
                 choose_moves_penalty = 0.5
         lucky_egg_boost = 1.0
-        if main_pokemon_clone and getattr(main_pokemon_clone, "held_item", None) == "lucky-egg":
+        if (
+            main_pokemon_clone
+            and getattr(main_pokemon_clone, "held_item", None) == "lucky-egg"
+        ):
             lucky_egg_boost = 1.5
 
         chunk_idx = 0
@@ -967,15 +1145,15 @@ def _run_mobile_battles_impl(
                 user_attack = "splash"
 
             enemy_attacks_list = getattr(current_enemy_pokemon, "attacks", None)
-            if isinstance(enemy_attacks_list, (list, tuple)) and len(enemy_attacks_list) > 0:
+            if (
+                isinstance(enemy_attacks_list, (list, tuple))
+                and len(enemy_attacks_list) > 0
+            ):
                 enemy_attack = random.choice(enemy_attacks_list)
             else:
                 enemy_attack = "splash"
 
-            points_map = {1: 0, 2: 5, 3: 10, 4: 20}
-            total_points = sum(points_map.get(r.get("ease") or 3, 10) for r in chunk)
-            max_points = 10.0 * len(chunk)
-            turn_multiplier = total_points / max_points if max_points > 0 else 1.0
+            turn_multiplier = multiplier_from_reviews(chunk, settings_obj)
 
             orig_multiplier = 1.0
             has_tracker = tracker and hasattr(tracker, "multiplier")
@@ -985,14 +1163,19 @@ def _run_mobile_battles_impl(
 
             try:
                 results = simulate_battle_with_poke_engine(
-                    main_pokemon_clone, current_enemy_pokemon, user_attack, enemy_attack,
-                    mutator_full_reset, engine_state
+                    main_pokemon_clone,
+                    current_enemy_pokemon,
+                    user_attack,
+                    enemy_attack,
+                    mutator_full_reset,
+                    engine_state,
                 )
                 engine_state, mutator_full_reset = results[1], results[4]
             except Exception:
                 current_enemy_pokemon.hp = 0
             finally:
-                if has_tracker: tracker.multiplier = orig_multiplier
+                if has_tracker:
+                    tracker.multiplier = orig_multiplier
 
             comp_hp_val = getattr(main_pokemon_clone, "hp", 0)
             enemy_hp_val = getattr(current_enemy_pokemon, "hp", 0)
@@ -1000,12 +1183,15 @@ def _run_mobile_battles_impl(
             enemy_hp_after = max(0, enemy_hp_val)
 
             from ..move_names import format_move_name
-            turns_log.append({
-                "user_attack": format_move_name(user_attack),
-                "enemy_attack": format_move_name(enemy_attack),
-                "comp_hp_pct": int((comp_hp_after * 100) / companion_max_hp),
-                "enemy_hp_pct": int((enemy_hp_after * 100) / enemy_max_hp),
-            })
+
+            turns_log.append(
+                {
+                    "user_attack": format_move_name(user_attack),
+                    "enemy_attack": format_move_name(enemy_attack),
+                    "comp_hp_pct": int((comp_hp_after * 100) / companion_max_hp),
+                    "enemy_hp_pct": int((enemy_hp_after * 100) / enemy_max_hp),
+                }
+            )
 
             if comp_hp_after <= 0 or enemy_hp_after <= 0:
                 break
@@ -1015,26 +1201,43 @@ def _run_mobile_battles_impl(
         total_trainer_xp = 0
         gained_cash = 0
         if enemy_hp_after <= 0:
-            exp = calc_experience(current_enemy_pokemon.base_experience, current_enemy_pokemon.level)
+            exp = calc_experience(
+                current_enemy_pokemon.base_experience, current_enemy_pokemon.level
+            )
             try:
-                exp = max(1, math.ceil(exp * choose_moves_penalty * lucky_egg_boost * xp_multiplier))
+                exp = max(
+                    1,
+                    math.ceil(
+                        exp * choose_moves_penalty * lucky_egg_boost * xp_multiplier
+                    ),
+                )
             except TypeError:
                 exp = 100
             battle_xp = exp
 
             from ..pyobj.trainer_card import POKEMON_TIERS
+
             txp = POKEMON_TIERS.get(current_enemy_pokemon.tier.lower(), 10)
-            allow_to_choose_move = settings_obj.get("controls.allow_to_choose_moves") if settings_obj else False
-            if allow_to_choose_move: txp *= 0.5
+            allow_to_choose_move = (
+                settings_obj.get("controls.allow_to_choose_moves")
+                if settings_obj
+                else False
+            )
+            if allow_to_choose_move:
+                txp *= 0.5
             total_trainer_xp = int(txp)
 
             if current_enemy_pokemon.ev_yield:
-                for sk, v in _normalize_ev_yield(current_enemy_pokemon.ev_yield).items():
-                    if sk in accumulated_evs: accumulated_evs[sk] += v
+                for sk, v in _normalize_ev_yield(
+                    current_enemy_pokemon.ev_yield
+                ).items():
+                    if sk in accumulated_evs:
+                        accumulated_evs[sk] += v
 
             gained_cash = 0
 
         from .sprite_functions import get_relative_sprite_path
+
         last_result_data = {
             "done": False,
             "enemy_name": current_enemy_pokemon.display_name,
@@ -1047,12 +1250,22 @@ def _run_mobile_battles_impl(
                 current_enemy_pokemon.shiny,
                 getattr(current_enemy_pokemon, "gender", "N") or "N",
                 current_enemy_pokemon.name,
-                "gif"
+                "gif",
             ),
             "ease": first_review.get("ease", 3),
-            "companion_name": main_pokemon_clone.display_name if main_pokemon_clone else "Companion",
+            "companion_name": main_pokemon_clone.display_name
+            if main_pokemon_clone
+            else "Companion",
             "companion_level": main_pokemon_clone.level if main_pokemon_clone else 5,
-            "companion_sprite": get_relative_sprite_path(main_pokemon_clone.id, main_pokemon_clone.shiny, (getattr(main_pokemon_clone, "gender", "N") or "N"), main_pokemon_clone.name, "gif") if main_pokemon_clone else "",
+            "companion_sprite": get_relative_sprite_path(
+                main_pokemon_clone.id,
+                main_pokemon_clone.shiny,
+                (getattr(main_pokemon_clone, "gender", "N") or "N"),
+                main_pokemon_clone.name,
+                "gif",
+            )
+            if main_pokemon_clone
+            else "",
             "companion_id": getattr(main_pokemon_clone, "individual_id", ""),
             "xp_gained": battle_xp,
             "turns": turns_log,
@@ -1076,24 +1289,38 @@ def _run_mobile_battles_impl(
 
         pending_total_at_start = len(all_unresolved)
         remaining_reviews = pending_total_at_start - len(reviews_list)
-        last_result_data.update({
-            "remaining": remaining_reviews,
-            "cash_gained": gained_cash,
-            "trainer_xp_gained": total_trainer_xp,
-        })
+        last_result_data.update(
+            {
+                "remaining": remaining_reviews,
+                "cash_gained": gained_cash,
+                "trainer_xp_gained": total_trainer_xp,
+            }
+        )
 
         # Re-calculate battle_number properly:
-        resolved_count = db.execute("SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved=1").fetchone()[0]
+        resolved_count = db.execute(
+            "SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved=1"
+        ).fetchone()[0]
         # Total encounters
-        total_resolved_encounters = _compute_encounter_idx(all_reviews, db, settings_obj, tracker, trainer_card, main_pokemon, commit=commit)
+        total_resolved_encounters = _compute_encounter_idx(
+            all_reviews,
+            db,
+            settings_obj,
+            tracker,
+            trainer_card,
+            main_pokemon,
+            commit=commit,
+        )
         last_result_data["battle_number"] = total_resolved_encounters
         # Total encounters overall
-        total_all_count = db.execute("SELECT COUNT(*) FROM pending_mobile_battles").fetchone()[0]
+        total_all_count = db.execute(
+            "SELECT COUNT(*) FROM pending_mobile_battles"
+        ).fetchone()[0]
         last_result_data["total_battles"] = math.ceil(total_all_count / cards_per_round)
 
         return {
             "result": last_result_data,
-            "current_pending_outcome": current_pending_outcome
+            "current_pending_outcome": current_pending_outcome,
         }
 
     # Otherwise, mode == "all"
@@ -1105,7 +1332,7 @@ def _run_mobile_battles_impl(
                    WHERE resolved = 0
                    ORDER BY id ASC
                    LIMIT ?""",
-                (limit,)
+                (limit,),
             ).fetchall()
         else:
             reviews_rows = db.execute(
@@ -1117,12 +1344,23 @@ def _run_mobile_battles_impl(
 
         if not reviews_rows:
             if commit:
-                return {"success": True, "resolved": 0, "message": "No pending battles.", "done": True}
+                return {
+                    "success": True,
+                    "resolved": 0,
+                    "message": "No pending battles.",
+                    "done": True,
+                }
             else:
                 return {
-                    "xp": 0, "encounters": 0, "caught": [], "defeated": [],
-                    "catches_count": 0, "is_truncated": False, "simulated_reviews": 0,
-                    "total_reviews": 0, "cash": 0
+                    "xp": 0,
+                    "encounters": 0,
+                    "caught": [],
+                    "defeated": [],
+                    "catches_count": 0,
+                    "is_truncated": False,
+                    "simulated_reviews": 0,
+                    "total_reviews": 0,
+                    "cash": 0,
                 }
 
         reviews_list = [
@@ -1142,15 +1380,24 @@ def _run_mobile_battles_impl(
 
     if not reviews_list:
         if commit:
-            return {"success": True, "resolved": 0, "message": "No pending battles.", "done": True}
+            return {
+                "success": True,
+                "resolved": 0,
+                "message": "No pending battles.",
+                "done": True,
+            }
         else:
             return {
-                "xp": 0, "encounters": 0, "caught": [], "defeated": [],
-                "catches_count": 0, "is_truncated": False, "simulated_reviews": 0,
-                "total_reviews": 0, "cash": 0
+                "xp": 0,
+                "encounters": 0,
+                "caught": [],
+                "defeated": [],
+                "catches_count": 0,
+                "is_truncated": False,
+                "simulated_reviews": 0,
+                "total_reviews": 0,
+                "cash": 0,
             }
-
-
 
     state = random.getstate()
 
@@ -1158,7 +1405,15 @@ def _run_mobile_battles_impl(
 
     # Unified deterministic seed for the first encounter using the stable index
     resolved_count = sum(1 for r in all_reviews if r.get("resolved") == 1)
-    encounter_idx = _compute_encounter_idx(all_reviews, db, settings_obj, tracker, trainer_card, main_pokemon, commit=commit)
+    encounter_idx = _compute_encounter_idx(
+        all_reviews,
+        db,
+        settings_obj,
+        tracker,
+        trainer_card,
+        main_pokemon,
+        commit=commit,
+    )
     if all_reviews:
         seed_idx = min(len(all_reviews) - 1, (encounter_idx + 1) * cards_per_round - 1)
         seed_review = all_reviews[seed_idx]
@@ -1171,8 +1426,10 @@ def _run_mobile_battles_impl(
     if settings_obj:
         try:
             auto_battle_setting = int(settings_obj.get("battle.automatic_battle", 3))
-        except Exception: pass
-    if auto_battle_setting == 0: auto_battle_setting = 3
+        except Exception:
+            pass
+    if auto_battle_setting == 0:
+        auto_battle_setting = 3
 
     wishlist = []
     auto_catch_legendary = True
@@ -1203,23 +1460,20 @@ def _run_mobile_battles_impl(
         lucky_egg_boost = 1.5
 
     from ..utils import load_collected_pokemon_ids
+
     collected_ids = set(load_collected_pokemon_ids())
 
     from .encounter_functions import (
         generate_random_pokemon,
         save_caught_pokemon,
-        save_main_pokemon_progress
+        save_main_pokemon_progress,
     )
     from .encounter_data import MEGA, GMAX, REGIONAL_FORM_REGION
     from ..business import calc_experience, calculate_cp_from_dict
     from ..pyobj.pokemon_obj import PokemonObject
     from ..singletons import get_evo_window
 
-    initial_reviews = _compute_initial_reviews(
-        db,
-        tracker,
-        day_cutoff
-    )
+    initial_reviews = _compute_initial_reviews(db, tracker, day_cutoff)
     temp_tracker = TempTracker(initial_reviews + resolved_count)
     team_clones = load_active_team_clones(db, settings_obj, main_pokemon)
     main_pokemon_clone = team_clones[0] if team_clones else None
@@ -1230,15 +1484,24 @@ def _run_mobile_battles_impl(
         # 100 (getattr(None, "hp", 100)) -> the player auto-wins/catches every
         # review for free. Bail out with a benign empty result instead.
         if commit:
-            return {"success": False, "error": "No active companion or main Pokémon available to battle."}
+            return {
+                "success": False,
+                "error": "No active companion or main Pokémon available to battle.",
+            }
         else:
             return {
-                "xp": 0, "encounters": 0, "caught": [], "defeated": [],
-                "catches_count": 0, "is_truncated": False, "simulated_reviews": 0,
-                "total_reviews": 0, "cash": 0
+                "xp": 0,
+                "encounters": 0,
+                "caught": [],
+                "defeated": [],
+                "catches_count": 0,
+                "is_truncated": False,
+                "simulated_reviews": 0,
+                "total_reviews": 0,
+                "cash": 0,
             }
     stable_max_level = _get_team_max_level(team_clones, db, settings_obj, main_pokemon)
-    
+
     # Calculate active_max_level (max level of active team clones only)
     active_levels = []
     for c in team_clones:
@@ -1273,12 +1536,23 @@ def _run_mobile_battles_impl(
     # so the sum of history entries' cash_gained matches trainer.cash actually
     # credited below. Without this, cash payouts are counted from 0 each run and
     # the Mobile Battle History screen misattributes where the cash came from.
-    payout_start = int(settings_obj.get("trainer.mobile_reviews_resolved_since_payout", 0)) if settings_obj else 0
+    payout_start = (
+        int(settings_obj.get("trainer.mobile_reviews_resolved_since_payout", 0))
+        if settings_obj
+        else 0
+    )
 
     from datetime import date
+
     today_str = str(date.today())
-    last_reward_date = settings_obj.get("trainer.last_mobile_cash_reward_date", "") if settings_obj else ""
-    mobile_cash_earned_today = settings_obj.get("trainer.mobile_cash_earned_today", 0) if settings_obj else 0
+    last_reward_date = (
+        settings_obj.get("trainer.last_mobile_cash_reward_date", "")
+        if settings_obj
+        else ""
+    )
+    mobile_cash_earned_today = (
+        settings_obj.get("trainer.mobile_cash_earned_today", 0) if settings_obj else 0
+    )
 
     if last_reward_date != today_str:
         mobile_cash_earned_today = 0
@@ -1289,6 +1563,7 @@ def _run_mobile_battles_impl(
     accumulated_cash_earned_this_batch = 0
 
     from .. import utils
+
     orig_load_ids = utils.load_collected_pokemon_ids
     utils.load_collected_pokemon_ids = lambda: collected_ids
 
@@ -1323,6 +1598,7 @@ def _run_mobile_battles_impl(
     # progress_callback (the bulk-resolve worker does its own yield). is_main_thread
     # returns True headless, so the Tier-1 harness / tests are unaffected.
     from ..utils import is_main_thread
+
     _yield_bg = (progress_callback is None) and (not is_main_thread())
     _last_yield = time.monotonic()
 
@@ -1337,18 +1613,22 @@ def _run_mobile_battles_impl(
                     _last_yield = time.monotonic()
             if progress_callback:
                 try:
-                    cb_res = progress_callback({
-                        "processed": total_reviews_processed,
-                        "total": len(reviews_to_process),
-                        "resolved": resolved_encounters,
-                        "catches": caught_count,
-                        "xp_gained": total_xp
-                    })
+                    cb_res = progress_callback(
+                        {
+                            "processed": total_reviews_processed,
+                            "total": len(reviews_to_process),
+                            "resolved": resolved_encounters,
+                            "catches": caught_count,
+                            "xp_gained": total_xp,
+                        }
+                    )
                     if cb_res is False:
                         break
                 except TypeError:
                     try:
-                        cb_res = progress_callback(total_reviews_processed, len(reviews_to_process))
+                        cb_res = progress_callback(
+                            total_reviews_processed, len(reviews_to_process)
+                        )
                         if cb_res is False:
                             break
                     except Exception:
@@ -1357,42 +1637,83 @@ def _run_mobile_battles_impl(
                     pass
             if commit and ci > 0 and (payout_start + total_reviews_processed) % ci == 0:
                 if mobile_cash_earned_today + accumulated_cash_earned_this_batch < 400:
-                    allowed = min(ca, 400 - (mobile_cash_earned_today + accumulated_cash_earned_this_batch))
+                    allowed = min(
+                        ca,
+                        400
+                        - (
+                            mobile_cash_earned_today
+                            + accumulated_cash_earned_this_batch
+                        ),
+                    )
                     current_battle_cash += allowed
                     accumulated_cash_earned_this_batch += allowed
             cards_battle_round += 1
             current_turn_reviews.append(review)
-            
+
             if current_enemy_pokemon is not None:
                 current_encounter_reviews += 1
 
-            if cards_battle_round >= cards_per_round or review == reviews_to_process[-1]:
+            if (
+                cards_battle_round >= cards_per_round
+                or review == reviews_to_process[-1]
+            ):
                 cards_battle_round = 0
 
                 if current_enemy_pokemon is None:
                     encounters_fought += 1
                     current_encounter_reviews = len(current_turn_reviews)
-                    
+
                     # Stable seeding based on encounter index
                     if all_reviews:
-                        seed_idx = min(len(all_reviews) - 1, (encounter_idx + 1) * cards_per_round - 1)
+                        seed_idx = min(
+                            len(all_reviews) - 1,
+                            (encounter_idx + 1) * cards_per_round - 1,
+                        )
                         seed_review = all_reviews[seed_idx]
-                        enc_seed = seed_review.get("revlog_id") or seed_review.get("id") or 42
+                        enc_seed = (
+                            seed_review.get("revlog_id") or seed_review.get("id") or 42
+                        )
                     else:
                         enc_seed = 42
                     random.seed(enc_seed)
                     encounter_idx += 1
-                    
-                    enc_data = _generate_encounter(stable_max_level, temp_tracker, collected_ids, settings_obj, None, trainer_card, main_pokemon)
-                    adjusted_level = max(1, active_max_level + (enc_data["level"] - stable_max_level))
-                    current_enemy_pokemon = PokemonObject(
-                        type=enc_data["type"], name=enc_data["name"], id=enc_data["id"], shiny=enc_data["shiny"],
-                        level=adjusted_level, ability=enc_data["ability"], gender=enc_data["gender"], growth_rate=enc_data["growth_rate"],
-                        captured_date=None, tier=enc_data["tier"], individual_id=str(uuid.uuid4()),
-                        base_stats=enc_data["base_stats"], attacks=enc_data["attacks"], base_experience=enc_data["base_experience"],
-                        ev=enc_data["ev"], iv=enc_data["iv"], battle_status=enc_data["battle_status"], ev_yield=enc_data["ev_yield"], nature=enc_data["nature"]
+
+                    enc_data = _generate_encounter(
+                        stable_max_level,
+                        temp_tracker,
+                        collected_ids,
+                        settings_obj,
+                        None,
+                        trainer_card,
+                        main_pokemon,
                     )
-                    main_pokemon_clone = select_best_companion(team_clones, current_enemy_pokemon)
+                    adjusted_level = max(
+                        1, active_max_level + (enc_data["level"] - stable_max_level)
+                    )
+                    current_enemy_pokemon = PokemonObject(
+                        type=enc_data["type"],
+                        name=enc_data["name"],
+                        id=enc_data["id"],
+                        shiny=enc_data["shiny"],
+                        level=adjusted_level,
+                        ability=enc_data["ability"],
+                        gender=enc_data["gender"],
+                        growth_rate=enc_data["growth_rate"],
+                        captured_date=None,
+                        tier=enc_data["tier"],
+                        individual_id=str(uuid.uuid4()),
+                        base_stats=enc_data["base_stats"],
+                        attacks=enc_data["attacks"],
+                        base_experience=enc_data["base_experience"],
+                        ev=enc_data["ev"],
+                        iv=enc_data["iv"],
+                        battle_status=enc_data["battle_status"],
+                        ev_yield=enc_data["ev_yield"],
+                        nature=enc_data["nature"],
+                    )
+                    main_pokemon_clone = select_best_companion(
+                        team_clones, current_enemy_pokemon
+                    )
                     mutator_full_reset = 1
                     engine_state = None
 
@@ -1404,15 +1725,17 @@ def _run_mobile_battles_impl(
                     user_attack = "splash"
 
                 enemy_attacks_list = getattr(current_enemy_pokemon, "attacks", None)
-                if isinstance(enemy_attacks_list, (list, tuple)) and len(enemy_attacks_list) > 0:
+                if (
+                    isinstance(enemy_attacks_list, (list, tuple))
+                    and len(enemy_attacks_list) > 0
+                ):
                     enemy_attack = random.choice(enemy_attacks_list)
                 else:
                     enemy_attack = "splash"
 
-                points_map = {1: 0, 2: 5, 3: 10, 4: 20}
-                total_points = sum(points_map.get(r.get("ease") or 3, 10) for r in current_turn_reviews)
-                max_points = 10.0 * len(current_turn_reviews)
-                turn_multiplier = total_points / max_points if max_points > 0 else 1.0
+                turn_multiplier = multiplier_from_reviews(
+                    current_turn_reviews, settings_obj
+                )
 
                 orig_multiplier = 1.0
                 has_tracker = tracker and hasattr(tracker, "multiplier")
@@ -1422,14 +1745,19 @@ def _run_mobile_battles_impl(
 
                 try:
                     results = simulate_battle_with_poke_engine(
-                        main_pokemon_clone, current_enemy_pokemon, user_attack, enemy_attack,
-                        mutator_full_reset, engine_state
+                        main_pokemon_clone,
+                        current_enemy_pokemon,
+                        user_attack,
+                        enemy_attack,
+                        mutator_full_reset,
+                        engine_state,
                     )
                     engine_state, mutator_full_reset = results[1], results[4]
                 except Exception:
                     current_enemy_pokemon.hp = 0
                 finally:
-                    if has_tracker: tracker.multiplier = orig_multiplier
+                    if has_tracker:
+                        tracker.multiplier = orig_multiplier
                     current_turn_reviews = []
 
                 enemy_hp = getattr(current_enemy_pokemon, "hp", 100)
@@ -1440,10 +1768,19 @@ def _run_mobile_battles_impl(
                     is_gmax = current_enemy_pokemon.id in GMAX
                     is_regional = current_enemy_pokemon.id in REGIONAL_FORM_REGION
                     should_catch_always = (
-                        (current_enemy_pokemon.tier == "Legendary" and auto_catch_legendary)
-                        or (current_enemy_pokemon.tier == "Mythical" and auto_catch_mythical)
+                        (
+                            current_enemy_pokemon.tier == "Legendary"
+                            and auto_catch_legendary
+                        )
+                        or (
+                            current_enemy_pokemon.tier == "Mythical"
+                            and auto_catch_mythical
+                        )
                         or (current_enemy_pokemon.tier == "Ultra" and auto_catch_ultra)
-                        or (current_enemy_pokemon.tier == "Starter" and auto_catch_starter)
+                        or (
+                            current_enemy_pokemon.tier == "Starter"
+                            and auto_catch_starter
+                        )
                         or (is_mega and auto_catch_mega)
                         or (is_gmax and auto_catch_gmax)
                         or (is_regional and auto_catch_regional)
@@ -1451,18 +1788,33 @@ def _run_mobile_battles_impl(
                     )
 
                     caught = False
-                    if auto_battle_setting == 1: caught = True
-                    elif auto_battle_setting == 2: caught = (current_enemy_pokemon.shiny or should_catch_always)
+                    if auto_battle_setting == 1:
+                        caught = True
+                    elif auto_battle_setting == 2:
+                        caught = current_enemy_pokemon.shiny or should_catch_always
                     elif auto_battle_setting == 3:
-                        caught = (current_enemy_pokemon.id not in collected_ids or current_enemy_pokemon.shiny or should_catch_always)
-                    
+                        caught = (
+                            current_enemy_pokemon.id not in collected_ids
+                            or current_enemy_pokemon.shiny
+                            or should_catch_always
+                        )
+
                     if caught:
                         collected_ids.add(current_enemy_pokemon.id)
 
                     enemy_dict = current_enemy_pokemon.to_dict()
-                    enemy_dict.update({
-                        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-                    })
+                    enemy_dict.update(
+                        {
+                            "ev": {
+                                "hp": 0,
+                                "atk": 0,
+                                "def": 0,
+                                "spa": 0,
+                                "spd": 0,
+                                "spe": 0,
+                            },
+                        }
+                    )
                     cp_val = calculate_cp_from_dict(enemy_dict)
 
                     pkmn_info = {
@@ -1472,28 +1824,49 @@ def _run_mobile_battles_impl(
                         "shiny": bool(current_enemy_pokemon.shiny),
                         "tier": str(current_enemy_pokemon.tier),
                         "xp": 0,
-                        "cp": cp_val
+                        "cp": cp_val,
                     }
 
                     if caught:
                         if commit:
                             from ..services import services
+
                             capture_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             current_enemy_pokemon.captured_date = capture_time
-                            save_caught_pokemon(current_enemy_pokemon, nickname=None, achievements=services.achievements)
+                            save_caught_pokemon(
+                                current_enemy_pokemon,
+                                nickname=None,
+                                achievements=services.achievements,
+                            )
                             try:
                                 from ..reviewer_ui import _collected_pokemon_ids
-                                if isinstance(_collected_pokemon_ids, set): _collected_pokemon_ids.add(current_enemy_pokemon.id)
-                            except Exception: pass
+
+                                if isinstance(_collected_pokemon_ids, set):
+                                    _collected_pokemon_ids.add(current_enemy_pokemon.id)
+                            except Exception:
+                                pass
                             caught_pokemon_list.append(pkmn_info)
-                            caught_count += 1  # else resolveAll/the UI report "0 caught"
+                            caught_count += (
+                                1  # else resolveAll/the UI report "0 caught"
+                            )
                             last_outcome = "caught"
                         else:
                             caught_pokemon.append(pkmn_info)
                     else:
-                        exp = calc_experience(current_enemy_pokemon.base_experience, current_enemy_pokemon.level)
+                        exp = calc_experience(
+                            current_enemy_pokemon.base_experience,
+                            current_enemy_pokemon.level,
+                        )
                         try:
-                            exp = max(1, math.ceil(exp * choose_moves_penalty * lucky_egg_boost * xp_multiplier))
+                            exp = max(
+                                1,
+                                math.ceil(
+                                    exp
+                                    * choose_moves_penalty
+                                    * lucky_egg_boost
+                                    * xp_multiplier
+                                ),
+                            )
                         except TypeError:
                             exp = 100
                         battle_xp = exp
@@ -1501,10 +1874,15 @@ def _run_mobile_battles_impl(
 
                         if commit:
                             total_xp += exp
-                            defeated_encounters.append({"tier": current_enemy_pokemon.tier})
+                            defeated_encounters.append(
+                                {"tier": current_enemy_pokemon.tier}
+                            )
                             if current_enemy_pokemon.ev_yield:
-                                for sk, v in _normalize_ev_yield(current_enemy_pokemon.ev_yield).items():
-                                    if sk in accumulated_evs: accumulated_evs[sk] += v
+                                for sk, v in _normalize_ev_yield(
+                                    current_enemy_pokemon.ev_yield
+                                ).items():
+                                    if sk in accumulated_evs:
+                                        accumulated_evs[sk] += v
                             last_outcome = "defeated"
                         else:
                             total_xp += exp
@@ -1514,28 +1892,57 @@ def _run_mobile_battles_impl(
                         # Insert history for caught or defeated
                         try:
                             from ..pyobj.trainer_card import POKEMON_TIERS
-                            txp = POKEMON_TIERS.get(current_enemy_pokemon.tier.lower(), 10)
-                            allow_to_choose_move = settings_obj.get("controls.allow_to_choose_moves") if settings_obj else False
-                            if allow_to_choose_move: txp *= 0.5
+
+                            txp = POKEMON_TIERS.get(
+                                current_enemy_pokemon.tier.lower(), 10
+                            )
+                            allow_to_choose_move = (
+                                settings_obj.get("controls.allow_to_choose_moves")
+                                if settings_obj
+                                else False
+                            )
+                            if allow_to_choose_move:
+                                txp *= 0.5
                             txp = int(txp) if last_outcome == "defeated" else 0
-                            history_entries_to_add.append({
-                                "timestamp": int(time.time() * 1000),
-                                "enemy_id": current_enemy_pokemon.id,
-                                "enemy_name": current_enemy_pokemon.display_name,
-                                "enemy_level": current_enemy_pokemon.level,
-                                "enemy_shiny": current_enemy_pokemon.shiny,
-                                "companion_name": main_pokemon_clone.display_name if main_pokemon_clone else None,
-                                "companion_level": main_pokemon_clone.level if main_pokemon_clone else None,
-                                "companion_id": main_pokemon_clone.individual_id if main_pokemon_clone else None,
-                                "ev_yield": current_enemy_pokemon.ev_yield.copy() if (last_outcome == "defeated" and current_enemy_pokemon and getattr(current_enemy_pokemon, "ev_yield", None)) else {},
-                                "outcome": last_outcome,
-                                "xp_gained": battle_xp if last_outcome == "defeated" else 0,
-                                "trainer_xp_gained": txp,
-                                "cash_gained": current_battle_cash,
-                            })
+                            history_entries_to_add.append(
+                                {
+                                    "timestamp": int(time.time() * 1000),
+                                    "enemy_id": current_enemy_pokemon.id,
+                                    "enemy_name": current_enemy_pokemon.display_name,
+                                    "enemy_level": current_enemy_pokemon.level,
+                                    "enemy_shiny": current_enemy_pokemon.shiny,
+                                    "companion_name": main_pokemon_clone.display_name
+                                    if main_pokemon_clone
+                                    else None,
+                                    "companion_level": main_pokemon_clone.level
+                                    if main_pokemon_clone
+                                    else None,
+                                    "companion_id": main_pokemon_clone.individual_id
+                                    if main_pokemon_clone
+                                    else None,
+                                    "ev_yield": current_enemy_pokemon.ev_yield.copy()
+                                    if (
+                                        last_outcome == "defeated"
+                                        and current_enemy_pokemon
+                                        and getattr(
+                                            current_enemy_pokemon, "ev_yield", None
+                                        )
+                                    )
+                                    else {},
+                                    "outcome": last_outcome,
+                                    "xp_gained": battle_xp
+                                    if last_outcome == "defeated"
+                                    else 0,
+                                    "trainer_xp_gained": txp,
+                                    "cash_gained": current_battle_cash,
+                                }
+                            )
                         except Exception as ex:
                             if logger:
-                                logger.log("error", f"Failed to record auto-resolve history: {ex}")
+                                logger.log(
+                                    "error",
+                                    f"Failed to record auto-resolve history: {ex}",
+                                )
                         current_battle_cash = 0
 
                     reviews_spent_for_resolved += current_encounter_reviews
@@ -1548,23 +1955,34 @@ def _run_mobile_battles_impl(
                     if commit:
                         # Insert history for loss
                         try:
-                            history_entries_to_add.append({
-                                "timestamp": int(time.time() * 1000),
-                                "enemy_id": current_enemy_pokemon.id,
-                                "enemy_name": current_enemy_pokemon.display_name,
-                                "enemy_level": current_enemy_pokemon.level,
-                                "enemy_shiny": current_enemy_pokemon.shiny,
-                                "companion_name": main_pokemon_clone.display_name if main_pokemon_clone else None,
-                                "companion_level": main_pokemon_clone.level if main_pokemon_clone else None,
-                                "companion_id": main_pokemon_clone.individual_id if main_pokemon_clone else None,
-                                "outcome": "lost",
-                                "xp_gained": 0,
-                                "trainer_xp_gained": 0,
-                                "cash_gained": current_battle_cash,
-                            })
+                            history_entries_to_add.append(
+                                {
+                                    "timestamp": int(time.time() * 1000),
+                                    "enemy_id": current_enemy_pokemon.id,
+                                    "enemy_name": current_enemy_pokemon.display_name,
+                                    "enemy_level": current_enemy_pokemon.level,
+                                    "enemy_shiny": current_enemy_pokemon.shiny,
+                                    "companion_name": main_pokemon_clone.display_name
+                                    if main_pokemon_clone
+                                    else None,
+                                    "companion_level": main_pokemon_clone.level
+                                    if main_pokemon_clone
+                                    else None,
+                                    "companion_id": main_pokemon_clone.individual_id
+                                    if main_pokemon_clone
+                                    else None,
+                                    "outcome": "lost",
+                                    "xp_gained": 0,
+                                    "trainer_xp_gained": 0,
+                                    "cash_gained": current_battle_cash,
+                                }
+                            )
                         except Exception as ex:
                             if logger:
-                                logger.log("error", f"Failed to record auto-resolve loss history: {ex}")
+                                logger.log(
+                                    "error",
+                                    f"Failed to record auto-resolve loss history: {ex}",
+                                )
                         current_battle_cash = 0
 
                     reviews_spent_for_resolved += current_encounter_reviews
@@ -1572,27 +1990,37 @@ def _run_mobile_battles_impl(
                     current_enemy_pokemon = None
                     for c in team_clones:
                         _heal_to_full(c)
-        
+
         if commit and current_enemy_pokemon is not None:
             # Insert history for escaped / unfinished battle
             try:
-                history_entries_to_add.append({
-                    "timestamp": int(time.time() * 1000),
-                    "enemy_id": current_enemy_pokemon.id,
-                    "enemy_name": current_enemy_pokemon.display_name,
-                    "enemy_level": current_enemy_pokemon.level,
-                    "enemy_shiny": current_enemy_pokemon.shiny,
-                    "companion_name": main_pokemon_clone.display_name if main_pokemon_clone else None,
-                    "companion_level": main_pokemon_clone.level if main_pokemon_clone else None,
-                    "companion_id": main_pokemon_clone.individual_id if main_pokemon_clone else None,
-                    "outcome": "escaped",
-                    "xp_gained": 0,
-                    "trainer_xp_gained": 0,
-                    "cash_gained": current_battle_cash,
-                })
+                history_entries_to_add.append(
+                    {
+                        "timestamp": int(time.time() * 1000),
+                        "enemy_id": current_enemy_pokemon.id,
+                        "enemy_name": current_enemy_pokemon.display_name,
+                        "enemy_level": current_enemy_pokemon.level,
+                        "enemy_shiny": current_enemy_pokemon.shiny,
+                        "companion_name": main_pokemon_clone.display_name
+                        if main_pokemon_clone
+                        else None,
+                        "companion_level": main_pokemon_clone.level
+                        if main_pokemon_clone
+                        else None,
+                        "companion_id": main_pokemon_clone.individual_id
+                        if main_pokemon_clone
+                        else None,
+                        "outcome": "escaped",
+                        "xp_gained": 0,
+                        "trainer_xp_gained": 0,
+                        "cash_gained": current_battle_cash,
+                    }
+                )
             except Exception as ex:
                 if logger:
-                    logger.log("error", f"Failed to record auto-resolve escape history: {ex}")
+                    logger.log(
+                        "error", f"Failed to record auto-resolve escape history: {ex}"
+                    )
     finally:
         utils.load_collected_pokemon_ids = orig_load_ids
 
@@ -1606,7 +2034,9 @@ def _run_mobile_battles_impl(
                         db.add_mobile_history_entry(entry)
             except Exception as ex:
                 if logger:
-                    logger.log("error", f"Failed to record batch auto-resolve history: {ex}")
+                    logger.log(
+                        "error", f"Failed to record batch auto-resolve history: {ex}"
+                    )
         random.setstate(state)
 
         companion_xp = {}
@@ -1618,12 +2048,19 @@ def _run_mobile_battles_impl(
                 continue
             xp_g = entry.get("xp_gained", 0)
             companion_xp[cid] = companion_xp.get(cid, 0) + xp_g
-            
+
             if entry.get("outcome") in ("defeated", "caught"):
                 companion_battle_count[cid] = companion_battle_count.get(cid, 0) + 1
-            
+
             if cid not in companion_evs:
-                companion_evs[cid] = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+                companion_evs[cid] = {
+                    "hp": 0,
+                    "atk": 0,
+                    "def": 0,
+                    "spa": 0,
+                    "spd": 0,
+                    "spe": 0,
+                }
             ev_yield = entry.get("ev_yield", {})
             for sk, v in _normalize_ev_yield(ev_yield).items():
                 if sk in companion_evs[cid]:
@@ -1640,19 +2077,33 @@ def _run_mobile_battles_impl(
         # not route through the desktop evo-triggering xp_share_gain_exp here.
         xp_share_pending = {}  # target_id -> accumulated xp across all companions
         for cid, earned_xp in companion_xp.items():
-            evs_gained = companion_evs.get(cid, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0})
+            evs_gained = companion_evs.get(
+                cid, {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+            )
             battles_fought = companion_battle_count.get(cid, 0)
-            grant_xp, share_targets = _xp_share_split(earned_xp, cid, settings_obj, db=db)
+            grant_xp, share_targets = _xp_share_split(
+                earned_xp, cid, settings_obj, db=db
+            )
             for target_id, amount in share_targets.items():
-                xp_share_pending[target_id] = xp_share_pending.get(target_id, 0) + amount
+                xp_share_pending[target_id] = (
+                    xp_share_pending.get(target_id, 0) + amount
+                )
             if grant_xp > 0 or any(evs_gained.values()) or battles_fought > 0:
                 if main_pokemon and cid == main_pokemon.individual_id:
+
                     class DummyEnemy:
-                        def __init__(self, ev_yield): self.ev_yield = ev_yield
+                        def __init__(self, ev_yield):
+                            self.ev_yield = ev_yield
+
                     from ..services import services
+
                     save_main_pokemon_progress(
-                        main_pokemon, DummyEnemy(evs_gained), grant_xp,
-                        services.achievements, logger, get_evo_window()
+                        main_pokemon,
+                        DummyEnemy(evs_gained),
+                        grant_xp,
+                        services.achievements,
+                        logger,
+                        get_evo_window(),
                     )
                     # Apply additional battles fought to main_pokemon.pokemon_defeated
                     if battles_fought > 1:
@@ -1661,34 +2112,57 @@ def _run_mobile_battles_impl(
                         try:
                             mp_data = db.get_main_pokemon()
                             if mp_data:
-                                mp_data["pokemon_defeated"] = main_pokemon.pokemon_defeated
+                                mp_data["pokemon_defeated"] = (
+                                    main_pokemon.pokemon_defeated
+                                )
                                 db.save_main_pokemon(mp_data)
                         except Exception:
                             pass
                 else:
-                    _attribute_xp_and_evs_to_companion(cid, grant_xp, evs_gained, settings_obj, battles_fought=battles_fought, db=db, logger=logger)
+                    _attribute_xp_and_evs_to_companion(
+                        cid,
+                        grant_xp,
+                        evs_gained,
+                        settings_obj,
+                        battles_fought=battles_fought,
+                        db=db,
+                        logger=logger,
+                    )
 
         # Grant the accumulated XP-Share amount to each target Pokémon.
         for target_id, pending_amount in xp_share_pending.items():
             if pending_amount > 0:
                 _attribute_xp_and_evs_to_companion(
-                    str(target_id), pending_amount,
+                    str(target_id),
+                    pending_amount,
                     {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-                    settings_obj, battles_fought=0, db=db, logger=logger
+                    settings_obj,
+                    battles_fought=0,
+                    db=db,
+                    logger=logger,
                 )
 
         total_trainer_xp = 0
         from ..pyobj.trainer_card import POKEMON_TIERS
-        allow_to_choose_move = settings_obj.get("controls.allow_to_choose_moves") if settings_obj else False
+
+        allow_to_choose_move = (
+            settings_obj.get("controls.allow_to_choose_moves")
+            if settings_obj
+            else False
+        )
         for enc in defeated_encounters:
             txp = POKEMON_TIERS.get(enc.get("tier", "normal").lower(), 10)
-            if allow_to_choose_move: txp *= 0.5
+            if allow_to_choose_move:
+                txp *= 0.5
             total_trainer_xp += txp
 
         if total_trainer_xp > 0 and trainer_card:
             new_txp = int(settings_obj.get("trainer.xp", 0) + total_trainer_xp)
             settings_obj.set("trainer.xp", new_txp)
-            settings_obj.set("trainer.total_xp", int(settings_obj.get("trainer.total_xp", 0) + total_trainer_xp))
+            settings_obj.set(
+                "trainer.total_xp",
+                int(settings_obj.get("trainer.total_xp", 0) + total_trainer_xp),
+            )
             trainer_card.xp = new_txp
             trainer_card.total_xp = settings_obj.get("trainer.total_xp")
             trainer_card.check_level_up()
@@ -1699,20 +2173,36 @@ def _run_mobile_battles_impl(
         total_reviews_resolved = total_reviews_processed
         current_counter = payout_start
         new_counter = current_counter + total_reviews_resolved
-        
+
         # Clamp to >=1: a raw config can hold 0 (the get() default only applies
         # when the key is absent, not when it is 0), which would crash the modulo
         # below with ZeroDivisionError. Matches commit_replay_outcome's clamp.
-        ci = max(1, int(settings_obj.get("trainer.cash_reward_interval", 5))) if settings_obj else 5
-        ca = int(settings_obj.get("trainer.cash_reward_amount", 10)) if settings_obj else 10
+        ci = (
+            max(1, int(settings_obj.get("trainer.cash_reward_interval", 5)))
+            if settings_obj
+            else 5
+        )
+        ca = (
+            int(settings_obj.get("trainer.cash_reward_amount", 10))
+            if settings_obj
+            else 10
+        )
 
         gained_cash = accumulated_cash_earned_this_batch
         remaining_counter = new_counter % ci
         if settings_obj:
-            settings_obj.set("trainer.mobile_reviews_resolved_since_payout", remaining_counter)
+            settings_obj.set(
+                "trainer.mobile_reviews_resolved_since_payout", remaining_counter
+            )
             if gained_cash > 0:
-                settings_obj.set("trainer.mobile_cash_earned_today", mobile_cash_earned_today + gained_cash)
-                settings_obj.set("trainer.cash", int(settings_obj.get("trainer.cash", 0) + gained_cash))
+                settings_obj.set(
+                    "trainer.mobile_cash_earned_today",
+                    mobile_cash_earned_today + gained_cash,
+                )
+                settings_obj.set(
+                    "trainer.cash",
+                    int(settings_obj.get("trainer.cash", 0) + gained_cash),
+                )
         if trainer_card and settings_obj:
             trainer_card.cash = settings_obj.get("trainer.cash")
 
@@ -1723,38 +2213,50 @@ def _run_mobile_battles_impl(
 
         if encounters_fought > 0:
             try:
-                cursor = db.execute("SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'")
+                cursor = db.execute(
+                    "SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'"
+                )
                 row = cursor.fetchone()
                 if row is not None:
                     new_count = int(row[0]) + encounters_fought
                 else:
-                    cursor = db.execute("SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1")
+                    cursor = db.execute(
+                        "SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1"
+                    )
                     resolved_reviews = cursor.fetchone()[0]
                     cards_per_round, _ = _parse_cards_per_round(settings_obj)
                     new_count = resolved_reviews // cards_per_round
-                
+
                 with db._get_connection():
                     db._get_connection().execute(
                         "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_resolved_encounters_count', ?)",
-                        (str(new_count),)
+                        (str(new_count),),
                     )
             except Exception:
                 pass
 
         remaining = db.get_pending_mobile_count()
         from ..menu_buttons import update_mobile_badge
+
         update_mobile_badge(remaining)
 
         try:
             from ..events import events
+
             events.emit("stats_changed")
             from ..singletons import notify_stats_changed
+
             notify_stats_changed()
-        except Exception: pass
+        except Exception:
+            pass
         return {
-            "success": True, "resolved": encounters_fought, "xp_gained": total_xp,
-            "catches": caught_count, "cash_gained": gained_cash,
-            "trainer_xp_gained": total_trainer_xp, "caught_list": caught_pokemon_list,
+            "success": True,
+            "resolved": encounters_fought,
+            "xp_gained": total_xp,
+            "catches": caught_count,
+            "cash_gained": gained_cash,
+            "trainer_xp_gained": total_trainer_xp,
+            "caught_list": caught_pokemon_list,
             "reviews_processed": total_reviews_processed,
         }
     else:
@@ -1770,7 +2272,7 @@ def _run_mobile_battles_impl(
 
             if extra_encounters > 0:
                 encounters_count = resolved_encounters + extra_encounters
-                
+
                 # Estimate defeated and caught ratio from simulated pool
                 defeated_ratio = 0.8
                 caught_ratio = 0.2
@@ -1784,7 +2286,15 @@ def _run_mobile_battles_impl(
 
                 est_exp = calc_experience(130, active_max_level)
                 try:
-                    est_exp = max(1, math.ceil(est_exp * choose_moves_penalty * lucky_egg_boost * xp_multiplier))
+                    est_exp = max(
+                        1,
+                        math.ceil(
+                            est_exp
+                            * choose_moves_penalty
+                            * lucky_egg_boost
+                            * xp_multiplier
+                        ),
+                    )
                 except TypeError:
                     est_exp = 100
                 total_xp += int(extra_defeated * est_exp)
@@ -1796,8 +2306,16 @@ def _run_mobile_battles_impl(
         # Estimate trainer cash reward based on settings. Clamp to >=1: a raw
         # config value of 0 would crash the floor-division below (the get()
         # default only applies to an absent key, not a stored 0).
-        cash_interval = max(1, int(settings_obj.get("trainer.cash_reward_interval", 5))) if settings_obj else 5
-        cash_amount = int(settings_obj.get("trainer.cash_reward_amount", 10)) if settings_obj else 10
+        cash_interval = (
+            max(1, int(settings_obj.get("trainer.cash_reward_interval", 5)))
+            if settings_obj
+            else 5
+        )
+        cash_amount = (
+            int(settings_obj.get("trainer.cash_reward_amount", 10))
+            if settings_obj
+            else 10
+        )
         total_reviews_count = len(reviews_list)
         cash_gained = (total_reviews_count // cash_interval) * cash_amount
 
@@ -1810,14 +2328,22 @@ def _run_mobile_battles_impl(
             "caught": caught_pokemon,
             "defeated": defeated_pokemon,
             "catches_count": len(caught_pokemon) + extra_caught_count,
-            "is_truncated": len(extra_reviews) > 0,  # True if >100 reviews, extrapolated
+            "is_truncated": len(extra_reviews)
+            > 0,  # True if >100 reviews, extrapolated
             "simulated_reviews": len(reviews_to_process),
             "total_reviews": len(reviews_list),
-            "cash": cash_gained
+            "cash": cash_gained,
         }
 
 
-def estimate_pending_battles(pending_reviews: list[dict], main_pokemon, settings_obj, trainer_card, ankimon_tracker_obj, ankimon_db=None) -> dict:
+def estimate_pending_battles(
+    pending_reviews: list[dict],
+    main_pokemon,
+    settings_obj,
+    trainer_card,
+    ankimon_tracker_obj,
+    ankimon_db=None,
+) -> dict:
     return run_mobile_battles(
         reviews=pending_reviews,
         commit=False,
@@ -1825,7 +2351,7 @@ def estimate_pending_battles(pending_reviews: list[dict], main_pokemon, settings
         settings_obj=settings_obj,
         tracker=ankimon_tracker_obj,
         trainer_card=trainer_card,
-        main_pokemon=main_pokemon
+        main_pokemon=main_pokemon,
     )
 
 
@@ -1833,7 +2359,17 @@ def estimate_pending_battles(pending_reviews: list[dict], main_pokemon, settings
 simulate_pending_mobile_battles = estimate_pending_battles
 
 
-def resolve_all(db, settings_obj, tracker, trainer_card, main_pokemon, logger=None, day_cutoff=0, limit=None, progress_callback=None) -> dict:
+def resolve_all(
+    db,
+    settings_obj,
+    tracker,
+    trainer_card,
+    main_pokemon,
+    logger=None,
+    day_cutoff=0,
+    limit=None,
+    progress_callback=None,
+) -> dict:
     return _resolve_internal(
         mode="all",
         companion_id="",
@@ -1845,11 +2381,20 @@ def resolve_all(db, settings_obj, tracker, trainer_card, main_pokemon, logger=No
         main_pokemon=main_pokemon,
         logger=logger,
         day_cutoff=day_cutoff,
-        progress_callback=progress_callback
+        progress_callback=progress_callback,
     )
 
 
-def resolve_next(companion_id: str, db, settings_obj, tracker, trainer_card, main_pokemon, logger=None, day_cutoff=0) -> dict:
+def resolve_next(
+    companion_id: str,
+    db,
+    settings_obj,
+    tracker,
+    trainer_card,
+    main_pokemon,
+    logger=None,
+    day_cutoff=0,
+) -> dict:
     return _resolve_internal(
         mode="next",
         companion_id=companion_id,
@@ -1860,11 +2405,20 @@ def resolve_next(companion_id: str, db, settings_obj, tracker, trainer_card, mai
         trainer_card=trainer_card,
         main_pokemon=main_pokemon,
         logger=logger,
-        day_cutoff=day_cutoff
+        day_cutoff=day_cutoff,
     )
 
 
-def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, trainer_card, main_pokemon, achievements_dict=None, logger=None) -> dict:
+def commit_replay_outcome(
+    choice: str,
+    outcome_data: dict,
+    db,
+    settings_obj,
+    trainer_card,
+    main_pokemon,
+    achievements_dict=None,
+    logger=None,
+) -> dict:
     try:
         if not outcome_data:
             return {"success": False, "error": "No pending battle to resolve."}
@@ -1883,26 +2437,36 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
         remaining_counter = 0
         if review_ids and settings_obj:
             total_reviews_resolved = len(review_ids)
-            current_counter = int(settings_obj.get("trainer.mobile_reviews_resolved_since_payout", 0))
+            current_counter = int(
+                settings_obj.get("trainer.mobile_reviews_resolved_since_payout", 0)
+            )
             new_counter = current_counter + total_reviews_resolved
-            
+
             # Clamp to >=1: an explicitly-stored 0 survives the default and would
             # crash `new_counter // ci` / `% ci` below (the UI clamps to >=5, but
             # a hand-edited config can reach 0). Mirrors the ci > 0 guard in the
             # auto-resolve path.
             ci = max(1, int(settings_obj.get("trainer.cash_reward_interval", 5)))
             ca = int(settings_obj.get("trainer.cash_reward_amount", 10))
-            if getattr(main_pokemon, "held_item", None) in ("amulet-coin", "luck-incense"):
+            if getattr(main_pokemon, "held_item", None) in (
+                "amulet-coin",
+                "luck-incense",
+            ):
                 ca *= 2
-            
+
             raw_gained_cash = (new_counter // ci) * ca
             remaining_counter = new_counter % ci
 
             # Enforce daily mobile cash cap
             from datetime import date
+
             today_str = str(date.today())
-            last_reward_date = settings_obj.get("trainer.last_mobile_cash_reward_date", "")
-            mobile_cash_earned_today = settings_obj.get("trainer.mobile_cash_earned_today", 0)
+            last_reward_date = settings_obj.get(
+                "trainer.last_mobile_cash_reward_date", ""
+            )
+            mobile_cash_earned_today = settings_obj.get(
+                "trainer.mobile_cash_earned_today", 0
+            )
 
             if last_reward_date != today_str:
                 mobile_cash_earned_today = 0
@@ -1916,10 +2480,13 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
 
         # Calculate CP for the return value
         from ..business import calculate_cp_from_dict
+
         enemy_dict = enemy_pokemon.to_dict()
-        enemy_dict.update({
-            "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-        })
+        enemy_dict.update(
+            {
+                "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+            }
+        )
         cp_val = calculate_cp_from_dict(enemy_dict)
 
         # Pre-calculate remaining count
@@ -1932,6 +2499,7 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
             nonlocal battle_xp
             # Set in_bulk_resolve to avoid tooltips/dialogs in background thread
             from .. import utils
+
             orig_in_bulk = getattr(utils, "in_bulk_resolve", False)
             utils.in_bulk_resolve = True
 
@@ -1944,11 +2512,14 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                 # 1. Catch logic
                 if choice == "catch":
                     from .encounter_functions import save_caught_pokemon
+
                     capture_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     enemy_pokemon.captured_date = capture_time
-                    save_caught_pokemon(enemy_pokemon, nickname=None, achievements=achievements_dict)
+                    save_caught_pokemon(
+                        enemy_pokemon, nickname=None, achievements=achievements_dict
+                    )
                     battle_xp = 0
-                
+
                 # 2. Defeat logic
                 elif choice == "defeat":
                     companion_id = outcome_data.get("companion_id", "")
@@ -1967,18 +2538,37 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                     # evo-window / tooltip Qt work happens here.
                     grant_xp, share_targets = (
                         _xp_share_split(total_xp, companion_id, settings_obj, db=db)
-                        if companion_id else (total_xp, {})
+                        if companion_id
+                        else (total_xp, {})
                     )
 
                     if companion_id and (grant_xp > 0 or any(accumulated_evs.values())):
-                        _attribute_xp_and_evs_to_companion(companion_id, grant_xp, accumulated_evs, settings_obj, db=db, logger=logger)
+                        _attribute_xp_and_evs_to_companion(
+                            companion_id,
+                            grant_xp,
+                            accumulated_evs,
+                            settings_obj,
+                            db=db,
+                            logger=logger,
+                        )
                     if companion_id:
                         for target_id, amount in share_targets.items():
                             if amount > 0:
                                 _attribute_xp_and_evs_to_companion(
-                                    str(target_id), amount,
-                                    {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
-                                    settings_obj, battles_fought=0, db=db, logger=logger
+                                    str(target_id),
+                                    amount,
+                                    {
+                                        "hp": 0,
+                                        "atk": 0,
+                                        "def": 0,
+                                        "spa": 0,
+                                        "spd": 0,
+                                        "spe": 0,
+                                    },
+                                    settings_obj,
+                                    battles_fought=0,
+                                    db=db,
+                                    logger=logger,
                                 )
 
                 # 3. Mark resolved in DB
@@ -1987,7 +2577,7 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                     try:
                         cursor = db.execute(
                             f"SELECT revlog_id FROM pending_mobile_battles WHERE id IN ({placeholders})",
-                            list(review_ids)
+                            list(review_ids),
                         )
                         revlog_ids = [r[0] for r in cursor.fetchall() if r[0]]
                     except Exception:
@@ -1996,27 +2586,31 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                     with db._get_connection():
                         db._get_connection().execute(
                             f"UPDATE pending_mobile_battles SET resolved=1, resolved_at=? WHERE id IN ({placeholders})",
-                            [now_ms] + list(review_ids)
+                            [now_ms] + list(review_ids),
                         )
-                    
+
                     if revlog_ids:
                         db.sync_resolutions_to_other_db(revlog_ids, now_ms)
 
                     try:
-                        cursor = db.execute("SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'")
+                        cursor = db.execute(
+                            "SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'"
+                        )
                         row = cursor.fetchone()
                         if row is not None:
                             new_count_meta = int(row[0]) + 1
                         else:
-                            cursor = db.execute("SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1")
+                            cursor = db.execute(
+                                "SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1"
+                            )
                             resolved_reviews = cursor.fetchone()[0]
                             cards_per_round, _ = _parse_cards_per_round(settings_obj)
                             new_count_meta = resolved_reviews // cards_per_round
-                        
+
                         with db._get_connection():
                             db._get_connection().execute(
                                 "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_resolved_encounters_count', ?)",
-                                (str(new_count_meta),)
+                                (str(new_count_meta),),
                             )
                     except Exception:
                         pass
@@ -2031,31 +2625,40 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                         active_comp = None
                         if choice == "defeat" and main_pokemon:
                             active_comp = main_pokemon
-                        
+
                         if active_comp:
-                            comp_name = getattr(active_comp, "display_name", "Companion")
+                            comp_name = getattr(
+                                active_comp, "display_name", "Companion"
+                            )
                             comp_level = getattr(active_comp, "level", 5)
 
                     outcome_val = "caught" if choice == "catch" else "defeated"
                     if outcome_data.get("companion_fainted", False):
                         outcome_val = "lost"
 
-                    db.add_mobile_history_entry({
-                        "timestamp": now_ms,
-                        "enemy_id": enemy_pokemon.id,
-                        "enemy_name": enemy_pokemon.display_name,
-                        "enemy_level": enemy_pokemon.level,
-                        "enemy_shiny": enemy_pokemon.shiny,
-                        "companion_name": comp_name,
-                        "companion_level": comp_level,
-                        "outcome": outcome_val,
-                        "xp_gained": battle_xp if outcome_val == "defeated" else 0,
-                        "trainer_xp_gained": total_trainer_xp if outcome_val == "defeated" else 0,
-                        "cash_gained": gained_cash,
-                    })
+                    db.add_mobile_history_entry(
+                        {
+                            "timestamp": now_ms,
+                            "enemy_id": enemy_pokemon.id,
+                            "enemy_name": enemy_pokemon.display_name,
+                            "enemy_level": enemy_pokemon.level,
+                            "enemy_shiny": enemy_pokemon.shiny,
+                            "companion_name": comp_name,
+                            "companion_level": comp_level,
+                            "outcome": outcome_val,
+                            "xp_gained": battle_xp if outcome_val == "defeated" else 0,
+                            "trainer_xp_gained": total_trainer_xp
+                            if outcome_val == "defeated"
+                            else 0,
+                            "cash_gained": gained_cash,
+                        }
+                    )
                 except Exception as ex:
                     if logger:
-                        logger.log("error", f"Failed to record manual mobile battle history: {ex}")
+                        logger.log(
+                            "error",
+                            f"Failed to record manual mobile battle history: {ex}",
+                        )
 
             finally:
                 utils.in_bulk_resolve = orig_in_bulk
@@ -2065,24 +2668,44 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
             try:
                 # Update mobile reviews payout counter settings
                 if review_ids and settings_obj:
-                    settings_obj.set("trainer.mobile_reviews_resolved_since_payout", remaining_counter)
+                    settings_obj.set(
+                        "trainer.mobile_reviews_resolved_since_payout",
+                        remaining_counter,
+                    )
                     if gained_cash > 0:
-                        settings_obj.set("trainer.mobile_cash_earned_today", settings_obj.get("trainer.mobile_cash_earned_today", 0) + gained_cash)
-                        settings_obj.set("trainer.cash", int(settings_obj.get("trainer.cash", 0) + gained_cash))
+                        settings_obj.set(
+                            "trainer.mobile_cash_earned_today",
+                            settings_obj.get("trainer.mobile_cash_earned_today", 0)
+                            + gained_cash,
+                        )
+                        settings_obj.set(
+                            "trainer.cash",
+                            int(settings_obj.get("trainer.cash", 0) + gained_cash),
+                        )
                         if trainer_card:
                             trainer_card.cash = settings_obj.get("trainer.cash")
 
                 if choice == "catch":
                     try:
                         from ..reviewer_ui import _collected_pokemon_ids
+
                         if isinstance(_collected_pokemon_ids, set):
                             _collected_pokemon_ids.add(enemy_pokemon.id)
-                    except Exception: pass
+                    except Exception:
+                        pass
                 elif choice == "defeat":
                     if total_trainer_xp > 0 and trainer_card:
-                        new_txp = int(settings_obj.get("trainer.xp", 0) + total_trainer_xp)
+                        new_txp = int(
+                            settings_obj.get("trainer.xp", 0) + total_trainer_xp
+                        )
                         settings_obj.set("trainer.xp", new_txp)
-                        settings_obj.set("trainer.total_xp", int(settings_obj.get("trainer.total_xp", 0) + total_trainer_xp))
+                        settings_obj.set(
+                            "trainer.total_xp",
+                            int(
+                                settings_obj.get("trainer.total_xp", 0)
+                                + total_trainer_xp
+                            ),
+                        )
                         trainer_card.xp = new_txp
                         trainer_card.total_xp = settings_obj.get("trainer.total_xp")
                         trainer_card.check_level_up()
@@ -2091,46 +2714,72 @@ def commit_replay_outcome(choice: str, outcome_data: dict, db, settings_obj, tra
                 remaining_real = db.get_pending_mobile_count()
                 try:
                     from ..menu_buttons import update_mobile_badge
+
                     update_mobile_badge(remaining_real)
-                except Exception: pass
+                except Exception:
+                    pass
 
                 # Trigger sync notification to refresh UI
                 try:
                     from ..events import events
+
                     events.emit("stats_changed")
                     from ..singletons import notify_stats_changed
+
                     notify_stats_changed()
-                except Exception: pass
+                except Exception:
+                    pass
             except Exception as e:
                 if logger:
-                    logger.log("error", f"on_db_work_done in commit_replay_outcome failed: {e}")
+                    logger.log(
+                        "error", f"on_db_work_done in commit_replay_outcome failed: {e}"
+                    )
 
         # 3. Schedule or execute work.
         # Test seam: under the suite aqt.operations is stubbed with a no-op
         # MagicMock, so QueryOp would never run do_db_work. Execute synchronously
         # there; production dispatches it off the main thread via QueryOp.
         import os
+
         if "PYTEST_CURRENT_TEST" in os.environ:
             do_db_work(None)
             on_db_work_done(None)
         else:
             from aqt.operations import QueryOp
             from aqt import mw
+
             QueryOp(
-                parent=mw,
-                op=do_db_work,
-                success=on_db_work_done
+                parent=mw, op=do_db_work, success=on_db_work_done
             ).without_collection().run_in_background()
 
-        return {"success": True, "outcome": "caught" if choice == "catch" else "defeated", "xp_gained": battle_xp, "cp": cp_val, "remaining": remaining, "cash_gained": gained_cash}
+        return {
+            "success": True,
+            "outcome": "caught" if choice == "catch" else "defeated",
+            "xp_gained": battle_xp,
+            "cp": cp_val,
+            "remaining": remaining,
+            "cash_gained": gained_cash,
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
-def _resolve_internal(mode="all", companion_id="", limit=None, db=None, settings_obj=None, tracker=None, trainer_card=None, main_pokemon=None, logger=None, day_cutoff=0, progress_callback=None) -> dict:
+def _resolve_internal(
+    mode="all",
+    companion_id="",
+    limit=None,
+    db=None,
+    settings_obj=None,
+    tracker=None,
+    trainer_card=None,
+    main_pokemon=None,
+    logger=None,
+    day_cutoff=0,
+    progress_callback=None,
+) -> dict:
     conn = db._get_connection()
-    
-    use_transaction = (mode == "all")
+
+    use_transaction = mode == "all"
     if use_transaction:
         conn._disable_commit = True
         # Defer per-battle mirror-DB syncs: sync_resolutions_to_other_db commits on
@@ -2138,6 +2787,7 @@ def _resolve_internal(mode="all", companion_id="", limit=None, db=None, settings
         # leave the mirror DB resolved=1 even if this transaction later rolls back.
         db.begin_deferred_mirror_sync()
         from .. import utils
+
         utils.in_bulk_resolve = True
 
     try:
@@ -2156,7 +2806,7 @@ def _resolve_internal(mode="all", companion_id="", limit=None, db=None, settings
                     day_cutoff=day_cutoff,
                     limit=limit,
                     mode=mode,
-                    progress_callback=progress_callback
+                    progress_callback=progress_callback,
                 )
             # Outer transaction committed successfully — now safe to propagate the
             # resolutions to the mirror DB.
@@ -2175,7 +2825,7 @@ def _resolve_internal(mode="all", companion_id="", limit=None, db=None, settings
                 day_cutoff=day_cutoff,
                 limit=limit,
                 mode=mode,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
             )
         return result
     finally:
@@ -2190,15 +2840,25 @@ def _resolve_internal(mode="all", companion_id="", limit=None, db=None, settings
             # normal desktop play (encounter_functions / pokedex_functions gate
             # those on `not in_bulk_resolve`).
             from .. import utils
+
             utils.in_bulk_resolve = False
 
 
-def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yield_gained: dict, settings_obj, battles_fought=1, db=None, logger=None) -> None:
+def _attribute_xp_and_evs_to_companion(
+    companion_id: str,
+    xp_gained: int,
+    ev_yield_gained: dict,
+    settings_obj,
+    battles_fought=1,
+    db=None,
+    logger=None,
+) -> None:
     if xp_gained <= 0 and not any(ev_yield_gained.values()) and battles_fought <= 0:
         return
 
     if db is None:
         from ..services import services
+
         db = services.db
     pkmndata = None
     if companion_id:
@@ -2210,7 +2870,10 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
     if not pkmndata:
         return
 
-    from .pokemon_functions import find_experience_for_level, get_levelup_move_for_pokemon
+    from .pokemon_functions import (
+        find_experience_for_level,
+        get_levelup_move_for_pokemon,
+    )
     from .drawing_utils import tooltipWithColour
     from ..pyobj.pokemon_obj import PokemonObject
     from .. import utils
@@ -2231,24 +2894,39 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
         level_cap = 100
 
     from ..services import services
+
     main_pokemon_singleton = services.main_pokemon
-    is_active = (main_pokemon_singleton is not None and getattr(main_pokemon_singleton, "individual_id", None) == companion_id)
+    is_active = (
+        main_pokemon_singleton is not None
+        and getattr(main_pokemon_singleton, "individual_id", None) == companion_id
+    )
     in_bulk = getattr(utils, "in_bulk_resolve", False)
-    
+
     color = "#6A4DAC"
 
     levels_gained = 0
     # level-ups
-    while int(find_experience_for_level(growth_rate, level, remove_cap)) < xp and (level_cap is None or level < level_cap):
+    while int(find_experience_for_level(growth_rate, level, remove_cap)) < xp and (
+        level_cap is None or level < level_cap
+    ):
         if levels_gained >= 10:
             if is_active and not in_bulk:
                 try:
-                    active_logger = logger or (services.logger if (services and getattr(services, "logger", None)) else None)
+                    active_logger = logger or (
+                        services.logger
+                        if (services and getattr(services, "logger", None))
+                        else None
+                    )
                     if active_logger:
-                        active_logger.log("error", f"Mobile sync level-up loop exceeded safety cap of 10 for {pkmndata.get('name')}")
+                        active_logger.log(
+                            "error",
+                            f"Mobile sync level-up loop exceeded safety cap of 10 for {pkmndata.get('name')}",
+                        )
                 except Exception:
                     pass
-            next_level_cost = int(find_experience_for_level(growth_rate, level, remove_cap))
+            next_level_cost = int(
+                find_experience_for_level(growth_rate, level, remove_cap)
+            )
             xp = max(0, next_level_cost - 1)
             break
         levels_gained += 1
@@ -2257,21 +2935,24 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
             main_pokemon_singleton.level = level
             main_pokemon_singleton.update_stats()
         msg = f"Your {pkmndata.get('name', 'Pokemon')} is now level {level} !"
-        
+
         if is_active and not in_bulk:
             try:
                 if services.logger:
                     services.logger.game_log(f"Level Up: {msg}")
                 tooltipWithColour(msg, color)
-                if settings_obj and settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True:
+                if (
+                    settings_obj
+                    and settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True
+                ):
                     if services.logger:
                         services.logger.log_and_showinfo("info", f"{msg}")
             except Exception:
                 pass
-                
+
         xp = int(max(0, xp - int(experience_req)))
         experience_req = int(find_experience_for_level(growth_rate, level, remove_cap))
-        
+
         # level-up moves
         name_lower = pkmndata.get("name", "").lower()
         new_attacks = get_levelup_move_for_pokemon(name_lower, level)
@@ -2282,7 +2963,7 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
                     attacks = json.loads(attacks)
                 except Exception:
                     attacks = []
-            
+
             for new_attack in new_attacks:
                 if len(attacks) < 4 and new_attack not in attacks:
                     attacks.append(new_attack)
@@ -2293,6 +2974,7 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
                     if is_active and not in_bulk:
                         from ..pyobj.attack_dialog import AttackDialog
                         from PyQt6.QtWidgets import QDialog
+
                         dialog = AttackDialog(attacks, new_attack)
                         if dialog.exec() == QDialog.DialogCode.Accepted:
                             selected_attack = dialog.selected_attack
@@ -2303,7 +2985,7 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
 
     pkmndata["level"] = level
     pkmndata["xp"] = xp
-    
+
     # EV Updates
     if "ev" not in pkmndata or not isinstance(pkmndata["ev"], dict):
         pkmndata["ev"] = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
@@ -2318,20 +3000,32 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
             return 15
 
     if "iv" not in pkmndata or not isinstance(pkmndata["iv"], dict):
-        pkmndata["iv"] = {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
+        pkmndata["iv"] = {
+            "hp": 15,
+            "atk": 15,
+            "def": 15,
+            "spa": 15,
+            "spd": 15,
+            "spe": 15,
+        }
     else:
         # Ensure all keys exist and are valid integers between 0 and 31
-        pkmndata["iv"] = {k: normalize_iv(pkmndata["iv"].get(k, 15)) for k in ("hp", "atk", "def", "spa", "spd", "spe")}
-        
+        pkmndata["iv"] = {
+            k: normalize_iv(pkmndata["iv"].get(k, 15))
+            for k in ("hp", "atk", "def", "spa", "spd", "spe")
+        }
+
     normalized_yield = {
         "hp": ev_yield_gained.get("hp", 0),
         "attack": ev_yield_gained.get("attack", 0) + ev_yield_gained.get("atk", 0),
         "defense": ev_yield_gained.get("defense", 0) + ev_yield_gained.get("def", 0),
-        "special-attack": ev_yield_gained.get("special-attack", 0) + ev_yield_gained.get("spa", 0),
-        "special-defense": ev_yield_gained.get("special-defense", 0) + ev_yield_gained.get("spd", 0),
+        "special-attack": ev_yield_gained.get("special-attack", 0)
+        + ev_yield_gained.get("spa", 0),
+        "special-defense": ev_yield_gained.get("special-defense", 0)
+        + ev_yield_gained.get("spd", 0),
         "speed": ev_yield_gained.get("speed", 0) + ev_yield_gained.get("spe", 0),
     }
-    
+
     held_item = pkmndata.get("held_item", None)
     if held_item == "macho-brace":
         for stat in normalized_yield:
@@ -2364,39 +3058,49 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
     if not is_valid_base_stats(base_stats):
         # Fall back to stats key if it contains original stats (before scaling/growth)
         base_stats = base_stats or pkmndata.get("stats")
-        
+
         # Fall back to pokedex search
         if not is_valid_base_stats(base_stats):
             from .pokedex_functions import search_pokedex
+
             base_stats = search_pokedex(pkmndata.get("name", ""), "baseStats") or {}
-            
+
         if is_valid_base_stats(base_stats):
             pkmndata["base_stats"] = base_stats
         else:
             from ..services import services
+
             services.logger.log(
                 "warning",
                 f"Could not resolve base_stats for {pkmndata.get('name')!r} "
-                f"({pkmndata.get('individual_id')}); stats left unscaled."
+                f"({pkmndata.get('individual_id')}); stats left unscaled.",
             )
 
     if is_valid_base_stats(base_stats):
         pkmndata["stats"] = {
-            k: PokemonObject.calc_stat(k, int(val), level, pkmndata["iv"][k], pkmndata["ev"][k], pkmndata.get("nature", "serious"))
+            k: PokemonObject.calc_stat(
+                k,
+                int(val),
+                level,
+                pkmndata["iv"][k],
+                pkmndata["ev"][k],
+                pkmndata.get("nature", "serious"),
+            )
             for k, val in base_stats.items()
             if k in ("hp", "atk", "def", "spa", "spd", "spe")
         }
         pkmndata["current_hp"] = pkmndata["stats"].get("hp", 15)
 
-    
     friendship = int(pkmndata.get("friendship", 0))
     friendship_gain = random.randint(5, 9)
     if pkmndata.get("held_item") == "soothe-bell":
         friendship_gain = int(friendship_gain * 1.5)
     friendship += friendship_gain
     pkmndata["friendship"] = min(255, friendship)
-    
-    pkmndata["pokemon_defeated"] = int(pkmndata.get("pokemon_defeated", 0)) + battles_fought
+
+    pkmndata["pokemon_defeated"] = (
+        int(pkmndata.get("pokemon_defeated", 0)) + battles_fought
+    )
 
     # Call db.save_pokemon(updated_entry)
     db.save_pokemon(pkmndata)

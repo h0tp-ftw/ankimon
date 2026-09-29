@@ -1,4 +1,5 @@
 {
+  "monthly_challenge_button": "Monthly Challenge",
   "startup": "Ankimon Startup.",
   "failed_github": "Failed to fetch data from Github.",
   "catch_button": "Catch Pokemon",
@@ -48,6 +49,19 @@
   "report_bug_button": "Report Bug",
   "rate_this_button": "Rate This Addon",
   "ankimon_version_button": "Ankimon Version",
+  "release_update_available": "Ankimon Update Available",
+  "release_prompt_title": "A new {channel} release is available: {tag}",
+  "release_data_preserved": "Your Pokémon data, team, and settings will be preserved.",
+  "release_notes": "Release Notes:",
+  "release_snooze_week": "Don't notify me for 1 week",
+  "release_later": "Later",
+  "release_update_now": "Update Now",
+  "release_invalid_title": "Invalid Release",
+  "release_invalid_body": "The release data is incomplete and cannot be installed.\n\nPlease try again later or check for updates manually.",
+  "release_later_title": "Update Later",
+  "release_later_body": "You can check for updates and install them later via Ankimon → Help → Check for Updates.",
+  "release_channel_stable": "Stable",
+  "release_channel_experimental": "Experimental",
   "ankimon_update_button": "Update Ankimon",
   "ankimon_settings_button": "Ankimon Settings",
   "ankimon_data_button": "Ankimon Data",
@@ -470,5 +484,6 @@
   "badge_ready": "⇈ Ready to evolve!",
   "badge_wait_day": "☀️ Ready to evolve during the day",
   "badge_wait_night": "🌙 Ready to evolve at night",
-  "switched_pokemon": "Switched to {pokemon_name}! Lv. {level}"
+  "switched_pokemon": "Switched to {pokemon_name}! Lv. {level}",
+  "weather_rain_still": "It is still raining!"
 }

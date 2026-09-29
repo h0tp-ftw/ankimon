@@ -65,10 +65,13 @@ jobs:
         run: |
           xvfb-run -a python3 -m harness.checks.probe_real_boot
           xvfb-run -a python3 -m harness.checks.probe_real_play
+          xvfb-run -a python3 -m harness.scenarios.monthly_challenge
+          xvfb-run -a python3 -m harness.checks.probe_real_recent_merges
           xvfb-run -a python3 -m harness.checks.probe_real_migration
           xvfb-run -a python3 -m harness.checks.probe_real_move_selection
           xvfb-run -a python3 -m harness.checks.probe_real_save_import
           xvfb-run -a python3 -m harness.checks.probe_real_tm_learnsets
+          xvfb-run -a python3 -m harness.checks.probe_real_evolution_sprites
 
   tier2_webengine:
     name: Tier 2 WebEngine — Settings + reviewer HUD
@@ -101,3 +104,4 @@ jobs:
           xvfb-run -a python3 -m harness.checks.probe_real_webengine
           xvfb-run -a python3 -m harness.checks.probe_real_item_evolutions
           xvfb-run -a python3 -m harness.checks.probe_real_hud_css
+          xvfb-run -a python3 -m harness.checks.probe_real_caught_history

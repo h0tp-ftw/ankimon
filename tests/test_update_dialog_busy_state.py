@@ -1,6 +1,8 @@
 """Focused Tier-1 coverage for the updater dialog's busy-state controls."""
 
 import importlib.util
+import json
+import string
 import sys
 import types
 from pathlib import Path
@@ -122,6 +124,20 @@ def _load_update_dialog():
 
 
 update_dialog = _load_update_dialog()
+
+
+def _use_catalog(monkeypatch, locale="en"):
+    catalog = json.loads(
+        (_SRC / "Ankimon" / "lang" / f"{locale}_text.json").read_text(encoding="utf-8")
+    )
+    monkeypatch.setattr(
+        update_dialog.services,
+        "translator",
+        types.SimpleNamespace(
+            translate=lambda key, **kwargs: catalog[key].format(**kwargs)
+        ),
+    )
+    return catalog
 
 
 class _Control:
@@ -1124,6 +1140,143 @@ def test_release_notes_keep_html_escaped_and_unsafe_links_inert():
         '[unsafe](javascript:alert) [safe](https://example.org/?q="onmouseover"&value=<b>)'
     )
     assert targets == ['https://example.org/?q="onmouseover"&value=<b>']
+
+
+@pytest.mark.parametrize("action", ["update", "later", "close"])
+@pytest.mark.parametrize("checked", [False, True])
+@pytest.mark.parametrize("locale", ["en", "de"])
+def test_release_prompt_snoozes_only_when_dismissed(monkeypatch, action, checked, locale):
+    """A checked snooze must not suppress the next release after Update Now."""
+    from unittest.mock import Mock
+
+    buttons = {}
+    dialogs = []
+    labels = []
+    catalog = _use_catalog(monkeypatch, locale)
+
+    class Signal:
+        def __init__(self):
+            self.callbacks = []
+
+        def connect(self, callback):
+            self.callbacks.append(callback)
+
+        def emit(self, *args):
+            for callback in self.callbacks:
+                callback(*args)
+
+    class Widget:
+        def __init__(self, *args):
+            if args and isinstance(args[0], str):
+                labels.append(args[0])
+
+        def __getattr__(self, name):
+            return lambda *args: None
+
+    class Dialog(Widget):
+        DialogCode = types.SimpleNamespace(Accepted=1, Rejected=0)
+
+        def __init__(self, *args):
+            self.finished = Signal()
+            dialogs.append(self)
+
+        def accept(self):
+            self.finished.emit(self.DialogCode.Accepted)
+
+        def reject(self):
+            self.finished.emit(self.DialogCode.Rejected)
+
+        def exec(self):
+            if action == "close":
+                self.reject()
+            else:
+                key = "release_update_now" if action == "update" else "release_later"
+                buttons[catalog[key]].clicked.emit()
+
+    class Button(Widget):
+        def __init__(self, label):
+            self.clicked = Signal()
+            buttons[label] = self
+
+    class CheckBox(Widget):
+        def isChecked(self):
+            return checked
+
+    manager = types.ModuleType("Ankimon.pyobj.update_manager")
+    manager.set_update_skip_until = Mock()
+    messages = Mock()
+    progress = Mock()
+    monkeypatch.setitem(sys.modules, manager.__name__, manager)
+    monkeypatch.setattr(update_dialog, "QDialog", Dialog)
+    monkeypatch.setattr(update_dialog, "QVBoxLayout", Widget)
+    monkeypatch.setattr(update_dialog, "QHBoxLayout", Widget)
+    monkeypatch.setattr(update_dialog, "QLabel", Widget)
+    monkeypatch.setattr(update_dialog, "QPushButton", Button)
+    monkeypatch.setattr(update_dialog, "QCheckBox", CheckBox)
+    monkeypatch.setattr(update_dialog, "QMessageBox", messages)
+    monkeypatch.setattr(update_dialog, "BranchUpdateProgressDialog", progress)
+    monkeypatch.setattr(update_dialog, "icon_path", None)
+    icon = Mock()
+    monkeypatch.setattr(update_dialog, "QIcon", icon)
+
+    release = {"name": "2.4-E", "zipball_url": "https://example.org/archive.zip"}
+    update_dialog.show_release_update_prompt("Experimental", release)
+
+    assert len(dialogs) == 1
+    assert catalog["release_data_preserved"] in labels
+    assert catalog["release_snooze_week"] in labels
+    assert catalog["release_update_now"] in buttons
+    assert catalog["release_later"] in buttons
+    assert any(catalog["release_channel_experimental"] in label for label in labels)
+    assert manager.set_update_skip_until.call_count == (checked and action != "update")
+    if checked and action != "update":
+        import time
+
+        skip_until = manager.set_update_skip_until.call_args.args[0]
+        assert abs(skip_until - (time.time() + 604800)) < 5
+    assert progress.call_count == (action == "update")
+    assert messages.information.call_count == (action == "later")
+    icon.assert_not_called()
+
+
+def test_release_prompt_rejects_incomplete_release(monkeypatch):
+    """Malformed release data shows a warning before creating a dialog."""
+    from unittest.mock import Mock
+
+    messages = Mock()
+    dialog = Mock()
+    catalog = _use_catalog(monkeypatch, "de")
+    monkeypatch.setattr(update_dialog, "QMessageBox", messages)
+    monkeypatch.setattr(update_dialog, "QDialog", dialog)
+
+    update_dialog.show_release_update_prompt("Stable", {"name": "2.4-E"})
+
+    messages.warning.assert_called_once()
+    assert messages.warning.call_args.args[1:] == (
+        catalog["release_invalid_title"],
+        catalog["release_invalid_body"],
+    )
+    dialog.assert_not_called()
+
+
+def test_release_prompt_keys_and_placeholders_exist_in_every_catalog():
+    lang_dir = _SRC / "Ankimon" / "lang"
+    english = json.loads((lang_dir / "en_text.json").read_text(encoding="utf-8"))
+    prompt_keys = {key for key in english if key.startswith("release_")}
+    reviewed_keys = prompt_keys | {
+        "ankimon_update_button", "nature_chart_button", "effect_item_consumed",
+        "weather_rain_still",
+    }
+    formatter = string.Formatter()
+
+    def fields(template):
+        return {field for _, field, _, _ in formatter.parse(template) if field}
+
+    for path in lang_dir.glob("*_text.json"):
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        for key in reviewed_keys:
+            assert key in catalog, (path.name, key)
+            assert fields(catalog[key]) == fields(english[key]), (path.name, key)
 
 
 def test_branch_completion_action_matches_outcome(monkeypatch):

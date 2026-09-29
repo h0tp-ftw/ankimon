@@ -1,8 +1,10 @@
 from copy import deepcopy
 import random
+from pathlib import Path
 from typing import Optional
 
 from aqt import mw
+from aqt.operations import QueryOp
 from aqt.qt import (
     QFont,
     QLabel,
@@ -21,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ..services import services
 from ..functions.item_evolution import save_item_evolution
+from ..functions.sprite_functions import get_sprite_path, SUBSTITUTE_PATH
 from ..utils import load_custom_font, is_alive
 from ..functions.pokedex_functions import (
     evolution_required_time,
@@ -51,9 +54,21 @@ from ..pyobj.error_handler import show_warning_with_traceback
 from ..business import calculate_cp_from_dict, resize_pixmap_img
 from ..resources import (
     addon_dir,
-    frontdefault,
     evolve_image_path,
 )
+
+
+def _load_evolution_sprite(pokemon_id: int, is_shiny: bool) -> bytes:
+    """Resolve and read a sprite on a worker, preserving the ordinary fallback."""
+    path = get_sprite_path("front", "png", pokemon_id, is_shiny, "N")
+    if is_shiny and path == SUBSTITUTE_PATH:
+        path = get_sprite_path("front", "png", pokemon_id, False, "N")
+    try:
+        return Path(path).read_bytes()
+    except FileNotFoundError:
+        # A partial sprite pack may lack even the substitute. Qt can still draw
+        # the background/text, and a concurrent download may supply it later.
+        return b""
 
 
 def _moves_gained_on_evolution(species_name, level):
@@ -78,6 +93,7 @@ class EvoWindow(QWidget):
         achievements: dict,
     ):
         super().__init__()
+        self._display_request = None
         self.init_ui()
 
         # To avoid circular imports, instead of importing those things, we
@@ -107,7 +123,96 @@ class EvoWindow(QWidget):
         except Exception:
             return True
 
-    def display_evo_complete(self, prevo_id: int, evo_id: int):
+    def closeEvent(self, event):
+        self._display_request = None
+        super().closeEvent(event)
+
+    def hideEvent(self, event):
+        # Minimize/exposure notifications can leave the widget logically
+        # visible. Only an explicit hide dismisses the request, including a
+        # hide() while already minimized (isMinimized() alone misses that).
+        if not event.spontaneous() and self.isHidden():
+            self._display_request = None
+        super().hideEvent(event)
+
+    def _request_is_current(self, request) -> bool:
+        """Discard callbacks/actions from closed windows or a different profile."""
+        if not is_alive(self) or self._display_request is not request:
+            return False
+        db, db_path, collection = request
+        if (
+            services.db is not db
+            or getattr(db, "db_path", None) != db_path
+            or mw.col is not collection
+        ):
+            self.close()
+            return False
+        return True
+
+    def _run_display_action(self, request, action):
+        if self._request_is_current(request):
+            action()
+
+    def _start_display(self, load, render, width, height):
+        """Prepare plain image data off-thread and keep all widget work on Qt."""
+        db = services.db
+        request = (db, getattr(db, "db_path", None), mw.col)
+        self._display_request = request
+        self.setMaximumWidth(width)
+        self.setMaximumHeight(height)
+        self.clear_layout(self.layout())
+        self.layout().addWidget(QLabel("Loading evolution…"))
+        close_button = QPushButton("Close")
+        qconnect(
+            close_button.clicked,
+            lambda: self._run_display_action(request, self.close),
+        )
+        self.layout().addWidget(close_button)
+        self.show()
+
+        def failure(exc):
+            if not self._request_is_current(request):
+                return
+            self.logger.log("error", f"Could not load evolution screen: {exc}")
+            self.clear_layout(self.layout())
+            self.layout().addWidget(QLabel("Could not load this evolution screen."))
+            retry_button = QPushButton("Retry")
+            qconnect(
+                retry_button.clicked,
+                lambda: self._run_display_action(
+                    request, lambda: self._start_display(load, render, width, height)
+                ),
+            )
+            self.layout().addWidget(retry_button)
+            close_button = QPushButton("Close")
+            qconnect(
+                close_button.clicked,
+                lambda: self._run_display_action(request, self.close),
+            )
+            self.layout().addWidget(close_button)
+
+        def success(result):
+            if not self._request_is_current(request):
+                return
+            try:
+                render(result)
+            except Exception as exc:
+                # QueryOp's failure handler covers worker errors, not exceptions
+                # raised by its main-thread success callback.
+                failure(exc)
+
+        if load is None:
+            # No cosmetic DB/filesystem work is needed while sprites are hidden.
+            success(None)
+            return
+        try:
+            QueryOp(parent=mw, op=load, success=success).failure(
+                failure
+            ).without_collection().run_in_background()
+        except Exception as exc:
+            failure(exc)
+
+    def display_evo_complete(self, prevo_id: int, evo_id: int, is_shiny: bool = False):
         """
         Displays the GUI notification that the given Pokemon has evolved.
 
@@ -117,16 +222,32 @@ class EvoWindow(QWidget):
         Args:
             prevo_id (int): The identifier (National Pokedex Number) of the Pokémon to evolve.
             evo_id (int): The identifier (National Pokedex Number) of the evolved Pokémon.
+            is_shiny (bool): Shiny status from the successfully saved Pokémon.
         """
+        load = None
+        if self._should_show_sprites():
+            load = lambda _col: _load_evolution_sprite(evo_id, is_shiny)
+        self._start_display(
+            load,
+            lambda sprite: self._show_evo_complete(prevo_id, evo_id, sprite),
+            500,
+            300,
+        )
+
+    def _show_evo_complete(self, prevo_id, evo_id, sprite):
         self.clear_layout(self.layout())
         layout = self.layout()
-        pkmn_label = self._display_evo_complete_layout(prevo_id, evo_id)
+        pkmn_label = self._display_evo_complete_layout(prevo_id, evo_id, sprite)
         layout.addWidget(pkmn_label)
         # Give the celebration screen an explicit way to dismiss itself instead
         # of leaving the user to find the OS window-close button (the only exit
         # this screen used to offer).
         close_button = QPushButton("Close")
-        qconnect(close_button.clicked, self.close)
+        request = self._display_request
+        qconnect(
+            close_button.clicked,
+            lambda: self._run_display_action(request, self.close),
+        )
         layout.addWidget(close_button)
         self.setStyleSheet("background-color: rgb(14,14,14);")
         self.setLayout(layout)
@@ -134,7 +255,7 @@ class EvoWindow(QWidget):
         self.setMaximumHeight(300)
         self.show()
 
-    def _display_evo_complete_layout(self, prevo_id: int, evo_id: int):
+    def _display_evo_complete_layout(self, prevo_id: int, evo_id: int, sprite: bytes):
         """
         Creates the GUI layout for the successful evolution.
 
@@ -167,11 +288,10 @@ class EvoWindow(QWidget):
 
         # Only load and draw the Pokémon sprite if sprites are enabled
         show_sprites = self._should_show_sprites()
-        if show_sprites:
+        if show_sprites and sprite:
             # Display the Pokémon image
-            image_path = frontdefault / f"{evo_id}.png"
             image_pixmap = QPixmap()
-            image_pixmap.load(str(image_path))
+            image_pixmap.loadFromData(sprite)
             image_pixmap = resize_pixmap_img(image_pixmap, 250)
             painter.drawPixmap(125, 10, image_pixmap)
 
@@ -215,12 +335,42 @@ class EvoWindow(QWidget):
                 from the bag when the evolution is confirmed. Defaults to None.
         """
 
-        self.setMaximumWidth(600)
-        self.setMaximumHeight(530)
+        db = services.db
+        load = None
+        if self._should_show_sprites():
+
+            def load(_col):
+                pokemon = db.get_pokemon(individual_id)
+                if not isinstance(pokemon, dict):
+                    raise LookupError(f"Pokemon {individual_id} could not be loaded")
+                if str(pokemon.get("id")) != str(prevo_id):
+                    raise ValueError(
+                        f"Pokemon {individual_id} has already changed species"
+                    )
+                is_shiny = bool(pokemon.get("shiny", False))
+                return (
+                    _load_evolution_sprite(prevo_id, is_shiny),
+                    _load_evolution_sprite(evo_id, is_shiny),
+                )
+
+        self._start_display(
+            load,
+            lambda sprites: self._show_evolution_prompt(
+                individual_id, prevo_id, evo_id, item_name, sprites
+            ),
+            600,
+            530,
+        )
+
+    def _show_evolution_prompt(
+        self, individual_id, prevo_id, evo_id, item_name, sprites
+    ):
         self.clear_layout(self.layout())
         layout = self.layout()
         pokemon_images, evolve_button, dont_evolve_button = (
-            self._ask_pokemon_evo_layout(individual_id, prevo_id, evo_id, item_name)
+            self._ask_pokemon_evo_layout(
+                individual_id, prevo_id, evo_id, item_name, sprites
+            )
         )
         layout.addWidget(pokemon_images)
         layout.addWidget(evolve_button)
@@ -235,6 +385,7 @@ class EvoWindow(QWidget):
         prevo_id: int,
         evo_id: int,
         item_name: Optional[str] = None,
+        sprites=None,
     ):
         """
         Creates the GUI layout for the upcoming evolution.
@@ -271,15 +422,13 @@ class EvoWindow(QWidget):
         painter.drawPixmap(0, 0, pixmap_bckg)
 
         # Only load, resize, and draw Pokémon sprites if sprites are enabled
-        if show_sprites:
+        if show_sprites and sprites:
             # Display the Pokémon image
-            pkmnimage_path = frontdefault / f"{prevo_id}.png"
             pkmnpixmap = QPixmap()
-            pkmnpixmap.load(str(pkmnimage_path))
+            pkmnpixmap.loadFromData(sprites[0])
 
-            pkmnimage_path2 = frontdefault / f"{(evo_id)}.png"
             pkmnpixmap2 = QPixmap()
-            pkmnpixmap2.load(str(pkmnimage_path2))
+            pkmnpixmap2.loadFromData(sprites[1])
 
             # Calculate the new dimensions to maintain the aspect ratio
             max_width = 200
@@ -328,21 +477,27 @@ class EvoWindow(QWidget):
         # Create buttons for catching and killing the Pokémon
         evolve_button = QPushButton("Evolve Pokémon")
         dont_evolve_button = QPushButton("Cancel Evolution")
+        request = self._display_request
         qconnect(
             evolve_button.clicked,
-            lambda: self.evolve_pokemon(
-                individual_id,
-                prevo_id,
-                prevo_name,
-                evo_id,
-                evo_name,
-                self.main_pokemon,
-                item_name,
+            lambda: self._run_display_action(
+                request,
+                lambda: self.evolve_pokemon(
+                    individual_id,
+                    prevo_id,
+                    prevo_name,
+                    evo_id,
+                    evo_name,
+                    self.main_pokemon,
+                    item_name,
+                ),
             ),
         )
         qconnect(
             dont_evolve_button.clicked,
-            lambda: self.cancel_evolution(individual_id, prevo_name),
+            lambda: self._run_display_action(
+                request, lambda: self.cancel_evolution(individual_id, prevo_name)
+            ),
         )
 
         # Set the merged image as the pixmap for the QLabel
@@ -448,7 +603,9 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "selected_attack_not_found",
-                                        selected_attack=format_move_name(selected_attack),
+                                        selected_attack=format_move_name(
+                                            selected_attack
+                                        ),
                                     ),
                                 )
                         else:
@@ -644,7 +801,7 @@ class EvoWindow(QWidget):
                 exception=e,
                 message="Error occured in updating main_pokemon obj",
             )
-        self.display_evo_complete(prevo_id, evo_id)
+        self.display_evo_complete(prevo_id, evo_id, bool(pokemon.get("shiny", False)))
         check = check_for_badge(self.achievements, 16)
         if check is False:
             receive_badge(16, self.achievements)
@@ -713,7 +870,9 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "replaced_attack",
-                                        selected_attack=format_move_name(selected_attack),
+                                        selected_attack=format_move_name(
+                                            selected_attack
+                                        ),
                                         new_attack=format_move_name(new_attack),
                                     ),
                                 )
@@ -722,7 +881,9 @@ class EvoWindow(QWidget):
                                     "info",
                                     self.translator.translate(
                                         "selected_attack_not_found",
-                                        selected_attack=format_move_name(selected_attack),
+                                        selected_attack=format_move_name(
+                                            selected_attack
+                                        ),
                                     ),
                                 )
                         else:

@@ -1,12 +1,14 @@
-from aqt import gui_hooks, mw, utils
-from aqt.utils import showInfo
-from ..functions.pokemon_functions import find_experience_for_level
-from ..functions.create_css_for_reviewer import create_css_for_reviewer
 import json
 import os
-from ..functions.create_gui_functions import create_status_html
-from ..services import services
+from html import escape as html_escape
 
+from aqt import gui_hooks, mw, utils
+from aqt.utils import showInfo
+
+from ..functions.create_css_for_reviewer import create_css_for_reviewer
+from ..functions.create_gui_functions import create_status_html
+from ..functions.pokemon_functions import find_experience_for_level
+from ..services import services
 from .pokemon_obj import PokemonObject
 
 
@@ -229,17 +231,13 @@ class Reviewer_Manager:
             self.main_pokemon.hp, self.main_pokemon.max_hp
         )
 
-        # 1. Ownership cache (avoid a DB query on every repaint of the same enemy).
+        # The Pokeball records a previous catch, including released or evolved
+        # Pokemon. Keep exact form IDs and cache the result for this encounter.
         is_pokemon_owned = self._ownership_cache.get(self.enemy_pokemon.id)
         if is_pokemon_owned is None:
             is_pokemon_owned = False
             try:
-                db = services.db
-                cursor = db.execute(
-                    "SELECT 1 FROM captured_pokemon WHERE pokedex_id = ? LIMIT 1",
-                    (self.enemy_pokemon.id,),
-                )
-                is_pokemon_owned = cursor.fetchone() is not None
+                is_pokemon_owned = self.enemy_pokemon.id in services.db.get_caught_ids()
                 self._ownership_cache[self.enemy_pokemon.id] = is_pokemon_owned
             except Exception:
                 pass
@@ -404,28 +402,35 @@ class Reviewer_Manager:
             hud_html += '<div id="xp_text" class="Ankimon">XP</div>'
 
         # display_name handles translations, regional forms, megas and gmax.
-        enemy_lang_name = self.enemy_pokemon.display_name
+        # Every value in these lists is rendered into an HTML text-node context.
+        # Escape the data fields individually rather than the completed fragment:
+        # the boost and status helpers below intentionally return trusted markup.
+        enemy_lang_name = html_escape(str(self.enemy_pokemon.display_name))
         pokedex_id = getattr(self.enemy_pokemon, "pokedex_id", self.enemy_pokemon.id)
         generation = getattr(self.enemy_pokemon, "generation", 1)
 
         enemy_parts = []
         if self.settings.get("gui.hud_pokemon_id"):
-            enemy_parts.append(f"[#{pokedex_id}]")
+            enemy_parts.append(f"[#{html_escape(str(pokedex_id))}]")
         if self.settings.get("gui.hud_pokemon_name"):
             enemy_parts.append(enemy_lang_name)
-        if self.enemy_pokemon.shiny and self.settings.get("gui.hud_enemy_shiny_indicator"):
+        if self.enemy_pokemon.shiny and self.settings.get(
+            "gui.hud_enemy_shiny_indicator"
+        ):
             enemy_parts.append("⭐")
         if self.settings.get("gui.hud_pokemon_gen"):
-            enemy_parts.append(f"(Gen {generation})")
+            enemy_parts.append(f"(Gen {html_escape(str(generation))})")
         if self.settings.get("gui.hud_pokemon_lvl"):
-            enemy_parts.append(f"LvL: {self.enemy_pokemon.level}")
+            enemy_parts.append(f"LvL: {html_escape(str(self.enemy_pokemon.level))}")
 
         if enemy_parts:
             name_display_text = " ".join(enemy_parts)
             name_display_text += self.get_boost_values_string(
                 self.enemy_pokemon, display_neutral_boost=False
             )
-            hud_html += f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
+            hud_html += (
+                f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
+            )
 
         if enemy_hp > 0:
             hud_html += create_status_html(
@@ -468,7 +473,7 @@ class Reviewer_Manager:
                     f"</div>"
                 )
 
-            main_lang_name = self.main_pokemon.display_name
+            main_lang_name = html_escape(str(self.main_pokemon.display_name))
             main_pokedex_id = getattr(
                 self.main_pokemon, "pokedex_id", self.main_pokemon.id
             )
@@ -476,15 +481,17 @@ class Reviewer_Manager:
 
             main_parts = []
             if self.settings.get("gui.hud_pokemon_id"):
-                main_parts.append(f"[#{main_pokedex_id}]")
+                main_parts.append(f"[#{html_escape(str(main_pokedex_id))}]")
             if self.settings.get("gui.hud_pokemon_name"):
                 main_parts.append(main_lang_name)
-            if self.main_pokemon.shiny and self.settings.get("gui.hud_player_shiny_indicator"):
+            if self.main_pokemon.shiny and self.settings.get(
+                "gui.hud_player_shiny_indicator"
+            ):
                 main_parts.append("⭐")
             if self.settings.get("gui.hud_pokemon_gen"):
-                main_parts.append(f"(Gen {main_generation})")
+                main_parts.append(f"(Gen {html_escape(str(main_generation))})")
             if self.settings.get("gui.hud_pokemon_lvl"):
-                main_parts.append(f"LvL: {self.main_pokemon.level}")
+                main_parts.append(f"LvL: {html_escape(str(self.main_pokemon.level))}")
 
             if main_parts:
                 main_name_display_text = " ".join(main_parts)

@@ -60,6 +60,9 @@ Set `animate_time` to `true` to enable a small animation in the reviewer. This a
 Set `gif_in_collection` to `true` to view GIF images instead of sprites of your caught Pokémon in your collection.
 - `gif_in_collection` [True/False]
 
+`gui.show_sprites_across_ankimon` also controls sprites in the evolution prompt and completion screen. When enabled, shiny Pokémon use shiny sprites on both screens; if either shiny sprite is missing, that image uses the ordinary sprite. Set it to `false` to hide sprites on both evolution screens.
+- `gui.show_sprites_across_ankimon` [True/False] (default: True)
+
 Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface.
 - `gui.hud_hp_bars` [True/False]
 

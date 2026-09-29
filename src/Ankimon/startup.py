@@ -97,8 +97,7 @@ def run_startup_background_checks(backup_manager=None):
         if backup_manager is None:
             backup_manager = BackupManager(logger, settings_obj)
         try:
-            if settings_obj.get("misc.developer_mode"):
-                backup_manager.create_backup(manual=False)
+            backup_manager.run_profile_backup_tasks()
         except Exception as e:
             logger.log("error", f"Error in background backup creation: {e}")
     else:

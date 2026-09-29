@@ -670,6 +670,10 @@ def validate_pokemon_status(pokemon):
     if hasattr(pokemon, "hp") and pokemon.hp > 0 and current_status == "fainted":
         return "fighting"
 
+    # If Pokemon is NOT fainted but status is fainted, override back to fighting
+    if hasattr(pokemon, "hp") and pokemon.hp > 0 and current_status == "fainted":
+        return "fighting"
+
     return current_status
 
 
@@ -688,6 +692,7 @@ def process_battle_data(
     pokemon_encounter: int,
     translator,
     changes,
+    review_based_damage: bool = True,
 ) -> str:
     """
     Generate complete battle message from battle data.
@@ -704,12 +709,13 @@ def process_battle_data(
 
     try:
         # 1. Multiplier display
-        formatted_multiplier = f"{multiplier:.1f}"
-        message_parts.append(
-            translator.translate(
-                "battle_multiplier_display", multiplier=formatted_multiplier
+        if review_based_damage:
+            formatted_multiplier = f"{multiplier:.1f}"
+            message_parts.append(
+                translator.translate(
+                    "battle_multiplier_display", multiplier=formatted_multiplier
+                )
             )
-        )
 
         # 2. Enemy attack section
         if enemy_attack and enemy_attack != constants.DO_NOTHING_MOVE:
@@ -787,7 +793,9 @@ def process_battle_data(
             exception=e, message="Critical error generating battle message"
         )
         error_msg = translator.translate("battle_processing_error", error=str(e)[:100])
-        return f"{translator.translate('battle_multiplier_display', multiplier=multiplier)}\n{error_msg}"
+        if review_based_damage:
+            return f"{translator.translate('battle_multiplier_display', multiplier=multiplier)}\n{error_msg}"
+        return error_msg
 
 
 def _handle_special_battle_status(main_pokemon, battle_status: str, translator) -> str:

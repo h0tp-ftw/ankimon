@@ -24,6 +24,7 @@
     "gui.show_sprites_across_ankimon": true,
     "gui.hud_styling": true,
     "gui.pop_up_dialog_message_on_defeat": false,
+    "gui.pop_up_dialog_message_on_encounter": false,
     "gui.pop_up_dialog_message_on_item": true,
     "gui.review_hp_bar_thickness": 2,
     "gui.reviewer_image_gif": false,

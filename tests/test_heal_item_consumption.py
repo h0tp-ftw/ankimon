@@ -51,6 +51,7 @@ class _FakeItemDB:
     def __init__(self, inventory=None):
         self.inventory = dict(inventory or {})
         self.quantity_calls = []
+        self.history = []
 
     def get_item(self, item_name):
         if item_name not in self.inventory:
@@ -88,6 +89,21 @@ class _FakeItemDB:
             self.inventory[item_name] = new
         return new
 
+    def add_item(self, item_name, count):
+        """Match the real upsert: the supplied count replaces existing stock."""
+        self.quantity_calls.append((item_name, count))
+        self.inventory[item_name] = count
+
+    def refund_item(self, item, count=1):
+        """Mirror the refund increment; SQLite coverage below checks metadata."""
+        item_name = item["item_name"]
+        self.quantity_calls.append((item_name, count))
+        self.inventory[item_name] = self.inventory.get(item_name, 0) + count
+
+    def add_mobile_history_entry(self, entry):
+        self.history.append(entry)
+        return True
+
 
 class _FakePokemon:
     def __init__(self, name="mewtwo", hp=10, max_hp=100):
@@ -123,6 +139,7 @@ def item_window_mod():
         "Ankimon.functions.pokedex_functions",
         "Ankimon.functions.badges_functions",
         "Ankimon.functions.pokemon_functions",
+        "Ankimon.functions.update_main_pokemon",
         "Ankimon.resources",
         "Ankimon.utils",
         "Ankimon.pyobj.item_window",
@@ -182,6 +199,71 @@ def _make_window(mod, db, main_pokemon=None):
     mod.receive_badge = MagicMock()
     mod.play_effect_sound = MagicMock()
     return win
+
+
+def _escape_window(mod, db, monkeypatch, encounter):
+    """Supply the two lazy imports used by the real escape handler."""
+    companion = types.SimpleNamespace(name="Bulbasaur", level=12, individual_id="p1")
+    enemy = types.SimpleNamespace(id=25, name="Pikachu", level=8, shiny=False)
+    win = _make_window(mod, db, companion)
+    win.enemy_pokemon = enemy
+    win.escape_items = {"poke-doll": True}
+    win.settings_obj.get.return_value = True
+    mod.services.ui = MagicMock()
+    encounter_mod = types.ModuleType("Ankimon.functions.encounter_functions")
+    encounter_mod.new_pokemon = encounter
+    singletons_mod = types.ModuleType("Ankimon.singletons")
+    singletons_mod.get_test_window = lambda: "test-window"
+    singletons_mod.reviewer_obj = "reviewer"
+    monkeypatch.setitem(sys.modules, encounter_mod.__name__, encounter_mod)
+    monkeypatch.setitem(sys.modules, singletons_mod.__name__, singletons_mod)
+    return win, enemy
+
+
+def test_escape_consumes_one_item_and_records_previous_encounter(
+    item_window_mod, monkeypatch
+):
+    db = _FakeItemDB({"poke-doll": 2})
+
+    def next_encounter(enemy, *_args, **_kwargs):
+        enemy.name = "Rattata"
+
+    win, _enemy = _escape_window(item_window_mod, db, monkeypatch, next_encounter)
+    result = win.dispatch_use("poke-doll")
+
+    assert result["ok"] is True, (result, win.logger.mock_calls)
+    assert db.inventory["poke-doll"] == 1
+    assert db.quantity_calls == [("poke-doll", -1)]
+    assert len(db.history) == 1
+    assert db.history[0]["enemy_name"] == "Pikachu"
+    assert db.history[0]["outcome"] == "escaped"
+
+
+def test_escape_refuses_empty_bag_without_replacing_encounter(
+    item_window_mod, monkeypatch
+):
+    db = _FakeItemDB()
+    next_encounter = MagicMock()
+    win, _enemy = _escape_window(item_window_mod, db, monkeypatch, next_encounter)
+
+    assert win.dispatch_use("poke-doll")["ok"] is False
+    next_encounter.assert_not_called()
+    assert db.history == []
+
+
+@pytest.mark.parametrize("quantity", [1, 3])
+def test_failed_escape_refunds_item_and_reports_failure(item_window_mod, monkeypatch, quantity):
+    """A failed replacement returns the spent unit for empty and surviving rows."""
+    db = _FakeItemDB({"poke-doll": quantity})
+
+    def broken_encounter(*_args, **_kwargs):
+        raise RuntimeError("encounter failed")
+
+    win, _enemy = _escape_window(item_window_mod, db, monkeypatch, broken_encounter)
+
+    assert win.dispatch_use("poke-doll")["ok"] is False
+    assert db.inventory["poke-doll"] == quantity
+    assert db.history == []
 
 
 def test_heal_consumes_exactly_one_item(item_window_mod):
@@ -455,3 +537,118 @@ def test_the_heal_path_spends_one_real_row_per_heal(item_window_mod, real_db):
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is False
     assert pokemon.hp == 50, "the third click healed out of an empty bag"
+
+
+@pytest.mark.parametrize("quantity", [1, 3])
+def test_failed_escape_preserves_real_inventory(item_window_mod, real_db, monkeypatch, quantity):
+    """A failed escape preserves the entire SQLite row, including custom metadata."""
+    real_db.save_item(63, "poke-doll", quantity, {"source": "reward"},
+                      category_id=10, cost=1000, fling_power=30, fling_effect_id=1)
+    before = real_db.get_item("poke-doll")
+
+    def fail(*_args, **_kwargs):
+        """Fail before the enemy is replaced."""
+        raise RuntimeError("encounter generation failed")
+
+    win, enemy = _escape_window(item_window_mod, real_db, monkeypatch, fail)
+    assert win.dispatch_use("poke-doll")["ok"] is False
+    assert real_db.get_item("poke-doll") == before
+    assert enemy.name == "Pikachu"
+    assert real_db.get_mobile_history() == []
+
+
+@pytest.mark.parametrize("refund_fails", [False, True])
+def test_native_escape_failure_reports_refund_without_exception_details(
+    item_window_mod, real_db, monkeypatch, refund_fails
+):
+    """The direct native handler tells the player what happened to their item."""
+    real_db.save_item(63, "poke-doll", 3)
+
+    def fail(*_args, **_kwargs):
+        """Supply internal details that belong only in the diagnostic log."""
+        raise RuntimeError("Cannot open /private/profile/encounter.json")
+
+    win, _enemy = _escape_window(item_window_mod, real_db, monkeypatch, fail)
+    if refund_fails:
+        monkeypatch.setattr(
+            real_db, "refund_item",
+            MagicMock(side_effect=OSError("Cannot write /private/profile/ankimon.db")),
+        )
+    assert win.Handle_EscapeItem("poke-doll") is False
+    item_window_mod.services.ui.warn.assert_called_once()
+    message = item_window_mod.services.ui.warn.call_args.args[0]
+    assert "Could not escape" in message
+    assert "poke-doll" in message
+    assert "/private" not in message
+    assert "Cannot open" not in message and "Cannot write" not in message
+    if refund_fails:
+        assert "could not be returned" in message
+        assert "report this problem" in message
+        assert real_db.get_item("poke-doll")["quantity"] == 2
+    else:
+        assert "was returned" in message
+        assert "try again" in message
+        assert real_db.get_item("poke-doll")["quantity"] == 3
+    win.renewWidgets.assert_called_once()
+    assert real_db.get_mobile_history() == []
+    assert any("/private/profile/encounter.json" in str(call) for call in win.logger.log.call_args_list)
+
+
+@pytest.mark.parametrize("quantity", [1, 3])
+@pytest.mark.parametrize("fail_after_replacement", [False, True])
+def test_escape_replacement_keeps_payment_and_history(
+    item_window_mod, real_db, monkeypatch, quantity, fail_after_replacement
+):
+    """A new encounter costs one item, including when its subsequent rendering fails."""
+    real_db.save_item(63, "poke-doll", quantity)
+
+    def replace(enemy, *_args, **_kwargs):
+        """Commit a new encounter, then optionally fail its presentation."""
+        enemy.name = "Rattata"
+        enemy._ankimon_encounter_token = object()
+        if fail_after_replacement:
+            raise RuntimeError("battle scene unavailable")
+
+    win, enemy = _escape_window(item_window_mod, real_db, monkeypatch, replace)
+    enemy._ankimon_encounter_token = object()
+    assert win.dispatch_use("poke-doll")["ok"] is True
+    assert (real_db.get_item("poke-doll") or {}).get("quantity", 0) == quantity - 1
+    assert enemy.name == "Rattata"
+    history = real_db.get_mobile_history()
+    assert len(history) == 1
+    assert history[0]["enemy_name"] == "Pikachu"
+    assert history[0]["outcome"] == "escaped"
+
+
+@pytest.mark.parametrize("quantity", [1, 3])
+def test_refund_preserves_intervening_inventory_changes(real_db, quantity):
+    """Refund the spent unit without undoing a later writer's inventory update."""
+    real_db.save_item(63, "poke-doll", quantity)
+    before = real_db.get_item("poke-doll")
+    assert real_db.consume_item("poke-doll")
+    real_db.save_item(63, "poke-doll", 7, {"source": "new reward"})
+    real_db.refund_item(before)
+    assert real_db.get_item("poke-doll")["quantity"] == 8
+    assert real_db.get_item("poke-doll")["extra_data"] == {"source": "new reward"}
+
+
+@pytest.mark.parametrize("quantity", [1, 3])
+def test_refund_commit_failure_leaves_no_pending_credit(real_db, monkeypatch, quantity):
+    """An unsuccessful refund cannot leak into a later unrelated commit."""
+    import sqlite3
+
+    real_db.save_item(63, "poke-doll", quantity)
+    before = real_db.get_item("poke-doll")
+    assert real_db.consume_item("poke-doll")
+    conn = real_db._get_connection()
+
+    def fail_commit():
+        """Simulate a failed commit after refund SQL has executed."""
+        raise sqlite3.OperationalError("injected refund commit failure")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(conn, "commit", fail_commit)
+        with pytest.raises(sqlite3.OperationalError, match="refund commit failure"):
+            real_db.refund_item(before)
+    real_db.save_item(17, "potion", 1)
+    assert (real_db.get_item("poke-doll") or {}).get("quantity", 0) == quantity - 1

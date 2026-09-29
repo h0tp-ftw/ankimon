@@ -1400,55 +1400,25 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
                                 .replace("'", "")
                             )
                             if required_item == normalized_item_name:
-                                target_region = target_data.get("evoRegion")
-
-                                if target_region:
-                                    if (
-                                        active_region
-                                        and active_region.lower()
-                                        == target_region.lower()
-                                    ):
-                                        eligible_evos.append(target_data)
-                                else:
-                                    # A plain form is allowed unless a regional
-                                    # sibling matches the active region + method.
-                                    has_matching_regional_sibling = False
-                                    for sibling_name in evo_list:
-                                        sib_norm = (
-                                            sibling_name.lower()
-                                            .replace(" ", "")
-                                            .replace("-", "")
-                                            .replace("'", "")
-                                            .replace(".", "")
-                                            .replace(":", "")
-                                        )
-                                        sib_data = pokedex_data.get(
-                                            sib_norm
-                                        ) or pokedex_data.get(sibling_name.lower())
-                                        if (
-                                            sib_data
-                                            and sib_data.get("evoRegion")
-                                            and active_region
-                                            and sib_data.get("evoRegion").lower()
-                                            == active_region.lower()
-                                        ):
-                                            if (
-                                                sib_data.get("evoType")
-                                                == target_data.get("evoType")
-                                                and (
-                                                    sib_data.get("evoItem") or ""
-                                                ).lower()
-                                                == (
-                                                    target_data.get("evoItem") or ""
-                                                ).lower()
-                                            ):
-                                                has_matching_regional_sibling = True
-                                                break
-                                    if not has_matching_regional_sibling:
-                                        eligible_evos.append(target_data)
+                                eligible_evos.append(target_data)
 
                     if eligible_evos:
-                        eligible_evos.sort(key=lambda x: 0 if x.get("evoRegion") else 1)
+                        # A matching regional form takes precedence over a plain
+                        # sibling. Otherwise use the plain form; unique regional
+                        # item routes such as Scyther -> Kleavor still work in
+                        # any region because there is no plain sibling for the
+                        # same item.
+                        def region_priority(candidate):
+                            region = candidate.get("evoRegion")
+                            if (
+                                region
+                                and active_region
+                                and region.lower() == active_region.lower()
+                            ):
+                                return 0
+                            return 1 if not region else 2
+
+                        eligible_evos.sort(key=region_priority)
                         target_data = eligible_evos[0]
                         evo_id = safe_int(
                             target_data.get("actual_id")

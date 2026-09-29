@@ -47,6 +47,7 @@ from .update_manager import (
 )
 
 from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
+from ..services import services
 
 try:
     from ..resources import icon_path
@@ -2181,6 +2182,7 @@ def show_release_update_prompt(channel: str, release: dict):
     checkbox defers for a week — mirroring the branch prompt's behaviour.
     """
 
+    translate = services.translator.translate
     tag = release.get("name", "?")
     notes = (release.get("body") or "").strip()
     notes_html = ""
@@ -2192,14 +2194,13 @@ def show_release_update_prompt(channel: str, release: dict):
     if not release.get("name") or not release.get("zipball_url"):
         QMessageBox.warning(
             mw,
-            "Invalid Release",
-            "The release data is incomplete and cannot be installed.\n\n"
-            "Please try again later or check for updates manually.",
+            translate("release_invalid_title"),
+            translate("release_invalid_body"),
         )
         return
 
     dialog = QDialog(mw)
-    dialog.setWindowTitle("Ankimon Update Available")
+    dialog.setWindowTitle(translate("release_update_available"))
     dialog.setMinimumWidth(550)
     dialog.setMinimumHeight(450)
     if icon_path:
@@ -2317,22 +2318,31 @@ def show_release_update_prompt(channel: str, release: dict):
     layout.setContentsMargins(24, 24, 24, 24)
     layout.setSpacing(16)
 
-    # Escape dynamic content to prevent HTML injection
-    escaped_channel = _escape(channel)
-    escaped_tag = _escape(tag)
+    # Escape dynamic content before inserting it into the translated HTML title.
+    channel_key = f"release_channel_{channel.lower()}"
+    localized_channel = (
+        translate(channel_key)
+        if channel.lower() in {"stable", "experimental"}
+        else channel
+    )
+    title = translate(
+        "release_prompt_title",
+        channel=f"<b>{_escape(localized_channel)}</b>",
+        tag=f"<b>{_escape(tag)}</b>",
+    )
     title_label = QLabel(
-        f"<span style='font-size: 1.2rem; font-weight: 800; letter-spacing: -0.3px; color: {text};'>A new <b>{escaped_channel}</b> release is available: <b>{escaped_tag}</b></span>"
+        f"<span style='font-size: 1.2rem; font-weight: 800; letter-spacing: -0.3px; color: {text};'>{title}</span>"
     )
     title_label.setWordWrap(True)
     layout.addWidget(title_label)
 
-    info_label = QLabel("Your Pokémon data, team, and settings will be preserved.")
+    info_label = QLabel(translate("release_data_preserved"))
     info_label.setStyleSheet(f"color: {text}; font-size: 0.88rem;")
     info_label.setWordWrap(True)
     layout.addWidget(info_label)
 
     if notes_html:
-        notes_label = QLabel("<b>Release Notes:</b>")
+        notes_label = QLabel(f"<b>{_escape(translate('release_notes'))}</b>")
         notes_label.setStyleSheet(
             f"color: {text}; font-weight: 700; font-size: 0.92rem;"
         )
@@ -2345,27 +2355,28 @@ def show_release_update_prompt(channel: str, release: dict):
         notes_browser.setMaximumHeight(350)
         layout.addWidget(notes_browser)
 
-    snooze = QCheckBox("Don't notify me for 1 week")
+    snooze = QCheckBox(translate("release_snooze_week"))
     layout.addWidget(snooze)
 
     button_layout = QHBoxLayout()
     button_layout.addStretch()
 
-    later_btn = QPushButton("Later")
+    later_btn = QPushButton(translate("release_later"))
     later_btn.setObjectName("laterBtn")
     later_btn.setMinimumWidth(100)
     button_layout.addWidget(later_btn)
 
-    update_btn = QPushButton("Update Now")
+    update_btn = QPushButton(translate("release_update_now"))
     update_btn.setObjectName("updateBtn")
     update_btn.setMinimumWidth(120)
     button_layout.addWidget(update_btn)
 
     layout.addLayout(button_layout)
 
-    # Helper to persist snooze if checkbox is checked
-    def _persist_snooze_if_checked():
-        if snooze.isChecked():
+    # A checked snooze applies only when the user defers the update. Qt emits
+    # finished for both accept and reject, including the window close button.
+    def _persist_snooze_if_checked(result):
+        if result != QDialog.DialogCode.Accepted and snooze.isChecked():
             import time
             from .update_manager import set_update_skip_until
 
@@ -2379,11 +2390,11 @@ def show_release_update_prompt(channel: str, release: dict):
         dialog.reject()
         QMessageBox.information(
             mw,
-            "Update Later",
-            "No problem! You can always check for updates and install them later by going to Ankimon => Help => Check for Updates.",
+            translate("release_later_title"),
+            translate("release_later_body"),
         )
 
-    # Connect the finished signal to persist snooze on any close path
+    # Persist a requested snooze when the dialog is dismissed.
     dialog.finished.connect(_persist_snooze_if_checked)
 
     update_btn.clicked.connect(on_update)

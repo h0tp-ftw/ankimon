@@ -146,6 +146,11 @@ class FakeBackupManager:
     def __init__(self, logger, settings_obj):
         type(self).instances.append(self)
         self.create_calls = []
+        self.settings_obj = settings_obj
+
+    def run_profile_backup_tasks(self):
+        if self.settings_obj.get("misc.developer_mode"):
+            self.create_backup(manual=False)
 
     def create_backup(self, manual=False):
         self.create_calls.append(manual)

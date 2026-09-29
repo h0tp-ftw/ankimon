@@ -468,5 +468,21 @@
   "badge_ready": "⇈ 진화할 준비가 되었습니다!",
   "badge_wait_day": "☀️ 낮 동안 진화할 수 있습니다",
   "badge_wait_night": "🌙 밤 동안 진화할 수 있습니다",
-  "switched_pokemon": "{pokemon_name}(으)로 교체! Lv.{level}"
+  "switched_pokemon": "{pokemon_name}(으)로 교체! Lv.{level}",
+  "release_update_available": "Ankimon 업데이트가 있습니다",
+  "release_prompt_title": "새 {channel} 버전을 사용할 수 있습니다: {tag}",
+  "release_data_preserved": "포켓몬 데이터, 팀 및 설정은 유지됩니다.",
+  "release_notes": "릴리스 노트:",
+  "release_snooze_week": "1주일 동안 알림 받지 않기",
+  "release_later": "나중에",
+  "release_update_now": "지금 업데이트",
+  "release_invalid_title": "유효하지 않은 릴리스",
+  "release_invalid_body": "릴리스 데이터가 불완전하여 설치할 수 없습니다.\n\n나중에 다시 시도하거나 수동으로 업데이트를 확인하세요.",
+  "release_later_title": "나중에 업데이트",
+  "release_later_body": "나중에 Ankimon → 도움말 → 업데이트 확인에서 업데이트를 확인하고 설치할 수 있습니다.",
+  "release_channel_stable": "안정판",
+  "release_channel_experimental": "실험판",
+  "ankimon_update_button": "Ankimon 업데이트",
+  "nature_chart_button": "성격 차트 확인",
+  "effect_item_consumed": "{pokemon_name}이(가) {item}을(를) 모두 사용했다!"
 }

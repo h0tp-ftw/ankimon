@@ -179,7 +179,9 @@ Support my Caffeine Addiction (something that helps building this Addon):
    **Important:** You need to download: „Data Files, Sprite Files and Badges and Item Sprites“!
 
 2. **Catch Pokémon:** As you review your Anki cards, encounter and catch Pokémon to add to your collection.
+   Use an escape item from the Bag to leave a battle and encounter a new Pokémon. A successful escape uses one item; if the encounter cannot be replaced, Ankimon reports whether the item was returned to your Bag.
 3. **Training:** Train your Pokémon using various methods to strengthen them for battles.
+   In Pokémon details, a ready level evolution has an Evolve button even when an item evolution is also available; item requirements appear as hints. Use evolution items from the Bag, not the Pokémon details screen. If the same item can evolve a Pokémon into both a regional and a standard form, the active region's form takes priority; otherwise the standard form is chosen. Regional item evolutions with no standard alternative for that item remain available in any region.
 4. **Battles:** Challenge other users on Pokémon Showdown to battles using your trained Pokémon.
 5. **Bug Reporting:** If you encounter any issues or bugs, please report them on the [GitHub Issues Page](https://github.com/Unlucky-Life/ankimon/issues). Your feedback helps improve the addon for everyone.
 
@@ -188,6 +190,7 @@ Support my Caffeine Addiction (something that helps building this Addon):
 - **Linux OS** Before reporting an issue on Linux, make sure you check if it works with the package downloaded directly from the [Anki github](https://github.com/ankitects/anki/releases) as it could be a problem with the package maintained by a third party (distro maintainer or flatpak)
 - **Addon Status:** Ankimon is still in development. Please report any bugs you encounter to help improve the addon.
 - **Backup Files:** Migrating your legacy save now preserves "mypokemon.json" and "mainpokemon.json" and only archives them once the import is verified successful, so a failed or cancelled migration is safe to retry. We still recommend copying these files before updating as an extra precaution. Please check out my GitHub Ankimon Page before updating - I will let you know when an update is coming in.
+- **Backup Manager:** Legacy backups move from `ankimon_backups` beside the add-on to `Ankimon_Backups` in the current Anki profile. If that move is interrupted, Ankimon preserves originals whose copies cannot be verified and protects the migration's recovery copies from deletion; unrelated backups can still be deleted or rotated. Restore and Delete selections remain usable after a backup moves. If migration is running when you select one, try again shortly.
 - **Compatibility:** Currently, Ankimon is **only compatible with PyQt6**. Updates for compatibility with other versions will be provided in the future.
 
 ## Screenshots

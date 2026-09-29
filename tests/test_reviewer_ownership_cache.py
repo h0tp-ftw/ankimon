@@ -57,6 +57,10 @@ class FakeDB:
         pid = params[0] if params else None
         return FakeCursor(pid in self.owned)
 
+    def get_caught_ids(self):
+        self.query_count += 1
+        return set(self.owned)
+
     def get_team(self):
         self.get_team_calls += 1
         return self._team
@@ -67,6 +71,7 @@ class FakeDB:
 
 
 from Ankimon.pyobj.settings import DEFAULT_CONFIG
+
 
 class FakeSettings:
     def __init__(self, overrides=None):

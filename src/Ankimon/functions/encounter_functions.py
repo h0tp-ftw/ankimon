@@ -82,6 +82,9 @@ settings_obj = None
 translator = None
 ankimon_db = None
 pokemon_pc = None
+RARE_ENCOUNTER_TIERS = frozenset(
+    {"Starter", "Ultra", "Gmax", "Legendary", "Mega", "Mythical"}
+)
 
 
 def _disp_name(pokemon) -> str:
@@ -625,7 +628,8 @@ def _modify_percentages_legacy(
             ):
                 percentages[tier] = 0
 
-    # Normalize
+    # Force starter probability to 0 and normalize
+    percentages["Starter"] = 0  # Comment to activate starters
     total = sum(percentages.values())
     for tier in percentages:
         percentages[tier] = (percentages[tier] / total) * 100 if total > 0 else 0
@@ -654,25 +658,22 @@ def clear_encounter_cache():
 
 
 def _player_owns_base_form(actual_id: int, collected_ids: set) -> bool:
-    """Return True if the player owns the base species of this Mega/Gmax form."""
+    """Return whether the caught-history snapshot includes this form's base."""
     name = search_pokedex_by_id(actual_id)
     if not name or name == "Pokémon not found":
         return True  # can't determine — allow through
     species_id = safe_int(search_pokedex(name, "species_id"))
     if not species_id:
         return True
-    from ..utils import load_collected_pokemon_ids
-    return species_id in load_collected_pokemon_ids()
+    return species_id in collected_ids
 
 
 def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
-    """Return True if all prerequisite Pokémon for this ID are collected.
+    """Check prerequisites against the caller's caught-history snapshot.
 
     Prerequisite chains are defined in encounter_data.PREREQUISITES.
     Handles forms by checking the species_id prerequisites.
     """
-    from ..utils import load_collected_pokemon_ids
-    caught_ids = load_collected_pokemon_ids()
     check_id = pokemon_id
     if pokemon_id not in encounter_data.PREREQUISITES:
         if pokemon_id >= 10000:
@@ -687,10 +688,10 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
 
     if isinstance(required, tuple) and len(required) == 2 and required[0] == "OR":
         # Any of these must be present
-        return any(rid in caught_ids for rid in required[1])
+        return any(rid in collected_ids for rid in required[1])
 
     # All must be present (default behavior for sets)
-    return required.issubset(caught_ids)
+    return required.issubset(collected_ids)
 
 
 def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=None):
@@ -855,7 +856,6 @@ def get_base_species_gen(actual_id: int) -> int:
 
 
 def get_all_pokemon_in_tier(tier: str) -> list[int]:
-    """Return the configured encounter pool for a tier, including starters."""
     if tier == "Normal":
         return encounter_data.NORMAL
     if tier == "Baby":
@@ -870,8 +870,9 @@ def get_all_pokemon_in_tier(tier: str) -> list[int]:
         return encounter_data.MEGA
     if tier == "Gmax":
         return encounter_data.GMAX
+    # if tier == "Starter": return encounter_data.STARTERS #Uncomment to activate starters
     if tier == "Starter":
-        return encounter_data.STARTERS
+        return []
     return []
 
 
@@ -1364,6 +1365,24 @@ def new_pokemon(
     if update_hud and reviewer_obj is not None:
         reviewer_obj.refresh_hud()
 
+    # Encounter tiers are names, not numeric ranks.
+    # Show a popup message for rare/shiny Pokemon if the setting is enabled
+    if (
+        not _in_bulk_resolve()
+        and settings_obj.get("gui.pop_up_dialog_message_on_encounter") is True
+    ):
+        if pokemon.shiny or pokemon.tier in RARE_ENCOUNTER_TIERS:
+            if pokemon.shiny:
+                msg = f"A Shiny wild {get_pretty_name_for_name(pokemon.name)} appeared!"
+            else:
+                msg = f"A rare wild {get_pretty_name_for_name(pokemon.name)} appeared!"
+
+            try:
+                if services.logger:
+                    services.logger.log_and_showinfo("info", msg)
+            except Exception:
+                pass
+
     return pokemon
 
 
@@ -1749,7 +1768,9 @@ def save_main_pokemon_progress(
                         translator.translate(
                             "pokemon_about_to_evolve_friendship",
                             main_pokemon_name=_disp_name(main_pokemon),
-                            evo_pokemon_name=_evo_display_name(friendship_evo_id, friendship_evo_name),
+                            evo_pokemon_name=_evo_display_name(
+                                friendship_evo_id, friendship_evo_name
+                            ),
                         ),
                     )
         mainpkmndata["pokemon_defeated"] = main_pokemon.pokemon_defeated
@@ -2150,8 +2171,8 @@ def handle_enemy_faint(
     replaced_encounter = True
     if auto_battle_setting == 3:  # Catch if uncollected
         enemy_id = enemy_pokemon.id
-        # Check cache instead of file
-        from ..utils import load_collected_pokemon_ids
+        # Evolution, trades and imports can add history without updating the
+        # battle cache, so refresh once for this completed encounter.
         if (
             enemy_id not in load_collected_pokemon_ids()
             or enemy_pokemon.shiny
@@ -2252,10 +2273,9 @@ def handle_main_pokemon_faint(
     one, so this path does just the faint bookkeeping (heal + reset).
     """
     msg = translator.translate(
-        "pokemon_fainted",
-        enemy_pokemon_name=getattr(
-            main_pokemon, "display_name", main_pokemon.name.capitalize()
-        ),
+        "own_pokemon_fainted",
+        main_pokemon_name=get_pretty_name_for_name(main_pokemon.name),
+        enemy_pokemon_name=get_pretty_name_for_name(enemy_pokemon.name),
     )
     tooltipWithColour(msg, "#E12939")
     events.emit("faint", who="main", pokemon=main_pokemon.name)
@@ -2264,6 +2284,32 @@ def handle_main_pokemon_faint(
     main_pokemon.hp = main_pokemon.max_hp
     main_pokemon.current_hp = main_pokemon.max_hp
     main_pokemon.reset_bonuses()
+
+    # Patch the stored row. Saving the live object would replace that row with
+    # to_dict(), whose attacks stay stale after a level-up (the new move is
+    # written only onto the DB dict), and save_main_pokemon() would force
+    # is_main=1 even when this row is not the saved main.
+    db = services.db
+    individual_id = getattr(main_pokemon, "individual_id", None)
+    stored = (
+        db.get_pokemon(individual_id)
+        if db is not None and individual_id is not None
+        else None
+    )
+    if stored:
+        healed = int(main_pokemon.max_hp)
+        stored["hp"] = healed
+        stored["current_hp"] = healed
+        main_row = db.get_main_pokemon()
+        same_main = (
+            main_row is not None
+            and main_row.get("individual_id") is not None
+            and str(main_row.get("individual_id")) == str(individual_id)
+        )
+        if same_main:
+            db.save_main_pokemon(stored)
+        else:
+            db.save_pokemon(stored)
 
     if spawn_replacement:
         new_pokemon(

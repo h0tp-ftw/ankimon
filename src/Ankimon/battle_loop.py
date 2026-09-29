@@ -169,7 +169,12 @@ def init_battle_state(collected_pokemon_ids: set):
 
 
 def _get_cards_per_round() -> int:
-    cards_per_round = settings_obj.get("battle.cards_per_round")
+    # The tracker calls this while build_core is still running. Its registry
+    # settings are ready then, but this module's globals are bound only later.
+    current_settings = services.settings or settings_obj
+    if current_settings is None:
+        return 2
+    cards_per_round = current_settings.get("battle.cards_per_round")
     if isinstance(cards_per_round, int):
         return cards_per_round
     if isinstance(cards_per_round, str) and "-" in cards_per_round:
@@ -380,6 +385,8 @@ def on_review_card(*args):
             enemy_pokemon.battle_status = validate_pokemon_status(enemy_pokemon)
             main_pokemon.battle_status = validate_pokemon_status(main_pokemon)
 
+            is_review_based_damage_enabled = settings_obj.get("battle.review_based_damage", True)
+
             formatted_battle_log = process_battle_data(
                 battle_info=battle_info,
                 multiplier=multiplier,
@@ -395,6 +402,7 @@ def on_review_card(*args):
                 pokemon_encounter=ankimon_tracker_obj.pokemon_encounter,
                 translator=translator,
                 changes=current_battle_info_changes,
+                review_based_damage=is_review_based_damage_enabled,
             )
 
             tooltipWithColour(formatted_battle_log, color)
@@ -421,12 +429,15 @@ def on_review_card(*args):
             if true_dmg_from_user_move > 0:
                 reviewer_obj.seconds = settings_obj.compute_special_variable("animate_time")
                 tooltipWithColour(f" -{true_dmg_from_user_move} HP ", "#F06060", x=200)
-                if multiplier == 1:
+                if is_review_based_damage_enabled:
+                    if multiplier == 1:
+                        play_effect_sound(settings_obj, "HurtNormal")
+                    elif multiplier < 1:
+                        play_effect_sound(settings_obj, "HurtNotEffective")
+                    elif multiplier > 1:
+                        play_effect_sound(settings_obj, "HurtSuper")
+                else:
                     play_effect_sound(settings_obj, "HurtNormal")
-                elif multiplier < 1:
-                    play_effect_sound(settings_obj, "HurtNotEffective")
-                elif multiplier > 1:
-                    play_effect_sound(settings_obj, "HurtSuper")
             else:
                 reviewer_obj.seconds = 0
 

@@ -43,11 +43,17 @@ class PokemonShopManager:
         self.settings_obj = settings_obj
         self.set_callback = set_callback
         self.get_callback = get_callback
-        self.number_of_daily_items = 3
         self.daily_items_reroll_cost = 100
         self.todays_daily_items = []
         self.todays_daily_tms = []
         self.tm_price = 1000
+
+    @property
+    def number_of_daily_items(self):
+        trainer_level = int(self.settings_obj.get("trainer.level", 1))
+        # 3 base slots + 1 for every 5 levels
+        slots = 3 + (trainer_level // 5)
+        return slots
 
     def get_daily_items(self):
         """Generate daily items based on the current date."""

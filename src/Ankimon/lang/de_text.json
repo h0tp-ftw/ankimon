@@ -468,5 +468,21 @@
   "badge_ready": "⇈ Bereit zur Entwicklung!",
   "badge_wait_day": "☀️ Bereit zur Entwicklung am Tag",
   "badge_wait_night": "🌙 Bereit zur Entwicklung in der Nacht",
-  "switched_pokemon": "Wechsel zu {pokemon_name}! Lv. {level}"
+  "switched_pokemon": "Wechsel zu {pokemon_name}! Lv. {level}",
+  "release_update_available": "Ankimon-Update verfügbar",
+  "release_prompt_title": "Eine neue {channel}-Version ist verfügbar: {tag}",
+  "release_data_preserved": "Deine Pokémon-Daten, dein Team und deine Einstellungen bleiben erhalten.",
+  "release_notes": "Versionshinweise:",
+  "release_snooze_week": "Eine Woche lang nicht benachrichtigen",
+  "release_later": "Später",
+  "release_update_now": "Jetzt aktualisieren",
+  "release_invalid_title": "Ungültige Version",
+  "release_invalid_body": "Die Versionsdaten sind unvollständig und können nicht installiert werden.\n\nVersuche es später erneut oder suche manuell nach Updates.",
+  "release_later_title": "Später aktualisieren",
+  "release_later_body": "Später kannst du über Ankimon → Hilfe → Nach Updates suchen die Updates prüfen und installieren.",
+  "release_channel_stable": "Stabil",
+  "release_channel_experimental": "Experimentell",
+  "ankimon_update_button": "Ankimon aktualisieren",
+  "nature_chart_button": "Wesen-Tabelle prüfen",
+  "effect_item_consumed": "{pokemon_name} hat sein Item {item} aufgebraucht!"
 }

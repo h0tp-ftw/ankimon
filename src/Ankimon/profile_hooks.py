@@ -23,6 +23,7 @@ from .functions.encounter_functions import (
     clear_encounter_cache,
     clear_auto_battle_override,
 )
+from .utils import clear_utils_caches
 
 # Cache-clear-on-close (F20): the pokedex / learnset / encounter in-memory
 # caches live for the whole Python process, so without this a profile switch
@@ -53,12 +54,15 @@ def _on_profile_close():
         clear_learnset_cache()
         clear_encounter_cache()
         clear_auto_battle_override()
+        clear_utils_caches()
     except Exception as e:
         logger.log("error", f"Error clearing caches on profile close: {e}")
 
 
 def _on_profile_did_open(online_connectivity):
     def handler():
+        profile_col = getattr(mw, "col", None)
+
         # Pause media sync for any uncaptured original BEFORE the first dialog
         # below can pump the event loop. Stat calls only; the scan that can
         # release this guard is dispatched at the very end of this handler,
@@ -206,6 +210,8 @@ def _on_profile_did_open(online_connectivity):
             return online_connectivity
 
         def on_done(future) -> None:
+            if profile_col is None or mw.col is not profile_col:
+                return
             is_online = future.result()
             # We want to use the result of the background check
             try:
@@ -280,6 +286,14 @@ def register_profile_hooks(
     # in place instead of stacking a duplicate. gui_hooks' remove() / remHook()
     # both tolerate an already-absent callback.
     did_open_handler = _on_profile_did_open(online_connectivity)
+
+    def on_profile_did_open():
+        try:
+            backup_manager.refresh_profile_path()
+            backup_manager.schedule_profile_backup_tasks()
+        except Exception as e:
+            logger.log("error", f"Error updating backup profile path: {e}")
+        did_open_handler()
     backup_handler = backup_manager.on_anki_close
 
     previous_loaded_handler = getattr(services, _PROFILE_LOADED_HANDLER_RECORD, None)
@@ -291,8 +305,8 @@ def register_profile_hooks(
     previous_did_open_handler = getattr(services, _DID_OPEN_HANDLER_RECORD, None)
     if previous_did_open_handler is not None:
         gui_hooks.profile_did_open.remove(previous_did_open_handler)
-    gui_hooks.profile_did_open.append(did_open_handler)
-    setattr(services, _DID_OPEN_HANDLER_RECORD, did_open_handler)
+    gui_hooks.profile_did_open.append(on_profile_did_open)
+    setattr(services, _DID_OPEN_HANDLER_RECORD, on_profile_did_open)
 
     previous_backup_handler = getattr(services, _WILL_CLOSE_BACKUP_RECORD, None)
     if previous_backup_handler is not None:
