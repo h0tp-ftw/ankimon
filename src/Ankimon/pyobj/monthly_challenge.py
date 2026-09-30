@@ -245,10 +245,10 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             monthly_status = 0
 
         # Edge case: Pokémon exists in collection but database tracking values are missing or stale
-        pokemon_in_collection = db.get_pokemon(challenge_individual_id) is not None
+        owned = db.get_pokemon(challenge_individual_id)
+        pokemon_in_collection = owned is not None
 
         if reclaim and pokemon_in_collection:
-            owned = db.get_pokemon(challenge_individual_id)
             services.ui.notify(
                 "info",
                 f"This month's Pokémon is already in your collection: {escape(str(owned.get('name', 'Pokémon')))}. "

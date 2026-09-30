@@ -830,6 +830,32 @@ def test_save_failure_preserves_previous_decision(monthly_case, status):
     assert c.decision.call_count == (0 if status == 1 else 1)
 
 
+@pytest.mark.parametrize("defer", [False, True])
+def test_reclaim_reads_owned_pokemon_once(monthly_case, defer):
+    c = monthly_case
+    c.db.get_pokemon.return_value = {
+        "name": "<Pikachu & friends>",
+        "level": 70,
+        "pokemon_defeated": 42,
+    }
+
+    with patch.object(monthly_challenge_module.services, "ui") as ui:
+        check_and_award_monthly_pokemon(MockLogger(), defer=defer, reclaim=True)
+        if defer:
+            task, done = c.queued.pop()
+            done(_Future(task()))
+
+        c.db.get_pokemon.assert_called_once_with("test-id")
+        ui.notify.assert_called_once_with(
+            "info",
+            "This month's Pokémon is already in your collection: "
+            "&lt;Pikachu &amp; friends&gt;. Level: 70. Pokémon defeated: 42.",
+        )
+    c.decision.assert_not_called()
+    c.add.assert_not_called()
+    c.db.set_monthly_challenge_state.assert_not_called()
+
+
 def test_reclaim_offers_rejected_reward_without_resetting_it_first(monthly_case):
     c = monthly_case
     c.state["monthly_challenge"] = 2
