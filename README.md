@@ -179,15 +179,10 @@ Support my Caffeine Addiction (something that helps building this Addon):
    **Important:** You need to download: „Data Files, Sprite Files and Badges and Item Sprites“!
 
 2. **Catch Pokémon:** As you review your Anki cards, encounter and catch Pokémon to add to your collection.
+   Your permanent Pokédex caught history remains recorded after releasing, evolving, or trading away a Pokémon. The reviewer Pokéball indicator, encounter Capture Requirements, and “Catch if uncollected” mode use this history, not just the Pokémon currently in your PC. Incoming traded Pokémon are recorded immediately; merely seeing a Pokémon does not count as catching it. Forms retain distinct caught records.
    Use an escape item from the Bag to leave a battle and encounter a new Pokémon. A successful escape uses one item; if the encounter cannot be replaced, Ankimon reports whether the item was returned to your Bag.
 3. **Training:** Train your Pokémon using various methods to strengthen them for battles.
    In Pokémon details, a ready level evolution has an Evolve button even when an item evolution is also available; item requirements appear as hints. Use evolution items from the Bag, not the Pokémon details screen. If the same item can evolve a Pokémon into both a regional and a standard form, the active region's form takes priority; otherwise the standard form is chosen. Regional item evolutions with no standard alternative for that item remain available in any region.
-
-   **XP Share friendship:** In both classic and ORAS XP Share modes, each Pokémon receiving positive shared XP gains 1–2 friendship points per award. A held Soothe Bell multiplies that roll by 1.5, rounded down, giving either 1 or 3 points. Battle-earned friendship remains 5–9 points before the Soothe Bell bonus. Friendship is uncapped.
-
-   On desktop, XP Share friendship can trigger an eligible friendship evolution without a level-up. Earned XP and friendship are saved before the evolution prompt, so accepting or cancelling evolution does not lose those rewards. A zero-XP share grants no friendship and does not trigger evolution.
-
-   Mobile battle replay and bulk mobile XP Share use the same reduced friendship range. Bulk processing awards XP Share friendship once per recipient for the accumulated XP in a batch, not once per victory. Mobile sync preserves friendship above 255 in both the saved Pokémon record and the active Pokémon.
 4. **Battles:** Challenge other users on Pokémon Showdown to battles using your trained Pokémon.
 5. **Bug Reporting:** If you encounter any issues or bugs, please report them on the [GitHub Issues Page](https://github.com/Unlucky-Life/ankimon/issues). Your feedback helps improve the addon for everyone.
 
