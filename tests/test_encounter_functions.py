@@ -784,15 +784,18 @@ def test_soothe_bell_boosts_friendship_gain_by_half(monkeypatch):
 
         main_no_item = _make_main(None)
         ef.services.db.get_main_pokemon.return_value = {
+            "individual_id": "iid",
             "attacks": ["Tackle"],
             "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
         }
         ef.save_main_pokemon_progress(
             main_no_item, enemy, 5, {}, mock.MagicMock(), None
         )
+        assert ef.ankimon_db.save_main_pokemon.call_args.args[0]["friendship"] == 306
 
         main_soothe = _make_main("soothe-bell")
         ef.save_main_pokemon_progress(main_soothe, enemy, 5, {}, mock.MagicMock(), None)
+        assert ef.ankimon_db.save_main_pokemon.call_args.args[0]["friendship"] == 309
 
         assert main_no_item.friendship == 300 + 6
         assert main_soothe.friendship == 300 + int(6 * 1.5)

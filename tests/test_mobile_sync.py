@@ -410,7 +410,8 @@ def test_commit_replay_defeat_applies_xp_share(monkeypatch):
     calls = []
     monkeypatch.setattr(
         ms, "_attribute_xp_and_evs_to_companion",
-        lambda cid, xp, evs, settings_obj, battles_fought=1, db=None, logger=None: calls.append((str(cid), xp)),
+        lambda cid, xp, evs, settings_obj, battles_fought=1, db=None, logger=None,
+        *, xp_share=False: calls.append((str(cid), xp, xp_share)),
     )
     # Patch on the imported module object (not a dotted string path, which is
     # import-order fragile across the full suite).
@@ -438,8 +439,7 @@ def test_commit_replay_defeat_applies_xp_share(monkeypatch):
     res = ms.commit_replay_outcome("defeat", outcome_data, db, settings, None, None)
     assert res.get("success") is True
     # Classic 50/50: the companion keeps half, the XP-Share target gets the other.
-    assert ("COMP", 50) in calls
-    assert ("TARGET", 50) in calls
+    assert calls == [("COMP", 50, False), ("TARGET", 50, True)]
 
 
 def test_commit_replay_defeat_no_share_when_unset(monkeypatch):
@@ -453,7 +453,8 @@ def test_commit_replay_defeat_no_share_when_unset(monkeypatch):
     calls = []
     monkeypatch.setattr(
         ms, "_attribute_xp_and_evs_to_companion",
-        lambda cid, xp, evs, settings_obj, battles_fought=1, db=None, logger=None: calls.append((str(cid), xp)),
+        lambda cid, xp, evs, settings_obj, battles_fought=1, db=None, logger=None,
+        *, xp_share=False: calls.append((str(cid), xp, xp_share)),
     )
     import Ankimon.business as _biz
     monkeypatch.setattr(_biz, "calculate_cp_from_dict", lambda d: 10)
@@ -471,7 +472,7 @@ def test_commit_replay_defeat_no_share_when_unset(monkeypatch):
     }
     res = ms.commit_replay_outcome("defeat", outcome_data, db, settings, None, None)
     assert res.get("success") is True
-    assert calls == [("COMP", 100)]
+    assert calls == [("COMP", 100, False)]
 
 
 def test_normalize_ev_yield_renames_keys():
@@ -733,6 +734,243 @@ def test_attribute_xp_and_evs_defaults_missing_iv_to_15_and_ev_to_0(mobile_db, m
     updated = db.get_pokemon("TEST")
     assert updated["iv"] == {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
     assert updated["ev"] == {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+
+
+@pytest.fixture
+def friendship_companion(tmp_path, monkeypatch):
+    """Real Pokemon objects and persisted records, without a running Anki UI."""
+    import importlib
+    from conftest import isolated_modules
+
+    # Full-suite collection installs mocked Pokemon/business modules. Isolate
+    # the complete namespace, including lazy imports used by stats and replay,
+    # then restore it so this proof neither consumes nor leaks those stubs.
+    with isolated_modules("Ankimon", "aqt"):
+        for name in ("Ankimon", "Ankimon.functions", "Ankimon.pyobj"):
+            package = types.ModuleType(name)
+            package.__path__ = [str(_SRC / name.replace(".", "/"))]
+            package.__package__ = name
+            sys.modules[name] = package
+        sys.modules["aqt"] = None
+        monkeypatch.setenv("ANKIMON_USER_PATH", str(tmp_path))
+        sync = importlib.import_module("Ankimon.functions.mobile_sync")
+        registry = importlib.import_module("Ankimon.services").services
+        database = importlib.import_module("Ankimon.pyobj.database_manager")
+        PokemonObject = importlib.import_module("Ankimon.pyobj.pokemon_obj").PokemonObject
+        db = database.AnkimonDB(_Logger(), db_path=str(tmp_path / "ankimon.db"))
+        registry.populate(db=db, logger=_Logger(), settings=_Settings())
+
+        def create(individual_id="COMP", friendship=255, held_item=None, active=False):
+            pokemon = PokemonObject(
+                individual_id=individual_id, name="pikachu", id=25, level=50,
+                type=["Electric"], ability="static", shiny=False, gender="M",
+                growth_rate="medium-fast", tier="Normal", captured_date=None,
+                base_stats={"hp": 35, "atk": 55, "def": 40, "spa": 50, "spd": 50, "spe": 90},
+                attacks=["thundershock"], friendship=friendship, held_item=held_item,
+                pokemon_defeated=4,
+            )
+            if active:
+                db.save_main_pokemon(pokemon.to_dict())
+                registry.main_pokemon = pokemon
+            else:
+                db.save_pokemon(pokemon.to_dict())
+            return pokemon
+
+        try:
+            yield types.SimpleNamespace(create=create, db=db, sync=sync, services=registry)
+        finally:
+            db.close()
+
+
+@pytest.mark.parametrize("active", [False, True])
+@pytest.mark.parametrize("starting_friendship", [250, 255, 900])
+@pytest.mark.parametrize("held_item,expected_gain", [(None, 7), ("soothe-bell", 10)])
+@pytest.mark.parametrize("battles_fought", [0, 1])
+def test_mobile_friendship_accumulates_past_255(
+    friendship_companion, monkeypatch,
+    active, starting_friendship, held_item, expected_gain, battles_fought,
+):
+    """Mobile rewards preserve high friendship through the DB and live state."""
+    state = friendship_companion
+    db = state.db
+    pokemon = state.create(
+        friendship=starting_friendship, held_item=held_item, active=active,
+    )
+    # An odd base gain proves Soothe Bell still truncates its 1.5x bonus.
+    # Zero victories alone must not classify a battling companion as XP Share.
+    def friendship_roll(low, high):
+        assert (low, high) == (5, 9)
+        return 7
+
+    monkeypatch.setattr(state.sync.random, "randint", friendship_roll)
+
+    for award in (1, 2):
+        state.sync._attribute_xp_and_evs_to_companion(
+            pokemon.individual_id, 10, {}, _Settings(), db=db,
+            battles_fought=battles_fought,
+        )
+        stored = db.get_pokemon(pokemon.individual_id)
+        assert stored["friendship"] == starting_friendship + award * expected_gain
+        assert stored["pokemon_defeated"] == 4 + award * battles_fought
+        assert stored["xp"] == 10 * award
+        if active:
+            assert pokemon.friendship == stored["friendship"]
+            assert db.get_main_pokemon()["friendship"] == stored["friendship"]
+
+
+def test_mobile_empty_award_preserves_high_friendship(
+    friendship_companion, monkeypatch,
+):
+    state = friendship_companion
+    db = state.db
+    pokemon = state.create(friendship=900, active=True)
+    before = db.get_pokemon(pokemon.individual_id)
+
+    def unexpected_gain(*args):
+        pytest.fail("An empty mobile award must not roll a friendship gain")
+
+    monkeypatch.setattr(state.sync.random, "randint", unexpected_gain)
+    state.sync._attribute_xp_and_evs_to_companion(
+        pokemon.individual_id, 0, {}, _Settings(), battles_fought=0, db=db,
+    )
+
+    assert db.get_pokemon(pokemon.individual_id) == before
+    assert pokemon.friendship == 900
+
+
+@pytest.mark.parametrize("active_recipient", ["COMP", "TARGET"])
+@pytest.mark.parametrize("mode", ["classic", "oras"])
+@pytest.mark.parametrize("held_item", [None, "soothe-bell"])
+@pytest.mark.parametrize("share_roll", [1, 2])
+def test_replay_xp_share_preserves_uncapped_friendship(
+    friendship_companion, monkeypatch, active_recipient, mode, held_item, share_roll,
+):
+    """Both share modes award 1–2 friendship; battling still awards 5–9."""
+    state = friendship_companion
+    db = state.db
+    companion = state.create(active=active_recipient == "COMP")
+    target = state.create(
+        individual_id="TARGET", friendship=900, held_item=held_item,
+        active=active_recipient == "TARGET",
+    )
+    db.save_team([
+        {"individual_id": companion.individual_id}, {"individual_id": target.individual_id},
+    ])
+    rolls = []
+
+    def friendship_roll(low, high):
+        rolls.append((low, high))
+        assert (low, high) in ((5, 9), (1, 2))
+        return 7 if (low, high) == (5, 9) else share_roll
+
+    monkeypatch.setattr(state.sync.random, "randint", friendship_roll)
+    # The replay's main-thread callback only refreshes UI here; keep the real
+    # attribution, XP split, Pokemon stat updates and SQLite writes under test.
+    for name, callback in (
+        ("Ankimon.menu_buttons", "update_mobile_badge"),
+        ("Ankimon.singletons", "notify_stats_changed"),
+    ):
+        stub = types.ModuleType(name)
+        setattr(stub, callback, lambda *args: None)
+        # The fixture's isolated namespace owns and restores these modules.
+        sys.modules[name] = stub
+
+    outcome = {
+        "enemy_pokemon": companion, "battle_xp": 100, "total_xp": 100,
+        "accumulated_evs": {}, "total_trainer_xp": 0,
+        "companion_id": companion.individual_id, "companion_name": "Pikachu",
+        "companion_level": companion.level, "review_ids": [],
+        "companion_fainted": False,
+    }
+    result = state.sync.commit_replay_outcome(
+        "defeat", outcome, db, _Settings({
+            "trainer.xp_share": target.individual_id, "trainer.xp_share_mode": mode,
+        }),
+        None, state.services.main_pokemon,
+    )
+
+    assert result.get("success") is True, result
+    stored_companion = db.get_pokemon(companion.individual_id)
+    stored_target = db.get_pokemon(target.individual_id)
+    assert stored_companion["friendship"] == 262
+    expected_gain = int(share_roll * 1.5) if held_item == "soothe-bell" else share_roll
+    assert stored_target["friendship"] == 900 + expected_gain
+    assert rolls == [(5, 9), (1, 2)]
+    expected_xp = 50 if mode == "classic" else 100
+    assert stored_companion["xp"] == stored_target["xp"] == expected_xp
+    assert stored_companion["pokemon_defeated"] == 5
+    assert stored_target["pokemon_defeated"] == 4
+    assert state.services.main_pokemon.friendship == db.get_main_pokemon()["friendship"]
+
+
+@pytest.mark.parametrize("mode", ["classic", "oras"])
+def test_bulk_xp_share_uses_reduced_friendship_once_per_batch(
+    friendship_companion, monkeypatch, mode,
+):
+    """Two simulated wins retain the existing one-award-per-recipient batching."""
+    import importlib
+
+    state = friendship_companion
+    db = state.db
+    companion = state.create()
+    target = state.create(individual_id="TARGET", friendship=900, held_item="soothe-bell")
+    db.save_team([
+        {"individual_id": companion.individual_id}, {"individual_id": target.individual_id},
+    ])
+    db.queue_mobile_battles([
+        {"id": 1000 + i, "cid": 100 + i, "ease": 3, "time": 5000, "type": 1}
+        for i in range(2)
+    ])
+    settings = _Settings({
+        "battle.cards_per_round": 1, "battle.automatic_battle": 2,
+        "trainer.xp_share": target.individual_id, "trainer.xp_share_mode": mode,
+    })
+    bridge = importlib.import_module("Ankimon.functions.ankimon_hooks_to_poke_engine")
+    # Fix only encounter selection and battle outcome; exercise the production
+    # history aggregation, share routing, friendship awards and SQLite writes.
+    encounter = companion.to_dict()
+    encounter.update(base_experience=7, battle_status="fighting", ev_yield={})
+    monkeypatch.setattr(state.sync, "_generate_encounter", lambda *a, **k: encounter.copy())
+    monkeypatch.setattr(state.sync, "select_best_companion", lambda team, enemy: team[0])
+
+    def win_battle(companion, enemy, *args):
+        enemy.hp = 0
+        return None, None, None, None, 1
+
+    monkeypatch.setattr(bridge, "simulate_battle_with_poke_engine", win_battle)
+    rolls = []
+
+    def friendship_roll(low, high):
+        rolls.append((low, high))
+        assert (low, high) in ((5, 9), (1, 2))
+        return 7 if (low, high) == (5, 9) else 2
+
+    monkeypatch.setattr(state.sync.random, "randint", friendship_roll)
+    host = types.ModuleType("aqt")
+    host.mw = None
+    sys.modules["aqt"] = host
+    for name, callbacks in (
+        ("Ankimon.menu_buttons", ("update_mobile_badge",)),
+        ("Ankimon.singletons", ("get_evo_window", "notify_stats_changed")),
+    ):
+        stub = types.ModuleType(name)
+        for callback in callbacks:
+            setattr(stub, callback, lambda *args: None)
+        sys.modules[name] = stub
+
+    result = state.sync.run_mobile_battles(
+        commit=True, db=db, settings_obj=settings, tracker=None,
+        trainer_card=None, main_pokemon=None, day_cutoff=1,
+    )
+
+    assert result["success"] is True, result
+    assert result["resolved"] == 2
+    assert db.get_pending_mobile_count() == 0
+    assert db.get_pokemon(companion.individual_id)["friendship"] == 262
+    assert db.get_pokemon(target.individual_id)["friendship"] == 903
+    assert db.get_pokemon(companion.individual_id)["pokemon_defeated"] == 6
+    assert db.get_pokemon(target.individual_id)["pokemon_defeated"] == 4
+    assert rolls == [(5, 9), (1, 2)]
 
 
 def test_generate_encounter_passes_levels_explicitly(monkeypatch):

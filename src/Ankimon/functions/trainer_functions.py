@@ -1,3 +1,4 @@
+import random
 from .badges_functions import get_achieved_badges
 from .pokemon_functions import find_experience_for_level
 from .pokedex_functions import check_evolution_for_pokemon, return_name_for_id
@@ -111,8 +112,9 @@ def find_trainer_rank(highest_level, trainer_level):
 
 
 def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
-    """Apply ``exp`` to one stored Pokémon by individual_id — level-ups,
-    evolution/friendship-evolution checks, and the DB save. Shared by both
+    """Apply XP and uncapped friendship to one stored Pokémon by individual_id.
+
+    Save level-ups and rewards before evolution prompts. Shared by both
     XP Share modes below (classic grants this to one chosen holder; ORAS
     grants it to every other team member). Returns False if the Pokémon
     no longer exists (released/traded since it was selected/added to the
@@ -126,6 +128,10 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
     pokemon = db.get_pokemon(individual_id)
     if pokemon is None:
         return False
+    # Classic XP Share can round a one-point reward down to zero. A recipient
+    # that earns no XP must not gain friendship or trigger an evolution.
+    if exp <= 0:
+        return True
 
     current_level = int(pokemon["level"])  # MODIFIED: Use local variable for level
     if pokemon.get("held_item") == "lucky-egg":
@@ -168,6 +174,17 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         pokemon["level"] = current_level
         pokemon["xp"] = 0 if exp < 0 else exp
 
+    # Passive XP Share earns less friendship than battling; neither is capped.
+    friendship_gain = random.randint(1, 2)
+    if pokemon.get("held_item") == "soothe-bell":
+        friendship_gain = int(friendship_gain * 1.5)
+    pokemon["friendship"] = pokemon.get("friendship", 0) + friendship_gain
+
+    # Prompts read the stored record and may synchronously evolve it. Commit
+    # progress first, so a failed prompt cannot lose the reward and a completed
+    # evolution cannot be overwritten with this pre-evolution snapshot.
+    db.save_pokemon(pokemon)
+
     # Check for evolution
     evo_id = check_evolution_for_pokemon(
         pokemon["individual_id"],
@@ -185,23 +202,32 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         evo_disp_name = evo_disp_name.capitalize() if evo_disp_name else str(evo_id)
         msg += f"{pokemon['name']} is about to evolve to {evo_disp_name} at level {pokemon['level']}"
         evolution_triggered = True
-        db.save_pokemon(pokemon)
 
     # Secondary friendship/time-of-day evolution check. Only fires if the level
     # check above did not already prompt an evolution (avoids double-prompting).
-    if not evolution_triggered:
-        friendship_evo_id = check_friendship_evolution_for_pokemon(
-            pokemon["individual_id"],
-            pokemon["id"],
-            evo_window,
-            pokemon.get("everstone", False),
-            pokemon.get("friendship", 0),
-            pokemon.get("evolution_rejected", False),
-            # Both values are already loaded in `pokemon`; passing them avoids a
-            # synchronous DB read on the XP-share (review-path) flow.
-            attacks=pokemon.get("attacks"),
-            pokemon_defeated=pokemon.get("pokemon_defeated", 0),
-        )
+    if not evolution_triggered and evo_window is not None:
+        try:
+            friendship_evo_id = check_friendship_evolution_for_pokemon(
+                pokemon["individual_id"],
+                pokemon["id"],
+                evo_window,
+                pokemon.get("everstone", False),
+                pokemon.get("friendship", 0),
+                pokemon.get("evolution_rejected", False),
+                # Both values are already loaded in `pokemon`; passing them
+                # avoids a synchronous DB read on the XP-share review path.
+                attacks=pokemon.get("attacks"),
+                pokemon_defeated=pokemon.get("pokemon_defeated", 0),
+            )
+        except RuntimeError as error:
+            # A deleted Qt window cannot prompt, but its recipient's reward is
+            # already committed. Continue distributing ORAS rewards to the
+            # rest of the team; a later victory can offer this evolution again.
+            logger.log(
+                "error",
+                f"XP Share evolution prompt failed for {individual_id}: {error}",
+            )
+            return True
         if friendship_evo_id is not None:
             friendship_evo_name = return_name_for_id(friendship_evo_id)
             friendship_evo_name = (
@@ -215,10 +241,6 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
                 evo_pokemon_name=friendship_evo_name,
             )
             evolution_triggered = True
-            db.save_pokemon(pokemon)
-
-    if not evolution_triggered:
-        db.save_pokemon(pokemon)
 
     logger.log("info", f"{msg}")
     return True

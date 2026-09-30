@@ -8,15 +8,28 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
-from harness.checks.probe_real_webengine import _run_javascript, _wait_until
-from harness.real_driver import RealDriver
+
+def _resolve_bundled_asset(addon, request_path):
+    """Resolve only the probe's Pokeball asset, contained in the add-on tree."""
+    # Do not join any request-controlled path onto the filesystem root. This
+    # proof hides sprites and needs exactly one file from Anki's media host.
+    if request_path != "/_addons/ankimon/web/images/pokeball.png":
+        return None
+    try:
+        root = addon.resolve(strict=True)
+        asset = (root / "web/images/pokeball.png").resolve(strict=True)
+        asset.relative_to(root)
+        return asset if asset.is_file() else None
+    except (OSError, ValueError, RuntimeError):
+        return None
 
 
 def run_proof(screenshots=None):
+    """Prove real PC release retains the icon with a restricted media adapter."""
     from PyQt6.QtCore import Qt, QUrl
     from PyQt6.QtTest import QTest
     from PyQt6.QtWebEngineCore import (
@@ -27,16 +40,29 @@ def run_proof(screenshots=None):
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtWidgets import QPushButton
 
+    from harness.checks.probe_real_webengine import _run_javascript, _wait_until
+    from harness.real_driver import RealDriver
+
     addon = Path(__file__).resolve().parents[2] / "src/Ankimon"
 
     class AddonAssets(QWebEngineUrlRequestInterceptor):
         """Supply the exact bundled assets normally served by Anki's media host."""
 
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.blocked_paths = set()
+
         def interceptRequest(self, request):
+            """Block unapproved add-on requests; redirect only the bundled icon."""
             prefix = "/_addons/ankimon/"
             path = request.requestUrl().path()
             if path.startswith(prefix):
-                request.redirect(QUrl.fromLocalFile(str(addon / path[len(prefix) :])))
+                asset = _resolve_bundled_asset(addon, path)
+                if asset is None:
+                    self.blocked_paths.add(path)
+                    request.block(True)
+                else:
+                    request.redirect(QUrl.fromLocalFile(str(asset)))
 
     class CheckedPage(QWebEnginePage):
         def __init__(self, parent):
@@ -66,9 +92,9 @@ def run_proof(screenshots=None):
                     "gui.gif_in_collection": False,
                 },
             )
-        from harness.fixtures import build_pokemon, set_enemy
         from Ankimon.pyobj.reviewer_obj import Reviewer_Manager
         from Ankimon.singletons import get_pokemon_pc
+        from harness.fixtures import build_pokemon, set_enemy
 
         services = driver.services
         db = services.db
@@ -107,6 +133,31 @@ def run_proof(screenshots=None):
             assert _run_javascript(page, "window.testHudRoot.mode") == "closed"
 
         load_reviewer()
+        # Exercise the actual Chromium interceptor as well as the headless
+        # path-policy tests: neither an absolute suffix nor other bundled files
+        # may become a local-file redirect.
+        _run_javascript(
+            page,
+            """
+            for (const path of [
+                '/_addons/ankimon//etc/passwd',
+                '/_addons/ankimon/config.json',
+            ]) {
+                const image = new Image();
+                image.src = path;
+                document.body.appendChild(image);
+            }
+            """,
+        )
+        assert _wait_until(
+            lambda: (
+                assets.blocked_paths
+                == {
+                    "/_addons/ankimon//etc/passwd",
+                    "/_addons/ankimon/config.json",
+                }
+            )
+        ), ("Chromium asset requests escaped the allowlist", assets.blocked_paths)
         driver.aqt.mw.reviewer.web.eval = lambda script: _run_javascript(page, script)
 
         def check_icon(expected, label):
@@ -205,7 +256,7 @@ def run_proof(screenshots=None):
         print(
             f"PASS: Chromium {qWebEngineChromiumVersion()}, real PC release, "
             "persistent caught icon after reviewer rebuild, three layouts, setting toggle, "
-            "uncaught/fainted encounters, bundled icon loaded"
+            "uncaught/fainted encounters, bundled icon loaded, unsafe asset requests blocked"
         )
 
 
