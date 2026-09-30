@@ -604,7 +604,7 @@ def _install_reversal_flail_logic():
     from ..poke_engine.special_effects.moves.modify_move import move_lookup
 
     def reversal(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
-        hp_ratio = attacking_pokemon.hp / attacking_pokemon.max_hp
+        hp_ratio = attacking_pokemon.hp / getattr(attacking_pokemon, 'max_hp', getattr(attacking_pokemon, 'maxhp', 1))
         attacking_move = attacking_move.copy()
         if hp_ratio > 0.6875:
             attacking_move[constants.BASE_POWER] = 20
