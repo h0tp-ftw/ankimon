@@ -865,11 +865,36 @@ function renderReplayBattle(result) {
             // Battle finished, show choice controls
             if (choiceBox) {
                 choiceBox.classList.remove('hidden');
-                if (catchBtn) catchBtn.disabled = false;
-                if (defeatBtn) { defeatBtn.disabled = false; defeatBtn.textContent = mt('btn_defeat'); }
-            }
-            if (narrateEl) {
-                narrateEl.innerHTML = mt('enemy_vulnerable', { enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` });
+
+                let enemyHpPct = 0;
+                if (turns.length > 0) {
+                    enemyHpPct = turns[turns.length - 1].enemy_hp_pct;
+                }
+
+                if (enemyHpPct > 0) {
+                    if (catchBtn) catchBtn.classList.add('hidden');
+                    if (defeatBtn) {
+                        defeatBtn.disabled = false;
+                        defeatBtn.textContent = 'To be continued...';
+                        defeatBtn.onclick = () => chooseOutcome('continue');
+                    }
+                    if (narrateEl) {
+                        narrateEl.innerHTML = `<span class="narrate-encounter"><strong>${escapeHtml(result.enemy_name)}</strong> is still standing! Do more reviews to continue.</span>`;
+                    }
+                } else {
+                    if (catchBtn) {
+                        catchBtn.classList.remove('hidden');
+                        catchBtn.disabled = false;
+                    }
+                    if (defeatBtn) {
+                        defeatBtn.disabled = false;
+                        defeatBtn.textContent = mt('btn_defeat');
+                        defeatBtn.onclick = () => chooseOutcome('defeat');
+                    }
+                    if (narrateEl) {
+                        narrateEl.innerHTML = mt('enemy_vulnerable', { enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` });
+                    }
+                }
             }
             return;
         }
@@ -988,6 +1013,18 @@ function animateResolution(outcome, xp_gained, remaining) {
     const catchFlash = document.getElementById('replay-catch-flash');
     const narrateEl = document.getElementById('narration-text');
     const nextBtn = document.getElementById('replay-next-btn');
+
+    if (outcome === 'continue') {
+        if (narrateEl) {
+            narrateEl.innerHTML = `<strong>${escapeHtml(result.enemy_name)}</strong> will be waiting for you. Do more reviews!`;
+        }
+        if (nextBtn) {
+            nextBtn.classList.remove('hidden');
+            nextBtn.disabled = false;
+            nextBtn.textContent = 'Finish';
+        }
+        return;
+    }
 
     if (outcome === 'caught') {
         if (narrateEl) {
