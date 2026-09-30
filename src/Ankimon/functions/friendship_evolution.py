@@ -555,6 +555,19 @@ def _known_move_types(pokemon: Any) -> frozenset:
         attacks = pokemon.get("attacks") or []
     else:
         attacks = getattr(pokemon, "attacks", None) or []
+
+    if isinstance(attacks, str):
+        try:
+            import ast
+            parsed = ast.literal_eval(attacks)
+            if isinstance(parsed, list):
+                attacks = parsed
+            else:
+                attacks = []
+        except Exception:
+            cleaned = attacks.strip("[]")
+            attacks = [a.strip() for a in cleaned.split(",") if a.strip()]
+
     types: set = set()
     for attack in attacks:
         move_type = _move_type_of(attack)
