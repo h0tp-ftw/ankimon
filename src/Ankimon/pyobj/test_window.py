@@ -40,6 +40,8 @@ from ..functions.pokedex_functions import (
     search_pokedex,
 )
 
+from ..utils import load_collected_pokemon_ids
+
 from ..functions.pokemon_functions import find_experience_for_level
 
 from ..pyobj.ankimon_tracker import AnkimonTracker
@@ -1070,6 +1072,8 @@ class TestWindow(QWidget):
         level = self.enemy_pokemon.level
         type = self.enemy_pokemon.type
 
+        is_already_caught = id in load_collected_pokemon_ids()
+
         # Create the dialog
         lang_name = self._get_display_name(self.enemy_pokemon)
 
@@ -1118,6 +1122,14 @@ class TestWindow(QWidget):
         painter2.setFont(font)
 
         painter2.drawText(270, 107, f"{lang_name}")
+
+        if is_already_caught:
+            from ..resources import pokeball_path
+            pokeball_pixmap = QPixmap(str(pokeball_path)).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+
+            fm = QFontMetrics(font)
+            text_width = fm.horizontalAdvance(lang_name)
+            painter2.drawPixmap(270 + text_width + 5, 87, pokeball_pixmap)
 
         font.setPointSize(17)  # Adjust the font size as needed
         painter2.setFont(font)

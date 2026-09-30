@@ -901,6 +901,8 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
 
 def load_collected_pokemon_ids() -> set:
     """Loads all captured pokemon IDs from the database."""
+    if getattr(services, 'db', None) is None:
+        return set()
     return services.db.get_all_pokemon_ids()
 
 
