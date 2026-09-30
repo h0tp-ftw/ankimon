@@ -2140,6 +2140,7 @@ def _run_mobile_battles_impl(
                     battles_fought=0,
                     db=db,
                     logger=logger,
+                    xp_share=True,
                 )
 
         total_trainer_xp = 0
@@ -2569,6 +2570,7 @@ def commit_replay_outcome(
                                     battles_fought=0,
                                     db=db,
                                     logger=logger,
+                                    xp_share=True,
                                 )
 
                 # 3. Mark resolved in DB
@@ -2852,8 +2854,14 @@ def _attribute_xp_and_evs_to_companion(
     battles_fought=1,
     db=None,
     logger=None,
+    *,
+    xp_share=False,
 ) -> None:
-    """Persist mobile rewards and uncapped friendship, then refresh active state."""
+    """Persist mobile rewards and uncapped friendship, then refresh active state.
+
+    XP Share recipients earn less friendship than the battling companion;
+    their role is explicit because zero victories can also accompany battle XP.
+    """
     if xp_gained <= 0 and not any(ev_yield_gained.values()) and battles_fought <= 0:
         return
 
@@ -3093,7 +3101,7 @@ def _attribute_xp_and_evs_to_companion(
         pkmndata["current_hp"] = pkmndata["stats"].get("hp", 15)
 
     friendship = int(pkmndata.get("friendship", 0))
-    friendship_gain = random.randint(5, 9)
+    friendship_gain = random.randint(1, 2) if xp_share else random.randint(5, 9)
     if pkmndata.get("held_item") == "soothe-bell":
         friendship_gain = int(friendship_gain * 1.5)
     friendship += friendship_gain

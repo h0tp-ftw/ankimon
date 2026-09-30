@@ -174,8 +174,8 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         pokemon["level"] = current_level
         pokemon["xp"] = 0 if exp < 0 else exp
 
-    # Match the active Pokémon's uncapped friendship award.
-    friendship_gain = random.randint(5, 9)
+    # Passive XP Share earns less friendship than battling; neither is capped.
+    friendship_gain = random.randint(1, 2)
     if pokemon.get("held_item") == "soothe-bell":
         friendship_gain = int(friendship_gain * 1.5)
     pokemon["friendship"] = pokemon.get("friendship", 0) + friendship_gain

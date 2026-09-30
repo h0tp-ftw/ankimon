@@ -60,14 +60,18 @@ def run_proof():
 
     def add_pichu(individual_id):
         pokemon = build_pokemon({
-            "species": "Pichu", "level": 50, "friendship": threshold - 6,
+            "species": "Pichu", "level": 50, "friendship": threshold - 2,
             "individual_id": individual_id, "moves": ["thundershock"],
             "nickname": "Friendship proof",
         })
         db.save_pokemon(pokemon.to_dict())
 
+    def fixed_shared_friendship(low, high):
+        assert (low, high) == (1, 2), "XP Share must use the reduced 1–2 range"
+        return 2
+
     def grant(individual_id):
-        with patch("random.randint", return_value=6):
+        with patch("random.randint", side_effect=fixed_shared_friendship):
             active_xp = xp_share_gain_exp(
                 services.logger, services.settings, evo_window,
                 services.main_pokemon.individual_id, 2, individual_id,
@@ -116,7 +120,7 @@ def run_proof():
         assert not evo_window.isVisible()
         grant("pr914-cancel")
         after = _persisted(db, "pr914-cancel")
-        assert after["friendship"] == threshold + 6
+        assert after["friendship"] == threshold + 2
         assert after["xp"] == 2 and after["evolution_rejected"] is True
         assert not evo_window.isVisible(), "A rejected evolution must not prompt on the next award"
         print("PASS: real cancellation persists and later XP Share awards do not reopen the prompt")
@@ -144,7 +148,7 @@ def run_proof():
         driver.set_setting("trainer.xp_share_mode", "oras")
         sip.delete(evo_window)
         assert sip.isdeleted(evo_window)
-        with patch("random.randint", return_value=6):
+        with patch("random.randint", side_effect=fixed_shared_friendship):
             active_xp = xp_share_gain_exp(
                 services.logger, services.settings, evo_window,
                 services.main_pokemon.individual_id, 2, None,
@@ -154,7 +158,7 @@ def run_proof():
         assert threshold_recipient["friendship"] == threshold
         assert threshold_recipient["xp"] == 2
         later_recipient = _persisted(db, "pr914-later-teammate")
-        assert later_recipient["friendship"] == 406 and later_recipient["xp"] == 2
+        assert later_recipient["friendship"] == 402 and later_recipient["xp"] == 2
         diagnostics = driver.drain_events()
         assert not any(event["type"] == "error" for event in diagnostics)
         expected_errors = [

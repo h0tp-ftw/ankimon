@@ -76,7 +76,11 @@ def run_proof():
     randint = random.randint
 
     def fixed_friendship(low, high):
-        return 6 if (low, high) == (5, 9) else randint(low, high)
+        if (low, high) == (1, 2):
+            return 2
+        if (low, high) == (5, 9):
+            return 6
+        return randint(low, high)
 
     with patch("random.randint", side_effect=fixed_friendship):
         # Actual defeat resolution calls XP Share and the active Pokemon's
@@ -85,7 +89,7 @@ def run_proof():
         events.extend(driver.defeat())
         assert _persisted(db, "pr914-main")["friendship"] == 406
         holder = _persisted(db, "pr914-holder")
-        assert holder["friendship"] == 309 and holder["xp"] > 0
+        assert holder["friendship"] == 303 and holder["xp"] > 0
         assert _persisted(db, "pr914-teammate")["friendship"] == 0
         assert _persisted(db, "pr914-box")["friendship"] == 254
 
@@ -93,12 +97,12 @@ def run_proof():
         events.extend(driver.set_enemy(species="Magikarp", level=5, hp=0))
         events.extend(driver.defeat())
         assert _persisted(db, "pr914-main")["friendship"] == 412
-        assert _persisted(db, "pr914-holder")["friendship"] == 318
+        assert _persisted(db, "pr914-holder")["friendship"] == 306
         teammate = _persisted(db, "pr914-teammate")
-        assert teammate["friendship"] == 6 and teammate["xp"] > 0
+        assert teammate["friendship"] == 2 and teammate["xp"] > 0
         assert _persisted(db, "pr914-box")["friendship"] == 254
         assert services.main_pokemon.friendship == 412
-        print("PASS: classic and ORAS victories persist one friendship award per recipient")
+        print("PASS: classic and ORAS victories give reduced XP Share friendship and full active awards")
 
         # Cross a real bundled friendship threshold without gaining a level.
         evolution = next(
@@ -107,7 +111,7 @@ def run_proof():
         )
         pichu = build_pokemon({
             "species": "Pichu", "level": 50,
-            "friendship": evolution.min_happiness - 6,
+            "friendship": evolution.min_happiness - 2,
             "individual_id": "pr914-pichu",
         })
         db.save_pokemon(pichu.to_dict())
@@ -129,10 +133,11 @@ def run_proof():
 
         # Exercise actual mobile attribution and persistence for a boxed
         # companion, then an active companion whose singleton must stay in sync.
-        def mobile_award(individual_id, xp=1, battles=1):
+        def mobile_award(individual_id, xp=1, battles=1, xp_share=False):
             _attribute_xp_and_evs_to_companion(
                 individual_id, xp, {}, services.settings,
                 battles_fought=battles, db=db, logger=services.logger,
+                xp_share=xp_share,
             )
 
         mobile_award("pr914-box")
@@ -142,6 +147,8 @@ def run_proof():
         db.save_pokemon(boxed)
         mobile_award("pr914-box")
         assert _persisted(db, "pr914-box")["friendship"] == 409
+        mobile_award("pr914-box", battles=0, xp_share=True)
+        assert _persisted(db, "pr914-box")["friendship"] == 412
         assert services.main_pokemon.friendship == 412
         mobile_award("pr914-main")
         assert _persisted(db, "pr914-main")["friendship"] == 418
@@ -149,7 +156,7 @@ def run_proof():
         before_noop = _persisted(db, "pr914-main")
         mobile_award("pr914-main", xp=0, battles=0)
         assert _persisted(db, "pr914-main") == before_noop
-        print("PASS: mobile friendship crosses 255 and 400, preserving active and stored state")
+        print("PASS: mobile friendship stays uncapped with reduced XP Share and full battle awards")
 
     events.extend(driver.drain_events())
     errors = [

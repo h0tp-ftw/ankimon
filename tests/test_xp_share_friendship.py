@@ -42,7 +42,7 @@ def xp_share(tmp_path, monkeypatch):
             "evolution.friendship_time_enabled": True,
         })
         trainer.services.populate(db=db, logger=logger, settings=settings)
-        rng = Mock(return_value=7)
+        rng = Mock(return_value=2)
         monkeypatch.setattr(trainer.random, "randint", rng)
         window = Mock()
         window.translator.translate.return_value = "Friendship evolution offered"
@@ -93,13 +93,13 @@ def xp_share(tmp_path, monkeypatch):
             db.close()
 
 
-@pytest.mark.parametrize("roll", [5, 7, 9])
+@pytest.mark.parametrize("roll", [1, 2])
 @pytest.mark.parametrize("held_item", [None, "soothe-bell", "lucky-egg"])
 @pytest.mark.parametrize("mode", ["classic", "oras"])
 def test_rewards_follow_share_mode_and_held_item(xp_share, mode, held_item, roll):
     s = xp_share
     active = s.save("active")
-    s.save("holder", held_item=held_item, friendship=398)
+    s.save("holder", held_item=held_item, friendship=400)
     outsider = s.save("outside")
     s.db.save_team([{"individual_id": "active"}, {"individual_id": "holder"}])
     s.rng.return_value = roll
@@ -111,13 +111,13 @@ def test_rewards_follow_share_mode_and_held_item(xp_share, mode, held_item, roll
     if held_item == "lucky-egg":
         expected_xp = int(expected_xp * 1.5)
     assert stored["xp"] == 10 + expected_xp
-    assert stored["friendship"] == 398 + (
+    assert stored["friendship"] == 400 + (
         int(roll * 1.5) if held_item == "soothe-bell" else roll
     )
     assert stored["level"] == 30
     assert s.persisted("active") == active
     assert s.persisted("outside") == outsider
-    s.rng.assert_called_once_with(5, 9)
+    s.rng.assert_called_once_with(1, 2)
     s.window.ask_pokemon_evo.assert_not_called()
 
 
@@ -130,12 +130,12 @@ def test_oras_rewards_each_recipient_once_without_a_classic_holder(xp_share):
         {"individual_id": "active"}, {"individual_id": "first"},
         {"individual_id": "released"}, {"individual_id": "second"},
     ])
-    s.rng.side_effect = [5, 9]
+    s.rng.side_effect = [1, 2]
 
     assert s.grant(mode="oras", holder=None) == 100
 
-    assert s.persisted("first")["friendship"] == 105
-    assert s.persisted("second")["friendship"] == 113
+    assert s.persisted("first")["friendship"] == 101
+    assert s.persisted("second")["friendship"] == 103
     assert s.persisted("first")["xp"] == s.persisted("second")["xp"] == 110
     assert s.persisted("active") == active
     assert s.persisted("released") is None
@@ -178,7 +178,7 @@ def test_classic_does_not_reward_absent_or_active_holder(xp_share, holder):
 @pytest.mark.parametrize("mode", ["classic", "oras"])
 def test_friendship_threshold_uses_committed_reward_before_evolution(xp_share, mode):
     s = xp_share
-    s.save("holder", id=42, name="golbat", friendship=214)
+    s.save("holder", id=42, name="golbat", friendship=219)
     s.db.save_team([{"individual_id": "holder"}])
 
     def evolve(individual_id, prevo_id, evo_id):
@@ -203,7 +203,7 @@ def test_friendship_threshold_uses_committed_reward_before_evolution(xp_share, m
 def test_evolution_suppression_keeps_the_friendship_reward(xp_share, blocker):
     s = xp_share
     overrides = {blocker: True} if blocker != "disabled" else {}
-    s.save("holder", id=42, name="golbat", friendship=214, **overrides)
+    s.save("holder", id=42, name="golbat", friendship=219, **overrides)
     if blocker == "disabled":
         s.settings["evolution.friendship_time_enabled"] = False
 
@@ -215,7 +215,7 @@ def test_evolution_suppression_keeps_the_friendship_reward(xp_share, blocker):
 
 def test_prompt_failure_cannot_lose_earned_friendship(xp_share):
     s = xp_share
-    s.save("holder", id=42, name="golbat", friendship=214)
+    s.save("holder", id=42, name="golbat", friendship=219)
     s.window.ask_pokemon_evo.side_effect = RuntimeError("Evolution window closed")
 
     assert s.grant() == 50
@@ -231,7 +231,7 @@ def test_prompt_failure_cannot_lose_earned_friendship(xp_share):
 def test_deleted_window_cannot_stop_later_oras_rewards(xp_share):
     s = xp_share
     for individual_id in ("first", "second"):
-        s.save(individual_id, id=42, name="golbat", friendship=214)
+        s.save(individual_id, id=42, name="golbat", friendship=219)
     s.db.save_team([{"individual_id": "first"}, {"individual_id": "second"}])
     s.window.ask_pokemon_evo.side_effect = RuntimeError(
         "wrapped C/C++ object of type EvoWindow has been deleted",
@@ -252,7 +252,7 @@ def test_deleted_window_cannot_stop_later_oras_rewards(xp_share):
 def test_missing_evolution_window_preserves_all_oras_rewards(xp_share):
     s = xp_share
     for individual_id in ("first", "second"):
-        s.save(individual_id, id=42, name="golbat", friendship=214)
+        s.save(individual_id, id=42, name="golbat", friendship=219)
     s.db.save_team([{"individual_id": "first"}, {"individual_id": "second"}])
 
     assert s.grant(mode="oras", evo_window=None) == 100
