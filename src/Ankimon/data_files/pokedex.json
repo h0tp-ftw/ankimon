@@ -41697,8 +41697,8 @@
     "weightkg": 290,
     "color": "Brown",
     "prevo": "Ursaring",
-    "evoType": "other",
-    "evoCondition": "Peat Block when there's a full moon",
+    "evoType": "useItem",
+    "evoItem": "Peat Block",
     "eggGroups": [
       "Field"
     ],

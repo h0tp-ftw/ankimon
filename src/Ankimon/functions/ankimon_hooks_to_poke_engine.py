@@ -1087,3 +1087,22 @@ def diff_states(state_before, state_after, path="", changes=None):
             diff_states(before_val, after_val, new_path, changes)
 
     return changes
+
+
+import json
+import os
+
+# Monkey-patch pokedex.json in poke_engine to fix Ursaluna evolution condition
+def patch_ursaluna_evolution():
+    try:
+        from ..poke_engine.data import pokedex
+        if hasattr(pokedex, 'pokedex_data') and 'ursaluna' in pokedex.pokedex_data:
+            ursaluna_data = pokedex.pokedex_data['ursaluna']
+            if ursaluna_data.get('evoType') == 'other' and 'evoCondition' in ursaluna_data:
+                ursaluna_data['evoType'] = 'useItem'
+                ursaluna_data['evoItem'] = 'Peat Block'
+                del ursaluna_data['evoCondition']
+    except Exception:
+        pass
+
+patch_ursaluna_evolution()
