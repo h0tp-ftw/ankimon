@@ -1634,6 +1634,12 @@ class PokemonTrade:
             db = services.db
             
             try:
+                # If the traded-away Pokémon was holding an item, put it back in the bag
+                old_pokemon = db.get_pokemon(self.individual_id)
+                if old_pokemon and old_pokemon.get("held_item"):
+                    from ..utils import give_item
+                    give_item(old_pokemon["held_item"])
+
                 db.replace_pokemon(new_pokemon, self.individual_id)
                 # The traded-away Pokémon's individual_id is now gone from the DB
                 # (it was swapped for new_pokemon's fresh id). If it was the
