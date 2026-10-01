@@ -57,7 +57,7 @@ class AnkimonTracker:
             "good": 0,
             "easy": 0,
         }
-        self.cards_until_calc_multiplier = 2
+        self.cards_until_calc_multiplier = self._get_cards_per_round()
 
         self.card_streak = 0  # Streak for follow up right cards
 
@@ -216,10 +216,10 @@ class AnkimonTracker:
         self.reset_card_timer()
 
         self.cards_until_calc_multiplier -= 1
-        # After 2 cards - calculate multiplier
         if self.cards_until_calc_multiplier <= 0:
-            self.cards_until_calc_multiplier = 2
-            self.calc_multiply_card_rating()
+            cards_per_round = self._get_cards_per_round()
+            self.cards_until_calc_multiplier = cards_per_round
+            self.calc_multiply_card_rating(cards_per_round)
 
     # def update_streak(self, new_day):
     #    """Update the streak for daily reviews (each position represents a day)."""
@@ -268,10 +268,21 @@ class AnkimonTracker:
         """Increment the total session time each second."""
         self.session_time_elapsed += 1
 
-    def calc_multiply_card_rating(self):
-        """Calculate the multiplier based on recent card rating counts."""
+    def _get_cards_per_round(self) -> int:
+        cards_per_round = services.settings.get("battle.cards_per_round", 2) if getattr(services, 'settings', None) else 2
+        if isinstance(cards_per_round, int):
+            return cards_per_round
+        if isinstance(cards_per_round, str) and "-" in cards_per_round:
+            try:
+                min_val, max_val = map(int, cards_per_round.split("-"))
+                return max_val
+            except ValueError:
+                pass
+        return 2
 
-        max_points = 20
+    def calc_multiply_card_rating(self, cards_per_round: int = 2):
+        """Calculate the multiplier based on recent card rating counts."""
+        max_points = 10 * cards_per_round
         multiply_sum = (
             self.multiplier_card_ratings_count["easy"] * 20
             + self.multiplier_card_ratings_count["hard"] * 5
