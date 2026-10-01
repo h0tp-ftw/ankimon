@@ -1593,6 +1593,7 @@ def save_main_pokemon_progress(
             getattr(main_pokemon, "evolution_rejected", False),
             current_attacks=attacks if stored_row_is_main_pokemon else None,
             gender=getattr(main_pokemon, "gender", None),
+            nature=getattr(main_pokemon, "nature", None),
         )
         if evo_id is not None:
             evolution_prompted = True

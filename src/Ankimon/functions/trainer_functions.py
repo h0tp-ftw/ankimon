@@ -195,6 +195,7 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         pokemon.get("evolution_rejected", False),
         current_attacks=pokemon.get("attacks"),
         gender=pokemon.get("gender"),
+        nature=pokemon.get("nature"),
     )
 
     if evo_id is not None:
