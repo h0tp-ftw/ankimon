@@ -2107,31 +2107,18 @@ def handle_enemy_faint(
         return True
 
     elif _auto_battle_override == "defeat":
-        # Override: Force defeat, unless the enemy is protected by an
-        # "always auto-catch" tier setting (legendary/mythical/ultra/
-        # starter/mega/gmax/regional) — an explicit defeat override should
-        # not be able to permanently kill a protected Pokémon, e.g. via a
-        # misclick or a toggle the user forgot was still armed.
+        # Override: Force defeat, ignoring "always auto-catch" settings, since
+        # the user explicitly toggled it for this specific encounter.
         ankimon_tracker_obj.faint_processed = True
         try:
-            if _enemy_protected_by_auto_catch(enemy_pokemon):
-                catch_pokemon(
-                    enemy_pokemon,
-                    ankimon_tracker_obj,
-                    logger,
-                    "",
-                    collected_pokemon_ids,
-                    achievements,
-                )
-            else:
-                kill_pokemon(
-                    main_pokemon,
-                    enemy_pokemon,
-                    evo_window,
-                    logger,
-                    achievements,
-                    trainer_card,
-                )
+            kill_pokemon(
+                main_pokemon,
+                enemy_pokemon,
+                evo_window,
+                logger,
+                achievements,
+                trainer_card,
+            )
             new_pokemon(enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj)
             main_pokemon.reset_bonuses()
             ankimon_tracker_obj.general_card_count_for_battle = 0
