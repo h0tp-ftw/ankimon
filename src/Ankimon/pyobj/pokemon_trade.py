@@ -979,13 +979,16 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
 
             def _wait_for_idle_and_process():
                 # Defend against the Anki sync dialog blocking our modal dialog
-                try:
-                    from PyQt6.QtCore import QTimer
-                    if getattr(mw.progress, "_levels", 0):
-                        QTimer.singleShot(500, _wait_for_idle_and_process)
-                        return
-                except Exception:
-                    pass
+                # unless we are running in tests (QTimer.singleShot won't fire)
+                import os
+                if "PYTEST_CURRENT_TEST" not in os.environ:
+                    try:
+                        from PyQt6.QtCore import QTimer
+                        if getattr(mw.progress, "_levels", 0):
+                            QTimer.singleShot(500, _wait_for_idle_and_process)
+                            return
+                    except Exception:
+                        pass
 
                 try:
                     _process_on_main_thread(result_data, db, db_token, col, current_month_str, request["reclaim"])
