@@ -91,14 +91,29 @@ reviews:
         that is not a 00 emergency.
     - label: 02 priority
       instructions: >-
-        Apply exactly this priority for important work that should be scheduled
-        soon: confirmed non-critical bugs, meaningful feature work, notable
-        performance/accessibility improvements, or moderate maintenance risk.
+        Apply exactly this priority only when evidence establishes significant
+        impact that should be addressed soon and neither 00 nor 01 applies:
+        meaningful saved-progress or inventory loss, substantive security/privacy
+        exposure, significant interruption of a supported core workflow, or a
+        specifically identified near-term release/dependency blocker. Explain the
+        affected flow, concrete consequence, supporting evidence (such as a
+        reproduction, test, log, or traced code path), and available workaround
+        (or explicitly state that none is known). A confirmed bug, feature request,
+        individual Pokémon/move/item fix, large diff, implementation complexity,
+        or speculative risk alone is insufficient. When uncertain between 02 and
+        03, choose 03 unless evidence meets this threshold. Always use 00 or 01
+        when their criteria apply.
     - label: 03 priority
       instructions: >-
-        Apply exactly this priority to normal backlog work with ordinary impact,
-        including routine enhancements, refactors, tests, documentation, and
-        contained defects when no stronger or weaker priority fits.
+        Apply exactly this priority as the default for actionable ordinary work:
+        routine fixes, features, refactors, tests, and documentation, including
+        contained Pokémon/move/item defects. Use 04 when its low-impact criteria
+        apply; use 00 or 01 when their severe/urgent criteria apply. Elevate to 02
+        only with the significant-impact evidence required above; uncertainty
+        between 02 and 03 defaults to 03. New correctness, security, or test defects
+        introduced by the PR remain merge blockers to resolve, but do not by
+        themselves elevate the whole PR's priority; classify the underlying work
+        by its demonstrated impact.
     - label: 04 priority
       instructions: >-
         Apply exactly this priority only to low-impact, non-urgent polish, optional
@@ -503,14 +518,29 @@ issue_enrichment:
           priority label with it.
       - label: 02 priority
         instructions: >-
-          Apply only this priority to a confirmed non-critical bug, meaningful feature,
-          notable performance/accessibility problem, or moderate maintenance risk that
-          should be scheduled soon. Do not apply another priority label with it.
+          Apply only this priority when evidence establishes significant impact
+          that should be addressed soon and neither 00 nor 01 applies: meaningful
+          saved-progress or inventory loss, substantive security/privacy exposure,
+          significant interruption of a supported core workflow, or a specifically
+          identified near-term release/dependency blocker. Explain the affected
+          flow, concrete consequence, supporting evidence (such as a reproduction,
+          test, log, or traced code path), and available workaround (or explicitly
+          state that none is known). A confirmed bug, feature request, individual
+          Pokémon/move/item fix, large diff, implementation complexity, or
+          speculative risk alone is insufficient. When uncertain between 02 and
+          03, choose 03 unless evidence meets this threshold. Always use 00 or 01
+          when their criteria apply. Do not apply another priority label with it.
       - label: 03 priority
         instructions: >-
-          Apply only this priority as the normal default for actionable routine work
-          with ordinary impact, including contained bugs, enhancements, refactors,
-          tests, and documentation. Do not apply another priority label with it.
+          Apply only this priority as the default for actionable ordinary work:
+          routine fixes, features, refactors, tests, and documentation, including
+          contained Pokémon/move/item defects. Use 04 when its low-impact criteria
+          apply; use 00 or 01 when their severe/urgent criteria apply. Elevate to 02
+          only with the significant-impact evidence required above; uncertainty
+          between 02 and 03 defaults to 03. Defects introduced while implementing
+          the work remain merge blockers to resolve, but do not by themselves
+          elevate the underlying issue's priority; classify it by its demonstrated
+          impact. Do not apply another priority label with it.
       - label: 04 priority
         instructions: >-
           Apply only this priority to non-urgent polish, optional cleanup, cosmetic
