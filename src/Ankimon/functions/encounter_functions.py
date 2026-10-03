@@ -47,6 +47,7 @@ from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.drawing_utils import tooltipWithColour
 from ..move_names import format_move_name
 from ..utils import (
+    get_tier_by_id,
     get_ev_spread,
     is_alive,
     limit_ev_yield,
@@ -1133,6 +1134,12 @@ def generate_random_pokemon(
             print(
                 f"[Ankimon] Warning: Error updating pity trackers in generate_random_pokemon: {e}"
             )
+
+    # Resolve the canon tier for special forms drawn from mixed pools (e.g., Crowned Zamazenta from MEGA).
+    # We do this after updating pity trackers so the pity system tracks the encounter pool correctly.
+    canon_tier = get_tier_by_id(pokemon_id)
+    if canon_tier:
+        tier = canon_tier
 
     name = search_pokedex_by_id(pokemon_id)
 
