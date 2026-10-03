@@ -721,14 +721,24 @@ def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=
 
 
 def check_min_generate_level(name):
-    evoType = search_pokedex(name.lower(), "evoType")
     evoLevel = search_pokedex(name.lower(), "evoLevel")
     if evoLevel:
         min_level = safe_int(evoLevel)
-    elif evoType != []:
-        min_level = 100
     else:
+        # Trace back pre-evolutions to inherit the base level requirement
+        # for Pokemon that evolve via stones, items, or friendship.
         min_level = 1
+        current_name = name.lower()
+        while True:
+            prevo = search_pokedex(current_name, "prevo")
+            if prevo and isinstance(prevo, str):
+                current_name = prevo.lower()
+                evo_level = search_pokedex(current_name, "evoLevel")
+                if evo_level:
+                    min_level = safe_int(evo_level)
+                    break
+            else:
+                break
 
     # Ensure special forms (Mega/Gmax) and Legendaries inherit correct level caps.
     # We check both species_id and actual_id against the rarity lists.
