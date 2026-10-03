@@ -1,5 +1,5 @@
 from harness.headless_env import start_session
-start_session()
+env = start_session()
 from Ankimon.pyobj.pokemon_obj import PokemonObject
 
 def test_pokemon_modify_ev():
