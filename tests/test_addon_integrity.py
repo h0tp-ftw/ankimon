@@ -184,6 +184,8 @@ MODULES_TO_CHECK = [
     "Ankimon.pyobj.pc_box",
     "Ankimon.pyobj.pokemon_obj",
     "Ankimon.pyobj.pokemon_trade",
+    "Ankimon.pyobj.monthly_challenge",
+    "Ankimon.pyobj.monthly_challenge_dialogs",
     "Ankimon.pyobj.reviewer_obj",
     "Ankimon.pyobj.settings",
     "Ankimon.pyobj.settings_window",

@@ -26,7 +26,10 @@ from .pyobj.achievement_window import AchievementWindow
 from .pyobj.ankimon_tracker_window import AnkimonTrackerWindow
 from .pyobj.backup_manager import BackupManager
 from .pyobj.save_transfer import (
-    export_save, import_save, cancel_pending_save_import, browse_recovered_saves,
+    export_save,
+    import_save,
+    cancel_pending_save_import,
+    browse_recovered_saves,
 )
 from .gui_classes.backup_manager_dialog import BackupManagerDialog
 from .gui_entities import (
@@ -56,6 +59,7 @@ _MENU_RECORD = "_ankimon_menubar_menu"
 # then never needs a real Translator or QMenu. The real (production) path below
 # is unchanged.
 if "mock" in mw.__class__.__name__.lower():
+
     class DummyMock:
         def __getattr__(self, name):
             return DummyMock()
@@ -74,14 +78,23 @@ else:
         # set — otherwise the next line raises AttributeError and the whole menu
         # fails to build.
         mw.translator = Translator(language=9)
-    mw.pokemenu = QMenu('&' + mw.translator.translate("ankimon_button_title"), mw)
+    mw.pokemenu = QMenu("&" + mw.translator.translate("ankimon_button_title"), mw)
 game_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_game_button_title"))
-profile_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_profile_button_title"))
-collection_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_collection_button_title"))
-export_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_export_button_title"))
+profile_menu = mw.pokemenu.addMenu(
+    mw.translator.translate("ankimon_profile_button_title")
+)
+collection_menu = mw.pokemenu.addMenu(
+    mw.translator.translate("ankimon_collection_button_title")
+)
+export_menu = mw.pokemenu.addMenu(
+    mw.translator.translate("ankimon_export_button_title")
+)
 help_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_help_button_title"))
 if debug is True:
-    debug_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_debug_button_title"))
+    debug_menu = mw.pokemenu.addMenu(
+        mw.translator.translate("ankimon_debug_button_title")
+    )
+
 
 def create_menu_actions(
     database_complete: bool,
@@ -141,7 +154,9 @@ def create_menu_actions(
             w.showNormal()
         if w.current_screen != screen:
             w.load_screen(screen)
-        elif (view is not None or action) and screen in w.ready_screens and w.isVisible():
+        elif (
+            (view is not None or action) and screen in w.ready_screens and w.isVisible()
+        ):
             # Already on this fully-loaded screen — re-push so the requested
             # view/action applies immediately. Hidden/loading screens get it via
             # the showEvent / loadFinished push.
@@ -158,7 +173,9 @@ def create_menu_actions(
 
         def _open_pokemon_pc():
             if pokemon_pc.isMinimized():
-                pokemon_pc.setWindowState(pokemon_pc.windowState() & ~Qt.WindowState.WindowMinimized)
+                pokemon_pc.setWindowState(
+                    pokemon_pc.windowState() & ~Qt.WindowState.WindowMinimized
+                )
             pokemon_pc.show()
             pokemon_pc.raise_()
             pokemon_pc.activateWindow()
@@ -166,7 +183,9 @@ def create_menu_actions(
         qconnect(pokemon_pc_action.triggered, _open_pokemon_pc)
 
         # Ankimon Window
-        ankimon_window_action = QAction(mw.translator.translate("open_ankimon_window_button"), mw)
+        ankimon_window_action = QAction(
+            mw.translator.translate("open_ankimon_window_button"), mw
+        )
         ankimon_window_action.setMenuRole(QAction.MenuRole.NoRole)
         game_menu.addAction(ankimon_window_action)
         ankimon_window_action.setShortcut(QKeySequence(f"{ankimon_key}"))
@@ -180,7 +199,9 @@ def create_menu_actions(
 
         # Achievements — badge case section of the web Profile shell (the native
         # AchievementsDialog is superseded by the Profile screen).
-        achievement_bag_action = QAction(mw.translator.translate("achievements_button"), mw)
+        achievement_bag_action = QAction(
+            mw.translator.translate("achievements_button"), mw
+        )
         achievement_bag_action.setMenuRole(QAction.MenuRole.NoRole)
         achievement_bag_action.triggered.connect(
             lambda: _open_shell_at("profile", action="badges")
@@ -188,24 +209,32 @@ def create_menu_actions(
         profile_menu.addAction(achievement_bag_action)
 
         # Showdown Teambuilder
-        pokemon_showdown_action = QAction(mw.translator.translate("open_showdown_teambuilder_button"), mw)
+        pokemon_showdown_action = QAction(
+            mw.translator.translate("open_showdown_teambuilder_button"), mw
+        )
         pokemon_showdown_action.setMenuRole(QAction.MenuRole.NoRole)
         qconnect(pokemon_showdown_action.triggered, open_team_builder)
         export_menu.addAction(pokemon_showdown_action)
 
         # Export to Showdown
-        export_main_to_showdown = QAction(mw.translator.translate("export_main_pokemon_button"), mw)
+        export_main_to_showdown = QAction(
+            mw.translator.translate("export_main_pokemon_button"), mw
+        )
         export_main_to_showdown.setMenuRole(QAction.MenuRole.NoRole)
         qconnect(export_main_to_showdown.triggered, export_to_pkmn_showdown)
         export_menu.addAction(export_main_to_showdown)
 
-        export_all_to_showdown = QAction(mw.translator.translate("export_all_pokemon_button"), mw)
+        export_all_to_showdown = QAction(
+            mw.translator.translate("export_all_pokemon_button"), mw
+        )
         export_all_to_showdown.setMenuRole(QAction.MenuRole.NoRole)
         qconnect(export_all_to_showdown.triggered, export_all_pkmn_showdown)
         export_menu.addAction(export_all_to_showdown)
 
         # Flexing Collection
-        flex_pokecoll_action = QAction(mw.translator.translate("export_all_pokemon_to_pokepaste_button"), mw)
+        flex_pokecoll_action = QAction(
+            mw.translator.translate("export_all_pokemon_to_pokepaste_button"), mw
+        )
         flex_pokecoll_action.setMenuRole(QAction.MenuRole.NoRole)
         qconnect(flex_pokecoll_action.triggered, flex_pokemon_collection)
         export_menu.addAction(flex_pokecoll_action)
@@ -219,7 +248,9 @@ def create_menu_actions(
     # Backup Manager
     backup_manager_action = QAction("Backup Manager", mw)
     backup_manager_action.setMenuRole(QAction.MenuRole.NoRole)
-    backup_manager_action.triggered.connect(lambda: BackupManagerDialog(backup_manager, mw).exec())
+    backup_manager_action.triggered.connect(
+        lambda: BackupManagerDialog(backup_manager, mw).exec()
+    )
     game_menu.addAction(backup_manager_action)
 
     # Manual save transfer. This is the supported way to move a save between
@@ -286,7 +317,9 @@ def create_menu_actions(
     help_menu.addAction(credits_action)
 
     # About and License
-    about_and_license_action = QAction(mw.translator.translate("ankimon_about_and_license_button"), mw)
+    about_and_license_action = QAction(
+        mw.translator.translate("ankimon_about_and_license_button"), mw
+    )
     about_and_license_action.setMenuRole(QAction.MenuRole.NoRole)
     about_and_license_action.triggered.connect(license.show_window)
     help_menu.addAction(about_and_license_action)
@@ -313,6 +346,7 @@ def create_menu_actions(
     # the dialog routes branch/PR/tag selections through safe Git operations.
     def _open_update_dialog():
         from .pyobj.update_dialog import UpdateDialog
+
         dialog = UpdateDialog(parent=mw)
         dialog.exec()
 
@@ -381,17 +415,20 @@ def create_menu_actions(
     # submenu. These are developer tools, so register them but gate them behind
     # Developer Mode below (like Switch Account / Simulator above) rather than
     # exposing them to every user.
-    tracker_window_action = QAction(mw.translator.translate("ankimon_tracker_button"), mw)
+    tracker_window_action = QAction(
+        mw.translator.translate("ankimon_tracker_button"), mw
+    )
     tracker_window_action.setMenuRole(QAction.MenuRole.NoRole)
     tracker_window_action.triggered.connect(ankimon_tracker_window.toggle_window)
     tracker_window_action.setShortcut(QKeySequence("Ctrl+Shift+K"))
-    
+
     # Database Diagnostics (Verify & Repair)
     from .pyobj.db_diagnostics import trigger_database_diagnostics
+
     diagnostics_action = QAction("Verify and Repair Database", mw)
     diagnostics_action.setMenuRole(QAction.MenuRole.NoRole)
     diagnostics_action.triggered.connect(trigger_database_diagnostics)
-    
+
     if debug is True:
         debug_menu.addAction(tracker_window_action)
         debug_menu.addAction(diagnostics_action)
@@ -416,6 +453,7 @@ def create_menu_actions(
         # the shortcut list may be absent before startup-complete or hold a dead
         # widget after a reload.
         from .services import services
+
         for _sc in getattr(services, "_reload_shortcuts", ()) or ():
             if is_alive(_sc):
                 _sc.setEnabled(is_dev)
@@ -431,14 +469,17 @@ def create_menu_actions(
     game_menu.addAction(ankimon_logger_action)
 
     # Trainer Card — opens the web Profile shell (Ctrl+Shift+Q).
-    ankimon_trainer_card_action = QAction(mw.translator.translate("trainer_card_button"), mw)
+    ankimon_trainer_card_action = QAction(
+        mw.translator.translate("trainer_card_button"), mw
+    )
     ankimon_trainer_card_action.setMenuRole(QAction.MenuRole.NoRole)
     ankimon_trainer_card_action.setShortcut(QKeySequence("Ctrl+Shift+Q"))
     ankimon_trainer_card_action.triggered.connect(lambda: _open_shell_at("profile"))
     profile_menu.addAction(ankimon_trainer_card_action)
 
     def open_monthly_challenge():
-        from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+        from .pyobj.monthly_challenge import check_and_award_monthly_pokemon
+
         check_and_award_monthly_pokemon(logger, reclaim=True)
 
     monthly_action = QAction(mw.translator.translate("monthly_challenge_button"), mw)
@@ -455,7 +496,9 @@ def create_menu_actions(
     game_menu.addAction(shop_manager_action)
 
     # Choose Trainer Sprite — web Profile shell, sprite-picker action.
-    choose_trainer_sprite_action = QAction(mw.translator.translate("choose_trainer_sprite_button"), mw)
+    choose_trainer_sprite_action = QAction(
+        mw.translator.translate("choose_trainer_sprite_button"), mw
+    )
     choose_trainer_sprite_action.setMenuRole(QAction.MenuRole.NoRole)
     choose_trainer_sprite_action.triggered.connect(
         lambda: _open_shell_at("profile", action="sprite")
@@ -463,7 +506,9 @@ def create_menu_actions(
     game_menu.addAction(choose_trainer_sprite_action)
 
     # Choose Pokémon Team — web Team shell.
-    pokemon_team_action = QAction(mw.translator.translate("choose_pokemon_team_button"), mw)
+    pokemon_team_action = QAction(
+        mw.translator.translate("choose_pokemon_team_button"), mw
+    )
     pokemon_team_action.setMenuRole(QAction.MenuRole.NoRole)
     pokemon_team_action.triggered.connect(lambda: _open_shell_at("team"))
     game_menu.addAction(pokemon_team_action)
@@ -490,13 +535,17 @@ def create_menu_actions(
     except Exception:
         pass
 
-    file_check_action = QAction(mw.translator.translate("ankimon_file_checker_button"), mw)
+    file_check_action = QAction(
+        mw.translator.translate("ankimon_file_checker_button"), mw
+    )
     file_check_action.setMenuRole(QAction.MenuRole.NoRole)
     file_check_action.triggered.connect(lambda: FileCheckerApp().exec())
     help_menu.addAction(file_check_action)
 
     # Leaderboard credentials moved to Settings → Leaderboard.
-    downloader_action = QAction(mw.translator.translate("download_resources_button"), mw)
+    downloader_action = QAction(
+        mw.translator.translate("download_resources_button"), mw
+    )
     downloader_action.setMenuRole(QAction.MenuRole.NoRole)
     downloader_action.triggered.connect(show_agreement_and_download_dialog)
     help_menu.addAction(downloader_action)
@@ -508,7 +557,11 @@ def create_menu_actions(
     from .services import services
 
     _prev_menu = getattr(services, _MENU_RECORD, None)
-    if _prev_menu is not None and is_alive(_prev_menu) and _prev_menu is not mw.pokemenu:
+    if (
+        _prev_menu is not None
+        and is_alive(_prev_menu)
+        and _prev_menu is not mw.pokemenu
+    ):
         try:
             mw.form.menubar.removeAction(_prev_menu.menuAction())
         except Exception:
@@ -532,6 +585,7 @@ def update_mobile_badge(count: int) -> None:
     """
     try:
         from .utils import is_main_thread
+
         if not is_main_thread():
             return
         action = globals().get("_mobile_battles_action")

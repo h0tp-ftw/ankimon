@@ -110,9 +110,11 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.pyobj.save_transfer",
-        _stub_module("Ankimon.pyobj.save_transfer",
-                     register_media_migration_hooks=MagicMock(),
-                     guard_media_saves_now=MagicMock()),
+        _stub_module(
+            "Ankimon.pyobj.save_transfer",
+            register_media_migration_hooks=MagicMock(),
+            guard_media_saves_now=MagicMock(),
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -121,9 +123,9 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     )
     monkeypatch.setitem(
         sys.modules,
-        "Ankimon.pyobj.pokemon_trade",
+        "Ankimon.pyobj.monthly_challenge",
         _stub_module(
-            "Ankimon.pyobj.pokemon_trade",
+            "Ankimon.pyobj.monthly_challenge",
             check_and_award_monthly_pokemon=MagicMock(),
         ),
     )
@@ -270,8 +272,14 @@ class _Future:
         return self._value
 
 
-def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True, warm_error=None,
-                           record=None, dispatch_error=None):
+def _fire_profile_did_open(
+    monkeypatch,
+    *,
+    mobile_enabled=True,
+    warm_error=None,
+    record=None,
+    dispatch_error=None,
+):
     """Register hooks, then fire the profile_did_open handler with the given
     settings. ``dispatch_error`` makes ``mw.taskman.run_in_background`` raise
     it instead of running the task.
@@ -293,7 +301,9 @@ def _fire_profile_did_open(monkeypatch, *, mobile_enabled=True, warm_error=None,
             ("Ankimon.pyobj.save_transfer", "register_media_migration_hooks"),
         ):
             mock = getattr(sys.modules[module_name], attribute)
-            mock.side_effect = (lambda name: lambda *a, **k: record.append(name))(attribute)
+            mock.side_effect = (lambda name: lambda *a, **k: record.append(name))(
+                attribute
+            )
 
     def _get(key, default=None):
         return {
@@ -364,7 +374,9 @@ def test_the_media_guard_precedes_every_dialog_and_the_scan_follows_them(monkeyp
     assert order[-1] == "register_media_migration_hooks"
     assert "show_tip_of_the_day" in order
     assert order.index("guard_media_saves_now") < order.index("show_tip_of_the_day")
-    assert order.index("show_tip_of_the_day") < order.index("register_media_migration_hooks")
+    assert order.index("show_tip_of_the_day") < order.index(
+        "register_media_migration_hooks"
+    )
 
 
 def test_a_refused_connectivity_dispatch_still_reaches_the_media_migration(monkeypatch):
@@ -420,7 +432,9 @@ def test_connectivity_completions_belong_to_the_opening_collection(monkeypatch):
     hooks = _exec_profile_hooks(monkeypatch, _fresh_gui_hooks())
     hooks.settings_obj.get.side_effect = lambda key, default=None: False
     queued = []
-    hooks.mw.taskman = SimpleNamespace(run_in_background=lambda task, done: queued.append(done))
+    hooks.mw.taskman = SimpleNamespace(
+        run_in_background=lambda task, done: queued.append(done)
+    )
     hooks.mw.col = object()
     handler = hooks._on_profile_did_open(True)
     handler()

@@ -15,7 +15,7 @@ from .pyobj.save_transfer import (
     register_media_migration_hooks,
 )
 from .pyobj.tip_of_the_day import show_tip_of_the_day
-from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+from .pyobj.monthly_challenge import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
 from .functions.pokedex_functions import clear_pokedex_caches, warm_evolution_caches
 from .functions.learnset_retrieval import clear_learnset_cache
@@ -149,24 +149,27 @@ def _on_profile_did_open(online_connectivity):
                     "Ankimon could not install the pending imports listed below, "
                     "so those saves were not replaced. They will retry on a full "
                     "restart, or use Ankimon → Game → Cancel Pending Save Import, "
-                    "which covers both save modes.\n\n" +
-                    "\n".join(failures)
+                    "which covers both save modes.\n\n" + "\n".join(failures)
                 )
                 services._save_import_errors = []
             except Exception as e:
-                logger.log("error", f"Failed to report pending save import failures: {e}")
+                logger.log(
+                    "error", f"Failed to report pending save import failures: {e}"
+                )
         warnings = getattr(services, "_save_import_warnings", [])
         if warnings:
             try:
                 services.ui.warn(
                     "Ankimon installed the imported saves listed below, and they are active. "
                     "A final disk sync or cleanup step failed. Any remaining pending "
-                    "work will retry on a full restart without applying the import again.\n\n" +
-                    "\n".join(warnings)
+                    "work will retry on a full restart without applying the import again.\n\n"
+                    + "\n".join(warnings)
                 )
                 services._save_import_warnings = []
             except Exception as e:
-                logger.log("error", f"Failed to report save import finalization warnings: {e}")
+                logger.log(
+                    "error", f"Failed to report save import finalization warnings: {e}"
+                )
 
         # Register the AnkiWeb sync hooks SYNCHRONOUSLY here — not in the
         # backgrounded connectivity callback below. Anki fires profile_did_open
@@ -294,6 +297,7 @@ def register_profile_hooks(
         except Exception as e:
             logger.log("error", f"Error updating backup profile path: {e}")
         did_open_handler()
+
     backup_handler = backup_manager.on_anki_close
 
     previous_loaded_handler = getattr(services, _PROFILE_LOADED_HANDLER_RECORD, None)
