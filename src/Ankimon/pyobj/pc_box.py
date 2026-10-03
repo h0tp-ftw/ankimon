@@ -2876,11 +2876,13 @@ class GiveItemWindow(QDialog):
             give_button.clicked.connect(
                 lambda clicked, i=item: self.expanded_give_item_func(i)
             )
+
             if (
                 item in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
-                or item.endswith("-berry")
+                or (item.endswith("-berry") and item not in ['pomeg-berry', 'kelpsy-berry', 'qualot-berry', 'hondew-berry', 'grepa-berry', 'tamato-berry'])
                 or item.endswith("-gem")
             ):
+
                 # NOTE (Axil): As time of writing, single use items are not yet implemented.
                 # It seems to me that, actually, they are not even implemented in the Poke-engine. Although
                 # I haven't dug too much.
