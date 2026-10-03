@@ -1270,6 +1270,29 @@ def filter_gender_split_forms(evo_ids, gender):
     return matching or ids
 
 
+
+def filter_nature_split_forms(eligible_evos, nature):
+    """Narrow sibling evolution targets based on nature (e.g. Toxel -> Toxtricity forms)."""
+    if not nature:
+        return eligible_evos
+
+    nature = nature.lower()
+    amped_natures = {"hardy", "brave", "adamant", "naughty", "docile", "impish", "lax", "hasty", "jolly", "naive", "rash", "sassy", "quirky"}
+    low_key_natures = {"lonely", "bold", "relaxed", "timid", "serious", "modest", "mild", "quiet", "bashful", "calm", "gentle", "careful"}
+
+    filtered_evos = []
+    for candidate in eligible_evos:
+        name = candidate.get("name", "")
+        if name and "toxtricity" in name.lower():
+            is_low_key = "low-key" in name.lower() or "lowkey" in name.lower()
+            if (is_low_key and nature in low_key_natures) or (not is_low_key and nature in amped_natures):
+                filtered_evos.append(candidate)
+        else:
+            filtered_evos.append(candidate)
+
+    return filtered_evos or eligible_evos
+
+
 def evolution_required_time(target_data):
     """Return ``"day"``/``"night"`` when a candidate is clock-gated, else None."""
     if not isinstance(target_data, dict):
@@ -1503,6 +1526,7 @@ def check_evolution_for_pokemon(
     evolution_rejected=False,
     current_attacks=None,
     gender=None,
+    nature=None,
 ):
     """
     Check if a Pokémon evolves by a level (or move-based level-up) condition.
@@ -1731,6 +1755,9 @@ def check_evolution_for_pokemon(
                             for candidate in eligible_evos
                             if evolution_target_species_id(candidate) in kept
                         ]
+
+                    # Filter based on nature (e.g. for Toxel)
+                    eligible_evos = filter_nature_split_forms(eligible_evos, nature)
 
                     eligible_evos.sort(key=lambda x: 0 if x.get("evoRegion") else 1)
                     target_data = eligible_evos[0]
