@@ -6620,9 +6620,7 @@
       "spe": 120
     },
     "abilities": {
-      "0": "Illuminate",
-      "1": "Natural Cure",
-      "H": "Analytic"
+      "0": "Huge Power"
     },
     "heightm": 2.3,
     "weightkg": 80,
