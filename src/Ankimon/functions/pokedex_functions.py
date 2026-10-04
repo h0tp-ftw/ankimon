@@ -1279,6 +1279,8 @@ def evolution_required_time(target_data):
         return "day"
     if "night" in condition:
         return "night"
+    if "evening" in condition or "dusk" in condition:
+        return "dusk"
     return None
 
 
@@ -1477,7 +1479,10 @@ def get_time_of_day():
             settings_obj.get("evolution.night_start_hour", 18), 18
         )
 
-        return "day" if day_start <= hour < night_start else "night"
+        dusk_start = (night_start - 1) % 24
+        if dusk_start <= hour < night_start:
+            return "dusk"
+        return "day" if day_start <= hour < dusk_start else "night"
     except Exception:
         # Fallback to local system time in case of any exception/import error
         try:
@@ -1672,6 +1677,8 @@ def check_evolution_for_pokemon(
                                 time_of_day = "day"
                             elif "night" in condition:
                                 time_of_day = "night"
+                            elif "evening" in condition or "dusk" in condition:
+                                time_of_day = "dusk"
 
                             if time_of_day is None or time_of_day == current_time:
                                 target_region = target_data.get("evoRegion")
