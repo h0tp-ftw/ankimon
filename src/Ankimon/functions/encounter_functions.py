@@ -721,6 +721,14 @@ def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=
 
 
 def check_min_generate_level(name):
+    """Return the wild encounter minimum from evolution and rarity limits.
+
+    Non-level evolutions deliberately require wild level 100. This encounter
+    balance rule preserves the value of evolving with items, friendship,
+    trades, or moves; it is independent of the player's evolution requirements.
+    Do not inherit a lower minimum from a pre-evolution. Any species/form
+    exception is a separate balance change.
+    """
     evoType = search_pokedex(name.lower(), "evoType")
     evoLevel = search_pokedex(name.lower(), "evoLevel")
     if evoLevel:
