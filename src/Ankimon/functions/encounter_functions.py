@@ -721,6 +721,7 @@ def get_tier(total_reviews, trainer_level=1, event_modifier=None, *, main_level=
 
 
 def check_min_generate_level(name):
+    """Return the minimum encounter level from evolution and rarity limits."""
     evoLevel = search_pokedex(name.lower(), "evoLevel")
     if evoLevel:
         min_level = safe_int(evoLevel)
@@ -729,7 +730,10 @@ def check_min_generate_level(name):
         # for Pokemon that evolve via stones, items, or friendship.
         min_level = 1
         current_name = name.lower()
-        while True:
+        seen_names = set()
+        # Malformed prevo cycles must not stall an encounter.
+        while current_name not in seen_names:
+            seen_names.add(current_name)
             prevo = search_pokedex(current_name, "prevo")
             if prevo and isinstance(prevo, str):
                 current_name = prevo.lower()
