@@ -186,7 +186,7 @@ def test_victory_path_move_gate_sees_moves_learned_at_level_up():
         # Starts below Lv15 knowing no Fairy move, with room in the moveset for
         # Baby-Doll Eyes, and enough friendship that Sylveon is offerable as
         # soon as the gate is met.
-        "d = Driver(seed={'main': {'species': 'Eevee', 'level': 14, 'xp': 500, 'gender': 'M',\n"
+        "d = Driver(seed={'main': {'species': 'Eevee', 'level': 14, 'gender': 'M',\n"
         "                          'friendship': 300,\n"
         "                          'attacks': ['Tackle', 'Growl']}},\n"
         "           settings_overrides={'battle.cards_per_round': 1},\n"
@@ -386,7 +386,7 @@ def test_victory_path_seeds_the_moveset_from_the_stored_record():
         "from harness.driver import Driver\n"
         "import random\n"
         "random.seed(0)\n"
-        "d = Driver(seed={'main': {'species': 'Eevee', 'level': 14, 'xp': 500, 'gender': 'M',\n"
+        "d = Driver(seed={'main': {'species': 'Eevee', 'level': 14, 'gender': 'M',\n"
         "                          'friendship': 300,\n"
         "                          'attacks': ['Tackle', 'Growl']}},\n"
         "           settings_overrides={'battle.cards_per_round': 1},\n"
@@ -430,7 +430,7 @@ def test_victory_path_still_consults_the_store_when_there_is_no_main_record():
         "from harness.driver import Driver\n"
         "import random\n"
         "random.seed(0)\n"
-        "d = Driver(seed={'main': {'species': 'Eevee', 'level': 14, 'xp': 500, 'gender': 'M',\n"
+        "d = Driver(seed={'main': {'species': 'Eevee', 'level': 14, 'gender': 'M',\n"
         "                          'friendship': 300,\n"
         "                          'attacks': ['Tackle', 'Growl']}},\n"
         "           settings_overrides={'battle.cards_per_round': 1},\n"

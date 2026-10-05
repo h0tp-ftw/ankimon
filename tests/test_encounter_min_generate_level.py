@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.parametrize("section", ["cycles", "missing", "cached"])
+@pytest.mark.parametrize("section", ["ancestry", "cached", "encounters", "regional"])
 def test_encounter_minimum_level(section):
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
