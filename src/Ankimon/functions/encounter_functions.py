@@ -2045,7 +2045,7 @@ def catch_pokemon(
         pokemon_pc.refresh_pokemon_grid()
 
 
-def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
+def _enemy_protected_by_auto_catch(enemy_pokemon) -> bool:
     """Whether enemy_pokemon's tier is covered by an "always auto-catch" setting.
 
     Legendary/Mythical/Ultra/Starter/Mega/Gmax/Regional Pokémon are each
@@ -2059,7 +2059,7 @@ def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
     is_mythical = enemy_pokemon.tier == "Mythical"
     is_ultra = enemy_pokemon.tier == "Ultra"
     is_starter = enemy_pokemon.tier == "Starter"
-    is_cosmetic = enemy_pokemon.special_form is not None
+    is_cosmetic = getattr(enemy_pokemon, "special_form", None) is not None
 
     return (
         (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
