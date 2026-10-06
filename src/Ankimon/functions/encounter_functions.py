@@ -1177,11 +1177,23 @@ def generate_random_pokemon(
     ankimon_tracker_obj.cards_battle_round = 0  # Amount of cards in this current battle
 
     special_form = None
-    cosmetic_formes = search_pokedex(name, "cosmeticFormes")
+    cosmetic_formes = search_pokedex(name, "cosmeticFormes") or []
+
+    # Magearna-Original is listed as an otherForme rather than a cosmeticForme in Smogon data,
+    # but functionally it is a purely cosmetic alternate form for the player's collection.
+    if pokemon_id == 801:
+        cosmetic_formes.append("Original")
+
     if cosmetic_formes:
         options = [f.split("-", 1)[1] if "-" in f else f for f in cosmetic_formes]
-        # Pikachu forms are rare (25% chance of any special form, 75% chance of base form)
-        if pokemon_id == 25:
+        # Certain forms are rare (25% chance of any special form, 75% chance of base form)
+        # 25: Pikachu (Hats)
+        # 172: Pichu (Spiky-eared)
+        # 801: Magearna (Original Color)
+        # 893: Zarude (Dada)
+        # 925: Maushold (Family of Three)
+        # 978: Gimmighoul (Roaming)
+        if pokemon_id in (25, 172, 801, 893, 925, 978):
             if random.random() < 0.25:
                 special_form = random.choice(options)
         else:
