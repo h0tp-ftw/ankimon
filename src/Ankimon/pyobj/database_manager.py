@@ -1046,7 +1046,8 @@ class AnkimonDB:
                 name TEXT GENERATED ALWAYS AS (json_extract(data, '$.name')) VIRTUAL,
                 pokedex_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.id')) VIRTUAL,
                 shiny BOOLEAN GENERATED ALWAYS AS (json_extract(data, '$.shiny')) VIRTUAL,
-                level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL
+                level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL,
+                special_form TEXT GENERATED ALWAYS AS (json_extract(data, '$.special_form')) VIRTUAL
             )
         """)
         cursor.execute(
@@ -1450,7 +1451,7 @@ class AnkimonDB:
         # reconciliation sweep (or lose it if this Pokemon is traded again).
         if replaced and pokemon_data.get("id"):
             try:
-                self.mark_as_caught(int(pokemon_data["id"]))
+                self.mark_as_caught(int(pokemon_data["id"]), special_form=pokemon_data.get("special_form"))
             except Exception as e:
                 self._log("error", f"Failed to mark traded pokemon as caught: {e}")
         return replaced
@@ -2117,20 +2118,31 @@ class AnkimonDB:
             # once we have a reason to rewrite it.
             known: set = set()
             stored: List[int] = []
-            for pokemon_id in self._coerce_pokedex_id_list(self.get_user_data(key, [])):
+            for pokemon_id in self.get_user_data(key, []):
+                if not (key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_")):
+                    try:
+                        pokemon_id = int(pokemon_id)
+                    except (TypeError, ValueError):
+                        continue
                 if pokemon_id not in known:
                     known.add(pokemon_id)
                     stored.append(pokemon_id)
 
             new_ids: List[int] = []
             for raw_id in ids:
-                try:
-                    pokemon_id = int(raw_id)
-                except (TypeError, ValueError):
-                    continue
-                if pokemon_id not in known:
-                    known.add(pokemon_id)
-                    new_ids.append(pokemon_id)
+                if key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_"):
+                    # allow strings for forms
+                    if raw_id not in known:
+                        known.add(raw_id)
+                        new_ids.append(raw_id)
+                else:
+                    try:
+                        pokemon_id = int(raw_id)
+                    except (TypeError, ValueError):
+                        continue
+                    if pokemon_id not in known:
+                        known.add(pokemon_id)
+                        new_ids.append(pokemon_id)
 
             added[key] = len(new_ids)
             if new_ids:
@@ -2145,7 +2157,7 @@ class AnkimonDB:
             conn.commit()
         return added
 
-    def mark_as_caught(self, pokemon_id: int):
+    def mark_as_caught(self, pokemon_id: int, special_form: str = None):
         """Marks a pokemon as caught (and seen) in the pokedex history.
 
         Raises if the write fails — callers on a save path swallow and log that,
@@ -2160,11 +2172,17 @@ class AnkimonDB:
         # Both lists are rewritten wholesale, so hold the lock across the whole
         # read-modify-write (save_pokemon also runs on the mobile-sync thread).
         # Catching implies seeing, so both are recorded in the same transaction.
+
+        additions = {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
+        if special_form:
+            form_key_caught = f"pokedex_caught_form_{pokemon_id}"
+            form_key_seen = f"pokedex_seen_form_{pokemon_id}"
+            additions[form_key_caught] = (special_form,)
+            additions[form_key_seen] = (special_form,)
+
         with self._pokedex_lock:
-            added = self._append_pokedex_ids(
-                {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
-            )
-        if added.get("pokedex_caught"):
+            added = self._append_pokedex_ids(additions)
+        if added.get("pokedex_caught") or (special_form and added.get(form_key_caught)):
             self._clear_reviewer_ownership_cache()
 
     def _reconcile_pokedex_history_safely(self):
@@ -2241,9 +2259,17 @@ class AnkimonDB:
             self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", []))
         )
 
+    def get_caught_forms(self, pokemon_id: int) -> set[str]:
+        """Returns a set of all special forms marked as caught for the pokemon."""
+        return set(self.get_user_data(f"pokedex_caught_form_{pokemon_id}", []))
+
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
         return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_seen", [])))
+
+    def get_seen_forms(self, pokemon_id: int) -> set[str]:
+        """Returns a set of all special forms marked as seen for the pokemon."""
+        return set(self.get_user_data(f"pokedex_seen_form_{pokemon_id}", []))
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""

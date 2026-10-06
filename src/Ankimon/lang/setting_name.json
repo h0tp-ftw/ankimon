@@ -1,6 +1,9 @@
 {
     "battle.automatic_battle": "Automatic Battle",
     "battle.auto_catch_wishlist": "Always Catch Wishlist",
+    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form",
+    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form",
+    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form",
     "battle.auto_catch_legendary": "Always Catch: Legendary",
     "battle.auto_catch_mythical": "Always Catch: Mythical",
     "battle.auto_catch_ultra": "Always Catch: Ultra Beast",
@@ -13,18 +16,15 @@
     "battle.card_max_time": "Card Max Time",
     "battle.review_based_damage": "Review Based Damage",
     "battle.ignore_learning_cards": "Ignore Learning Cards",
-
     "evolution.friendship_time_enabled": "Friendship & Time Evolution",
     "evolution.timezone_auto": "Auto-detect Time Zone",
     "evolution.timezone_offset": "Time Zone UTC Offset",
-
     "controls.pokemon_buttons": "Show Pokémon Buttons",
     "controls.defeat_key": "Key for Defeat",
     "controls.catch_key": "Key for Catching",
     "controls.team_cycle_key": "Key for Team Cycling",
     "controls.key_for_opening_closing_ankimon": "Key for Opening/Closing Ankimon",
     "controls.allow_to_choose_moves": "Allow Choosing Moves",
-    
     "gui.animate_time": "Animate Time",
     "gui.gif_in_collection": "Show GIFs in Collection",
     "gui.show_sprites_across_ankimon": "Show Sprites Across Ankimon",
@@ -54,12 +54,10 @@
     "gui.hud_owned_indicator": "Show Pokeball Icon",
     "gui.hud_enemy_shiny_indicator": "Show Enemy Shiny Star",
     "gui.hud_player_shiny_indicator": "Show Player Shiny Star",
-    
     "audio.sound_effects": "Enable Sound Effects",
     "audio.sounds": "Enable Sounds",
     "audio.battle_sounds": "Enable Battle Sounds",
     "audio.volume": "Volume",
-
     "misc.active_region": "Active Region",
     "misc.gen1": "Generation 1",
     "misc.gen2": "Generation 2",
@@ -83,5 +81,6 @@
     "trainer.cash_reward_amount": "Cash Reward Per Interval",
     "trainer.cash_reward_interval": "Cards Per Cash Reward",
     "leaderboard.username": "Username",
-    "leaderboard.api_key": "API Key"
+    "leaderboard.api_key": "API Key",
+    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form"
 }

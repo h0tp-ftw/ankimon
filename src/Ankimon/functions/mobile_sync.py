@@ -1784,6 +1784,7 @@ def _run_mobile_battles_impl(
                         or (is_mega and auto_catch_mega)
                         or (is_gmax and auto_catch_gmax)
                         or (is_regional and auto_catch_regional)
+                        or (current_enemy_pokemon.special_form is not None and auto_catch_cosmetic)
                         or (current_enemy_pokemon.id in wishlist)
                     )
 

@@ -1176,6 +1176,19 @@ def generate_random_pokemon(
     ankimon_tracker_obj.pokemon_encounter = 0  # 0: Start of Battle: 1: Current Battle
     ankimon_tracker_obj.cards_battle_round = 0  # Amount of cards in this current battle
 
+    special_form = None
+    cosmetic_formes = search_pokedex(name, "cosmeticFormes")
+    if cosmetic_formes:
+        options = [f.split("-", 1)[1] if "-" in f else f for f in cosmetic_formes]
+        # Pikachu forms are rare (25% chance of any special form, 75% chance of base form)
+        if pokemon_id == 25:
+            if random.random() < 0.25:
+                special_form = random.choice(options)
+        else:
+            # Uniform distribution for Unown, Vivillon, Flabébé, etc.
+            all_options = [None] + options
+            special_form = random.choice(all_options)
+
     return (
         name,
         pokemon_id,
@@ -1195,6 +1208,7 @@ def generate_random_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        special_form,
     )
 
 
@@ -1279,6 +1293,7 @@ def new_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        special_form,
     ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
     pokemon_data = {
         "name": name,
@@ -1309,6 +1324,7 @@ def new_pokemon(
         "tier": tier,
         "ev_yield": ev_yield,
         "shiny": is_shiny,
+        "special_form": special_form,
     }
     pokemon.update_stats(**pokemon_data)
     max_hp = pokemon.calculate_max_hp()
@@ -2043,9 +2059,11 @@ def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
     is_mythical = enemy_pokemon.tier == "Mythical"
     is_ultra = enemy_pokemon.tier == "Ultra"
     is_starter = enemy_pokemon.tier == "Starter"
+    is_cosmetic = enemy_pokemon.special_form is not None
 
     return (
         (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
+        or (is_cosmetic and settings_obj.get("battle.auto_catch_cosmetic", True))
         or (is_mythical and settings_obj.get("battle.auto_catch_mythical", True))
         or (is_ultra and settings_obj.get("battle.auto_catch_ultra", True))
         or (is_starter and settings_obj.get("battle.auto_catch_starter", True))
@@ -2173,8 +2191,16 @@ def handle_enemy_faint(
         enemy_id = enemy_pokemon.id
         # Evolution, trades and imports can add history without updating the
         # battle cache, so refresh once for this completed encounter.
+        uncollected = enemy_id not in load_collected_pokemon_ids()
+
+        if not uncollected and enemy_pokemon.special_form is not None:
+            db = services.db
+            if db and hasattr(db, "get_caught_forms"):
+                if enemy_pokemon.special_form not in db.get_caught_forms(enemy_id):
+                    uncollected = True
+
         if (
-            enemy_id not in load_collected_pokemon_ids()
+            uncollected
             or enemy_pokemon.shiny
             or should_catch_always
         ):

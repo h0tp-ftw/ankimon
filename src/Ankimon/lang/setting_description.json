@@ -1,6 +1,7 @@
 {
     "battle.automatic_battle": "Set automatic battle mode for wild Pokémon interactions when enemy HP is 0. \n[0: Disabled, 1: Auto-catch, 2: Auto-defeat (to gain XP), 3: Catch if NEW Pokémon (not in collection), otherwise defeat].",
     "battle.auto_catch_wishlist": "List of Pokémon IDs that are always caught when encountered, regardless of other auto-catch settings.",
+    "battle.auto_catch_cosmetic": "Always catch Cosmetic Form Pokémon when encountered.",
     "battle.auto_catch_legendary": "Always catch Legendary Pokémon when encountered.",
     "battle.auto_catch_mythical": "Always catch Mythical Pokémon when encountered.",
     "battle.auto_catch_ultra": "Always catch Ultra Beast Pokémon when encountered.",
@@ -78,5 +79,6 @@
     "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 400]. NOTE: To prevent exploits, the payout is capped based on your daily economy limit and subject to a hard daily cap of 400¥.",
     "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily cap of 400¥.",
     "leaderboard.username": "Your username for the Ankimon leaderboard. This will be displayed publicly on the leaderboard.",
-    "leaderboard.api_key": "Your API key for the Ankimon leaderboard. Get one from the Ankimon website at https://leaderboard.ankimon.com/"
+    "leaderboard.api_key": "Your API key for the Ankimon leaderboard. Get one from the Ankimon website at https://leaderboard.ankimon.com/",
+    "battle.auto_catch_cosmetic": "Always catch Cosmetic Form Pokémon when encountered."
 }
