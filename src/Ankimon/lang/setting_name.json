@@ -2,8 +2,6 @@
     "battle.automatic_battle": "Automatic Battle",
     "battle.auto_catch_wishlist": "Always Catch Wishlist",
     "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form",
-    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form",
-    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form",
     "battle.auto_catch_legendary": "Always Catch: Legendary",
     "battle.auto_catch_mythical": "Always Catch: Mythical",
     "battle.auto_catch_ultra": "Always Catch: Ultra Beast",
@@ -81,6 +79,5 @@
     "trainer.cash_reward_amount": "Cash Reward Per Interval",
     "trainer.cash_reward_interval": "Cards Per Cash Reward",
     "leaderboard.username": "Username",
-    "leaderboard.api_key": "API Key",
-    "battle.auto_catch_cosmetic": "Always Catch: Cosmetic Form"
+    "leaderboard.api_key": "API Key"
 }

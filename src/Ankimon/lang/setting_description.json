@@ -79,6 +79,5 @@
     "trainer.cash_reward_amount": "How much cash you earn for each interval of cards reviewed. [Min: 10, Max: 400]. NOTE: To prevent exploits, the payout is capped based on your daily economy limit and subject to a hard daily cap of 400¥.",
     "trainer.cash_reward_interval": "Number of cards to review before earning cash. [Min: 5, Max: 100]. Earnings are subject to a maximum daily cap of 400¥.",
     "leaderboard.username": "Your username for the Ankimon leaderboard. This will be displayed publicly on the leaderboard.",
-    "leaderboard.api_key": "Your API key for the Ankimon leaderboard. Get one from the Ankimon website at https://leaderboard.ankimon.com/",
-    "battle.auto_catch_cosmetic": "Always catch Cosmetic Form Pokémon when encountered."
+    "leaderboard.api_key": "Your API key for the Ankimon leaderboard. Get one from the Ankimon website at https://leaderboard.ankimon.com/"
 }
