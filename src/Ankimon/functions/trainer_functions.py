@@ -172,6 +172,9 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
             else:
                 break
         pokemon["level"] = current_level
+        if levels_gained > 0:
+            from .pokedex_functions import get_all_pokemon_moves
+            pokemon["all_attacks"] = get_all_pokemon_moves(pokemon["name"], pokemon["level"])
         pokemon["xp"] = 0 if exp < 0 else exp
 
     # Passive XP Share earns less friendship than battling; neither is capped.

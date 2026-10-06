@@ -688,6 +688,9 @@ class EvoWindow(QWidget):
             # the auto prompt resumes for the new form's future evolutions.
             pokemon["evolution_rejected"] = False
 
+            from ..functions.pokedex_functions import get_all_pokemon_moves
+            pokemon["all_attacks"] = get_all_pokemon_moves(pokemon["name"], pokemon["level"])
+
             # Commit only after all move dialogs finish.
             if item_name:
                 target_data = {
