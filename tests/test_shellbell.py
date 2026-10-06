@@ -1,14 +1,10 @@
-from harness.headless_env import start_session
-env = start_session()
-
 from Ankimon.poke_engine import constants
 from Ankimon.poke_engine.battle import Battle
 from Ankimon.poke_engine.objects import Pokemon, State, Side
 
-from Ankimon.functions.ankimon_hooks_to_poke_engine import _install_shell_bell
-_install_shell_bell()
-
 def test_shellbell_applies_heal_to_damaging_moves():
+    from Ankimon.functions.ankimon_hooks_to_poke_engine import _install_shell_bell
+    _install_shell_bell()
     p1 = Pokemon(
         identifier='bulbasaur',
         level=50,
@@ -49,6 +45,8 @@ def test_shellbell_applies_heal_to_damaging_moves():
     assert modified[constants.DRAIN] == [1, 8]
 
 def test_shellbell_stacks_with_draining_moves():
+    from Ankimon.functions.ankimon_hooks_to_poke_engine import _install_shell_bell
+    _install_shell_bell()
     p1 = Pokemon(
         identifier='bulbasaur',
         level=50,
