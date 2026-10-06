@@ -1186,7 +1186,7 @@ def generate_random_pokemon(
 
     if cosmetic_formes:
         options = [f.split("-", 1)[1] if "-" in f else f for f in cosmetic_formes]
-        # Certain forms are rare (25% chance of any special form, 75% chance of base form)
+        # Certain forms are rare (5% chance of any special form, 95% chance of base form)
         # 25: Pikachu (Hats)
         # 172: Pichu (Spiky-eared)
         # 801: Magearna (Original Color)
@@ -1194,7 +1194,7 @@ def generate_random_pokemon(
         # 925: Maushold (Family of Three)
         # 978: Gimmighoul (Roaming)
         if pokemon_id in (25, 172, 801, 893, 925, 978):
-            if random.random() < 0.25:
+            if random.random() < 0.05:
                 special_form = random.choice(options)
         else:
             # Uniform distribution for Unown, Vivillon, Flabébé, etc.
