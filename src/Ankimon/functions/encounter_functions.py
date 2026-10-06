@@ -2193,7 +2193,7 @@ def handle_enemy_faint(
         # battle cache, so refresh once for this completed encounter.
         uncollected = enemy_id not in load_collected_pokemon_ids()
 
-        if not uncollected and enemy_pokemon.special_form is not None:
+        if not uncollected and getattr(enemy_pokemon, "special_form", None) is not None:
             db = services.db
             if db and hasattr(db, "get_caught_forms"):
                 if enemy_pokemon.special_form not in db.get_caught_forms(enemy_id):
