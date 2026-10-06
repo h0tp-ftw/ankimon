@@ -1306,7 +1306,7 @@ def new_pokemon(
         is_shiny,
         nature,
         special_form,
-    ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
+    ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)[:19]
     pokemon_data = {
         "name": name,
         "id": pkmn_id,
