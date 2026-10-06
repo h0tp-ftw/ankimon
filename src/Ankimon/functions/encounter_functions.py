@@ -1148,6 +1148,23 @@ def generate_random_pokemon(
     battle_status = "fighting"
     base_stats = search_pokedex(name, "baseStats")
 
+    # Handle cosmetic forms (e.g. Unown letters, Flabebe colors)
+    special_form = None
+    cosmetic_forms = search_pokedex(name, "cosmeticFormes")
+    if cosmetic_forms:
+        # Include the base form explicitly so it can be rolled too.
+        # We represent the base form as None here.
+        all_forms = [None] + cosmetic_forms
+        chosen_form = random.choice(all_forms)
+        if chosen_form:
+            # We want to extract just the suffix (e.g., "-B", "-Blue")
+            # Usually the cosmetic form name is f"{name}-{suffix}", but we need to match case-insensitively.
+            # name is often lowercase (e.g., "unown") while chosen_form is Titlecase ("Unown-B").
+            if chosen_form.lower().startswith(f"{name.lower()}-"):
+                special_form = chosen_form[len(name):]
+            else:
+                special_form = f"-{chosen_form}"
+
     all_possible_moves = get_all_pokemon_moves(name, wild_pokemon_lvl)
     if len(all_possible_moves) <= 4:
         moves = all_possible_moves
@@ -1195,6 +1212,7 @@ def generate_random_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        special_form,
     )
 
 
@@ -1279,6 +1297,7 @@ def new_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        special_form,
     ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
     pokemon_data = {
         "name": name,
@@ -1309,6 +1328,7 @@ def new_pokemon(
         "tier": tier,
         "ev_yield": ev_yield,
         "shiny": is_shiny,
+        "special_form": special_form,
     }
     pokemon.update_stats(**pokemon_data)
     max_hp = pokemon.calculate_max_hp()
@@ -1937,7 +1957,7 @@ def save_caught_pokemon(
             "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "individual_id": str(uuid.uuid4()),
             "mega": False,
-            "special_form": None,
+            "special_form": getattr(enemy_pokemon, "special_form", None),
             "is_favorite": False,
             "held_item": None,
             "hp": _max_hp,
