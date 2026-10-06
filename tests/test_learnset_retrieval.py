@@ -150,6 +150,9 @@ def _mock_learnset_file():
         except AttributeError:
             pass
 
+    import Ankimon.functions.learnset_retrieval as ls
+    ls.clear_learnset_cache()
+
     m = mock_open(read_data=_FAKE_JSON)
 
     def side_effect(file, *args, **kwargs):
