@@ -1182,6 +1182,7 @@ def generate_random_pokemon(
     # Magearna-Original is listed as an otherForme rather than a cosmeticForme in Smogon data,
     # but functionally it is a purely cosmetic alternate form for the player's collection.
     if pokemon_id == 801:
+        cosmetic_formes = list(cosmetic_formes)
         cosmetic_formes.append("Original")
 
     if cosmetic_formes:
