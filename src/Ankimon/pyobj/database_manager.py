@@ -2050,24 +2050,48 @@ class AnkimonDB:
         return True
 
     def reject_monthly_challenge(self, challenge_id: str) -> bool:
-        """Remove an owned challenge Pokemon and record rejection atomically.
+        """Remove a non-main challenge Pokemon and record rejection atomically.
 
-        Rejecting also clears any team slot and the main-Pokemon flag that
-        pointed at this Mon, so no part of the DB references a row that no
-        longer exists. If the rejected Mon was the main Pokemon, promote a
-        replacement (highest level, then lowest rowid) in the same
-        transaction: get_main_pokemon() is relied on by battle/HUD paths that
-        do not expect a None, so the collection must never be left without
-        one.
+        The active companion and the final collection member cannot be
+        rejected. No row, team slot, or monthly decision is changed when
+        either guard fails. Any existing collection without a main Pokemon
+        still receives a replacement after a permitted non-main deletion.
 
-        Returns False and rolls back if the row was already gone (a concurrent
-        reject or release), so a stale caller cannot clear the challenge state
-        on the strength of a deletion that did not happen.
+        Returns False if the row is already gone, without changing the
+        monthly state. Raises ValueError with an actionable message when
+        rejecting would remove the main or last Pokemon.
         """
         individual_id = str(challenge_id)
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
+            # Lock out another writer before checking the row and collection.
+            if conn.in_transaction:
+                cursor.execute("UPDATE captured_pokemon SET is_main = is_main WHERE 0")
+            else:
+                cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute(
+                "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
+                (individual_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                conn.rollback()
+                return False
+            if row["is_main"]:
+                raise ValueError(
+                    "You cannot reject your main Pokémon. "
+                    "Choose another main Pokémon first."
+                )
+            cursor.execute(
+                "SELECT 1 FROM captured_pokemon WHERE individual_id != ? LIMIT 1",
+                (individual_id,),
+            )
+            if cursor.fetchone() is None:
+                raise ValueError(
+                    "You cannot reject your last Pokémon. "
+                    "Catch another Pokémon first."
+                )
             cursor.execute(
                 "DELETE FROM captured_pokemon WHERE individual_id = ?",
                 (individual_id,),
