@@ -2050,18 +2050,53 @@ class AnkimonDB:
         return True
 
     def reject_monthly_challenge(self, challenge_id: str) -> bool:
-        """Remove an owned challenge Pokemon and record rejection atomically."""
+        """Remove an owned challenge Pokemon and record rejection atomically.
+
+        Rejecting also clears any team slot and the main-Pokemon flag that
+        pointed at this Mon, so no part of the DB references a row that no
+        longer exists. If the rejected Mon was the main Pokemon, promote a
+        replacement (highest level, then lowest rowid) in the same
+        transaction: get_main_pokemon() is relied on by battle/HUD paths that
+        do not expect a None, so the collection must never be left without
+        one.
+
+        Returns False and rolls back if the row was already gone (a concurrent
+        reject or release), so a stale caller cannot clear the challenge state
+        on the strength of a deletion that did not happen.
+        """
+        individual_id = str(challenge_id)
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
                 "DELETE FROM captured_pokemon WHERE individual_id = ?",
-                (str(challenge_id),),
+                (individual_id,),
             )
             if cursor.rowcount == 0:
                 conn.rollback()
                 return False
-            self._write_monthly_challenge_state(cursor, challenge_id, 2)
+
+            cursor.execute(
+                "DELETE FROM team WHERE individual_id = ?",
+                (individual_id,),
+            )
+            self._write_monthly_challenge_state(cursor, individual_id, 2)
+
+            cursor.execute(
+                "SELECT 1 FROM captured_pokemon WHERE is_main = 1 LIMIT 1"
+            )
+            if cursor.fetchone() is None:
+                cursor.execute(
+                    """
+                    UPDATE captured_pokemon
+                    SET is_main = 1
+                    WHERE individual_id = (
+                        SELECT individual_id FROM captured_pokemon
+                        ORDER BY level DESC, rowid ASC
+                        LIMIT 1
+                    )
+                    """
+                )
             conn.commit()
         except Exception:
             conn.rollback()
