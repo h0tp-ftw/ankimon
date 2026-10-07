@@ -958,8 +958,9 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
         owned_level = owned_pokemon.get("level", 1)
         owned_defeated = owned_pokemon.get("pokemon_defeated", 5)
         owned_id = owned_pokemon.get("individual_id", challenge_pokemon.get("individual_id"))
+        shiny_suffix = " (Shiny)!" if owned_pokemon.get("shiny", False) else "!"
         owned_text = (
-            f"You already have this month's <b>{escape(str(owned_name))}</b>!<br><br>"
+            f"You already have this month's <b>{escape(str(owned_name))}</b>{shiny_suffix}<br><br>"
             f"ID: <b>{escape(str(owned_id))}</b><br>"
             f"Level: <b>{escape(str(owned_level))}</b><br>"
             f"Pokémon Defeated: <b>{escape(str(owned_defeated))}</b>"
