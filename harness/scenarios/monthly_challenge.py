@@ -63,7 +63,7 @@ def run(scenario):
         raise requests.exceptions.ConnectionError("monthly regression: controlled network")
 
     with patch.object(requests, "get", side_effect=offline), patch.object(requests, "post", side_effect=offline), quiet():
-        d = RealDriver(first_encounter=False, neuter_network=False, settings_overrides={
+        d = RealDriver(first_run=True, first_encounter=False, neuter_network=False, settings_overrides={
             "gui.show_sprites_across_ankimon": False,
             "mobile.enabled": False, "misc.ankiweb_sync": False,
         })
