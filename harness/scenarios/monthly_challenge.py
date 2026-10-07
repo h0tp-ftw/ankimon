@@ -33,18 +33,23 @@ def wide_gif():
 def monthly_action():
     """Locate the live Monthly Challenge menu action.
 
-    ``menu_buttons.create_menu_actions`` rebuilds ``mw.pokemenu`` and its
-    ``profile_menu`` submenu at module scope, so ``menu_buttons.profile_menu``
-    can be a stale object after any reload or account switch and no longer
-    holds the action the user actually clicks. Walk the installed menubar
-    instead so the lookup always resolves against the menu currently on screen.
+    The action lives at ``mw.pokemenu > Profile > Monthly Challenge``. Read
+    from ``mw.pokemenu`` rather than ``menu_buttons.profile_menu`` (a
+    module-level attribute the reload guard can re-bind under a fresh
+    ``mw.pokemenu``) or ``mw.form.menubar`` (a headless ``FakeMW`` stand-in
+    that does not own the real Qt menubar). ``mw.pokemenu`` is the reference
+    the add-on itself keeps current on every ``create_menu_actions`` call, so
+    it always names the menu the user actually sees.
     """
     from PyQt6.QtGui import QAction
     from aqt import mw
-    for action in mw.form.menubar.findChildren(QAction):
+    menu = getattr(mw, "pokemenu", None)
+    if menu is None:
+        raise AssertionError("Ankimon menu is not built")
+    for action in menu.findChildren(QAction):
         if action.objectName() == "ankimon_monthly_challenge":
             return action
-    raise AssertionError("Monthly Challenge action is not in the menubar")
+    raise AssertionError("Monthly Challenge action is not under mw.pokemenu")
 
 
 def run(scenario):
