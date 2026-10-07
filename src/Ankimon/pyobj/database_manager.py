@@ -2213,7 +2213,7 @@ class AnkimonDB:
 
         try:
             cursor = self.execute("PRAGMA table_info(captured_pokemon)")
-            has_form = any(row["name"] == "special_form" for row in cursor.fetchall())
+            has_form = any(row[1] == "special_form" for row in cursor.fetchall())
 
             if has_form:
                 cursor = self.execute(
