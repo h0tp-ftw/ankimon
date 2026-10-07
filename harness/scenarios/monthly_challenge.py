@@ -124,6 +124,12 @@ def run(scenario):
         assert button is not None, (dialog.windowTitle(), text)
         button.click()
 
+    def schedule_manual_acceptance():
+        def accept():
+            later(lambda: press_text("Let's go!"))
+            press("acceptBtn")
+        later(accept)
+
     def finish():
         task, done = queued.pop(0)
         # Database access on this thread would violate the fetch-only contract.
@@ -239,13 +245,7 @@ def run(scenario):
             trade.show_monthly_challenge_dialog.side_effect = decision
             action = monthly_action()
             trade.check_and_award_monthly_pokemon(logger)
-            def accept_manual_challenge():
-                # This timer runs the confirmation click inside its nested
-                # modal loop, which starts when acceptBtn is clicked.
-                later(lambda: press_text("Let's go!"))
-                press("acceptBtn")
-
-            later(accept_manual_challenge)
+            schedule_manual_acceptance()
             action.trigger()
             assert len(queued) == 1
             finish()
@@ -253,13 +253,26 @@ def run(scenario):
             assert db.get_user_data("monthly_challenge") == 1
             # Reopening an owned challenge reports progress without a new award.
             trade.show_monthly_challenge_dialog.reset_mock()
-            with patch.object(d.services.ui, "notify") as notify:
-                trade.check_and_award_monthly_pokemon(logger)
-                action.trigger()
-                assert len(queued) == 1
-                finish()
-                notify.assert_called_once()
+            trade.check_and_award_monthly_pokemon(logger)
+            action.trigger()
+            assert len(queued) == 1
+
+            def close_owned_progress():
+                dialog = QApplication.activeModalWidget()
+                assert dialog is not None
+                details = dialog.findChild(QLabel, "descLabel")
+                assert details is not None and "Pokémon Defeated:" in details.text()
+                accept_button = dialog.findChild(QPushButton, "acceptBtn")
+                reject_button = dialog.findChild(QPushButton, "rejectBtn")
+                assert accept_button is not None and not accept_button.isEnabled()
+                assert reject_button is not None and reject_button.isEnabled()
+                press_text("Close")
+
+            later(close_owned_progress)
+            finish()
             trade.show_monthly_challenge_dialog.assert_not_called()
+            assert db.get_pokemon(iid) is not None
+            assert db.get_user_data("monthly_challenge") == 1
 
         elif scenario == "atomic_failure":
             db.set_monthly_challenge_state(iid, 2)
@@ -285,6 +298,7 @@ def run(scenario):
                  patch.object(errors, "load_error_images", return_value={"path": "", "credit": "", "url": ""}), \
                  patch.object(trade, "_refresh_collection") as refresh:
                 action.trigger()
+                schedule_manual_acceptance()
                 finish()
                 assert warnings == ["error"]
                 refresh.assert_not_called()
@@ -293,6 +307,7 @@ def run(scenario):
                 conn.execute("DROP TRIGGER fail_monthly_accept").close()
                 conn.commit()
                 action.trigger()
+                schedule_manual_acceptance()
                 finish()
                 refresh.assert_called_once()
                 trade.show_monthly_acceptance_dialog.assert_called_once()
