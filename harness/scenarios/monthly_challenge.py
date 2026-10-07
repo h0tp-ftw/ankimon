@@ -30,6 +30,24 @@ def wide_gif():
     return b"GIF89a" + size + b"\x80\0\0\0\0\0\xd2\x32\x5a" + b"," + b"\0" * 4 + size + b"\0\x02" + blocks + b"\0;"
 
 
+def monthly_action():
+    """Locate the live Monthly Challenge menu action.
+
+    The action lives at ``mw.pokemenu > Profile > Monthly Challenge``. Since the
+    menu is built dynamically at startup and the action is registered with
+    objectName "ankimon_monthly_challenge", we retrieve it by searching through
+    the profile_menu actions.
+    """
+    import Ankimon.menu_buttons as menu_buttons
+    profile_menu = menu_buttons.profile_menu
+    
+    for action in profile_menu.actions():
+        if action.objectName() == "ankimon_monthly_challenge":
+            return action
+    
+    raise AssertionError("Monthly Challenge action is not found in profile_menu")
+
+
 def run(scenario):
     from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QLabel
     from PyQt6.QtCore import QTimer
@@ -45,7 +63,7 @@ def run(scenario):
         raise requests.exceptions.ConnectionError("monthly regression: controlled network")
 
     with patch.object(requests, "get", side_effect=offline), patch.object(requests, "post", side_effect=offline), quiet():
-        d = RealDriver(first_encounter=False, neuter_network=False, settings_overrides={
+        d = RealDriver(first_run=True, first_encounter=False, neuter_network=False, settings_overrides={
             "gui.show_sprites_across_ankimon": False,
             "mobile.enabled": False, "misc.ankiweb_sync": False,
         })
@@ -86,6 +104,22 @@ def run(scenario):
         button = dialog.findChild(QPushButton, name)
         assert button is not None, (dialog.windowTitle(), name)
         button.click()
+
+    def press_text(text):
+        dialog = QApplication.activeModalWidget()
+        assert dialog is not None
+        button = next(
+            (button for button in dialog.findChildren(QPushButton) if button.text() == text),
+            None,
+        )
+        assert button is not None, (dialog.windowTitle(), text)
+        button.click()
+
+    def schedule_manual_acceptance():
+        def accept():
+            later(lambda: press_text("Let's go!"))
+            press("acceptBtn")
+        later(accept)
 
     def finish():
         task, done = queued.pop(0)
@@ -200,9 +234,9 @@ def run(scenario):
             finish()
             trade.show_monthly_challenge_dialog.assert_not_called()
             trade.show_monthly_challenge_dialog.side_effect = decision
-            import Ankimon.menu_buttons as menus
-            action = next(a for a in menus.profile_menu.actions() if a.objectName() == "ankimon_monthly_challenge")
+            action = monthly_action()
             trade.check_and_award_monthly_pokemon(logger)
+            schedule_manual_acceptance()
             action.trigger()
             assert len(queued) == 1
             finish()
@@ -210,13 +244,26 @@ def run(scenario):
             assert db.get_user_data("monthly_challenge") == 1
             # Reopening an owned challenge reports progress without a new award.
             trade.show_monthly_challenge_dialog.reset_mock()
-            with patch.object(d.services.ui, "notify") as notify:
-                trade.check_and_award_monthly_pokemon(logger)
-                action.trigger()
-                assert len(queued) == 1
-                finish()
-                notify.assert_called_once()
+            trade.check_and_award_monthly_pokemon(logger)
+            action.trigger()
+            assert len(queued) == 1
+
+            def close_owned_progress():
+                dialog = QApplication.activeModalWidget()
+                assert dialog is not None
+                details = dialog.findChild(QLabel, "descLabel")
+                assert details is not None and "Pokémon Defeated:" in details.text()
+                accept_button = dialog.findChild(QPushButton, "acceptBtn")
+                reject_button = dialog.findChild(QPushButton, "rejectBtn")
+                assert accept_button is not None and not accept_button.isEnabled()
+                assert reject_button is not None and reject_button.isEnabled()
+                press_text("Close")
+
+            later(close_owned_progress)
+            finish()
             trade.show_monthly_challenge_dialog.assert_not_called()
+            assert db.get_pokemon(iid) is not None
+            assert db.get_user_data("monthly_challenge") == 1
 
         elif scenario == "atomic_failure":
             db.set_monthly_challenge_state(iid, 2)
@@ -237,12 +284,12 @@ def run(scenario):
                 later(close_error)
                 return native_warning(*args, **kwargs)
             import Ankimon.pyobj.error_handler as errors
-            import Ankimon.menu_buttons as menus
-            action = next(a for a in menus.profile_menu.actions() if a.objectName() == "ankimon_monthly_challenge")
+            action = monthly_action()
             with patch.object(trade, "show_warning_with_traceback", side_effect=warning), \
                  patch.object(errors, "load_error_images", return_value={"path": "", "credit": "", "url": ""}), \
                  patch.object(trade, "_refresh_collection") as refresh:
                 action.trigger()
+                schedule_manual_acceptance()
                 finish()
                 assert warnings == ["error"]
                 refresh.assert_not_called()
@@ -251,9 +298,10 @@ def run(scenario):
                 conn.execute("DROP TRIGGER fail_monthly_accept").close()
                 conn.commit()
                 action.trigger()
+                schedule_manual_acceptance()
                 finish()
                 refresh.assert_called_once()
-                trade.show_monthly_acceptance_dialog.assert_called_once()
+                trade.show_monthly_acceptance_dialog.assert_not_called()
             assert db.get_pokemon(iid) is not None
             assert db.get_user_data("monthly_challenge") == 1
 

@@ -2049,6 +2049,87 @@ class AnkimonDB:
             raise
         return True
 
+    def reject_monthly_challenge(self, challenge_id: str) -> bool:
+        """Remove a non-main challenge Pokemon and record rejection atomically.
+
+        The active companion and the final collection member cannot be
+        rejected. No row, team slot, or monthly decision is changed when
+        either guard fails. Any existing collection without a main Pokemon
+        still receives a replacement after a permitted non-main deletion.
+
+        Returns False if the row is already gone, without changing the
+        monthly state. Raises ValueError with an actionable message when
+        rejecting would remove the main or last Pokemon.
+        """
+        individual_id = str(challenge_id)
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            # Lock out another writer before checking the row and collection.
+            if conn.in_transaction:
+                cursor.execute("UPDATE captured_pokemon SET is_main = is_main WHERE 0")
+            else:
+                cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute(
+                "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
+                (individual_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                conn.rollback()
+                return False
+            if row["is_main"]:
+                raise ValueError(
+                    "You cannot reject your main Pokémon. "
+                    "Choose another main Pokémon first."
+                )
+            cursor.execute(
+                "SELECT 1 FROM captured_pokemon WHERE individual_id != ? LIMIT 1",
+                (individual_id,),
+            )
+            if cursor.fetchone() is None:
+                raise ValueError(
+                    "You cannot reject your last Pokémon. "
+                    "Catch another Pokémon first."
+                )
+            cursor.execute(
+                "DELETE FROM captured_pokemon WHERE individual_id = ?",
+                (individual_id,),
+            )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return False
+
+            cursor.execute(
+                "DELETE FROM team WHERE individual_id = ?",
+                (individual_id,),
+            )
+            self._write_monthly_challenge_state(cursor, individual_id, 2)
+
+            cursor.execute(
+                "SELECT 1 FROM captured_pokemon WHERE is_main = 1 LIMIT 1"
+            )
+            if cursor.fetchone() is None:
+                cursor.execute(
+                    """
+                    UPDATE captured_pokemon
+                    SET is_main = 1
+                    WHERE individual_id = (
+                        SELECT individual_id FROM captured_pokemon
+                        ORDER BY level DESC, rowid ASC
+                        LIMIT 1
+                    )
+                    """
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+        self._clear_reviewer_ownership_cache()
+        return True
+
     def get_user_data(self, key: str, default: Any = None) -> Any:
         """Retrieves user data by key."""
         cursor = self.execute("SELECT value FROM user_data WHERE key = ?", (key,))

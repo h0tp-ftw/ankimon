@@ -186,7 +186,15 @@ def _refresh_collection(refresh_callback=None, parent_window=None):
         )
 
 
-def add_pokemon_to_collection(new_pokemon, refresh_callback=None, parent_window=None, *, refresh=True, accept_monthly_challenge=False):
+def add_pokemon_to_collection(
+    new_pokemon,
+    refresh_callback=None,
+    parent_window=None,
+    *,
+    refresh=True,
+    accept_monthly_challenge=False,
+    db_manager=None,
+):
     """Return whether persistence succeeded; presentation cannot undo a save.
 
     Monthly awards save the Pokemon and accepted decision in one transaction.
@@ -194,7 +202,8 @@ def add_pokemon_to_collection(new_pokemon, refresh_callback=None, parent_window=
     session before doing any further database work.
     """
     try:
-        if not services.db.save_pokemon(new_pokemon, accept_monthly_challenge=accept_monthly_challenge):
+        db = db_manager if db_manager is not None else services.db
+        if not db.save_pokemon(new_pokemon, accept_monthly_challenge=accept_monthly_challenge):
             return False
     except Exception as e:
         show_warning_with_traceback(parent=parent_window, exception=e, message="Error adding Pokemon to collection")
@@ -685,6 +694,360 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
 
     window.exec()
 
+# --- Manual Monthly Challenge window (Profile menu) ------------------------
+# Distinct from show_monthly_challenge_dialog (the pop-up window): the
+# manual window is the explicit "check my monthly challenge" surface opened by
+# Ankimon > Profile > Monthly Challenge.
+
+def _monthly_challenge_tip_html(species_name, individual_id):
+    """Return one of two tips at 50/50. The Discord variant is a clickable link."""
+    import random
+    if random.random() < 0.5:
+        short_id = str(individual_id)[:5]
+        return (
+            f"<b>Tip: Look for the {escape(str(species_name))} with the ID "
+            f"{escape(short_id)}... It's the unique one that'll count "
+            f"towards your Monthly Challenge progress!</b>"
+        )
+    return (
+        f'<b>Tip: For more information, please check the '
+        f'<a href="https://discord.gg/hcq53X5mcu" style="text-decoration: none;">'
+        f'Ankimon Discord</a>!</b>'
+    )
+
+
+def _confirm_monthly_accept(species_name, parent_window=None):
+    """Confirmation shown by the manual window when Accept is pressed."""
+    parent = parent_window if parent_window is not None else mw
+    window = QDialog(parent)
+    window.setWindowTitle("Monthly Challenge")
+    window.setWindowIcon(QIcon(str(icon_path)))
+    window.setWindowModality(Qt.WindowModality.ApplicationModal)
+    window.setMinimumWidth(480)
+
+    palette = _challenge_palette()
+    bg = palette["bg"]
+    border = palette["border"]
+    text = palette["text"]
+    btn_primary_bg = palette["btn_primary_bg"]
+    btn_primary_hover = palette["btn_primary_hover"]
+
+    window.setStyleSheet(f"""
+        QDialog {{
+            background-color: {bg};
+            color: {text};
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        QLabel {{ color: {text}; background: transparent; font-size: 0.95rem; }}
+        QPushButton {{
+            padding: 8px 24px;
+            border: none;
+            border-radius: 8px;
+            background: {btn_primary_bg};
+            color: {bg};
+            font-size: 0.85rem;
+            font-weight: 700;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-width: 100px;
+        }}
+        QPushButton:hover {{ background: {btn_primary_hover}; }}
+    """)
+
+    layout = QVBoxLayout(window)
+    layout.setContentsMargins(24, 22, 24, 20)
+    layout.setSpacing(16)
+
+    message = QLabel(
+        f"Accept this month's challenge? <b>{escape(str(species_name))}</b> will be "
+        f"added to your collection."
+    )
+    message.setWordWrap(True)
+    layout.addWidget(message)
+
+    button_layout = QHBoxLayout()
+    button_layout.addStretch()
+    letsgo_button = QPushButton("Let's go!")
+    letsgo_button.setMinimumWidth(120)
+    letsgo_button.clicked.connect(window.accept)
+    button_layout.addWidget(letsgo_button)
+    layout.addLayout(button_layout)
+
+    return window.exec() == QDialog.DialogCode.Accepted
+
+
+def _confirm_monthly_reject(species_name, parent_window=None):
+    """Confirmation shown by the manual window when Reject is pressed.
+
+    Returns True only if the user clicks 'Yes'. Closing the dialog or clicking
+    'Absolutely not!' returns False.
+    """
+    parent = parent_window if parent_window is not None else mw
+    window = QDialog(parent)
+    window.setWindowTitle("Monthly Challenge")
+    window.setWindowIcon(QIcon(str(icon_path)))
+    window.setWindowModality(Qt.WindowModality.ApplicationModal)
+    window.setMinimumWidth(520)
+
+    palette = _challenge_palette()
+    bg = palette["bg"]
+    bg_card_hover = palette["bg_card_hover"]
+    border = palette["border"]
+    text = palette["text"]
+    accent_blue = palette["accent_blue"]
+    btn_bg = palette["btn_bg"]
+    btn_hover = palette["btn_hover"]
+
+    window.setStyleSheet(f"""
+        QDialog {{
+            background-color: {bg};
+            color: {text};
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        QLabel {{ color: {text}; background: transparent; font-size: 0.95rem; }}
+        QPushButton {{
+            padding: 8px 20px;
+            border: 1px solid {border};
+            border-radius: 8px;
+            background: {btn_bg};
+            color: {text};
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-width: 100px;
+        }}
+        QPushButton:hover {{ background: {btn_hover}; border-color: {accent_blue}; }}
+    """)
+
+    layout = QVBoxLayout(window)
+    layout.setContentsMargins(24, 22, 24, 20)
+    layout.setSpacing(16)
+
+    message = QLabel(
+        f"Reject this month's Monthly Challenge? "
+        f"<b>{escape(str(species_name))}</b> will be removed from your collection, "
+        f"and all progress will be lost."
+    )
+    message.setWordWrap(True)
+    layout.addWidget(message)
+
+    button_layout = QHBoxLayout()
+    button_layout.addStretch()
+
+    absolutely_not = QPushButton("Absolutely not!")
+    absolutely_not.setMinimumWidth(140)
+    absolutely_not.clicked.connect(window.reject)
+    button_layout.addWidget(absolutely_not)
+
+    yes_button = QPushButton("Yes")
+    yes_button.setMinimumWidth(100)
+    yes_button.clicked.connect(window.accept)
+    button_layout.addWidget(yes_button)
+
+    layout.addLayout(button_layout)
+
+    return window.exec() == QDialog.DialogCode.Accepted
+
+
+def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon=None, parent_window=None):
+    """Manual Monthly Challenge window (Ankimon > Profile > Monthly Challenge).
+
+    Returns "accept", "reject", or None (Close / cancelled). The auto-pop-up
+    (show_monthly_challenge_dialog) is a separate surface and is untouched.
+
+    Button semantics (manual path only):
+        - Accept is enabled iff the challenge has not yet been accepted, and
+          raises its own accept confirmation when pressed.
+        - Reject is enabled iff the challenge Mon is already owned, and raises
+          its own reject confirmation when pressed.
+        - Close is always enabled and returns None (no decision recorded).
+    The confirmation dialogs are raised here (single source of truth), so the
+    call sites in check_and_award_monthly_pokemon do not re-run them.
+    """
+    parent = parent_window if parent_window is not None else mw
+    window = QDialog(parent)
+    window.setWindowTitle("Monthly Challenge")
+    window.setWindowIcon(QIcon(str(icon_path)))
+    window.setWindowModality(Qt.WindowModality.ApplicationModal)
+    window.setMinimumWidth(620)
+    window.setMinimumHeight(360)
+
+    show_sprites = True
+    try:
+        settings_obj = services.settings
+        if settings_obj is not None:
+            show_sprites = settings_obj.get("gui.show_sprites_across_ankimon", True)
+    except Exception:
+        pass
+
+    palette = _challenge_palette()
+    bg = palette["bg"]
+    bg_card_hover = palette["bg_card_hover"]
+    border = palette["border"]
+    text = palette["text"]
+    accent_blue = palette["accent_blue"]
+    blue_solid = palette["blue_solid"]
+    btn_bg = palette["btn_bg"]
+    btn_hover = palette["btn_hover"]
+
+    window.setStyleSheet(f"""
+        QDialog {{
+            background-color: {bg};
+            color: {text};
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }}
+        QLabel {{ color: {text}; background: transparent; }}
+        QFrame#spriteBox {{ background-color: {blue_solid}; border-radius: 16px; }}
+        QFrame#descBox {{ background-color: {blue_solid}; border-radius: 12px; }}
+        QLabel#descLabel {{
+            color: #ffffff; font-size: 0.95rem; font-weight: 700;
+            line-height: 1.6; background: transparent; padding: 0;
+        }}
+        QPushButton {{
+            padding: 8px 20px;
+            border: 1px solid {border};
+            border-radius: 8px;
+            background: {btn_bg};
+            color: {text};
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-width: 100px;
+        }}
+        QPushButton:hover {{ background: {btn_hover}; border-color: {accent_blue}; }}
+        QPushButton:disabled {{
+            background: {btn_bg}; color: {border};
+            border: 1px solid {border};
+        }}
+    """)
+
+    layout = QVBoxLayout(window)
+    layout.setContentsMargins(24, 22, 24, 20)
+    layout.setSpacing(16)
+
+    now = datetime.now()
+    month_names = ["January", "February", "March", "April", "May", "June",
+                   "July", "August", "September", "October", "November", "December"]
+    current_month_str = f"{month_names[now.month - 1]} {now.year}"
+    species_name = challenge_pokemon.get("name", "Pokémon")
+    pokedex_id = challenge_pokemon.get("id")
+
+    header = QLabel(
+        f"<span style='font-size: 1.2rem; font-weight: 800; letter-spacing: -0.3px; color: {text};'>"
+        f"It's {escape(current_month_str)}! This month's Pokémon is... "
+        f"<b>{escape(str(species_name))}!!</b></span>"
+    )
+    header.setWordWrap(True)
+    layout.addWidget(header)
+
+    content_layout = QHBoxLayout()
+    content_layout.setSpacing(16)
+    content_layout.setContentsMargins(0, 8, 0, 8)
+
+    sprite_pokemon = owned_pokemon if owned_pokemon is not None else challenge_pokemon
+    sprite_box = _build_sprite_box(160, 120, sprite_pokemon, show_sprites)
+    content_layout.addWidget(sprite_box, alignment=Qt.AlignmentFlag.AlignTop)
+
+    body_box = QFrame()
+    body_box.setObjectName("descBox")
+    body_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+    body_layout = QVBoxLayout(body_box)
+    body_layout.setContentsMargins(20, 14, 20, 14)
+    body_layout.setSpacing(6)
+
+    if owned_pokemon is not None:
+        owned_name = owned_pokemon.get("name", species_name)
+        owned_level = owned_pokemon.get("level", 1)
+        owned_defeated = owned_pokemon.get("pokemon_defeated", 5)
+        owned_id = owned_pokemon.get("individual_id", challenge_pokemon.get("individual_id"))
+        shiny_suffix = " (Shiny)!" if owned_pokemon.get("shiny", False) else "!"
+        owned_text = (
+            f"You already have this month's <b>{escape(str(owned_name))}</b>{shiny_suffix}<br><br>"
+            f"ID: <b>{escape(str(owned_id))}</b><br>"
+            f"Level: <b>{escape(str(owned_level))}</b><br>"
+            f"Pokémon Defeated: <b>{escape(str(owned_defeated))}</b>"
+        )
+        owned_label = QLabel(f"<div style='margin:0;padding:0;'>{owned_text}</div>")
+        owned_label.setObjectName("descLabel")
+        owned_label.setWordWrap(True)
+        owned_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        body_layout.addWidget(owned_label)
+    else:
+        if description:
+            desc_label = QLabel()
+            desc_label.setObjectName("descLabel")
+            desc_label.setWordWrap(True)
+            desc_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            desc_text = escape(description).replace(chr(10), '<br>')
+            desc_label.setText(f"<div style='margin:0;padding:0;'><b>{desc_text}</b></div>")
+            body_layout.addWidget(desc_label)
+        else:
+            placeholder = QLabel("A special Pokémon awaits you!")
+            placeholder.setObjectName("descLabel")
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            body_layout.addWidget(placeholder)
+
+    tip_label = QLabel(
+        _monthly_challenge_tip_html(species_name, challenge_pokemon.get("individual_id"))
+    )
+    tip_label.setWordWrap(True)
+    tip_label.setOpenExternalLinks(True)
+    tip_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    tip_label.setStyleSheet(
+        f"font-size: 0.85rem; background: transparent; padding-top: 6px;"
+    )
+    body_layout.addWidget(tip_label)
+    
+    content_layout.addWidget(body_box)
+    layout.addLayout(content_layout)
+
+    button_layout = QHBoxLayout()
+    button_layout.setSpacing(8)
+
+    accept_button = QPushButton("Accept Pokémon")
+    accept_button.setObjectName("acceptBtn")
+    accept_button.setMinimumWidth(130)
+
+    reject_button = QPushButton("Reject Pokémon")
+    reject_button.setObjectName("rejectBtn")
+    reject_button.setMinimumWidth(130)
+
+    accept_button.setEnabled(owned_pokemon is None)
+    reject_button.setEnabled(owned_pokemon is not None)
+
+    button_layout.addWidget(accept_button)
+    button_layout.addWidget(reject_button)
+    button_layout.addStretch()
+
+    close_button = QPushButton("Close")
+    close_button.setMinimumWidth(100)
+    button_layout.addWidget(close_button)
+
+    layout.addLayout(button_layout)
+
+    result = {"choice": None}
+
+    def _on_accept():
+        if not accept_button.isEnabled():
+            return
+        if _confirm_monthly_accept(species_name, parent_window=window):
+            result["choice"] = "accept"
+            window.accept()
+
+    def _on_reject():
+        if not reject_button.isEnabled():
+            return
+        if _confirm_monthly_reject(species_name, parent_window=window):
+            result["choice"] = "reject"
+            window.accept()
+
+    accept_button.clicked.connect(_on_accept)
+    reject_button.clicked.connect(_on_reject)
+    close_button.clicked.connect(window.reject)
+
+    window.exec()
+    return result["choice"]
+
+
 def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
     """
     Check for and award the current month's challenge Pokémon to the user.
@@ -841,12 +1204,60 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
 
         if reclaim and pokemon_in_collection:
             owned = db.get_pokemon(challenge_individual_id)
-            services.ui.notify(
-                "info",
-                f"This month's Pokémon is already in your collection: {escape(str(owned.get('name', 'Pokémon')))}. "
-                f"Level: {escape(str(owned.get('level', 1)))}. "
-                f"Pokémon defeated: {escape(str(owned.get('pokemon_defeated', 0)))}.",
+            choice = _monthly_challenge_info_window(
+                challenge_pokemon_data,
+                current_challenge.get("description", ""),
+                owned_pokemon=owned,
+                parent_window=mw,
             )
+            if not _session_unchanged(db, db_token, col):
+                logger.log("warning", "Discarded the manual monthly challenge decision: the Ankimon database or Anki profile changed while the window was open.")
+                return
+            if choice is None:
+                logger.log("info", "User closed the manual monthly challenge window without deciding.")
+                return
+            if choice == "reject":
+                if not _session_unchanged(db, db_token, col):
+                    return
+                live_main = services.main_pokemon
+                if live_main is not None and str(
+                    getattr(live_main, "individual_id", None)
+                ) == str(challenge_individual_id):
+                    services.ui.notify(
+                        "warning", "Choose another main Pokémon before rejecting this Pokémon."
+                    )
+                    return
+                try:
+                    rejected = db.reject_monthly_challenge(challenge_individual_id)
+                except ValueError as exc:
+                    services.ui.notify("warning", str(exc))
+                    return
+                if not rejected:
+                    logger.log(
+                        "info",
+                        "Discarded a stale manual monthly challenge rejection: "
+                        "the Pokémon was no longer in the collection.",
+                    )
+                    return
+                settings_obj = services.settings
+                if settings_obj is not None and str(
+                    settings_obj.get("trainer.xp_share")
+                ) == str(challenge_individual_id):
+                    settings_obj.set("trainer.xp_share", None)
+                events.emit("monthly_challenge", decision="rejected", individual_id=challenge_individual_id)
+                from ..utils import is_alive
+                pc = services.pokemon_pc
+                if is_alive(pc):
+                    try:
+                        pc.refresh_gui()
+                    except Exception as exc:
+                        show_warning_with_traceback(
+                            parent=mw,
+                            exception=exc,
+                            message="Error refreshing Pokemon collection",
+                        )
+                logger.log("info", f"User rejected the owned monthly challenge Pokémon {challenge_pokemon_data.get('name')} and it was removed from the collection.")
+                return
             return
 
         # RECONCILE FIRST: If Pokémon exists in collection, sync tracking before any reset
@@ -893,11 +1304,17 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
         new_pokemon = create_monthly_challenge_pokemon(challenge_pokemon_data, make_shiny=make_shiny)
         shiny_text = " (Shiny)" if new_pokemon["shiny"] else ""
 
-        def award():
+        def award(show_congrats=True):
             # No refresh or informational dialog until both the Pokemon and
             # its accepted decision are committed. A failed save may show an
             # error dialog, but never triggers a "rollback" into another save.
-            success = add_pokemon_to_collection(new_pokemon, parent_window=mw, refresh=False, accept_monthly_challenge=True)
+            success = add_pokemon_to_collection(
+                new_pokemon,
+                parent_window=mw,
+                refresh=False,
+                accept_monthly_challenge=True,
+                db_manager=db,
+            )
             if not _session_unchanged(db, db_token, col):
                 return
             if not success:
@@ -906,11 +1323,33 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             events.emit("monthly_challenge", decision="accepted", individual_id=challenge_individual_id, restored=monthly_status == 1)
             logger.log("info", f"Successfully awarded {new_pokemon['name']}{shiny_text}.")
             _refresh_collection(parent_window=mw)
-            if _session_unchanged(db, db_token, col):
+            if show_congrats and _session_unchanged(db, db_token, col):
                 show_monthly_acceptance_dialog(parent_window=mw, challenge_pokemon=new_pokemon)
 
         if monthly_status == 1:
             award()
+            return
+
+        if reclaim:
+            choice = _monthly_challenge_info_window(
+                new_pokemon,
+                current_challenge.get("description", ""),
+                owned_pokemon=None,
+                parent_window=mw,
+            )
+            if not _session_unchanged(db, db_token, col):
+                logger.log("warning", "Discarded the manual monthly challenge decision: the Ankimon database or Anki profile changed while the window was open.")
+                return
+            if choice is None:
+                logger.log("info", "User closed the manual monthly challenge window without deciding.")
+                return
+            if choice == "accept":
+                if not _session_unchanged(db, db_token, col):
+                    return
+                if db.get_pokemon(challenge_individual_id) is not None:
+                    logger.log("info", "Discarded a stale manual monthly challenge decision: the collection changed while the dialog was open.")
+                    return
+                award(show_congrats=False)
             return
 
         # Other UI (or sync) may change the decision/collection while exec()

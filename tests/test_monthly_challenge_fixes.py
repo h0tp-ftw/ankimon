@@ -609,7 +609,14 @@ def test_accepted_challenge_with_missing_pokemon_is_re_awarded_without_prompt(re
 
 @pytest.fixture
 def monthly_case(mock_db, mock_mw, mock_requests):
-    """Mutable decision state: expose writes and nested-loop changes to reads."""
+    """Mutable decision state: expose writes and nested-loop changes to reads.
+
+    The manual (Profile menu) path opens _monthly_challenge_info_window, a
+    separate surface from show_monthly_challenge_dialog (the auto-pop-up). Both
+    are patched here: `decision` drives the auto-popup, `manual` drives the
+    manual window. Tests for the reclaim=True path set c.manual.return_value
+    or c.manual.side_effect instead of touching c.decision.
+    """
     from types import SimpleNamespace
     from contextlib import ExitStack
     state = {"rate_this": True, "monthly_challenge_id": "test-id", "monthly_challenge": 0}
@@ -624,6 +631,7 @@ def monthly_case(mock_db, mock_mw, mock_requests):
         date = stack.enter_context(patch.object(pokemon_trade_module, "datetime"))
         _serve_january_challenge(date, mock_requests)
         decision = stack.enter_context(patch.object(pokemon_trade_module, "show_monthly_challenge_dialog", return_value=True))
+        manual = stack.enter_context(patch.object(pokemon_trade_module, "_monthly_challenge_info_window", return_value=None))
         add = stack.enter_context(patch.object(pokemon_trade_module, "add_pokemon_to_collection", return_value=True))
         def save_award(pokemon, **kwargs):
             if add.return_value and kwargs.get("accept_monthly_challenge"):
@@ -634,7 +642,7 @@ def monthly_case(mock_db, mock_mw, mock_requests):
         stack.enter_context(patch.object(pokemon_trade_module, "show_monthly_acceptance_dialog"))
         stack.enter_context(patch.object(pokemon_trade_module, "show_monthly_rejection_dialog"))
         stack.enter_context(patch.object(pokemon_trade_module.services, "_monthly_challenge_request", None, create=True))
-        yield SimpleNamespace(state=state, queued=scheduled, decision=decision, add=add,
+        yield SimpleNamespace(state=state, queued=scheduled, decision=decision, manual=manual, add=add,
                               db=mock_db, mw=mock_mw)
 
 
@@ -716,13 +724,24 @@ def test_stale_prompt_cannot_overwrite_new_decision_or_owned_progress(monthly_ca
 
 @pytest.mark.parametrize("status", [0, 1, 2])
 def test_save_failure_preserves_previous_decision(monthly_case, status):
+    """A failed save on the manual path leaves the previous decision intact.
+
+    The manual path opens _monthly_challenge_info_window, so drive that mock
+    (c.manual), not the auto-popup mock (c.decision). The window returns
+    "accept" so the flow reaches add_pokemon_to_collection and its failure is
+    what this test is asserting against. When the Mon is already owned
+    (status == 1), the manual window is not the accept surface: the code goes
+    straight to award(), so c.manual is expected to be called zero times.
+    """
     c = monthly_case
     c.state["monthly_challenge"] = status
+    c.manual.return_value = "accept"
     c.add.return_value = False
     check_and_award_monthly_pokemon(MockLogger(), defer=False, reclaim=True)
     assert c.state["monthly_challenge"] == status
     c.db.set_monthly_challenge_state.assert_not_called()
-    assert c.decision.call_count == (0 if status == 1 else 1)
+    assert c.manual.call_count == (0 if status == 1 else 1)
+    c.decision.assert_not_called()
 
 
 def test_reclaim_offers_rejected_reward_without_resetting_it_first(monthly_case):
@@ -730,10 +749,11 @@ def test_reclaim_offers_rejected_reward_without_resetting_it_first(monthly_case)
     c.state["monthly_challenge"] = 2
     check_and_award_monthly_pokemon(MockLogger(), defer=False)
     c.decision.assert_not_called()
+    c.manual.assert_not_called()
     def accept(*args, **kwargs):
         assert c.state["monthly_challenge"] == 2
-        return True
-    c.decision.side_effect = accept
+        return "accept"
+    c.manual.side_effect = accept
     check_and_award_monthly_pokemon(MockLogger(), defer=False, reclaim=True)
     assert c.state["monthly_challenge"] == 1
     c.add.assert_called_once()
@@ -766,12 +786,23 @@ def test_decision_preserves_remote_rating_eligibility_check(monthly_case, accept
 
 @pytest.mark.parametrize("outcome", ["rejected", "owned", "offline"])
 def test_menu_request_during_automatic_fetch_keeps_explicit_intent(monthly_case, mock_requests, outcome):
+    """A menu click (reclaim=True) during an in-flight automatic fetch upgrades
+    the pending request so its explicit intent is honoured when the fetch lands.
+
+    - rejected: the manual window is driven to "accept" and the Mon is awarded.
+    - owned:    the manual window opens with the owned Mon's progress and no
+                state is written (this replaced the old info toast).
+    - offline:  no challenge could be loaded, so the manual path notifies.
+    """
     c = monthly_case
     c.state["monthly_challenge"] = 2
     if outcome == "owned":
         c.db.get_pokemon.return_value = {"name": "Pikachu", "level": 70, "pokemon_defeated": 42}
+        c.manual.return_value = None
     elif outcome == "offline":
         mock_requests.side_effect = pokemon_trade_module.requests.exceptions.ConnectionError("offline")
+    else:
+        c.manual.return_value = "accept"
     with patch.object(pokemon_trade_module.services, "ui") as ui:
         check_and_award_monthly_pokemon(MockLogger())
         check_and_award_monthly_pokemon(MockLogger(), reclaim=True)
@@ -780,13 +811,20 @@ def test_menu_request_during_automatic_fetch_keeps_explicit_intent(monthly_case,
         task, done = c.queued.pop()
         done(_Future(task()))
         if outcome == "rejected":
-            c.decision.assert_called_once()
+            c.manual.assert_called_once()
             c.add.assert_called_once()
             assert c.state["monthly_challenge"] == 1
+        elif outcome == "owned":
+            c.manual.assert_called_once()
+            owned = c.manual.call_args.kwargs.get("owned_pokemon")
+            assert owned is not None
+            assert owned["level"] == 70
+            assert owned["pokemon_defeated"] == 42
+            c.add.assert_not_called()
         else:
-            c.decision.assert_not_called()
+            c.manual.assert_not_called()
             c.add.assert_not_called()
             kind, message = ui.notify.call_args.args
-            assert kind == ("info" if outcome == "owned" else "warning")
-            assert ("70" in message and "42" in message) if outcome == "owned" else "try again" in message
+            assert kind == "warning"
+            assert "try again" in message
         assert pokemon_trade_module.services._monthly_challenge_request is None
