@@ -943,7 +943,8 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
     content_layout.setSpacing(16)
     content_layout.setContentsMargins(0, 8, 0, 8)
 
-    sprite_box = _build_sprite_box(160, 120, challenge_pokemon, show_sprites)
+    sprite_pokemon = owned_pokemon if owned_pokemon is not None else challenge_pokemon
+    sprite_box = _build_sprite_box(160, 120, sprite_pokemon, show_sprites)
     content_layout.addWidget(sprite_box, alignment=Qt.AlignmentFlag.AlignTop)
 
     body_box = QFrame()
