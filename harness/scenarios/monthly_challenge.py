@@ -114,6 +114,16 @@ def run(scenario):
         assert button is not None, (dialog.windowTitle(), name)
         button.click()
 
+    def press_text(text):
+        dialog = QApplication.activeModalWidget()
+        assert dialog is not None
+        button = next(
+            (button for button in dialog.findChildren(QPushButton) if button.text() == text),
+            None,
+        )
+        assert button is not None, (dialog.windowTitle(), text)
+        button.click()
+
     def finish():
         task, done = queued.pop(0)
         # Database access on this thread would violate the fetch-only contract.
@@ -229,6 +239,13 @@ def run(scenario):
             trade.show_monthly_challenge_dialog.side_effect = decision
             action = monthly_action()
             trade.check_and_award_monthly_pokemon(logger)
+            def accept_manual_challenge():
+                # This timer runs the confirmation click inside its nested
+                # modal loop, which starts when acceptBtn is clicked.
+                later(lambda: press_text("Let's go!"))
+                press("acceptBtn")
+
+            later(accept_manual_challenge)
             action.trigger()
             assert len(queued) == 1
             finish()
