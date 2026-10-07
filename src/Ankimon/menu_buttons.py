@@ -170,16 +170,6 @@ def create_menu_actions(
         w.raise_()
         w.activateWindow()
 
-    def open_monthly_challenge():
-        from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
-        check_and_award_monthly_pokemon(logger, reclaim=True)
-
-    monthly_action = QAction(mw.translator.translate("monthly_challenge_button"), mw)
-    monthly_action.setObjectName("ankimon_monthly_challenge")
-    monthly_action.setMenuRole(QAction.MenuRole.NoRole)
-    monthly_action.triggered.connect(open_monthly_challenge)
-    profile_menu.addAction(monthly_action)
-
     if database_complete:
         # Pokémon PC
         pokemon_pc_action = QAction("Pokémon PC", mw)
@@ -216,6 +206,16 @@ def create_menu_actions(
             lambda: _open_shell_at("profile", action="badges")
         )
         profile_menu.addAction(achievement_bag_action)
+
+        def open_monthly_challenge():
+            from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+            check_and_award_monthly_pokemon(logger, reclaim=True)
+
+        monthly_action = QAction(mw.translator.translate("monthly_challenge_button"), mw)
+        monthly_action.setObjectName("ankimon_monthly_challenge")
+        monthly_action.setMenuRole(QAction.MenuRole.NoRole)
+        monthly_action.triggered.connect(open_monthly_challenge)
+        profile_menu.addAction(monthly_action)
 
         # Showdown Teambuilder
         pokemon_showdown_action = QAction(mw.translator.translate("open_showdown_teambuilder_button"), mw)
