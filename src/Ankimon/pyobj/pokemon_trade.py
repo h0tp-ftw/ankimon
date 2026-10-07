@@ -699,14 +699,14 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
 # manual window is the explicit "check my monthly challenge" surface opened by
 # Ankimon > Profile > Monthly Challenge.
 
-def _monthly_challenge_tip_html(species_name, individual_id, text, link_color="#b6d1fc"):
+def _monthly_challenge_tip_html(species_name, individual_id):
     """Return one of two tips at 50/50. The Discord variant is a clickable link."""
     import random
     if random.random() < 0.5:
         short_id = str(individual_id)[:5]
         return (
-            f"<b>Tip: Look for the <b>{escape(str(species_name))}</b> with the ID "
-            f"<b>{escape(short_id)}...</b>. It's the unique one that'll count "
+            f"<b>Tip: Look for the {escape(str(species_name))} with the ID "
+            f"{escape(short_id)}... It's the unique one that'll count "
             f"towards your Monthly Challenge progress!</b>"
         )
     return (
@@ -986,7 +986,7 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
             body_layout.addWidget(placeholder)
 
     tip_label = QLabel(
-        _monthly_challenge_tip_html(species_name, challenge_pokemon.get("individual_id"), text, blue_solid)
+        _monthly_challenge_tip_html(species_name, challenge_pokemon.get("individual_id"))
     )
     tip_label.setWordWrap(True)
     tip_label.setOpenExternalLinks(True)
