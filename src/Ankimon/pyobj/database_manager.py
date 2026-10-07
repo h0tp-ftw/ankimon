@@ -2049,6 +2049,28 @@ class AnkimonDB:
             raise
         return True
 
+    def reject_monthly_challenge(self, challenge_id: str) -> bool:
+        """Remove an owned challenge Pokemon and record rejection atomically."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM captured_pokemon WHERE individual_id = ?",
+                (str(challenge_id),),
+            )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                return False
+            self._write_monthly_challenge_state(cursor, challenge_id, 2)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+        self._clear_reviewer_ownership_cache()
+        return True
+
     def get_user_data(self, key: str, default: Any = None) -> Any:
         """Retrieves user data by key."""
         cursor = self.execute("SELECT value FROM user_data WHERE key = ?", (key,))
