@@ -82,24 +82,6 @@ export_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_export_button
 help_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_help_button_title"))
 if debug is True:
     debug_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_debug_button_title"))
-_MENU_OWNER = mw.pokemenu
-
-
-def _ensure_current_menu_submenus():
-    """Keep the module-level submenu references attached to the live Ankimon menu."""
-    global _MENU_OWNER, game_menu, profile_menu, collection_menu, export_menu, help_menu, debug_menu
-    if _MENU_OWNER is mw.pokemenu:
-        return
-
-    game_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_game_button_title"))
-    profile_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_profile_button_title"))
-    collection_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_collection_button_title"))
-    export_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_export_button_title"))
-    help_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_help_button_title"))
-    if debug is True:
-        debug_menu = mw.pokemenu.addMenu(mw.translator.translate("ankimon_debug_button_title"))
-    _MENU_OWNER = mw.pokemenu
-
 
 def create_menu_actions(
     database_complete: bool,
@@ -134,8 +116,6 @@ def create_menu_actions(
     pokemon_pc: PokemonPC,
     backup_manager: BackupManager,
 ):
-    _ensure_current_menu_submenus()
-
     from .singletons import (
         get_items_window,
         get_nature_chart,
