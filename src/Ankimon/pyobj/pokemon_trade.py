@@ -1219,15 +1219,43 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             if choice == "reject":
                 if not _session_unchanged(db, db_token, col):
                     return
-                if not db.reject_monthly_challenge(challenge_individual_id):
+                live_main = services.main_pokemon
+                if live_main is not None and str(
+                    getattr(live_main, "individual_id", None)
+                ) == str(challenge_individual_id):
+                    services.ui.notify(
+                        "warning", "Choose another main Pokémon before rejecting this Pokémon."
+                    )
+                    return
+                try:
+                    rejected = db.reject_monthly_challenge(challenge_individual_id)
+                except ValueError as exc:
+                    services.ui.notify("warning", str(exc))
+                    return
+                if not rejected:
                     logger.log(
                         "info",
                         "Discarded a stale manual monthly challenge rejection: "
                         "the Pokémon was no longer in the collection.",
                     )
                     return
+                settings_obj = services.settings
+                if settings_obj is not None and str(
+                    settings_obj.get("trainer.xp_share")
+                ) == str(challenge_individual_id):
+                    settings_obj.set("trainer.xp_share", None)
                 events.emit("monthly_challenge", decision="rejected", individual_id=challenge_individual_id)
-                _refresh_collection(parent_window=mw)
+                from ..utils import is_alive
+                pc = services.pokemon_pc
+                if is_alive(pc):
+                    try:
+                        pc.refresh_gui()
+                    except Exception as exc:
+                        show_warning_with_traceback(
+                            parent=mw,
+                            exception=exc,
+                            message="Error refreshing Pokemon collection",
+                        )
                 logger.log("info", f"User rejected the owned monthly challenge Pokémon {challenge_pokemon_data.get('name')} and it was removed from the collection.")
                 return
             return
