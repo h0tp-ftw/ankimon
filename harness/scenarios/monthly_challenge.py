@@ -41,14 +41,19 @@ def monthly_action():
     the add-on itself keeps current on every ``create_menu_actions`` call, so
     it always names the menu the user actually sees.
     """
-    from PyQt6.QtGui import QAction
     from aqt import mw
     menu = getattr(mw, "pokemenu", None)
     if menu is None:
         raise AssertionError("Ankimon menu is not built")
-    for action in menu.findChildren(QAction):
-        if action.objectName() == "ankimon_monthly_challenge":
-            return action
+    menus = [menu]
+    while menus:
+        current = menus.pop()
+        for action in current.actions():
+            if action.objectName() == "ankimon_monthly_challenge":
+                return action
+            submenu = action.menu()
+            if submenu is not None:
+                menus.append(submenu)
     raise AssertionError("Monthly Challenge action is not under mw.pokemenu")
 
 
