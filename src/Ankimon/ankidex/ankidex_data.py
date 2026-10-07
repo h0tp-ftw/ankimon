@@ -214,10 +214,10 @@ def get_ankidex_data(db, settings, tracker=None):
             "SELECT pokedex_id, special_form FROM captured_pokemon WHERE pokedex_id IS NOT NULL AND special_form IS NOT NULL"
         )
         for row in cursor.fetchall():
-            pid = row["pokedex_id"]
+            pid = row[0]
             if pid not in caught_forms:
                 caught_forms[pid] = set()
-            caught_forms[pid].add(row["special_form"])
+            caught_forms[pid].add(row[1])
     except Exception as e:
         # DB may not have special_form column yet
         try:
@@ -225,10 +225,10 @@ def get_ankidex_data(db, settings, tracker=None):
                 "SELECT pokedex_id, json_extract(data, '$.special_form') as special_form FROM captured_pokemon WHERE pokedex_id IS NOT NULL AND json_extract(data, '$.special_form') IS NOT NULL"
             )
             for row in cursor.fetchall():
-                pid = row["pokedex_id"]
+                pid = row[0]
                 if pid not in caught_forms:
                     caught_forms[pid] = set()
-                caught_forms[pid].add(row["special_form"])
+                caught_forms[pid].add(row[1])
         except Exception:
             pass
 

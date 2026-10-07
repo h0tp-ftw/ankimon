@@ -2227,8 +2227,8 @@ class AnkimonDB:
                 )
 
             for row in cursor.fetchall():
-                pid = row["pokedex_id"]
-                form = row["special_form"]
+                pid = row[0]
+                form = row[1]
                 if pid is not None and pid != 0:
                     ids.add(pid)
                     if form:
@@ -2249,8 +2249,8 @@ class AnkimonDB:
             )
             for row in cursor.fetchall():
                 try:
-                    pid = int(row["pid"])
-                    form = row["form"]
+                    pid = int(row[0])
+                    form = row[1]
                     if pid != 0:
                         ids.add(pid)
                         if form:
