@@ -778,7 +778,7 @@ def _confirm_monthly_accept(species_name, parent_window=None):
 def _confirm_monthly_reject(species_name, parent_window=None):
     """Confirmation shown by the manual window when Reject is pressed.
 
-    Returns True only if the user clicks 'Sure'. Closing the dialog or clicking
+    Returns True only if the user clicks 'Yes'. Closing the dialog or clicking
     'Absolutely not!' returns False.
     """
     parent = parent_window if parent_window is not None else mw
@@ -838,10 +838,10 @@ def _confirm_monthly_reject(species_name, parent_window=None):
     absolutely_not.clicked.connect(window.reject)
     button_layout.addWidget(absolutely_not)
 
-    sure_button = QPushButton("Sure")
-    sure_button.setMinimumWidth(100)
-    sure_button.clicked.connect(window.accept)
-    button_layout.addWidget(sure_button)
+    yes_button = QPushButton("Yes")
+    yes_button.setMinimumWidth(100)
+    yes_button.clicked.connect(window.accept)
+    button_layout.addWidget(yes_button)
 
     layout.addLayout(button_layout)
 
