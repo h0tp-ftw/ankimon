@@ -758,8 +758,8 @@ def _confirm_monthly_accept(species_name, parent_window=None):
     layout.setSpacing(16)
 
     message = QLabel(
-        f"Monthly Challenge accepted! <b>{escape(str(species_name))}</b> is added "
-        f"to your collection!"
+        f"Accept this month's challenge? <b>{escape(str(species_name))}</b> will be "
+        f"added to your collection."
     )
     message.setWordWrap(True)
     layout.addWidget(message)
