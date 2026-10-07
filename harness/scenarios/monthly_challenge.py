@@ -39,7 +39,7 @@ def monthly_action():
     holds the action the user actually clicks. Walk the installed menubar
     instead so the lookup always resolves against the menu currently on screen.
     """
-    from PyQt6.QtWidgets import QAction
+    from PyQt6.QtGui import QAction
     from aqt import mw
     for action in mw.form.menubar.findChildren(QAction):
         if action.objectName() == "ankimon_monthly_challenge":
