@@ -44875,8 +44875,7 @@
     "color": "Black",
     "prevo": "Bisharp",
     "evoType": "other",
-    "evoCondition": "minimumDefeated",
-    "evoDefeated": 100,
+    "evoCondition": "Defeat 3 Bisharp leading Pawniard and level-up",
     "eggGroups": [
       "Human-Like"
     ],
