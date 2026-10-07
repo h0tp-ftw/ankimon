@@ -1318,7 +1318,7 @@ class AnkimonDB:
         pokemon_id = pokemon_data.get("id")
         if pokemon_id:
             try:
-                self.mark_as_caught(int(pokemon_id))
+                self.mark_as_caught(int(pokemon_id), special_form=pokemon_data.get("special_form"))
             except Exception as e:
                 self._log("error", f"Failed to mark saved pokemon as caught: {e}")
 
@@ -1538,7 +1538,7 @@ class AnkimonDB:
         pokemon_id = pokemon_data.get("id")
         if pokemon_id:
             try:
-                self.mark_as_caught(int(pokemon_id))
+                self.mark_as_caught(int(pokemon_id), special_form=pokemon_data.get("special_form"))
             except Exception as e:
                 self._log("error", f"Failed to mark saved main pokemon as caught: {e}")
 
@@ -2209,15 +2209,33 @@ class AnkimonDB:
         Pokemon saved after the upgrade.
         """
         ids: set = set()
+        forms = {}
 
         try:
-            cursor = self.execute(
-                "SELECT DISTINCT pokedex_id FROM captured_pokemon "
-                "WHERE pokedex_id IS NOT NULL"
-            )
-            ids.update(
-                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
-            )
+            cursor = self.execute("PRAGMA table_info(captured_pokemon)")
+            has_form = any(row["name"] == "special_form" for row in cursor.fetchall())
+
+            if has_form:
+                cursor = self.execute(
+                    "SELECT DISTINCT pokedex_id, special_form FROM captured_pokemon "
+                    "WHERE pokedex_id IS NOT NULL"
+                )
+            else:
+                cursor = self.execute(
+                    "SELECT DISTINCT pokedex_id, json_extract(data, '$.special_form') as special_form FROM captured_pokemon "
+                    "WHERE pokedex_id IS NOT NULL"
+                )
+
+            for row in cursor.fetchall():
+                pid = row["pokedex_id"]
+                form = row["special_form"]
+                if pid is not None and pid != 0:
+                    ids.add(pid)
+                    if form:
+                        if pid not in forms:
+                            forms[pid] = set()
+                        forms[pid].add(form)
+
         except Exception as e:
             self._log(
                 "warning", f"Pokedex reconcile: could not read captured_pokemon: {e}"
@@ -2227,11 +2245,20 @@ class AnkimonDB:
         # so an older DB without pokemon_history still reconciles the owned rows.
         try:
             cursor = self.execute(
-                "SELECT DISTINCT json_extract(data, '$.id') FROM pokemon_history"
+                "SELECT DISTINCT json_extract(data, '$.id') as pid, json_extract(data, '$.special_form') as form FROM pokemon_history"
             )
-            ids.update(
-                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
-            )
+            for row in cursor.fetchall():
+                try:
+                    pid = int(row["pid"])
+                    form = row["form"]
+                    if pid != 0:
+                        ids.add(pid)
+                        if form:
+                            if pid not in forms:
+                                forms[pid] = set()
+                            forms[pid].add(form)
+                except (ValueError, TypeError):
+                    pass
         except Exception as e:
             self._log(
                 "warning", f"Pokedex reconcile: could not read pokemon_history: {e}"
@@ -2240,11 +2267,17 @@ class AnkimonDB:
         if not ids:
             return
 
-        sorted_ids = sorted(ids)
+        sorted_ids = sorted([i for i in ids if isinstance(i, int)])
+
+        additions = {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
+        for pid, form_set in forms.items():
+            if form_set:
+                sorted_forms = sorted(list(form_set))
+                additions[f"pokedex_caught_form_{pid}"] = sorted_forms
+                additions[f"pokedex_seen_form_{pid}"] = sorted_forms
+
         with self._pokedex_lock:
-            added = self._append_pokedex_ids(
-                {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
-            )
+            added = self._append_pokedex_ids(additions)
         if any(added.values()):
             self._log(
                 "info",
@@ -2261,7 +2294,10 @@ class AnkimonDB:
 
     def get_caught_forms(self, pokemon_id: int) -> set[str]:
         """Returns a set of all special forms marked as caught for the pokemon."""
-        return set(self.get_user_data(f"pokedex_caught_form_{pokemon_id}", []))
+        raw_forms = self.get_user_data(f"pokedex_caught_form_{pokemon_id}", [])
+        if isinstance(raw_forms, list):
+            return set(f for f in raw_forms if isinstance(f, str))
+        return set()
 
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
@@ -2269,7 +2305,10 @@ class AnkimonDB:
 
     def get_seen_forms(self, pokemon_id: int) -> set[str]:
         """Returns a set of all special forms marked as seen for the pokemon."""
-        return set(self.get_user_data(f"pokedex_seen_form_{pokemon_id}", []))
+        raw_forms = self.get_user_data(f"pokedex_seen_form_{pokemon_id}", [])
+        if isinstance(raw_forms, list):
+            return set(f for f in raw_forms if isinstance(f, str))
+        return set()
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
