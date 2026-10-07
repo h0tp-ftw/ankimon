@@ -1287,27 +1287,51 @@ def new_pokemon(
         invalidate = getattr(reviewer_obj, "invalidate_hud_cache", None)
         if callable(invalidate):
             invalidate()
-    (
-        name,
-        pkmn_id,
-        level,
-        ability,
-        pkmn_type,
-        base_stats,
-        enemy_attacks,
-        base_experience,
-        growth_rate,
-        ev,
-        iv,
-        gender,
-        battle_status,
-        battle_stats,
-        tier,
-        ev_yield,
-        is_shiny,
-        nature,
-        special_form,
-    ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)[:19]
+    res = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
+    special_form = None
+    if len(res) == 19:
+        (
+            name,
+            pkmn_id,
+            level,
+            ability,
+            pkmn_type,
+            base_stats,
+            enemy_attacks,
+            base_experience,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            tier,
+            ev_yield,
+            is_shiny,
+            nature,
+            special_form,
+        ) = res
+    else:
+        (
+            name,
+            pkmn_id,
+            level,
+            ability,
+            pkmn_type,
+            base_stats,
+            enemy_attacks,
+            base_experience,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            tier,
+            ev_yield,
+            is_shiny,
+            nature,
+        ) = res
     pokemon_data = {
         "name": name,
         "id": pkmn_id,
