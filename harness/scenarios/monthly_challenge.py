@@ -310,7 +310,7 @@ def run(scenario):
                 schedule_manual_acceptance()
                 finish()
                 refresh.assert_called_once()
-                trade.show_monthly_acceptance_dialog.assert_called_once()
+                trade.show_monthly_acceptance_dialog.assert_not_called()
             assert db.get_pokemon(iid) is not None
             assert db.get_user_data("monthly_challenge") == 1
 
