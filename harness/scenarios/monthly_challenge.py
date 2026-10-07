@@ -30,6 +30,23 @@ def wide_gif():
     return b"GIF89a" + size + b"\x80\0\0\0\0\0\xd2\x32\x5a" + b"," + b"\0" * 4 + size + b"\0\x02" + blocks + b"\0;"
 
 
+def monthly_action():
+    """Locate the live Monthly Challenge menu action.
+
+    ``menu_buttons.create_menu_actions`` rebuilds ``mw.pokemenu`` and its
+    ``profile_menu`` submenu at module scope, so ``menu_buttons.profile_menu``
+    can be a stale object after any reload or account switch and no longer
+    holds the action the user actually clicks. Walk the installed menubar
+    instead so the lookup always resolves against the menu currently on screen.
+    """
+    from PyQt6.QtWidgets import QAction
+    from aqt import mw
+    for action in mw.form.menubar.findChildren(QAction):
+        if action.objectName() == "ankimon_monthly_challenge":
+            return action
+    raise AssertionError("Monthly Challenge action is not in the menubar")
+
+
 def run(scenario):
     from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QLabel
     from PyQt6.QtCore import QTimer
@@ -200,8 +217,7 @@ def run(scenario):
             finish()
             trade.show_monthly_challenge_dialog.assert_not_called()
             trade.show_monthly_challenge_dialog.side_effect = decision
-            import Ankimon.menu_buttons as menus
-            action = next(a for a in menus.profile_menu.actions() if a.objectName() == "ankimon_monthly_challenge")
+            action = monthly_action()
             trade.check_and_award_monthly_pokemon(logger)
             action.trigger()
             assert len(queued) == 1
@@ -237,8 +253,7 @@ def run(scenario):
                 later(close_error)
                 return native_warning(*args, **kwargs)
             import Ankimon.pyobj.error_handler as errors
-            import Ankimon.menu_buttons as menus
-            action = next(a for a in menus.profile_menu.actions() if a.objectName() == "ankimon_monthly_challenge")
+            action = monthly_action()
             with patch.object(trade, "show_warning_with_traceback", side_effect=warning), \
                  patch.object(errors, "load_error_images", return_value={"path": "", "credit": "", "url": ""}), \
                  patch.object(trade, "_refresh_collection") as refresh:
