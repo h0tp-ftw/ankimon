@@ -7,9 +7,69 @@ from PyQt6.QtWidgets import (
     QCheckBox,
 )
 
+import re
+
+from ..functions.pokedex_functions import _load_moves_cache
+from ..move_names import format_move_description
 from ..utils import format_move_name
 
 MAX_MOVES = 4
+
+
+def _lookup_move(attack):
+    """Fetch a move record by raw id without any fallback or warning.
+
+    ``find_details_move`` substitutes Tackle (and raises a UI warning) for an
+    unknown id, which a tooltip must never do, so this reads the move table
+    directly.
+
+    Parameters
+    ----------
+    attack : str
+        Raw move id, e.g. ``"sleeppowder"``.
+
+    Returns
+    -------
+    dict or None
+        The move record, or None when the id is not in the table.
+    """
+    key = re.sub(r"[^a-z0-9]", "", str(attack).lower())
+    try:
+        return _load_moves_cache().get(key)
+    except Exception:
+        return None
+
+
+def _move_tooltip(attack):
+    """Build the hover text describing what a move does.
+
+    Parameters
+    ----------
+    attack : str
+        Raw move id.
+
+    Returns
+    -------
+    str
+        Multi-line summary: name, type and category, power / accuracy / PP,
+        then the short description. Falls back to a "details unavailable"
+        line rather than raising or warning, so a tooltip can never
+        interrupt the dialog.
+    """
+    name = format_move_name(attack)
+    move = _lookup_move(attack)
+    if not move:
+        return f"{name}\n(details unavailable)"
+    power = move.get("basePower") or "—"
+    accuracy = move.get("accuracy")
+    # Showdown stores "always hits" as True; bool must be tested before int.
+    accuracy = "—" if isinstance(accuracy, bool) or accuracy is None else f"{accuracy}%"
+    description = format_move_description(attack, move.get("shortDesc") or "")
+    return (
+        f"{name} — {move.get('type', '?')} · {move.get('category', '?')}\n"
+        f"Power {power} · Accuracy {accuracy} · PP {move.get('pp', '?')}\n"
+        f"{description}"
+    )
 
 
 class MovesetDialog(QDialog):
@@ -98,6 +158,7 @@ class MovesetDialog(QDialog):
         """
         box = QCheckBox(format_move_name(attack))
         box.setProperty("raw_move", attack)
+        box.setToolTip(_move_tooltip(attack))
         box.setChecked(checked)
         box.toggled.connect(self._refresh_count)
         layout.addWidget(box)
