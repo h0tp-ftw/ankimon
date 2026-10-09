@@ -1381,6 +1381,9 @@ class AnkimonDB:
         cursor = self.execute(
             "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
         )
+        # A released Pokémon must not keep its party slot: readers skip a
+        # dangling id, but it would still count against the six-slot cap.
+        self.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
         self._get_connection().commit()
         self._clear_reviewer_ownership_cache()
         return cursor.rowcount > 0
@@ -1441,10 +1444,18 @@ class AnkimonDB:
             """,
             (new_individual_id, is_main, obfuscated_data, old_individual_id),
         )
+        # Read the outcome before touching any other table: rowcount reflects
+        # the most recent statement only.
+        replaced = cursor.rowcount > 0
+        # The incoming Pokémon inherits the outgoing one's party slot, so a
+        # trade never leaves a stale id in the team table.
+        cursor.execute(
+            "UPDATE team SET individual_id = ? WHERE individual_id = ?",
+            (new_individual_id, old_individual_id),
+        )
 
         conn.commit()
         self._clear_reviewer_ownership_cache()
-        replaced = cursor.rowcount > 0
         # Trades acquire the incoming species just like a catch. Record it now
         # so encounter unlocks and the HUD do not lag until the next startup's
         # reconciliation sweep (or lose it if this Pokemon is traded again).

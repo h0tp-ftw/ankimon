@@ -69,6 +69,13 @@ from ..functions.pokedex_functions import (
 )
 from ..functions.tm_learnset import get_tm_learnset
 from ..functions.gui_functions import type_icon_path, move_category_path
+from ..functions.team_functions import (
+    MAX_TEAM_SIZE,
+    add_to_party,
+    get_team_ids,
+    load_party,
+    remove_from_party,
+)
 
 MOVE_TYPE_COLORS = {
     "Normal": "#A8A878",
@@ -628,6 +635,53 @@ class PokemonSlotButton(QPushButton):
         super().mouseReleaseEvent(event)
 
 
+class PartySlotButton(PokemonSlotButton):
+    """One of the six fixed "Current Party" slots left of the box grid.
+
+    Behaves like a box slot (left click = details, right click = actions) but
+    keeps its child widgets alive across refreshes so only the text, sprite and
+    colours change. Kept as its own class so drag-and-drop between the party
+    and the boxes can be added here later without touching the grid slots.
+
+    Parameters
+    ----------
+    slot_index : int
+        0-based position in the party column.
+    parent : QWidget, optional
+        Owning widget.
+    """
+
+    def __init__(self, slot_index: int, parent=None):
+        """Create an empty slot; :meth:`PokemonPC._populate_party_slot` fills it."""
+        super().__init__("", parent)
+        self._slot_index = slot_index
+        self._individual_id = None
+        self._member = None
+        self._movie_label = None
+
+
+def party_exclusion_sql(party_ids) -> tuple[str, list[str]]:
+    """Build the WHERE fragment that hides party members from the box grid.
+
+    Parameters
+    ----------
+    party_ids : iterable of str
+        Individual ids currently in the team table (stale ids are harmless:
+        they simply match nothing).
+
+    Returns
+    -------
+    tuple of (str, list of str)
+        An ``AND individual_id NOT IN (...)`` clause with its bound parameters,
+        or ``("", [])`` when the party is empty.
+    """
+    ids = [str(ind_id) for ind_id in party_ids if ind_id]
+    if not ids:
+        return "", []
+    placeholders = ",".join("?" for _ in ids)
+    return f"AND individual_id NOT IN ({placeholders})", ids
+
+
 class ScaledMovieLabel(QLabel):
     def __init__(self, gif_path, width, height, parent=None):
         super().__init__(parent)
@@ -750,6 +804,14 @@ class PokemonPC(QDialog):
         self.grid_container = None
         self.pokemon_grid = None
         self.curr_box_label = None
+
+        # Current Party column (six fixed slots left of the boxes)
+        self.party_panel = None
+        self.party_slots: list[PartySlotButton] = []
+        self._party_members: list[dict[str, Any]] = []
+        self._party_ids: list[str] = []
+        self.party_slot_width = 180
+        self.party_slot_height = 62
 
         self.create_gui()
         self._restore_geometry()
@@ -1003,6 +1065,7 @@ class PokemonPC(QDialog):
 
         collection_widget = QWidget()
         collection_widget.setLayout(collection_layout)
+        self.main_container_layout.addWidget(self._build_party_panel(), 0)
         self.main_container_layout.addWidget(collection_widget, 3)  # Grid takes 3/5
 
         self.setup_details_panel(background_color)
@@ -1036,6 +1099,12 @@ class PokemonPC(QDialog):
             QPushButton#pokemonSlot[selected="true"]:hover {
                 background: rgba(96, 165, 250, 0.20);
                 border-color: #93c5fd;
+            }
+
+            /* Party slot children must not paint over the slot colour */
+            QPushButton#partySlot QLabel {
+                background: transparent;
+                padding: 0px;
             }
         """
         )
@@ -1422,6 +1491,7 @@ class PokemonPC(QDialog):
 
         self._filtered_pokemon = self.fetch_filtered_pokemon()
         pokemon_list = self._filtered_pokemon
+        self.refresh_party_panel()
         max_box_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
 
         if self.current_box_idx > max_box_idx:
@@ -1761,39 +1831,266 @@ class PokemonPC(QDialog):
         self._update_count_label()
         self._refresh_slot_selection()
 
+    def _build_party_panel(self):
+        """Create the fixed six-slot "Current Party" column.
+
+        Returns
+        -------
+        QWidget
+            The panel, already holding a header and ``MAX_TEAM_SIZE`` empty
+            :class:`PartySlotButton` widgets. Slots are filled by
+            :meth:`refresh_party_panel`.
+        """
+        border = self.theme_vars["button_border"]
+        panel = QWidget()
+        panel.setObjectName("partyPanel")
+        panel.setFixedWidth(self.party_slot_width + 16)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 10, 4, 10)
+        layout.setSpacing(6)
+
+        header = QLabel(self.translator.translate("pc_party_header"))
+        header.setObjectName("partyHeader")
+        header.setFixedHeight(50)
+        header.setFont(load_custom_font(14, int(self.settings.get("misc.language"))))
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.setStyleSheet(
+            f"border: 1px solid {border}; background-color: {self.theme_vars['background_color']};"
+        )
+        layout.addWidget(header)
+
+        self.party_slots = []
+        for slot_index in range(MAX_TEAM_SIZE):
+            slot = PartySlotButton(slot_index, panel)
+            slot.setObjectName("partySlot")
+            slot.setFixedSize(self.party_slot_width, self.party_slot_height)
+
+            row = QHBoxLayout(slot)
+            row.setContentsMargins(6, 4, 6, 4)
+            row.setSpacing(6)
+            sprite_holder = QWidget(slot)
+            sprite_holder.setFixedSize(
+                self.party_slot_height - 10, self.party_slot_height - 10
+            )
+            sprite_holder.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            sprite_layout = QHBoxLayout(sprite_holder)
+            sprite_layout.setContentsMargins(0, 0, 0, 0)
+            sprite_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            row.addWidget(sprite_holder)
+
+            text_column = QVBoxLayout()
+            text_column.setContentsMargins(0, 0, 0, 0)
+            text_column.setSpacing(1)
+            name_label = QLabel(slot)
+            name_font = QFont(name_label.font())
+            name_font.setPixelSize(11)
+            name_font.setBold(True)
+            name_label.setFont(name_font)
+            name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            sub_label = QLabel(slot)
+            sub_font = QFont(sub_label.font())
+            sub_font.setPixelSize(10)
+            sub_label.setFont(sub_font)
+            sub_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            text_column.addWidget(name_label)
+            text_column.addWidget(sub_label)
+            row.addLayout(text_column, 1)
+
+            slot._sprite_holder = sprite_holder
+            slot._sprite_layout = sprite_layout
+            slot._name_label = name_label
+            slot._sub_label = sub_label
+
+            slot.clicked.connect(
+                lambda checked, s=slot: self.show_pokemon_details(s._member)
+                if s._member
+                else None
+            )
+            slot.rightClicked.connect(
+                lambda s=slot: self.show_actions_submenu(s, s._member, in_party=True)
+                if s._member
+                else None
+            )
+            layout.addWidget(slot, alignment=Qt.AlignmentFlag.AlignHCenter)
+            self.party_slots.append(slot)
+            self._populate_party_slot(slot, None)
+
+        layout.addStretch(1)
+        self.party_panel = panel
+        return panel
+
+    def refresh_party_panel(self):
+        """Re-read the team table and repaint the six party slots.
+
+        Called from :meth:`refresh_pokemon_grid`, so every window that refreshes
+        the PC after a trade, release, evolution or catch keeps the party in
+        sync without knowing about it.
+        """
+        if not self.party_slots or not is_alive(self.party_slots[0]):
+            return
+        self._party_members = load_party(services.db, self.logger)
+        self._party_ids = [str(p.get("individual_id")) for p in self._party_members]
+        for index, slot in enumerate(self.party_slots):
+            member = (
+                self._party_members[index]
+                if index < len(self._party_members)
+                else None
+            )
+            self._populate_party_slot(slot, member)
+
+    def _populate_party_slot(self, slot, member):
+        """Fill one party slot with a Pokémon record, or render it empty.
+
+        Parameters
+        ----------
+        slot : PartySlotButton
+            Slot to update in place.
+        member : dict or None
+            Full ``captured_pokemon`` record, or ``None`` for an empty slot.
+        """
+        theme_vars = self.theme_vars
+        border = theme_vars["button_border"]
+        clear_layout(slot._sprite_layout)
+        slot._movie_label = None
+        slot._member = member
+        slot._individual_id = None
+        slot.setToolTip("")
+
+        if member is None:
+            slot._name_label.setText(self.translator.translate("pc_party_empty_slot"))
+            slot._sub_label.setText(f"#{slot._slot_index + 1}")
+            slot._sprite_holder.setVisible(self.show_sprites_across_ankimon)
+            slot.setEnabled(False)
+            slot._base_bg = "transparent"
+            slot._hover_bg = "transparent"
+            slot._border = border
+            slot.setStyleSheet(
+                f"QPushButton {{ background-color: transparent; border: 1px dashed {border};"
+                f" border-radius: 6px; color: #94a3b8; }}"
+            )
+            return
+
+        is_shiny = bool(member.get("shiny", False))
+        display_name = member.get("nickname") or format_lore_name(
+            member.get("name") or "???"
+        )
+        gender = member.get("gender")
+        gender_symbol = {"M": "♂", "F": "♀"}.get(gender, "")
+        level_text = self.translator.translate(
+            "level_label", level=member.get("level", 1)
+        )
+        slot._name_label.setText(
+            fit_text_to_slot(
+                display_name,
+                slot._name_label.fontMetrics(),
+                self.party_slot_width - self.party_slot_height - 20,
+                max_lines=1,
+            )
+        )
+        slot._sub_label.setText(
+            " ".join(part for part in (level_text, gender_symbol, "⭐" if is_shiny else "") if part)
+        )
+
+        if self.show_sprites_across_ankimon:
+            slot._sprite_holder.setVisible(True)
+            sprite_side = self.party_slot_height - 12
+            try:
+                sprite_path = get_sprite_path(
+                    "front",
+                    "gif" if self.gif_in_collection else "png",
+                    member["id"],
+                    is_shiny,
+                    gender,
+                    member.get("name"),
+                )
+            except Exception:
+                sprite_path = ""
+            if sprite_path and self.gif_in_collection:
+                movie_label = ScaledMovieLabel(
+                    sprite_path, sprite_side, sprite_side, slot._sprite_holder
+                )
+                movie_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                slot._sprite_layout.addWidget(movie_label)
+                slot._movie_label = movie_label
+            elif sprite_path:
+                sprite_label = QLabel(slot._sprite_holder)
+                pixmap = QPixmap(sprite_path)
+                if not pixmap.isNull():
+                    sprite_label.setPixmap(
+                        pixmap.scaled(
+                            sprite_side,
+                            sprite_side,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    )
+                sprite_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                slot._sprite_layout.addWidget(sprite_label)
+        else:
+            slot._sprite_holder.setVisible(False)
+
+        if member.get("is_favorite"):
+            bg = theme_vars["favorite_color"]
+            h_bg = theme_vars["favorite_hover_color"]
+        else:
+            bg = theme_vars["slot_bg_color"]
+            h_bg = theme_vars["hover_color"]
+        slot._base_bg = bg
+        slot._hover_bg = h_bg
+        slot._border = border
+        slot._individual_id = member.get("individual_id")
+        slot.setEnabled(True)
+        slot.setStyleSheet(
+            f"QPushButton {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
+            f" QPushButton:hover {{ background-color: {h_bg}; }}"
+        )
+        tooltip_lines = [display_name]
+        if is_shiny:
+            tooltip_lines.append(self.translator.translate("shiny_tooltip"))
+        slot.setToolTip("\n".join(tooltip_lines))
+
     def _update_count_label(self):
+        """Show how many Pokémon the boxes hold; party members are not boxed."""
         if not hasattr(self, "count_label") or not is_alive(self.count_label):
             return
         shown = len(self._filtered_pokemon) if hasattr(self, "_filtered_pokemon") else 0
-        total = self._total_pokemon_count
+        in_party = len(getattr(self, "_party_members", []) or [])
+        total = max(0, self._total_pokemon_count - in_party)
         self.count_label.setText(f"Showing {shown:,} / {total:,} Pokémon")
 
-    def _refresh_slot_selection(self):
+    def _slot_widgets(self):
+        """Yield every box and party slot button that can carry a selection."""
         for i in range(self.pokemon_grid.count()):
             item = self.pokemon_grid.itemAt(i)
-            if not item:
-                continue
-            widget = item.widget()
+            widget = item.widget() if item else None
             if isinstance(widget, PokemonSlotButton):
-                pkmn_id = getattr(widget, "_individual_id", None)
-                is_selected = pkmn_id == self._selected_individual_id
-                bg = getattr(widget, "_base_bg", "transparent")
-                h_bg = getattr(widget, "_hover_bg", "transparent")
-                border = getattr(widget, "_border", "#888")
-                if is_selected:
-                    sheet = (
-                        f"QPushButton {{ background-color: {bg}; border: 3px solid #ffffff;"
-                        f" border-radius: 8px; }}"
-                        f" QPushButton:hover {{ background-color: rgba(255,255,255,0.15);"
-                        f" border-color: #f0f0f0; }}"
-                    )
-                else:
-                    sheet = (
-                        f"QPushButton {{ background-color: {bg}; border: 1px solid {border};"
-                        f" border-radius: 5px; }}"
-                        f" QPushButton:hover {{ background-color: {h_bg}; }}"
-                    )
-                widget.setStyleSheet(sheet)
+                yield widget
+        for slot in getattr(self, "party_slots", []) or []:
+            if is_alive(slot) and getattr(slot, "_individual_id", None):
+                yield slot
+
+    def _refresh_slot_selection(self):
+        """Repaint the selected-slot highlight across the boxes and the party."""
+        for widget in self._slot_widgets():
+            pkmn_id = getattr(widget, "_individual_id", None)
+            is_selected = pkmn_id == self._selected_individual_id
+            bg = getattr(widget, "_base_bg", "transparent")
+            h_bg = getattr(widget, "_hover_bg", "transparent")
+            border = getattr(widget, "_border", "#888")
+            if is_selected:
+                sheet = (
+                    f"QPushButton {{ background-color: {bg}; border: 3px solid #ffffff;"
+                    f" border-radius: 8px; }}"
+                    f" QPushButton:hover {{ background-color: rgba(255,255,255,0.15);"
+                    f" border-color: #f0f0f0; }}"
+                )
+            else:
+                sheet = (
+                    f"QPushButton {{ background-color: {bg}; border: 1px solid {border};"
+                    f" border-radius: 5px; }}"
+                    f" QPushButton:hover {{ background-color: {h_bg}; }}"
+                )
+            widget.setStyleSheet(sheet)
 
     def navigate_box(self, delta):
         """
@@ -1956,6 +2253,9 @@ class PokemonPC(QDialog):
         except Exception:
             pass
 
+        # Party members live in the left column, never in a box
+        self._party_ids = get_team_ids(services.db)
+
         # Build current filter state for cache check
         current_state = {
             "db": services.db.db_path.name
@@ -1977,6 +2277,7 @@ class PokemonPC(QDialog):
             "sort": self.sort_combo.currentText() if self.sort_combo else "Date",
             "desc": self.desc_sort.isChecked() if self.desc_sort else False,
             "count": self._total_pokemon_count,  # Force refresh if count changes
+            "party": tuple(self._party_ids),  # Team edits must invalidate the grid
         }
 
         if self._pokemon_cache is not None and self._last_filter_state == current_state:
@@ -1999,6 +2300,11 @@ class PokemonPC(QDialog):
             "FROM captured_pokemon WHERE 1=1"
         ]
         params = []
+
+        exclusion_clause, exclusion_params = party_exclusion_sql(self._party_ids)
+        if exclusion_clause:
+            query_parts.append(exclusion_clause)
+            params.extend(exclusion_params)
 
         # Name / Nickname filtering
         if self.search_edit is not None and self.search_edit.text():
@@ -2211,7 +2517,9 @@ class PokemonPC(QDialog):
         self.selected_sort_key = data if data is not None else text
         self.go_to_box(0)
 
-    def show_actions_submenu(self, button: QPushButton, pokemon: dict[str, Any]):
+    def show_actions_submenu(
+        self, button: QPushButton, pokemon: dict[str, Any], in_party: bool = False
+    ):
         """
         Displays a context menu with actions related to a specific Pokémon.
 
@@ -2220,11 +2528,14 @@ class PokemonPC(QDialog):
         - An option to view detailed information about the Pokémon.
         - An option to select the Pokémon as the main Pokémon.
         - An option to toggle the Pokémon's favorite status.
+        - "Add to team" for a boxed Pokémon (disabled when the party is full) or
+          "Remove from team" for a party member.
 
         Args:
             button (QPushButton): The button widget where the menu will be displayed.
             pokemon (dict[str, Any]): A dictionary containing Pokémon data, expected to include keys
                 like "name", "nickname", "gender", "level", and "is_favorite".
+            in_party (bool): True when the menu was opened on a party slot.
 
         Side Effects:
             - Displays a popup menu aligned below the specified button.
@@ -2267,6 +2578,7 @@ class PokemonPC(QDialog):
 
         menu.addAction(pokemon_details_action)
         menu.addAction(main_pokemon_action)
+        menu.addAction(self._build_team_action(menu, pokemon, in_party))
         menu.addAction(make_favorite_action)
         menu.addAction(give_held_item)
         if pokemon.get("held_item"):
@@ -2278,6 +2590,123 @@ class PokemonPC(QDialog):
 
         # Show the menu at the button's position, aligned below the button
         menu.exec(button.mapToGlobal(button.rect().topRight()))
+
+    _TEAM_OUTCOME_KEYS = {
+        "added": "pc_added_to_team",
+        "removed": "pc_removed_from_team",
+        "team_full": "pc_team_full",
+        "already_on_team": "pc_already_on_team",
+        "not_on_team": "pc_not_on_team",
+        "missing_pokemon": "pc_team_missing_pokemon",
+        "db_error": "pc_team_change_failed",
+    }
+
+    def _build_team_action(self, menu, pokemon, in_party: bool):
+        """Create the "Add to team" / "Remove from team" menu action.
+
+        Parameters
+        ----------
+        menu : QMenu
+            Menu the action will be added to (needed to enable tooltips).
+        pokemon : dict
+            Pokémon the menu was opened on.
+        in_party : bool
+            True when the Pokémon is already in a party slot.
+
+        Returns
+        -------
+        QAction
+            Connected action. Adding is disabled, with a tooltip, when the
+            party already holds ``MAX_TEAM_SIZE`` Pokémon.
+        """
+        if in_party:
+            action = QAction(self.translator.translate("pc_remove_from_team"), self)
+            action.triggered.connect(lambda: self.remove_from_team(pokemon))
+            return action
+        action = QAction(self.translator.translate("pc_add_to_team"), self)
+        if len(self._party_members) >= MAX_TEAM_SIZE:
+            action.setEnabled(False)
+            action.setToolTip(
+                self.translator.translate("pc_team_full", max=MAX_TEAM_SIZE)
+            )
+            menu.setToolTipsVisible(True)
+        action.triggered.connect(lambda: self.add_to_team(pokemon))
+        return action
+
+    def add_to_team(self, pokemon_stub):
+        """Move a boxed Pokémon into the first free party slot.
+
+        Parameters
+        ----------
+        pokemon_stub : dict
+            Grid record; only ``individual_id`` and the display name are read.
+        """
+        result = add_to_party(
+            services.db, pokemon_stub.get("individual_id"), self.logger
+        )
+        self._report_team_change(result, pokemon_stub)
+
+    def remove_from_team(self, pokemon_stub):
+        """Send a party member back to the boxes.
+
+        Parameters
+        ----------
+        pokemon_stub : dict
+            Party record; only ``individual_id`` and the display name are read.
+        """
+        result = remove_from_party(
+            services.db, pokemon_stub.get("individual_id"), self.logger
+        )
+        self._report_team_change(result, pokemon_stub)
+
+    def _report_team_change(self, result, pokemon_stub):
+        """Refresh the window after a party edit and tell the user the outcome.
+
+        Parameters
+        ----------
+        result : TeamChange
+            Outcome returned by the team seam.
+        pokemon_stub : dict
+            Pokémon the change was requested for (for the message text).
+        """
+        display_name = pokemon_stub.get("nickname") or format_lore_name(
+            pokemon_stub.get("name") or "???"
+        )
+        key = self._TEAM_OUTCOME_KEYS.get(result.outcome, "pc_team_change_failed")
+        message = self.translator.translate(
+            key, pokemon_name=display_name, slot=result.slot or 0, max=MAX_TEAM_SIZE
+        )
+        # Re-read the DB whenever the grid may be stale: a success moved a
+        # Pokémon between panels, and the "missing"/"already"/"not on team"
+        # outcomes mean the window was showing out-of-date membership.
+        if result.ok or result.outcome in (
+            "missing_pokemon",
+            "already_on_team",
+            "not_on_team",
+        ):
+            self.refresh_pokemon_grid()
+        if result.ok:
+            self._toast(message)
+        elif self.logger is not None:
+            self.logger.log_and_showinfo(
+                "error" if result.outcome == "db_error" else "info", message
+            )
+
+    def _toast(self, message: str):
+        """Show a non-blocking confirmation; log instead when Anki's UI is absent.
+
+        Parameters
+        ----------
+        message : str
+            Already translated text.
+        """
+        try:
+            from aqt.utils import tooltip
+
+            tooltip(message, parent=self)
+        except Exception:
+            if self.logger is not None:
+                self.logger.log("info", message)
 
     def pick_as_main_pokemon(self, pokemon_stub):
         """Select a live database record as main, ignoring stale grid entries."""
