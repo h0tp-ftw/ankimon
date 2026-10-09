@@ -17,6 +17,7 @@ from aqt.qt import (
 from aqt.theme import theme_manager  # Check if light / dark mode in Anki
 
 from PyQt6.QtWidgets import (
+    QApplication,
     QLineEdit,
     QComboBox,
     QCheckBox,
@@ -28,8 +29,16 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QStyle,
 )
-from PyQt6.QtCore import QSize, pyqtSignal, QTimer, QByteArray
-from PyQt6.QtGui import QIcon, QFont, QAction, QMovie, QCloseEvent, QResizeEvent
+from PyQt6.QtCore import QSize, pyqtSignal, QTimer, QByteArray, QMimeData
+from PyQt6.QtGui import (
+    QIcon,
+    QFont,
+    QAction,
+    QMovie,
+    QCloseEvent,
+    QResizeEvent,
+    QDrag,
+)
 
 from ..services import services
 from ..pyobj.pokemon_obj import PokemonObject
@@ -74,6 +83,8 @@ from ..functions.team_functions import (
     add_to_party,
     get_team_ids,
     load_party,
+    move_in_party,
+    place_in_party,
     remove_from_party,
 )
 
@@ -626,22 +637,203 @@ def _refresh_open_item_windows():
         web_win.update_ui_data()
 
 
+#: MIME type carried by a Pokémon dragged between the party column and the boxes.
+POKEMON_MIME = "application/x-ankimon-pokemon"
+
+#: Border used while a slot is a valid drop target.
+DROP_HIGHLIGHT_BORDER = "#fbbf24"
+
+
+def encode_drag_payload(individual_id, source: str) -> QMimeData:
+    """Build the mime data for a dragged Pokémon.
+
+    Parameters
+    ----------
+    individual_id : str
+        Id of the dragged Pokémon.
+    source : str
+        ``"box"`` or ``"party"``, where the drag started.
+
+    Returns
+    -------
+    QMimeData
+        Carries :data:`POKEMON_MIME` as JSON.
+    """
+    mime = QMimeData()
+    mime.setData(
+        POKEMON_MIME,
+        json.dumps({"individual_id": str(individual_id), "source": source}).encode(
+            "utf-8"
+        ),
+    )
+    return mime
+
+
+def decode_drag_payload(mime) -> tuple[str, str] | None:
+    """Read a dragged Pokémon back out of mime data.
+
+    Parameters
+    ----------
+    mime : QMimeData
+        Data attached to the drag.
+
+    Returns
+    -------
+    tuple of (str, str) or None
+        ``(individual_id, source)``, or ``None`` when the data is not an
+        Ankimon drag or is malformed.
+    """
+    try:
+        if mime is None or not mime.hasFormat(POKEMON_MIME):
+            return None
+        payload = json.loads(bytes(mime.data(POKEMON_MIME)).decode("utf-8"))
+        ind_id = str(payload.get("individual_id") or "")
+        source = payload.get("source")
+        if not ind_id or source not in ("box", "party"):
+            return None
+        return ind_id, source
+    except Exception:
+        return None
+
+
 class PokemonSlotButton(QPushButton):
+    """A box-grid slot: click for details, right-click for actions, drag to move.
+
+    A slot is a drag source for the Pokémon it shows and a drop target for a
+    party member being sent back to the boxes. Drops are reported through
+    :attr:`pokemonDropped` ``(individual_id, source)``; the owning window
+    decides what the drop means.
+    """
+
     rightClicked = pyqtSignal()
+    pokemonDropped = pyqtSignal(str, str)
+
+    #: Where a drag started from this kind of slot (see :func:`encode_drag_payload`).
+    _drag_source = "box"
+    _individual_id = None
+
+    def __init__(self, *args, **kwargs):
+        """Create the slot and enable drops onto it."""
+        super().__init__(*args, **kwargs)
+        self.setAcceptDrops(True)
+        self._drag_start_pos = None
+        self._sheet_before_drag = None
+
+    def accepts_drop_from(self, source: str) -> bool:
+        """Whether a drag that started at ``source`` may land on this slot.
+
+        Parameters
+        ----------
+        source : str
+            ``"box"`` or ``"party"``.
+
+        Returns
+        -------
+        bool
+            Box slots only take party members (that drop means "send back").
+        """
+        return source == "party"
+
+    def mousePressEvent(self, event):
+        """Remember where a left press started so a drag can begin later."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.position().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        """Start a drag once the left button has moved far enough."""
+        if (
+            self._drag_start_pos is not None
+            and self._individual_id
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and (event.position().toPoint() - self._drag_start_pos).manhattanLength()
+            >= QApplication.startDragDistance()
+        ):
+            self._drag_start_pos = None
+            self.setDown(False)
+            self.start_drag()
+            return
+        super().mouseMoveEvent(event)
+
+    def start_drag(self):
+        """Run a drag of this slot's Pokémon (blocks until it is dropped)."""
+        drag = QDrag(self)
+        drag.setMimeData(encode_drag_payload(self._individual_id, self._drag_source))
+        pixmap = self.grab()
+        if not pixmap.isNull():
+            drag.setPixmap(pixmap)
+            drag.setHotSpot(pixmap.rect().center())
+        drag.exec(Qt.DropAction.MoveAction)
 
     def mouseReleaseEvent(self, event):
+        """Emit :attr:`rightClicked` on a right release; otherwise behave as a button."""
+        self._drag_start_pos = None
         if event.button() == Qt.MouseButton.RightButton:
             self.rightClicked.emit()
         super().mouseReleaseEvent(event)
+
+    def _set_drop_highlight(self, on: bool):
+        """Show or clear the drop-target border without losing the normal sheet."""
+        if on:
+            if self._sheet_before_drag is None:
+                self._sheet_before_drag = self.styleSheet()
+            bg = getattr(self, "_base_bg", "transparent")
+            self.setStyleSheet(
+                f"QPushButton {{ background-color: {bg}; border: 3px solid {DROP_HIGHLIGHT_BORDER};"
+                f" border-radius: 8px; }}"
+            )
+        elif self._sheet_before_drag is not None:
+            self.setStyleSheet(self._sheet_before_drag)
+            self._sheet_before_drag = None
+
+    def _drop_payload(self, event):
+        """Decode an incoming drag, or ``None`` when this slot must ignore it."""
+        payload = decode_drag_payload(event.mimeData())
+        if payload is None:
+            return None
+        ind_id, source = payload
+        if ind_id == self._individual_id or not self.accepts_drop_from(source):
+            return None
+        return payload
+
+    def dragEnterEvent(self, event):
+        """Accept a Pokémon drag this slot can take and highlight the slot."""
+        if self._drop_payload(event) is None:
+            event.ignore()
+            return
+        self._set_drop_highlight(True)
+        event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        """Keep accepting while the drag stays over the slot."""
+        if self._drop_payload(event) is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        """Clear the highlight when the drag leaves."""
+        self._set_drop_highlight(False)
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event):
+        """Report the dropped Pokémon to the window."""
+        payload = self._drop_payload(event)
+        self._set_drop_highlight(False)
+        if payload is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.pokemonDropped.emit(*payload)
 
 
 class PartySlotButton(PokemonSlotButton):
     """One of the six fixed "Current Party" slots left of the box grid.
 
-    Behaves like a box slot (left click = details, right click = actions) but
-    keeps its child widgets alive across refreshes so only the text, sprite and
-    colours change. Kept as its own class so drag-and-drop between the party
-    and the boxes can be added here later without touching the grid slots.
+    Behaves like a box slot (left click = details, right click = actions,
+    drag to move) but keeps its child widgets alive across refreshes so only
+    the text, sprite and colours change. It takes drops from the boxes (join
+    the party here) and from other party slots (reorder).
 
     Parameters
     ----------
@@ -651,6 +843,8 @@ class PartySlotButton(PokemonSlotButton):
         Owning widget.
     """
 
+    _drag_source = "party"
+
     def __init__(self, slot_index: int, parent=None):
         """Create an empty slot; :meth:`PokemonPC._populate_party_slot` fills it."""
         super().__init__("", parent)
@@ -658,6 +852,54 @@ class PartySlotButton(PokemonSlotButton):
         self._individual_id = None
         self._member = None
         self._movie_label = None
+
+    def accepts_drop_from(self, source: str) -> bool:
+        """Party slots take both boxed Pokémon and other party members."""
+        return source in ("box", "party")
+
+
+class BoxDropArea(QWidget):
+    """The box grid's background: dropping a party member here sends it back.
+
+    Emits :attr:`pokemonDropped` ``(individual_id, source)`` like the slots do.
+    """
+
+    pokemonDropped = pyqtSignal(str, str)
+
+    def __init__(self, parent=None):
+        """Create the area and enable drops onto it."""
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    def _payload(self, event):
+        """Decode the drag, accepting party members only."""
+        payload = decode_drag_payload(event.mimeData())
+        if payload is None or payload[1] != "party":
+            return None
+        return payload
+
+    def dragEnterEvent(self, event):
+        """Accept a party member being dragged over the boxes."""
+        if self._payload(event) is None:
+            event.ignore()
+        else:
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        """Keep accepting while the drag stays over the grid."""
+        if self._payload(event) is None:
+            event.ignore()
+        else:
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        """Report the dropped party member to the window."""
+        payload = self._payload(event)
+        if payload is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.pokemonDropped.emit(*payload)
 
 
 def party_exclusion_sql(party_ids) -> tuple[str, list[str]]:
@@ -1047,8 +1289,9 @@ class PokemonPC(QDialog):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
 
-        self.grid_container = QWidget()
+        self.grid_container = BoxDropArea()
         self.grid_container.setStyleSheet("background: transparent;")
+        self.grid_container.pokemonDropped.connect(self.on_box_drop)
         self.pokemon_grid = QGridLayout(self.grid_container)
         self.pokemon_grid.setSpacing(5)
         self.pokemon_grid.setContentsMargins(0, 0, 0, 0)
@@ -1662,6 +1905,7 @@ class PokemonPC(QDialog):
                     )
                 )
                 pokemon_button._individual_id = pokemon["individual_id"]
+                pokemon_button.pokemonDropped.connect(self.on_box_drop)
                 self.pokemon_grid.addWidget(
                     pokemon_button, row, col, alignment=Qt.AlignmentFlag.AlignCenter
                 )
@@ -1911,6 +2155,11 @@ class PokemonPC(QDialog):
                 if s._member
                 else None
             )
+            slot.pokemonDropped.connect(
+                lambda ind_id, source, s=slot: self.on_party_slot_drop(
+                    s._slot_index, ind_id, source
+                )
+            )
             layout.addWidget(slot, alignment=Qt.AlignmentFlag.AlignHCenter)
             self.party_slots.append(slot)
             self._populate_party_slot(slot, None)
@@ -1960,7 +2209,8 @@ class PokemonPC(QDialog):
             slot._name_label.setText(self.translator.translate("pc_party_empty_slot"))
             slot._sub_label.setText(f"#{slot._slot_index + 1}")
             slot._sprite_holder.setVisible(self.show_sprites_across_ankimon)
-            slot.setEnabled(False)
+            # Stays enabled: a disabled widget cannot be a drop target.
+            slot.setEnabled(True)
             slot._base_bg = "transparent"
             slot._hover_bg = "transparent"
             slot._border = border
@@ -2594,6 +2844,8 @@ class PokemonPC(QDialog):
     _TEAM_OUTCOME_KEYS = {
         "added": "pc_added_to_team",
         "removed": "pc_removed_from_team",
+        "moved": "pc_moved_in_team",
+        "swapped": "pc_swapped_into_team",
         "team_full": "pc_team_full",
         "already_on_team": "pc_already_on_team",
         "not_on_team": "pc_not_on_team",
@@ -2659,6 +2911,61 @@ class PokemonPC(QDialog):
         )
         self._report_team_change(result, pokemon_stub)
 
+    def on_party_slot_drop(self, slot_index: int, individual_id: str, source: str):
+        """Handle a Pokémon dropped onto a party slot.
+
+        A boxed Pokémon joins the party in that slot (swapping out any
+        occupant); a party member is moved there, shifting the others.
+
+        Parameters
+        ----------
+        slot_index : int
+            0-based slot that received the drop.
+        individual_id : str
+            Dragged Pokémon.
+        source : str
+            ``"box"`` or ``"party"``.
+        """
+        record = self._record_for_message(individual_id)
+        if source == "party":
+            result = move_in_party(services.db, individual_id, slot_index, self.logger)
+        else:
+            result = place_in_party(services.db, individual_id, slot_index, self.logger)
+        self._report_team_change(result, record)
+
+    def on_box_drop(self, individual_id: str, source: str):
+        """Handle a Pokémon dropped onto the box grid: party members go back.
+
+        Parameters
+        ----------
+        individual_id : str
+            Dragged Pokémon.
+        source : str
+            ``"box"`` drops are a no-op; ``"party"`` removes the member.
+        """
+        if source != "party":
+            return
+        result = remove_from_party(services.db, individual_id, self.logger)
+        self._report_team_change(result, self._record_for_message(individual_id))
+
+    def _record_for_message(self, individual_id):
+        """Return the stored record for ``individual_id`` or a minimal stand-in.
+
+        Parameters
+        ----------
+        individual_id : str
+            Id to look up.
+
+        Returns
+        -------
+        dict
+            Always has ``individual_id`` and ``name`` so messages can be built.
+        """
+        record = services.db.get_pokemon(individual_id) if individual_id else None
+        if not record:
+            return {"individual_id": individual_id, "name": "???"}
+        return record
+
     def _report_team_change(self, result, pokemon_stub):
         """Refresh the window after a party edit and tell the user the outcome.
 
@@ -2673,8 +2980,18 @@ class PokemonPC(QDialog):
             pokemon_stub.get("name") or "???"
         )
         key = self._TEAM_OUTCOME_KEYS.get(result.outcome, "pc_team_change_failed")
+        replaced_name = ""
+        if getattr(result, "replaced", None):
+            replaced = self._record_for_message(result.replaced)
+            replaced_name = replaced.get("nickname") or format_lore_name(
+                replaced.get("name") or "???"
+            )
         message = self.translator.translate(
-            key, pokemon_name=display_name, slot=result.slot or 0, max=MAX_TEAM_SIZE
+            key,
+            pokemon_name=display_name,
+            slot=result.slot or 0,
+            max=MAX_TEAM_SIZE,
+            replaced_name=replaced_name,
         )
         # Re-read the DB whenever the grid may be stale: a success moved a
         # Pokémon between panels, and the "missing"/"already"/"not on team"

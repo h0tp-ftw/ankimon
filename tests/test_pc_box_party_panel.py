@@ -233,6 +233,8 @@ def _host(pc_box, members=None):
         _party_ids=[],
         show_pokemon_details=mock.MagicMock(),
         show_actions_submenu=mock.MagicMock(),
+        on_party_slot_drop=mock.MagicMock(),
+        on_box_drop=mock.MagicMock(),
     )
     for name in ("_build_party_panel", "refresh_party_panel", "_populate_party_slot"):
         setattr(
@@ -275,7 +277,8 @@ def test_build_party_panel_creates_six_empty_slots(pc_box):
         assert isinstance(slot, pc_box.PartySlotButton)
         assert slot._slot_index == index
         assert slot._individual_id is None and slot._member is None
-        assert not slot.isEnabled()
+        assert slot.isEnabled()  # stays enabled so it can take drops
+        assert slot.acceptDrops()
         assert slot._name_label.text() == "pc_party_empty_slot"
         assert "dashed" in slot.styleSheet()
 
@@ -297,9 +300,9 @@ def test_populate_party_slot_shows_name_level_and_gender(pc_box):
     assert slot._base_bg == host.theme_vars["slot_bg_color"]
     assert "Lickilicky" in slot.toolTip()
 
-    # Emptying the same slot again clears the record and disables it.
+    # Emptying the same slot again clears the record.
     host._populate_party_slot(slot, None)
-    assert slot._individual_id is None and not slot.isEnabled()
+    assert slot._individual_id is None and slot._member is None
 
 
 def test_populate_party_slot_prefers_nickname_and_favorite_colour(pc_box):
@@ -327,7 +330,7 @@ def test_refresh_party_panel_fills_from_load_party_in_order(pc_box, monkeypatch)
     assert host._party_ids == ["a", "b"]
     assert [s._individual_id for s in host.party_slots] == ["a", "b", None, None, None, None]
     assert host.party_slots[1]._name_label.text() == "Diamond"
-    assert not host.party_slots[2].isEnabled()
+    assert host.party_slots[2]._member is None
 
 
 def test_party_slot_click_routes_to_details_and_menu(pc_box, monkeypatch):
@@ -475,3 +478,215 @@ def test_slot_selection_covers_party_slots(pc_box, monkeypatch):
 
     assert "3px solid #ffffff" in host.party_slots[0].styleSheet()
     assert "dashed" in host.party_slots[1].styleSheet()  # empty slot untouched
+
+
+class _Drop:
+    """A drag-enter or drop event plus the mime object it borrows.
+
+    ``QDropEvent`` only stores a pointer to the ``QMimeData``; the Python side
+    must keep that object alive while the event is dispatched, so the two are
+    bundled here and the event is dispatched through :meth:`send`.
+    """
+
+    def __init__(self, pc_box, individual_id, source, kind="drop"):
+        """Build the event for a Pokémon drag that started at ``source``."""
+        from PyQt6.QtCore import Qt, QPoint, QPointF
+        from PyQt6.QtGui import QDragEnterEvent, QDropEvent
+
+        self.mime = pc_box.encode_drag_payload(individual_id, source)
+        if kind == "enter":
+            self.event = QDragEnterEvent(
+                QPoint(5, 5),
+                Qt.DropAction.MoveAction,
+                self.mime,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        else:
+            self.event = QDropEvent(
+                QPointF(5, 5),
+                Qt.DropAction.MoveAction,
+                self.mime,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+    def send(self, widget):
+        """Dispatch to the matching handler and return whether it was accepted."""
+        from PyQt6.QtGui import QDragEnterEvent
+
+        if isinstance(self.event, QDragEnterEvent):
+            widget.dragEnterEvent(self.event)
+        else:
+            widget.dropEvent(self.event)
+        return self.event.isAccepted()
+
+
+def test_drag_payload_round_trips_and_rejects_garbage(pc_box):
+    """The mime payload survives encode/decode; foreign or malformed data is None."""
+    from PyQt6.QtCore import QMimeData
+
+    mime = pc_box.encode_drag_payload("abc", "party")
+    assert mime.hasFormat(pc_box.POKEMON_MIME)
+    assert pc_box.decode_drag_payload(mime) == ("abc", "party")
+
+    assert pc_box.decode_drag_payload(None) is None
+    text = QMimeData()
+    text.setText("abc")
+    assert pc_box.decode_drag_payload(text) is None
+    bad = QMimeData()
+    bad.setData(pc_box.POKEMON_MIME, b"{not json")
+    assert pc_box.decode_drag_payload(bad) is None
+    wrong_source = QMimeData()
+    wrong_source.setData(pc_box.POKEMON_MIME, b'{"individual_id": "x", "source": "moon"}')
+    assert pc_box.decode_drag_payload(wrong_source) is None
+
+
+def test_party_slot_accepts_box_and_party_drags_and_reports_drop(pc_box, monkeypatch):
+    """A party slot highlights on enter, emits (id, source) on drop, ignores itself."""
+    host = _host(pc_box)
+    host._build_party_panel()
+    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: [_member("m1")])
+    host.refresh_party_panel()
+    slot = host.party_slots[0]
+    received = []
+    slot.pokemonDropped.connect(lambda ind_id, source: received.append((ind_id, source)))
+
+    assert _Drop(pc_box, "boxed", "box", "enter").send(slot)
+    assert pc_box.DROP_HIGHLIGHT_BORDER in slot.styleSheet()
+
+    assert _Drop(pc_box, "boxed", "box").send(slot)
+    assert received == [("boxed", "box")]
+    host.on_party_slot_drop.assert_called_with(0, "boxed", "box")
+    assert pc_box.DROP_HIGHLIGHT_BORDER not in slot.styleSheet()  # highlight cleared
+
+    assert _Drop(pc_box, "other", "party").send(slot)
+    assert received[-1] == ("other", "party")
+
+    # Dropping a slot onto itself is ignored.
+    assert not _Drop(pc_box, "m1", "party").send(slot)
+    assert len(received) == 2
+
+    # Empty slots are drop targets too.
+    assert _Drop(pc_box, "boxed", "box", "enter").send(host.party_slots[3])
+
+
+def test_box_slot_and_grid_take_party_members_only(pc_box):
+    """Box slots and the grid background accept party drags and refuse box drags."""
+    box_slot = pc_box.PokemonSlotButton("")
+    box_slot._individual_id = "boxed"
+    got = []
+    box_slot.pokemonDropped.connect(lambda i, s: got.append((i, s)))
+
+    assert not _Drop(pc_box, "another", "box").send(box_slot)
+    assert got == []
+
+    assert _Drop(pc_box, "member", "party").send(box_slot)
+    assert got == [("member", "party")]
+
+    area = pc_box.BoxDropArea()
+    area_got = []
+    area.pokemonDropped.connect(lambda i, s: area_got.append((i, s)))
+    assert not _Drop(pc_box, "x", "box").send(area)
+    assert _Drop(pc_box, "member", "party").send(area)
+    assert area_got == [("member", "party")]
+
+
+def test_drop_handlers_route_to_place_move_and_remove(pc_box, monkeypatch):
+    """Party-slot drops place (box) or move (party); grid drops remove party members."""
+    team_mod = sys.modules["Ankimon.functions.team_functions"]
+    fake_db = mock.MagicMock()
+    fake_db.get_pokemon.return_value = {"individual_id": "p", "name": "eevee"}
+    pc_box._services_obj.db = fake_db
+    place = mock.MagicMock(return_value=team_mod.TeamChange(True, "added", slot=2))
+    move = mock.MagicMock(return_value=team_mod.TeamChange(True, "moved", slot=1))
+    remove = mock.MagicMock(return_value=team_mod.TeamChange(True, "removed"))
+    monkeypatch.setattr(pc_box, "place_in_party", place)
+    monkeypatch.setattr(pc_box, "move_in_party", move)
+    monkeypatch.setattr(pc_box, "remove_from_party", remove)
+    host = mock.MagicMock()
+    host._record_for_message = types.MethodType(pc_box.PokemonPC._record_for_message, host)
+
+    pc_box.PokemonPC.on_party_slot_drop(host, 1, "p", "box")
+    place.assert_called_once_with(fake_db, "p", 1, host.logger)
+    pc_box.PokemonPC.on_party_slot_drop(host, 0, "p", "party")
+    move.assert_called_once_with(fake_db, "p", 0, host.logger)
+    pc_box.PokemonPC.on_box_drop(host, "p", "box")
+    remove.assert_not_called()
+    pc_box.PokemonPC.on_box_drop(host, "p", "party")
+    remove.assert_called_once_with(fake_db, "p", host.logger)
+    assert host._report_team_change.call_count == 3
+    # Messages are built from the stored record, with a stand-in when it is gone.
+    fake_db.get_pokemon.return_value = None
+    assert host._record_for_message("gone") == {"individual_id": "gone", "name": "???"}
+
+
+def test_report_team_change_swapped_names_the_replaced_pokemon(pc_box):
+    """A swap message carries both the newcomer and the Pokémon sent back."""
+    TeamChange = sys.modules["Ankimon.functions.team_functions"].TeamChange
+    host = _report_host(pc_box)
+    host._record_for_message = lambda ind_id: {"individual_id": ind_id, "name": "snorlax"}
+    stub = {"individual_id": "p", "name": "eevee"}
+
+    pc_box.PokemonPC._report_team_change(
+        host, TeamChange(True, "swapped", slot=1, replaced="old"), stub
+    )
+
+    message = host._toast.call_args.args[0]
+    assert message.startswith("pc_swapped_into_team")
+    assert "'replaced_name': 'Snorlax'" in message and "'slot': 1" in message
+    host.refresh_pokemon_grid.assert_called_once_with()
+
+
+def test_drag_starts_only_after_the_threshold_and_only_with_a_pokemon(pc_box, monkeypatch):
+    """A left press plus a long enough move starts a drag; small moves and empty slots do not."""
+    from PyQt6.QtCore import Qt, QPointF
+    from PyQt6.QtGui import QMouseEvent
+    from PyQt6.QtWidgets import QApplication
+
+    slot = pc_box.PokemonSlotButton("")
+    slot.resize(75, 75)
+    started = []
+    monkeypatch.setattr(slot, "start_drag", lambda: started.append(True))
+    far = QApplication.startDragDistance() + 5
+
+    def press():
+        """Left press at the slot's origin."""
+        slot.mousePressEvent(
+            QMouseEvent(
+                QMouseEvent.Type.MouseButtonPress,
+                QPointF(0, 0),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    def move(dx):
+        """Mouse move with the left button held, ``dx`` pixels to the right."""
+        slot.mouseMoveEvent(
+            QMouseEvent(
+                QMouseEvent.Type.MouseMove,
+                QPointF(dx, 0),
+                Qt.MouseButton.NoButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    # No Pokémon in the slot: never drags.
+    press()
+    move(far)
+    assert started == []
+
+    # A Pokémon but a tiny move: not yet.
+    slot._individual_id = "p"
+    press()
+    move(1)
+    assert started == []
+
+    # Past the platform threshold: one drag, and the press is consumed.
+    move(far)
+    assert started == [True]
+    move(far * 2)
+    assert started == [True]

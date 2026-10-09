@@ -31,20 +31,25 @@ class TeamChange:
     ok : bool
         True when the team table was rewritten.
     outcome : str
-        One of ``"added"``, ``"removed"``, ``"team_full"``, ``"already_on_team"``,
-        ``"not_on_team"``, ``"missing_pokemon"`` or ``"db_error"``.
+        One of ``"added"``, ``"removed"``, ``"moved"``, ``"swapped"``,
+        ``"team_full"``, ``"already_on_team"``, ``"not_on_team"``,
+        ``"missing_pokemon"`` or ``"db_error"``.
     slot : int, optional
-        1-based slot the Pokémon occupies after the change (``"added"`` and
-        ``"already_on_team"`` outcomes), otherwise ``None``.
+        1-based slot the Pokémon occupies after the change (``"added"``,
+        ``"moved"``, ``"swapped"`` and ``"already_on_team"`` outcomes),
+        otherwise ``None``.
     pruned : int
         Number of stale team rows (ids with no matching Pokémon) dropped while
         rewriting. Zero when nothing was rewritten.
+    replaced : str, optional
+        For ``"swapped"``: id of the former occupant that went back to the PC.
     """
 
     ok: bool
     outcome: str
     slot: Optional[int] = None
     pruned: int = 0
+    replaced: Optional[str] = None
 
 
 def _log(level: str, message: str, logger=None) -> None:
@@ -308,3 +313,95 @@ def remove_from_party(db, individual_id, logger=None) -> TeamChange:
     if not _write_team(db, ids, logger):
         return TeamChange(False, "db_error")
     return TeamChange(True, "removed", pruned=pruned)
+
+
+def move_in_party(db, individual_id, target_index: int, logger=None) -> TeamChange:
+    """Move a party member to another slot, shifting the others along.
+
+    Parameters
+    ----------
+    db : AnkimonDB
+        Database holding the team table.
+    individual_id : str
+        Id of the member to move.
+    target_index : int
+        0-based destination slot. Values past the last member clamp to the end.
+    logger : object, optional
+        Logger for diagnostics.
+
+    Returns
+    -------
+    TeamChange
+        ``"moved"`` with the new 1-based ``slot``; ``"not_on_team"`` when the
+        id is not in a slot; ``"db_error"`` when the table could not be read
+        or written. A move onto its own slot still reports ``"moved"`` without
+        writing anything.
+    """
+    ind_id = str(individual_id or "")
+    if not ind_id:
+        return TeamChange(False, "not_on_team")
+    try:
+        ids, pruned = _clean_team_ids(db, logger)
+    except Exception as e:
+        _log("error", f"Could not read the party before moving {ind_id!r}: {e}", logger)
+        return TeamChange(False, "db_error")
+    if ind_id not in ids:
+        return TeamChange(False, "not_on_team")
+    ids.remove(ind_id)
+    target = max(0, min(int(target_index), len(ids)))
+    ids.insert(target, ind_id)
+    if not _write_team(db, ids, logger):
+        return TeamChange(False, "db_error")
+    return TeamChange(True, "moved", slot=target + 1, pruned=pruned)
+
+
+def place_in_party(db, individual_id, target_index: int, logger=None) -> TeamChange:
+    """Put a boxed Pokémon into a specific party slot (drag-and-drop semantics).
+
+    Dropping onto an occupied slot swaps the occupant out to the PC, as in the
+    main-series games; dropping past the last member appends. A Pokémon that is
+    already on the team is simply moved (see :func:`move_in_party`).
+
+    Parameters
+    ----------
+    db : AnkimonDB
+        Database holding the collection and the team table.
+    individual_id : str
+        Id of the Pokémon to place.
+    target_index : int
+        0-based destination slot.
+    logger : object, optional
+        Logger for diagnostics.
+
+    Returns
+    -------
+    TeamChange
+        ``"added"`` (appended), ``"swapped"`` (with ``replaced`` set to the
+        former occupant) or ``"moved"``; otherwise ``"missing_pokemon"``,
+        ``"team_full"`` or ``"db_error"`` and nothing is written.
+    """
+    ind_id = str(individual_id or "")
+    if not ind_id:
+        return TeamChange(False, "missing_pokemon")
+    try:
+        if not _existing_ids(db, [ind_id]):
+            return TeamChange(False, "missing_pokemon")
+        ids, pruned = _clean_team_ids(db, logger)
+    except Exception as e:
+        _log("error", f"Could not read the party before placing {ind_id!r}: {e}", logger)
+        return TeamChange(False, "db_error")
+    if ind_id in ids:
+        return move_in_party(db, ind_id, target_index, logger)
+    target = max(0, int(target_index))
+    if target < len(ids):
+        replaced = ids[target]
+        ids[target] = ind_id
+        if not _write_team(db, ids, logger):
+            return TeamChange(False, "db_error")
+        return TeamChange(True, "swapped", slot=target + 1, pruned=pruned, replaced=replaced)
+    if len(ids) >= MAX_TEAM_SIZE:
+        return TeamChange(False, "team_full")
+    ids.append(ind_id)
+    if not _write_team(db, ids, logger):
+        return TeamChange(False, "db_error")
+    return TeamChange(True, "added", slot=len(ids), pruned=pruned)

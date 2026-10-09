@@ -478,6 +478,8 @@
   "pc_team_full": "Your party is full ({max} Pokémon). Remove one first.",
   "pc_added_to_team": "{pokemon_name} joined your party (slot {slot}).",
   "pc_removed_from_team": "{pokemon_name} was sent back to the PC.",
+  "pc_moved_in_team": "{pokemon_name} moved to slot {slot}.",
+  "pc_swapped_into_team": "{pokemon_name} joined your party (slot {slot}); {replaced_name} was sent back to the PC.",
   "pc_already_on_team": "{pokemon_name} is already in your party.",
   "pc_not_on_team": "{pokemon_name} is not in your party.",
   "pc_team_missing_pokemon": "That Pokémon is no longer in your collection.",
