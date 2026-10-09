@@ -17,6 +17,7 @@ from conftest import isolated_modules
 
 class Settings(dict):
     def set(self, key, value):
+        """Store a setting, mirroring the real Settings API."""
         self[key] = value
 
 
@@ -30,6 +31,7 @@ FULL_BULBASAUR_SET = ["tackle", "growl", "vinewhip", "razorleaf"]
 
 @pytest.fixture
 def xp_share(tmp_path, monkeypatch):
+    """Isolated SQLite + headless trainer_functions with a scripted UI presenter."""
     with isolated_modules("Ankimon", "aqt"):
         src = Path(__file__).resolve().parents[1] / "src"
         for name in ("Ankimon", "Ankimon.functions", "Ankimon.pyobj"):
@@ -56,13 +58,14 @@ def xp_share(tmp_path, monkeypatch):
         window.translator.translate.return_value = ""
 
         def save(individual_id, species, level, attacks):
+            """Persist a minimal Pokemon record of ``species`` at ``level``."""
             pokemon = {
                 "individual_id": individual_id,
                 "level": level,
                 "xp": 0,
                 "friendship": 70,
                 "held_item": None,
-                "attacks": list(attacks),
+                "attacks": list(attacks) if isinstance(attacks, list) else attacks,
                 "pokemon_defeated": 0,
                 "everstone": False,
                 "evolution_rejected": False,
@@ -73,6 +76,7 @@ def xp_share(tmp_path, monkeypatch):
             return pokemon
 
         def xp_to_reach(species, start, target):
+            """XP that lifts ``species`` from ``start`` to exactly ``target``."""
             # The level-up loop advances while exp exceeds the current level's
             # requirement, so +1 guarantees the final level is crossed.
             needed = sum(
@@ -82,6 +86,7 @@ def xp_share(tmp_path, monkeypatch):
             return needed + 1
 
         def grant(holder_exp, mode="classic"):
+            """Run the XP Share award so the holder receives ``holder_exp``."""
             # Classic mode halves the reward on its way to the holder.
             exp = holder_exp * 2 if mode == "classic" else holder_exp
             settings["trainer.xp_share_mode"] = mode
@@ -98,6 +103,7 @@ def xp_share(tmp_path, monkeypatch):
 
 
 def test_free_slot_learns_move_without_prompt(xp_share):
+    """A free slot takes the new move silently; no dialog."""
     s = xp_share
     s.save("active", CHARMANDER, 50, ["flamethrower"])
     s.save("holder", CHARMANDER, 3, ["scratch", "growl"])
@@ -112,6 +118,7 @@ def test_free_slot_learns_move_without_prompt(xp_share):
 
 
 def test_multi_level_jump_collects_moves_from_every_level(xp_share):
+    """Moves from every gained level are learned, not just the last one."""
     s = xp_share
     s.save("active", CHARMANDER, 50, ["flamethrower"])
     s.save("holder", CHARMANDER, 3, ["scratch", "growl"])
@@ -126,6 +133,7 @@ def test_multi_level_jump_collects_moves_from_every_level(xp_share):
 
 
 def test_full_moveset_prompts_once_with_every_new_move(xp_share):
+    """A full set gets one prompt listing all new moves; the answer is stored slot-wise."""
     s = xp_share
     s.save("active", BULBASAUR, 50, ["solarbeam"])
     s.save("holder", BULBASAUR, 14, FULL_BULBASAUR_SET)
@@ -146,6 +154,7 @@ def test_full_moveset_prompts_once_with_every_new_move(xp_share):
 
 
 def test_declining_prompt_keeps_current_moves(xp_share):
+    """Cancelling the prompt keeps the current moves but still levels up."""
     s = xp_share
     s.save("active", BULBASAUR, 50, ["solarbeam"])
     s.save("holder", BULBASAUR, 14, FULL_BULBASAUR_SET)
@@ -169,6 +178,7 @@ def test_declining_prompt_keeps_current_moves(xp_share):
     ],
 )
 def test_invalid_prompt_answer_keeps_current_moves(xp_share, bad_answer):
+    """Malformed presenter answers are treated as cancel and logged as a warning."""
     s = xp_share
     s.save("active", BULBASAUR, 50, ["solarbeam"])
     s.save("holder", BULBASAUR, 14, FULL_BULBASAUR_SET)
@@ -184,6 +194,7 @@ def test_invalid_prompt_answer_keeps_current_moves(xp_share, bad_answer):
 
 
 def test_prompt_failure_still_saves_the_reward(xp_share):
+    """A crashing prompt must not lose the level, XP or friendship reward."""
     s = xp_share
     s.save("active", BULBASAUR, 50, ["solarbeam"])
     s.save("holder", BULBASAUR, 14, FULL_BULBASAUR_SET)
@@ -199,10 +210,12 @@ def test_prompt_failure_still_saves_the_reward(xp_share):
 
 
 def test_new_moves_are_saved_before_the_evolution_check(xp_share, monkeypatch):
+    """Learned moves are persisted and passed to the evolution check."""
     s = xp_share
     seen = {}
 
     def fake_evolution_check(individual_id, pokemon_id, level, evo_window, *args, **kwargs):
+        """Record what the evolution check sees instead of prompting."""
         seen["current_attacks"] = list(kwargs.get("current_attacks") or [])
         seen["persisted"] = s.db.get_pokemon(individual_id)["attacks"]
         return None
@@ -221,6 +234,7 @@ def test_new_moves_are_saved_before_the_evolution_check(xp_share, monkeypatch):
 
 
 def test_oras_mode_teaches_every_teammate_but_not_the_active_one(xp_share):
+    """ORAS mode grants moves to every teammate except the active Pokemon."""
     s = xp_share
     s.save("active", CHARMANDER, 3, ["scratch", "growl"])
     s.save("holder", CHARMANDER, 3, ["scratch", "growl"])
@@ -241,6 +255,7 @@ def test_oras_mode_teaches_every_teammate_but_not_the_active_one(xp_share):
 
 
 def test_bulk_resolve_never_prompts(xp_share, monkeypatch):
+    """During bulk resolve no dialog opens and the moveset stays unchanged."""
     s = xp_share
     utils = importlib.import_module("Ankimon.utils")
     monkeypatch.setattr(utils, "in_bulk_resolve", True, raising=False)
@@ -252,3 +267,29 @@ def test_bulk_resolve_never_prompts(xp_share, monkeypatch):
 
     s.ui.choose_moveset.assert_not_called()
     assert s.db.get_pokemon("holder")["attacks"] == FULL_BULBASAUR_SET
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "not json at all",  # unparseable string
+        "\"tackle\"",  # JSON, but a scalar
+        42,  # scalar
+        ["tackle", 5],  # list with a non-id entry
+        None,  # missing
+    ],
+)
+def test_unreadable_stored_moves_are_never_overwritten(xp_share, stored):
+    """A corrupt ``attacks`` value is left exactly as stored; only the level-up is saved."""
+    s = xp_share
+    s.save("active", CHARMANDER, 50, ["flamethrower"])
+    s.save("holder", CHARMANDER, 3, stored)
+    s.db.save_team([{"individual_id": "active"}, {"individual_id": "holder"}])
+
+    s.grant(s.xp_to_reach(CHARMANDER, 3, 4))
+
+    holder = s.db.get_pokemon("holder")
+    assert holder["level"] == 4
+    assert holder["attacks"] == stored
+    s.ui.choose_moveset.assert_not_called()
+    assert any(call.args[0] == "error" for call in s.logger.log.call_args_list)

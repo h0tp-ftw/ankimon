@@ -49,6 +49,8 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
         Logger used for the learn / discard messages.
     pokemon : dict
         Stored Pokemon record; ``pokemon["attacks"]`` is updated in place.
+        Left untouched (and nothing is learned) when it is not a list of move
+        ids, so a corrupt record can never be overwritten by this step.
     start_level : int
         Level before the XP was applied (exclusive).
     end_level : int
@@ -58,14 +60,22 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
     -------
     None
     """
-    attacks = pokemon.get("attacks") or []
+    display_name = str(pokemon.get("name", "")).capitalize()
+    attacks = pokemon.get("attacks")
     if isinstance(attacks, str):
         try:
             attacks = json.loads(attacks)
         except Exception:
-            attacks = []
+            attacks = None
+    if not isinstance(attacks, list) or not all(isinstance(m, str) for m in attacks):
+        # Never rebuild a moveset we cannot read: the record is saved right
+        # after this, and a bad guess here would overwrite the stored moves.
+        logger.log(
+            "error",
+            f"Skipping level-up moves for {display_name}: stored attacks are not a list of move ids ({pokemon.get('attacks')!r}).",
+        )
+        return
     attacks = list(attacks)
-    display_name = str(pokemon.get("name", "")).capitalize()
 
     # A learnset failure must never block the XP reward saved after this.
     try:
