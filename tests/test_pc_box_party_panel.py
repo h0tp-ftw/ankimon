@@ -268,7 +268,7 @@ def test_party_exclusion_sql_hides_members_and_is_empty_without_team(pc_box):
 
 
 def test_build_party_panel_creates_six_empty_slots(pc_box):
-    """The column holds exactly MAX_TEAM_SIZE disabled, dashed, empty slots."""
+    """The column holds exactly MAX_TEAM_SIZE dashed, empty, drop-enabled slots."""
     host = _host(pc_box)
     panel = host._build_party_panel()
     assert panel is host.party_panel
@@ -318,27 +318,25 @@ def test_populate_party_slot_prefers_nickname_and_favorite_colour(pc_box):
     assert slot._base_bg == host.theme_vars["favorite_color"]
 
 
-def test_refresh_party_panel_fills_from_load_party_in_order(pc_box, monkeypatch):
-    """Slots mirror ``load_party`` order; the rest stay empty; ids are cached."""
+def test_refresh_party_panel_fills_from_resolved_party_in_order(pc_box):
+    """Slots mirror ``_party_members`` order; the rest stay empty."""
     host = _host(pc_box)
     host._build_party_panel()
-    members = [_member("a", name="jade"), _member("b", name="diamond")]
-    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: list(members))
+    host._party_members = [_member("a", name="jade"), _member("b", name="diamond")]
 
     host.refresh_party_panel()
 
-    assert host._party_ids == ["a", "b"]
     assert [s._individual_id for s in host.party_slots] == ["a", "b", None, None, None, None]
     assert host.party_slots[1]._name_label.text() == "Diamond"
     assert host.party_slots[2]._member is None
 
 
-def test_party_slot_click_routes_to_details_and_menu(pc_box, monkeypatch):
+def test_party_slot_click_routes_to_details_and_menu(pc_box):
     """Left click shows details for the member; right click opens the party menu."""
     host = _host(pc_box)
     host._build_party_panel()
     member = _member("m1")
-    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: [member])
+    host._party_members = [member]
     host.refresh_party_panel()
     slot = host.party_slots[0]
 
@@ -462,13 +460,13 @@ def test_add_and_remove_go_through_the_team_seam(pc_box, monkeypatch):
     host._report_team_change.assert_called_with(removed, stub)
 
 
-def test_slot_selection_covers_party_slots(pc_box, monkeypatch):
+def test_slot_selection_covers_party_slots(pc_box):
     """The white selection ring is applied to a selected party member too."""
     from PyQt6.QtWidgets import QGridLayout
 
     host = _host(pc_box)
     host._build_party_panel()
-    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: [_member("sel")])
+    host._party_members = [_member("sel")]
     host.refresh_party_panel()
     host.pokemon_grid = QGridLayout()
     host._selected_individual_id = "sel"
@@ -542,11 +540,11 @@ def test_drag_payload_round_trips_and_rejects_garbage(pc_box):
     assert pc_box.decode_drag_payload(wrong_source) is None
 
 
-def test_party_slot_accepts_box_and_party_drags_and_reports_drop(pc_box, monkeypatch):
+def test_party_slot_accepts_box_and_party_drags_and_reports_drop(pc_box):
     """A party slot highlights on enter, emits (id, source) on drop, ignores itself."""
     host = _host(pc_box)
     host._build_party_panel()
-    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: [_member("m1")])
+    host._party_members = [_member("m1")]
     host.refresh_party_panel()
     slot = host.party_slots[0]
     received = []
@@ -690,3 +688,68 @@ def test_drag_starts_only_after_the_threshold_and_only_with_a_pokemon(pc_box, mo
     assert started == [True]
     move(far * 2)
     assert started == [True]
+
+
+def test_party_slot_shows_bff_state(pc_box):
+    """The highest-friendship Pokémon keeps its hot-pink BFF look inside the party."""
+    host = _host(pc_box)
+    host._build_party_panel()
+    host._bff_id = "bff"
+    slot = host.party_slots[0]
+    host._populate_party_slot(slot, _member("bff", is_favorite=True))
+    assert slot._base_bg == "#FF69B4"  # BFF wins over favourite
+    assert "💖" in slot._sub_label.text()
+    assert "bff_tooltip" in slot.toolTip()
+
+
+def test_fetch_resolves_party_once_for_grid_and_column(pc_box, monkeypatch):
+    """The grid exclusion and the column use the same resolved party.
+
+    A placeholder for an unreadable record is still a displayed member, so it
+    is hidden from the grid and keeps its slot index.
+    """
+    fake_cursor = mock.MagicMock()
+    fake_cursor.fetchone.return_value = [3]
+    fake_cursor.fetchall.return_value = []
+    fake_db = mock.MagicMock()
+    fake_db.execute.return_value = fake_cursor
+    fake_db.db_path = Path("/nonexistent/ankimon.db")
+    pc_box._services_obj.db = fake_db
+    members = [
+        {"individual_id": "broken", "name": "???", "level": "?", "unreadable": True},
+        _member("ok"),
+    ]
+    monkeypatch.setattr(pc_box, "get_team_ids", lambda db: ["broken", "ok"])
+    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: list(members))
+    host = types.SimpleNamespace(
+        logger=None,
+        search_edit=None, type_combo=None, generation_combo=None, tier_combo=None,
+        filter_shiny=None, filter_favorites=None, filter_is_holding_item=None,
+        sort_combo=None, desc_sort=None, selected_sort_key="date",
+        _pokemon_cache=None, _last_filter_state=None, _total_pokemon_count=0,
+    )
+
+    pc_box.PokemonPC.fetch_filtered_pokemon(host)
+
+    assert host._party_ids == ["broken", "ok"]
+    assert [m["individual_id"] for m in host._party_members] == ["broken", "ok"]
+    assert host._team_ids_raw == ["broken", "ok"]
+    query, params = fake_db.execute.call_args.args
+    assert "individual_id NOT IN (?,?)" in query and list(params[:2]) == ["broken", "ok"]
+    assert host._last_filter_state["party"] == ("broken", "ok")
+
+
+def test_team_is_current_detects_edits_made_elsewhere(pc_box, monkeypatch):
+    """Re-showing the PC after the web Team screen saved a new team triggers a refresh."""
+    host = types.SimpleNamespace(_team_ids_raw=["a", "b"])
+    monkeypatch.setattr(pc_box, "get_team_ids", lambda db: ["a", "b"])
+    assert pc_box.PokemonPC._team_is_current(host) is True
+    monkeypatch.setattr(pc_box, "get_team_ids", lambda db: ["b", "a"])
+    assert pc_box.PokemonPC._team_is_current(host) is False
+
+    def boom(db):
+        """Simulate an unreadable team table."""
+        raise RuntimeError("db gone")
+
+    monkeypatch.setattr(pc_box, "get_team_ids", boom)
+    assert pc_box.PokemonPC._team_is_current(host) is False

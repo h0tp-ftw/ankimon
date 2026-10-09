@@ -773,7 +773,13 @@ class PokemonSlotButton(QPushButton):
         super().mouseReleaseEvent(event)
 
     def _set_drop_highlight(self, on: bool):
-        """Show or clear the drop-target border without losing the normal sheet."""
+        """Show or clear the drop-target border without losing the normal sheet.
+
+        Parameters
+        ----------
+        on : bool
+            True while a valid drag hovers the slot, False once it leaves or drops.
+        """
         if on:
             if self._sheet_before_drag is None:
                 self._sheet_before_drag = self.styleSheet()
@@ -787,7 +793,20 @@ class PokemonSlotButton(QPushButton):
             self._sheet_before_drag = None
 
     def _drop_payload(self, event):
-        """Decode an incoming drag, or ``None`` when this slot must ignore it."""
+        """Decode an incoming drag, or ``None`` when this slot must ignore it.
+
+        Parameters
+        ----------
+        event : QDragEnterEvent or QDragMoveEvent or QDropEvent
+            The drag event carrying the mime data.
+
+        Returns
+        -------
+        tuple of (str, str) or None
+            ``(individual_id, source)`` for an acceptable drag; ``None`` for a
+            foreign drag, a drop onto the slot's own Pokémon, or a source this
+            slot does not take.
+        """
         payload = decode_drag_payload(event.mimeData())
         if payload is None:
             return None
@@ -854,7 +873,18 @@ class PartySlotButton(PokemonSlotButton):
         self._movie_label = None
 
     def accepts_drop_from(self, source: str) -> bool:
-        """Party slots take both boxed Pokémon and other party members."""
+        """Party slots take both boxed Pokémon and other party members.
+
+        Parameters
+        ----------
+        source : str
+            ``"box"`` or ``"party"``.
+
+        Returns
+        -------
+        bool
+            Always True for the two known sources.
+        """
         return source in ("box", "party")
 
 
@@ -872,7 +902,18 @@ class BoxDropArea(QWidget):
         self.setAcceptDrops(True)
 
     def _payload(self, event):
-        """Decode the drag, accepting party members only."""
+        """Decode the drag, accepting party members only.
+
+        Parameters
+        ----------
+        event : QDragEnterEvent or QDragMoveEvent or QDropEvent
+            The drag event carrying the mime data.
+
+        Returns
+        -------
+        tuple of (str, str) or None
+            ``(individual_id, "party")`` or ``None`` for anything else.
+        """
         payload = decode_drag_payload(event.mimeData())
         if payload is None or payload[1] != "party":
             return None
@@ -957,6 +998,14 @@ class ScaledMovieLabel(QLabel):
 
 
 class PokemonPC(QDialog):
+    """The Pokémon PC: boxes of caught Pokémon, the current party and a details panel.
+
+    Layout (left to right): the six-slot "Current Party" column, the box grid
+    with its navigation and filters, and the details panel. Party membership is
+    edited here through the slot context menus and drag-and-drop; the data
+    lives in the ``team`` table via :mod:`functions.team_functions`.
+    """
+
     def __init__(
         self,
         logger: ShowInfoLogger,
@@ -967,6 +1016,25 @@ class PokemonPC(QDialog):
         main_pokemon: PokemonObject,
         parent=mw,
     ):
+        """Build the window and load the current box, party and filters.
+
+        Parameters
+        ----------
+        logger : ShowInfoLogger
+            Add-on logger for diagnostics and user messages.
+        translator : Translator
+            Provides the UI strings.
+        reviewer_obj : Reviewer_Manager
+            Reviewer state, forwarded to the main-Pokémon switcher.
+        test_window : TestWindow
+            Battle window, forwarded to the main-Pokémon switcher.
+        settings : Settings
+            Add-on settings (sprite, GIF and language options are read here).
+        main_pokemon : PokemonObject
+            The live main Pokémon, forwarded to the main-Pokémon switcher.
+        parent : QWidget, optional
+            Owning window; defaults to Anki's main window.
+        """
         super().__init__(parent)
 
         self.logger = logger
@@ -1128,6 +1196,7 @@ class PokemonPC(QDialog):
             favorite_hover_color = "#8A7C36"
             input_bg = "#002B5A"  # Slightly lighter than background for input fields
             slot_bg_color = "#002B5A"
+            disabled_text_color = "#7B8794"
         else:
             # Light Mode
             background_color = "#E6F3FF"
@@ -1139,6 +1208,7 @@ class PokemonPC(QDialog):
             favorite_hover_color = "#D9BF70"
             input_bg = "#FFFFFF"  # White background for input fields
             slot_bg_color = "#CCE5FF"
+            disabled_text_color = "#8A9BB0"
 
         # Set stylesheet for the entire dialog, now correctly using all theme variables
         self.setStyleSheet(f"""
@@ -1167,6 +1237,12 @@ class PokemonPC(QDialog):
             }}
             QLabel {{
                 color: {text_color};
+            }}
+            /* The QWidget colour rule above would otherwise paint disabled
+               menu entries (e.g. "Add to team" when the party is full) in
+               the normal text colour, hiding the greyed-out state. */
+            QMenu::item:disabled {{
+                color: {disabled_text_color};
             }}
             QTabWidget {{
                 background-color: transparent;
@@ -1316,6 +1392,7 @@ class PokemonPC(QDialog):
         self._apply_qss()
 
     def _apply_qss(self):
+        """Append the slot/selection/party rules to the theme stylesheet."""
         self.setStyleSheet(
             self.styleSheet()
             + """
@@ -1396,10 +1473,32 @@ class PokemonPC(QDialog):
             current_count = 0
 
         grid_populated = self.pokemon_grid is not None and self.pokemon_grid.count() > 0
-        if grid_populated and current_count == self._total_pokemon_count:
+        if (
+            grid_populated
+            and current_count == self._total_pokemon_count
+            and self._team_is_current()
+        ):
             return
 
         self.refresh_pokemon_grid()
+
+    def _team_is_current(self) -> bool:
+        """Whether the team table still matches what the window last rendered.
+
+        The web Team screen, reviewer cycling and mobile sync rewrite the team
+        without changing the Pokémon count, so the count check alone would let
+        a re-shown PC display a stale party.
+
+        Returns
+        -------
+        bool
+            True when the raw slot ids are unchanged since the last grid build.
+        """
+        try:
+            current = tuple(get_team_ids(services.db))
+        except Exception:
+            return False
+        return current == tuple(getattr(self, "_team_ids_raw", ()))
 
     def setup_filters_layout(self, parent_layout):
         """
@@ -1734,7 +1833,6 @@ class PokemonPC(QDialog):
 
         self._filtered_pokemon = self.fetch_filtered_pokemon()
         pokemon_list = self._filtered_pokemon
-        self.refresh_party_panel()
         max_box_idx = max(0, (len(pokemon_list) - 1) // (self.n_rows * self.n_cols))
 
         if self.current_box_idx > max_box_idx:
@@ -1761,6 +1859,7 @@ class PokemonPC(QDialog):
         if recompute_bff or self._bff_dirty:
             self._update_bff()
         bff_id = self._bff_id
+        self.refresh_party_panel()  # after the BFF so the party can show it
 
         self._update_count_label()
 
@@ -1912,21 +2011,23 @@ class PokemonPC(QDialog):
 
                 if show_sprites:
                     if self.gif_in_collection:
+                        # A child of the slot rather than a sibling laid over it:
+                        # drag events are not transparent to overlays the way
+                        # mouse events are, and self.grab() for the drag ghost
+                        # only includes children.
+                        sprite_layout = QHBoxLayout(pokemon_button)
+                        sprite_layout.setContentsMargins(0, 0, 0, 0)
+                        sprite_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                         scaled_movie_label = ScaledMovieLabel(
                             pkmn_image_path,
                             self.slot_size - 10,
                             self.slot_size - 10,
-                            self.grid_container,
+                            pokemon_button,
                         )
                         scaled_movie_label.setAttribute(
                             Qt.WidgetAttribute.WA_TransparentForMouseEvents
                         )
-                        self.pokemon_grid.addWidget(
-                            scaled_movie_label,
-                            row,
-                            col,
-                            alignment=Qt.AlignmentFlag.AlignCenter,
-                        )
+                        sprite_layout.addWidget(scaled_movie_label)
                     else:
                         pokemon_button.setIcon(QIcon(pkmn_image_path))
                         pokemon_button.setIconSize(
@@ -2169,16 +2270,16 @@ class PokemonPC(QDialog):
         return panel
 
     def refresh_party_panel(self):
-        """Re-read the team table and repaint the six party slots.
+        """Repaint the six party slots from the last resolved party.
 
-        Called from :meth:`refresh_pokemon_grid`, so every window that refreshes
-        the PC after a trade, release, evolution or catch keeps the party in
-        sync without knowing about it.
+        The party is resolved in :meth:`fetch_filtered_pokemon` (so the grid
+        exclusion and the column always agree) and this runs from
+        :meth:`refresh_pokemon_grid`, so every window that refreshes the PC
+        after a trade, release, evolution or catch keeps the party in sync
+        without knowing about it.
         """
         if not self.party_slots or not is_alive(self.party_slots[0]):
             return
-        self._party_members = load_party(services.db, self.logger)
-        self._party_ids = [str(p.get("individual_id")) for p in self._party_members]
         for index, slot in enumerate(self.party_slots):
             member = (
                 self._party_members[index]
@@ -2238,7 +2339,16 @@ class PokemonPC(QDialog):
             )
         )
         slot._sub_label.setText(
-            " ".join(part for part in (level_text, gender_symbol, "⭐" if is_shiny else "") if part)
+            " ".join(
+                part
+                for part in (
+                    level_text,
+                    gender_symbol,
+                    "⭐" if is_shiny else "",
+                    "💖" if getattr(self, "_bff_id", None) == member.get("individual_id") else "",
+                )
+                if part
+            )
         )
 
         if self.show_sprites_across_ankimon:
@@ -2279,7 +2389,12 @@ class PokemonPC(QDialog):
         else:
             slot._sprite_holder.setVisible(False)
 
-        if member.get("is_favorite"):
+        bff_id = getattr(self, "_bff_id", None)
+        is_bff = bff_id is not None and member.get("individual_id") == bff_id
+        if is_bff:
+            bg = "#FF69B4"  # Hot pink for BFF, as in the box grid
+            h_bg = "#FF8DC7"
+        elif member.get("is_favorite"):
             bg = theme_vars["favorite_color"]
             h_bg = theme_vars["favorite_hover_color"]
         else:
@@ -2295,6 +2410,8 @@ class PokemonPC(QDialog):
             f" QPushButton:hover {{ background-color: {h_bg}; }}"
         )
         tooltip_lines = [display_name]
+        if is_bff:
+            tooltip_lines.append(self.translator.translate("bff_tooltip"))
         if is_shiny:
             tooltip_lines.append(self.translator.translate("shiny_tooltip"))
         slot.setToolTip("\n".join(tooltip_lines))
@@ -2503,8 +2620,12 @@ class PokemonPC(QDialog):
         except Exception:
             pass
 
-        # Party members live in the left column, never in a box
-        self._party_ids = get_team_ids(services.db)
+        # Party members live in the left column, never in a box. The column and
+        # the grid exclusion are derived from the same resolved list so a slot
+        # index always maps to the same Pokémon the team seam will operate on.
+        self._team_ids_raw = get_team_ids(services.db)
+        self._party_members = load_party(services.db, self.logger)
+        self._party_ids = [str(p.get("individual_id")) for p in self._party_members]
 
         # Build current filter state for cache check
         current_state = {
@@ -2527,7 +2648,7 @@ class PokemonPC(QDialog):
             "sort": self.sort_combo.currentText() if self.sort_combo else "Date",
             "desc": self.desc_sort.isChecked() if self.desc_sort else False,
             "count": self._total_pokemon_count,  # Force refresh if count changes
-            "party": tuple(self._party_ids),  # Team edits must invalidate the grid
+            "party": tuple(self._team_ids_raw),  # Team edits must invalidate the grid
         }
 
         if self._pokemon_cache is not None and self._last_filter_state == current_state:
