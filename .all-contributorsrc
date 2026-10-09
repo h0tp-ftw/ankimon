@@ -262,6 +262,15 @@
       ],
       "nickname": "sakamotosan",
       "discord_id": "1404969660931379230"
+    },
+    {
+      "login": "esakkas24",
+      "name": "esakkas24",
+      "avatar_url": "https://github.com/esakkas24.png",
+      "profile": "https://github.com/esakkas24",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 5

@@ -82,6 +82,54 @@ class HeadlessPresenter:
         )
         return chosen
 
+    def choose_moveset(
+        self, pokemon_name: str, attacks: Sequence[str], new_attacks: Sequence[str]
+    ) -> Optional[list]:
+        """Pick which moves to keep from ``attacks`` plus ``new_attacks``.
+
+        One dialog per Pokemon per battle, used when an XP Share recipient
+        learns several moves at once. Headless, ``replace_policy`` drives the
+        answer like :meth:`choose_attack_to_replace`: ``"reject"`` keeps the
+        current set, ``"first"`` overwrites from the first slot onward, and a
+        move name overwrites that one slot with the first new move.
+
+        Parameters
+        ----------
+        pokemon_name : str
+            Display name of the Pokemon learning the moves.
+        attacks : Sequence[str]
+            Raw move ids the Pokemon currently knows.
+        new_attacks : Sequence[str]
+            Raw move ids newly available from the levels just gained.
+
+        Returns
+        -------
+        list of str or None
+            Exactly 4 unique raw move ids drawn from ``attacks`` +
+            ``new_attacks``, or None to keep the current set and discard
+            every new move. Anything else is treated as None by the caller.
+        """
+        attacks = list(attacks)
+        new_attacks = list(new_attacks)
+        chosen: Optional[list] = None
+        if self.replace_policy == "first" and attacks:
+            chosen = list(attacks)
+            for index, new_attack in enumerate(new_attacks[: len(chosen)]):
+                chosen[index] = new_attack
+        elif self.replace_policy not in ("reject", "first"):
+            if self.replace_policy in attacks and new_attacks:
+                chosen = list(attacks)
+                chosen[chosen.index(self.replace_policy)] = new_attacks[0]
+        events.emit(
+            "dialog",
+            dialog="choose_moveset",
+            pokemon=pokemon_name,
+            options=attacks,
+            new_attacks=new_attacks,
+            chosen=chosen,
+        )
+        return chosen
+
     # --- notifications (no return) ----------------------------------------
 
     def notify(self, level: str, message: str) -> None:
