@@ -267,8 +267,28 @@ def check_party_add_remove(d, app, db, pc, pool):
                iid not in grid_after_add, iid in grid_after_remove))
 
 
+def check_party_drag_drop(d, app, db, pc, pool):
+    """Drag-and-drop between the boxes and the party column (the real drop callbacks
+    the slot widgets fire): box -> empty party slot appends, box -> occupied slot
+    swaps the occupant out, party -> party reorders, party -> box grid removes."""
+    team = lambda: [r["individual_id"] for r in db.get_team()]  # noqa: E731
+    a, b = pool.pop(), pool.pop()
+    base = team()
+    pc.on_party_slot_drop(len(base), a, "box"); app.processEvents()
+    appended = team() == base + [a]
+    pc.on_party_slot_drop(len(base), b, "box"); app.processEvents()   # onto a's slot
+    swapped = team() == base + [b] and a in {p["individual_id"] for p in pc._filtered_pokemon}
+    pc.on_party_slot_drop(0, b, "party"); app.processEvents()
+    reordered = team() == [b] + base
+    pc.on_box_drop(b, "party"); app.processEvents()
+    removed = team() == base
+    ok = appended and swapped and reordered and removed
+    return ("party drag/drop (drop callbacks)", ok,
+            "append=%s swap=%s reorder=%s remove=%s" % (appended, swapped, reordered, removed))
+
+
 CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel,
-          check_update_dialog_git_mode, check_party_add_remove]
+          check_update_dialog_git_mode, check_party_add_remove, check_party_drag_drop]
 
 
 def _boot():

@@ -296,3 +296,49 @@ def test_replace_pokemon_outside_the_party_still_reports_success(team_env):
     assert db.replace_pokemon(_mon("traded", name="eevee", pokedex_id=133), b) is True
     assert _team_ids(db) == [a]
     assert db.get_pokemon("traded")["name"] == "eevee"
+
+
+def test_move_in_party_reorders_and_clamps(team_env):
+    """Moving shifts the others along; an index past the end lands last."""
+    db, team_functions = team_env.db, team_env.team
+    a, b, c = _seed(db, "a", "b", "c")
+    db.save_team([{"individual_id": i} for i in (a, b, c)])
+    result = team_functions.move_in_party(db, c, 0)
+    assert (result.ok, result.outcome, result.slot) == (True, "moved", 1)
+    assert _team_ids(db) == [c, a, b]
+    result = team_functions.move_in_party(db, c, 99)
+    assert (result.ok, result.slot) == (True, 3)
+    assert _team_ids(db) == [a, b, c]
+    assert team_functions.move_in_party(db, "zzz", 0).outcome == "not_on_team"
+
+
+def test_place_in_party_appends_swaps_or_moves(team_env):
+    """Drop past the end appends; onto an occupant swaps it out; a member just moves."""
+    db, team_functions = team_env.db, team_env.team
+    a, b, c = _seed(db, "a", "b", "c")
+    db.save_team([{"individual_id": a}])
+
+    appended = team_functions.place_in_party(db, b, 5)
+    assert (appended.outcome, appended.slot, appended.replaced) == ("added", 2, None)
+    assert _team_ids(db) == [a, b]
+
+    swapped = team_functions.place_in_party(db, c, 0)
+    assert (swapped.outcome, swapped.slot, swapped.replaced) == ("swapped", 1, a)
+    assert _team_ids(db) == [c, b]
+
+    moved = team_functions.place_in_party(db, b, 0)
+    assert (moved.outcome, moved.slot) == ("moved", 1)
+    assert _team_ids(db) == [b, c]
+
+
+def test_place_in_party_respects_cap_but_allows_swap_when_full(team_env):
+    """A full party refuses an append yet still lets a drop replace an occupant."""
+    db, team_functions = team_env.db, team_env.team
+    ids = _seed(db, *[f"m{i}" for i in range(7)])
+    db.save_team([{"individual_id": i} for i in ids[:6]])
+    assert team_functions.place_in_party(db, ids[6], 6).outcome == "team_full"
+    assert _team_ids(db) == ids[:6]
+    swapped = team_functions.place_in_party(db, ids[6], 2)
+    assert (swapped.outcome, swapped.replaced) == ("swapped", ids[2])
+    assert _team_ids(db) == ids[:2] + [ids[6]] + ids[3:6]
+    assert team_functions.place_in_party(db, "ghost", 0).outcome == "missing_pokemon"
