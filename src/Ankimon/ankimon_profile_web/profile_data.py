@@ -11,7 +11,7 @@ import re
 
 from ..services import services
 
-from ..utils import get_all_sprites, POKEMON_NAME_LOOKUP
+from ..utils import get_all_sprites, POKEMON_NAME_LOOKUP, is_alive
 from ..resources import trainer_sprites_path
 
 MAX_TEAM_SIZE = 6
@@ -831,6 +831,15 @@ class ProfileData:
                 self.trainer_card.reload_team()
         except Exception:
             pass
+
+        # An open Pokémon PC shows the party too; nudge it like the trade,
+        # release and item windows do so it never displays a stale team.
+        try:
+            pokemon_pc = services.pokemon_pc
+            if pokemon_pc is not None and is_alive(pokemon_pc):
+                pokemon_pc.refresh_pokemon_grid()
+        except Exception as e:
+            print(f"[Ankimon] profile: PC refresh after team save failed: {e}")
 
         self._roster_cache = None
         return {"ok": True, "message": "Team saved.", "count": len(team_data)}

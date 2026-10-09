@@ -342,3 +342,35 @@ def test_place_in_party_respects_cap_but_allows_swap_when_full(team_env):
     assert (swapped.outcome, swapped.replaced) == ("swapped", ids[2])
     assert _team_ids(db) == ids[:2] + [ids[6]] + ids[3:6]
     assert team_functions.place_in_party(db, "ghost", 0).outcome == "missing_pokemon"
+
+
+def test_unreadable_team_member_keeps_its_slot_as_a_placeholder(team_env):
+    """A team row whose record cannot be read is neither hidden nor pruned.
+
+    The column shows a placeholder in that slot and the write seam keeps the id,
+    so slot indices agree between what the user sees and what a drop targets.
+    """
+    db, team_functions = team_env.db, team_env.team
+    (a,) = _seed(db, "a")
+    # The table's generated columns reject non-JSON, so "unreadable" in practice
+    # means valid JSON that is not a Pokémon record.
+    db.execute(
+        "INSERT INTO captured_pokemon (individual_id, is_main, data)"
+        " VALUES ('broken', 0, '\"not a record\"')"
+    )
+    db._get_connection().commit()
+    db.save_team([{"individual_id": "broken"}, {"individual_id": a}])
+
+    logger = MockLogger()
+    party = team_functions.load_party(db, logger)
+    assert [p["individual_id"] for p in party] == ["broken", a]
+    assert party[0]["name"] == "???" and party[0].get("unreadable") is True
+    assert any("cannot be read" in msg for _, msg in logger.calls)
+
+    # The write seam agrees: the broken row still occupies slot 1 and counts.
+    clean, pruned = team_functions._clean_team_ids(db)
+    assert (clean, pruned) == (["broken", a], 0)
+    (b,) = _seed(db, "b")
+    placed = team_functions.place_in_party(db, b, 0)
+    assert (placed.outcome, placed.replaced) == ("swapped", "broken")
+    assert _team_ids(db) == [b, a]

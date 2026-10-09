@@ -143,14 +143,18 @@ def load_party(db, logger=None) -> list[dict[str, Any]]:
     -------
     list of dict
         Records from ``captured_pokemon`` in slot order, at most
-        :data:`MAX_TEAM_SIZE`. Ids that no longer resolve are skipped and
-        logged; the team table itself is never modified here.
+        :data:`MAX_TEAM_SIZE`. Ids with no row at all are skipped and logged.
+        A row that exists but cannot be read is kept as a placeholder record
+        (``name`` ``"???"``, ``unreadable`` True) so the slot order matches
+        what :func:`add_to_party` and friends operate on. The team table
+        itself is never modified here.
     """
     ids = get_team_ids(db)
     if not ids:
         return []
     try:
         rows = db.get_pokemons_by_individual_ids(ids) or []
+        existing = _existing_ids(db, ids)
     except Exception as e:
         _log("error", f"Could not load party members: {e}", logger)
         return []
@@ -160,15 +164,28 @@ def load_party(db, logger=None) -> list[dict[str, Any]]:
     party: list[dict[str, Any]] = []
     seen: set[str] = set()
     for ind_id in ids:
+        if ind_id in seen:
+            continue
         record = by_id.get(ind_id)
-        if record is None:
+        if record is None and ind_id in existing:
+            _log(
+                "warning",
+                f"Team slot references Pokémon {ind_id!r} whose record cannot be read;"
+                " showing a placeholder.",
+                logger,
+            )
+            record = {
+                "individual_id": ind_id,
+                "name": "???",
+                "level": "?",
+                "unreadable": True,
+            }
+        elif record is None:
             _log(
                 "warning",
                 f"Team slot references missing Pokémon {ind_id!r}; skipping it.",
                 logger,
             )
-            continue
-        if ind_id in seen:
             continue
         seen.add(ind_id)
         party.append(record)
