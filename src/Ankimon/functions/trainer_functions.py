@@ -1,9 +1,268 @@
+import json
 import random
 from .badges_functions import get_achieved_badges
 from .pokemon_functions import find_experience_for_level
 from .pokedex_functions import check_evolution_for_pokemon, return_name_for_id
 from .friendship_evolution import check_friendship_evolution_for_pokemon
+from .learnset_retrieval import get_levelup_move_for_pokemon
+from .drawing_utils import tooltipWithColour
+from ..move_names import format_move_name
 from ..services import services
+
+MAX_MOVES = 4
+LEVEL_UP_COLOR = "#6A4DAC"
+
+
+def _in_bulk_resolve() -> bool:
+    """Report whether the mobile-sync bulk resolver is replaying reviews.
+
+    Mirrors ``encounter_functions._in_bulk_resolve``; no dialog may open
+    while a backlog is being replayed.
+
+    Returns
+    -------
+    bool
+        True while ``utils.in_bulk_resolve`` is set, False otherwise
+        (including when ``utils`` cannot be imported headless).
+    """
+    try:
+        from .. import utils
+    except Exception:
+        return False
+
+    return bool(getattr(utils, "in_bulk_resolve", False))
+
+
+def _learn_levelup_moves(logger, pokemon, start_level, end_level):
+    """Teach an XP Share recipient the moves of every level it just gained.
+
+    Mirrors the active Pokemon's level-up in ``encounter_functions``, with one
+    difference: a recipient can jump several levels off a single win, so all
+    new moves are collected first. Free slots are filled silently; if moves
+    remain and the set is full, the user gets ONE ``choose_moveset`` prompt
+    for this Pokemon rather than one per move. Declined moves stay available
+    through Remember Attacks.
+
+    Parameters
+    ----------
+    logger : ShowInfoLogger
+        Logger used for the learn / discard messages.
+    pokemon : dict
+        Stored Pokemon record; ``pokemon["attacks"]`` is updated in place.
+    start_level : int
+        Level before the XP was applied (exclusive).
+    end_level : int
+        Level after the XP was applied (inclusive).
+
+    Returns
+    -------
+    None
+    """
+    attacks = pokemon.get("attacks") or []
+    if isinstance(attacks, str):
+        try:
+            attacks = json.loads(attacks)
+        except Exception:
+            attacks = []
+    attacks = list(attacks)
+    display_name = str(pokemon.get("name", "")).capitalize()
+
+    # A learnset failure must never block the XP reward saved after this.
+    try:
+        new_attacks = _collect_new_levelup_moves(
+            str(pokemon.get("name", "")).lower(), attacks, start_level, end_level
+        )
+    except Exception as error:
+        logger.log(
+            "error", f"Could not look up level-up moves for {display_name}: {error}"
+        )
+        return
+    if not new_attacks:
+        return
+
+    learned = []
+    while new_attacks and len(attacks) < MAX_MOVES:
+        move = new_attacks.pop(0)
+        attacks.append(move)
+        learned.append(move)
+    if learned:
+        msg = _translate(
+            "mainpokemon_learned_new_attack",
+            "Your {main_pokemon_name} learned {new_attack_name} !",
+            main_pokemon_name=display_name,
+            new_attack_name=", ".join(format_move_name(m) for m in learned),
+        )
+        logger.log("info", msg)
+        if not _in_bulk_resolve():
+            tooltipWithColour(msg, LEVEL_UP_COLOR)
+
+    if new_attacks:
+        if _in_bulk_resolve():
+            # Never pop a dialog while replaying a bulk backlog; the moves are
+            # still reachable via Remember Attacks.
+            logger.log(
+                "info",
+                f"[Bulk Resolve] Discarded learning new moves {new_attacks} on {display_name}.",
+            )
+        else:
+            attacks = _choose_moveset_or_keep(logger, display_name, attacks, new_attacks)
+
+    pokemon["attacks"] = attacks
+
+
+def _normalize_move_id(move):
+    """Normalise a move id the way the move-evolution gate does.
+
+    Parameters
+    ----------
+    move : str
+        Raw move id or display name.
+
+    Returns
+    -------
+    str
+        Lower-cased id with spaces and hyphens removed.
+    """
+    return str(move).lower().replace(" ", "").replace("-", "")
+
+
+def _collect_new_levelup_moves(name, attacks, start_level, end_level):
+    """Gather the moves learned on each gained level, in level order.
+
+    Parameters
+    ----------
+    name : str
+        Lower-cased species name used for the learnset lookup.
+    attacks : list of str
+        Moves the Pokemon already knows; these are never offered again.
+    start_level : int
+        Level before the XP was applied (exclusive).
+    end_level : int
+        Level after the XP was applied (inclusive).
+
+    Returns
+    -------
+    list of str
+        Raw move ids not yet known, first occurrence kept, ascending by level.
+    """
+    known = {_normalize_move_id(m) for m in attacks}
+    new_attacks = []
+    for level in range(start_level + 1, end_level + 1):
+        for move in get_levelup_move_for_pokemon(name, level):
+            key = _normalize_move_id(move)
+            if key not in known:
+                known.add(key)
+                new_attacks.append(move)
+    return new_attacks
+
+
+def _translate(key, fallback, **kwargs):
+    """Translate ``key`` through ``services.translator`` when one is wired.
+
+    Parameters
+    ----------
+    key : str
+        Translation key from the ``lang/*_text.json`` files.
+    fallback : str
+        English template used headless or when the translator fails.
+    **kwargs
+        Placeholders substituted into the template.
+
+    Returns
+    -------
+    str
+    """
+    translator = getattr(services, "translator", None)
+    if translator is not None:
+        try:
+            return translator.translate(key, **kwargs)
+        except Exception:
+            pass
+    return fallback.format(**kwargs)
+
+
+def _apply_moveset_choice(attacks, new_attacks, chosen):
+    """Validate a ``choose_moveset`` answer and lay it out slot by slot.
+
+    Parameters
+    ----------
+    attacks : list of str
+        The current (full) moveset that was offered.
+    new_attacks : list of str
+        The new candidates that were offered, in level order.
+    chosen : object
+        Whatever the presenter returned.
+
+    Returns
+    -------
+    list of str or None
+        The new moveset, with retained moves keeping their slots and the
+        selected new moves filling the vacated slots in candidate order;
+        None if ``chosen`` is not exactly ``MAX_MOVES`` unique ids from the
+        offered pool.
+    """
+    if not isinstance(chosen, (list, tuple)):
+        return None
+    chosen = list(chosen)
+    pool = set(attacks) | set(new_attacks)
+    if len(chosen) != MAX_MOVES or len(set(chosen)) != MAX_MOVES:
+        return None
+    if not set(chosen) <= pool:
+        return None
+    incoming = [m for m in new_attacks if m in chosen]
+    result = []
+    for move in attacks:
+        if move in chosen:
+            result.append(move)
+        elif incoming:
+            result.append(incoming.pop(0))
+    result.extend(incoming)
+    return result[:MAX_MOVES]
+
+
+def _choose_moveset_or_keep(logger, display_name, attacks, new_attacks):
+    """Ask the presenter for a moveset; on cancel, error or bad answer keep ``attacks``.
+
+    Parameters
+    ----------
+    logger : ShowInfoLogger
+        Logger for the outcome message.
+    display_name : str
+        Capitalised Pokemon name for messages and the dialog.
+    attacks : list of str
+        The current (full) moveset.
+    new_attacks : list of str
+        New candidates that found no free slot.
+
+    Returns
+    -------
+    list of str
+        The moveset to store.
+    """
+    try:
+        chosen = services.ui.choose_moveset(display_name, attacks, new_attacks)
+    except Exception as error:
+        # The reward is still saved by the caller; only the prompt is lost.
+        logger.log(
+            "error",
+            f"Moveset prompt failed for {display_name}: {error}; keeping current moves.",
+        )
+        return attacks
+    if chosen is None:
+        logger.log(
+            "info",
+            f"{display_name} did not learn {new_attacks}; use Remember Attacks to teach them later.",
+        )
+        return attacks
+    applied = _apply_moveset_choice(attacks, new_attacks, chosen)
+    if applied is None:
+        logger.log(
+            "warning",
+            f"Ignoring invalid moveset choice {chosen!r} for {display_name}; keeping current moves.",
+        )
+        return attacks
+    logger.log("info", f"{display_name}'s moves are now {applied}")
+    return applied
 
 
 def find_trainer_rank(highest_level, trainer_level):
@@ -173,6 +432,13 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
                 break
         pokemon["level"] = current_level
         pokemon["xp"] = 0 if exp < 0 else exp
+        # Learn moves before the save and the evolution check below, so the
+        # new moves persist with the level-up and a move-based evolution sees
+        # them on this very level (same ordering as the active Pokemon).
+        if levels_gained > 0:
+            _learn_levelup_moves(
+                logger, pokemon, current_level - levels_gained, current_level
+            )
 
     # Passive XP Share earns less friendship than battling; neither is capped.
     friendship_gain = random.randint(1, 2)
