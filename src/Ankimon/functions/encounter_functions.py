@@ -682,6 +682,11 @@ def _meets_prerequisites(pokemon_id: int, collected_ids: set) -> bool:
             if species_id:
                 check_id = species_id
 
+    # If the user has already caught this exact Pokemon (or its base species if it's a Mega),
+    # they shouldn't be blocked from encountering it again just because they're missing a pre-evolution.
+    if check_id in collected_ids:
+        return True
+
     required = encounter_data.PREREQUISITES.get(check_id)
     if not required:
         return True
