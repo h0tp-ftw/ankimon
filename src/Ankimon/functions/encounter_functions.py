@@ -1184,6 +1184,18 @@ def generate_random_pokemon(
     if pokemon_id == 801:
         cosmetic_formes = list(cosmetic_formes)
         cosmetic_formes.append("Original")
+    elif pokemon_id == 172:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Spiky-eared")
+    elif pokemon_id == 893:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Dada")
+    elif pokemon_id == 925:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Family of Three")
+    elif pokemon_id == 978:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Roaming")
 
     if cosmetic_formes:
         options = [f.split("-", 1)[1] if "-" in f else f for f in cosmetic_formes]
