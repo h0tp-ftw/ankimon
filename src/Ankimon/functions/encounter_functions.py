@@ -928,22 +928,15 @@ def generate_random_pokemon(
         ValueError: If no valid Pokémon can be generated (highly unlikely under normal conditions).
     """
     lvl_variation = 3
-    lvl_range = (
-        max(1, main_pokemon_level - lvl_variation),
-        max(1, main_pokemon_level + lvl_variation),
-    )
-    wild_pokemon_lvl = random.randint(*lvl_range)
-    wild_pokemon_lvl = max(
-        1, wild_pokemon_lvl
-    )  # Ensures that the wild pokemon's level is at least 1
-
-    # Check level cap setting
     remove_cap = settings_obj.get("misc.remove_level_cap", False)
-    if not remove_cap and wild_pokemon_lvl > 100:
-        wild_pokemon_lvl = 100
-
-    if main_pokemon_level == 100 and not remove_cap:
-        wild_pokemon_lvl = 100
+    min_level = max(1, main_pokemon_level - lvl_variation)
+    max_level = max(1, main_pokemon_level + lvl_variation)
+    if not remove_cap:
+        min_level = min(100, min_level)
+        max_level = min(100, max_level)
+        if main_pokemon_level == 100:
+            min_level = max_level = 100
+    wild_pokemon_lvl = random.randint(min_level, max_level)
 
     collected_ids = kwargs.get("collected_ids", None)
     if collected_ids is None and args:

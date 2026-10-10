@@ -65,7 +65,7 @@
     "misc.gen7": "Include Pokémon from Generation 7.",
     "misc.gen8": "Include Pokémon from Generation 8.",
     "misc.gen9": "Include Pokémon from Generation 9.",
-    "misc.remove_level_cap": "Allow leveling beyond set level cap.",
+    "misc.remove_level_cap": "Allow Pokémon to level beyond 100 and wild encounters above level 100.",
     "misc.language": "Select language ID for Pokémon names and descriptions. [1: Japanese (Hir & Kata), 2: Japanese (Roomaji), 3: Korean, 4: Chinese (Traditional), 5: French, 6: German, 7: Spanish, 8: Italian, 9: English, 10: Czech, 11: Japanese, 12: Chinese (Simplified), 13: Portuguese (Brazil), 14: Spanish (Latin America)]",
     "misc.ssh": "Enable SSH if encountering connectivity issues (like Eduroam restrictions).",
     "misc.leaderboard": "Enable synchronization with Ankimon leaderboard. To set up, enter your Username and API Key below.",
