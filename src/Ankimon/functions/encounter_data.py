@@ -576,6 +576,13 @@ NORMAL = [
     477,
     478,
     479,  # dusknoir, froslass, rotom
+    10004,
+    10005,  # wormadam forms
+    10008,
+    10009,
+    10010,
+    10011,
+    10012,  # rotom forms
     # Generation 5
     504,
     505,
