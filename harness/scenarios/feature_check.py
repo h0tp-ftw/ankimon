@@ -239,8 +239,59 @@ def check_update_dialog_git_mode(d, app, db, pc, pool):
     return ("update_dialog (git checkout mode)", not problems, "; ".join(problems) or "3 checkout states OK")
 
 
+def check_party_add_remove(d, app, db, pc, pool):
+    """The PC box 'Add to team' / 'Remove from team' context actions (their real wired
+    callbacks): adding appends the Pokemon to the team table and the party column and
+    hides it from the box grid; removing puts it back."""
+    iid = pool.pop()
+    team_before = [r["individual_id"] for r in db.get_team()]
+    pc.add_to_team(db.get_pokemon(iid))
+    app.processEvents()
+    team_added = [r["individual_id"] for r in db.get_team()]
+    grid_after_add = {p["individual_id"] for p in pc._filtered_pokemon}
+    slots_after_add = [s._individual_id for s in pc.party_slots]
+    pc.remove_from_team(db.get_pokemon(iid))
+    app.processEvents()
+    team_removed = [r["individual_id"] for r in db.get_team()]
+    grid_after_remove = {p["individual_id"] for p in pc._filtered_pokemon}
+    ok = (
+        team_added == team_before + [iid]
+        and iid not in grid_after_add
+        and iid in slots_after_add
+        and team_removed == team_before
+        and iid in grid_after_remove
+    )
+    return ("party add/remove (context actions)", ok,
+            "team %d -> %d -> %d members; hidden from grid after add: %s; back after remove: %s"
+            % (len(team_before), len(team_added), len(team_removed),
+               iid not in grid_after_add, iid in grid_after_remove))
+
+
+def check_party_drag_drop(d, app, db, pc, pool):
+    """Drag-and-drop between the boxes and the party column (the real drop callbacks
+    the slot widgets fire): box -> empty party slot appends, box -> occupied slot
+    swaps the occupant out, party -> party reorders, party -> box grid removes."""
+    def team():
+        """Ordered ids currently in the team table."""
+        return [r["individual_id"] for r in db.get_team()]
+
+    a, b = pool.pop(), pool.pop()
+    base = team()
+    pc.on_party_slot_drop(len(base), a, "box"); app.processEvents()
+    appended = team() == base + [a]
+    pc.on_party_slot_drop(len(base), b, "box"); app.processEvents()   # onto a's slot
+    swapped = team() == base + [b] and a in {p["individual_id"] for p in pc._filtered_pokemon}
+    pc.on_party_slot_drop(0, b, "party"); app.processEvents()
+    reordered = team() == [b] + base
+    pc.on_box_drop(b, "party"); app.processEvents()
+    removed = team() == base
+    ok = appended and swapped and reordered and removed
+    return ("party drag/drop (drop callbacks)", ok,
+            "append=%s swap=%s reorder=%s remove=%s" % (appended, swapped, reordered, removed))
+
+
 CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel,
-          check_update_dialog_git_mode]
+          check_update_dialog_git_mode, check_party_add_remove, check_party_drag_drop]
 
 
 def _boot():

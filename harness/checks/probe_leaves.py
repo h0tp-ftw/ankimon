@@ -32,6 +32,7 @@ LEAF_MODULES = [
     "Ankimon.services",
     "Ankimon.resources",
     "Ankimon.move_names",
+    "Ankimon.functions.team_functions",
     # poke_engine submodule (battle simulation core)
     "Ankimon.poke_engine.objects",
     # data classes

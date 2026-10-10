@@ -122,6 +122,13 @@ class _FakeDB:
         self.history.append(data)
         return True
 
+    def release_pokemon(self, individual_id, history_data):
+        """Atomic release: history + delete together, like the real method."""
+        if getattr(self, "release_fails", False):
+            return False
+        self.history.append(history_data)
+        return self.delete_pokemon(individual_id)
+
     def get_all_items(self):
         return []
 
@@ -897,6 +904,46 @@ def test_pokemon_free_clears_xp_share_before_delete(details):
     assert ("trainer.xp_share", None) in settings.sets
     assert db.deleted == ["uuid-1"]
     assert db.history and db.history[0]["individual_id"] == "uuid-1"
+
+
+def test_pokemon_free_restores_xp_share_and_reports_when_release_fails(details):
+    """A release the DB could not commit changes nothing and is reported as failed.
+
+    The XP Share target was cleared ahead of the delete; when the delete does
+    not happen it is put back, no history is written, no success is shown and
+    the window is not refreshed.
+    """
+    _accept_release(details)
+    db = _FakeDB(
+        pokemon={"uuid-1": {"individual_id": "uuid-1", "id": 25, "name": "pikachu"}},
+        main_pokemon=None,
+    )
+    db.release_fails = True
+
+    class _StoredId:
+        """Stored value that matches the id under str() but is a distinct object."""
+
+        def __str__(self):
+            return "uuid-1"
+
+    stored = _StoredId()
+    settings = _FakeSettings({"trainer.xp_share": stored})
+    details._test_services.db = db
+    details._test_services.settings = settings
+    logger = _RecorderLogger()
+    refreshed = []
+
+    details.PokemonFree("uuid-1", "pikachu", logger, lambda: refreshed.append(True))
+
+    # Cleared ahead of the delete, then the exact stored object is put back
+    # (not a str rebuilt from individual_id).
+    assert [k for k, _ in settings.sets] == ["trainer.xp_share", "trainer.xp_share"]
+    assert settings.sets[0][1] is None
+    assert settings.sets[1][1] is stored
+    assert db.deleted == [] and db.history == []
+    assert refreshed == []
+    assert logger.records[-1] == ("error", "pokemon_release_failed")  # stub returns the key
+    assert not any("let free" in msg for _, msg in logger.records)
 
 
 def test_pokemon_free_keeps_unrelated_xp_share(details):
