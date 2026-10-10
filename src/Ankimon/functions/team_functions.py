@@ -24,7 +24,7 @@ MAX_TEAM_SIZE = 6
 
 @dataclass(frozen=True)
 class TeamChange:
-    """Result of an add or remove request against the party.
+    """Result of an add, remove, move or swap request against the party.
 
     Parameters
     ----------
@@ -73,13 +73,17 @@ def _log(level: str, message: str, logger=None) -> None:
         pass
 
 
-def get_team_ids(db) -> list[str]:
+def get_team_ids(db, *, strict: bool = False) -> list[str]:
     """Return the ordered individual ids stored in the team table.
 
     Parameters
     ----------
     db : AnkimonDB
         Database to read from.
+    strict : bool, optional
+        When True a failing read raises instead of returning an empty list.
+        Writers must use this: an empty list would otherwise be written back
+        as the new team and wipe the saved party.
 
     Returns
     -------
@@ -87,10 +91,17 @@ def get_team_ids(db) -> list[str]:
         Ids in slot order. Entries are not checked against the collection, so
         a released Pokémon's stale id is still returned (see
         :func:`load_party` for the resolved view).
+
+    Raises
+    ------
+    Exception
+        Whatever ``db.get_team`` raised, when ``strict`` is True.
     """
     try:
         rows = db.get_team() or []
     except Exception as e:
+        if strict:
+            raise
         _log("error", f"Could not read the team table: {e}")
         return []
     ids: list[str] = []
@@ -129,7 +140,7 @@ def _existing_ids(db, ids: list[str]) -> set[str]:
     return {str(row[0]) for row in cursor.fetchall()}
 
 
-def load_party(db, logger=None) -> list[dict[str, Any]]:
+def load_party(db, logger=None, ids=None) -> list[dict[str, Any]]:
     """Resolve the team to full Pokémon records in slot order.
 
     Parameters
@@ -138,6 +149,8 @@ def load_party(db, logger=None) -> list[dict[str, Any]]:
         Database to read from.
     logger : object, optional
         Logger for skipped entries; defaults to ``services.logger``.
+    ids : list of str, optional
+        Team ids already read with :func:`get_team_ids`; saves a second read.
 
     Returns
     -------
@@ -149,7 +162,8 @@ def load_party(db, logger=None) -> list[dict[str, Any]]:
         what :func:`add_to_party` and friends operate on. The team table
         itself is never modified here.
     """
-    ids = get_team_ids(db)
+    if ids is None:
+        ids = get_team_ids(db)
     if not ids:
         return []
     try:
@@ -206,8 +220,14 @@ def _clean_team_ids(db, logger=None) -> tuple[list[str], int]:
     -------
     tuple of (list of str, int)
         Clean ordered ids and the number of entries dropped.
+
+    Raises
+    ------
+    Exception
+        When the team table cannot be read; callers report ``"db_error"``
+        rather than treating the failure as an empty team.
     """
-    ids = get_team_ids(db)
+    ids = get_team_ids(db, strict=True)
     existing = _existing_ids(db, ids)
     clean: list[str] = []
     seen: set[str] = set()
@@ -247,6 +267,12 @@ def _write_team(db, ids: list[str], logger=None) -> bool:
         db.save_team(team_data)
     except Exception as e:
         _log("error", f"Failed to save the party: {e}", logger)
+        # save_team deletes every row before re-inserting, so a failure
+        # part-way through leaves the wipe pending on the shared connection.
+        try:
+            db._get_connection().rollback()
+        except Exception as rollback_error:
+            _log("error", f"Could not roll back the party save: {rollback_error}", logger)
         return False
     trainer_card = services.trainer_card
     if trainer_card is not None:
@@ -351,8 +377,8 @@ def move_in_party(db, individual_id, target_index: int, logger=None) -> TeamChan
     TeamChange
         ``"moved"`` with the new 1-based ``slot``; ``"not_on_team"`` when the
         id is not in a slot; ``"db_error"`` when the table could not be read
-        or written. A move onto its own slot still reports ``"moved"`` without
-        writing anything.
+        or written. A move onto its own slot rewrites the unchanged order and
+        still reports ``"moved"``.
     """
     ind_id = str(individual_id or "")
     if not ind_id:

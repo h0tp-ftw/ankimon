@@ -475,7 +475,7 @@
   "pc_party_empty_slot": "Empty",
   "pc_add_to_team": "Add to team",
   "pc_remove_from_team": "Remove from team",
-  "pc_team_full": "Your party is full ({max} Pokémon). Remove one first.",
+  "pc_team_full": "Your party is full ({limit} Pokémon). Remove one first.",
   "pc_added_to_team": "{pokemon_name} joined your party (slot {slot}).",
   "pc_removed_from_team": "{pokemon_name} was sent back to the PC.",
   "pc_moved_in_team": "{pokemon_name} moved to slot {slot}.",

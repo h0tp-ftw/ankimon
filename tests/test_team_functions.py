@@ -270,6 +270,50 @@ def test_db_error_leaves_table_untouched(team_env):
     assert _team_ids(db) == []
 
 
+@pytest.mark.parametrize("mutator", ["add_to_party", "place_in_party"])
+def test_read_failure_fails_closed_and_keeps_the_party(team_env, mutator):
+    """A team read that raises must not be mistaken for an empty team.
+
+    Otherwise the write path would append to ``[]`` and ``save_team`` would
+    replace the whole saved party with the single new member.
+    """
+    db, team_functions = team_env.db, team_env.team
+    a, b, c, d = _seed(db, "a", "b", "c", "d")
+    for ind_id in (a, b, c):
+        assert team_functions.add_to_party(db, ind_id).ok
+    fn = getattr(team_functions, mutator)
+    args = (db, d) if mutator == "add_to_party" else (db, d, 0)
+    with patch.object(db, "get_team", side_effect=RuntimeError("database is locked")):
+        result = fn(*args)
+    assert (result.ok, result.outcome) == (False, "db_error")
+    assert _team_ids(db) == [a, b, c]
+
+
+def test_partial_save_is_rolled_back(team_env):
+    """A ``save_team`` that fails after its DELETE must not leave the wipe pending.
+
+    ``save_team`` deletes every row before re-inserting; if an insert raises
+    the open transaction would otherwise persist an empty team on the next
+    unrelated commit.
+    """
+    db, team_functions = team_env.db, team_env.team
+    a, b, c = _seed(db, "a", "b", "c")
+    for ind_id in (a, b):
+        assert team_functions.add_to_party(db, ind_id).ok
+
+    def half_applied(team_list, *, commit=True):
+        """Mimic save_team dying between its DELETE and its INSERTs."""
+        db._get_connection().cursor().execute("DELETE FROM team")
+        raise RuntimeError("disk full")
+
+    with patch.object(db, "save_team", side_effect=half_applied):
+        result = team_functions.add_to_party(db, c)
+    assert (result.ok, result.outcome) == (False, "db_error")
+    assert _team_ids(db) == [a, b]
+    db._get_connection().commit()  # a later unrelated commit must not finish the wipe
+    assert _team_ids(db) == [a, b]
+
+
 def test_delete_pokemon_frees_its_party_slot(team_env):
     """Releasing a party member removes its team row too."""
     db, team_functions = team_env.db, team_env.team

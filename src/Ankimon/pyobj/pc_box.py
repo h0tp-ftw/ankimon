@@ -15,6 +15,7 @@ from aqt.qt import (
 )
 
 from aqt.theme import theme_manager  # Check if light / dark mode in Anki
+from aqt.utils import tooltip
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -735,13 +736,25 @@ class PokemonSlotButton(QPushButton):
         return source == "party"
 
     def mousePressEvent(self, event):
-        """Remember where a left press started so a drag can begin later."""
+        """Remember where a left press started so a drag can begin later.
+
+        Parameters
+        ----------
+        event : QMouseEvent
+            Event delivered by Qt.
+        """
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_pos = event.position().toPoint()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        """Start a drag once the left button has moved far enough."""
+        """Start a drag once the left button has moved far enough.
+
+        Parameters
+        ----------
+        event : QMouseEvent
+            Event delivered by Qt.
+        """
         if (
             self._drag_start_pos is not None
             and self._individual_id
@@ -816,7 +829,13 @@ class PokemonSlotButton(QPushButton):
         return payload
 
     def dragEnterEvent(self, event):
-        """Accept a Pokémon drag this slot can take and highlight the slot."""
+        """Accept a Pokémon drag this slot can take and highlight the slot.
+
+        Parameters
+        ----------
+        event : QDragEnterEvent
+            Event delivered by Qt.
+        """
         if self._drop_payload(event) is None:
             event.ignore()
             return
@@ -824,19 +843,37 @@ class PokemonSlotButton(QPushButton):
         event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
-        """Keep accepting while the drag stays over the slot."""
+        """Keep accepting while the drag stays over the slot.
+
+        Parameters
+        ----------
+        event : QDragMoveEvent
+            Event delivered by Qt.
+        """
         if self._drop_payload(event) is None:
             event.ignore()
             return
         event.acceptProposedAction()
 
     def dragLeaveEvent(self, event):
-        """Clear the highlight when the drag leaves."""
+        """Clear the highlight when the drag leaves.
+
+        Parameters
+        ----------
+        event : QDragLeaveEvent
+            Event delivered by Qt.
+        """
         self._set_drop_highlight(False)
         super().dragLeaveEvent(event)
 
     def dropEvent(self, event):
-        """Report the dropped Pokémon to the window."""
+        """Report the dropped Pokémon to the window.
+
+        Parameters
+        ----------
+        event : QDropEvent
+            Event delivered by Qt.
+        """
         payload = self._drop_payload(event)
         self._set_drop_highlight(False)
         if payload is None:
@@ -870,7 +907,6 @@ class PartySlotButton(PokemonSlotButton):
         self._slot_index = slot_index
         self._individual_id = None
         self._member = None
-        self._movie_label = None
 
     def accepts_drop_from(self, source: str) -> bool:
         """Party slots take both boxed Pokémon and other party members.
@@ -920,21 +956,39 @@ class BoxDropArea(QWidget):
         return payload
 
     def dragEnterEvent(self, event):
-        """Accept a party member being dragged over the boxes."""
+        """Accept a party member being dragged over the boxes.
+
+        Parameters
+        ----------
+        event : QDragEnterEvent
+            Event delivered by Qt.
+        """
         if self._payload(event) is None:
             event.ignore()
         else:
             event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
-        """Keep accepting while the drag stays over the grid."""
+        """Keep accepting while the drag stays over the grid.
+
+        Parameters
+        ----------
+        event : QDragMoveEvent
+            Event delivered by Qt.
+        """
         if self._payload(event) is None:
             event.ignore()
         else:
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        """Report the dropped party member to the window."""
+        """Report the dropped party member to the window.
+
+        Parameters
+        ----------
+        event : QDropEvent
+            Event delivered by Qt.
+        """
         payload = self._payload(event)
         if payload is None:
             event.ignore()
@@ -1367,7 +1421,9 @@ class PokemonPC(QDialog):
 
         self.grid_container = BoxDropArea()
         self.grid_container.setStyleSheet("background: transparent;")
-        self.grid_container.pokemonDropped.connect(self.on_box_drop)
+        self.grid_container.pokemonDropped.connect(
+            lambda ind_id, source: self._queue_drop(self.on_box_drop, ind_id, source)
+        )
         self.pokemon_grid = QGridLayout(self.grid_container)
         self.pokemon_grid.setSpacing(5)
         self.pokemon_grid.setContentsMargins(0, 0, 0, 0)
@@ -2004,7 +2060,9 @@ class PokemonPC(QDialog):
                     )
                 )
                 pokemon_button._individual_id = pokemon["individual_id"]
-                pokemon_button.pokemonDropped.connect(self.on_box_drop)
+                pokemon_button.pokemonDropped.connect(
+                    lambda ind_id, source: self._queue_drop(self.on_box_drop, ind_id, source)
+                )
                 self.pokemon_grid.addWidget(
                     pokemon_button, row, col, alignment=Qt.AlignmentFlag.AlignCenter
                 )
@@ -2257,8 +2315,8 @@ class PokemonPC(QDialog):
                 else None
             )
             slot.pokemonDropped.connect(
-                lambda ind_id, source, s=slot: self.on_party_slot_drop(
-                    s._slot_index, ind_id, source
+                lambda ind_id, source, s=slot: self._queue_drop(
+                    self.on_party_slot_drop, s._slot_index, ind_id, source
                 )
             )
             layout.addWidget(slot, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -2301,7 +2359,6 @@ class PokemonPC(QDialog):
         theme_vars = self.theme_vars
         border = theme_vars["button_border"]
         clear_layout(slot._sprite_layout)
-        slot._movie_label = None
         slot._member = member
         slot._individual_id = None
         slot.setToolTip("")
@@ -2345,7 +2402,7 @@ class PokemonPC(QDialog):
                     level_text,
                     gender_symbol,
                     "⭐" if is_shiny else "",
-                    "💖" if getattr(self, "_bff_id", None) == member.get("individual_id") else "",
+                    "💖" if self._bff_id == member.get("individual_id") else "",
                 )
                 if part
             )
@@ -2371,7 +2428,6 @@ class PokemonPC(QDialog):
                 )
                 movie_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
                 slot._sprite_layout.addWidget(movie_label)
-                slot._movie_label = movie_label
             elif sprite_path:
                 sprite_label = QLabel(slot._sprite_holder)
                 pixmap = QPixmap(sprite_path)
@@ -2389,7 +2445,7 @@ class PokemonPC(QDialog):
         else:
             slot._sprite_holder.setVisible(False)
 
-        bff_id = getattr(self, "_bff_id", None)
+        bff_id = self._bff_id
         is_bff = bff_id is not None and member.get("individual_id") == bff_id
         if is_bff:
             bg = "#FF69B4"  # Hot pink for BFF, as in the box grid
@@ -2403,7 +2459,10 @@ class PokemonPC(QDialog):
         slot._base_bg = bg
         slot._hover_bg = h_bg
         slot._border = border
-        slot._individual_id = member.get("individual_id")
+        # A corrupt record stays visible so slot numbers match the team table,
+        # but it is not draggable: nothing useful can be done with it except
+        # removing it from the party via the context menu.
+        slot._individual_id = None if member.get("unreadable") else member.get("individual_id")
         slot.setEnabled(True)
         slot.setStyleSheet(
             f"QPushButton {{ background-color: {bg}; border: 1px solid {border}; border-radius: 6px; }}"
@@ -2432,7 +2491,7 @@ class PokemonPC(QDialog):
             widget = item.widget() if item else None
             if isinstance(widget, PokemonSlotButton):
                 yield widget
-        for slot in getattr(self, "party_slots", []) or []:
+        for slot in self.party_slots:
             if is_alive(slot) and getattr(slot, "_individual_id", None):
                 yield slot
 
@@ -2624,7 +2683,7 @@ class PokemonPC(QDialog):
         # the grid exclusion are derived from the same resolved list so a slot
         # index always maps to the same Pokémon the team seam will operate on.
         self._team_ids_raw = get_team_ids(services.db)
-        self._party_members = load_party(services.db, self.logger)
+        self._party_members = load_party(services.db, self.logger, ids=self._team_ids_raw)
         self._party_ids = [str(p.get("individual_id")) for p in self._party_members]
 
         # Build current filter state for cache check
@@ -2913,6 +2972,12 @@ class PokemonPC(QDialog):
             - Connects menu actions to respective handlers in the parent class.
         """
         menu = QMenu(self)
+        if in_party and pokemon.get("unreadable"):
+            # A corrupt record cannot be shown, traded or released; the only
+            # sensible action is to free its slot.
+            menu.addAction(self._build_team_action(menu, pokemon, in_party))
+            menu.exec(button.mapToGlobal(button.rect().topRight()))
+            return
 
         # Emulate a window title for QMenu
         if pokemon.get("gender") == "M":
@@ -3000,7 +3065,7 @@ class PokemonPC(QDialog):
         if len(self._party_members) >= MAX_TEAM_SIZE:
             action.setEnabled(False)
             action.setToolTip(
-                self.translator.translate("pc_team_full", max=MAX_TEAM_SIZE)
+                self.translator.translate("pc_team_full", limit=MAX_TEAM_SIZE)
             )
             menu.setToolTipsVisible(True)
         action.triggered.connect(lambda: self.add_to_team(pokemon))
@@ -3031,6 +3096,23 @@ class PokemonPC(QDialog):
             services.db, pokemon_stub.get("individual_id"), self.logger
         )
         self._report_team_change(result, pokemon_stub)
+
+    def _queue_drop(self, handler, *args):
+        """Run a drop handler once the drag's nested event loop has unwound.
+
+        Handling the drop rebuilds the grid, which deletes the drag source
+        (box -> party) or the drop target (party -> box). Doing that from
+        inside ``dropEvent``, while ``QDrag.exec`` is still on the stack, is
+        unsafe, so the work is queued for the next event-loop turn.
+
+        Parameters
+        ----------
+        handler : callable
+            ``on_box_drop`` or ``on_party_slot_drop``.
+        *args
+            Positional arguments forwarded to ``handler``.
+        """
+        QTimer.singleShot(0, lambda: handler(*args))
 
     def on_party_slot_drop(self, slot_index: int, individual_id: str, source: str):
         """Handle a Pokémon dropped onto a party slot.
@@ -3102,7 +3184,7 @@ class PokemonPC(QDialog):
         )
         key = self._TEAM_OUTCOME_KEYS.get(result.outcome, "pc_team_change_failed")
         replaced_name = ""
-        if getattr(result, "replaced", None):
+        if result.replaced:
             replaced = self._record_for_message(result.replaced)
             replaced_name = replaced.get("nickname") or format_lore_name(
                 replaced.get("name") or "???"
@@ -3111,7 +3193,7 @@ class PokemonPC(QDialog):
             key,
             pokemon_name=display_name,
             slot=result.slot or 0,
-            max=MAX_TEAM_SIZE,
+            limit=MAX_TEAM_SIZE,
             replaced_name=replaced_name,
         )
         # Re-read the DB whenever the grid may be stale: a success moved a
@@ -3131,20 +3213,14 @@ class PokemonPC(QDialog):
             )
 
     def _toast(self, message: str):
-        """Show a non-blocking confirmation; log instead when Anki's UI is absent.
+        """Show a non-blocking confirmation near the window.
 
         Parameters
         ----------
         message : str
             Already translated text.
         """
-        try:
-            from aqt.utils import tooltip
-
-            tooltip(message, parent=self)
-        except Exception:
-            if self.logger is not None:
-                self.logger.log("info", message)
+        tooltip(message, parent=self)
 
     def pick_as_main_pokemon(self, pokemon_stub):
         """Select a live database record as main, ignoring stale grid entries."""
