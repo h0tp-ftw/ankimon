@@ -1716,9 +1716,8 @@ def PokemonFree(
     # xp_share_gain_exp look up a now-missing Pokémon and crash on the next
     # review. str() guards against any id type mismatch in the compare.
     settings_obj = services.settings
-    was_xp_share_target = settings_obj is not None and str(
-        settings_obj.get("trainer.xp_share")
-    ) == str(individual_id)
+    xp_share_before = settings_obj.get("trainer.xp_share") if settings_obj is not None else None
+    was_xp_share_target = settings_obj is not None and str(xp_share_before) == str(individual_id)
     if was_xp_share_target:
         settings_obj.set("trainer.xp_share", None)
 
@@ -1731,8 +1730,8 @@ def PokemonFree(
         released = False
     if not released:
         if was_xp_share_target:
-            # Nothing was released, so the XP Share target is still valid.
-            settings_obj.set("trainer.xp_share", individual_id)
+            # Nothing was released, so put the stored value back exactly as it was.
+            settings_obj.set("trainer.xp_share", xp_share_before)
         translator = services.translator or Translator(
             int(services.settings.get("misc.language", 9)) if services.settings else 9
         )

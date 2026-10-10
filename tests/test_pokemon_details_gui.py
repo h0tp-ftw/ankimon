@@ -919,7 +919,15 @@ def test_pokemon_free_restores_xp_share_and_reports_when_release_fails(details):
         main_pokemon=None,
     )
     db.release_fails = True
-    settings = _FakeSettings({"trainer.xp_share": "uuid-1"})
+
+    class _StoredId:
+        """Stored value that matches the id under str() but is a distinct object."""
+
+        def __str__(self):
+            return "uuid-1"
+
+    stored = _StoredId()
+    settings = _FakeSettings({"trainer.xp_share": stored})
     details._test_services.db = db
     details._test_services.settings = settings
     logger = _RecorderLogger()
@@ -927,7 +935,11 @@ def test_pokemon_free_restores_xp_share_and_reports_when_release_fails(details):
 
     details.PokemonFree("uuid-1", "pikachu", logger, lambda: refreshed.append(True))
 
-    assert settings.values["trainer.xp_share"] == "uuid-1"
+    # Cleared ahead of the delete, then the exact stored object is put back
+    # (not a str rebuilt from individual_id).
+    assert [k for k, _ in settings.sets] == ["trainer.xp_share", "trainer.xp_share"]
+    assert settings.sets[0][1] is None
+    assert settings.sets[1][1] is stored
     assert db.deleted == [] and db.history == []
     assert refreshed == []
     assert logger.records[-1] == ("error", "pokemon_release_failed")  # stub returns the key
