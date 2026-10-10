@@ -147,6 +147,31 @@ def _team_ids(db):
     return [row["individual_id"] for row in db.get_team()]
 
 
+class _CursorFailingOn:
+    """Cursor proxy that raises for statements containing ``needle``."""
+
+    def __init__(self, real, needle):
+        """Wrap the real cursor and remember which SQL to fail."""
+        self._real = real
+        self._needle = needle
+
+    def execute(self, sql, *args, **kwargs):
+        """Raise for the targeted statement; delegate everything else."""
+        if self._needle in sql:
+            raise RuntimeError("disk full")
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        """Delegate every other attribute to the real cursor."""
+        return getattr(self._real, name)
+
+
+def _fail_statement(conn, needle):
+    """Patch ``conn.cursor`` so statements containing ``needle`` raise."""
+    real_cursor = conn.cursor
+    return patch.object(conn, "cursor", side_effect=lambda: _CursorFailingOn(real_cursor(), needle))
+
+
 def test_add_fills_slots_in_order(team_env):
     """Adding appends to the next free slot and reports the 1-based slot."""
     db, team_functions = team_env.db, team_env.team
@@ -341,15 +366,7 @@ def test_delete_pokemon_rolls_back_when_the_team_delete_fails(team_env):
     db, team_functions = team_env.db, team_env.team
     a, b = _seed(db, "a", "b")
     assert team_functions.add_to_party(db, a).ok
-    real_execute = db.execute
-
-    def execute_failing_on_team(query, parameters=()):
-        """Run every statement normally except the team delete."""
-        if "DELETE FROM team" in query:
-            raise RuntimeError("disk full")
-        return real_execute(query, parameters)
-
-    with patch.object(db, "execute", side_effect=execute_failing_on_team):
+    with _fail_statement(db._get_connection(), "DELETE FROM team"):
         with pytest.raises(RuntimeError):
             db.delete_pokemon(a)
     assert db.get_pokemon(a) is not None
@@ -359,32 +376,43 @@ def test_delete_pokemon_rolls_back_when_the_team_delete_fails(team_env):
     assert _team_ids(db) == [a]
 
 
+def test_delete_pokemon_keeps_both_statements_on_one_connection(team_env):
+    """A release never goes through the auto-healing ``execute`` helper.
+
+    That helper may repair the database and retry on a fresh connection,
+    which would leave the DELETEs on one connection and the commit on
+    another. Both statements must run on the connection that is committed.
+    """
+    db, team_functions = team_env.db, team_env.team
+    a, b = _seed(db, "a", "b")
+    assert team_functions.add_to_party(db, a).ok
+    conn = db._get_connection()
+    seen = []
+    real_cursor = conn.cursor
+
+    class _Recorder(_CursorFailingOn):
+        """Cursor proxy that records every statement instead of failing."""
+
+        def execute(self, sql, *args, **kwargs):
+            """Record and delegate."""
+            seen.append(sql.strip().split()[0] + " " + sql.strip().split()[2])
+            return self._real.execute(sql, *args, **kwargs)
+
+    with patch.object(db, "execute", side_effect=AssertionError("must not use execute()")), \
+         patch.object(conn, "cursor", side_effect=lambda: _Recorder(real_cursor(), "")):
+        assert db.delete_pokemon(a) is True
+    assert seen == ["DELETE captured_pokemon", "DELETE team"]
+    assert db.get_pokemon(a) is None
+    assert _team_ids(db) == []
+
+
 def test_replace_pokemon_rolls_back_when_the_team_update_fails(team_env):
     """A trade whose team statement fails reports False with nothing changed."""
     db, team_functions = team_env.db, team_env.team
     (a,) = _seed(db, "a")
     assert team_functions.add_to_party(db, a).ok
     conn = db._get_connection()
-    real_cursor = conn.cursor
-
-    class _CursorFailingOnTeam:
-        """Cursor proxy that raises on the team update only."""
-
-        def __init__(self, real):
-            """Wrap the real cursor."""
-            self._real = real
-
-        def execute(self, sql, *args, **kwargs):
-            """Raise for the team update; delegate everything else."""
-            if "UPDATE team" in sql:
-                raise RuntimeError("disk full")
-            return self._real.execute(sql, *args, **kwargs)
-
-        def __getattr__(self, name):
-            """Delegate every other attribute to the real cursor."""
-            return getattr(self._real, name)
-
-    with patch.object(conn, "cursor", side_effect=lambda: _CursorFailingOnTeam(real_cursor())):
+    with _fail_statement(conn, "UPDATE team"):
         result = db.replace_pokemon(_mon("traded", name="eevee", pokedex_id=133), a)
     assert result is False
     assert db.get_pokemon(a) is not None

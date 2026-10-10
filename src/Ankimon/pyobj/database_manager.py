@@ -1400,13 +1400,17 @@ class AnkimonDB:
             Re-raised after rolling back, so callers never report a release
             that was not committed.
         """
+        # One raw cursor on one connection: ``self.execute`` may repair the
+        # database and retry on a fresh connection, which would leave the
+        # statements on one connection and the commit on another.
         conn = self._get_connection()
         try:
-            cursor = self.execute(
+            cursor = conn.cursor()
+            cursor.execute(
                 "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
             )
             deleted = cursor.rowcount > 0
-            self.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+            cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
             conn.commit()
         except Exception:
             try:
