@@ -1711,24 +1711,37 @@ def PokemonFree(
         "released_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    # Add to history via database
-    if db.add_to_history(history_data):
-        pass  # Success
-    else:
-        logger.log_and_showinfo("error", f"Failed to add {name} to history.")
-
     # If this Pokémon is the current XP-Share target, clear the setting before
     # it disappears from the DB. Otherwise the dangling individual_id would make
     # xp_share_gain_exp look up a now-missing Pokémon and crash on the next
     # review. str() guards against any id type mismatch in the compare.
     settings_obj = services.settings
-    if settings_obj is not None and str(settings_obj.get("trainer.xp_share")) == str(
-        individual_id
-    ):
+    was_xp_share_target = settings_obj is not None and str(
+        settings_obj.get("trainer.xp_share")
+    ) == str(individual_id)
+    if was_xp_share_target:
         settings_obj.set("trainer.xp_share", None)
 
-    # Delete from database
-    db.delete_pokemon(individual_id)
+    # History row, collection row and party slot change in one transaction,
+    # so a failure leaves all three untouched.
+    try:
+        released = db.release_pokemon(individual_id, history_data)
+    except Exception as e:
+        logger.log("error", f"Release of {individual_id} raised: {e}")
+        released = False
+    if not released:
+        if was_xp_share_target:
+            # Nothing was released, so the XP Share target is still valid.
+            settings_obj.set("trainer.xp_share", individual_id)
+        translator = services.translator or Translator(
+            int(services.settings.get("misc.language", 9)) if services.settings else 9
+        )
+        logger.log_and_showinfo(
+            "error",
+            translator.translate("pokemon_release_failed", pokemon_name=name.capitalize()),
+        )
+        return
+
     logger.log_and_showinfo("info", f"{name.capitalize()} has been let free.")
 
     refresh_callback()

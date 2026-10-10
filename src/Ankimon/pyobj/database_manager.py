@@ -1382,7 +1382,10 @@ class AnkimonDB:
         Both statements commit together: a released Pokémon must not keep
         its party slot (readers skip a dangling id, but it would still count
         against the six-slot cap), and a failure part-way must not leave the
-        collection row gone with the team row pending.
+        collection row gone with the team row pending. The player-facing
+        release goes through :meth:`release_pokemon`, which also records the
+        history row in the same transaction; this method serves tools and
+        tests that delete without history.
 
         Parameters
         ----------
@@ -1400,26 +1403,82 @@ class AnkimonDB:
             Re-raised after rolling back, so callers never report a release
             that was not committed.
         """
-        # One raw cursor on one connection: ``self.execute`` may repair the
-        # database and retry on a fresh connection, which would leave the
-        # statements on one connection and the commit on another.
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
-            )
-            deleted = cursor.rowcount > 0
-            cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
-            conn.commit()
-        except Exception:
+        # One raw cursor on one leased connection: ``self.execute`` may repair
+        # the database and retry on a fresh connection, which would leave the
+        # statements on one connection and the commit on another, and the
+        # lease keeps this connection from being closed underneath us.
+        with self.lease_connection() as conn:
             try:
-                conn.rollback()
-            except Exception as rollback_error:
-                self._log("error", f"Could not roll back the release: {rollback_error}")
-            raise
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
+                )
+                deleted = cursor.rowcount > 0
+                cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    self._log("error", f"Could not roll back the release: {rollback_error}")
+                raise
         self._clear_reviewer_ownership_cache()
         return deleted
+
+    def release_pokemon(self, individual_id: str, history_data: Dict[str, Any]) -> bool:
+        """Release a Pokémon: record it in history, delete it, free its party slot.
+
+        All three statements run on one raw cursor of one connection and
+        commit together, so a failure anywhere leaves the collection, the
+        team table and the release history exactly as they were.
+
+        Parameters
+        ----------
+        individual_id : str
+            Id of the Pokémon to release.
+        history_data : dict
+            Record to store in ``pokemon_history`` (name, id, shiny, ...).
+
+        Returns
+        -------
+        bool
+            True when the release was committed; False (after rollback, with
+            the reason logged) when the Pokémon was not found or any
+            statement failed.
+        """
+        history_id = history_data.get("individual_id") or individual_id
+        obfuscated_history = self._obfuscate(history_data)
+        # One raw cursor on one leased connection (see delete_pokemon).
+        with self.lease_connection() as conn:
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
+                )
+                if cursor.rowcount == 0:
+                    conn.rollback()
+                    self._log("error", f"No Pokémon found with individual_id {individual_id}")
+                    return False
+                cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+                try:
+                    cursor.execute(
+                        "INSERT INTO pokemon_history (individual_id, data) VALUES (?, ?)",
+                        (history_id, obfuscated_history),
+                    )
+                except sqlite3.IntegrityError:
+                    # A duplicate history row is logged and the release still
+                    # commits: SQLite aborts only the failed statement.
+                    self._log("warning", f"Pokemon {history_id} already in history.")
+                conn.commit()
+            except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    self._log("error", f"Could not roll back the release: {rollback_error}")
+                self._log("error", f"Release not saved, your Pokémon is unchanged: {e}")
+                return False
+        self._clear_reviewer_ownership_cache()
+        return True
 
     def replace_pokemon(
         self, pokemon_data: Dict[str, Any], old_individual_id: str

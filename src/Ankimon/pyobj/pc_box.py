@@ -1,6 +1,6 @@
 import json
 import uuid
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from aqt import mw, gui_hooks
 from aqt.qt import (
@@ -670,7 +670,7 @@ def encode_drag_payload(individual_id, source: str) -> QMimeData:
     return mime
 
 
-def decode_drag_payload(mime) -> tuple[str, str] | None:
+def decode_drag_payload(mime) -> Optional[tuple[str, str]]:
     """Read a dragged Pokémon back out of mime data.
 
     Parameters
