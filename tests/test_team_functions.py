@@ -364,7 +364,7 @@ def test_delete_pokemon_rolls_back_when_the_team_delete_fails(team_env):
     pending transaction would commit it on the next unrelated write.
     """
     db, team_functions = team_env.db, team_env.team
-    a, b = _seed(db, "a", "b")
+    (a,) = _seed(db, "a")
     assert team_functions.add_to_party(db, a).ok
     with _fail_statement(db._get_connection(), "DELETE FROM team"):
         with pytest.raises(RuntimeError):
@@ -384,7 +384,7 @@ def test_delete_pokemon_keeps_both_statements_on_one_connection(team_env):
     another. Both statements must run on the connection that is committed.
     """
     db, team_functions = team_env.db, team_env.team
-    a, b = _seed(db, "a", "b")
+    (a,) = _seed(db, "a")
     assert team_functions.add_to_party(db, a).ok
     conn = db._get_connection()
     seen = []
@@ -404,6 +404,55 @@ def test_delete_pokemon_keeps_both_statements_on_one_connection(team_env):
     assert seen == ["DELETE captured_pokemon", "DELETE team"]
     assert db.get_pokemon(a) is None
     assert _team_ids(db) == []
+
+
+def test_release_pokemon_commits_history_delete_and_team_together(team_env):
+    """A committed release writes history, removes the row and frees the slot."""
+    db, team_functions = team_env.db, team_env.team
+    (a,) = _seed(db, "a")
+    assert team_functions.add_to_party(db, a).ok
+    assert db.release_pokemon(a, {"individual_id": a, "name": "pikachu", "id": 25}) is True
+    assert db.get_pokemon(a) is None
+    assert _team_ids(db) == []
+    assert [h["individual_id"] for h in db.get_history()] == [a]
+
+
+def test_release_pokemon_rolls_back_everything_when_the_team_delete_fails(team_env):
+    """A release whose team statement fails leaves collection, team and history unchanged."""
+    db, team_functions = team_env.db, team_env.team
+    (a,) = _seed(db, "a")
+    assert team_functions.add_to_party(db, a).ok
+    conn = db._get_connection()
+    with _fail_statement(conn, "DELETE FROM team"):
+        result = db.release_pokemon(a, {"individual_id": a, "name": "pikachu", "id": 25})
+    assert result is False
+    assert db.get_pokemon(a) is not None
+    assert _team_ids(db) == [a]
+    assert db.get_history() == []
+    conn.commit()  # a later unrelated commit must not finish the release
+    assert db.get_pokemon(a) is not None
+    assert _team_ids(db) == [a]
+    assert db.get_history() == []
+
+
+def test_release_pokemon_rolls_back_when_the_history_insert_fails(team_env):
+    """A history write failure after the deletes also rolls the deletes back."""
+    db, team_functions = team_env.db, team_env.team
+    (a,) = _seed(db, "a")
+    assert team_functions.add_to_party(db, a).ok
+    conn = db._get_connection()
+    with _fail_statement(conn, "INSERT INTO pokemon_history"):
+        assert db.release_pokemon(a, {"individual_id": a, "name": "pikachu", "id": 25}) is False
+    assert db.get_pokemon(a) is not None and _team_ids(db) == [a]
+
+
+def test_release_pokemon_unknown_id_changes_nothing(team_env):
+    """Releasing an id that is not in the collection reports False and writes no history."""
+    db = team_env.db
+    _seed(db, "a")
+    assert db.release_pokemon("ghost", {"individual_id": "ghost", "name": "x", "id": 1}) is False
+    assert db.get_history() == []
+    assert db.get_pokemon("a") is not None
 
 
 def test_replace_pokemon_rolls_back_when_the_team_update_fails(team_env):

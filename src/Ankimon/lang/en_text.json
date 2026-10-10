@@ -484,6 +484,7 @@
   "pc_not_on_team": "{pokemon_name} is not in your party.",
   "pc_team_missing_pokemon": "That Pokémon is no longer in your collection.",
   "pc_team_change_failed": "Could not update your party. Check the Ankimon log for details.",
+  "pokemon_release_failed": "{pokemon_name} could not be released; nothing was changed. Check the Ankimon log for details.",
   "cp_label": "CP",
   "bp_label": "BP",
   "combat_power": "Combat Power",
