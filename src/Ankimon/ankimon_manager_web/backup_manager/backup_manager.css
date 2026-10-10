@@ -1,0 +1,266 @@
+/*
+  Backup Manager - Styles
+
+  This stylesheet dresses up the Backup Manager window. It assumes the
+  shared shop.css is already loaded, since it relies on that file's theme
+  variables (--text-bright, --text-muted, --text-main, --bg-card,
+  --border-main, --accent-blue, --accent-red) for colours and typography.
+
+  What's in here:
+
+  - Two local accent colours at the top: a warm gold for the cash amount
+    shown on each backup card, and a red for the destructive "Restore" and "Delete"
+    button.
+
+  - Layout for the main content area and its heading ("Available Backups").
+
+  - Styling for the backup list and each backup card. Cards are laid out
+    as a five-column grid: action buttons, date, trainer + main Pokémon,
+    stats, and cash. They gently lift and highlight on hover.
+
+  - Smaller typographic rules for the labels inside each card, plus a
+    monospaced gold style for the cash value.
+
+  - Styling for the Restore and Delete buttons, the "no backups yet"
+    empty state, and the error state (which shows a title plus a
+    scrollable, selectable traceback so users can copy it).
+
+  - The confirmation modal: a dimmed full-screen overlay with a centred
+    card, heading, message, and Cancel / Confirm buttons.
+
+  - A toast element (shared class .shop-toast, mostly styled elsewhere)
+    that the JavaScript uses for short success/failure messages.
+
+  - A responsive tweak for narrow windows: the heading stacks, cards
+    collapse to two columns, and the action buttons stretch full width
+    so they're easy to tap.
+*/
+
+:root {
+    --backup-accent: #f2cc60;
+    --backup-danger: #f85149;
+}
+
+.backup-content {
+    padding: 30px 34px 64px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.backup-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.backup-heading h2 {
+    margin: 0 0 6px;
+    color: var(--text-bright);
+}
+
+.backup-list {
+    display: grid;
+    gap: 12px;
+}
+
+.backup-card {
+    display: grid;
+    grid-template-columns: auto 150px minmax(0, 1fr) auto auto;
+    gap: 20px;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: border-color .15s ease, transform .15s ease;
+}
+
+.backup-card:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-1px);
+}
+
+.backup-date strong,
+.backup-trainer strong {
+    display: block;
+    color: var(--text-bright);
+    font-size: 1rem;
+}
+
+.backup-date span,
+.backup-trainer span,
+.backup-stat span {
+    color: var(--text-muted);
+    font-size: .78rem;
+}
+
+.backup-trainer strong {
+    font-size: 1.05rem;
+}
+
+.backup-stat {
+    display: grid;
+    gap: 4px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.backup-cash {
+    color: var(--backup-accent);
+    font: 700 1rem 'JetBrains Mono', monospace;
+    white-space: nowrap;
+}
+
+.backup-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+.backup-actions button {
+    border: 1px solid var(--accent-blue);
+    border-radius: 6px;
+    padding: 5px 9px;
+    color: var(--text-bright);
+    background: var(--accent-blue);
+    cursor: pointer;
+    font: 600 .72rem 'Outfit', sans-serif;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.backup-actions button:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-bright);
+}
+
+.backup-actions .restore-btn {
+    background: var(--backup-danger);
+    border-color: var(--backup-danger);
+    color: white;
+}
+
+.backup-actions .delete-btn {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: var(--text-bright);
+}
+
+.backup-empty {
+    padding: 56px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px dashed var(--border-main);
+    border-radius: 12px;
+}
+
+.backup-error {
+    text-align: left;
+    border-color: var(--accent-red);
+    color: #ffb4ae;
+}
+
+.backup-error strong {
+    display: block;
+    color: var(--text-bright);
+    margin-bottom: 12px;
+}
+
+.backup-error pre {
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    user-select: text;
+    -webkit-user-select: text;
+    font: .72rem 'JetBrains Mono', monospace;
+}
+
+.nav-action {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.backup-modal {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 20;
+    background: rgba(0, 0, 0, .68);
+}
+
+.backup-modal.hidden {
+    display: none;
+}
+
+.backup-modal-card {
+    width: min(420px, calc(100vw - 36px));
+    padding: 26px;
+    border: 1px solid var(--border-main);
+    border-radius: 18px;
+    background: var(--bg-card);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+}
+
+.backup-modal-card h2 {
+    color: var(--text-bright);
+    margin-bottom: 10px;
+}
+
+.backup-modal-card p {
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.backup-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.backup-modal-actions .btn {
+    border-radius: 999px;
+    padding: 10px 16px;
+    border: 1px solid var(--accent-blue);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.backup-modal-actions .btn-primary {
+    background: var(--accent-blue);
+    color: #06111e;
+}
+
+.backup-modal-actions .btn-secondary {
+    background: transparent;
+    color: var(--text-main);
+    border-color: var(--border-main);
+}
+
+@media (max-width: 800px) {
+    .backup-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .backup-card {
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+    }
+
+    .backup-actions {
+        grid-column: 1 / -1;
+        justify-content: stretch;
+    }
+
+    .backup-actions button {
+        flex: 1;
+    }
+}

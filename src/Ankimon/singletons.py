@@ -348,9 +348,11 @@ def get_pokemon_pc():
 _items_web_window = None
 
 
-def get_items_window():
+def get_items_window(backup_manager=None):
     global _items_web_window
     if is_alive(_items_web_window):
+        if backup_manager is not None:
+            _items_web_window.backup_manager = backup_manager
         return _items_web_window
     from .ankimon_items_web.shop_obj import AnkimonItemsWeb
 
@@ -362,6 +364,7 @@ def get_items_window():
         trainer_card=trainer_card,
         settings_obj=settings_obj,
         logger=logger,
+        backup_manager=backup_manager,
     )
     mw.items_web_window = _items_web_window
     return _items_web_window

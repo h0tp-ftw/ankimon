@@ -16,7 +16,9 @@
 
     function methodFor(screen) {
         if (!screen) return null;
-        return 'open' + screen.charAt(0).toUpperCase() + screen.slice(1);
+        return 'open' + screen.split('_')
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join('');
     }
 
     window.updateNavSwitcherUnresolvedCount = function (count) {

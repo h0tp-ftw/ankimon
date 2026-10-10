@@ -132,7 +132,7 @@ def create_menu_actions(
         # by the next push. Only touch the profile action when actually opening
         # Profile, so opening another screen can't clobber a queued action (or
         # leave a stale one behind).
-        w = get_items_window()
+        w = get_items_window(backup_manager=backup_manager)
         if view is not None:
             w.pending_view = view
         if screen == "profile":
@@ -219,7 +219,7 @@ def create_menu_actions(
     # Backup Manager
     backup_manager_action = QAction("Backup Manager", mw)
     backup_manager_action.setMenuRole(QAction.MenuRole.NoRole)
-    backup_manager_action.triggered.connect(lambda: BackupManagerDialog(backup_manager, mw).exec())
+    backup_manager_action.triggered.connect(lambda: _open_shell_at("backup_manager"))
     game_menu.addAction(backup_manager_action)
 
     # Manual save transfer. This is the supported way to move a save between

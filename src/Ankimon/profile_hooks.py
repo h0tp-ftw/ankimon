@@ -59,9 +59,14 @@ def _on_profile_close():
         logger.log("error", f"Error clearing caches on profile close: {e}")
 
 
-def _on_profile_did_open(online_connectivity):
+def _on_profile_did_open(online_connectivity, backup_manager=None):
     def handler():
         profile_col = getattr(mw, "col", None)
+        if backup_manager is not None:
+            try:
+                backup_manager.refresh_profile_path()
+            except Exception as e:
+                logger.log("error", f"Error refreshing backup path on profile open: {e}")
 
         # Pause media sync for any uncaptured original BEFORE the first dialog
         # below can pump the event loop. Stat calls only; the scan that can
@@ -285,7 +290,7 @@ def register_profile_hooks(
     # previously-recorded one before appending, so a reload swaps each handler
     # in place instead of stacking a duplicate. gui_hooks' remove() / remHook()
     # both tolerate an already-absent callback.
-    did_open_handler = _on_profile_did_open(online_connectivity)
+    did_open_handler = _on_profile_did_open(online_connectivity, backup_manager)
 
     def on_profile_did_open():
         try:
