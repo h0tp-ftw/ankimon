@@ -288,6 +288,20 @@ def _describe_sprite(name, roles):
 
 
 class ProfileData:
+    """Data provider and action handler for the trainer profile web view.
+
+    Parameters
+    ----------
+    addon_dir : str or Path
+        Root of the add-on, used to locate bundled assets.
+    trainer_card : TrainerCard
+        Trainer card whose team and badges the profile shows.
+    settings_obj : Settings
+        Add-on settings object.
+    logger : ShowInfoLogger
+        Logger for diagnostics.
+    """
+
     def __init__(self, addon_dir, trainer_card, settings_obj, logger):
         self.addon_dir = addon_dir
         self.trainer_card = trainer_card
@@ -839,7 +853,10 @@ class ProfileData:
             if pokemon_pc is not None and is_alive(pokemon_pc):
                 pokemon_pc.refresh_pokemon_grid()
         except Exception as e:
-            print(f"[Ankimon] profile: PC refresh after team save failed: {e}")
+            try:
+                self.logger.log("warning", f"PC refresh after team save failed: {e}")
+            except Exception:
+                pass
 
         self._roster_cache = None
         return {"ok": True, "message": "Team saved.", "count": len(team_data)}

@@ -231,12 +231,18 @@ def _host(pc_box, members=None):
         party_panel=None,
         _party_members=list(members or []),
         _party_ids=[],
+        _bff_id=None,
         show_pokemon_details=mock.MagicMock(),
         show_actions_submenu=mock.MagicMock(),
         on_party_slot_drop=mock.MagicMock(),
         on_box_drop=mock.MagicMock(),
     )
-    for name in ("_build_party_panel", "refresh_party_panel", "_populate_party_slot"):
+    for name in (
+        "_build_party_panel",
+        "refresh_party_panel",
+        "_populate_party_slot",
+        "_queue_drop",
+    ):
         setattr(
             host, name, types.MethodType(getattr(pc_box.PokemonPC, name), host)
         )
@@ -540,7 +546,7 @@ def test_drag_payload_round_trips_and_rejects_garbage(pc_box):
     assert pc_box.decode_drag_payload(wrong_source) is None
 
 
-def test_party_slot_accepts_box_and_party_drags_and_reports_drop(pc_box):
+def test_party_slot_accepts_box_and_party_drags_and_reports_drop(pc_box, qapp):
     """A party slot highlights on enter, emits (id, source) on drop, ignores itself."""
     host = _host(pc_box)
     host._build_party_panel()
@@ -555,6 +561,8 @@ def test_party_slot_accepts_box_and_party_drags_and_reports_drop(pc_box):
 
     assert _Drop(pc_box, "boxed", "box").send(slot)
     assert received == [("boxed", "box")]
+    host.on_party_slot_drop.assert_not_called()  # queued, not run inside dropEvent
+    qapp.processEvents()
     host.on_party_slot_drop.assert_called_with(0, "boxed", "box")
     assert pc_box.DROP_HIGHLIGHT_BORDER not in slot.styleSheet()  # highlight cleared
 
@@ -702,6 +710,20 @@ def test_party_slot_shows_bff_state(pc_box):
     assert "bff_tooltip" in slot.toolTip()
 
 
+def test_unreadable_party_member_is_shown_but_not_draggable(pc_box):
+    """A corrupt team record keeps its slot and name but cannot start a drag."""
+    host = _host(pc_box)
+    host._build_party_panel()
+    host._party_members = [
+        {"individual_id": "broken", "name": "???", "level": "?", "unreadable": True}
+    ]
+    host.refresh_party_panel()
+    slot = host.party_slots[0]
+    assert slot._member["individual_id"] == "broken"  # context menu can still remove it
+    assert slot._individual_id is None  # start_drag refuses without an id
+    assert "???" in slot._name_label.text()
+
+
 def test_fetch_resolves_party_once_for_grid_and_column(pc_box, monkeypatch):
     """The grid exclusion and the column use the same resolved party.
 
@@ -720,7 +742,7 @@ def test_fetch_resolves_party_once_for_grid_and_column(pc_box, monkeypatch):
         _member("ok"),
     ]
     monkeypatch.setattr(pc_box, "get_team_ids", lambda db: ["broken", "ok"])
-    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None: list(members))
+    monkeypatch.setattr(pc_box, "load_party", lambda db, logger=None, ids=None: list(members))
     host = types.SimpleNamespace(
         logger=None,
         search_edit=None, type_combo=None, generation_combo=None, tier_combo=None,

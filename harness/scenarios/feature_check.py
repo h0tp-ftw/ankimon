@@ -271,7 +271,10 @@ def check_party_drag_drop(d, app, db, pc, pool):
     """Drag-and-drop between the boxes and the party column (the real drop callbacks
     the slot widgets fire): box -> empty party slot appends, box -> occupied slot
     swaps the occupant out, party -> party reorders, party -> box grid removes."""
-    team = lambda: [r["individual_id"] for r in db.get_team()]  # noqa: E731
+    def team():
+        """Ordered ids currently in the team table."""
+        return [r["individual_id"] for r in db.get_team()]
+
     a, b = pool.pop(), pool.pop()
     base = team()
     pc.on_party_slot_drop(len(base), a, "box"); app.processEvents()
