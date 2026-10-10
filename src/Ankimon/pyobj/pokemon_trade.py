@@ -1046,6 +1046,8 @@ def parse_to_canonical(code_str):
 
 
 class PokemonTrade:
+    """Trade window: fetch a Pokémon from the Ankimon trade service and swap it in for one of the trainer's."""
+
     TRADE_VERSION = "02"
 
     def __init__(self, name, id, level, ability, iv, ev, gender, attacks, individual_id, shiny, logger, refresh_callback, parent_window=None, nature="serious"):
@@ -1634,17 +1636,22 @@ class PokemonTrade:
             db = services.db
             
             try:
-                db.replace_pokemon(new_pokemon, self.individual_id)
-                # The traded-away Pokémon's individual_id is now gone from the DB
-                # (it was swapped for new_pokemon's fresh id). If it was the
-                # XP-Share target, clear the setting so xp_share_gain_exp doesn't
-                # later look up a missing Pokémon and crash. str() guards against
-                # any id type mismatch in the compare.
-                settings_obj = services.settings
-                if settings_obj is not None and str(settings_obj.get("trainer.xp_share")) == str(self.individual_id):
-                    settings_obj.set("trainer.xp_share", None)
+                replaced = db.replace_pokemon(new_pokemon, self.individual_id)
             except Exception as e:
                 show_warning_with_traceback(parent=self.parent_window, exception=e, message=f"An error occurred during trade: {e}")
+                return
+            if not replaced:
+                # replace_pokemon logged why and rolled back; nothing changed.
+                self.logger.log_and_showinfo("error", "The trade could not be saved, so your Pokémon is unchanged.")
+                return
+            # The traded-away Pokémon's individual_id is now gone from the DB
+            # (it was swapped for new_pokemon's fresh id). If it was the
+            # XP-Share target, clear the setting so xp_share_gain_exp doesn't
+            # later look up a missing Pokémon and crash. str() guards against
+            # any id type mismatch in the compare.
+            settings_obj = services.settings
+            if settings_obj is not None and str(settings_obj.get("trainer.xp_share")) == str(self.individual_id):
+                settings_obj.set("trainer.xp_share", None)
 
             self.logger.log_and_showinfo("warning",f"Successfully traded for {new_pokemon['name']}!")
             self.refresh_callback()

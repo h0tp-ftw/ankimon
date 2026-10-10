@@ -1377,16 +1377,45 @@ class AnkimonDB:
             pass
 
     def delete_pokemon(self, individual_id: str) -> bool:
-        """Deletes a pokemon from the captured collection."""
-        cursor = self.execute(
-            "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
-        )
-        # A released Pokémon must not keep its party slot: readers skip a
-        # dangling id, but it would still count against the six-slot cap.
-        self.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
-        self._get_connection().commit()
+        """Delete a Pokémon from the collection and free its party slot.
+
+        Both statements commit together: a released Pokémon must not keep
+        its party slot (readers skip a dangling id, but it would still count
+        against the six-slot cap), and a failure part-way must not leave the
+        collection row gone with the team row pending.
+
+        Parameters
+        ----------
+        individual_id : str
+            Id of the Pokémon to delete.
+
+        Returns
+        -------
+        bool
+            True when a ``captured_pokemon`` row was deleted.
+
+        Raises
+        ------
+        Exception
+            Re-raised after rolling back, so callers never report a release
+            that was not committed.
+        """
+        conn = self._get_connection()
+        try:
+            cursor = self.execute(
+                "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
+            )
+            deleted = cursor.rowcount > 0
+            self.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                self._log("error", f"Could not roll back the release: {rollback_error}")
+            raise
         self._clear_reviewer_ownership_cache()
-        return cursor.rowcount > 0
+        return deleted
 
     def replace_pokemon(
         self, pokemon_data: Dict[str, Any], old_individual_id: str
@@ -1435,26 +1464,33 @@ class AnkimonDB:
             return False
 
         # You passed all the checks. Full steam ahead!
-        # Replace the row in-place
-        cursor.execute(
-            """
-            UPDATE captured_pokemon
-            SET individual_id = ?, is_main = ?, data = ?
-            WHERE individual_id = ?
-            """,
-            (new_individual_id, is_main, obfuscated_data, old_individual_id),
-        )
-        # Read the outcome before touching any other table: rowcount reflects
-        # the most recent statement only.
-        replaced = cursor.rowcount > 0
-        # The incoming Pokémon inherits the outgoing one's party slot, so a
-        # trade never leaves a stale id in the team table.
-        cursor.execute(
-            "UPDATE team SET individual_id = ? WHERE individual_id = ?",
-            (new_individual_id, old_individual_id),
-        )
-
-        conn.commit()
+        # Replace the row in-place. The team update commits with it: the
+        # incoming Pokémon inherits the outgoing one's party slot, and a
+        # failure part-way must not persist half a trade.
+        try:
+            cursor.execute(
+                """
+                UPDATE captured_pokemon
+                SET individual_id = ?, is_main = ?, data = ?
+                WHERE individual_id = ?
+                """,
+                (new_individual_id, is_main, obfuscated_data, old_individual_id),
+            )
+            # Read the outcome before touching any other table: rowcount
+            # reflects the most recent statement only.
+            replaced = cursor.rowcount > 0
+            cursor.execute(
+                "UPDATE team SET individual_id = ? WHERE individual_id = ?",
+                (new_individual_id, old_individual_id),
+            )
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                self._log("error", f"Could not roll back the trade: {rollback_error}")
+            self._log("error", f"Trade not saved, your Pokémon is unchanged: {e}")
+            return False
         self._clear_reviewer_ownership_cache()
         # Trades acquire the incoming species just like a catch. Record it now
         # so encounter unlocks and the HUD do not lag until the next startup's
