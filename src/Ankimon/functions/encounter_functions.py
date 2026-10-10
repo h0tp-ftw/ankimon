@@ -1176,6 +1176,44 @@ def generate_random_pokemon(
     ankimon_tracker_obj.pokemon_encounter = 0  # 0: Start of Battle: 1: Current Battle
     ankimon_tracker_obj.cards_battle_round = 0  # Amount of cards in this current battle
 
+    special_form = None
+    cosmetic_formes = search_pokedex(name, "cosmeticFormes") or []
+
+    # Magearna-Original is listed as an otherForme rather than a cosmeticForme in Smogon data,
+    # but functionally it is a purely cosmetic alternate form for the player's collection.
+    if pokemon_id == 801:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Original")
+    elif pokemon_id == 172:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Spiky-eared")
+    elif pokemon_id == 893:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Dada")
+    elif pokemon_id == 925:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Family of Three")
+    elif pokemon_id == 978:
+        cosmetic_formes = list(cosmetic_formes)
+        cosmetic_formes.append("Roaming")
+
+    if cosmetic_formes:
+        options = [f.split("-", 1)[1] if "-" in f else f for f in cosmetic_formes]
+        # Certain forms are rare (5% chance of any special form, 95% chance of base form)
+        # 25: Pikachu (Hats)
+        # 172: Pichu (Spiky-eared)
+        # 801: Magearna (Original Color)
+        # 893: Zarude (Dada)
+        # 925: Maushold (Family of Three)
+        # 978: Gimmighoul (Roaming)
+        if pokemon_id in (25, 172, 801, 893, 925, 978):
+            if random.random() < 0.05:
+                special_form = random.choice(options)
+        else:
+            # Uniform distribution for Unown, Vivillon, Flabébé, etc.
+            all_options = [None] + options
+            special_form = random.choice(all_options)
+
     return (
         name,
         pokemon_id,
@@ -1195,6 +1233,7 @@ def generate_random_pokemon(
         ev_yield,
         is_shiny,
         nature,
+        special_form,
     )
 
 
@@ -1260,26 +1299,51 @@ def new_pokemon(
         invalidate = getattr(reviewer_obj, "invalidate_hud_cache", None)
         if callable(invalidate):
             invalidate()
-    (
-        name,
-        pkmn_id,
-        level,
-        ability,
-        pkmn_type,
-        base_stats,
-        enemy_attacks,
-        base_experience,
-        growth_rate,
-        ev,
-        iv,
-        gender,
-        battle_status,
-        battle_stats,
-        tier,
-        ev_yield,
-        is_shiny,
-        nature,
-    ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
+    res = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
+    special_form = None
+    if len(res) == 19:
+        (
+            name,
+            pkmn_id,
+            level,
+            ability,
+            pkmn_type,
+            base_stats,
+            enemy_attacks,
+            base_experience,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            tier,
+            ev_yield,
+            is_shiny,
+            nature,
+            special_form,
+        ) = res
+    else:
+        (
+            name,
+            pkmn_id,
+            level,
+            ability,
+            pkmn_type,
+            base_stats,
+            enemy_attacks,
+            base_experience,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            tier,
+            ev_yield,
+            is_shiny,
+            nature,
+        ) = res
     pokemon_data = {
         "name": name,
         "id": pkmn_id,
@@ -1309,6 +1373,7 @@ def new_pokemon(
         "tier": tier,
         "ev_yield": ev_yield,
         "shiny": is_shiny,
+        "special_form": special_form,
     }
     pokemon.update_stats(**pokemon_data)
     max_hp = pokemon.calculate_max_hp()
@@ -2029,7 +2094,7 @@ def catch_pokemon(
         pokemon_pc.refresh_pokemon_grid()
 
 
-def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
+def _enemy_protected_by_auto_catch(enemy_pokemon) -> bool:
     """Whether enemy_pokemon's tier is covered by an "always auto-catch" setting.
 
     Legendary/Mythical/Ultra/Starter/Mega/Gmax/Regional Pokémon are each
@@ -2043,9 +2108,11 @@ def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
     is_mythical = enemy_pokemon.tier == "Mythical"
     is_ultra = enemy_pokemon.tier == "Ultra"
     is_starter = enemy_pokemon.tier == "Starter"
+    is_cosmetic = getattr(enemy_pokemon, "special_form", None) is not None
 
     return (
         (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
+        or (is_cosmetic and settings_obj.get("battle.auto_catch_cosmetic", True))
         or (is_mythical and settings_obj.get("battle.auto_catch_mythical", True))
         or (is_ultra and settings_obj.get("battle.auto_catch_ultra", True))
         or (is_starter and settings_obj.get("battle.auto_catch_starter", True))
@@ -2173,8 +2240,16 @@ def handle_enemy_faint(
         enemy_id = enemy_pokemon.id
         # Evolution, trades and imports can add history without updating the
         # battle cache, so refresh once for this completed encounter.
+        uncollected = enemy_id not in load_collected_pokemon_ids()
+
+        if not uncollected and getattr(enemy_pokemon, "special_form", None) is not None:
+            db = services.db
+            if db and hasattr(db, "get_caught_forms"):
+                if enemy_pokemon.special_form not in db.get_caught_forms(enemy_id):
+                    uncollected = True
+
         if (
-            enemy_id not in load_collected_pokemon_ids()
+            uncollected
             or enemy_pokemon.shiny
             or should_catch_always
         ):
