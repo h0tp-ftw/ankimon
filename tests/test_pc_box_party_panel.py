@@ -231,8 +231,11 @@ def _host(pc_box, members=None):
         gif_in_collection=False,
         party_slot_width=180,
         party_slot_height=62,
-        party_compact_width=58,
+        party_compact_width=56,
         _party_compact=False,
+        _collection_layout=None,
+        _party_layout_delta=0,
+        layout=lambda: None,
         width=lambda: 1300,
         party_slots=[],
         party_panel=None,
@@ -252,6 +255,7 @@ def _host(pc_box, members=None):
         "_apply_party_layout_mode",
         "_set_party_compact",
         "_apply_party_mode_to_slot",
+        "_refresh_window_minimum",
     ):
         setattr(
             host, name, types.MethodType(getattr(pc_box.PokemonPC, name), host)
@@ -731,7 +735,7 @@ def test_compact_party_mode_shows_sprite_only_tiles_with_tooltips(pc_box):
     host.width = lambda: 1024
     host._apply_party_layout_mode()
     assert host._party_compact is True
-    assert host.party_panel.maximumWidth() <= host.party_compact_width + 6 < full_width
+    assert host.party_panel.maximumWidth() <= host.party_compact_width + 4 < full_width
     filled, empty = host.party_slots[0], host.party_slots[1]
     assert filled.width() == filled.height() == host.party_compact_width
     assert not filled._name_label.isVisibleTo(filled)
@@ -754,7 +758,9 @@ def test_compact_party_mode_shows_sprite_only_tiles_with_tooltips(pc_box):
 
 
 def test_compact_party_mode_without_sprites_keeps_the_level_visible(pc_box):
-    """With sprites off a compact tile still shows the level so it is not blank."""
+    """With sprites off a compact tile shows the name and, centred below it, the level."""
+    from PyQt6.QtCore import Qt
+
     host = _host(pc_box)
     host.show_sprites_across_ankimon = False
     host._build_party_panel()
@@ -763,10 +769,18 @@ def test_compact_party_mode_without_sprites_keeps_the_level_visible(pc_box):
     host.refresh_party_panel()
     host._apply_party_layout_mode()
     slot = host.party_slots[0]
-    assert slot._sub_label.isVisibleTo(slot)
-    assert slot._sub_label.text() == slot._compact_sub_text  # level only, fits the tile
-    assert "♂" not in slot._sub_label.text() and "♀" not in slot._sub_label.text()
+    assert slot._name_label.isVisibleTo(slot)  # an (elided) name on the first line
+    assert slot._name_label.text().startswith("Lick")
+    assert slot._sub_label.isVisibleTo(slot)  # the level on its own line below
+    assert slot._sub_label.text() == slot._compact_sub_text and "25" in slot._sub_label.text()
+    assert slot._name_label.alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert slot._sub_label.alignment() & Qt.AlignmentFlag.AlignHCenter
+    assert "25" in slot.toolTip()
     assert not slot._sprite_holder.isVisibleTo(slot)
+
+    host.width = lambda: 1300
+    host._apply_party_layout_mode()
+    assert slot._name_label.alignment() & Qt.AlignmentFlag.AlignLeft  # full tiles are left-aligned again
 
 
 def test_unreadable_party_member_is_shown_but_not_draggable(pc_box):

@@ -311,16 +311,21 @@ def check_pc_fits_1024x768(d, app, db, pc, pool):
     }
     clipped = [name for name, w in controls.items()
                if not w.isVisible() or not pc.rect().contains(w.mapTo(pc, w.rect().bottomRight()))]
-    compact_ok = pc._party_compact and pc.party_panel.width() <= pc.party_compact_width + 6
+    compact_ok = pc._party_compact and pc.party_panel.width() <= pc.party_compact_width + 4
     small_w, small_h = pc.width(), pc.height()
     fits = small_w <= 1024 and small_h <= 768 and layout_min.width() <= pc.minimumWidth() <= 1024
+    # Nothing inside the details panel may be squeezed off its right edge.
+    from PyQt6.QtWidgets import QWidget
+    ds = pc.details_panel_stack
+    squeezed = [type(w).__name__ for w in ds.findChildren(QWidget)
+                if w.isVisible() and w.mapTo(ds, w.rect().bottomRight()).x() > ds.width() + 1]
     pc.resize(1300, 800); app.processEvents()
     restored = not pc._party_compact
-    ok = fits and compact_ok and not clipped and restored
+    ok = fits and compact_ok and not clipped and not squeezed and restored
     return ("pc fits 1024x768 (compact party column)", ok,
-            "window %dx%d layout_min %dx%d compact=%s clipped=%s full_mode_back=%s"
+            "window %dx%d layout_min %dx%d compact=%s clipped=%s details_squeezed=%s full_mode_back=%s"
             % (small_w, small_h, layout_min.width(), layout_min.height(),
-               compact_ok, clipped or "none", restored))
+               compact_ok, clipped or "none", squeezed[:3] or "none", restored))
 
 
 CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel,

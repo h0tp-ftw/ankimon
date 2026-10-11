@@ -545,13 +545,27 @@
     }
 
     // ---------------- Save / dirty ----------------
+    let draftRevision = 0;  // bumped on every edit; a save only clears the draft it sent
+
     function markDirty() {
         state.dirty = true;
+        draftRevision += 1;
         updateSaveUI();
     }
 
     function staleMessage() {
-        return state.staleMessage || 'Your Team has been changed elsewhere. Please reload the Team page.';
+        return state.staleMessage || 'Your Team has been changed elsewhere. Please reload the TEAM page.';
+    }
+
+    // Status-line version of the message: the "TEAM" word carries the same Great
+    // Ball icon the page header and the nav menu use, so it reads like the UI.
+    function staleStatusHtml() {
+        const text = document.createElement('span');
+        text.textContent = staleMessage();
+        const html = text.innerHTML;
+        const icon = '<img src="../user_files/sprites/items/great-ball.png" class="icon-item-sprite" alt="" '
+            + 'style="height:1em;vertical-align:-0.15em;margin-right:2px;">';
+        return html.replace('TEAM page', icon + 'TEAM page');
     }
 
     function updateSaveUI() {
@@ -559,7 +573,7 @@
         const status = document.getElementById('save-status');
         btn.disabled = !state.dirty;
         if (state.changedElsewhere) {
-            status.textContent = staleMessage();
+            status.innerHTML = staleStatusHtml();
         } else {
             status.textContent = state.dirty ? 'Unsaved changes' : 'All saved';
         }
@@ -578,12 +592,17 @@
         // Python seam accepts it for when that UI is built).
         // Fourth arg: the party as loaded. The backend refuses the save when the
         // stored party no longer matches it (edited in the Pokémon PC meanwhile).
+        const sentRevision = draftRevision;
         return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', '',
                                    JSON.stringify(state.loadedTeam)).then((res) => {
             if (res && res.ok) {
-                state.dirty = false;
-                state.changedElsewhere = false;
                 state.loadedTeam = ids.slice();
+                // Edits made while the request was pending are a newer draft:
+                // keep them unsaved. Only the draft that was sent is now clean.
+                if (draftRevision === sentRevision) {
+                    state.dirty = false;
+                    state.changedElsewhere = false;
+                }
                 updateSaveUI();
                 toast(res.message || 'Team saved.', 'success');
                 return res;

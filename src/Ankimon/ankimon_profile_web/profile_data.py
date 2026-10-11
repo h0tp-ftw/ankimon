@@ -826,8 +826,8 @@ class ProfileData:
             return 0
 
     STALE_TEAM_MESSAGE = (
-        "Your Team has been changed elsewhere. Please reload the Team page "
-        "(Ankimon menu \u2192 Choose Pokemon Team) to make Team changes."
+        "Your Team has been changed elsewhere. Please reload the TEAM page "
+        "(Ankimon \u2192 Game \u2192 Choose Pokemon Team) to make Team changes."
     )
 
     def handle_save_team(self, team_ids, xp_share_id, companion_id, loaded_team_ids=None):

@@ -695,9 +695,9 @@ DROP_HIGHLIGHT_BORDER = "#fbbf24"
 # Below this window width the party column drops its text and shows sprite-only
 # tiles, so the PC still fits a 1024 px wide screen (upstream minimum was 968 px).
 PARTY_COMPACT_BELOW_WIDTH = 1180
-# Explicit window minimum: the compact layout's own minimum (measured 1015 px), so
-# the user can shrink the window into the compact party layout without clipping.
-PC_MIN_WIDTH = 1024
+# In compact mode the collection column also gives up most of its side margins.
+COLLECTION_MARGIN_FULL = 20
+COLLECTION_MARGIN_COMPACT = 6
 
 
 def encode_drag_payload(individual_id, source: str) -> QMimeData:
@@ -1231,8 +1231,10 @@ class PokemonPC(QDialog):
         self._party_ids: list[str] = []
         self.party_slot_width = 180
         self.party_slot_height = 62
-        self.party_compact_width = 58  # sprite-only tile (52 px sprite + padding)
+        self.party_compact_width = 56  # sprite-only tile (52 px sprite + 2 px padding)
         self._party_compact = False
+        self._collection_layout = None
+        self._party_layout_delta = 0
 
         self.create_gui()
         self._restore_geometry()
@@ -1413,7 +1415,10 @@ class PokemonPC(QDialog):
 
         # Collection panel
         collection_layout = QVBoxLayout()
-        collection_layout.setContentsMargins(20, 10, 20, 10)  # Consistent margins
+        collection_layout.setContentsMargins(
+            COLLECTION_MARGIN_FULL, 10, COLLECTION_MARGIN_FULL, 10
+        )  # Consistent margins
+        self._collection_layout = collection_layout
         box_selector_layout = QHBoxLayout()
         box_selector_layout.setContentsMargins(0, 0, 0, 10)
         prev_box_button = QPushButton("◀")
@@ -1498,7 +1503,6 @@ class PokemonPC(QDialog):
         collection_widget = QWidget()
         collection_widget.setLayout(collection_layout)
         self.main_container_layout.addWidget(self._build_party_panel(), 0)
-        self.setMinimumWidth(PC_MIN_WIDTH)
         self.main_container_layout.addWidget(collection_widget, 3)  # Grid takes 3/5
 
         self.setup_details_panel(background_color)
@@ -1799,10 +1803,10 @@ class PokemonPC(QDialog):
         from PyQt6.QtWidgets import QStackedWidget
 
         self.details_panel_stack = QStackedWidget()
-        # 460 (was 470) keeps the whole window within 1024 px when the party
-        # column is in compact mode; the panel's own size hint is far smaller.
-        self.details_panel_stack.setMinimumWidth(460)
+        # No explicit minimum: the panel's content (sprite column + move rows)
+        # defines it, so the move buttons can never be clipped off the right.
         self.main_container_layout.addWidget(self.details_panel_stack, 2)
+        self._set_window_minimum_from_compact_layout()
 
         # Index 0: Placeholder
         self._placeholder_widget = self._create_placeholder_widget()
@@ -2432,6 +2436,7 @@ class PokemonPC(QDialog):
             slot._name_label.setText(self.translator.translate("pc_party_empty_slot"))
             slot._sub_label.setText(f"#{slot._slot_index + 1}")
             slot._base_tooltip = ""
+            slot._display_name = ""
             slot._full_sub_text = f"#{slot._slot_index + 1}"
             slot._compact_sub_text = f"#{slot._slot_index + 1}"
             slot._sprite_holder.setVisible(self.show_sprites_across_ankimon)
@@ -2451,6 +2456,7 @@ class PokemonPC(QDialog):
         display_name = member.get("nickname") or format_lore_name(
             member.get("name") or "???"
         )
+        slot._display_name = display_name
         gender = member.get("gender")
         gender_symbol = {"M": "♂", "F": "♀"}.get(gender, "")
         level_text = self.translator.translate(
@@ -2546,6 +2552,75 @@ class PokemonPC(QDialog):
         slot.setToolTip(slot._base_tooltip)
         self._apply_party_mode_to_slot(slot)
 
+    def _set_window_minimum_from_compact_layout(self):
+        """Measure how much narrower the compact party layout is, then apply it.
+
+        The full party column needs a wider window than the compact one, and
+        Qt would otherwise pin the window to the full layout's minimum, so the
+        user could never shrink into compact mode. The difference between the
+        two layouts is fixed (panel width and collection margins), so it is
+        measured once here; :meth:`_refresh_window_minimum` then derives the
+        window minimum from the live layout whenever content changes.
+        """
+        was_compact = self._party_compact
+        full_min = self._live_layout_minimum(False)
+        compact_min = self._live_layout_minimum(True)
+        self._set_party_compact(was_compact)
+        self._fresh_layout_minimum()
+        self._party_layout_delta = max(0, full_min - compact_min)
+        self._refresh_window_minimum()
+
+    def _live_layout_minimum(self, compact: bool) -> int:
+        """Switch the party column to ``compact`` and return the layout's minimum width.
+
+        Child widgets only post a deferred layout request to the top-level
+        layout, so it is invalidated explicitly to force a fresh computation.
+
+        Parameters
+        ----------
+        compact : bool
+            Which party layout to measure.
+
+        Returns
+        -------
+        int
+            Minimum width of the window's layout in that mode.
+        """
+        self._set_party_compact(compact)
+        return self._fresh_layout_minimum()
+
+    def _fresh_layout_minimum(self) -> int:
+        """Return the window layout's minimum width computed from current state.
+
+        The top-level layout item caches the container's size until a
+        deferred layout request arrives, so the cache is dropped by hand.
+        """
+        columns = self.main_container_layout
+        for index in range(columns.count()):
+            column = columns.itemAt(index).widget()
+            if column is not None:
+                column.updateGeometry()
+        self.main_container.updateGeometry()
+        layout = self.layout()
+        layout.invalidate()
+        return layout.minimumSize().width()
+
+    def _refresh_window_minimum(self):
+        """Pin the window minimum to what the compact layout needs right now.
+
+        Derived from the live layout (so it tracks this machine's fonts and
+        the details panel's current content) minus the measured full-vs-
+        compact difference when the full column is showing. Nothing can then
+        be squeezed below its own minimum, and the window can still be
+        shrunk into compact mode.
+        """
+        if self.layout() is None:
+            return
+        minimum = self._fresh_layout_minimum()
+        if not self._party_compact:
+            minimum -= self._party_layout_delta
+        self.setMinimumWidth(max(minimum, 0))
+
     def _apply_party_layout_mode(self):
         """Pick the full or compact party column from the current window width.
 
@@ -2558,6 +2633,7 @@ class PokemonPC(QDialog):
         compact = self.width() < PARTY_COMPACT_BELOW_WIDTH
         if compact != self._party_compact:
             self._set_party_compact(compact)
+        self._refresh_window_minimum()
 
     def _set_party_compact(self, compact: bool):
         """Switch the party column between full and sprite-only tiles.
@@ -2573,13 +2649,16 @@ class PokemonPC(QDialog):
         if panel is None or not is_alive(panel):
             return
         if compact:
-            panel.setFixedWidth(self.party_compact_width + 6)
-            panel.layout().setContentsMargins(3, 10, 3, 10)
+            panel.setFixedWidth(self.party_compact_width + 4)
+            panel.layout().setContentsMargins(2, 10, 2, 10)
         else:
             panel.setFixedWidth(self.party_slot_width + 16)
             panel.layout().setContentsMargins(12, 10, 4, 10)
         panel._header.setVisible(not compact)
         panel.setToolTip(self.translator.translate("pc_party_header") if compact else "")
+        if self._collection_layout is not None:
+            margin = COLLECTION_MARGIN_COMPACT if compact else COLLECTION_MARGIN_FULL
+            self._collection_layout.setContentsMargins(margin, 10, margin, 10)
         for slot in self.party_slots:
             self._apply_party_mode_to_slot(slot)
 
@@ -2599,23 +2678,56 @@ class PokemonPC(QDialog):
         member = slot._member
         if compact:
             slot.setFixedSize(self.party_compact_width, self.party_compact_width)
-            slot._row_layout.setContentsMargins(3, 3, 3, 3)
+            slot._row_layout.setContentsMargins(2, 2, 2, 2)
         else:
             slot.setFixedSize(self.party_slot_width, self.party_slot_height)
             slot._row_layout.setContentsMargins(6, 4, 6, 4)
         sprites_shown = self.show_sprites_across_ankimon and member is not None
-        slot._name_label.setVisible(not compact)
-        slot._sub_label.setVisible(not compact or not sprites_shown)
+        # Text-only compact tiles (sprites off) keep an elided name so members
+        # stay distinguishable without hovering; the level moves to the tooltip.
+        text_only_member = compact and member is not None and not self.show_sprites_across_ankimon
+        if compact:
+            if text_only_member:
+                slot._name_label.setText(
+                    fit_text_to_slot(
+                        slot._display_name,
+                        slot._name_label.fontMetrics(),
+                        self.party_compact_width - 6,
+                        max_lines=1,
+                    )
+                )
+        else:
+            slot._name_label.setText(
+                fit_text_to_slot(
+                    slot._display_name,
+                    slot._name_label.fontMetrics(),
+                    self.party_slot_width - self.party_slot_height - 20,
+                    max_lines=1,
+                )
+                if member is not None
+                else self.translator.translate("pc_party_empty_slot")
+            )
+        slot._name_label.setVisible(not compact or text_only_member)
+        # Text-only compact tiles show the level on its own line under the
+        # name; sprite tiles keep the level in the tooltip only.
+        slot._sub_label.setVisible(not compact or member is None or text_only_member)
         slot._sub_label.setText(slot._compact_sub_text if compact else slot._full_sub_text)
+        text_alignment = (
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter
+            if compact
+            else Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        slot._name_label.setAlignment(text_alignment)
+        slot._sub_label.setAlignment(text_alignment)
         slot._sprite_holder.setVisible(
             self.show_sprites_across_ankimon and (member is not None or not compact)
         )
         # Rebuild the tooltip from the base each time so mode switches never
-        # stack summaries. In compact mode the hidden name/level lead it.
+        # stack summaries. In compact mode the full name and level lead it.
         base = slot._base_tooltip
         if compact and member is not None:
             level_text = self.translator.translate("level_label", level=member.get("level", 1))
-            summary = f"{slot._name_label.text()} · {level_text}"
+            summary = f"{slot._display_name} · {level_text}"
             # The base already starts with the display name; replace that line.
             rest = base.split("\n", 1)[1] if "\n" in base else ""
             slot.setToolTip(f"{summary}\n{rest}" if rest else summary)
@@ -3408,6 +3520,8 @@ class PokemonPC(QDialog):
         # Switch to details view if not already there
         if hasattr(self, "details_panel_stack"):
             self.details_panel_stack.setCurrentIndex(1)
+            # The details content changes the layout minimum once it is built.
+            QTimer.singleShot(0, self._refresh_window_minimum)
 
         # Get previous stats for sliding bar animation
         old_stats = getattr(self, "_last_pokemon_stats", None)
