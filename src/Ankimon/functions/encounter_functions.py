@@ -1173,7 +1173,7 @@ def generate_random_pokemon(
     # Scale IVs based on number of copies owned
     actual_id = search_pokedex(name, "actual_id")
     copies = 0
-    if actual_id is not None:
+    if actual_id is not None and services.db is not None:
         copies = services.db.get_caught_count_by_pokedex_id(actual_id)
 
     min_iv = min(31, copies * 3)
