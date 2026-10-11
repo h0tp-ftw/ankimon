@@ -687,7 +687,7 @@ class EvoWindow(QWidget):
             # Ensure special_form is carried over, but only if the evolved species
             # actually has that cosmetic form in the Pokedex. Otherwise, drop it.
             if pokemon.get("special_form") is not None:
-                import Ankimon.functions.pokedex_functions as pf
+                from ..functions import pokedex_functions as pf
                 formes = pf.search_pokedex(pokemon["name"], "cosmeticFormes") or []
                 if pokemon["id"] == 801:
                     formes = list(formes)
