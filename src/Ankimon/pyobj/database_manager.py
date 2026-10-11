@@ -1465,6 +1465,17 @@ class AnkimonDB:
         cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon WHERE pokedex_id = ?", (pokedex_id,))
         return cursor.fetchone()[0]
 
+    def get_caught_count_by_pokedex_ids(self, pokedex_ids: list[int]) -> int:
+        """Returns the count of captured pokemon for a list of pokedex_ids."""
+        if not pokedex_ids:
+            return 0
+        placeholders = ",".join("?" for _ in pokedex_ids)
+        cursor = self.execute(
+            f"SELECT COUNT(*) FROM captured_pokemon WHERE pokedex_id IN ({placeholders})",
+            pokedex_ids,
+        )
+        return cursor.fetchone()[0]
+
     def get_shiny_count(self) -> int:
         """Returns the count of shiny pokemon."""
         cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon WHERE shiny = 1")

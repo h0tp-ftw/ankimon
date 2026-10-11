@@ -1171,10 +1171,16 @@ def generate_random_pokemon(
     stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
 
     # Scale IVs based on number of copies owned
-    actual_id = search_pokedex(name, "actual_id")
+    from ..functions.pokedex_functions import _load_pokedex_cache
+    species_id = search_pokedex(name, "species_id")
     copies = 0
-    if actual_id is not None and services.db is not None:
-        copies = services.db.get_caught_count_by_pokedex_id(actual_id)
+    if species_id is not None and services.db is not None:
+        # Get all actual_ids that share this species_id (this includes base forms, megas, and regional variants)
+        pokedex = _load_pokedex_cache()
+        related_ids = [data.get("actual_id") for data in pokedex.values() if data.get("species_id") == species_id and data.get("actual_id") is not None]
+
+        if related_ids:
+            copies = services.db.get_caught_count_by_pokedex_ids(related_ids)
 
     min_iv = min(31, copies * 3)
 
