@@ -546,6 +546,7 @@
 
     // ---------------- Save / dirty ----------------
     let draftRevision = 0;  // bumped on every edit; a save only clears the draft it sent
+    let externalChangeRevision = 0;  // bumped on every party change pushed from elsewhere
 
     function markDirty() {
         state.dirty = true;
@@ -593,6 +594,7 @@
         // Fourth arg: the party as loaded. The backend refuses the save when the
         // stored party no longer matches it (edited in the Pokémon PC meanwhile).
         const sentRevision = draftRevision;
+        const sentExternalRevision = externalChangeRevision;
         return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', '',
                                    JSON.stringify(state.loadedTeam)).then((res) => {
             if (res && res.ok) {
@@ -601,7 +603,11 @@
                 // keep them unsaved. Only the draft that was sent is now clean.
                 if (draftRevision === sentRevision) {
                     state.dirty = false;
-                    state.changedElsewhere = false;
+                    // A party change pushed while this save was pending still
+                    // stands: keep the warning so the status is not falsely clean.
+                    if (externalChangeRevision === sentExternalRevision) {
+                        state.changedElsewhere = false;
+                    }
                 }
                 updateSaveUI();
                 toast(res.message || 'Team saved.', 'success');
@@ -667,6 +673,7 @@
             applyData(data);
             return;
         }
+        externalChangeRevision += 1;
         state.changedElsewhere = true;
         updateSaveUI();
         toast(staleMessage(), 'error');

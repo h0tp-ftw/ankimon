@@ -2630,7 +2630,11 @@ class PokemonPC(QDialog):
         """
         if not self.party_slots or not is_alive(self.party_slots[0]):
             return
-        compact = self.width() < PARTY_COMPACT_BELOW_WIDTH
+        # The full column must switch away before the window can be narrower
+        # than the full layout needs (on large fonts that can exceed the
+        # constant), so the threshold is at least the measured full minimum.
+        full_layout_needs = self.minimumWidth() + self._party_layout_delta
+        compact = self.width() < max(PARTY_COMPACT_BELOW_WIDTH, full_layout_needs)
         if compact != self._party_compact:
             self._set_party_compact(compact)
         self._refresh_window_minimum()

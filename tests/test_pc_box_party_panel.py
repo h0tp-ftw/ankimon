@@ -236,6 +236,7 @@ def _host(pc_box, members=None):
         _collection_layout=None,
         _party_layout_delta=0,
         layout=lambda: None,
+        minimumWidth=lambda: 0,
         width=lambda: 1300,
         party_slots=[],
         party_panel=None,
@@ -755,6 +756,22 @@ def test_compact_party_mode_shows_sprite_only_tiles_with_tooltips(pc_box):
     host.width = lambda: 1024
     host._apply_party_layout_mode()
     assert filled.toolTip().count("Lickilicky") == 1  # repeated switches do not stack
+
+
+def test_compact_threshold_grows_with_the_measured_full_layout(pc_box):
+    """On fonts where the full layout needs more than the constant threshold,
+    compact mode engages before the window can get narrower than that."""
+    host = _host(pc_box)
+    host._build_party_panel()
+    host.refresh_party_panel()
+    host.minimumWidth = lambda: 1100   # measured compact minimum
+    host._party_layout_delta = 164     # full layout needs 1264 > 1180
+    host.width = lambda: 1200          # above the constant, below the full need
+    host._apply_party_layout_mode()
+    assert host._party_compact is True
+    host.width = lambda: 1300
+    host._apply_party_layout_mode()
+    assert host._party_compact is False
 
 
 def test_compact_party_mode_without_sprites_keeps_the_level_visible(pc_box):
