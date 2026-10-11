@@ -553,7 +553,7 @@ class EvoWindow(QWidget):
             # Record the old species before replacing its only recoverable record.
             if not item_name and hasattr(db, "mark_as_caught"):
                 try:
-                    db.mark_as_caught(int(prevo_id))
+                    db.mark_as_caught(int(prevo_id), special_form=pokemon.get("special_form"))
                 except Exception as e:
                     self.logger.log(
                         "error",
@@ -683,6 +683,30 @@ class EvoWindow(QWidget):
             # Recompute Combat Power from the evolved base stats so the stored
             # CP isn't left stale after evolution.
             pokemon["cp"] = calculate_cp_from_dict(pokemon)
+
+            # Ensure special_form is carried over, but only if the evolved species
+            # actually has that cosmetic form in the Pokedex. Otherwise, drop it.
+            if pokemon.get("special_form") is not None:
+                import Ankimon.functions.pokedex_functions as pf
+                formes = pf.search_pokedex(pokemon["name"], "cosmeticFormes") or []
+                if pokemon["id"] == 801:
+                    formes = list(formes)
+                    formes.append("Original")
+                elif pokemon["id"] == 172:
+                    formes = list(formes)
+                    formes.append("Spiky-eared")
+                elif pokemon["id"] == 893:
+                    formes = list(formes)
+                    formes.append("Dada")
+                elif pokemon["id"] == 925:
+                    formes = list(formes)
+                    formes.append("Family of Three")
+                elif pokemon["id"] == 978:
+                    formes = list(formes)
+                    formes.append("Roaming")
+
+                if not formes or not any(f.endswith(f"-{pokemon['special_form']}") or f == pokemon['special_form'] for f in formes):
+                    pokemon["special_form"] = None
 
             # Evolving from a previously-rejected state clears the soft flag so
             # the auto prompt resumes for the new form's future evolutions.
