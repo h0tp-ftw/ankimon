@@ -553,7 +553,8 @@ class EvoWindow(QWidget):
             # Record the old species before replacing its only recoverable record.
             if not item_name and hasattr(db, "mark_as_caught"):
                 try:
-                    db.mark_as_caught(int(prevo_id), special_form=pokemon.get("special_form"))
+                    special_form = pokemon.get("special_form")
+                    db.mark_as_caught(int(prevo_id), special_form=special_form if isinstance(special_form, str) and special_form.strip() else None)
                 except Exception as e:
                     self.logger.log(
                         "error",

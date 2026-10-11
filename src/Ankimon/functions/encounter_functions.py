@@ -2002,7 +2002,7 @@ def save_caught_pokemon(
             "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "individual_id": str(uuid.uuid4()),
             "mega": False,
-            "special_form": None,
+            "special_form": getattr(enemy_pokemon, "special_form", None),
             "is_favorite": False,
             "held_item": None,
             "hp": _max_hp,

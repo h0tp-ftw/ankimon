@@ -2119,14 +2119,21 @@ class AnkimonDB:
             known: set = set()
             stored: List[int] = []
             for pokemon_id in self.get_user_data(key, []):
-                if not (key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_")):
+                if key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_"):
+                    if not isinstance(pokemon_id, str):
+                        continue
+                else:
                     try:
                         pokemon_id = int(pokemon_id)
                     except (TypeError, ValueError):
                         continue
-                if pokemon_id not in known:
-                    known.add(pokemon_id)
-                    stored.append(pokemon_id)
+
+                try:
+                    if pokemon_id not in known:
+                        known.add(pokemon_id)
+                        stored.append(pokemon_id)
+                except TypeError:
+                    pass
 
             new_ids: List[int] = []
             for raw_id in ids:
