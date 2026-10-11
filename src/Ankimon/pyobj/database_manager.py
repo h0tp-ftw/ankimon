@@ -2118,7 +2118,12 @@ class AnkimonDB:
             # once we have a reason to rewrite it.
             known: set = set()
             stored: List[int] = []
-            for pokemon_id in self.get_user_data(key, []):
+
+            raw_data = self.get_user_data(key, [])
+            if not isinstance(raw_data, list):
+                raw_data = [raw_data] if raw_data is not None else []
+
+            for pokemon_id in raw_data:
                 if key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_"):
                     if not isinstance(pokemon_id, str):
                         continue
