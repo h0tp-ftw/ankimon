@@ -19,6 +19,9 @@
         teamCycleCount: 3,     // limit for hotkey 9 rotation
         roster: null,          // null = not loaded yet
         dirty: false,
+        loadedTeam: [],        // ids as loaded; sent with Save so a stale save is refused
+        changedElsewhere: false,
+        staleMessage: null,    // from the payload (single source: ProfileData.STALE_TEAM_MESSAGE)
         pickerSlot: null,
         pickerMode: 'slot',    // 'slot' (fill a team slot) | 'xpshare' (pick XP Share)
         rosterType: 'all',     // picker Type filter
@@ -547,11 +550,19 @@
         updateSaveUI();
     }
 
+    function staleMessage() {
+        return state.staleMessage || 'Your Team has been changed elsewhere. Please reload the Team page.';
+    }
+
     function updateSaveUI() {
         const btn = document.getElementById('save-btn');
         const status = document.getElementById('save-status');
         btn.disabled = !state.dirty;
-        status.textContent = state.dirty ? 'Unsaved changes' : 'All saved';
+        if (state.changedElsewhere) {
+            status.textContent = staleMessage();
+        } else {
+            status.textContent = state.dirty ? 'Unsaved changes' : 'All saved';
+        }
     }
 
     function saveTeam() {
@@ -565,13 +576,20 @@
         }
         // Third arg is companion_id — always '' (no shipped companion picker; the
         // Python seam accepts it for when that UI is built).
-        return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', '').then((res) => {
+        // Fourth arg: the party as loaded. The backend refuses the save when the
+        // stored party no longer matches it (edited in the Pokémon PC meanwhile).
+        return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', '',
+                                   JSON.stringify(state.loadedTeam)).then((res) => {
             if (res && res.ok) {
                 state.dirty = false;
+                state.changedElsewhere = false;
+                state.loadedTeam = ids.slice();
                 updateSaveUI();
                 toast(res.message || 'Team saved.', 'success');
                 return res;
             } else {
+                if (res && res.stale) state.changedElsewhere = true;
+                updateSaveUI();
                 toast((res && res.message) || 'Save failed.', 'error');
                 throw new Error((res && res.message) || 'Save failed');
             }
@@ -607,6 +625,13 @@
             text.textContent = state.spriteMode === 'static' ? 'Static' : 'Animated';
         }
         state.dirty = false;
+        state.changedElsewhere = false;
+        // Raw stored ids (may include rows the page cannot render); fall back to
+        // the rendered members for older payloads.
+        state.loadedTeam = Array.isArray(data.team_ids)
+            ? data.team_ids.map(String)
+            : state.team.filter(Boolean).map((m) => String(m.id));
+        if (data.stale_message) state.staleMessage = data.stale_message;
         // Membership changed underneath us → force a roster reload next open.
         state.roster = null;
         renderTeam();
@@ -614,6 +639,30 @@
     }
 
     window.initializeTeam = applyData;
+
+    // The party was changed elsewhere (Pokémon PC). A clean view simply reloads;
+    // unsaved edits are kept, and the status line says the stored party moved on
+    // (the backend refuses that draft's save until the page is reloaded).
+    window.teamChangedElsewhere = function (data) {
+        if (!state.dirty) {
+            applyData(data);
+            return;
+        }
+        state.changedElsewhere = true;
+        updateSaveUI();
+        toast(staleMessage(), 'error');
+    };
+
+    // Read-only snapshot for the real-browser harness checks.
+    window.getTeamState = function () {
+        return {
+            team: state.team.filter(Boolean).map((m) => String(m.id)),
+            loadedTeam: state.loadedTeam.slice(),
+            dirty: state.dirty,
+            changedElsewhere: state.changedElsewhere,
+            status: document.getElementById('save-status').textContent,
+        };
+    };
 
     function wireStaticControls() {
         document.getElementById('save-btn').addEventListener('click', saveTeam);

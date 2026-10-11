@@ -10,6 +10,7 @@ import json
 import re
 
 from ..services import services
+from ..functions.team_functions import get_team_ids
 
 from ..utils import get_all_sprites, POKEMON_NAME_LOOKUP, is_alive
 from ..resources import trainer_sprites_path
@@ -655,6 +656,15 @@ class ProfileData:
         return out
 
     def get_team_data(self):
+        """Build the Team screen payload: resolved members, raw stored ids, XP Share.
+
+        Returns
+        -------
+        dict
+            ``team`` (renderable member stubs), ``team_ids`` (raw stored ids in
+            slot order), ``xp_share``, ``companion``, display settings and the
+            ``stale_message`` the page shows when the party changes elsewhere.
+        """
         members = self._team_member_stubs()
         for m in members:
             m["cp"] = self._calc_cp(m["id"])
@@ -679,9 +689,20 @@ class ProfileData:
         main_pkmn = db.get_main_pokemon() if db else None
         companion_id = main_pkmn.get("individual_id") if main_pkmn else None
 
+        # Raw stored ids, in slot order, including any whose Pokémon record is
+        # missing or unreadable (those are absent from ``team``). The page sends
+        # these back with Save so the stale check compares stored ids with
+        # stored ids and never refuses a save over a row it could not render.
+        try:
+            team_ids = get_team_ids(db, strict=True) if db else []
+        except Exception:
+            team_ids = []
+
         return {
             "max_size": MAX_TEAM_SIZE,
             "team": members,
+            "team_ids": team_ids,
+            "stale_message": self.STALE_TEAM_MESSAGE,
             "xp_share": str(xp_share) if xp_share else None,
             "xp_share_info": self._resolve_stub(xp_share, members) if xp_share else None,
             "companion": str(companion_id) if companion_id else None,
@@ -804,14 +825,48 @@ class ProfileData:
             print(f"[Ankimon] profile: CP calc failed for {individual_id}: {e}")
             return 0
 
-    def handle_save_team(self, team_ids, xp_share_id, companion_id):
+    STALE_TEAM_MESSAGE = (
+        "Your Team has been changed elsewhere. Please reload the Team page "
+        "(Ankimon menu \u2192 Choose Pokemon Team) to make Team changes."
+    )
+
+    def handle_save_team(self, team_ids, xp_share_id, companion_id, loaded_team_ids=None):
         """Persist the chosen team + XP Share holder.
 
         ``companion_id`` (Active Companion / main-Pokémon override) is a ready
         write-seam, but NO shipped UI populates it yet — the Team screen's
         companion picker is deferred (team.js sends ''), so the set_main_pokemon
         branch below is inert until that UI lands. Do not describe Active
-        Companion as a working feature."""
+        Companion as a working feature.
+
+        Parameters
+        ----------
+        team_ids : list of str
+            Ordered individual ids chosen on the Team screen.
+        xp_share_id : str or None
+            XP Share holder, or None to clear it.
+        companion_id : str or None
+            Deferred companion override (always None from the shipped UI).
+        loaded_team_ids : list of str, optional
+            The party the Team screen loaded. When given and the stored party
+            no longer matches it (edited in the Pokémon PC meanwhile), the save
+            is refused with ``stale: True`` so the newer party is not overwritten.
+
+        Returns
+        -------
+        dict
+            ``{"ok": bool, "message": str}`` plus ``count`` on success and
+            ``stale: True`` when refused as out of date.
+        """
+        if loaded_team_ids is not None:
+            try:
+                current = get_team_ids(services.db, strict=True)
+            except Exception as e:
+                return {"ok": False, "message": f"Failed to read the current team: {e}"}
+            expected = [str(x) for x in loaded_team_ids if x]
+            if current != expected:
+                return {"ok": False, "stale": True, "message": self.STALE_TEAM_MESSAGE}
+
         seen = set()
         clean_ids = []
         for raw in team_ids or []:

@@ -924,6 +924,7 @@ def test_pokemon_free_restores_xp_share_and_reports_when_release_fails(details):
         """Stored value that matches the id under str() but is a distinct object."""
 
         def __str__(self):
+            """Compare equal to the released id under str()."""
             return "uuid-1"
 
     stored = _StoredId()

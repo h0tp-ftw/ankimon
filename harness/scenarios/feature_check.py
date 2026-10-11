@@ -64,7 +64,11 @@ def check_rename(d, app, db, pc, pool):
     before = pkmn.get("nickname", "")
     pc.show_pokemon_details(pkmn)
     app.processEvents()
-    edit = _find(app, QLineEdit, placeholderText="Nickname")
+    # Exact placeholder: a substring match ("Nickname") also hits the PC search
+    # box ("Search Pokémon (by nickname, name)") and, depending on widget order,
+    # typed the nickname into the search filter, emptying the grid for every
+    # later check (flaky party failures).
+    edit = _find(app, QLineEdit, placeholderText="Enter a new Nickname for your Pokémon")
     btn = _find(app, QPushButton, text="Rename")
     if not edit or not btn:
         return ("rename (full GUI)", False, "could not find the rename field/button in the details window")
@@ -73,7 +77,9 @@ def check_rename(d, app, db, pc, pool):
     btn.click()
     app.processEvents()
     after = (db.get_pokemon(iid) or {}).get("nickname", "")
-    return ("rename (full GUI)", after == "Sparky", "nickname %r -> %r (intended 'Sparky')" % (before, after))
+    search_clean = pc.search_edit.text() == ""
+    return ("rename (full GUI)", after == "Sparky" and search_clean,
+            "nickname %r -> %r (intended 'Sparky'); search box untouched: %s" % (before, after, search_clean))
 
 
 def check_make_favorite(d, app, db, pc, pool):
@@ -290,8 +296,36 @@ def check_party_drag_drop(d, app, db, pc, pool):
             "append=%s swap=%s reorder=%s remove=%s" % (appended, swapped, reordered, removed))
 
 
+def check_pc_fits_1024x768(d, app, db, pc, pool):
+    """The PC must still fit a 1024x768 screen: at that size the party column
+    switches to compact sprite tiles, the layout minimum stays within the window,
+    and every main control (party, grid, search, filters, details with a Pokemon
+    selected, trade/release/rename) is fully inside the window."""
+    iid = pool[-1]
+    pc.show_pokemon_details(db.get_pokemon(iid)); app.processEvents()
+    pc.resize(1024, 768); app.processEvents(); app.processEvents()
+    layout_min = pc.layout().minimumSize()
+    controls = {
+        "party_slot": pc.party_slots[0], "grid": pc.scroll_area, "search": pc.search_edit,
+        "type_filter": pc.type_combo, "details": pc.details_panel_stack,
+    }
+    clipped = [name for name, w in controls.items()
+               if not w.isVisible() or not pc.rect().contains(w.mapTo(pc, w.rect().bottomRight()))]
+    compact_ok = pc._party_compact and pc.party_panel.width() <= pc.party_compact_width + 6
+    small_w, small_h = pc.width(), pc.height()
+    fits = small_w <= 1024 and small_h <= 768 and layout_min.width() <= pc.minimumWidth() <= 1024
+    pc.resize(1300, 800); app.processEvents()
+    restored = not pc._party_compact
+    ok = fits and compact_ok and not clipped and restored
+    return ("pc fits 1024x768 (compact party column)", ok,
+            "window %dx%d layout_min %dx%d compact=%s clipped=%s full_mode_back=%s"
+            % (small_w, small_h, layout_min.width(), layout_min.height(),
+               compact_ok, clipped or "none", restored))
+
+
 CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel,
-          check_update_dialog_git_mode, check_party_add_remove, check_party_drag_drop]
+          check_update_dialog_git_mode, check_party_add_remove, check_party_drag_drop,
+          check_pc_fits_1024x768]
 
 
 def _boot():

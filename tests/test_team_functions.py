@@ -285,6 +285,23 @@ def test_write_refreshes_trainer_card_best_effort(team_env):
     assert any("trainer card" in msg for _, msg in logger.calls)
 
 
+def test_write_notifies_an_open_team_screen_best_effort(team_env):
+    """A party write tells the web shell so an open Team screen refreshes or
+    flags its draft; a failing notifier never fails the write."""
+    db, team_functions, services = team_env.db, team_env.team, team_env.services
+    (a,) = _seed(db, "a")
+    shell = MagicMock()
+    services.items_web = shell
+    try:
+        assert team_functions.add_to_party(db, a).ok
+        shell.notify_team_changed.assert_called_once_with()
+        shell.notify_team_changed.side_effect = RuntimeError("window gone")
+        assert team_functions.remove_from_party(db, a).ok
+        assert _team_ids(db) == []
+    finally:
+        services.items_web = None
+
+
 def test_db_error_leaves_table_untouched(team_env):
     """A failing ``save_team`` surfaces as ``db_error`` with nothing written."""
     db, team_functions = team_env.db, team_env.team

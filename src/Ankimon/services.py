@@ -69,6 +69,7 @@ class Services:
     """
 
     def __init__(self) -> None:
+        """Start with every service and window slot empty; ``configure`` fills them."""
         # Core, aqt-free services.
         self.db: Optional["AnkimonDB"] = None
         self.logger: Optional["ShowInfoLogger"] = None
@@ -94,6 +95,8 @@ class Services:
         self.test_window = None
         self.evo_window = None
         self.pokemon_pc = None
+        # The web shell (Items / Profile / Team / Settings screens), when open.
+        self.items_web = None
         self.reviewer = None
 
         # The Anki collection (``mw.col``) when running inside Anki; None headless.
@@ -180,6 +183,7 @@ class Services:
         self.test_window = None
         self.evo_window = None
         self.pokemon_pc = None
+        self.items_web = None
         self.reviewer = None
         self.col = None
         self._startup_in_progress = False

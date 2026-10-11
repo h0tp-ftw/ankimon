@@ -282,6 +282,13 @@ def _write_team(db, ids: list[str], logger=None) -> bool:
             _log(
                 "warning", f"Party saved but the trainer card did not refresh: {e}", logger
             )
+    # An open Team screen must not keep showing (and later save) the old party.
+    items_web = services.items_web
+    if items_web is not None:
+        try:
+            items_web.notify_team_changed()
+        except Exception as e:
+            _log("warning", f"Party saved but the Team screen was not notified: {e}", logger)
     return True
 
 

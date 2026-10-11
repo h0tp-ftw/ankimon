@@ -159,10 +159,14 @@ def pc_box(qapp):
         "Ankimon.pyobj",
         "Ankimon.gui_classes",
     )
+    # pc_box imports ``tooltip`` at module level; without this stub the file
+    # only passes when another test has installed ``aqt.utils`` first.
+    aqt_utils_mod = _make_module("aqt.utils", tooltip=mock.MagicMock())
     to_install = {
         "aqt": aqt_mod,
         "aqt.qt": aqt_qt_mod,
         "aqt.theme": aqt_theme_mod,
+        "aqt.utils": aqt_utils_mod,
         "Ankimon.services": services_mod,
         _MODULE_NAME: None,
         "Ankimon.functions.team_functions": None,
@@ -227,6 +231,9 @@ def _host(pc_box, members=None):
         gif_in_collection=False,
         party_slot_width=180,
         party_slot_height=62,
+        party_compact_width=58,
+        _party_compact=False,
+        width=lambda: 1300,
         party_slots=[],
         party_panel=None,
         _party_members=list(members or []),
@@ -242,6 +249,9 @@ def _host(pc_box, members=None):
         "refresh_party_panel",
         "_populate_party_slot",
         "_queue_drop",
+        "_apply_party_layout_mode",
+        "_set_party_compact",
+        "_apply_party_mode_to_slot",
     ):
         setattr(
             host, name, types.MethodType(getattr(pc_box.PokemonPC, name), host)
@@ -708,6 +718,55 @@ def test_party_slot_shows_bff_state(pc_box):
     assert slot._base_bg == "#FF69B4"  # BFF wins over favourite
     assert "💖" in slot._sub_label.text()
     assert "bff_tooltip" in slot.toolTip()
+
+
+def test_compact_party_mode_shows_sprite_only_tiles_with_tooltips(pc_box):
+    """Below the width threshold the column shrinks to sprite tiles; text moves to tooltips."""
+    host = _host(pc_box)
+    host._build_party_panel()
+    host._party_members = [_member("m1", name="lickilicky", level=25)]
+    host.refresh_party_panel()
+    full_width = host.party_panel.width()
+
+    host.width = lambda: 1024
+    host._apply_party_layout_mode()
+    assert host._party_compact is True
+    assert host.party_panel.maximumWidth() <= host.party_compact_width + 6 < full_width
+    filled, empty = host.party_slots[0], host.party_slots[1]
+    assert filled.width() == filled.height() == host.party_compact_width
+    assert not filled._name_label.isVisibleTo(filled)
+    assert filled.toolTip().startswith("Lickilicky · ") and "25" in filled.toolTip()
+    assert filled.toolTip().count("Lickilicky") == 1  # name not duplicated
+    assert empty._sub_label.isVisibleTo(empty)  # the slot number stays readable
+    assert not host.party_panel._header.isVisibleTo(host.party_panel)
+
+    host.width = lambda: 1300
+    host._apply_party_layout_mode()
+    assert host._party_compact is False
+    assert filled._name_label.isVisibleTo(filled)
+    assert filled.width() == host.party_slot_width
+    assert host.party_panel._header.isVisibleTo(host.party_panel)
+    assert filled.toolTip() == "Lickilicky"  # back to the base tooltip
+
+    host.width = lambda: 1024
+    host._apply_party_layout_mode()
+    assert filled.toolTip().count("Lickilicky") == 1  # repeated switches do not stack
+
+
+def test_compact_party_mode_without_sprites_keeps_the_level_visible(pc_box):
+    """With sprites off a compact tile still shows the level so it is not blank."""
+    host = _host(pc_box)
+    host.show_sprites_across_ankimon = False
+    host._build_party_panel()
+    host._party_members = [_member("m1")]
+    host.width = lambda: 1024
+    host.refresh_party_panel()
+    host._apply_party_layout_mode()
+    slot = host.party_slots[0]
+    assert slot._sub_label.isVisibleTo(slot)
+    assert slot._sub_label.text() == slot._compact_sub_text  # level only, fits the tile
+    assert "♂" not in slot._sub_label.text() and "♀" not in slot._sub_label.text()
+    assert not slot._sprite_holder.isVisibleTo(slot)
 
 
 def test_unreadable_party_member_is_shown_but_not_draggable(pc_box):

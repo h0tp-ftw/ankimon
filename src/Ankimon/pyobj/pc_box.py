@@ -692,6 +692,12 @@ POKEMON_MIME = "application/x-ankimon-pokemon"
 
 #: Border used while a slot is a valid drop target.
 DROP_HIGHLIGHT_BORDER = "#fbbf24"
+# Below this window width the party column drops its text and shows sprite-only
+# tiles, so the PC still fits a 1024 px wide screen (upstream minimum was 968 px).
+PARTY_COMPACT_BELOW_WIDTH = 1180
+# Explicit window minimum: the compact layout's own minimum (measured 1015 px), so
+# the user can shrink the window into the compact party layout without clipping.
+PC_MIN_WIDTH = 1024
 
 
 def encode_drag_payload(individual_id, source: str) -> QMimeData:
@@ -1225,6 +1231,8 @@ class PokemonPC(QDialog):
         self._party_ids: list[str] = []
         self.party_slot_width = 180
         self.party_slot_height = 62
+        self.party_compact_width = 58  # sprite-only tile (52 px sprite + padding)
+        self._party_compact = False
 
         self.create_gui()
         self._restore_geometry()
@@ -1490,6 +1498,7 @@ class PokemonPC(QDialog):
         collection_widget = QWidget()
         collection_widget.setLayout(collection_layout)
         self.main_container_layout.addWidget(self._build_party_panel(), 0)
+        self.setMinimumWidth(PC_MIN_WIDTH)
         self.main_container_layout.addWidget(collection_widget, 3)  # Grid takes 3/5
 
         self.setup_details_panel(background_color)
@@ -1568,6 +1577,7 @@ class PokemonPC(QDialog):
         Refreshes the grid to ensure newly caught Pokémon are visible.
         """
         super().showEvent(event)
+        self._apply_party_layout_mode()
 
         # Avoid clearing/rebuilding the layout (which causes black screens)
         # if the grid is already built and the count of Pokémon hasn't changed.
@@ -1789,7 +1799,9 @@ class PokemonPC(QDialog):
         from PyQt6.QtWidgets import QStackedWidget
 
         self.details_panel_stack = QStackedWidget()
-        self.details_panel_stack.setMinimumWidth(470)
+        # 460 (was 470) keeps the whole window within 1024 px when the party
+        # column is in compact mode; the panel's own size hint is far smaller.
+        self.details_panel_stack.setMinimumWidth(460)
         self.main_container_layout.addWidget(self.details_panel_stack, 2)
 
         # Index 0: Placeholder
@@ -2312,6 +2324,7 @@ class PokemonPC(QDialog):
             f"border: 1px solid {border}; background-color: {self.theme_vars['background_color']};"
         )
         layout.addWidget(header)
+        panel._header = header
 
         self.party_slots = []
         for slot_index in range(MAX_TEAM_SIZE):
@@ -2322,6 +2335,7 @@ class PokemonPC(QDialog):
             row = QHBoxLayout(slot)
             row.setContentsMargins(6, 4, 6, 4)
             row.setSpacing(6)
+            slot._row_layout = row
             sprite_holder = QWidget(slot)
             sprite_holder.setFixedSize(
                 self.party_slot_height - 10, self.party_slot_height - 10
@@ -2417,6 +2431,9 @@ class PokemonPC(QDialog):
         if member is None:
             slot._name_label.setText(self.translator.translate("pc_party_empty_slot"))
             slot._sub_label.setText(f"#{slot._slot_index + 1}")
+            slot._base_tooltip = ""
+            slot._full_sub_text = f"#{slot._slot_index + 1}"
+            slot._compact_sub_text = f"#{slot._slot_index + 1}"
             slot._sprite_holder.setVisible(self.show_sprites_across_ankimon)
             # Stays enabled: a disabled widget cannot be a drop target.
             slot.setEnabled(True)
@@ -2427,6 +2444,7 @@ class PokemonPC(QDialog):
                 f"QPushButton {{ background-color: transparent; border: 1px dashed {border};"
                 f" border-radius: 6px; color: #94a3b8; }}"
             )
+            self._apply_party_mode_to_slot(slot)
             return
 
         is_shiny = bool(member.get("shiny", False))
@@ -2446,18 +2464,18 @@ class PokemonPC(QDialog):
                 max_lines=1,
             )
         )
-        slot._sub_label.setText(
-            " ".join(
-                part
-                for part in (
-                    level_text,
-                    gender_symbol,
-                    "⭐" if is_shiny else "",
-                    "💖" if self._bff_id == member.get("individual_id") else "",
-                )
-                if part
+        slot._full_sub_text = " ".join(
+            part
+            for part in (
+                level_text,
+                gender_symbol,
+                "⭐" if is_shiny else "",
+                "💖" if self._bff_id == member.get("individual_id") else "",
             )
+            if part
         )
+        slot._compact_sub_text = level_text  # all that fits a sprite-sized tile
+        slot._sub_label.setText(slot._full_sub_text)
 
         if self.show_sprites_across_ankimon:
             slot._sprite_holder.setVisible(True)
@@ -2524,7 +2542,85 @@ class PokemonPC(QDialog):
             tooltip_lines.append(self.translator.translate("bff_tooltip"))
         if is_shiny:
             tooltip_lines.append(self.translator.translate("shiny_tooltip"))
-        slot.setToolTip("\n".join(tooltip_lines))
+        slot._base_tooltip = "\n".join(tooltip_lines)
+        slot.setToolTip(slot._base_tooltip)
+        self._apply_party_mode_to_slot(slot)
+
+    def _apply_party_layout_mode(self):
+        """Pick the full or compact party column from the current window width.
+
+        Full tiles need a window at least ~1157 px wide (measured with the
+        default fonts); below :data:`PARTY_COMPACT_BELOW_WIDTH` the column
+        shrinks to sprite-only tiles so the PC keeps fitting 1024 px screens.
+        """
+        if not self.party_slots or not is_alive(self.party_slots[0]):
+            return
+        compact = self.width() < PARTY_COMPACT_BELOW_WIDTH
+        if compact != self._party_compact:
+            self._set_party_compact(compact)
+
+    def _set_party_compact(self, compact: bool):
+        """Switch the party column between full and sprite-only tiles.
+
+        Parameters
+        ----------
+        compact : bool
+            True for sprite-only tiles with the name and level in a tooltip;
+            False for the full tiles with name, level and gender text.
+        """
+        self._party_compact = compact
+        panel = self.party_panel
+        if panel is None or not is_alive(panel):
+            return
+        if compact:
+            panel.setFixedWidth(self.party_compact_width + 6)
+            panel.layout().setContentsMargins(3, 10, 3, 10)
+        else:
+            panel.setFixedWidth(self.party_slot_width + 16)
+            panel.layout().setContentsMargins(12, 10, 4, 10)
+        panel._header.setVisible(not compact)
+        panel.setToolTip(self.translator.translate("pc_party_header") if compact else "")
+        for slot in self.party_slots:
+            self._apply_party_mode_to_slot(slot)
+
+    def _apply_party_mode_to_slot(self, slot):
+        """Size one party slot and show or hide its text for the current mode.
+
+        In compact mode a filled slot shows only the sprite and carries the
+        name and level in its tooltip; with sprites turned off it shows the
+        level instead. Empty slots show their number either way.
+
+        Parameters
+        ----------
+        slot : PartySlotButton
+            Slot to update in place.
+        """
+        compact = self._party_compact
+        member = slot._member
+        if compact:
+            slot.setFixedSize(self.party_compact_width, self.party_compact_width)
+            slot._row_layout.setContentsMargins(3, 3, 3, 3)
+        else:
+            slot.setFixedSize(self.party_slot_width, self.party_slot_height)
+            slot._row_layout.setContentsMargins(6, 4, 6, 4)
+        sprites_shown = self.show_sprites_across_ankimon and member is not None
+        slot._name_label.setVisible(not compact)
+        slot._sub_label.setVisible(not compact or not sprites_shown)
+        slot._sub_label.setText(slot._compact_sub_text if compact else slot._full_sub_text)
+        slot._sprite_holder.setVisible(
+            self.show_sprites_across_ankimon and (member is not None or not compact)
+        )
+        # Rebuild the tooltip from the base each time so mode switches never
+        # stack summaries. In compact mode the hidden name/level lead it.
+        base = slot._base_tooltip
+        if compact and member is not None:
+            level_text = self.translator.translate("level_label", level=member.get("level", 1))
+            summary = f"{slot._name_label.text()} · {level_text}"
+            # The base already starts with the display name; replace that line.
+            rest = base.split("\n", 1)[1] if "\n" in base else ""
+            slot.setToolTip(f"{summary}\n{rest}" if rest else summary)
+        else:
+            slot.setToolTip(base)
 
     def _update_count_label(self):
         """Show how many Pokémon the boxes hold; party members are not boxed."""
@@ -2589,6 +2685,7 @@ class PokemonPC(QDialog):
         Uses a timer to debounce the GUI refresh.
         """
         super().resizeEvent(event)
+        self._apply_party_layout_mode()
         self.resize_timer.start(200)
 
     def on_resize_timeout(self):
