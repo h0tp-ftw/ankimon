@@ -1169,7 +1169,16 @@ def generate_random_pokemon(
         wild_pokemon_lvl,
     )
     stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
-    iv = {stat: random.randint(0, 31) for stat in stat_names}
+
+    # Scale IVs based on number of copies owned
+    actual_id = search_pokedex(name, "actual_id")
+    copies = 0
+    if actual_id is not None:
+        copies = services.db.get_caught_count_by_pokedex_id(actual_id)
+
+    min_iv = min(31, copies * 3)
+
+    iv = {stat: random.randint(min_iv, 31) for stat in stat_names}
     nature = random.choice(ALL_NATURES)
     final_stats = base_stats
 

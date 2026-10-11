@@ -1460,6 +1460,11 @@ class AnkimonDB:
         cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon")
         return cursor.fetchone()[0]
 
+    def get_caught_count_by_pokedex_id(self, pokedex_id: int) -> int:
+        """Returns the count of captured pokemon for a specific pokedex_id."""
+        cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon WHERE pokedex_id = ?", (pokedex_id,))
+        return cursor.fetchone()[0]
+
     def get_shiny_count(self) -> int:
         """Returns the count of shiny pokemon."""
         cursor = self.execute("SELECT COUNT(*) FROM captured_pokemon WHERE shiny = 1")
