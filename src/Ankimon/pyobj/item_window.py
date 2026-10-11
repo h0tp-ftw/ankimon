@@ -129,6 +129,24 @@ class ItemWindow(QWidget):
             "fluffy-tail": True,
         }
 
+
+        self.ev_items = {
+            # Stat boosting items (+10)
+            "hp-up": ("hp", 10),
+            "protein": ("atk", 10),
+            "iron": ("def", 10),
+            "calcium": ("spa", 10),
+            "zinc": ("spd", 10),
+            "carbos": ("spe", 10),
+            # EV reducing berries (-10)
+            "pomeg-berry": ("hp", -10),
+            "kelpsy-berry": ("atk", -10),
+            "qualot-berry": ("def", -10),
+            "hondew-berry": ("spa", -10),
+            "grepa-berry": ("spd", -10),
+            "tamato-berry": ("spe", -10),
+        }
+
         self.evolution_items = set()
         self.load_evolution_items()
 
@@ -436,16 +454,24 @@ class ItemWindow(QWidget):
             # Optional: Set alignment for better appearance
             info_item_button.setAlignment(Qt.AlignmentFlag.AlignTop)
 
+
         elif item_name in self.evolution_items:
             use_item_button = QPushButton("Evolve Pokemon")
             use_item_button.clicked.connect(
                 lambda: self._prompt_and_check_evo_item(item_name)
             )
+        elif item_name in self.ev_items:
+            use_item_button = QPushButton("Give to Pokemon")
+            use_item_button.clicked.connect(
+                lambda: self._prompt_and_apply_ev_item(item_name)
+            )
         elif (
             item_name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
-            or item_name.endswith("-berry")
+
+            or (item_name.endswith("-berry") and item_name not in self.ev_items)
             or item_name.endswith("-gem")
         ):
+
             use_item_button = QLabel("Not implemented yet")
             use_item_button.setAlignment(Qt.AlignmentFlag.AlignCenter)
         else:
@@ -516,14 +542,20 @@ class ItemWindow(QWidget):
             if name in self.pokeball_chances:
                 self.Handle_Pokeball(name)
                 return {"ok": True, "message": f"Threw {name}."}
+
             if name in self.evolution_items:
                 self._prompt_and_check_evo_item(name)
                 return {"ok": True, "message": ""}
+            if name in self.ev_items:
+                self._prompt_and_apply_ev_item(name)
+                return {"ok": True, "message": ""}
+
             if (
                 name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
-                or name.endswith("-berry")
+                or (name.endswith("-berry") and name not in self.ev_items)
                 or name.endswith("-gem")
             ):
+
                 return {"ok": False, "message": "This item isn't usable yet."}
             self._prompt_and_give_held_item(name)
             return {"ok": True, "message": ""}
@@ -596,6 +628,70 @@ class ItemWindow(QWidget):
             return
         individual_id, _ = selected
         self._give_held_item_by_id(individual_id, item_name)
+
+
+    def _prompt_and_apply_ev_item(self, item_name: str):
+        selected = self._select_pokemon("Use Item")
+        if not selected:
+            return
+        individual_id, _ = selected
+        self._apply_ev_item_by_id(individual_id, item_name)
+
+    def _apply_ev_item_by_id(self, individual_id: str, item_name: str) -> dict:
+        if not individual_id:
+            self.logger.log_and_showinfo("error", "No Pokemon selected.")
+            return {"ok": False, "message": "No Pokemon selected."}
+
+        try:
+            db = services.db
+            target_pokemon_data = db.get_pokemon(individual_id)
+            if not target_pokemon_data:
+                msg = "Could not find Pokemon data."
+                self.logger.log_and_showinfo("error", msg)
+                return {"ok": False, "message": msg}
+
+            pokemon_obj = PokemonObject.from_dict(target_pokemon_data)
+
+            # First check if the EV modification can succeed
+            stat, amount = self.ev_items[item_name]
+            success, message = pokemon_obj.modify_ev(stat, amount)
+
+            if not success:
+                self.logger.log_and_showinfo("info", message)
+                return {"ok": False, "message": message}
+
+            # If successful, consume the item
+            if not self._consume_one(item_name):
+                msg = f"You have no {item_name} left."
+                self.logger.log_and_showinfo("info", msg)
+                return {"ok": False, "message": msg}
+
+            # If successful, handle berries friendship increase
+            if amount < 0:
+                pokemon_obj.friendship += 10
+
+            db.save_pokemon(pokemon_obj.to_dict())
+
+            # Sync main pokemon if it was the target
+            if self.main_pokemon and self.main_pokemon.individual_id == individual_id:
+                # Copy updated fields to memory
+                self.main_pokemon.ev = pokemon_obj.ev
+                self.main_pokemon.friendship = pokemon_obj.friendship
+                self.main_pokemon.update_stats()
+                db.save_main_pokemon(self.main_pokemon.to_dict())
+
+            self.logger.log_and_showinfo("info", message)
+            self.renewWidgets()
+
+            if is_alive(services.pokemon_pc):
+                services.pokemon_pc.refresh_gui()
+
+            return {"ok": True, "message": message}
+
+        except Exception as e:
+            msg = f"Error using item: {e}"
+            self.logger.log_and_showinfo("error", msg)
+            return {"ok": False, "message": msg}
 
     def _prompt_and_check_evo_item(self, item_name: str):
         selected = self._select_pokemon("Use Evolution Item")

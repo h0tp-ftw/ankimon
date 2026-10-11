@@ -674,6 +674,49 @@ class PokemonObject:
         )
         return pokemon
 
+
+    def modify_ev(self, stat: str, amount: int) -> tuple[bool, str]:
+        """
+        Modifies a specific EV by the given amount.
+        Returns a tuple of (success, message).
+        Respects the 252 per stat and 510 total limit.
+        """
+        if stat not in self.ev:
+            return False, f"Unknown stat {stat}."
+
+        current_val = self.ev[stat]
+        total_evs = sum(self.ev.values())
+
+        if amount > 0:
+            if current_val >= 252:
+                return False, f"{self.name}'s {stat.upper()} base points cannot go any higher."
+            if total_evs >= 510:
+                return False, f"{self.name}'s overall base points cannot go any higher."
+
+            # Calculate how much we can actually add
+            space_in_stat = 252 - current_val
+            space_in_total = 510 - total_evs
+            actual_add = min(amount, space_in_stat, space_in_total)
+
+            self.ev[stat] += actual_add
+            self.update_stats(ev=self.ev)
+            return True, f"{self.name}'s {stat.upper()} base points were raised."
+
+        elif amount < 0:
+            if current_val <= 0:
+                return False, f"{self.name}'s {stat.upper()} base points cannot go any lower."
+
+            actual_reduce = max(amount, -current_val)
+            self.ev[stat] += actual_reduce
+
+            # The berries also increase friendship. We'll handle this in the item logic,
+            # or just do the EV modification here. Let's just do EV here and let the caller
+            # handle friendship if needed.
+            self.update_stats(ev=self.ev)
+            return True, f"{self.name} became more friendly, and its {stat.upper()} base points fell."
+
+        return False, "No change."
+
     def reset_bonuses(self):
         """
         This method resets various bonuses and status effects currently applied

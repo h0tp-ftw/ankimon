@@ -2277,6 +2277,7 @@ class AnkimonItemsWeb(QDialog):
         # so invalidate up front regardless of which path runs.
         self._invalidate_pokemon_cache()
         try:
+
             if item.get("category") == "evolution":
                 # Check_Evo_Item needs the pre-evo's pokedex id to match
                 # against the evolution table. Pull it from the proven
@@ -2301,6 +2302,11 @@ class AnkimonItemsWeb(QDialog):
                     individual_id, pokedex_id, item_name, pokemon_data=pokemon_data
                 )
                 return {"ok": True, "message": ""}
+
+            if getattr(bag, "ev_items", None) and item_name in bag.ev_items:
+                result = bag._apply_ev_item_by_id(individual_id, item_name)
+                return result
+
 
             # Held items (and anything else routed through the give-item
             # flow) — the legacy method already surfaces success/error via
