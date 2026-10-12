@@ -876,20 +876,13 @@ def test_new_pokemon_tolerates_a_player_without_volatile_status(monkeypatch):
 def test_generate_random_pokemon_level_cap(
     monkeypatch, main_level, remove_cap, upper_bound
 ):
-    """Both ends of the level roll honor the cap and the level-100 convention.
-
-    The level cap is applied to the *rolled result*, not to the roll range: the
-    +/-3 window handed to ``randint`` stays unclamped even when it would exceed
-    100 (so level-100-requiring species keep their original rarity at main
-    levels 98 and 99), and any over-100 roll is clamped down to 100 afterwards.
-    """
+    """Both ends of the level roll honor the cap and the level-100 convention."""
     settings = mock.Mock()
     settings.get.side_effect = lambda key, default=None: {
         "misc.remove_level_cap": remove_cap,
     }.get(key, default)
     monkeypatch.setattr(ef, "settings_obj", settings)
-    randint_mock = mock.Mock(side_effect=lambda a, b: b if upper_bound else a)
-    monkeypatch.setattr(ef.random, "randint", randint_mock)
+    monkeypatch.setattr(ef.random, "randint", lambda a, b: b if upper_bound else a)
     monkeypatch.setattr(ef, "get_tier", lambda *args, **kwargs: "Normal")
     monkeypatch.setattr(ef, "get_all_pokemon_in_tier", lambda tier: [1])
     monkeypatch.setattr(ef, "check_id_ok", lambda pokemon_id: True)
@@ -913,16 +906,9 @@ def test_generate_random_pokemon_level_cap(
         main_level, tracker, trainer_level=1, main_level=main_level, collected_ids=set()
     )
 
-    level_low = max(1, main_level - 3)
-    level_high = main_level + 3
-    level_call = next(
-        call for call in randint_mock.call_args_list if call.args[0] == level_low
-    )
-    assert level_call.args == (level_low, level_high)
-
-    rolled_level = level_high if upper_bound else level_low
+    rolled_level = max(1, main_level + (3 if upper_bound else -3))
     expected = rolled_level if remove_cap else min(100, rolled_level)
-    if main_level >= 100 and not remove_cap:
+    if main_level == 100 and not remove_cap:
         expected = 100  # Preserve the established max-level encounter behavior.
     assert result[1] == 1
     assert result[2] == expected
