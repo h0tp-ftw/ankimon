@@ -1144,20 +1144,7 @@ def generate_random_pokemon(
     growth_rate = get_growth_rate(search_pokedex(name, "species_id") or pokemon_id)
     ev_yield = get_effort_values(search_pokedex(name, "actual_id"))
     gender = pick_random_gender(name)
-
-    # Scale IVs and shiny chances based on number of copies owned
-    from .pokedex_functions import _load_pokedex_cache
-    species_id = search_pokedex(name, "species_id")
-    copies = 0
-    if species_id is not None and services.db is not None:
-        # Get all actual_ids that share this species_id (this includes base forms, megas, and regional variants)
-        pokedex = _load_pokedex_cache()
-        related_ids = [data.get("actual_id") for data in pokedex.values() if data.get("species_id") == species_id and data.get("actual_id") is not None]
-
-        if related_ids:
-            copies = services.db.get_caught_count_by_pokedex_ids(related_ids)
-
-    is_shiny = shiny_chance(copies)
+    is_shiny = shiny_chance()
     battle_status = "fighting"
     base_stats = search_pokedex(name, "baseStats")
 
@@ -1182,10 +1169,7 @@ def generate_random_pokemon(
         wild_pokemon_lvl,
     )
     stat_names = ["hp", "atk", "def", "spa", "spd", "spe"]
-
-    min_iv = min(31, copies * 3)
-
-    iv = {stat: random.randint(min_iv, 31) for stat in stat_names}
+    iv = {stat: random.randint(0, 31) for stat in stat_names}
     nature = random.choice(ALL_NATURES)
     final_stats = base_stats
 

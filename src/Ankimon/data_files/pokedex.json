@@ -10972,7 +10972,8 @@
     "prevo": "Teddiursa",
     "evoLevel": 30,
     "evos": [
-      "Ursaluna"
+      "Ursaluna",
+      "Ursaluna-Bloodmoon"
     ],
     "eggGroups": [
       "Field"
@@ -41740,7 +41741,11 @@
       "Field"
     ],
     "gen": 9,
-    "tier": "Uber"
+    "tier": "Uber",
+    "prevo": "Ursaring",
+    "evoType": "useItem",
+    "evoItem": "Peat Block",
+    "evoCondition": "night"
   },
   "basculegion": {
     "species_id": 902,

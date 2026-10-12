@@ -130,12 +130,10 @@ def find_experience_for_level(group_growth_rate, level, remove_levelcap=True):
             experience = ((5 * ((level+1) ** 3)) // 4) - ((5 * (level ** 3)) // 4)
         return max(1, experience)
 
-def shiny_chance(copies: int = 0):
+def shiny_chance():
     # Shiny Pokémon probability (1 in 4096 chance)
     SHINY_PROBABILITY = 4096
-    # Each copy acts as an additional "roll" / chance
-    threshold = 1 + copies
-    shiny = random.randint(1, SHINY_PROBABILITY) <= threshold
+    shiny = random.randint(1, SHINY_PROBABILITY) == 1
     return shiny
 
 # unused, archived

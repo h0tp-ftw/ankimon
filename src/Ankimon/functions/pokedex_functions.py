@@ -1277,7 +1277,7 @@ def evolution_required_time(target_data):
     condition = (target_data.get("evoCondition") or "").lower()
     if "day" in condition:
         return "day"
-    if "night" in condition:
+    if "night" in condition or "dusk" in condition or "full moon" in condition:
         return "night"
     return None
 
