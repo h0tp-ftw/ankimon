@@ -621,10 +621,29 @@ def _apply_engine_patch(patch):
             pass
 
 
+def _install_gmax_hp_multiplier():
+    from ..poke_engine.battle import Pokemon
+
+    if getattr(Pokemon.__init__, "_ankimon_gmax_hp_patched", False):
+        return
+
+    original_init = Pokemon.__init__
+
+    def patched_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        if self.name.endswith("gmax"):
+            self.max_hp *= 2
+            self.hp *= 2
+
+    patched_init._ankimon_gmax_hp_patched = True
+    Pokemon.__init__ = patched_init
+
+
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
+_apply_engine_patch(_install_gmax_hp_multiplier)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
