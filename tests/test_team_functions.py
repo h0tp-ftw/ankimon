@@ -165,6 +165,15 @@ class _CursorFailingOn:
         """Delegate every other attribute to the real cursor."""
         return getattr(self._real, name)
 
+    def __enter__(self):
+        """Support ``with conn.cursor() as cursor`` like the real wrapper."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        """Close the real cursor (and its lease) on exit."""
+        self._real.close()
+        return False
+
 
 def _fail_statement(conn, needle):
     """Patch ``conn.cursor`` so statements containing ``needle`` raise."""
@@ -354,6 +363,27 @@ def test_partial_save_is_rolled_back(team_env):
     assert _team_ids(db) == [a, b]
     db._get_connection().commit()  # a later unrelated commit must not finish the wipe
     assert _team_ids(db) == [a, b]
+
+
+def test_db_writes_release_their_cursor_leases(team_env):
+    """Every raw-cursor write hands its connection lease back when it returns,
+    so a later quiesce/switch_database never waits on garbage collection."""
+    db, team_functions = team_env.db, team_env.team
+    a, b = _seed(db, "a", "b")
+    conn = db._get_connection()
+    assert conn._lease_count == 0
+    db.save_team([{"individual_id": a}, {"individual_id": b}], commit=False)
+    assert conn._lease_count == 0
+    conn.commit()
+    db.set_config_value("trainer.xp_share", a, commit=False)
+    assert conn._lease_count == 0
+    conn.commit()
+    assert db.delete_pokemon(b) is True
+    assert conn._lease_count == 0
+    assert db.release_pokemon(a, {"individual_id": a, "name": "pikachu", "id": 25}) is True
+    assert conn._lease_count == 0
+    assert db.release_pokemon("ghost", {"individual_id": "ghost", "name": "x", "id": 1}) is False
+    assert conn._lease_count == 0  # the early-return branch releases it too
 
 
 def test_delete_pokemon_frees_its_party_slot(team_env):

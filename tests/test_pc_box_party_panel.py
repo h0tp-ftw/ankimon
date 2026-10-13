@@ -40,6 +40,17 @@ def _env_guard():
     yield
 
 
+def _is_alive_like_utils(obj):
+    """Mirror ``Ankimon.utils.is_alive``: probe objectName(), False on a dead wrapper."""
+    if obj is None:
+        return False
+    try:
+        obj.objectName()
+        return True
+    except (RuntimeError, AttributeError):
+        return False
+
+
 def _make_module(name, **attrs):
     """Build a throwaway module exposing ``attrs``."""
     mod = types.ModuleType(name)
@@ -126,7 +137,7 @@ def pc_box(qapp):
         "Ankimon.utils": {
             "load_custom_font": lambda *a, **k: QFont(),
             "get_tier_by_id": lambda *a, **k: "Normal",
-            "is_alive": lambda obj: obj is not None,
+            "is_alive": _is_alive_like_utils,
             "format_move_name": lambda s: str(s).replace("-", " ").title(),
             "format_pokemon_name": lambda s: str(s).title(),
         },
@@ -237,6 +248,7 @@ def _host(pc_box, members=None):
         _party_layout_delta=0,
         layout=lambda: None,
         minimumWidth=lambda: 0,
+        objectName=lambda: "host",  # is_alive() probes this
         width=lambda: 1300,
         party_slots=[],
         party_panel=None,
@@ -756,6 +768,20 @@ def test_compact_party_mode_shows_sprite_only_tiles_with_tooltips(pc_box):
     host.width = lambda: 1024
     host._apply_party_layout_mode()
     assert filled.toolTip().count("Lickilicky") == 1  # repeated switches do not stack
+
+
+def test_queued_drop_is_skipped_once_the_window_is_dead(pc_box, qapp):
+    """A drop queued just before the window was deleted (add-on reload) is dropped."""
+    host = _host(pc_box)
+    host._queue_drop(host.on_box_drop, "p", "party")
+
+    def deleted():
+        """Mimic a deleted Qt wrapper."""
+        raise RuntimeError("wrapped C/C++ object has been deleted")
+
+    host.objectName = deleted
+    qapp.processEvents()
+    host.on_box_drop.assert_not_called()
 
 
 def test_compact_threshold_grows_with_the_measured_full_layout(pc_box):

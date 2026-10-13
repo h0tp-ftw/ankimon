@@ -150,6 +150,15 @@ class _CursorFailingOn:
         """Delegate every other attribute to the real cursor."""
         return getattr(self._real, name)
 
+    def __enter__(self):
+        """Support ``with conn.cursor() as cursor`` like the real wrapper."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        """Close the real cursor (and its lease) on exit."""
+        self._real.close()
+        return False
+
 
 def test_failed_team_save_rolls_back_and_can_be_retried(env):
     """A save that dies after save_team's DELETE leaves the stored party intact

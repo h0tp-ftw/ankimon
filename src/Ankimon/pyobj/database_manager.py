@@ -1580,12 +1580,14 @@ class AnkimonDB:
         # lease keeps this connection from being closed underneath us.
         with self.lease_connection() as conn:
             try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
-                )
-                deleted = cursor.rowcount > 0
-                cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+                # The cursor wrapper holds a lease too; close it deterministically
+                # so quiesce/switch never wait on garbage collection.
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
+                    )
+                    deleted = cursor.rowcount > 0
+                    cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
                 conn.commit()
             except Exception:
                 try:
@@ -1622,24 +1624,24 @@ class AnkimonDB:
         # One raw cursor on one leased connection (see delete_pokemon).
         with self.lease_connection() as conn:
             try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
-                )
-                if cursor.rowcount == 0:
-                    conn.rollback()
-                    self._log("error", f"No Pokémon found with individual_id {individual_id}")
-                    return False
-                cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
-                try:
+                with conn.cursor() as cursor:
                     cursor.execute(
-                        "INSERT INTO pokemon_history (individual_id, data) VALUES (?, ?)",
-                        (history_id, obfuscated_history),
+                        "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
                     )
-                except sqlite3.IntegrityError:
-                    # A duplicate history row is logged and the release still
-                    # commits: SQLite aborts only the failed statement.
-                    self._log("warning", f"Pokemon {history_id} already in history.")
+                    if cursor.rowcount == 0:
+                        conn.rollback()
+                        self._log("error", f"No Pokémon found with individual_id {individual_id}")
+                        return False
+                    cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+                    try:
+                        cursor.execute(
+                            "INSERT INTO pokemon_history (individual_id, data) VALUES (?, ?)",
+                            (history_id, obfuscated_history),
+                        )
+                    except sqlite3.IntegrityError:
+                        # A duplicate history row is logged and the release still
+                        # commits: SQLite aborts only the failed statement.
+                        self._log("warning", f"Pokemon {history_id} already in history.")
                 conn.commit()
             except Exception as e:
                 try:
@@ -2321,18 +2323,17 @@ class AnkimonDB:
     def save_team(self, team_list: List[Dict[str, Any]], *, commit: bool = True):
         """Replace the team; commit=False lets a caller include it in a transaction."""
         conn = self._get_connection()
-        cursor = conn.cursor()
+        with conn.cursor() as cursor:
+            # clear existing team
+            cursor.execute("DELETE FROM team")
 
-        # clear existing team
-        cursor.execute("DELETE FROM team")
-
-        for i, member in enumerate(team_list):
-            individual_id = member.get("individual_id")
-            if individual_id:
-                cursor.execute(
-                    "INSERT INTO team (slot_position, individual_id) VALUES (?, ?)",
-                    (i + 1, individual_id),
-                )
+            for i, member in enumerate(team_list):
+                individual_id = member.get("individual_id")
+                if individual_id:
+                    cursor.execute(
+                        "INSERT INTO team (slot_position, individual_id) VALUES (?, ?)",
+                        (i + 1, individual_id),
+                    )
         if commit:
             conn.commit()
         return True
@@ -2835,10 +2836,11 @@ class AnkimonDB:
             )
         conn = self._get_connection()
         if not commit:
-            conn.cursor().execute(
-                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-                (key, str_value),
-            )
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                    (key, str_value),
+                )
             return True
         conn.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",

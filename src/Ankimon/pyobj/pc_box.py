@@ -3376,7 +3376,12 @@ class PokemonPC(QDialog):
         *args
             Positional arguments forwarded to ``handler``.
         """
-        QTimer.singleShot(0, lambda: handler(*args))
+        def run_if_alive():
+            """Skip the drop when the window was deleted meanwhile (add-on reload)."""
+            if is_alive(self):
+                handler(*args)
+
+        QTimer.singleShot(0, run_if_alive)
 
     def on_party_slot_drop(self, slot_index: int, individual_id: str, source: str):
         """Handle a Pokémon dropped onto a party slot.
