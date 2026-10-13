@@ -143,15 +143,39 @@ def main() -> int:
     state = _team_state(page)
     assert state["dirty"] is True and state["changedElsewhere"] is True, state
 
+    # 3b. Double-click Save on a fresh draft: one save, no false "changed elsewhere".
+    window.push_screen_data()
+    assert _wait_until(lambda: (_team_state(page) or {}).get("dirty") is False), _team_state(page)
+    _run_javascript(page, "document.querySelector('.slot-remove').click(); true")
+    assert _wait_until(lambda: (_team_state(page) or {}).get("dirty") is True), _team_state(page)
+    _run_javascript(page, "(() => { const b = document.getElementById('save-btn'); b.click(); b.click(); })(); true")
+    assert _wait_until(lambda: (_team_state(page) or {}).get("dirty") is False), _team_state(page)
+    state = _team_state(page)
+    assert state["changedElsewhere"] is False and state["savePending"] is False, state
+    assert state["loadedTeam"] == team(), (state, team())  # baseline = what the backend stored
+
+    # 3c. Open picker stays current: the PC adds a Pokémon while it is open.
+    _run_javascript(page, "(() => { const s = document.querySelector('.slot.empty'); if (s) s.click(); })(); true")
+    assert _wait_until(lambda: (_team_state(page) or {}).get("pickerOpen") is True), _team_state(page)
+    roster_cards = "document.querySelectorAll('#roster-list .roster-card').length"
+    assert _wait_until(lambda: (_run_javascript(page, roster_cards) or 0) > 0), "roster never loaded"
+    newcomer = next(i for i in boxed if i not in team())
+    assert team_functions.add_to_party(db, newcomer).ok
+    newcomer_name = (db.get_pokemon(newcomer) or {}).get("name", "").lower()
+    assert _wait_until(lambda: any(newcomer_name in n.lower() for n in (_team_state(page) or {}).get("pickerOnTeam", []))), (
+        "picker did not refresh: %s" % _team_state(page))
+    _run_javascript(page, "document.getElementById('picker').classList.add('hidden'); true")
+
     # 4. Reload the page data: the stale state clears and the stored party shows.
     window.push_screen_data()
-    assert _wait_until(lambda: (_team_state(page) or {}).get("team") == base + [second, third]), _team_state(page)
+    assert _wait_until(lambda: (_team_state(page) or {}).get("team") == team()), _team_state(page)
     state = _team_state(page)
     assert state["dirty"] is False and state["changedElsewhere"] is False, state
     assert state["status"] == "All saved", state
 
     print("probe_real_team_sync: OK —", json.dumps({
-        "clean_refresh": True, "draft_kept": True, "stale_save_refused": True, "reload_clears": True,
+        "clean_refresh": True, "draft_kept": True, "stale_save_refused": True,
+        "double_save_single": True, "picker_refreshes": True, "reload_clears": True,
     }), flush=True)
     # Same exit path as probe_real_webengine: close the shell so its pages are
     # released before the QWebEngine profile goes away at interpreter exit.

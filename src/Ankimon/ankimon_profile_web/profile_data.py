@@ -830,6 +830,21 @@ class ProfileData:
         "(Ankimon \u2192 Game \u2192 Choose Pokemon Team) to make Team changes."
     )
 
+    def _log_safely(self, level, message):
+        """Log without ever raising (used inside error handlers).
+
+        Parameters
+        ----------
+        level : str
+            Log level understood by the logger.
+        message : str
+            Text to record.
+        """
+        try:
+            self.logger.log(level, message)
+        except Exception:
+            pass
+
     def handle_save_team(self, team_ids, xp_share_id, companion_id, loaded_team_ids=None):
         """Persist the chosen team + XP Share holder.
 
@@ -855,7 +870,8 @@ class ProfileData:
         Returns
         -------
         dict
-            ``{"ok": bool, "message": str}`` plus ``count`` on success and
+            ``{"ok": bool, "message": str}`` plus ``count`` and ``team_ids``
+            (the ids actually stored, deduplicated and capped) on success, and
             ``stale: True`` when refused as out of date.
         """
         if loaded_team_ids is not None:
@@ -882,18 +898,43 @@ class ProfileData:
         xp_share_id = str(xp_share_id) if xp_share_id else None
         companion_id = str(companion_id) if companion_id else None
 
+        # NOTE: no legacy "trainer.team" config write — the DB team table
+        # (services.db.save_team) is the sole source of truth every read path
+        # uses; settings.py migrates/deletes the old config key on load.
+        # The team rewrite (DELETE + INSERTs) and the XP Share config row are
+        # written through raw cursors on one leased connection and committed
+        # once, so a failure part-way rolls both back and never leaves a
+        # half-written party behind (which the stale check would then refuse
+        # to let the user retry over). The in-memory setting is updated only
+        # after that commit returns.
+        db = services.db
         try:
-            # NOTE: no legacy "trainer.team" config write — the DB team table
-            # (services.db.save_team) is the sole source of truth every read path
-            # uses; settings.py migrates/deletes the old config key on load.
-            self.settings_obj.set("trainer.xp_share", xp_share_id)
-            services.db.save_team(team_data)
-            if companion_id:
-                services.db.set_main_pokemon(companion_id)
-                from ..functions.update_main_pokemon import update_main_pokemon
-                update_main_pokemon(services.main_pokemon)
+            with db.lease_connection() as conn:
+                try:
+                    db.save_team(team_data, commit=False)
+                    db.set_config_value("trainer.xp_share", xp_share_id, commit=False)
+                    conn.commit()
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception as rollback_error:
+                        self._log_safely("error", f"Team save rollback failed: {rollback_error}")
+                    raise
         except Exception as e:
             return {"ok": False, "message": f"Failed to save team: {e}"}
+        # Settings.set re-upserts the same row (a no-op on disk) and keeps the
+        # in-memory config and any legacy mirror in step with what was committed.
+        try:
+            self.settings_obj.set("trainer.xp_share", xp_share_id)
+        except Exception as e:
+            self._log_safely("warning", f"XP Share committed but the in-memory setting lagged: {e}")
+        if companion_id:
+            try:
+                db.set_main_pokemon(companion_id)
+                from ..functions.update_main_pokemon import update_main_pokemon
+                update_main_pokemon(services.main_pokemon)
+            except Exception as e:
+                self._log_safely("warning", f"Team saved but the companion was not applied: {e}")
 
         try:
             if self.trainer_card is not None:
@@ -914,7 +955,9 @@ class ProfileData:
                 pass
 
         self._roster_cache = None
-        return {"ok": True, "message": "Team saved.", "count": len(team_data)}
+        # team_ids: what was actually stored (deduplicated, capped), so the page
+        # takes its baseline from the backend rather than its own draft.
+        return {"ok": True, "message": "Team saved.", "count": len(team_data), "team_ids": clean_ids}
 
     # ------------------------------------------------------------------
     # Trainer sprite picker

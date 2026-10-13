@@ -296,6 +296,11 @@
     }
 
     function assignSlot(slot, stub) {
+        // A stale picker (party changed elsewhere while it was open) could
+        // offer a Pokémon that is already in another slot: move it, never duplicate.
+        state.team.forEach((m, i) => {
+            if (m && i !== slot && String(m.id) === String(stub.id)) state.team[i] = null;
+        });
         // Copy so editing one slot can't alias another / the roster entry.
         const member = { id: stub.id, p: stub.p, n: stub.n, l: stub.l };
         if (stub.s) member.s = 1;
@@ -547,6 +552,8 @@
     // ---------------- Save / dirty ----------------
     let draftRevision = 0;  // bumped on every edit; a save only clears the draft it sent
     let externalChangeRevision = 0;  // bumped on every party change pushed from elsewhere
+    let loadGeneration = 0;  // bumped on every (re)load; a save reply from an older load is ignored
+    let savePending = false;  // one save in flight at a time
 
     function markDirty() {
         state.dirty = true;
@@ -572,7 +579,7 @@
     function updateSaveUI() {
         const btn = document.getElementById('save-btn');
         const status = document.getElementById('save-status');
-        btn.disabled = !state.dirty;
+        btn.disabled = !state.dirty || savePending;
         if (state.changedElsewhere) {
             status.innerHTML = staleStatusHtml();
         } else {
@@ -582,6 +589,9 @@
 
     function saveTeam() {
         if (!state.dirty) return Promise.resolve({ ok: true });
+        // A second click while the first save is in flight would send the
+        // pre-save baseline again and be refused as a stale save.
+        if (savePending) return Promise.resolve({ ok: false, pending: true });
         const ids = state.team.filter(Boolean).map((m) => String(m.id));
         if (!teamBridge || !teamBridge.saveTeam) {
             toast('Saved (preview — no backend).', 'success');
@@ -595,10 +605,27 @@
         // stored party no longer matches it (edited in the Pokémon PC meanwhile).
         const sentRevision = draftRevision;
         const sentExternalRevision = externalChangeRevision;
+        const sentGeneration = loadGeneration;
+        savePending = true;
+        updateSaveUI();
+        const finish = () => {
+            if (loadGeneration === sentGeneration) {
+                savePending = false;
+                updateSaveUI();
+            }
+        };
         return teamBridge.saveTeam(JSON.stringify(ids), state.xpShare || '', '',
                                    JSON.stringify(state.loadedTeam)).then((res) => {
+            finish();
+            // The page was reloaded while this save was pending: the reply
+            // describes a draft that no longer exists, so leave the fresh state
+            // alone (the reload already shows what is stored).
+            if (loadGeneration !== sentGeneration) return res;
             if (res && res.ok) {
-                state.loadedTeam = ids.slice();
+                // The backend reports what it actually stored (deduplicated,
+                // capped); that is the new baseline, not the page's own list.
+                const savedIds = Array.isArray(res.team_ids) ? res.team_ids.map(String) : ids.slice();
+                state.loadedTeam = savedIds;
                 // Edits made while the request was pending are a newer draft:
                 // keep them unsaved. Only the draft that was sent is now clean.
                 if (draftRevision === sentRevision) {
@@ -607,6 +634,13 @@
                     // stands: keep the warning so the status is not falsely clean.
                     if (externalChangeRevision === sentExternalRevision) {
                         state.changedElsewhere = false;
+                    }
+                    if (savedIds.join(',') !== ids.join(',') && teamBridge.getTeam) {
+                        // Stored differs from the draft: show the stored party,
+                        // unless the user has edited again meanwhile.
+                        teamBridge.getTeam().then((data) => {
+                            if (draftRevision === sentRevision) applyData(data);
+                        });
                     }
                 }
                 updateSaveUI();
@@ -618,7 +652,7 @@
                 toast((res && res.message) || 'Save failed.', 'error');
                 throw new Error((res && res.message) || 'Save failed');
             }
-        });
+        }, (err) => { finish(); throw err; });
     }
 
     let toastTimer = null;
@@ -651,6 +685,8 @@
         }
         state.dirty = false;
         state.changedElsewhere = false;
+        loadGeneration += 1;
+        savePending = false;
         // Raw stored ids (may include rows the page cannot render); fall back to
         // the rendered members for older payloads.
         state.loadedTeam = Array.isArray(data.team_ids)
@@ -668,13 +704,27 @@
     // The party was changed elsewhere (Pokémon PC). A clean view simply reloads;
     // unsaved edits are kept, and the status line says the stored party moved on
     // (the backend refuses that draft's save until the page is reloaded).
+    function pickerIsOpen() {
+        const el = document.getElementById('picker');
+        return Boolean(el) && !el.classList.contains('hidden');
+    }
+
+    function refreshOpenPicker() {
+        // The roster (owned Pokémon) and the "On team" tags may both be stale.
+        state.roster = null;
+        if (!pickerIsOpen()) return;
+        ensureRoster(() => { buildPickerFilters(); renderRosterList(); });
+    }
+
     window.teamChangedElsewhere = function (data) {
         if (!state.dirty) {
             applyData(data);
+            refreshOpenPicker();
             return;
         }
         externalChangeRevision += 1;
         state.changedElsewhere = true;
+        refreshOpenPicker();
         updateSaveUI();
         toast(staleMessage(), 'error');
     };
@@ -686,6 +736,11 @@
             loadedTeam: state.loadedTeam.slice(),
             dirty: state.dirty,
             changedElsewhere: state.changedElsewhere,
+            savePending: savePending,
+            loadGeneration: loadGeneration,
+            pickerOpen: pickerIsOpen(),
+            pickerOnTeam: Array.from(document.querySelectorAll('#roster-list .roster-card.in-team .rc-name'))
+                .map((el) => el.textContent.replace('★', '').trim()),
             status: document.getElementById('save-status').textContent,
         };
     };

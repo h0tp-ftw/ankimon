@@ -2819,10 +2819,14 @@ class AnkimonDB:
         conn.commit()
         return True
 
-    def set_config_value(self, key: str, value: Any) -> bool:
+    def set_config_value(self, key: str, value: Any, *, commit: bool = True) -> bool:
         """Upsert a SINGLE config key (incremental). Avoids rewriting all ~60 config
         rows on every Settings.set — the battle loop awards cash per review, so the
-        old save_all_config path rewrote the whole table dozens of times per battle."""
+        old save_all_config path rewrote the whole table dozens of times per battle.
+
+        ``commit=False`` writes through a raw cursor on the current connection and
+        leaves the transaction open, so a caller can commit (or roll back) the
+        config row together with other statements."""
         if isinstance(value, bool):
             str_value = "true" if value else "false"
         else:
@@ -2830,6 +2834,12 @@ class AnkimonDB:
                 json.dumps(value) if isinstance(value, (dict, list)) else str(value)
             )
         conn = self._get_connection()
+        if not commit:
+            conn.cursor().execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                (key, str_value),
+            )
+            return True
         conn.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
             (key, str_value),

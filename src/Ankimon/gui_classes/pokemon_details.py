@@ -357,7 +357,14 @@ def PokemonCollectionDetailsSplit(
         )
         name_label = QLabel(display_full_name)
         name_label.setFont(namefont)
+        # A long nickname must wrap inside the panel instead of raising the
+        # window's minimum width (the Pokémon PC derives its minimum from this
+        # panel's content). Ignored horizontally: the label never claims width.
+        name_label.setWordWrap(True)
+        name_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         description_label = QLabel(description_txt)
+        description_label.setWordWrap(True)
+        description_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         level_label = QLabel(lvl)
         cp_label = QLabel(cp_txt)
         cp_label.setToolTip(cp_tooltip)

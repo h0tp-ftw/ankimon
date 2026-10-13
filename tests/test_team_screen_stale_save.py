@@ -10,7 +10,7 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -130,6 +130,93 @@ def test_team_row_without_a_record_does_not_make_every_save_stale(env):
     res = env.profile.handle_save_team(["a", "b"], None, None, loaded_team_ids=payload["team_ids"])
     assert res["ok"] is True, res
     assert _team(env.db) == ["a", "b"]  # the unreadable row is pruned by the save itself
+
+
+class _CursorFailingOn:
+    """Cursor proxy that raises for statements containing ``needle``."""
+
+    def __init__(self, real, needle):
+        """Wrap the real cursor and remember which SQL to fail."""
+        self._real = real
+        self._needle = needle
+
+    def execute(self, sql, *args, **kwargs):
+        """Raise for the targeted statement; delegate everything else."""
+        if self._needle in sql:
+            raise RuntimeError("disk full")
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        """Delegate every other attribute to the real cursor."""
+        return getattr(self._real, name)
+
+
+def test_failed_team_save_rolls_back_and_can_be_retried(env):
+    """A save that dies after save_team's DELETE leaves the stored party intact
+    (rolled back, also after a later unrelated commit) and the same page can retry."""
+    env.db.save_team([{"individual_id": "a"}, {"individual_id": "b"}])
+    conn = env.db._get_connection()
+    real_cursor = conn.cursor
+    with patch.object(conn, "cursor", side_effect=lambda: _CursorFailingOn(real_cursor(), "INSERT INTO team")):
+        res = env.profile.handle_save_team(["a", "c"], None, None, loaded_team_ids=["a", "b"])
+    assert res["ok"] is False and not res.get("stale")
+    assert _team(env.db) == ["a", "b"]
+    conn.commit()  # an unrelated commit must not finish the half-written save
+    assert _team(env.db) == ["a", "b"]
+    env.settings.set.assert_not_called()  # in-memory setting only moves after a commit
+    # The stored party still matches what the page loaded, so a retry is allowed.
+    res = env.profile.handle_save_team(["a", "c"], None, None, loaded_team_ids=["a", "b"])
+    assert res["ok"] is True and res["team_ids"] == ["a", "c"]
+    assert _team(env.db) == ["a", "c"]
+
+
+class _DbBackedSettings:
+    """Settings stand-in that persists through the real db like Settings.set does."""
+
+    def __init__(self, db):
+        """Remember the db and start with no XP Share."""
+        self.db = db
+        self.config = {"trainer.xp_share": None}
+
+    def get(self, key, default=None):
+        """Read the in-memory value."""
+        return self.config.get(key, default)
+
+    def set(self, key, value):
+        """Mirror Settings.set: in-memory first, then a committed config row."""
+        self.config[key] = value
+        self.db.set_config_value(key, value)
+
+
+def test_xp_share_row_rolls_back_with_the_team_rewrite(env):
+    """A config write that fails inside the transaction rolls the team rewrite back too,
+    and the in-memory setting never moves; on success both land together."""
+    env.db.save_team([{"individual_id": "a"}])
+    env.db.set_config_value("trainer.xp_share", "a")
+    settings = _DbBackedSettings(env.db)
+    settings.config["trainer.xp_share"] = "a"
+    env.profile.settings_obj = settings
+    conn = env.db._get_connection()
+    real_cursor = conn.cursor
+    with patch.object(conn, "cursor", side_effect=lambda: _CursorFailingOn(real_cursor(), "INSERT OR REPLACE INTO config")):
+        res = env.profile.handle_save_team(["a", "b"], "b", None, loaded_team_ids=["a"])
+    assert res["ok"] is False
+    assert _team(env.db) == ["a"]  # the team rewrite was rolled back with the config row
+    assert env.db.get_config_value("trainer.xp_share") == "a"
+    assert settings.config["trainer.xp_share"] == "a"  # in-memory untouched
+    res = env.profile.handle_save_team(["a", "b"], "b", None, loaded_team_ids=["a"])
+    assert res["ok"] is True
+    assert _team(env.db) == ["a", "b"]
+    assert env.db.get_config_value("trainer.xp_share") == "b"
+    assert settings.config["trainer.xp_share"] == "b"
+
+
+def test_save_reports_the_ids_actually_stored(env):
+    """Duplicates and overflow are dropped server-side; the reply says what was kept."""
+    env.db.save_team([])
+    res = env.profile.handle_save_team(["a", "a", "b", "", None], None, None, loaded_team_ids=[])
+    assert res["ok"] is True
+    assert res["team_ids"] == ["a", "b"] == _team(env.db)
 
 
 def test_save_without_loaded_team_keeps_legacy_behaviour(env):

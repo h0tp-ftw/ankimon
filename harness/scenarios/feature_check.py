@@ -302,7 +302,9 @@ def check_pc_fits_1024x768(d, app, db, pc, pool):
     and every main control (party, grid, search, filters, details with a Pokemon
     selected, trade/release/rename) is fully inside the window."""
     iid = pool[-1]
-    pc.show_pokemon_details(db.get_pokemon(iid)); app.processEvents()
+    # A long nickname must wrap inside the details panel, not widen the window.
+    pkmn = db.get_pokemon(iid); pkmn["nickname"] = "Review Pikachu Longname"; db.save_pokemon(pkmn)
+    pc.show_pokemon_details(db.get_pokemon(iid)); app.processEvents(); app.processEvents()
     pc.resize(1024, 768); app.processEvents(); app.processEvents()
     layout_min = pc.layout().minimumSize()
     controls = {
