@@ -10,8 +10,9 @@ import json
 import re
 
 from ..services import services
+from ..functions.team_functions import get_team_ids
 
-from ..utils import get_all_sprites, POKEMON_NAME_LOOKUP
+from ..utils import get_all_sprites, POKEMON_NAME_LOOKUP, is_alive
 from ..resources import trainer_sprites_path
 
 MAX_TEAM_SIZE = 6
@@ -288,6 +289,20 @@ def _describe_sprite(name, roles):
 
 
 class ProfileData:
+    """Data provider and action handler for the trainer profile web view.
+
+    Parameters
+    ----------
+    addon_dir : str or Path
+        Root of the add-on, used to locate bundled assets.
+    trainer_card : TrainerCard
+        Trainer card whose team and badges the profile shows.
+    settings_obj : Settings
+        Add-on settings object.
+    logger : ShowInfoLogger
+        Logger for diagnostics.
+    """
+
     def __init__(self, addon_dir, trainer_card, settings_obj, logger):
         self.addon_dir = addon_dir
         self.trainer_card = trainer_card
@@ -641,6 +656,15 @@ class ProfileData:
         return out
 
     def get_team_data(self):
+        """Build the Team screen payload: resolved members, raw stored ids, XP Share.
+
+        Returns
+        -------
+        dict
+            ``team`` (renderable member stubs), ``team_ids`` (raw stored ids in
+            slot order), ``xp_share``, ``companion``, display settings and the
+            ``stale_message`` the page shows when the party changes elsewhere.
+        """
         members = self._team_member_stubs()
         for m in members:
             m["cp"] = self._calc_cp(m["id"])
@@ -665,9 +689,20 @@ class ProfileData:
         main_pkmn = db.get_main_pokemon() if db else None
         companion_id = main_pkmn.get("individual_id") if main_pkmn else None
 
+        # Raw stored ids, in slot order, including any whose Pokémon record is
+        # missing or unreadable (those are absent from ``team``). The page sends
+        # these back with Save so the stale check compares stored ids with
+        # stored ids and never refuses a save over a row it could not render.
+        try:
+            team_ids = get_team_ids(db, strict=True) if db else []
+        except Exception:
+            team_ids = []
+
         return {
             "max_size": MAX_TEAM_SIZE,
             "team": members,
+            "team_ids": team_ids,
+            "stale_message": self.STALE_TEAM_MESSAGE,
             "xp_share": str(xp_share) if xp_share else None,
             "xp_share_info": self._resolve_stub(xp_share, members) if xp_share else None,
             "companion": str(companion_id) if companion_id else None,
@@ -790,14 +825,64 @@ class ProfileData:
             print(f"[Ankimon] profile: CP calc failed for {individual_id}: {e}")
             return 0
 
-    def handle_save_team(self, team_ids, xp_share_id, companion_id):
+    STALE_TEAM_MESSAGE = (
+        "Your Team has been changed elsewhere. Please reload the TEAM page "
+        "(Ankimon \u2192 Game \u2192 Choose Pokemon Team) to make Team changes."
+    )
+
+    def _log_safely(self, level, message):
+        """Log without ever raising (used inside error handlers).
+
+        Parameters
+        ----------
+        level : str
+            Log level understood by the logger.
+        message : str
+            Text to record.
+        """
+        try:
+            self.logger.log(level, message)
+        except Exception:
+            pass
+
+    def handle_save_team(self, team_ids, xp_share_id, companion_id, loaded_team_ids=None):
         """Persist the chosen team + XP Share holder.
 
         ``companion_id`` (Active Companion / main-Pokémon override) is a ready
         write-seam, but NO shipped UI populates it yet — the Team screen's
         companion picker is deferred (team.js sends ''), so the set_main_pokemon
         branch below is inert until that UI lands. Do not describe Active
-        Companion as a working feature."""
+        Companion as a working feature.
+
+        Parameters
+        ----------
+        team_ids : list of str
+            Ordered individual ids chosen on the Team screen.
+        xp_share_id : str or None
+            XP Share holder, or None to clear it.
+        companion_id : str or None
+            Deferred companion override (always None from the shipped UI).
+        loaded_team_ids : list of str, optional
+            The party the Team screen loaded. When given and the stored party
+            no longer matches it (edited in the Pokémon PC meanwhile), the save
+            is refused with ``stale: True`` so the newer party is not overwritten.
+
+        Returns
+        -------
+        dict
+            ``{"ok": bool, "message": str}`` plus ``count`` and ``team_ids``
+            (the ids actually stored, deduplicated and capped) on success, and
+            ``stale: True`` when refused as out of date.
+        """
+        if loaded_team_ids is not None:
+            try:
+                current = get_team_ids(services.db, strict=True)
+            except Exception as e:
+                return {"ok": False, "message": f"Failed to read the current team: {e}"}
+            expected = [str(x) for x in loaded_team_ids if x]
+            if current != expected:
+                return {"ok": False, "stale": True, "message": self.STALE_TEAM_MESSAGE}
+
         seen = set()
         clean_ids = []
         for raw in team_ids or []:
@@ -813,18 +898,43 @@ class ProfileData:
         xp_share_id = str(xp_share_id) if xp_share_id else None
         companion_id = str(companion_id) if companion_id else None
 
+        # NOTE: no legacy "trainer.team" config write — the DB team table
+        # (services.db.save_team) is the sole source of truth every read path
+        # uses; settings.py migrates/deletes the old config key on load.
+        # The team rewrite (DELETE + INSERTs) and the XP Share config row are
+        # written through raw cursors on one leased connection and committed
+        # once, so a failure part-way rolls both back and never leaves a
+        # half-written party behind (which the stale check would then refuse
+        # to let the user retry over). The in-memory setting is updated only
+        # after that commit returns.
+        db = services.db
         try:
-            # NOTE: no legacy "trainer.team" config write — the DB team table
-            # (services.db.save_team) is the sole source of truth every read path
-            # uses; settings.py migrates/deletes the old config key on load.
-            self.settings_obj.set("trainer.xp_share", xp_share_id)
-            services.db.save_team(team_data)
-            if companion_id:
-                services.db.set_main_pokemon(companion_id)
-                from ..functions.update_main_pokemon import update_main_pokemon
-                update_main_pokemon(services.main_pokemon)
+            with db.lease_connection() as conn:
+                try:
+                    db.save_team(team_data, commit=False)
+                    db.set_config_value("trainer.xp_share", xp_share_id, commit=False)
+                    conn.commit()
+                except Exception:
+                    try:
+                        conn.rollback()
+                    except Exception as rollback_error:
+                        self._log_safely("error", f"Team save rollback failed: {rollback_error}")
+                    raise
         except Exception as e:
             return {"ok": False, "message": f"Failed to save team: {e}"}
+        # Settings.set re-upserts the same row (a no-op on disk) and keeps the
+        # in-memory config and any legacy mirror in step with what was committed.
+        try:
+            self.settings_obj.set("trainer.xp_share", xp_share_id)
+        except Exception as e:
+            self._log_safely("warning", f"XP Share committed but the in-memory setting lagged: {e}")
+        if companion_id:
+            try:
+                db.set_main_pokemon(companion_id)
+                from ..functions.update_main_pokemon import update_main_pokemon
+                update_main_pokemon(services.main_pokemon)
+            except Exception as e:
+                self._log_safely("warning", f"Team saved but the companion was not applied: {e}")
 
         try:
             if self.trainer_card is not None:
@@ -832,8 +942,22 @@ class ProfileData:
         except Exception:
             pass
 
+        # An open Pokémon PC shows the party too; nudge it like the trade,
+        # release and item windows do so it never displays a stale team.
+        try:
+            pokemon_pc = services.pokemon_pc
+            if pokemon_pc is not None and is_alive(pokemon_pc):
+                pokemon_pc.refresh_pokemon_grid()
+        except Exception as e:
+            try:
+                self.logger.log("warning", f"PC refresh after team save failed: {e}")
+            except Exception:
+                pass
+
         self._roster_cache = None
-        return {"ok": True, "message": "Team saved.", "count": len(team_data)}
+        # team_ids: what was actually stored (deduplicated, capped), so the page
+        # takes its baseline from the backend rather than its own draft.
+        return {"ok": True, "message": "Team saved.", "count": len(team_data), "team_ids": clean_ids}
 
     # ------------------------------------------------------------------
     # Trainer sprite picker

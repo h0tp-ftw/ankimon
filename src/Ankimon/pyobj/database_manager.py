@@ -1377,13 +1377,110 @@ class AnkimonDB:
             pass
 
     def delete_pokemon(self, individual_id: str) -> bool:
-        """Deletes a pokemon from the captured collection."""
-        cursor = self.execute(
-            "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
-        )
-        self._get_connection().commit()
+        """Delete a Pokémon from the collection and free its party slot.
+
+        Both statements commit together: a released Pokémon must not keep
+        its party slot (readers skip a dangling id, but it would still count
+        against the six-slot cap), and a failure part-way must not leave the
+        collection row gone with the team row pending. The player-facing
+        release goes through :meth:`release_pokemon`, which also records the
+        history row in the same transaction; this method serves tools and
+        tests that delete without history.
+
+        Parameters
+        ----------
+        individual_id : str
+            Id of the Pokémon to delete.
+
+        Returns
+        -------
+        bool
+            True when a ``captured_pokemon`` row was deleted.
+
+        Raises
+        ------
+        Exception
+            Re-raised after rolling back, so callers never report a release
+            that was not committed.
+        """
+        # One raw cursor on one leased connection: ``self.execute`` may repair
+        # the database and retry on a fresh connection, which would leave the
+        # statements on one connection and the commit on another, and the
+        # lease keeps this connection from being closed underneath us.
+        with self.lease_connection() as conn:
+            try:
+                # The cursor wrapper holds a lease too; close it deterministically
+                # so quiesce/switch never wait on garbage collection.
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
+                    )
+                    deleted = cursor.rowcount > 0
+                    cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    self._log("error", f"Could not roll back the release: {rollback_error}")
+                raise
         self._clear_reviewer_ownership_cache()
-        return cursor.rowcount > 0
+        return deleted
+
+    def release_pokemon(self, individual_id: str, history_data: Dict[str, Any]) -> bool:
+        """Release a Pokémon: record it in history, delete it, free its party slot.
+
+        All three statements run on one raw cursor of one connection and
+        commit together, so a failure anywhere leaves the collection, the
+        team table and the release history exactly as they were.
+
+        Parameters
+        ----------
+        individual_id : str
+            Id of the Pokémon to release.
+        history_data : dict
+            Record to store in ``pokemon_history`` (name, id, shiny, ...).
+
+        Returns
+        -------
+        bool
+            True when the release was committed; False (after rollback, with
+            the reason logged) when the Pokémon was not found or any
+            statement failed.
+        """
+        history_id = history_data.get("individual_id") or individual_id
+        obfuscated_history = self._obfuscate(history_data)
+        # One raw cursor on one leased connection (see delete_pokemon).
+        with self.lease_connection() as conn:
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        "DELETE FROM captured_pokemon WHERE individual_id = ?", (individual_id,)
+                    )
+                    if cursor.rowcount == 0:
+                        conn.rollback()
+                        self._log("error", f"No Pokémon found with individual_id {individual_id}")
+                        return False
+                    cursor.execute("DELETE FROM team WHERE individual_id = ?", (individual_id,))
+                    try:
+                        cursor.execute(
+                            "INSERT INTO pokemon_history (individual_id, data) VALUES (?, ?)",
+                            (history_id, obfuscated_history),
+                        )
+                    except sqlite3.IntegrityError:
+                        # A duplicate history row is logged and the release still
+                        # commits: SQLite aborts only the failed statement.
+                        self._log("warning", f"Pokemon {history_id} already in history.")
+                conn.commit()
+            except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    self._log("error", f"Could not roll back the release: {rollback_error}")
+                self._log("error", f"Release not saved, your Pokémon is unchanged: {e}")
+                return False
+        self._clear_reviewer_ownership_cache()
+        return True
 
     def replace_pokemon(
         self, pokemon_data: Dict[str, Any], old_individual_id: str
@@ -1432,19 +1529,34 @@ class AnkimonDB:
             return False
 
         # You passed all the checks. Full steam ahead!
-        # Replace the row in-place
-        cursor.execute(
-            """
-            UPDATE captured_pokemon
-            SET individual_id = ?, is_main = ?, data = ?
-            WHERE individual_id = ?
-            """,
-            (new_individual_id, is_main, obfuscated_data, old_individual_id),
-        )
-
-        conn.commit()
+        # Replace the row in-place. The team update commits with it: the
+        # incoming Pokémon inherits the outgoing one's party slot, and a
+        # failure part-way must not persist half a trade.
+        try:
+            cursor.execute(
+                """
+                UPDATE captured_pokemon
+                SET individual_id = ?, is_main = ?, data = ?
+                WHERE individual_id = ?
+                """,
+                (new_individual_id, is_main, obfuscated_data, old_individual_id),
+            )
+            # Read the outcome before touching any other table: rowcount
+            # reflects the most recent statement only.
+            replaced = cursor.rowcount > 0
+            cursor.execute(
+                "UPDATE team SET individual_id = ? WHERE individual_id = ?",
+                (new_individual_id, old_individual_id),
+            )
+            conn.commit()
+        except Exception as e:
+            try:
+                conn.rollback()
+            except Exception as rollback_error:
+                self._log("error", f"Could not roll back the trade: {rollback_error}")
+            self._log("error", f"Trade not saved, your Pokémon is unchanged: {e}")
+            return False
         self._clear_reviewer_ownership_cache()
-        replaced = cursor.rowcount > 0
         # Trades acquire the incoming species just like a catch. Record it now
         # so encounter unlocks and the HUD do not lag until the next startup's
         # reconciliation sweep (or lose it if this Pokemon is traded again).
@@ -1949,18 +2061,17 @@ class AnkimonDB:
     def save_team(self, team_list: List[Dict[str, Any]], *, commit: bool = True):
         """Replace the team; commit=False lets a caller include it in a transaction."""
         conn = self._get_connection()
-        cursor = conn.cursor()
+        with conn.cursor() as cursor:
+            # clear existing team
+            cursor.execute("DELETE FROM team")
 
-        # clear existing team
-        cursor.execute("DELETE FROM team")
-
-        for i, member in enumerate(team_list):
-            individual_id = member.get("individual_id")
-            if individual_id:
-                cursor.execute(
-                    "INSERT INTO team (slot_position, individual_id) VALUES (?, ?)",
-                    (i + 1, individual_id),
-                )
+            for i, member in enumerate(team_list):
+                individual_id = member.get("individual_id")
+                if individual_id:
+                    cursor.execute(
+                        "INSERT INTO team (slot_position, individual_id) VALUES (?, ?)",
+                        (i + 1, individual_id),
+                    )
         if commit:
             conn.commit()
         return True
@@ -2450,10 +2561,14 @@ class AnkimonDB:
         conn.commit()
         return True
 
-    def set_config_value(self, key: str, value: Any) -> bool:
+    def set_config_value(self, key: str, value: Any, *, commit: bool = True) -> bool:
         """Upsert a SINGLE config key (incremental). Avoids rewriting all ~60 config
         rows on every Settings.set — the battle loop awards cash per review, so the
-        old save_all_config path rewrote the whole table dozens of times per battle."""
+        old save_all_config path rewrote the whole table dozens of times per battle.
+
+        ``commit=False`` writes through a raw cursor on the current connection and
+        leaves the transaction open, so a caller can commit (or roll back) the
+        config row together with other statements."""
         if isinstance(value, bool):
             str_value = "true" if value else "false"
         else:
@@ -2461,6 +2576,13 @@ class AnkimonDB:
                 json.dumps(value) if isinstance(value, (dict, list)) else str(value)
             )
         conn = self._get_connection()
+        if not commit:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
+                    (key, str_value),
+                )
+            return True
         conn.execute(
             "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
             (key, str_value),

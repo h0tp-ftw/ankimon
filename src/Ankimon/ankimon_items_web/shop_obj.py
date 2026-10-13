@@ -225,16 +225,21 @@ class TeamBridge(QObject):
         return self._w.profile_data.get_member_stats(individual_id)
 
     # JSON string in (PyQt QVariant-list unwrap is unreliable on first call).
-    @pyqtSlot(str, str, str, result="QVariant")
-    def saveTeam(self, team_json, xp_share_id, companion_id):
+    @pyqtSlot(str, str, str, str, result="QVariant")
+    def saveTeam(self, team_json, xp_share_id, companion_id, loaded_json=""):
+        """Save the team; ``loaded_json`` is the party the page loaded, so a
+        save built on a party that changed elsewhere is refused."""
         try:
             team_ids = json.loads(team_json) if team_json else []
             if not isinstance(team_ids, list):
                 raise ValueError("team payload must be a list")
+            loaded_ids = json.loads(loaded_json) if loaded_json else None
+            if loaded_ids is not None and not isinstance(loaded_ids, list):
+                raise ValueError("loaded team payload must be a list")
         except (TypeError, ValueError) as e:
             return {"ok": False, "message": f"Invalid team payload: {e}"}
         return self._w.profile_data.handle_save_team(
-            team_ids, xp_share_id or None, companion_id or None
+            team_ids, xp_share_id or None, companion_id or None, loaded_ids
         )
 
 
@@ -1051,6 +1056,8 @@ class MobileBridge(QObject):
 
 
 class AnkimonItemsWeb(QDialog):
+    """The web shell window hosting the Items, Ankidex, Profile, Team, Settings, Mobile and History screens."""
+
     def __init__(
         self,
         addon_dir,
@@ -1410,6 +1417,30 @@ class AnkimonItemsWeb(QDialog):
     # (catch, XP, cash, ...). Full pattern + how to add a new live screen:
     # ankimon_items_web/LIVE_UPDATES.md
     # ------------------------------------------------------------------
+    def notify_team_changed(self):
+        """Push the stored party to an open Team screen after a change elsewhere.
+
+        The page decides what to do: a clean view reloads, a view with unsaved
+        edits keeps them and shows that the stored party moved on (its next
+        save is then refused as stale). No-op unless the Team screen is the
+        one showing and fully loaded; a shell whose window was already
+        destroyed is ignored rather than raising on every party edit.
+        """
+        try:
+            visible = self.isVisible()
+        except RuntimeError:  # C++ object deleted; services.items_web is stale
+            return
+        if not visible or self.current_screen != SCREEN_TEAM:
+            return
+        if SCREEN_TEAM not in self.ready_screens:
+            return
+        data = self.profile_data.get_team_data()
+        js = (
+            "if (window.teamChangedElsewhere) "
+            f"window.teamChangedElsewhere({json.dumps(data)});"
+        )
+        self.webview_team.page().runJavaScript(js)
+
     def refresh_live_screen(self):
         """Refresh whichever screen is currently showing after a gameplay event,
         **iff** it supports live updates.

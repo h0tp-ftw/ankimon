@@ -349,6 +349,7 @@ _items_web_window = None
 
 
 def get_items_window():
+    """Return the live web shell window, creating it (and registering it on ``services``) if needed."""
     global _items_web_window
     if is_alive(_items_web_window):
         return _items_web_window
@@ -364,6 +365,7 @@ def get_items_window():
         logger=logger,
     )
     mw.items_web_window = _items_web_window
+    services.items_web = _items_web_window
     return _items_web_window
 
 
