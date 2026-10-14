@@ -72,6 +72,29 @@ def _run(directory):
         records.append((mon, evolved, item))
     db.save_item(2160, "linking-cord", 12)
     db.save_item(110, "oval-stone", 1)
+
+    # Inject todays_shop so it has linking-cord deterministically
+    import datetime
+    db.set_user_data("todays_shop", {
+        "items": [{"name": "linking-cord", "price": 1000, "description": "test", "item_type": None}, {"name": "oval-stone", "price": 1000, "description": "test", "item_type": None}],
+        "technical_machines": [{"name": "tm1"}],
+        "date": datetime.datetime.now().strftime("%Y-%m-%d")
+    })
+
+    # Inject todays_shop so it has linking-cord deterministically
+    import datetime
+    db.set_user_data("todays_shop", {
+        "items": [{"name": "linking-cord"}, {"name": "oval-stone"}, {"name": "health-mochi"}],
+        "technical_machines": [{"name": "tm1"}, {"name": "tm2"}, {"name": "tm3"}],
+        "date": datetime.datetime.now().strftime("%Y-%m-%d")
+    })
+
+    import datetime
+    db.set_user_data("todays_shop", {
+        "items": [{"name": "linking-cord"}, {"name": "oval-stone"}, {"name": "health-mochi"}],
+        "technical_machines": [{"name": "tm1"}, {"name": "tm2"}, {"name": "tm3"}],
+        "date": datetime.datetime.now().strftime("%Y-%m-%d")
+    })
     bag = get_item_window()
     assert {"linking-cord", "oval-stone"} <= bag.evolution_items
     native_card = bag.ItemLabel("linking-cord", 12, None)
