@@ -6,6 +6,7 @@ Optional screenshot directory: ANKIMON_PROOF_SCREENSHOTS=/tmp/pr838-screenshots
 
 from contextlib import nullcontext
 import json
+from datetime import datetime
 import os
 from pathlib import Path
 import tempfile
@@ -55,6 +56,7 @@ def _run(directory):
     from Ankimon.singletons import get_items_window, get_item_window, get_evo_window
     from Ankimon.functions.pokedex_functions import get_pretty_name_for_id
     from Ankimon.ankimon_items_web.shop_obj import SCREEN_ITEMS
+    from Ankimon.pyobj.ankimon_shop import get_daily_items_pool
 
     db = d.services.db
     utils.items_path.mkdir(parents=True, exist_ok=True)
@@ -72,6 +74,16 @@ def _run(directory):
         records.append((mon, evolved, item))
     db.save_item(2160, "linking-cord", 12)
     db.save_item(110, "oval-stone", 1)
+    # The purchase proof needs Cord in today's stock. Bundled training items
+    # also enter the rotating pool, so ownership alone does not ensure the
+    # default shop filter will render Cord on every date.
+    cord = next(
+        item for item in get_daily_items_pool() if item["name"] == "linking-cord"
+    )
+    db.set_user_data(
+        "todays_shop",
+        {"date": datetime.now().strftime("%Y-%m-%d"), "items": [cord]},
+    )
     bag = get_item_window()
     assert {"linking-cord", "oval-stone"} <= bag.evolution_items
     native_card = bag.ItemLabel("linking-cord", 12, None)
