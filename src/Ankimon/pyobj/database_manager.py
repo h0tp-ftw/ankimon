@@ -1323,6 +1323,101 @@ class AnkimonDB:
 
         return True
 
+    def update_pokemon_attacks(
+        self,
+        individual_id: str,
+        expected_pokemon: Dict[str, Any],
+        attacks: List[str],
+        *,
+        expected_db_identity: Optional[tuple] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Patch moves on an existing, unchanged species/moveset after a dialog.
+
+        Return the updated record, or None if the recipient disappeared, evolved,
+        or had its moves edited. Preserve every other current field and is_main.
+        Own only the transaction started here; a caller's transaction stays open.
+        """
+        if (
+            not individual_id
+            or expected_pokemon.get("individual_id") != individual_id
+            or not isinstance(attacks, list)
+            or len(attacks) > 4
+            or not all(isinstance(move, str) for move in attacks)
+        ):
+            return None
+
+        updated = None
+        with self.lease_connection() as conn:
+            if (
+                expected_db_identity is not None
+                and self.identity_token() != expected_db_identity
+            ):
+                return None
+            raw = conn._conn
+            owns_transaction = not raw.in_transaction
+            savepoint = "ankimon_update_pokemon_attacks"
+            transaction_started = savepoint_open = False
+            try:
+                if owns_transaction:
+                    raw.execute("BEGIN IMMEDIATE")
+                    transaction_started = True
+                else:
+                    # Acquire write intent before reading, also in an outer
+                    # deferred transaction, without committing the caller's work.
+                    raw.execute("UPDATE captured_pokemon SET data = data WHERE 0")
+                raw.execute(f"SAVEPOINT {savepoint}")
+                savepoint_open = True
+                with contextlib.closing(raw.cursor()) as cursor:
+                    row = cursor.execute(
+                        "SELECT data FROM captured_pokemon WHERE individual_id = ?",
+                        (individual_id,),
+                    ).fetchone()
+                    current = self._deobfuscate(row["data"]) if row else None
+                    if not isinstance(current, dict):
+                        current = None
+                    stored_attacks = current.get("attacks") if current else None
+                    if isinstance(stored_attacks, str):
+                        try:
+                            stored_attacks = json.loads(stored_attacks)
+                        except (TypeError, ValueError):
+                            stored_attacks = None
+                    if (
+                        current
+                        and current.get("individual_id") == individual_id
+                        and current.get("id") == expected_pokemon.get("id")
+                        and canonical_pokemon_name(current.get("name"))
+                        == canonical_pokemon_name(expected_pokemon.get("name"))
+                        and current.get("attacks") == expected_pokemon.get("attacks")
+                        and isinstance(stored_attacks, list)
+                        and all(isinstance(move, str) for move in stored_attacks)
+                    ):
+                        current["attacks"] = list(attacks)
+                        cursor.execute(
+                            "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
+                            (self._obfuscate(current), individual_id),
+                        )
+                        if cursor.rowcount != 1:
+                            raise RuntimeError("Pokemon moveset update did not save")
+                        updated = current
+                raw.execute(f"RELEASE SAVEPOINT {savepoint}")
+                savepoint_open = False
+                if owns_transaction and not conn._disable_commit:
+                    raw.commit()
+            except BaseException:
+                try:
+                    if transaction_started:
+                        raw.rollback()
+                    elif savepoint_open:
+                        raw.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                        raw.execute(f"RELEASE SAVEPOINT {savepoint}")
+                except Exception:
+                    # Preserve the original write/setup/commit error.
+                    pass
+                raise
+        if updated is not None:
+            self._clear_reviewer_ownership_cache()
+        return updated
+
     def get_pokemon(self, individual_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves a specific pokemon by its individual_id."""
         cursor = self.execute(
@@ -2089,8 +2184,7 @@ class AnkimonDB:
             )
             if cursor.fetchone() is None:
                 raise ValueError(
-                    "You cannot reject your last Pokémon. "
-                    "Catch another Pokémon first."
+                    "You cannot reject your last Pokémon. Catch another Pokémon first."
                 )
             cursor.execute(
                 "DELETE FROM captured_pokemon WHERE individual_id = ?",
@@ -2106,9 +2200,7 @@ class AnkimonDB:
             )
             self._write_monthly_challenge_state(cursor, individual_id, 2)
 
-            cursor.execute(
-                "SELECT 1 FROM captured_pokemon WHERE is_main = 1 LIMIT 1"
-            )
+            cursor.execute("SELECT 1 FROM captured_pokemon WHERE is_main = 1 LIMIT 1")
             if cursor.fetchone() is None:
                 cursor.execute(
                     """
