@@ -2012,6 +2012,8 @@ class AnkimonItemsWeb(QDialog):
         # Fossils + healing main can change team data (new entry / hp).
         if item.get("category") in ("fossil", "heal"):
             self._invalidate_pokemon_cache()
+            if result.get("ok"):
+                services.reviewer.refresh_hud()
         return result
 
     def _invalidate_pokemon_cache(self):

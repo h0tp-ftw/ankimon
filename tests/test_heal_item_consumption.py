@@ -58,6 +58,9 @@ class _FakeItemDB:
             return None
         return {"item_name": item_name, "quantity": self.inventory[item_name]}
 
+    def save_main_pokemon(self, pokemon_data):
+        self.main_pokemon_saved = pokemon_data
+
     def consume_item(self, item_name, count=1):
         """Mirror of the real atomic consume: decrement only if stock covers it.
 
@@ -111,6 +114,14 @@ class _FakePokemon:
         self.hp = hp
         self.max_hp = max_hp
         self.current_hp = hp
+
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "hp": self.hp,
+            "current_hp": self.current_hp,
+            "stats": {"hp": self.max_hp}
+        }
 
 
 def _force_load(name, filepath):
@@ -356,11 +367,11 @@ def test_badge_is_not_awarded_for_a_refused_heal(item_window_mod):
 
 def test_fullrestore_still_heals_to_max_and_clamps(item_window_mod):
     """Existing behaviour is untouched on the successful path."""
-    db = _FakeItemDB({"fullrestore": 1})
+    db = _FakeItemDB({"full-restore": 1})
     pokemon = _FakePokemon(hp=10, max_hp=100)
     win = _make_window(item_window_mod, db, pokemon)
 
-    assert win.Check_Heal_Item("mewtwo", 0, "fullrestore", {}) is True
+    assert win.Check_Heal_Item("mewtwo", 0, "full-restore", {}) is True
     assert pokemon.hp == 100
     assert pokemon.current_hp == 100
 
@@ -520,6 +531,53 @@ def real_db(item_window_mod, tmp_path):
     )
     return db_mod.AnkimonDB(MagicMock(), db_path=tmp_path / "ankimon.db")
 
+
+def test_the_heal_path_writes_hp_to_database(item_window_mod, real_db):
+    """End to end over real SQLite: the database row is updated with the new HP."""
+    real_db.save_item(17, "potion", 1)
+
+    # Save a real Pokemon row so we can assert on its mutated state
+    pokemon_data = {
+        "individual_id": "test-uuid-1",
+        "id": 150, "name": "mewtwo", "level": 100,
+        "hp": 10, "current_hp": 10, "stats": {"hp": 100}
+    }
+    real_db.save_main_pokemon(pokemon_data)
+
+    # FakePokemon mocks what is loaded in memory
+    pokemon = _FakePokemon(hp=10, max_hp=100)
+    pokemon.individual_id = "test-uuid-1"
+
+    def to_dict():
+        return {
+            "individual_id": pokemon.individual_id,
+            "name": pokemon.name,
+            "hp": pokemon.hp,
+            "current_hp": pokemon.current_hp,
+            "stats": {"hp": pokemon.max_hp}
+        }
+    pokemon.to_dict = to_dict
+    win = _make_window(item_window_mod, real_db, pokemon)
+
+    assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
+    assert pokemon.hp == 30
+
+    # Verify the HP was written to the database
+    db_pokemon = real_db.get_main_pokemon()
+    assert db_pokemon["hp"] == 30
+    assert db_pokemon["current_hp"] == 30
+
+@pytest.mark.parametrize("item_name", ["full-restore", "max-potion"])
+def test_full_restore_and_max_potion_heal_to_max(item_window_mod, item_name):
+    """Full Restore and Max Potion bypass flat values and heal to max_hp."""
+    db = _FakeItemDB({item_name: 1})
+    pokemon = _FakePokemon(hp=10, max_hp=999)
+    win = _make_window(item_window_mod, db, pokemon)
+
+    assert win.Check_Heal_Item("mewtwo", 20, item_name, {}) is True
+    assert pokemon.hp == 999
+    assert pokemon.current_hp == 999
+    assert db.quantity_calls == [(item_name, -1)]
 
 def test_the_heal_path_spends_one_real_row_per_heal(item_window_mod, real_db):
     """End to end over real SQLite: two potions buy two heals, never a third."""

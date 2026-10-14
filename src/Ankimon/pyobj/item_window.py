@@ -896,7 +896,7 @@ class ItemWindow(QWidget):
             self.logger.log_and_showinfo("info", f"You have no {item_name} left.")
             return False
 
-        if item_name == "fullrestore" or item_name == "maxpotion":
+        if item_name == "full-restore" or item_name == "max-potion":
             heal_points = self.main_pokemon.max_hp
         self.main_pokemon.hp += heal_points
         if self.main_pokemon.hp > (self.main_pokemon.max_hp):
@@ -906,13 +906,16 @@ class ItemWindow(QWidget):
         # ._normalize_loaded_hp reads ``current_hp`` first, so bumping ``hp``
         # alone makes the heal disappear the next time this record is loaded.
         self.main_pokemon.current_hp = self.main_pokemon.hp
+
+        # Persist the newly restored HP back to the database immediately
+        services.db.save_main_pokemon(self.main_pokemon.to_dict())
+
         # Everything below is bookkeeping and presentation, and runs only once
         # the HP is safely granted. Badge 20 is "used a healing item", so it is
         # awarded here rather than before the heal: an item was really spent.
         check = check_for_badge(achievements, 20)
         if check is False:
             receive_badge(20, achievements)
-        save_main_pokemon(self.main_pokemon)
         self._refresh_bag()
         play_effect_sound(self.settings_obj, "HpHeal")
         self.logger.log_and_showinfo(
