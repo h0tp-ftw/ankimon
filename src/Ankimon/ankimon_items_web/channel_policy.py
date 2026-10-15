@@ -19,6 +19,7 @@ SCREEN_BRIDGE_NAMES = {
     "team": ("team", "nav"),
     "mobile": ("mobile", "nav"),
     "history": ("mobile", "nav"),
+    "backup_manager": ("backup", "nav"),
 }
 
 

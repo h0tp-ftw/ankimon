@@ -125,6 +125,7 @@ bash harness/setup_webengine.sh
 source .tier2/env.sh
 export LD_LIBRARY_PATH="$PWD/.tier2/we-libs/extract/usr/lib/$(uname -m)-linux-gnu:$LD_LIBRARY_PATH"
 python -m harness.checks.probe_real_webengine  # real Chromium Settings page + DOM save
+python -m harness.checks.probe_real_item_picker_names  # nicknames + localized/English species search
 python -m harness.checks.probe_real_hud_css    # reviewer styles in the real closed shadow root
 ```
 

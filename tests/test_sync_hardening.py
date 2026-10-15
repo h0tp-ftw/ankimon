@@ -36,15 +36,34 @@ import pytest
 _SRC = Path(__file__).resolve().parent.parent / "src"
 
 for _name in (
-    "aqt", "aqt.qt", "aqt.utils", "aqt.gui_hooks", "aqt.operations",
-    "aqt.theme", "aqt.sound", "aqt.webview", "aqt.main",
-    "anki", "anki.hooks", "anki.collection", "anki.utils",
-    "PyQt6", "PyQt6.QtGui", "PyQt6.QtWidgets", "PyQt6.QtCore",
-    "PyQt6.QtWebChannel", "PyQt6.QtWebEngineWidgets",
+    "aqt",
+    "aqt.qt",
+    "aqt.utils",
+    "aqt.gui_hooks",
+    "aqt.operations",
+    "aqt.theme",
+    "aqt.sound",
+    "aqt.webview",
+    "aqt.main",
+    "anki",
+    "anki.hooks",
+    "anki.collection",
+    "anki.utils",
+    "PyQt6",
+    "PyQt6.QtGui",
+    "PyQt6.QtWidgets",
+    "PyQt6.QtCore",
+    "PyQt6.QtWebChannel",
+    "PyQt6.QtWebEngineWidgets",
 ):
     sys.modules.setdefault(_name, MagicMock())
 
-for _pkg in ("Ankimon", "Ankimon.functions", "Ankimon.pyobj", "Ankimon.ankimon_items_web"):
+for _pkg in (
+    "Ankimon",
+    "Ankimon.functions",
+    "Ankimon.pyobj",
+    "Ankimon.ankimon_items_web",
+):
     _existing = sys.modules.get(_pkg)
     if _existing is None or not hasattr(_existing, "__path__"):
         _mod = types.ModuleType(_pkg)
@@ -70,6 +89,7 @@ from Ankimon.functions import mobile_sync as ms  # noqa: E402
 # sure the current stub carries the names it needs, then import BackupManager
 # once here (a stable reference immune to later sys.modules churn).
 import aqt.utils as _aqt_utils  # noqa: E402
+
 for _n in ("showInfo", "showWarning", "tooltip", "askUser"):
     if not hasattr(_aqt_utils, _n):
         setattr(_aqt_utils, _n, MagicMock())
@@ -77,9 +97,14 @@ from Ankimon.pyobj.backup_manager import BackupManager  # noqa: E402
 
 
 class _Logger:
-    def log(self, *a, **k): pass
-    def game_log(self, *a, **k): pass
-    def log_and_showinfo(self, *a, **k): pass
+    def log(self, *a, **k):
+        pass
+
+    def game_log(self, *a, **k):
+        pass
+
+    def log_and_showinfo(self, *a, **k):
+        pass
 
 
 @pytest.fixture
@@ -106,16 +131,16 @@ def test_watermark_is_monotonic(db):
     db.set_mobile_watermark(100)
     assert db.get_mobile_watermark() == 100
 
-    db.set_mobile_watermark(50)          # backwards — must be clamped
+    db.set_mobile_watermark(50)  # backwards — must be clamped
     assert db.get_mobile_watermark() == 100
 
-    db.set_mobile_watermark(250)         # forwards — must advance
+    db.set_mobile_watermark(250)  # forwards — must advance
     assert db.get_mobile_watermark() == 250
 
 
 def test_watermark_force_allows_reset(db):
     db.set_mobile_watermark(500)
-    db.set_mobile_watermark(10, force=True)   # explicit reset escape hatch
+    db.set_mobile_watermark(10, force=True)  # explicit reset escape hatch
     assert db.get_mobile_watermark() == 10
 
 
@@ -176,16 +201,19 @@ def _make_backup_manager(tmp_path, monkeypatch):
     monkeypatch.setattr(bm, "user_files_path", tmp_path)
     monkeypatch.setattr(bm, "backups_path", tmp_path / "backups")
     (tmp_path / "backups").mkdir()
-    monkeypatch.setattr(bm, "_generate_summary", lambda d: {})
+    monkeypatch.setattr(bm, "_generate_summary", lambda d, active_filename=None: {})
     # The real signature. create_backup passes the deadline, so a stub that
     # cannot take it raised, and the retention guard logged that as a failure.
     bm.retention_calls = []
-    monkeypatch.setattr(bm, "cleanup_backups",
-                        lambda deadline=None: bm.retention_calls.append(deadline))
+    monkeypatch.setattr(
+        bm, "cleanup_backups", lambda deadline=None: bm.retention_calls.append(deadline)
+    )
     return bm
 
 
-def test_backup_required_file_success_isolated_from_other_file_failure(tmp_path, monkeypatch):
+def test_backup_required_file_success_isolated_from_other_file_failure(
+    tmp_path, monkeypatch
+):
     """A failed ankimonDEV.db snapshot must NOT blank a successful ankimon.db backup:
     the result reports the file that was asked about."""
     _make_ankimon_db(tmp_path / "ankimon.db")
@@ -193,14 +221,14 @@ def test_backup_required_file_success_isolated_from_other_file_failure(tmp_path,
     bm = _make_backup_manager(tmp_path, monkeypatch)
 
     prev = services.db
-    services.db = None   # active-mode default is "ankimon.db"
+    services.db = None  # active-mode default is "ankimon.db"
     try:
         ok = bm.create_backup(manual=False, required_file="ankimon.db")
     finally:
         services.db = prev
 
-    assert ok is True   # ankimon.db was backed up despite the corrupt DEV file
-    assert bm.retention_calls == [None]   # retention ran, with no shutdown deadline
+    assert ok is True  # ankimon.db was backed up despite the corrupt DEV file
+    assert bm.retention_calls == [None]  # retention ran, with no shutdown deadline
     backup_dir = next(bm.backups_path.glob("backup_*"))
     conn = sqlite3.connect(backup_dir / "ankimon.db")
     try:
@@ -221,7 +249,7 @@ def test_backup_returns_false_when_required_file_not_backed_up(tmp_path, monkeyp
     finally:
         services.db = prev
 
-    assert ok is False   # the file we needed protected never landed in the backup
+    assert ok is False  # the file we needed protected never landed in the backup
 
 
 # --------------------------------------------------------------------------
@@ -244,10 +272,12 @@ def _no_sleep(monkeypatch):
     monkeypatch.setattr(
         aksync,
         "_is_lock_error",
-        lambda exc: isinstance(exc, PermissionError)
-        or (
-            isinstance(exc, OSError)
-            and getattr(exc, "winerror", None) in aksync._SYNC_LOCK_WINERRORS
+        lambda exc: (
+            isinstance(exc, PermissionError)
+            or (
+                isinstance(exc, OSError)
+                and getattr(exc, "winerror", None) in aksync._SYNC_LOCK_WINERRORS
+            )
         ),
     )
 
@@ -298,11 +328,11 @@ def test_retry_on_lock_propagates_non_lock_error_without_retrying(monkeypatch):
 
     def op():
         calls["n"] += 1
-        raise FileNotFoundError(2, "missing")   # not a lock
+        raise FileNotFoundError(2, "missing")  # not a lock
 
     with pytest.raises(FileNotFoundError):
         aksync._retry_on_lock(op)
-    assert calls["n"] == 1                       # propagated immediately, no retry
+    assert calls["n"] == 1  # propagated immediately, no retry
 
 
 def test_retry_on_lock_recovers_after_transient_failures(monkeypatch):
@@ -311,7 +341,7 @@ def test_retry_on_lock_recovers_after_transient_failures(monkeypatch):
 
     def op():
         calls["n"] += 1
-        if calls["n"] < 3:                       # locked twice, then released
+        if calls["n"] < 3:  # locked twice, then released
             raise PermissionError(5, "Access is denied")
         return "ok"
 
@@ -348,7 +378,7 @@ def test_atomic_write_over_recovers_from_transient_lock(tmp_path, monkeypatch):
 
     def flaky_replace(a, b, *ar, **k):
         calls["n"] += 1
-        if calls["n"] < 3:                   # locked twice, then released
+        if calls["n"] < 3:  # locked twice, then released
             raise PermissionError(5, "Access is denied")
         return real_replace(a, b, *ar, **k)
 
@@ -356,11 +386,9 @@ def test_atomic_write_over_recovers_from_transient_lock(tmp_path, monkeypatch):
 
     aksync._atomic_write_over(src, dest)
 
-    assert dest.read_bytes().startswith(b"NEW")   # swap eventually succeeded
+    assert dest.read_bytes().startswith(b"NEW")  # swap eventually succeeded
     assert calls["n"] == 3
-    assert created and all(not t.exists() for t in created)   # temp cleaned
-
-
+    assert created and all(not t.exists() for t in created)  # temp cleaned
 
 
 # --------------------------------------------------------------------------
@@ -422,7 +450,7 @@ def test_re_registration_does_not_stack_a_second_mobile_handler(monkeypatch):
     aksync.setup_ankimon_sync_hooks(MagicMock(), _Logger())
 
     assert len(hooks.sync_did_finish.handlers) == 1
-    assert hooks.sync_did_finish.handlers[0] is not first   # swapped, not stacked
+    assert hooks.sync_did_finish.handlers[0] is not first  # swapped, not stacked
 
 
 def test_a_stale_pre_removal_two_hook_record_is_unregistered(monkeypatch):
@@ -435,13 +463,17 @@ def test_a_stale_pre_removal_two_hook_record_is_unregistered(monkeypatch):
     stale_start, stale_finish = (lambda: None), (lambda: None)
     hooks.sync_will_start.append(stale_start)
     hooks.sync_did_finish.append(stale_finish)
-    setattr(registry, aksync._SYNC_HOOK_RECORD, (
-        (hooks.sync_will_start, stale_start),
-        (hooks.sync_did_finish, stale_finish),
-    ))
+    setattr(
+        registry,
+        aksync._SYNC_HOOK_RECORD,
+        (
+            (hooks.sync_will_start, stale_start),
+            (hooks.sync_did_finish, stale_finish),
+        ),
+    )
 
     aksync.setup_ankimon_sync_hooks(MagicMock(), _Logger())
 
-    assert hooks.sync_will_start.handlers == []          # stale export half gone
+    assert hooks.sync_will_start.handlers == []  # stale export half gone
     assert len(hooks.sync_did_finish.handlers) == 1
     assert hooks.sync_did_finish.handlers[0] is not stale_finish

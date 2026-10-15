@@ -310,6 +310,82 @@ def test_species_without_an_item_evolution_is_not_offered(shop_obj):
     assert "e" not in choices[pikachu["individual_id"]]
 
 
+@pytest.mark.parametrize("language,species_name", [(9, "Pikachu"), (1, "ピカチュウ")])
+def test_custom_nickname_keeps_a_separate_searchable_species(
+    shop_obj, language, species_name
+):
+    mon = _pokemon("pikachu", 25)
+    mon["nickname"] = "  Sparky  "
+    stub_services = _stub_services([mon])
+    stub_services.settings = types.SimpleNamespace(
+        get=lambda key, default=None: language if key == "misc.language" else default
+    )
+    with patch.object(shop_obj, "services", stub_services):
+        choice = shop_obj.AnkimonItemsWeb.get_pokemon_choices(_StubHost())["choices"][0]
+
+    assert choice["n"] == species_name
+    assert choice["nk"] == "Sparky"
+    if language == 1:
+        assert choice["a"] == "pikachu"
+    else:
+        assert "a" not in choice
+
+
+@pytest.mark.parametrize("nickname", ["", "PIKACHU", "ピカチュウ"])
+def test_default_nicknames_do_not_override_localized_species(shop_obj, nickname):
+    mon = _pokemon("pikachu", 25)
+    mon["nickname"] = nickname
+    stub_services = _stub_services([mon])
+    stub_services.settings = types.SimpleNamespace(
+        get=lambda key, default=None: 1 if key == "misc.language" else default
+    )
+    with patch.object(shop_obj, "services", stub_services):
+        choice = shop_obj.AnkimonItemsWeb.get_pokemon_choices(_StubHost())["choices"][0]
+
+    assert choice["n"] == "ピカチュウ"
+    assert choice["a"] == "pikachu"
+    assert "nk" not in choice
+
+
+@pytest.mark.parametrize(
+    "internal_name,pokedex_id,english_name,localized_name",
+    [
+        ("wooperpaldea", 10253, "Paldean Wooper", "パルデアウパー"),
+        ("mrmime", 122, "Mr. Mime", "バリヤード"),
+    ],
+)
+@pytest.mark.parametrize("language", [1, 9])
+@pytest.mark.parametrize("has_default_nickname", [False, True])
+def test_formatted_english_species_remains_searchable(
+    shop_obj,
+    internal_name,
+    pokedex_id,
+    english_name,
+    localized_name,
+    language,
+    has_default_nickname,
+):
+    mon = _pokemon(internal_name, pokedex_id)
+    mon["nickname"] = english_name if has_default_nickname else ""
+    stub_services = _stub_services([mon])
+    stub_services.settings = types.SimpleNamespace(
+        get=lambda key, default=None: language if key == "misc.language" else default
+    )
+    with patch.object(shop_obj, "services", stub_services):
+        choice = shop_obj.AnkimonItemsWeb.get_pokemon_choices(_StubHost())["choices"][0]
+
+    assert choice["n"] == (localized_name if language == 1 else english_name)
+    # The browser searches this combined species/alias text verbatim, so both
+    # ordinary formatted English and internal-name queries must still match.
+    searchable = f"{choice['n']} {choice.get('a', '')}".lower()
+    assert internal_name.lower() in searchable
+    assert english_name.lower() in searchable
+    assert choice["a"] == (
+        f"{internal_name} {english_name}" if language == 1 else internal_name
+    )
+    assert "nk" not in choice
+
+
 @pytest.mark.parametrize("prevo_name,prevo_id,item_identifier", TRADE_ITEM_SPECIES)
 def test_picker_agrees_with_canonical_helper(
     shop_obj, prevo_name, prevo_id, item_identifier

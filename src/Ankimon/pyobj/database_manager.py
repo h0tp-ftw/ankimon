@@ -700,6 +700,17 @@ class AnkimonDB:
         with self._conn_lock:
             return (str(self.db_path), self._connection_epoch)
 
+    def run_with_identity(self, expected, operation):
+        """Publish one short filesystem operation against a confirmed generation.
+
+        Share the switch/close barrier; callers must release it between retries
+        and must never hold it while copying a save or waiting for user input.
+        """
+        with self._conn_lock:
+            if self.identity_token() != expected:
+                raise RuntimeError("The confirmed save changed. Please confirm again.")
+            return operation()
+
     def close(self, wait_seconds: float = 0.0) -> bool:
         """Close the current generation within one shared deadline."""
         with self._conn_lock:
@@ -2039,6 +2050,97 @@ class AnkimonDB:
                 f"Item '{item_name}' could not be consumed: fewer than {count} in inventory.",
             )
         return consumed
+
+    def consume_item_and_save_main_pokemon(
+        self,
+        item_name: str,
+        pokemon_data: Dict[str, Any],
+        *,
+        expected_pokemon_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Spend one item and update the existing main Pokemon atomically.
+
+        This operation owns its transaction: it refuses a caller's pending
+        transaction or bulk-commit scope rather than committing unrelated work
+        or reporting success before the item and Pokemon are durable. It only
+        updates data for the still-current individual, so a stale item window
+        cannot recreate a deleted Pokemon or switch the main selection.
+        When supplied, the expected persisted record must still match after
+        acquiring the writer lock; a concurrent reward/edit is never overwritten.
+        """
+        if not isinstance(item_name, str) or not item_name:
+            return False
+        if not isinstance(pokemon_data, dict):
+            return False
+        individual_id = pokemon_data.get("individual_id")
+        if not isinstance(individual_id, str) or not individual_id:
+            return False
+        if expected_pokemon_data is not None and (
+            not isinstance(expected_pokemon_data, dict)
+            or expected_pokemon_data.get("individual_id") != individual_id
+        ):
+            return False
+        # Serialization can fail; do it before acquiring a lock or charging.
+        obfuscated_data = self._obfuscate(pokemon_data)
+
+        with self.lease_connection() as conn:
+            if conn.in_transaction or conn._disable_commit:
+                self._log(
+                    "warning",
+                    "Cannot use an item inside an existing database transaction.",
+                )
+                return False
+            began_transaction = False
+            try:
+                with conn.cursor() as cursor:
+                    # Keep main selection and stock fixed until the one commit.
+                    # Raw cursor statements cannot auto-retry on a different
+                    # connection halfway through this transaction.
+                    cursor.execute("BEGIN IMMEDIATE")
+                    began_transaction = True
+                    cursor.execute(
+                        "SELECT data FROM captured_pokemon "
+                        "WHERE individual_id = ? AND is_main = 1",
+                        (individual_id,),
+                    )
+                    current = cursor.fetchone()
+                    if current is None or (
+                        expected_pokemon_data is not None
+                        and self._deobfuscate(current[0]) != expected_pokemon_data
+                    ):
+                        conn.rollback()
+                        return False
+                    cursor.execute(
+                        "UPDATE items SET quantity = quantity - 1 "
+                        "WHERE item_name = ? AND quantity >= 1",
+                        (item_name,),
+                    )
+                    if cursor.rowcount != 1:
+                        conn.rollback()
+                        return False
+                    cursor.execute(
+                        "DELETE FROM items WHERE item_name = ? AND quantity = 0",
+                        (item_name,),
+                    )
+                    cursor.execute(
+                        "UPDATE captured_pokemon SET data = ? "
+                        "WHERE individual_id = ? AND is_main = 1",
+                        (obfuscated_data, individual_id),
+                    )
+                    if cursor.rowcount != 1:
+                        conn.rollback()
+                        return False
+                    conn.commit()
+            except Exception:
+                if began_transaction:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        # Closing SQLite also discards a failed transaction.
+                        # Our lease defers the close until this operation exits.
+                        conn.close()
+                raise
+        return True
 
     def refund_item(self, item: Dict[str, Any], count: int = 1) -> None:
         """Return spent units, retaining metadata if consumption deleted the row.

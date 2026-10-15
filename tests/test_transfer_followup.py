@@ -361,7 +361,7 @@ def test_an_armed_import_is_never_reported_as_aborted_when_qt_fails(
     from Ankimon import save_import as importer
 
     error = (
-        importer.ImportStagedError("injected durability failure")
+        importer.ImportStagedError("injected durability failure", token="injected-token")
         if outcome == "staged"
         else importer.ImportAlreadyPendingError("an import is already staged")
     )

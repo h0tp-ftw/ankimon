@@ -276,6 +276,15 @@ def teardown_ankimon(addon_package):
     """
     from .services import services
 
+    # Old QueryOp workers can outlive their windows and module generation.
+    # Retire their captured ownership before teardown pumps any Qt events.
+    # reset_db alone is insufficient: after the first reload the replacement
+    # module has no cached DB, while services still owns the original object.
+    addon = sys.modules.get(addon_package)
+    backup_manager = getattr(addon, "backup_manager", None)
+    if backup_manager is not None:
+        backup_manager.invalidate_context()
+
     _remove_addon_gui_hooks(addon_package)
     _restore_reviewer_wraps()
     _delete_reload_shortcuts(services)

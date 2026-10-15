@@ -1,3 +1,4 @@
+import copy
 import random
 import csv
 import time
@@ -366,6 +367,7 @@ class ItemWindow(QWidget):
         info_item_button.clicked.connect(lambda: self.more_info_button_act(item_name))
 
         from ..localized_text import item_name as _item_name, move_name as _move_name
+
         if item_type == "TM":
             # TM labels are "TM: <Move Name>" — localize the move.
             item_name_for_label = f"TM: {_move_name(item_name, item_name.replace('-', ' ').title())} x{quantity}"
@@ -449,9 +451,7 @@ class ItemWindow(QWidget):
             )
         elif item_name in self.ev_items:
             use_item_button = QPushButton("Train Mainpokemon's EVs")
-            use_item_button.clicked.connect(
-                lambda: self._use_ev_item(item_name)
-            )
+            use_item_button.clicked.connect(lambda: self._use_ev_item(item_name))
         elif (
             item_name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
             or item_name.endswith("-berry")
@@ -535,7 +535,10 @@ class ItemWindow(QWidget):
                     return {"ok": False, "message": "No active Pokémon to train."}
                 spent, granted = self._use_ev_item(name)
                 if not spent:
-                    return {"ok": False, "message": f"No {name} left in your bag."}
+                    return {
+                        "ok": False,
+                        "message": f"Could not use {name}. Your item and Pokémon were unchanged.",
+                    }
                 if granted > 0:
                     return {
                         "ok": True,
@@ -738,7 +741,8 @@ class ItemWindow(QWidget):
                     services.db.refund_item(item)
                 except Exception as refund_exc:
                     self.logger.log(
-                        "error", f"Could not return {item_name} after escape failed: {refund_exc}"
+                        "error",
+                        f"Could not return {item_name} after escape failed: {refund_exc}",
                     )
                     message = (
                         f"Could not escape. Your {item_name} could not be returned "
@@ -756,7 +760,8 @@ class ItemWindow(QWidget):
                 return False
             else:
                 self.logger.log(
-                    "warning", f"Escape with {item_name} succeeded with display errors: {exc}"
+                    "warning",
+                    f"Escape with {item_name} succeeded with display errors: {exc}",
                 )
 
         try:
@@ -766,9 +771,13 @@ class ItemWindow(QWidget):
         if self.settings_obj.get("mobile.enabled", True):
             try:
                 if not services.db.add_mobile_history_entry(history):
-                    self.logger.log("warning", "Could not record the escaped encounter.")
+                    self.logger.log(
+                        "warning", "Could not record the escaped encounter."
+                    )
             except Exception as exc:
-                self.logger.log("warning", f"Could not record the escaped encounter: {exc}")
+                self.logger.log(
+                    "warning", f"Could not record the escaped encounter: {exc}"
+                )
         self.logger.log_and_showinfo(
             "info", f"You used the {item_name} and successfully escaped the battle!"
         )
@@ -937,68 +946,142 @@ class ItemWindow(QWidget):
         )
 
     def _use_ev_item(self, item_name: str) -> tuple[bool, int]:
-        """Train the main Pokemon's EVs with a vitamin/wing/mochi/candy.
+        """Commit one item and its EV gain together, then update live state.
 
-        Returns ``(spent, granted)``. ``spent`` is True only when the item
-        was actually taken from the bag. Consume BEFORE training for the same
-        reason as Check_Heal_Item: paying first makes the effect impossible
-        to get for free if anything below raises.
-
-        If the Pokemon save then fails, the in-memory EV change is rolled
-        back and the item is refunded -- an EV gain that only exists in
-        memory would silently vanish on the next reload, which is worse than
-        just refusing the click.
-
-        A successful save still consumes the item even when the stat is at
-        the 252 cap or the Pokemon is at the 510 total -- matching the
-        mainline games, where using one on a maxed stat wastes it rather
-        than refusing the click.
+        Serialize with mobile rewards, and verify the persisted snapshot under
+        the writer lock before charging. Preparing a copy recalculates maximum
+        HP without changing the live companion. A failed transaction needs no
+        refund and leaves both the save and live combat state untouched.
+        Items still cost one unit when the EV caps prevent any gain.
         """
-        if self.main_pokemon is None:
+        main = self.main_pokemon
+        if main is None:
             self.logger.log_and_showinfo("error", "No active Pokemon to train.")
             return False, 0
-
-        item = services.db.get_item(item_name)
-        if not item or not self._consume_one(item_name):
-            self.logger.log_and_showinfo("info", f"You have no {item_name} left.")
+        if item_name not in self.ev_items:
             return False, 0
 
-        previous_ev = dict(self.main_pokemon.ev)
-        self.main_pokemon.ev, granted = apply_ev_item(self.main_pokemon.ev, item_name)
-        self.main_pokemon.invalidate_cp_cache()
+        from ..functions.mobile_sync import _mobile_sync_lock
+
+        # A bulk resolution may own the writer lock for a long time. Refuse
+        # promptly instead of freezing Qt or snapshotting half-published rewards.
+        if not _mobile_sync_lock.acquire(blocking=False):
+            self.logger.log_and_showinfo(
+                "info",
+                "Mobile reviews are being resolved. Please try again when they finish.",
+            )
+            return False, 0
         try:
-            save_main_pokemon(self.main_pokemon)
-        except Exception as exc:
-            self.main_pokemon.ev = previous_ev
-            self.main_pokemon.invalidate_cp_cache()
             try:
-                services.db.refund_item(item)
-            except Exception as refund_exc:
+                expected = services.db.get_main_pokemon()
+                if not expected or expected.get("individual_id") != main.individual_id:
+                    saved = False
+                else:
+                    candidate = copy.copy(main)
+                    # Preserve the latest saved progress/metadata while retaining
+                    # combat HP and status, which may be newer than the saved row.
+                    candidate.update_stats(
+                        **{
+                            **expected,
+                            "hp": main.hp,
+                            "current_hp": main.current_hp,
+                            "battle_status": main.battle_status,
+                            "stat_stages": main.stat_stages,
+                            "volatile_status": main.volatile_status,
+                        }
+                    )
+                    new_ev, granted = apply_ev_item(dict(candidate.ev), item_name)
+                    candidate.update_stats(ev=new_ev)
+                    candidate_data = candidate.to_dict()
+                    pokemon_data = {**expected, **candidate_data}
+                    saved = services.db.consume_item_and_save_main_pokemon(
+                        item_name, pokemon_data, expected_pokemon_data=expected
+                    )
+            except Exception as exc:
                 self.logger.log(
-                    "error",
-                    f"Could not return {item_name} after a failed EV save: {refund_exc}",
+                    "error", f"Could not train {main.name} with {item_name}: {exc}"
                 )
-            self.logger.log(
-                "error", f"Could not save {self.main_pokemon.name} after EV training: {exc}"
-            )
-            self.logger.log_and_showinfo(
-                "error",
-                f"Could not train {self.main_pokemon.name}'s EVs; the {item_name} "
-                "was returned to your bag.",
-            )
-            return False, 0
+                self.logger.log_and_showinfo(
+                    "error",
+                    f"Could not train {main.name}'s EVs. Your {item_name} and Pokémon "
+                    "were unchanged; please try again.",
+                )
+                return False, 0
+            if not saved:
+                self.logger.log_and_showinfo(
+                    "info",
+                    f"Could not use {item_name}: the item is unavailable or the active "
+                    "Pokémon changed. Please refresh your bag and try again.",
+                )
+                return False, 0
 
+            # The save is durable. A publication failure must not be reported as
+            # a rejected spend; keep the mobile lock through this live update.
+            try:
+                main.update_stats(**candidate_data)
+            except Exception as exc:
+                self.logger.log(
+                    "warning",
+                    f"EV training was saved but the live Pokémon did not update: {exc}",
+                )
+        finally:
+            _mobile_sync_lock.release()
+
+        self._refresh_ev_training_state(main, item_name, granted)
         self._refresh_bag()
-        play_effect_sound(self.settings_obj, "HpHeal")
-        if granted > 0:
-            self.logger.log_and_showinfo(
-                "info", f"{self.main_pokemon.name}'s stats rose! (+{granted} EV)"
-            )
-        else:
-            self.logger.log_and_showinfo(
-                "info", f"It won't have any effect on {self.main_pokemon.name}."
+        try:
+            play_effect_sound(self.settings_obj, "HpHeal")
+            if granted > 0:
+                self.logger.log_and_showinfo(
+                    "info", f"{main.name}'s stats rose! (+{granted} EV)"
+                )
+            else:
+                self.logger.log_and_showinfo(
+                    "info", f"It won't have any effect on {main.name}."
+                )
+        except Exception as exc:
+            self.logger.log(
+                "warning", f"EV training succeeded with a display error: {exc}"
             )
         return True, granted
+
+    def _refresh_ev_training_state(self, main, item_name, granted):
+        """Publish committed training without resetting an ongoing encounter."""
+        try:
+            from ..battle_loop import _state
+            from ..functions.ankimon_hooks_to_poke_engine import (
+                sync_active_pokemon_stats,
+            )
+
+            sync_active_pokemon_stats(_state.new_state, main)
+        except Exception as exc:
+            self.logger.log("warning", f"Could not refresh trained battle stats: {exc}")
+        try:
+            if services.reviewer is not None:
+                services.reviewer.refresh_hud()
+        except Exception as exc:
+            self.logger.log(
+                "warning", f"Could not refresh the trained Pokémon HUD: {exc}"
+            )
+        try:
+            from ..events import events
+
+            events.emit(
+                "stats_changed",
+                source="ev_item",
+                pokemon=main.individual_id,
+                item=item_name,
+                granted=granted,
+            )
+            if is_alive(services.pokemon_pc):
+                services.pokemon_pc.refresh_gui()
+            from ..singletons import notify_stats_changed
+
+            notify_stats_changed()
+        except Exception as exc:
+            self.logger.log(
+                "warning", f"Could not refresh trained Pokémon views: {exc}"
+            )
 
     def Check_Evo_Item(
         self,
@@ -1218,6 +1301,7 @@ class ItemWindow(QWidget):
 
     def more_info_button_act(self, item_name: str):
         from ..localized_text import item_description
+
         description = item_description(
             item_name, get_id_and_description_by_item_name(item_name) or ""
         )

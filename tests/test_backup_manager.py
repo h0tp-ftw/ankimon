@@ -15,12 +15,26 @@ import types
 # 1. SETUP CLEAN MOCKS BEFORE ANY IMPORTS
 _src = Path(__file__).parent.parent / "src"
 
+
 def setup_mocks():
     # Mock aqt/anki namespaces
     for name in [
-        "aqt", "aqt.qt", "aqt.utils", "aqt.gui_hooks", "aqt.operations",
-        "aqt.reviewer", "aqt.webview", "aqt.main", "aqt.operations.QueryOp",
-        "anki", "anki.hooks", "anki.collection", "anki.models", "anki.notes", "anki.template", "anki.buildinfo"
+        "aqt",
+        "aqt.qt",
+        "aqt.utils",
+        "aqt.gui_hooks",
+        "aqt.operations",
+        "aqt.reviewer",
+        "aqt.webview",
+        "aqt.main",
+        "aqt.operations.QueryOp",
+        "anki",
+        "anki.hooks",
+        "anki.collection",
+        "anki.models",
+        "anki.notes",
+        "anki.template",
+        "anki.buildinfo",
     ]:
         if name not in sys.modules:
             sys.modules[name] = MagicMock()
@@ -70,7 +84,9 @@ def setup_mocks():
         if not hasattr(_pyobj, "__path__") or not _pyobj.__path__:
             _pyobj.__path__ = [str(_src / "Ankimon" / "pyobj")]
 
+
 setup_mocks()
+
 
 # Dynamically load modules to avoid importing __init__.py directly
 def load_module(name, relative_path):
@@ -80,16 +96,23 @@ def load_module(name, relative_path):
     spec.loader.exec_module(mod)
     return mod
 
-_db_mod = load_module("Ankimon.pyobj.database_manager", "Ankimon/pyobj/database_manager.py")
+
+_db_mod = load_module(
+    "Ankimon.pyobj.database_manager", "Ankimon/pyobj/database_manager.py"
+)
 _bm_mod = load_module("Ankimon.pyobj.backup_manager", "Ankimon/pyobj/backup_manager.py")
 
 from Ankimon.pyobj.database_manager import AnkimonDB
 from Ankimon.pyobj.backup_manager import BackupManager
+
 # The seam registry backup_manager reads its database from (replaces mw.ankimon_db).
 from Ankimon.services import services
 
+
 class MockLogger:
-    def log(self, level, msg): pass
+    def log(self, level, msg):
+        pass
+
 
 @pytest.fixture
 def mock_env(tmp_path):
@@ -112,15 +135,16 @@ def mock_env(tmp_path):
     # module binds the real askUser/showInfo/showWarning (which dereference
     # aqt.mw.app) and the real close_anki. Patch them on the module under
     # test so the tests are deterministic regardless of collection order.
-    with patch.object(_db_mod, "user_path", user_files_dir), \
-         patch.object(_bm_mod, "user_path", user_files_dir), \
-         patch.object(_bm_mod, "addon_dir", addon_dir), \
-         patch.object(_bm_mod, "askUser", return_value=True), \
-         patch.object(_bm_mod, "showInfo"), \
-         patch.object(_bm_mod, "showWarning"), \
-         patch.object(_bm_mod, "close_anki"), \
-         patch("aqt.mw.pm.profileFolder", return_value=str(profile_folder)):
-
+    with (
+        patch.object(_db_mod, "user_path", user_files_dir),
+        patch.object(_bm_mod, "user_path", user_files_dir),
+        patch.object(_bm_mod, "addon_dir", addon_dir),
+        patch.object(_bm_mod, "askUser", return_value=True),
+        patch.object(_bm_mod, "showInfo"),
+        patch.object(_bm_mod, "showWarning"),
+        patch.object(_bm_mod, "close_anki"),
+        patch("aqt.mw.pm.profileFolder", return_value=str(profile_folder)),
+    ):
         # Instantiate test database manager
         db = AnkimonDB(MockLogger())
 
@@ -145,6 +169,7 @@ def mock_env(tmp_path):
                 yield bm, db, user_files_dir, addon_dir
             finally:
                 db.close()
+
 
 def test_backup_summary_trainer_info(mock_env):
     bm, db, user_files_dir, addon_dir = mock_env
@@ -201,22 +226,28 @@ def test_get_backups_active_db_filtering(mock_env):
     a.mkdir(parents=True, exist_ok=True)
     (a / "ankimon.db").write_bytes(b"x")
     with open(a / "summary.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "date": "2026-06-03 08-00-00",
-            "normal_stats": {"trainer_name": "Norm"},
-            "dev_stats": {"trainer_name": "Dev"},
-        }, f)
+        json.dump(
+            {
+                "date": "2026-06-03 08-00-00",
+                "normal_stats": {"trainer_name": "Norm"},
+                "dev_stats": {"trainer_name": "Dev"},
+            },
+            f,
+        )
 
     # Backup B: a dev-only backup (contains ankimonDEV.db, NOT ankimon.db).
     b = bm.backups_path / "backup_2026-06-03_09-00-00"
     b.mkdir(parents=True, exist_ok=True)
     (b / "ankimonDEV.db").write_bytes(b"x")
     with open(b / "summary.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "date": "2026-06-03 09-00-00",
-            "normal_stats": {"trainer_name": "Norm2"},
-            "dev_stats": {"trainer_name": "Dev2"},
-        }, f)
+        json.dump(
+            {
+                "date": "2026-06-03 09-00-00",
+                "normal_stats": {"trainer_name": "Norm2"},
+                "dev_stats": {"trainer_name": "Dev2"},
+            },
+            f,
+        )
 
     # Active DB is ankimon.db -> only the normal backup is listed.
     backups = bm.get_backups()
@@ -224,7 +255,9 @@ def test_get_backups_active_db_filtering(mock_env):
     assert "backup_2026-06-03_08-00-00" in names
     assert "backup_2026-06-03_09-00-00" not in names
 
-    a_entry = next(bk for bk in backups if Path(bk["path"]).name == "backup_2026-06-03_08-00-00")
+    a_entry = next(
+        bk for bk in backups if Path(bk["path"]).name == "backup_2026-06-03_08-00-00"
+    )
     # The active DB's stats section is merged onto the root for the UI.
     assert a_entry["trainer_name"] == "Norm"
 
@@ -253,13 +286,19 @@ def test_restore_only_active_db(mock_env):
     pending = pending_import_info(db.db_path)
     assert pending is not None
     with closing(sqlite3.connect(pending["pending_path"])) as staged:
-        assert staged.execute(
-            "SELECT value FROM config WHERE key='trainer.name'"
-        ).fetchone()[0] == "Blue"
+        assert (
+            staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone()[0]
+            == "Blue"
+        )
         # Local Backup Manager restores retain this installation's credentials.
-        assert staged.execute(
-            "SELECT value FROM config WHERE key='leaderboard.api_key'"
-        ).fetchone()[0] == "private-local-backup-key"
+        assert (
+            staged.execute(
+                "SELECT value FROM config WHERE key='leaderboard.api_key'"
+            ).fetchone()[0]
+            == "private-local-backup-key"
+        )
     assert not (user_files_dir / "ankimonDEV.db").exists()
     assert cancel_pending_import(db.db_path) is True
 
@@ -283,9 +322,12 @@ def test_restore_targets_the_actual_custom_active_path(mock_env, tmp_path):
             assert pending["target"] == str(active.db_path.resolve())
             assert not (user_files_dir / active.db_path.name).exists()
             with closing(sqlite3.connect(pending["pending_path"])) as staged:
-                assert staged.execute(
-                    "SELECT value FROM config WHERE key='trainer.name'"
-                ).fetchone()[0] == "Restored custom"
+                assert (
+                    staged.execute(
+                        "SELECT value FROM config WHERE key='trainer.name'"
+                    ).fetchone()[0]
+                    == "Restored custom"
+                )
             assert cancel_pending_import(active.db_path) is True
     finally:
         active.close()
@@ -306,7 +348,9 @@ def test_restore_rejects_a_corrupt_backup_without_touching_live_save(mock_env):
 
 
 @pytest.mark.parametrize("close_error", [RuntimeError("shutdown failed"), None])
-def test_restore_stays_pending_when_real_close_helper_cannot_exit(mock_env, close_error):
+def test_restore_stays_pending_when_real_close_helper_cannot_exit(
+    mock_env, close_error
+):
     """Use the real shutdown helper so swallowed exceptions cannot hide a warning."""
     bm, db, _, _ = mock_env
     from Ankimon.save_import import cancel_pending_import, pending_import_info
@@ -325,9 +369,11 @@ def test_restore_stays_pending_when_real_close_helper_cannot_exit(mock_env, clos
     aqt = types.ModuleType("aqt")
     aqt.mw = types.SimpleNamespace(close=close)
     try:
-        with patch.dict(sys.modules, {"aqt": aqt}), \
-             patch.object(_bm_mod, "close_anki", close_anki), \
-             patch.object(services, "ui", MagicMock()) as ui:
+        with (
+            patch.dict(sys.modules, {"aqt": aqt}),
+            patch.object(_bm_mod, "close_anki", close_anki),
+            patch.object(services, "ui", MagicMock()) as ui,
+        ):
             bm.restore_backup(str(backup_dir))
 
         warning = ui.warn
@@ -346,7 +392,9 @@ def test_restore_stays_pending_when_real_close_helper_cannot_exit(mock_env, clos
 
 
 @pytest.mark.parametrize("filename", ["ankimon.db", "ankimonDEV.db"])
-def test_backup_contains_committed_wal_while_reader_blocks_checkpoint(mock_env, filename):
+def test_backup_contains_committed_wal_while_reader_blocks_checkpoint(
+    mock_env, filename
+):
     """Copying the main file after a busy checkpoint loses committed cash."""
     bm, db, user_files_dir, _ = mock_env
     source = user_files_dir / filename
@@ -354,34 +402,48 @@ def test_backup_contains_committed_wal_while_reader_blocks_checkpoint(mock_env, 
         _seed_db(source, "Dev", 5000)
     db.execute("PRAGMA busy_timeout=1")
 
-    with closing(sqlite3.connect(source, timeout=0.01)) as writer, \
-         closing(sqlite3.connect(source)) as reader:
+    with (
+        closing(sqlite3.connect(source, timeout=0.01)) as writer,
+        closing(sqlite3.connect(source)) as reader,
+    ):
         writer.execute("PRAGMA journal_mode=WAL")
         writer.execute("PRAGMA wal_autocheckpoint=0")
         assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0] == 0
         reader.execute("BEGIN")
-        assert reader.execute(
-            "SELECT value FROM config WHERE key='trainer.cash'"
-        ).fetchone()[0] == "5000"
+        assert (
+            reader.execute(
+                "SELECT value FROM config WHERE key='trainer.cash'"
+            ).fetchone()[0]
+            == "5000"
+        )
         writer.execute("UPDATE config SET value='12345' WHERE key='trainer.cash'")
         writer.commit()
-        busy, pages, checkpointed = writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        busy, pages, checkpointed = writer.execute(
+            "PRAGMA wal_checkpoint(TRUNCATE)"
+        ).fetchone()
         assert busy == 1 and pages > checkpointed
 
         assert bm.create_backup(required_file=filename) is True
         backup = next(bm.backups_path.glob("backup_*")) / filename
         # Read only the published file, without allowing a companion WAL to
         # supply missing pages: this is what a restored backup can recover.
-        with closing(sqlite3.connect(backup.as_uri() + "?immutable=1", uri=True)) as saved:
-            assert saved.execute(
-                "SELECT value FROM config WHERE key='trainer.cash'"
-            ).fetchone()[0] == "12345"
+        with closing(
+            sqlite3.connect(backup.as_uri() + "?immutable=1", uri=True)
+        ) as saved:
+            assert (
+                saved.execute(
+                    "SELECT value FROM config WHERE key='trainer.cash'"
+                ).fetchone()[0]
+                == "12345"
+            )
         reader.rollback()
 
 
 @pytest.mark.parametrize("manual", [False, True])
 @pytest.mark.parametrize("filename", ["ankimon.db", "profile-save.db"])
-def test_backup_uses_active_database_at_custom_path(mock_env, tmp_path, manual, filename):
+def test_backup_uses_active_database_at_custom_path(
+    mock_env, tmp_path, manual, filename
+):
     """A same-named default save must never stand in for the active profile."""
     bm, _, _, _ = mock_env
     custom_dir = tmp_path / "profile with spaces #?"
@@ -393,9 +455,12 @@ def test_backup_uses_active_database_at_custom_path(mock_env, tmp_path, manual, 
             assert bm.create_backup(manual=manual, required_file=filename) is True
         backup = next(bm.backups_path.glob("backup_*")) / filename
         with closing(sqlite3.connect(backup)) as saved:
-            assert saved.execute(
-                "SELECT value FROM config WHERE key='trainer.cash'"
-            ).fetchone()[0] == "76543"
+            assert (
+                saved.execute(
+                    "SELECT value FROM config WHERE key='trainer.cash'"
+                ).fetchone()[0]
+                == "76543"
+            )
     finally:
         active.close()
 
@@ -418,10 +483,18 @@ def _seed_prior_backups(bm):
         database = backup_dir / "ankimonDEV.db"
         _seed_db(database, f"Prior {index}", index)
         backups[database] = database.read_bytes()
-        (backup_dir / "summary.json").write_text(json.dumps({
-            "date": f"Prior {index}",
-            "dev_stats": {"trainer_name": f"Prior {index}", "trainer_cash": index},
-        }), encoding="utf-8")
+        (backup_dir / "summary.json").write_text(
+            json.dumps(
+                {
+                    "date": f"Prior {index}",
+                    "dev_stats": {
+                        "trainer_name": f"Prior {index}",
+                        "trainer_cash": index,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         modified = time.time() - (5 - index) * 60
         os.utime(backup_dir, (modified, modified))
     return backups
@@ -469,7 +542,9 @@ def test_locked_required_backup_preserves_all_five_prior_backups(mock_env):
     assert all(path.read_bytes() == content for path, content in prior.items())
 
 
-def test_incomplete_backup_survives_failed_removal_without_evicting_valid_backups(mock_env):
+def test_incomplete_backup_survives_failed_removal_without_evicting_valid_backups(
+    mock_env,
+):
     """A leftover failed attempt must not occupy a retention slot on the next success."""
     bm, db, user_files_dir, _ = mock_env
     prior = _seed_prior_backups(bm)
@@ -477,15 +552,22 @@ def test_incomplete_backup_survives_failed_removal_without_evicting_valid_backup
     source.write_bytes(b"not a database")
     now = datetime.datetime.now()
 
-    with patch.object(_bm_mod.datetime, "datetime", wraps=datetime.datetime) as clock, \
-         patch.object(db, "db_path", source):
+    with (
+        patch.object(_bm_mod.datetime, "datetime", wraps=datetime.datetime) as clock,
+        patch.object(db, "db_path", source),
+    ):
         clock.now.return_value = now
-        with patch.object(_bm_mod.BackupManager, "_remove_tree",
-                          side_effect=PermissionError("file locked")):
+        with patch.object(
+            _bm_mod.BackupManager,
+            "_remove_tree",
+            side_effect=PermissionError("file locked"),
+        ):
             assert bm.create_backup() is False
 
         assert all(path.read_bytes() == content for path, content in prior.items())
-        failed_directories = set(bm.backups_path.iterdir()) - {path.parent for path in prior}
+        failed_directories = set(bm.backups_path.iterdir()) - {
+            path.parent for path in prior
+        }
         assert len(failed_directories) == 1
 
         source.unlink()
@@ -499,15 +581,23 @@ def test_incomplete_backup_survives_failed_removal_without_evicting_valid_backup
         assert all(path.exists() for path, _ in surviving_prior)
         assert all(path.read_bytes() == content for path, content in surviving_prior)
         assert len(bm.get_backups()) == 5
-        assert not {Path(backup["path"]) for backup in bm.get_backups()} & failed_directories
+        assert (
+            not {Path(backup["path"]) for backup in bm.get_backups()}
+            & failed_directories
+        )
 
     # The failed attempt captured the other mode, which must not make it
     # visible when that mode is active either.
-    assert not {Path(backup["path"]) for backup in bm.get_backups()} & failed_directories
+    assert (
+        not {Path(backup["path"]) for backup in bm.get_backups()} & failed_directories
+    )
 
 
 @pytest.mark.parametrize("prefix", ["backup_", ".backup_"])
-def test_failed_backup_mkdir_preserves_existing_same_timestamp_directory(mock_env, prefix):
+@pytest.mark.parametrize("snapshot_succeeds", [True, False])
+def test_same_timestamp_backup_reserves_another_directory(
+    mock_env, monkeypatch, prefix, snapshot_succeeds
+):
     bm, _, _, _ = mock_env
     now = datetime.datetime.now()
     backup_dir = bm.backups_path / f"{prefix}{now:%Y-%m-%d_%H-%M-%S}"
@@ -518,15 +608,24 @@ def test_failed_backup_mkdir_preserves_existing_same_timestamp_directory(mock_en
     # Even an expired existing backup must survive a failed creation attempt.
     # A colliding staging directory is another attempt's and stays fresh: one
     # past the stale age was abandoned, and a failed attempt sweeps it too.
-    if prefix == "backup_":
+    if prefix == "backup_" and not snapshot_succeeds:
         expired = time.time() - 30 * 24 * 3600
         os.utime(backup_dir, (expired, expired))
+    if not snapshot_succeeds:
+
+        def fail_snapshot(*args, **kwargs):
+            raise OSError("snapshot unavailable")
+
+        monkeypatch.setattr(bm, "_snapshot_database", fail_snapshot)
 
     with patch.object(_bm_mod.datetime, "datetime", wraps=datetime.datetime) as clock:
         clock.now.return_value = now
-        assert bm.create_backup() is False
+        assert bm.create_backup() is snapshot_succeeds
 
     assert database.read_bytes() == original
+    published = set(bm.backups_path.glob("backup_*")) - {backup_dir}
+    assert len(published) == int(snapshot_succeeds)
+    assert set(bm.backups_path.glob(".backup_*")) <= {backup_dir}
 
 
 def test_failed_other_mode_snapshot_keeps_successful_required_backup(mock_env):
@@ -537,10 +636,39 @@ def test_failed_other_mode_snapshot_keeps_successful_required_backup(mock_env):
 
     backup_dir = next(bm.backups_path.glob("backup_*"))
     with closing(sqlite3.connect(backup_dir / "ankimon.db")) as saved:
-        assert saved.execute(
-            "SELECT value FROM config WHERE key='trainer.cash'"
-        ).fetchone()[0] == "5000"
+        assert (
+            saved.execute(
+                "SELECT value FROM config WHERE key='trainer.cash'"
+            ).fetchone()[0]
+            == "5000"
+        )
     assert not (backup_dir / "ankimonDEV.db").exists()
+
+
+def test_backup_reservation_rechecks_concurrently_published_name(mock_env, monkeypatch):
+    bm, _, _, _ = mock_env
+    now = datetime.datetime.now()
+    published = bm.backups_path / f"backup_{now:%Y-%m-%d_%H-%M-%S}"
+    staging = published.with_name(f".{published.name}")
+    mkdir = Path.mkdir
+    concurrent_bytes = []
+
+    def publish_before_reservation(path, *args, **kwargs):
+        if path == staging:
+            # A prior worker's rename happens after our published-name check
+            # but before we acquire the staging name it has just released.
+            mkdir(published)
+            _seed_db(published / "ankimon.db", "Concurrent backup", 123)
+            concurrent_bytes.append((published / "ankimon.db").read_bytes())
+        return mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", publish_before_reservation)
+    with patch.object(_bm_mod.datetime, "datetime", wraps=datetime.datetime) as clock:
+        clock.now.return_value = now
+        assert bm.create_backup()
+    assert len(list(bm.backups_path.glob("backup_*"))) == 2
+    assert (published / "ankimon.db").read_bytes() == concurrent_bytes[0]
+    assert not list(bm.backups_path.glob(".backup_*"))
 
 
 def test_snapshot_timeout_does_not_publish_partial_backup(mock_env, tmp_path):
@@ -631,7 +759,9 @@ def test_custom_active_filename_summary_describes_its_snapshot(mock_env, tmp_pat
 
 
 @pytest.mark.parametrize("active_name", ["ankimon.db", "ankimonDEV.db"])
-def test_shutdown_backup_spends_one_budget_across_both_databases(mock_env, monkeypatch, active_name):
+def test_shutdown_backup_spends_one_budget_across_both_databases(
+    mock_env, monkeypatch, active_name
+):
     """Two locked saves must not each hold the close for a full timeout."""
     bm, db, user_files_dir, _ = mock_env
     _seed_db(user_files_dir / "ankimonDEV.db", "Dev", 1)
@@ -684,7 +814,10 @@ class _LockedLiveDatabase:
             return conn.execute(statement, parameters).fetchone()
 
     def get_stats(self):
-        return {"pokemon": self._read("SELECT COUNT(*) FROM captured_pokemon")[0], "items": 0}
+        return {
+            "pokemon": self._read("SELECT COUNT(*) FROM captured_pokemon")[0],
+            "items": 0,
+        }
 
     def get_config_value(self, key, default=None):
         row = self._read("SELECT value FROM config WHERE key=?", key)
@@ -697,7 +830,9 @@ class _LockedLiveDatabase:
         pass
 
 
-def test_failed_shutdown_backup_does_not_read_the_locked_live_database(mock_env, monkeypatch, tmp_path):
+def test_failed_shutdown_backup_does_not_read_the_locked_live_database(
+    mock_env, monkeypatch, tmp_path
+):
     """The shutdown budget bounds the WHOLE call, summary generation included.
 
     A summary is only ever published alongside a verified snapshot, so when the
@@ -776,19 +911,27 @@ def test_retention_failure_cannot_abort_anki_closing(mock_env, monkeypatch):
 
     bm.on_anki_close()
 
-    published = [p for p in bm.backups_path.iterdir()
-                 if p.name.startswith("backup_") and (p / "ankimon.db").is_file()]
+    published = [
+        p
+        for p in bm.backups_path.iterdir()
+        if p.name.startswith("backup_") and (p / "ankimon.db").is_file()
+    ]
     assert len(published) == 1, "the shutdown backup was lost to a retention failure"
     assert len(list(bm.backups_path.glob("backup_*"))) == bm.MAX_BACKUPS + 4
 
 
-def test_retention_does_not_spend_a_shutdown_budget_it_no_longer_has(mock_env, monkeypatch):
+def test_retention_does_not_spend_a_shutdown_budget_it_no_longer_has(
+    mock_env, monkeypatch
+):
     """Deleting directories is not work to do while the user waits to exit."""
     bm, _, _, _ = mock_env
     _fake_backups(bm, bm.MAX_BACKUPS + 3)
     removed = []
-    monkeypatch.setattr(_bm_mod.BackupManager, "_remove_tree",
-                        lambda self, path, deadline: removed.append(Path(path)) or True)
+    monkeypatch.setattr(
+        _bm_mod.BackupManager,
+        "_remove_tree",
+        lambda self, path, deadline: removed.append(Path(path)) or True,
+    )
 
     clock = [500.0]
     monkeypatch.setattr(_bm_mod.time, "monotonic", lambda: clock[0])
@@ -801,7 +944,9 @@ def test_retention_does_not_spend_a_shutdown_budget_it_no_longer_has(mock_env, m
     assert len(removed) == 3
 
 
-def test_a_backup_that_cannot_be_removed_never_costs_one_the_policy_keeps(mock_env, monkeypatch):
+def test_a_backup_that_cannot_be_removed_never_costs_one_the_policy_keeps(
+    mock_env, monkeypatch
+):
     """Only removals that were due are attempted, and a failure adds none.
 
     The oldest backup is locked and the next one is not. Stopping at the lock
@@ -872,8 +1017,10 @@ def test_a_removal_stops_between_entries_once_the_shutdown_budget_is_spent(mock_
         clock[0] += 10  # every deletion outlasts the whole budget
         return unlink(path, *args, **kwargs)
 
-    with patch.object(_bm_mod.time, "monotonic", side_effect=lambda: clock[0]), \
-         patch.object(os, "unlink", side_effect=slow_disk):
+    with (
+        patch.object(_bm_mod.time, "monotonic", side_effect=lambda: clock[0]),
+        patch.object(os, "unlink", side_effect=slow_disk),
+    ):
         assert bm._discard(doomed, "old backup", deadline=5.0) is False
 
     # Out of the listing at once, one entry gone, the rest left for later.
@@ -894,8 +1041,12 @@ def test_a_removal_that_starts_after_the_budget_does_not_list_the_directory(mock
     doomed.mkdir(parents=True)
     (doomed / "ankimon.db").write_bytes(b"x")
 
-    with patch.object(_bm_mod.time, "monotonic", return_value=10.0), \
-         patch.object(Path, "iterdir", side_effect=AssertionError("listed after the deadline")):
+    with (
+        patch.object(_bm_mod.time, "monotonic", return_value=10.0),
+        patch.object(
+            Path, "iterdir", side_effect=AssertionError("listed after the deadline")
+        ),
+    ):
         assert bm._remove_tree(doomed, deadline=5.0) is False
         assert (doomed / "ankimon.db").exists()
         # An empty one needs no listing, so it still goes.
@@ -904,7 +1055,9 @@ def test_a_removal_that_starts_after_the_budget_does_not_list_the_directory(mock
     assert not doomed.exists()
 
 
-def test_restore_over_an_import_of_unknown_state_claims_neither_answer(mock_env, monkeypatch):
+def test_restore_over_an_import_of_unknown_state_claims_neither_answer(
+    mock_env, monkeypatch
+):
     """A locked save gives no answer in time; neither confident message is safe."""
     bm, db, _, _ = mock_env
     from Ankimon import save_import
@@ -926,7 +1079,9 @@ def test_restore_over_an_import_of_unknown_state_claims_neither_answer(mock_env,
         save_import.cancel_pending_import(db.db_path)
 
 
-def test_restore_over_an_already_installed_import_says_nothing_installs_twice(mock_env, monkeypatch):
+def test_restore_over_an_already_installed_import_says_nothing_installs_twice(
+    mock_env, monkeypatch
+):
     """Import's notice says so, and the same install path holds for a restore."""
     bm, db, _, _ = mock_env
     from Ankimon import save_import
@@ -962,8 +1117,11 @@ def test_a_manual_delete_that_fails_part_way_cannot_pose_as_the_newest_backup(mo
             raise PermissionError("simulated lock on one file of the backup")
         return unlink(path, *args, **kwargs)
 
-    with patch.object(os, "unlink", side_effect=second_file_locked), \
-         patch.object(_bm_mod, "showInfo"), patch.object(_bm_mod, "showWarning"):
+    with (
+        patch.object(os, "unlink", side_effect=second_file_locked),
+        patch.object(_bm_mod, "showInfo"),
+        patch.object(_bm_mod, "showWarning"),
+    ):
         bm.delete_backup(str(made[1]))
     assert len(calls) == 2, "the removal was not cut short part-way"
 
@@ -972,12 +1130,20 @@ def test_a_manual_delete_that_fails_part_way_cannot_pose_as_the_newest_backup(mo
     bm.cleanup_backups()
 
     kept = sorted(path.name for path in bm.backups_path.glob("backup_*"))
-    assert kept == sorted([made[0].name] + [path.name for path in made[2:]] + [newest.name])
-    assert not list(bm.backups_path.glob(".discard_*")), "retention should finish the removal"
+    assert kept == sorted(
+        [made[0].name] + [path.name for path in made[2:]] + [newest.name]
+    )
+    assert not list(bm.backups_path.glob(".discard_*")), (
+        "retention should finish the removal"
+    )
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
-def test_retention_removes_a_linked_backup_without_emptying_what_it_points_at(mock_env, tmp_path):
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
+def test_retention_removes_a_linked_backup_without_emptying_what_it_points_at(
+    mock_env, tmp_path
+):
     """shutil.rmtree refuses a link; walking one deletes files outside the folder."""
     bm, _, _, _ = mock_env
     elsewhere = tmp_path / "backup-on-another-drive"
@@ -997,9 +1163,13 @@ def test_retention_removes_a_linked_backup_without_emptying_what_it_points_at(mo
     assert not list(bm.backups_path.glob(".discard_*"))
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
 @pytest.mark.parametrize("route", ["retention", "delete", "entry"])
-def test_a_junction_is_removed_as_a_link_on_pythons_without_isjunction(mock_env, tmp_path, monkeypatch, route):
+def test_a_junction_is_removed_as_a_link_on_pythons_without_isjunction(
+    mock_env, tmp_path, monkeypatch, route
+):
     """Before Python 3.12 only the reparse tag os.lstat reports gives a junction away.
 
     Those Pythons have no os.path.isjunction, and Path.is_symlink answers False
@@ -1042,7 +1212,9 @@ def test_a_junction_is_removed_as_a_link_on_pythons_without_isjunction(mock_env,
 
     monkeypatch.delattr(os.path, "isjunction", raising=False)
     monkeypatch.setattr(os, "lstat", windows_lstat)
-    monkeypatch.setattr(Path, "is_symlink", lambda self: real_is_symlink(self) and not is_junction(self))
+    monkeypatch.setattr(
+        Path, "is_symlink", lambda self: real_is_symlink(self) and not is_junction(self)
+    )
     monkeypatch.setattr(Path, "iterdir", recording_iterdir)
 
     if route == "retention":
@@ -1059,7 +1231,9 @@ def test_a_junction_is_removed_as_a_link_on_pythons_without_isjunction(mock_env,
     assert not list(bm.backups_path.glob(".discard_*"))
 
 
-def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(mock_env, monkeypatch):
+def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(
+    mock_env, monkeypatch
+):
     """Nothing else can remove it: listing and retention both filter on backup_."""
     bm, _, _, _ = mock_env
     stale = bm.backups_path / ".backup_2020-01-01_00-00-00"
@@ -1072,10 +1246,14 @@ def test_an_abandoned_staging_directory_is_swept_once_it_is_stale(mock_env, monk
     bm.cleanup_backups()
 
     assert not stale.exists()
-    assert live.is_dir(), "a staging directory an attempt may still be using was removed"
+    assert live.is_dir(), (
+        "a staging directory an attempt may still be using was removed"
+    )
 
 
-def test_a_failed_backup_still_sweeps_leftovers_but_keeps_every_backup(mock_env, monkeypatch):
+def test_a_failed_backup_still_sweeps_leftovers_but_keeps_every_backup(
+    mock_env, monkeypatch
+):
     """A run of failed backups on a locked folder must not pile up save copies.
 
     Each failure whose own removal is locked out too leaves a staging directory
@@ -1115,7 +1293,9 @@ def test_a_failed_backup_still_sweeps_leftovers_but_keeps_every_backup(mock_env,
     assert not stale.exists()
     assert not list(bm.backups_path.glob(".discard_*"))
     (attempt,) = bm.backups_path.glob(".backup_*")
-    assert (attempt / "ankimon.db").is_file(), "the sweep took the attempt still in flight"
+    assert (attempt / "ankimon.db").is_file(), (
+        "the sweep took the attempt still in flight"
+    )
     assert sorted(bm.backups_path.glob("backup_*")) == made
 
 
@@ -1138,8 +1318,12 @@ def test_a_restore_close_failure_notice_that_cannot_be_shown_does_not_escape(moc
         raise RuntimeError("wrapped C/C++ object has been deleted")
 
     try:
-        with patch.object(services, "ui", types.SimpleNamespace(warn=broken)), \
-             patch.object(_bm_mod, "close_anki", side_effect=RuntimeError("no main window")):
+        with (
+            patch.object(services, "ui", types.SimpleNamespace(warn=broken)),
+            patch.object(
+                _bm_mod, "close_anki", side_effect=RuntimeError("no main window")
+            ),
+        ):
             bm.restore_backup(str(backup_dir))
         assert [message.split(":")[0] for message in shown] == ["Anki could not close"]
         assert save_import.pending_import_info(db.db_path) is not None
@@ -1166,16 +1350,22 @@ def test_a_restore_that_fails_before_staging_is_reported_not_raised(mock_env):
             raise PermissionError("simulated unreadable backup folder")
         return is_file(self, *args, **kwargs)
 
-    with patch.object(Path, "is_file", unreadable), \
-         patch.object(_bm_mod, "showWarning") as warning:
+    with (
+        patch.object(Path, "is_file", unreadable),
+        patch.object(_bm_mod, "showWarning") as warning,
+    ):
         bm.restore_backup(str(backup_dir))
     assert warning.call_count == 1
     assert warning.call_args.args[0].startswith("Failed to prepare backup restore")
     assert pending_import_info(db.db_path) is None
 
 
-@pytest.mark.parametrize("current, answer", [("healthy", None), ("damaged", False), ("damaged", True)])
-def test_restore_over_a_damaged_save_asks_before_anything_is_staged(mock_env, current, answer):
+@pytest.mark.parametrize(
+    "current, answer", [("healthy", None), ("damaged", False), ("damaged", True)]
+)
+def test_restore_over_a_damaged_save_asks_before_anything_is_staged(
+    mock_env, current, answer
+):
     """The first question promises a verified copy of the save being replaced. A
     damaged save cannot give one, so replacing it takes an answer of its own."""
     bm, db, _, _ = mock_env
@@ -1194,8 +1384,10 @@ def test_restore_over_a_damaged_save_asks_before_anything_is_staged(mock_env, cu
         return answer if "integrity check" in prompt else True
 
     try:
-        with patch.object(_bm_mod, "askUser", side_effect=ask), \
-             patch.object(_bm_mod, "showInfo") as notice:
+        with (
+            patch.object(_bm_mod, "askUser", side_effect=ask),
+            patch.object(_bm_mod, "showInfo") as notice,
+        ):
             bm.restore_backup(str(backup_dir))
         pending = pending_import_info(db.db_path)
         if current == "healthy":
@@ -1213,7 +1405,9 @@ def test_restore_over_a_damaged_save_asks_before_anything_is_staged(mock_env, cu
         cancel_pending_import(db.db_path)
 
 
-def test_restore_over_a_damaged_save_installs_after_restart_and_keeps_original(mock_env):
+def test_restore_over_a_damaged_save_installs_after_restart_and_keeps_original(
+    mock_env,
+):
     """Exercise Backup Manager's accepted recovery path through a fresh process.
 
     Removing ``retain_unverified`` from the restore call, replacing the live
@@ -1235,8 +1429,10 @@ def test_restore_over_a_damaged_save_installs_after_restart_and_keeps_original(m
     backup_dir.mkdir(parents=True, exist_ok=True)
     _seed_db(backup_dir / "ankimon.db", "Blue", 999)
 
-    with patch.object(_bm_mod, "askUser", return_value=True), \
-         patch.object(_bm_mod, "showInfo"):
+    with (
+        patch.object(_bm_mod, "askUser", return_value=True),
+        patch.object(_bm_mod, "showInfo"),
+    ):
         bm.restore_backup(str(backup_dir))
 
     staged = pending_import_info(target)
@@ -1275,7 +1471,11 @@ def test_a_backup_publishes_through_locks_that_clear(mock_env, monkeypatch):
     both its rename into the backup folder and the folder's rename into place."""
     bm, _, _, _ = mock_env
     importer = importlib.import_module("Ankimon.save_import")
-    monkeypatch.setattr(importer, "_is_file_lock_error", lambda error: isinstance(error, PermissionError))
+    monkeypatch.setattr(
+        importer,
+        "_is_file_lock_error",
+        lambda error: isinstance(error, PermissionError),
+    )
     monkeypatch.setattr(importer, "_FILE_LOCK_RETRY_DELAYS", (0, 0, 0, 0, 0))
     replace, rename = os.replace, Path.rename
     refused = []
@@ -1294,7 +1494,10 @@ def test_a_backup_publishes_through_locks_that_clear(mock_env, monkeypatch):
 
     monkeypatch.setattr(os, "replace", snapshot_held_once)
     monkeypatch.setattr(Path, "rename", folder_held_once)
-    assert bm.create_backup(required_file="ankimon.db", deadline=time.monotonic() + 30) is True
+    assert (
+        bm.create_backup(required_file="ankimon.db", deadline=time.monotonic() + 30)
+        is True
+    )
     assert refused == ["snapshot", "folder"]
     assert len(list(bm.backups_path.glob("backup_*"))) == 1
 
@@ -1308,8 +1511,10 @@ def test_backups_path_is_none_when_no_profile_resolves(mock_env, monkeypatch):
     bm, _, _, _ = mock_env
     # The fixture already anchored a real path; prove refresh clears it.
     assert bm.backups_path is not None
-    monkeypatch.setattr("aqt.mw.pm.profileFolder",
-                        MagicMock(side_effect=RuntimeError("profile volume unavailable")))
+    monkeypatch.setattr(
+        "aqt.mw.pm.profileFolder",
+        MagicMock(side_effect=RuntimeError("profile volume unavailable")),
+    )
     bm.refresh_profile_path()
     assert bm.backups_path is None
 
@@ -1317,8 +1522,10 @@ def test_backups_path_is_none_when_no_profile_resolves(mock_env, monkeypatch):
 def test_no_profile_means_no_backup_operations(mock_env, monkeypatch):
     """Every entry point that touches backups_path must refuse when it is None."""
     bm, _, user_files_dir, _ = mock_env
-    monkeypatch.setattr("aqt.mw.pm.profileFolder",
-                        MagicMock(side_effect=RuntimeError("profile volume unavailable")))
+    monkeypatch.setattr(
+        "aqt.mw.pm.profileFolder",
+        MagicMock(side_effect=RuntimeError("profile volume unavailable")),
+    )
     bm.refresh_profile_path()
     assert bm.backups_path is None
 
@@ -1356,10 +1563,15 @@ def test_migration_collision_keeps_both_backups_listable(mock_env):
     legacy_backup = legacy_root / legacy_name
     legacy_backup.mkdir()
     _seed_db(legacy_backup / "ankimon.db", "Legacy", 111)
-    (legacy_backup / "summary.json").write_text(json.dumps({
-        "date": "2026-09-25 10-00-00",
-        "normal_stats": {"trainer_name": "Legacy", "trainer_cash": 111},
-    }), encoding="utf-8")
+    (legacy_backup / "summary.json").write_text(
+        json.dumps(
+            {
+                "date": "2026-09-25 10-00-00",
+                "normal_stats": {"trainer_name": "Legacy", "trainer_cash": 111},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     # The destination already holds a same-named backup with a different save.
     existing = bm.backups_path / legacy_name
@@ -1371,11 +1583,13 @@ def test_migration_collision_keeps_both_backups_listable(mock_env):
     # The legacy snapshot still exists as a listable ``backup_*`` directory,
     # under a distinct name, with its inner ``ankimon.db`` intact.
     legacy_copies = [
-        p for p in bm.backups_path.iterdir()
+        p
+        for p in bm.backups_path.iterdir()
         if p.name.startswith(legacy_name) and (p / "ankimon.db").is_file()
     ]
     assert {p.name for p in legacy_copies} == {
-        legacy_name, f"{legacy_name}__legacy_{legacy_copies[1].name.rsplit('_', 1)[-1]}",
+        legacy_name,
+        f"{legacy_name}__legacy_{legacy_copies[1].name.rsplit('_', 1)[-1]}",
     } or len(legacy_copies) == 2, "both backups must survive the collision"
     assert legacy_root.exists() is False or not list(legacy_root.iterdir())
 
@@ -1408,7 +1622,9 @@ def test_migration_collision_seeds_legacy_name_inside_backup_namespace(mock_env)
     assert bm._legacy_collision_name(bm.backups_path / name).name.startswith("backup_")
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
 def test_migration_does_not_follow_a_linked_legacy_root(mock_env, tmp_path):
     """A linked legacy_path is not a migration source: walking it moves external files."""
     bm, _, _, addon_dir = mock_env
@@ -1422,13 +1638,17 @@ def test_migration_does_not_follow_a_linked_legacy_root(mock_env, tmp_path):
     bm._migrate_legacy_backups(bm.backups_path.parent)
 
     # The external folder is untouched, and nothing was copied into the profile.
-    assert (external / "backup_2026-09-25_12-00-00" / "ankimon.db").read_bytes() == b"external"
+    assert (
+        external / "backup_2026-09-25_12-00-00" / "ankimon.db"
+    ).read_bytes() == b"external"
     assert list(bm.backups_path.iterdir()) == []
     # The link itself remains, so the user can decide what to do with it.
     assert legacy_root.is_symlink()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
 def test_migration_moves_a_linked_entry_without_following_it(mock_env, tmp_path):
     """A link inside the legacy root moves as a link; its target is not walked."""
     bm, _, _, addon_dir = mock_env
@@ -1446,7 +1666,9 @@ def test_migration_moves_a_linked_entry_without_following_it(mock_env, tmp_path)
     # The external folder is untouched: the link was moved, not walked.
     assert (external / "ankimon.db").read_bytes() == b"external"
     assert (bm.backups_path / "linked-entry").is_symlink()
-    assert (bm.backups_path / "backup_2026-09-25_13-00-00" / "ankimon.db").read_bytes() == b"legacy"
+    assert (
+        bm.backups_path / "backup_2026-09-25_13-00-00" / "ankimon.db"
+    ).read_bytes() == b"legacy"
     assert not legacy_root.exists()
 
 
@@ -1460,7 +1682,9 @@ def _legacy_migration_save(mock_env):
 
 
 @pytest.mark.parametrize("partial_delete", [False, True])
-def test_migration_retry_preserves_five_distinct_snapshots(mock_env, monkeypatch, partial_delete):
+def test_migration_retry_preserves_five_distinct_snapshots(
+    mock_env, monkeypatch, partial_delete
+):
     import shutil
 
     bm, _, _, addon = mock_env
@@ -1491,12 +1715,15 @@ def test_migration_retry_preserves_five_distinct_snapshots(mock_env, monkeypatch
     retry.cleanup_backups()
     assert not root.exists()
     assert len(retry.get_backups()) == 5
-    assert {Path(b["path"]).joinpath("ankimon.db").read_bytes()
-            for b in retry.get_backups()} == originals
+    assert {
+        Path(b["path"]).joinpath("ankimon.db").read_bytes() for b in retry.get_backups()
+    } == originals
 
 
 @pytest.mark.parametrize("fail_at", [1, 2])
-def test_failed_migration_keeps_all_originals_discoverable(mock_env, monkeypatch, fail_at):
+def test_failed_migration_keeps_all_originals_discoverable(
+    mock_env, monkeypatch, fail_at
+):
     import shutil
 
     bm, _, _, addon = mock_env
@@ -1520,14 +1747,18 @@ def test_failed_migration_keeps_all_originals_discoverable(mock_env, monkeypatch
         patcher.setattr(shutil, "copyfile", disk_full)
         bm.run_profile_backup_tasks()
     assert len(bm.get_backups()) == 3
-    assert all(Path(b["path"]).joinpath("ankimon.db").is_file() for b in bm.get_backups())
+    assert all(
+        Path(b["path"]).joinpath("ankimon.db").is_file() for b in bm.get_backups()
+    )
     bm.run_profile_backup_tasks()
     assert len(bm.get_backups()) == 3
     assert not root.exists()
 
 
 @pytest.mark.parametrize("legacy_taskman", [False, True])
-def test_profile_refresh_schedules_without_copying_on_gui_thread(mock_env, monkeypatch, legacy_taskman):
+def test_profile_refresh_schedules_without_copying_on_gui_thread(
+    mock_env, monkeypatch, legacy_taskman
+):
     from concurrent.futures import ThreadPoolExecutor
 
     bm, root, _ = _legacy_migration_save(mock_env)
@@ -1537,8 +1768,10 @@ def test_profile_refresh_schedules_without_copying_on_gui_thread(mock_env, monke
         def run_in_background(task, on_done=None, args=None):
             tasks.append((task, {}))
     else:
+
         def run_in_background(task, on_done=None, args=None, uses_collection=True):
             tasks.append((task, {"uses_collection": uses_collection}))
+
     monkeypatch.setattr("aqt.mw.taskman.run_in_background", run_in_background)
     bm.refresh_profile_path()
     bm.schedule_profile_backup_tasks()
@@ -1560,8 +1793,12 @@ def test_profile_refresh_schedules_without_copying_on_gui_thread(mock_env, monke
     assert all(thread is not threading.main_thread() for thread in seen_threads)
 
 
-@pytest.mark.parametrize("message", ["task scheduling failed", "invalid uses_collection value"])
-def test_profile_backup_scheduling_does_not_retry_unrelated_type_errors(mock_env, monkeypatch, message):
+@pytest.mark.parametrize(
+    "message", ["task scheduling failed", "invalid uses_collection value"]
+)
+def test_profile_backup_scheduling_does_not_retry_unrelated_type_errors(
+    mock_env, monkeypatch, message
+):
     bm, _, _, _ = mock_env
     error = TypeError(message)
     schedule = MagicMock(side_effect=error)
@@ -1574,11 +1811,15 @@ def test_profile_backup_scheduling_does_not_retry_unrelated_type_errors(mock_env
     schedule.assert_called_once()
 
 
-def test_developer_startup_backup_waits_for_profile_and_runs_once(mock_env, monkeypatch):
+def test_developer_startup_backup_waits_for_profile_and_runs_once(
+    mock_env, monkeypatch
+):
     bm, _, _, _ = mock_env
     profile = bm.backups_path.parent
     bm.backups_path = None
-    bm.settings_obj.get.side_effect = lambda key, default=None: key == "misc.developer_mode"
+    bm.settings_obj.get.side_effect = lambda key, default=None: (
+        key == "misc.developer_mode"
+    )
     backup = MagicMock(return_value=True)
     monkeypatch.setattr(bm, "create_backup", backup)
     bm.run_profile_backup_tasks()
@@ -1586,6 +1827,7 @@ def test_developer_startup_backup_waits_for_profile_and_runs_once(mock_env, monk
     monkeypatch.setattr("aqt.mw.pm.profileFolder", lambda: str(profile))
     bm.refresh_profile_path()
     from concurrent.futures import ThreadPoolExecutor
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(bm.run_profile_backup_tasks)
         second = pool.submit(bm.run_profile_backup_tasks)
@@ -1596,7 +1838,9 @@ def test_developer_startup_backup_waits_for_profile_and_runs_once(mock_env, monk
 
 def test_hot_reload_never_arms_deferred_startup_backup(mock_env, monkeypatch):
     bm, _, _, _ = mock_env
-    bm.settings_obj.get.side_effect = lambda key, default=None: key == "misc.developer_mode"
+    bm.settings_obj.get.side_effect = lambda key, default=None: (
+        key == "misc.developer_mode"
+    )
     monkeypatch.setattr(services, "_is_reloading", True, raising=False)
     reloaded = BackupManager(bm.logger, bm.settings_obj)
     # Startup clears this flag before a later profile-open event.
@@ -1609,7 +1853,9 @@ def test_hot_reload_never_arms_deferred_startup_backup(mock_env, monkeypatch):
 
 
 @pytest.mark.parametrize("interrupted", [False, True])
-def test_migration_publication_failure_preserves_save(mock_env, monkeypatch, interrupted):
+def test_migration_publication_failure_preserves_save(
+    mock_env, monkeypatch, interrupted
+):
     bm, root, backup = _legacy_migration_save(mock_env)
     original = (backup / "ankimon.db").read_bytes()
     old = time.time() - 7200
@@ -1680,7 +1926,9 @@ def test_migration_failed_source_cleanup_keeps_published_save(mock_env, monkeypa
     assert (bm.backups_path / backup.name / "ankimon.db").read_bytes() == original
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
 def test_migration_preserves_nested_relative_db_link(mock_env):
     bm, root, backup = _legacy_migration_save(mock_env)
     archive = root.parent / "archive"
@@ -1701,9 +1949,13 @@ def test_migration_preserves_nested_relative_db_link(mock_env):
     assert not root.exists()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
 @pytest.mark.parametrize("link_first", [False, True])
-def test_migration_maps_links_to_collision_renamed_sibling(mock_env, monkeypatch, link_first):
+def test_migration_maps_links_to_collision_renamed_sibling(
+    mock_env, monkeypatch, link_first
+):
     bm, root, backup = _legacy_migration_save(mock_env)
     original = (backup / "ankimon.db").read_bytes()
     alias = root / "backup_2026-09-25_13-00-00"
@@ -1719,7 +1971,11 @@ def test_migration_maps_links_to_collision_renamed_sibling(mock_env, monkeypatch
 
     def ordered_entries(path):
         if path == root:
-            entries = [alias, linked_backup, backup] if link_first else [backup, linked_backup, alias]
+            entries = (
+                [alias, linked_backup, backup]
+                if link_first
+                else [backup, linked_backup, alias]
+            )
             return iter(entries)
         return real_iterdir(path)
 
@@ -1741,7 +1997,10 @@ def test_migration_retry_never_adopts_an_unrelated_destination(mock_env, monkeyp
     bm, root, original = _legacy_migration_save(mock_env)
     original_bytes = (original / "ankimon.db").read_bytes()
     with monkeypatch.context() as failing:
-        failing.setattr("shutil.copyfile", lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")))
+        failing.setattr(
+            "shutil.copyfile",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")),
+        )
         bm.run_profile_backup_tasks()
     other = bm.backups_path / original.name
     other.mkdir()
@@ -1771,9 +2030,14 @@ def test_startup_backup_cannot_take_a_reserved_migration_name(mock_env, monkeypa
     original.mkdir(parents=True)
     _seed_db(original / "ankimon.db", "Legacy", 111)
     original_bytes = (original / "ankimon.db").read_bytes()
-    bm.settings_obj.get.side_effect = lambda key, default=None: key == "misc.developer_mode"
+    bm.settings_obj.get.side_effect = lambda key, default=None: (
+        key == "misc.developer_mode"
+    )
     with monkeypatch.context() as failing:
-        failing.setattr("shutil.copyfile", lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")))
+        failing.setattr(
+            "shutil.copyfile",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")),
+        )
         bm.run_profile_backup_tasks()
     assert not (bm.backups_path / original.name).exists()
     assert bm._startup_backup_pending is False  # A distinct startup snapshot succeeded.
@@ -1781,13 +2045,17 @@ def test_startup_backup_cannot_take_a_reserved_migration_name(mock_env, monkeypa
     bm.run_profile_backup_tasks()
 
     assert not root.exists()
-    assert (bm.backups_path / original.name / "ankimon.db").read_bytes() == original_bytes
+    assert (
+        bm.backups_path / original.name / "ankimon.db"
+    ).read_bytes() == original_bytes
     assert len(bm.get_backups()) == 2
     assert {row.get("trainer_name") for row in bm.get_backups()} == {None, "Red"}
 
 
 @pytest.mark.parametrize("same_contents", [False, True])
-def test_old_migration_journal_requires_proof_before_deleting_source(mock_env, same_contents):
+def test_old_migration_journal_requires_proof_before_deleting_source(
+    mock_env, same_contents
+):
     import shutil
 
     bm, root, original = _legacy_migration_save(mock_env)
@@ -1798,9 +2066,14 @@ def test_old_migration_journal_requires_proof_before_deleting_source(mock_env, s
     else:
         target.mkdir()
         _seed_db(target / "ankimon.db", "Unrelated", 222)
-    (bm.backups_path / bm.MIGRATION_RECORD).write_text(json.dumps({
-        "source": str(root.resolve()), "entries": {original.name: original.name},
-    }))
+    (bm.backups_path / bm.MIGRATION_RECORD).write_text(
+        json.dumps(
+            {
+                "source": str(root.resolve()),
+                "entries": {original.name: original.name},
+            }
+        )
+    )
 
     bm.run_profile_backup_tasks()
 
@@ -1812,7 +2085,9 @@ def test_old_migration_journal_requires_proof_before_deleting_source(mock_env, s
         assert len(bm.get_backups()) == 2
 
 
-@pytest.mark.skipif(os.name == "nt", reason="creating symlinks needs privileges on Windows")
+@pytest.mark.skipif(
+    os.name == "nt", reason="creating symlinks needs privileges on Windows"
+)
 def test_dangling_legacy_entry_migrates_without_blocking_backup_management(mock_env):
     bm, _, _, addon = mock_env
     root = addon.parent / "ankimon_backups"
@@ -1865,7 +2140,9 @@ def test_blocked_migration_only_protects_its_own_recovery_copies(mock_env, monke
     assert not stale.exists()
     bm.delete_backup(str(published))
     assert published.exists()
-    victim = next(Path(row["path"]) for row in bm.get_backups() if Path(row["path"]) != published)
+    victim = next(
+        Path(row["path"]) for row in bm.get_backups() if Path(row["path"]) != published
+    )
     bm.delete_backup(str(victim))
     assert not victim.exists()
     bm.run_profile_backup_tasks()
@@ -1873,8 +2150,18 @@ def test_blocked_migration_only_protects_its_own_recovery_copies(mock_env, monke
     assert not (bm.backups_path / bm.MIGRATION_RECORD).exists()
 
 
-@pytest.mark.parametrize("finish_at", ["before_restore", "first_confirmation", "second_confirmation", "after_busy_notice"])
-def test_restore_selection_survives_background_migration(mock_env, monkeypatch, finish_at):
+@pytest.mark.parametrize(
+    "finish_at",
+    [
+        "before_restore",
+        "first_confirmation",
+        "second_confirmation",
+        "after_busy_notice",
+    ],
+)
+def test_restore_selection_survives_background_migration(
+    mock_env, monkeypatch, finish_at
+):
     from concurrent.futures import ThreadPoolExecutor
     from Ankimon.save_import import cancel_pending_import, pending_import_info
     import Ankimon.save_import as save_import
@@ -1890,7 +2177,9 @@ def test_restore_selection_survives_background_migration(mock_env, monkeypatch, 
             assert release.wait(5)
         return copy_entry(*args, **kwargs)
 
-    monkeypatch.setattr(BackupManager, "_copy_migration_entry", staticmethod(paused_copy))
+    monkeypatch.setattr(
+        BackupManager, "_copy_migration_entry", staticmethod(paused_copy)
+    )
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(bm.run_profile_backup_tasks)
         try:
@@ -1906,7 +2195,9 @@ def test_restore_selection_survives_background_migration(mock_env, monkeypatch, 
             if finish_at == "first_confirmation":
                 monkeypatch.setattr(_bm_mod, "askUser", finish_migration)
             elif finish_at == "second_confirmation":
-                monkeypatch.setattr(save_import, "should_confirm_unverified_copy", lambda target: True)
+                monkeypatch.setattr(
+                    save_import, "should_confirm_unverified_copy", lambda target: True
+                )
                 confirmations = []
 
                 def confirm(*args, **kwargs):
@@ -1919,7 +2210,9 @@ def test_restore_selection_survives_background_migration(mock_env, monkeypatch, 
             bm.restore_backup(selected)
             if finish_at == "after_busy_notice":
                 assert pending_import_info(db.db_path) is None
-                assert "Backups are being moved" in _bm_mod.showWarning.call_args.args[0]
+                assert (
+                    "Backups are being moved" in _bm_mod.showWarning.call_args.args[0]
+                )
                 _bm_mod.showWarning.reset_mock()
                 finish_migration()
                 bm.restore_backup(selected)
@@ -1930,7 +2223,9 @@ def test_restore_selection_survives_background_migration(mock_env, monkeypatch, 
         pending = pending_import_info(db.db_path)
         assert pending is not None
         with closing(sqlite3.connect(pending["pending_path"])) as staged:
-            assert staged.execute("SELECT value FROM config WHERE key='trainer.name'").fetchone() == ("Legacy",)
+            assert staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Legacy",)
         assert not root.exists()
         _bm_mod.showWarning.assert_not_called()
     finally:
@@ -1940,7 +2235,9 @@ def test_restore_selection_survives_background_migration(mock_env, monkeypatch, 
     assert not (bm.backups_path / original.name).exists()
 
 
-def test_migration_flushes_writable_copy_before_restoring_readonly_mode(mock_env, monkeypatch):
+def test_migration_flushes_writable_copy_before_restoring_readonly_mode(
+    mock_env, monkeypatch
+):
     import stat
     import Ankimon.save_import as save_import
 
@@ -1978,7 +2275,10 @@ def test_migration_flushes_writable_copy_before_restoring_readonly_mode(mock_env
 @pytest.mark.parametrize("hidden_name", [".backup_abandoned", ".discard_abandoned"])
 @pytest.mark.parametrize("failed_backup", [False, True])
 def test_leftover_sweep_preserves_journaled_migration_copies(
-    mock_env, monkeypatch, hidden_name, failed_backup,
+    mock_env,
+    monkeypatch,
+    hidden_name,
+    failed_backup,
 ):
     import shutil
 
@@ -2075,11 +2375,23 @@ def test_direct_leftover_sweep_does_not_race_migration(mock_env):
 
 
 @pytest.mark.parametrize("committed_wal", [False, True])
-@pytest.mark.parametrize("linked", [False, pytest.param(
-    True, marks=pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges"),
-)])
+@pytest.mark.parametrize(
+    "linked",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                os.name == "nt", reason="symlinks need privileges"
+            ),
+        ),
+    ],
+)
 def test_restore_preserves_migration_digest_and_committed_wal(
-    mock_env, monkeypatch, committed_wal, linked,
+    mock_env,
+    monkeypatch,
+    committed_wal,
+    linked,
 ):
     import shutil
     from Ankimon.save_import import cancel_pending_import, pending_import_info
@@ -2133,10 +2445,21 @@ def test_restore_preserves_migration_digest_and_committed_wal(
 
 
 @pytest.mark.parametrize("change_at", ["main", "wal"])
-@pytest.mark.parametrize("linked", [False, pytest.param(
-    True, marks=pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges"),
-)])
-def test_restore_retries_checkpointed_file_family(mock_env, monkeypatch, change_at, linked):
+@pytest.mark.parametrize(
+    "linked",
+    [
+        False,
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                os.name == "nt", reason="symlinks need privileges"
+            ),
+        ),
+    ],
+)
+def test_restore_retries_checkpointed_file_family(
+    mock_env, monkeypatch, change_at, linked
+):
     import shutil
     from Ankimon.save_import import cancel_pending_import, pending_import_info
 
@@ -2149,7 +2472,9 @@ def test_restore_retries_checkpointed_file_family(mock_env, monkeypatch, change_
         (backup / "ankimon.db").symlink_to(source)
     writer = sqlite3.connect(source)
     writer.execute("PRAGMA journal_mode=WAL")
-    writer.execute("UPDATE config SET value='Committed before restore' WHERE key='trainer.name'")
+    writer.execute(
+        "UPDATE config SET value='Committed before restore' WHERE key='trainer.name'"
+    )
     writer.commit()
     copyfile = shutil.copyfile
     changed = False
@@ -2164,7 +2489,11 @@ def test_restore_retries_checkpointed_file_family(mock_env, monkeypatch, change_
         if Path(src) == trigger and not changed:
             changed = True
             if change_at == "main":
-                assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone() == (0, 0, 0)
+                assert writer.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone() == (
+                    0,
+                    0,
+                    0,
+                )
             else:
                 # Closing checkpoints and removes the WAL AFTER it was copied.
                 # A retry must discard that now-stale private WAL.
@@ -2207,7 +2536,9 @@ def test_restore_refuses_continuously_changing_backup(mock_env, monkeypatch):
         result = copyfile(src, dst, *args, **kwargs)
         if Path(src) == source:
             copies += 1
-            writer.execute("UPDATE config SET value=? WHERE key='trainer.cash'", (str(copies),))
+            writer.execute(
+                "UPDATE config SET value=? WHERE key='trainer.cash'", (str(copies),)
+            )
             writer.commit()
             writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         return result
@@ -2247,7 +2578,9 @@ def test_restore_checks_bytes_when_timestamps_do_not_change(mock_env, monkeypatc
             copies += 1
             if copies == 1:
                 with closing(sqlite3.connect(source)) as writer:
-                    writer.execute("UPDATE config SET value='NewOne' WHERE key='trainer.name'")
+                    writer.execute(
+                        "UPDATE config SET value='NewOne' WHERE key='trainer.name'"
+                    )
                     writer.commit()
                 assert real_stat(source).st_size == original_stat.st_size
         return result
@@ -2270,7 +2603,9 @@ def test_restore_checks_bytes_when_timestamps_do_not_change(mock_env, monkeypatc
 @pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges")
 @pytest.mark.parametrize("directory_link", [False, True])
 def test_partial_link_publication_keeps_original_listable_and_restorable(
-    mock_env, monkeypatch, directory_link,
+    mock_env,
+    monkeypatch,
+    directory_link,
 ):
     import shutil
     from Ankimon.save_import import cancel_pending_import, pending_import_info
@@ -2320,3 +2655,615 @@ def test_partial_link_publication_keeps_original_listable_and_restorable(
     assert {row["path"] for row in bm.get_backups()} == {
         str(bm.backups_path / name) for name in (alias.name, original.name)
     }
+
+
+@pytest.mark.parametrize("operation", ["create", "restore"])
+@pytest.mark.parametrize("change", ["account_aba", "profile_close", "database_object"])
+def test_confirmed_backup_context_rejects_changes_before_dispatch(
+    mock_env, operation, change
+):
+    bm, db, user_files, _ = mock_env
+    selected = bm.backups_path / "backup_confirmed"
+    selected.mkdir()
+    _seed_db(selected / "ankimon.db", "Confirmed normal", 100)
+    _seed_db(selected / "ankimonDEV.db", "Unconfirmed developer", 200)
+    context = bm.capture_context()
+    replacement = None
+    try:
+        if change == "account_aba":
+            assert db.switch_database("ankimonDEV.db")
+            assert db.switch_database("ankimon.db")
+        elif change == "profile_close":
+            bm.invalidate_context()
+            bm.refresh_profile_path()
+        else:
+            replacement = AnkimonDB(MockLogger(), db_path=db.db_path)
+            services.db = replacement
+        if operation == "create":
+            with pytest.raises(RuntimeError, match="changed"):
+                bm.create_backup(manual=True, show_notifications=False, context=context)
+        else:
+            result = bm.restore_backup(
+                str(selected), interactive=False, context=context
+            )
+            assert result["status"] == "failed"
+            assert "changed" in result["error"]
+        assert not list(user_files.glob(".ankimon-import-*/pending.json"))
+        assert list(bm.backups_path.glob("backup_*")) == [selected]
+    finally:
+        services.db = db
+        if replacement:
+            replacement.close()
+
+
+@pytest.mark.parametrize("operation", ["create", "restore"])
+def test_context_change_during_publication_retry_never_arms_or_publishes(
+    mock_env, monkeypatch, operation
+):
+    import Ankimon.save_import as save_import
+
+    monkeypatch.setattr(
+        save_import,
+        "_is_file_lock_error",
+        lambda error: isinstance(error, PermissionError),
+    )
+    bm, db, user_files, _ = mock_env
+    selected = bm.backups_path / "backup_confirmed"
+    selected.mkdir()
+    _seed_db(selected / "ankimon.db", "Confirmed normal", 100)
+    context = bm.capture_context()
+    rename, replace = Path.rename, os.replace
+    attempts = []
+
+    def locked_once(source, destination):
+        # Cause exactly the final publication to fail once. During the retry
+        # delay, simulate the user switching away and back to the same path.
+        if (operation == "create" and Path(source).name.startswith(".backup_")) or (
+            operation == "restore" and Path(destination).name == "pending.json"
+        ):
+            attempts.append(str(destination))
+            assert db.switch_database("ankimonDEV.db")
+            assert db.switch_database("ankimon.db")
+            raise PermissionError(13, "scanner still has publication open")
+        return (rename if operation == "create" else replace)(source, destination)
+
+    monkeypatch.setattr(
+        Path if operation == "create" else os,
+        "rename" if operation == "create" else "replace",
+        locked_once,
+    )
+    if operation == "create":
+        assert not bm.create_backup(
+            manual=True, show_notifications=False, context=context
+        )
+    else:
+        result = bm.restore_backup(str(selected), interactive=False, context=context)
+        assert result["status"] == "failed", result
+        assert "changed" in result["error"]
+    assert len(attempts) == 1
+    assert not list(user_files.glob(".ankimon-import-*/pending.json"))
+    assert list(bm.backups_path.glob("backup_*")) == [selected]
+
+
+def test_custom_filename_is_listed_and_restorable(mock_env, tmp_path):
+    from Ankimon.save_import import cancel_pending_import, pending_import_info
+
+    bm, db, _, _ = mock_env
+    custom = AnkimonDB(MockLogger(), db_path=tmp_path / "profile-save.db")
+    try:
+        services.db = custom
+        custom.set_config_value("trainer.name", "Custom snapshot")
+        assert bm.create_backup(
+            manual=True, show_notifications=False, context=bm.capture_context()
+        )
+        [row] = bm.get_backups(include_inactive=True)
+        assert row["trainer_name"] == "Custom snapshot"
+        custom.set_config_value("trainer.name", "Current progress")
+        result = bm.restore_backup(
+            row["path"], interactive=False, context=bm.capture_context()
+        )
+        assert result["status"] == "staged", result
+        assert Path(result["pending_target"]) == custom.db_path
+        pending = pending_import_info(custom.db_path)
+        with closing(sqlite3.connect(pending["pending_path"])) as staged:
+            assert staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Custom snapshot",)
+        assert custom.get_config_value("trainer.name") == "Current progress"
+    finally:
+        cancel_pending_import(custom.db_path)
+        custom.close()
+        services.db = db
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges")
+@pytest.mark.parametrize("filename", ["ankimon.db", "ankimonDEV.db", "profile-save.db"])
+def test_linked_active_save_preserves_logical_backup_filename(
+    mock_env, tmp_path, filename
+):
+    from Ankimon.save_import import cancel_pending_import, pending_import_info
+
+    bm, original_db, _, _ = mock_env
+    physical = tmp_path / "external" / "physical-save.db"
+    physical.parent.mkdir()
+    alias = tmp_path / "aliases" / filename
+    alias.parent.mkdir()
+    alias.symlink_to(physical)
+    active = AnkimonDB(MockLogger(), db_path=alias)
+    try:
+        services.db = active
+        active.set_config_value("trainer.name", "Current linked save")
+        context = bm.capture_context()
+        assert context.target == physical
+        assert context.source_filename == filename
+        legacy = bm.backups_path / "backup_existing"
+        legacy.mkdir()
+        _seed_db(legacy / filename, "Existing recovery", 123)
+        (legacy / "summary.json").write_text("{}", encoding="utf-8")
+
+        result = bm.restore_backup(str(legacy), interactive=False, context=context)
+        assert result["status"] == "staged", result
+        assert Path(result["pending_target"]) == physical
+        pending = pending_import_info(physical)
+        with closing(sqlite3.connect(pending["pending_path"])) as staged:
+            assert staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Existing recovery",)
+        assert cancel_pending_import(physical)
+
+        assert bm.create_backup(manual=True, show_notifications=False, context=context)
+        [created] = set(bm.backups_path.glob("backup_*")) - {legacy}
+        assert (created / filename).is_file()
+        assert not (created / physical.name).exists()
+        for rows in (
+            bm.get_backups(include_inactive=True),
+            bm.get_backups(
+                include_inactive=True, active_filename=context.source_filename
+            ),
+        ):
+            assert str(created) in {row["path"] for row in rows}
+        result = bm.restore_backup(str(created), interactive=False, context=context)
+        assert result["status"] == "staged", result
+        pending = pending_import_info(physical)
+        with closing(sqlite3.connect(pending["pending_path"])) as staged:
+            assert staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Current linked save",)
+        assert alias.is_symlink()
+        assert active.get_config_value("trainer.name") == "Current linked save"
+    finally:
+        cancel_pending_import(physical)
+        active.close()
+        services.db = original_db
+
+
+@pytest.mark.parametrize("profile_closes", [False, True])
+def test_overlapping_same_second_backups_keep_shutdown_snapshot(
+    mock_env, monkeypatch, profile_closes
+):
+    bm, db, _, _ = mock_env
+    now = datetime.datetime.now()
+    context = bm.capture_context()
+    copied, release = threading.Event(), threading.Event()
+    results, errors = [], []
+    snapshot = bm._snapshot_database
+
+    def pause_manual(source, target, **kwargs):
+        snapshot(source, target, **kwargs)
+        if threading.current_thread() is worker:
+            copied.set()
+            assert release.wait(5), "manual worker not released"
+
+    def manual():
+        try:
+            results.append(
+                bm.create_backup(manual=True, show_notifications=False, context=context)
+            )
+        except Exception as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=manual)
+    monkeypatch.setattr(bm, "_snapshot_database", pause_manual)
+    with patch.object(_bm_mod.datetime, "datetime", wraps=datetime.datetime) as clock:
+        clock.now.return_value = now
+        worker.start()
+        try:
+            assert copied.wait(5), "manual snapshot did not complete"
+            db.set_config_value("trainer.name", "Final session progress")
+            if profile_closes:
+                bm.invalidate_context()
+            assert bm.create_backup(deadline=time.monotonic() + 5)
+        finally:
+            release.set()
+            worker.join(5)
+    assert not worker.is_alive()
+    assert errors == []
+    assert results == [not profile_closes]
+    published = list(bm.backups_path.glob("backup_*"))
+    assert len(published) == (1 if profile_closes else 2)
+    saved_names = []
+    for directory in published:
+        with closing(sqlite3.connect(directory / "ankimon.db")) as saved:
+            saved_names.append(
+                saved.execute(
+                    "SELECT value FROM config WHERE key='trainer.name'"
+                ).fetchone()[0]
+            )
+    assert "Final session progress" in saved_names
+    if not profile_closes:
+        assert "Red" in saved_names
+    assert not list(bm.backups_path.glob(".backup_*"))
+
+
+@pytest.mark.parametrize("filename", ["ankimon.db", "ankimonDEV.db", "profile-save.db"])
+def test_incomplete_linked_migration_keeps_usable_original_listed(
+    mock_env, tmp_path, filename
+):
+    bm, db, _, addon_dir = mock_env
+    linked = tmp_path / "linked-legacy"
+    linked.mkdir()
+    legacy = addon_dir.parent / "ankimon_backups"
+    legacy.mkdir()
+    original = linked / "backup_original"
+    original.mkdir()
+    _seed_db(original / filename, "Usable original", 120)
+    target = bm.backups_path / original.name
+    target.mkdir()  # An interrupted copy, with no requested database.
+    selected = legacy / original.name
+    selected.symlink_to(original, target_is_directory=True)
+    (original / "summary.json").write_text("{}")
+    bm._migrated_paths[selected] = target
+    BackupManager._write_migration_record(
+        bm.backups_path,
+        {
+            "source": str(legacy.resolve()),
+            "entries": {original.name: target.name},
+            "digests": {},
+        },
+    )
+    active = AnkimonDB(MockLogger(), db_path=tmp_path / filename)
+    try:
+        services.db = active
+        for include_inactive in (False, True):
+            rows = bm.get_backups(include_inactive=include_inactive)
+            assert str(selected) in {row["path"] for row in rows}
+        assert bm._resolve_backup_path(selected) == selected
+        assert bm._resolve_backup_path(selected, filename) == selected
+    finally:
+        active.close()
+        services.db = db
+
+
+@pytest.mark.parametrize("operation", ["create", "restore"])
+def test_account_change_during_copy_cannot_publish_wrong_save(
+    mock_env, monkeypatch, operation
+):
+    bm, db, user_files, _ = mock_env
+    selected = bm.backups_path / "backup_confirmed"
+    selected.mkdir()
+    _seed_db(selected / "ankimon.db", "Selected normal", 100)
+    _seed_db(selected / "ankimonDEV.db", "Unselected developer", 200)
+    context = bm.capture_context()
+    copied = []
+    original = (
+        bm._snapshot_database if operation == "create" else bm._copy_restore_source
+    )
+
+    def copy_while_switched(source, destination, *args, **kwargs):
+        assert db.switch_database("ankimonDEV.db")
+        try:
+            copied.append(Path(source))
+            return original(source, destination, *args, **kwargs)
+        finally:
+            assert db.switch_database("ankimon.db")
+
+    monkeypatch.setattr(
+        bm,
+        "_snapshot_database" if operation == "create" else "_copy_restore_source",
+        copy_while_switched,
+    )
+    if operation == "create":
+        assert not bm.create_backup(
+            manual=True, show_notifications=False, context=context
+        )
+        assert copied == [context.target]
+    else:
+        result = bm.restore_backup(str(selected), interactive=False, context=context)
+        assert result["status"] == "failed", result
+        assert "changed" in result["error"]
+        assert copied == [selected / "ankimon.db"]
+    assert not list(user_files.glob(".ankimon-import-*/pending.json"))
+    assert list(bm.backups_path.glob("backup_*")) == [selected]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges")
+@pytest.mark.parametrize("dispatch", ["native_confirmation", "queued_worker"])
+@pytest.mark.parametrize("nested_referent", [False, True])
+def test_restore_linked_selection_keeps_source_after_migration(
+    mock_env, monkeypatch, dispatch, nested_referent
+):
+    from Ankimon.save_import import cancel_pending_import, pending_import_info
+
+    bm, active, _, addon = mock_env
+    legacy = addon.parent / "ankimon_backups"
+    payload = legacy / "backup_payload"
+    referent_folder = payload / "nested" if nested_referent else payload
+    referent_folder.mkdir(parents=True)
+    _seed_db(referent_folder / "renamed-recovery.db", "Selected recovery", 111)
+    _seed_db(payload / "ankimon.db", "Unselected sibling", 222)
+    if nested_referent:
+        _seed_db(referent_folder / "ankimon.db", "Unselected nested sibling", 333)
+    selected = legacy / "backup_selected"
+    selected.mkdir()
+    link_target = os.path.relpath(referent_folder / "renamed-recovery.db", selected)
+    (selected / "ankimon.db").symlink_to(link_target)
+    (selected / "summary.json").write_text("{}", encoding="utf-8")
+    assert str(selected) in {row["path"] for row in bm.get_backups()}
+    context = bm.capture_context()
+    source_file = (selected / context.source_filename).resolve()
+    target = active.db_path
+    identity = active.identity_token()
+
+    try:
+        if dispatch == "native_confirmation":
+            # A native dialog runs the event loop while the migration worker
+            # finishes; restore has already captured the linked referent.
+            def finish_migration(*args, **kwargs):
+                bm.run_profile_backup_tasks()
+                return True
+
+            monkeypatch.setattr(_bm_mod, "askUser", finish_migration)
+            bm.restore_backup(str(selected))
+        else:
+            # BackupBridge captures the resolved source before dispatching its
+            # QueryOp. Migration can finish before that queued worker starts.
+            bm.run_profile_backup_tasks()
+            result = bm.restore_backup(
+                str(selected),
+                interactive=False,
+                context=context,
+                source_file=source_file,
+            )
+            assert result["status"] == "staged", result
+
+        assert not legacy.exists()
+        migrated_selection = bm.backups_path / selected.name / "ankimon.db"
+        with closing(sqlite3.connect(migrated_selection)) as selected_db:
+            assert selected_db.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Selected recovery",)
+        assert active.db_path == target
+        assert active.identity_token() == identity
+        pending = pending_import_info(target)
+        assert pending is not None, _bm_mod.showWarning.call_args_list
+        assert Path(pending["target"]) == target
+        with closing(sqlite3.connect(pending["pending_path"])) as staged:
+            assert staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Selected recovery",)
+        assert active.get_config_value("trainer.name") == "Red"
+        _bm_mod.showWarning.assert_not_called()
+    finally:
+        cancel_pending_import(target)
+
+
+@pytest.mark.parametrize(
+    "unavailable",
+    [
+        pytest.param(
+            "linked",
+            marks=pytest.mark.skipif(
+                os.name == "nt", reason="symlinks need privileges"
+            ),
+        ),
+        "unwritable",
+    ],
+)
+def test_cancellation_context_survives_repeated_unavailable_backup_refresh(
+    mock_env, monkeypatch, tmp_path, unavailable
+):
+    bm, _, _, _ = mock_env
+    candidate = bm.backups_path
+    profile = candidate.parent
+    old_context = bm.capture_context()
+    if unavailable == "linked":
+        candidate.rmdir()
+        referent = tmp_path / "linked-backups"
+        referent.mkdir()
+        candidate.symlink_to(referent, target_is_directory=True)
+    else:
+        mkdir = Path.mkdir
+
+        def cannot_create(path, *args, **kwargs):
+            if path == candidate:
+                raise PermissionError("backup directory unavailable")
+            return mkdir(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "mkdir", cannot_create)
+    bm.refresh_profile_path()
+    assert bm.backups_path is None
+    with pytest.raises(RuntimeError, match="changed"):
+        old_context.validate()
+    with pytest.raises(RuntimeError, match="Open an Anki profile"):
+        bm.capture_context()
+    context = bm.capture_context(require_backup_path=False)
+    for _ in range(3):
+        bm.refresh_profile_path()
+        context.validate()
+
+    # A real profile A -> B -> A change still retires the request even when
+    # the active save object/path is shared and A's backup directory is refused.
+    selected = [tmp_path / "another-profile"]
+    monkeypatch.setattr(bm, "_active_profile_folder", lambda: selected[0])
+    bm.refresh_profile_path()
+    selected[0] = profile
+    bm.refresh_profile_path()
+    with pytest.raises(RuntimeError, match="changed"):
+        context.validate()
+    current = bm.capture_context(require_backup_path=False)
+    bm.invalidate_context()
+    with pytest.raises(RuntimeError, match="changed"):
+        current.validate()
+
+
+@pytest.mark.parametrize("interactive", [False, True])
+def test_restore_refuses_another_save_operation_before_reading_context(
+    mock_env, monkeypatch, interactive
+):
+    from Ankimon.save_import import reserve_save_operation, save_operation_busy
+
+    bm, _, _, _ = mock_env
+    operation = reserve_save_operation()
+
+    def unexpected_context():
+        pytest.fail("A busy restore must return before reading the selected save")
+
+    monkeypatch.setattr(bm, "capture_context", unexpected_context)
+    try:
+        result = bm.restore_backup("unused", interactive=interactive)
+        if interactive:
+            assert result is None
+            assert "in progress" in _bm_mod.showWarning.call_args.args[0]
+        else:
+            assert result["status"] == "failed"
+            assert "in progress" in result["error"]
+        operation.validate()
+        assert save_operation_busy()
+    finally:
+        operation.release()
+    assert not save_operation_busy()
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "stale_context",
+        "missing_source",
+        "confirmation_required",
+        "confirmation_declined",
+        "dialog_error",
+        "context_during_copy",
+        "staging_error",
+        "staged",
+    ],
+)
+def test_native_restore_releases_its_save_operation_on_every_exit(
+    mock_env, monkeypatch, outcome
+):
+    import Ankimon.save_import as save_import
+
+    bm, db, _, _ = mock_env
+    selected = bm.backups_path / "backup_reserved"
+    selected.mkdir()
+    if outcome != "missing_source":
+        _seed_db(selected / "ankimon.db", "Selected recovery", 123)
+    context = bm.capture_context()
+    if outcome == "stale_context":
+        bm.invalidate_context()
+    elif outcome == "confirmation_required":
+        monkeypatch.setattr(
+            save_import, "should_confirm_unverified_copy", lambda _: True
+        )
+    elif outcome in ("confirmation_declined", "dialog_error"):
+
+        def confirm(*args, **kwargs):
+            assert save_import.save_operation_busy()
+            if outcome == "dialog_error":
+                raise RuntimeError("confirmation unavailable")
+            return False
+
+        monkeypatch.setattr(_bm_mod, "askUser", confirm)
+    elif outcome == "context_during_copy":
+        copy_source = bm._copy_restore_source
+
+        def copy_then_retire(*args, **kwargs):
+            result = copy_source(*args, **kwargs)
+            bm.invalidate_context()
+            return result
+
+        monkeypatch.setattr(bm, "_copy_restore_source", copy_then_retire)
+
+    stage = save_import.stage_import
+
+    def stage_with_owner(*args, **kwargs):
+        kwargs["operation"].validate()
+        assert save_import.save_operation_busy()
+        if outcome == "staging_error":
+            raise OSError("staging unavailable")
+        return stage(*args, **kwargs)
+
+    monkeypatch.setattr(save_import, "stage_import", stage_with_owner)
+    try:
+        interactive = outcome in ("confirmation_declined", "dialog_error")
+        if outcome == "dialog_error":
+            with pytest.raises(RuntimeError, match="confirmation unavailable"):
+                bm.restore_backup(str(selected), context=context)
+        else:
+            result = bm.restore_backup(
+                str(selected), interactive=interactive, context=context
+            )
+            expected = (
+                "staged"
+                if outcome == "staged"
+                else "confirmation_required"
+                if outcome == "confirmation_required"
+                else "failed"
+            )
+            assert result is None if interactive else result["status"] == expected
+        assert not save_import.save_operation_busy()
+        pending = save_import.pending_import_info(db.db_path)
+        assert (pending is not None) == (outcome == "staged")
+        assert db.get_config_value("trainer.name") == "Red"
+    finally:
+        save_import.cancel_pending_import(db.db_path)
+
+
+def test_restore_borrows_save_operation_across_damaged_save_confirmation(
+    mock_env, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    import Ankimon.save_import as save_import
+
+    bm, db, _, _ = mock_env
+    selected = bm.backups_path / "backup_borrowed"
+    selected.mkdir()
+    _seed_db(selected / "ankimon.db", "Borrowed recovery", 123)
+    context = bm.capture_context()
+    monkeypatch.setattr(save_import, "should_confirm_unverified_copy", lambda _: True)
+    operation = save_import.reserve_save_operation()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            first = pool.submit(
+                bm.restore_backup,
+                str(selected),
+                interactive=False,
+                context=context,
+                operation=operation,
+            ).result(5)
+            assert first["status"] == "confirmation_required"
+            operation.validate()
+            assert save_import.save_operation_busy()
+            assert save_import.pending_import_info(db.db_path) is None
+            second = pool.submit(
+                bm.restore_backup,
+                str(selected),
+                interactive=False,
+                confirm_unverified=True,
+                context=context,
+                operation=operation,
+            ).result(5)
+        assert second["status"] == "staged", second
+        operation.validate()
+        assert save_import.save_operation_busy()
+        pending = save_import.pending_import_info(db.db_path)
+        assert pending["token"] == second["pending_token"]
+        assert pending["retain_unverified"]
+        with closing(sqlite3.connect(pending["pending_path"])) as staged:
+            assert staged.execute(
+                "SELECT value FROM config WHERE key='trainer.name'"
+            ).fetchone() == ("Borrowed recovery",)
+        assert db.get_config_value("trainer.name") == "Red"
+    finally:
+        operation.release()
+        save_import.cancel_pending_import(db.db_path)
+    assert not save_import.save_operation_busy()

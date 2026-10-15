@@ -65,6 +65,8 @@ jobs:
         run: |
           xvfb-run -a python3 -m harness.checks.probe_real_boot
           xvfb-run -a python3 -m harness.checks.probe_real_play
+          xvfb-run -a python3 -m harness.checks.probe_real_ev_items
+          xvfb-run -a python3 -m harness.checks.probe_real_ev_item_sync
           xvfb-run -a python3 -m harness.scenarios.monthly_challenge
           xvfb-run -a python3 -m harness.checks.probe_real_recent_merges
           xvfb-run -a python3 -m harness.checks.probe_real_migration
@@ -74,7 +76,7 @@ jobs:
           xvfb-run -a python3 -m harness.checks.probe_real_evolution_sprites
 
   tier2_webengine:
-    name: Tier 2 WebEngine — Settings + reviewer HUD
+    name: Tier 2 WebEngine — Settings, backups + reviewer HUD
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,5 +105,7 @@ jobs:
         run: |
           xvfb-run -a python3 -m harness.checks.probe_real_webengine
           xvfb-run -a python3 -m harness.checks.probe_real_item_evolutions
+          xvfb-run -a python3 -m harness.checks.probe_real_item_picker_names
           xvfb-run -a python3 -m harness.checks.probe_real_hud_css
           xvfb-run -a python3 -m harness.checks.probe_real_caught_history
+          xvfb-run -a python3 -m harness.checks.probe_real_backup_manager
