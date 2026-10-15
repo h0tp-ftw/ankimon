@@ -1323,6 +1323,71 @@ class AnkimonDB:
 
         return True
 
+    @contextlib.contextmanager
+    def pokemon_reward_transaction(self, individual_id, *, expected_db_identity=None):
+        """Edit an existing recipient under write intent, without showing UI.
+
+        The yielded record is read only after earlier writers finish. Own only
+        this transaction/savepoint, so bulk reward callers retain their pending
+        work and commit opt-out. Missing, malformed, or switched saves yield None.
+        """
+        updated = False
+        with self.lease_connection() as conn:
+            if (
+                expected_db_identity is not None
+                and self.identity_token() != expected_db_identity
+            ):
+                yield None
+                return
+            raw = conn._conn
+            owns_transaction = not raw.in_transaction
+            transaction_started = savepoint_open = False
+            try:
+                if owns_transaction:
+                    raw.execute("BEGIN IMMEDIATE")
+                    transaction_started = True
+                else:
+                    raw.execute("UPDATE captured_pokemon SET data = data WHERE 0")
+                raw.execute("SAVEPOINT ankimon_pokemon_reward")
+                savepoint_open = True
+                with contextlib.closing(raw.cursor()) as cursor:
+                    row = cursor.execute(
+                        "SELECT data FROM captured_pokemon WHERE individual_id = ?",
+                        (individual_id,),
+                    ).fetchone()
+                pokemon = self._deobfuscate(row["data"]) if row else None
+                if (
+                    not isinstance(pokemon, dict)
+                    or pokemon.get("individual_id") != individual_id
+                ):
+                    pokemon = None
+                yield pokemon
+                if pokemon is not None:
+                    with contextlib.closing(raw.cursor()) as cursor:
+                        cursor.execute(
+                            "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
+                            (self._obfuscate(pokemon), individual_id),
+                        )
+                        if cursor.rowcount != 1:
+                            raise RuntimeError("Pokemon reward update did not save")
+                    updated = True
+                raw.execute("RELEASE SAVEPOINT ankimon_pokemon_reward")
+                savepoint_open = False
+                if owns_transaction and not conn._disable_commit:
+                    raw.commit()
+            except BaseException:
+                try:
+                    if transaction_started:
+                        raw.rollback()
+                    elif savepoint_open:
+                        raw.execute("ROLLBACK TO SAVEPOINT ankimon_pokemon_reward")
+                        raw.execute("RELEASE SAVEPOINT ankimon_pokemon_reward")
+                except Exception:
+                    pass
+                raise
+        if updated:
+            self._clear_reviewer_ownership_cache()
+
     def update_pokemon_attacks(
         self,
         individual_id: str,

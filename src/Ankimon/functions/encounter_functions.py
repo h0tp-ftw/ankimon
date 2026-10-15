@@ -1810,6 +1810,18 @@ def kill_pokemon(
     achievements: dict,
     trainer_card: Union[TrainerCard, None] = None,
 ):
+    origin_db = services.db
+    origin_identity = origin_db.identity_token()
+    origin_main_id = main_pokemon.individual_id
+
+    def same_battle_context():
+        return (
+            services.db is origin_db
+            and origin_db.identity_token() == origin_identity
+            and main_pokemon.individual_id == origin_main_id
+            and getattr(services.main_pokemon, "individual_id", None) == origin_main_id
+        )
+
     events.emit(
         "defeat",
         pokemon=enemy_pokemon.name,
@@ -1821,6 +1833,8 @@ def kill_pokemon(
         trainer_card.gain_xp(
             enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves")
         )
+        if not same_battle_context():
+            return
 
     # Calculate experience based on whether moves are chosen manually
     exp = calc_experience(enemy_pokemon.base_experience, enemy_pokemon.level)
@@ -1857,6 +1871,13 @@ def kill_pokemon(
                 exp = int(exp * 0.5)
             # ORAS mode doesn't reduce the active Pokémon at all, so on
             # failure it just keeps its full, already-calculated `exp`.
+
+    # XP Share can run a nested modal loop. An account/profile switch can
+    # replace the database and mutate the shared main object during that loop.
+    # Never continue the old battle against the newly loaded save, including
+    # when the prompt raised instead of returning normally.
+    if not same_battle_context():
+        return
 
     msg = ""
 

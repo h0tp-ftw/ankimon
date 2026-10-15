@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
 import re
 
 from ..functions.pokedex_functions import _load_moves_cache
-from ..move_names import format_move_description
+from ..move_names import format_move_description, normalize_move_id
 from ..utils import format_move_name
 
 MAX_MOVES = 4
@@ -103,8 +103,17 @@ class MovesetDialog(QDialog):
     def __init__(self, pokemon_name, attacks, new_attacks, parent=None):
         super().__init__(parent)
         self.pokemon_name = pokemon_name
-        self.attacks = list(attacks)
-        self.new_attacks = list(new_attacks)
+        # Legacy/traded records can contain multiple spellings of one move.
+        # Display each identity once while retaining the first original raw ID.
+        seen = set()
+        self.attacks = []
+        self.new_attacks = []
+        for moves, target in ((attacks, self.attacks), (new_attacks, self.new_attacks)):
+            for move in moves:
+                key = normalize_move_id(move)
+                if key not in seen:
+                    seen.add(key)
+                    target.append(move)
         self.selected_moves = None
         self._checkboxes = []
         self.initUI()
@@ -175,13 +184,21 @@ class MovesetDialog(QDialog):
 
     def _refresh_count(self):
         """Update the counter label and gate Confirm on exactly MAX_MOVES checked."""
-        count = len(self._checked_moves())
+        chosen = self._checked_moves()
+        count = len({normalize_move_id(move) for move in chosen})
         self.count_label.setText(f"{count}/{MAX_MOVES} moves selected")
         # Exactly four, like the games: the dialog only opens on a full set,
         # so the player can never accidentally confirm their way down to fewer.
-        self.confirm_button.setEnabled(count == MAX_MOVES)
+        self.confirm_button.setEnabled(count == len(chosen) == MAX_MOVES)
 
     def movesetSelected(self):
         """Store the checked moves in ``selected_moves`` and accept the dialog."""
-        self.selected_moves = self._checked_moves()
+        chosen = self._checked_moves()
+        if (
+            len(chosen) != MAX_MOVES
+            or len({normalize_move_id(move) for move in chosen}) != MAX_MOVES
+        ):
+            self._refresh_count()
+            return
+        self.selected_moves = chosen
         self.accept()

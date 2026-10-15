@@ -5,6 +5,7 @@ languages). This module keeps the historical ``format_move_name`` /
 ``format_move_description`` / ``_current_lang_code`` names other modules import,
 and adds the English base-name lookup used as the final fallback.
 """
+
 import json
 from functools import lru_cache
 
@@ -15,6 +16,11 @@ from .localized_text import (  # noqa: F401  (re-exported)
     move_name as _localized_move_name,
     normalize_key as _normalize_move_key,
 )
+
+
+def normalize_move_id(move: str) -> str:
+    """Compare stored move IDs and display names using the same identity."""
+    return str(move).lower().replace(" ", "").replace("-", "")
 
 
 @lru_cache(maxsize=1)

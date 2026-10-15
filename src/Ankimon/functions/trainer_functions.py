@@ -6,7 +6,7 @@ from .pokedex_functions import check_evolution_for_pokemon, return_name_for_id
 from .friendship_evolution import check_friendship_evolution_for_pokemon
 from .learnset_retrieval import get_levelup_move_for_pokemon
 from .drawing_utils import tooltipWithColour
-from ..move_names import format_move_name
+from ..move_names import format_move_name, normalize_move_id
 from ..services import services
 
 MAX_MOVES = 4
@@ -94,11 +94,18 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
     if not new_attacks:
         return
 
-    learned = []
+    # A legacy four-slot record may contain fewer than four actual moves.
+    # If even the complete offered pool cannot fill four distinct slots, teach
+    # it automatically instead of opening a dialog that can never confirm.
+    if len({_normalize_move_id(move) for move in attacks + new_attacks}) < MAX_MOVES:
+        unique = {}
+        for move in attacks:
+            unique.setdefault(_normalize_move_id(move), move)
+        attacks = list(unique.values())
+
     while new_attacks and len(attacks) < MAX_MOVES:
         move = new_attacks.pop(0)
         attacks.append(move)
-        learned.append(move)
     if new_attacks:
         if _in_bulk_resolve():
             # Never pop a dialog while replaying a bulk backlog; the moves are
@@ -134,6 +141,12 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
         )
         return
     pokemon.update(updated)
+    original_ids = {_normalize_move_id(move) for move in original_attacks}
+    learned = [
+        move
+        for move in updated["attacks"]
+        if _normalize_move_id(move) not in original_ids
+    ]
     if learned:
         msg = _translate(
             "mainpokemon_learned_new_attack",
@@ -159,7 +172,7 @@ def _normalize_move_id(move):
     str
         Lower-cased id with spaces and hyphens removed.
     """
-    return str(move).lower().replace(" ", "").replace("-", "")
+    return normalize_move_id(move)
 
 
 def _collect_new_levelup_moves(name, attacks, start_level, end_level):
@@ -439,64 +452,64 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
     msg = ""
     evolution_triggered = False
 
-    pokemon = db.get_pokemon(individual_id)
-    if pokemon is None:
-        return False
-    # Classic XP Share can round a one-point reward down to zero. A recipient
-    # that earns no XP must not gain friendship or trigger an evolution.
+    # Zero rewards do not write or trigger friendship/evolution.
     if exp <= 0:
-        return True
+        return db.get_pokemon(individual_id) is not None
+    # Serialize the reward itself as well as the later moveset patch. No modal
+    # may open inside this transaction.
+    with db.pokemon_reward_transaction(
+        individual_id, expected_db_identity=db_identity
+    ) as pokemon:
+        if pokemon is None:
+            return False
+        current_level = int(pokemon["level"])  # MODIFIED: Use local variable for level
+        if pokemon.get("held_item") == "lucky-egg":
+            exp = int(exp * 1.5)  # Multiply by 1.5 if pokemon holds lucky egg
+            msg += f"{pokemon['name']}'s Lucky Egg boosts its XP gained!\n"
+        current_xp = pokemon.get("xp") or pokemon.get("stats", {}).get("xp", 0)
+        growth_rate = pokemon[
+            "growth_rate"
+        ]  # MODIFIED: Use local variable for growth rate
+        experience_needed = int(
+            find_experience_for_level(growth_rate, current_level, remove_level_cap)
+        )  # MODIFIED: Pre-calculate needed XP
+        evo_id = None  # Initialize variable
 
-    current_level = int(pokemon["level"])  # MODIFIED: Use local variable for level
-    if pokemon.get("held_item") == "lucky-egg":
-        exp = int(exp * 1.5)  # Multiply by 1.5 if pokemon holds lucky egg
-        msg += f"{pokemon['name']}'s Lucky Egg boosts its XP gained!\n"
-    current_xp = pokemon.get("xp") or pokemon.get("stats", {}).get("xp", 0)
-    growth_rate = pokemon["growth_rate"]  # MODIFIED: Use local variable for growth rate
-    experience_needed = int(
-        find_experience_for_level(growth_rate, current_level, remove_level_cap)
-    )  # MODIFIED: Pre-calculate needed XP
-    evo_id = None  # Initialize variable
-
-    levels_gained = 0
-    logger.log("info", "Running XP share function")
-    if experience_needed > exp + current_xp:
-        pokemon["xp"] = current_xp + exp
-    else:
-        while exp + current_xp > experience_needed:
-            if remove_level_cap or current_level < 100:
-                if levels_gained >= 10:
-                    logger.log(
-                        "error",
-                        f"XP Share level-up loop exceeded safety cap of 10 for {pokemon['name']}",
-                    )
-                    exp = max(0, experience_needed - 1)
+        levels_gained = 0
+        logger.log("info", "Running XP share function")
+        if experience_needed > exp + current_xp:
+            pokemon["xp"] = current_xp + exp
+        else:
+            while exp + current_xp > experience_needed:
+                if remove_level_cap or current_level < 100:
+                    if levels_gained >= 10:
+                        logger.log(
+                            "error",
+                            f"XP Share level-up loop exceeded safety cap of 10 for {pokemon['name']}",
+                        )
+                        exp = max(0, experience_needed - 1)
+                        current_xp = 0
+                        break
+                    levels_gained += 1
+                    current_level += 1
+                    exp = exp + current_xp - experience_needed
                     current_xp = 0
+                    experience_needed = int(
+                        find_experience_for_level(
+                            growth_rate, current_level, remove_level_cap
+                        )
+                    )  # MODIFIED: Recalculate needed XP
+                    msg += f"XP increased for {pokemon['name']} with level {current_level} and XP {exp}\n"
+                else:
                     break
-                levels_gained += 1
-                current_level += 1
-                exp = exp + current_xp - experience_needed
-                current_xp = 0
-                experience_needed = int(
-                    find_experience_for_level(
-                        growth_rate, current_level, remove_level_cap
-                    )
-                )  # MODIFIED: Recalculate needed XP
-                msg += f"XP increased for {pokemon['name']} with level {current_level} and XP {exp}\n"
-            else:
-                break
-        pokemon["level"] = current_level
-        pokemon["xp"] = 0 if exp < 0 else exp
+            pokemon["level"] = current_level
+            pokemon["xp"] = 0 if exp < 0 else exp
 
-    # Passive XP Share earns less friendship than battling; neither is capped.
-    friendship_gain = random.randint(1, 2)
-    if pokemon.get("held_item") == "soothe-bell":
-        friendship_gain = int(friendship_gain * 1.5)
-    pokemon["friendship"] = pokemon.get("friendship", 0) + friendship_gain
-
-    # Commit rewards before any modal. A queued mobile worker can finish during
-    # move selection, and its newer progress must never be overwritten afterward.
-    db.save_pokemon(pokemon)
+        # Passive XP Share earns less friendship than battling; neither is capped.
+        friendship_gain = random.randint(1, 2)
+        if pokemon.get("held_item") == "soothe-bell":
+            friendship_gain = int(friendship_gain * 1.5)
+        pokemon["friendship"] = pokemon.get("friendship", 0) + friendship_gain
 
     if levels_gained > 0:
         try:

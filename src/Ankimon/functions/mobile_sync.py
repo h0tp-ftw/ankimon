@@ -2857,35 +2857,135 @@ def _attribute_xp_and_evs_to_companion(
     *,
     xp_share=False,
 ) -> None:
-    """Persist mobile rewards and uncapped friendship, then refresh active state.
-
-    XP Share recipients earn less friendship than the battling companion;
-    their role is explicit because zero victories can also accompany battle XP.
-    """
-    if xp_gained <= 0 and not any(ev_yield_gained.values()) and battles_fought <= 0:
+    """Atomically reward the current recipient, then publish UI/live updates."""
+    if not companion_id or (
+        xp_gained <= 0 and not any(ev_yield_gained.values()) and battles_fought <= 0
+    ):
         return
+    from ..services import services
+    from .. import utils
+    from .drawing_utils import tooltipWithColour
 
     if db is None:
-        from ..services import services
-
         db = services.db
-    pkmndata = None
-    if companion_id:
-        try:
-            pkmndata = db.get_pokemon(companion_id)
-        except Exception:
-            pass
+    identity = db.identity_token()
+    main = services.main_pokemon
+    in_bulk = getattr(utils, "in_bulk_resolve", False)
+    active_logger = logger or services.logger
+    with db.pokemon_reward_transaction(
+        companion_id, expected_db_identity=identity
+    ) as pokemon:
+        if pokemon is None:
+            return
+        messages, learned, pending = _calculate_mobile_reward(
+            pokemon,
+            xp_gained,
+            ev_yield_gained,
+            settings_obj,
+            battles_fought,
+            xp_share=xp_share,
+        )
 
-    if not pkmndata:
-        return
+    def still_active():
+        return (
+            services.db is db
+            and db.identity_token() == identity
+            and main is not None
+            and services.main_pokemon is main
+            and getattr(main, "individual_id", None) == companion_id
+        )
 
+    def refresh_active(record):
+        main.xp = record["xp"]
+        main.level = record["level"]
+        main.ev = record["ev"].copy()
+        main.friendship = record["friendship"]
+        main.pokemon_defeated = record["pokemon_defeated"]
+        if isinstance(record.get("attacks"), list):
+            main.attacks = list(record["attacks"])
+        main.invalidate_cp_cache()
+        main.update_stats()
+
+    if still_active():
+        refresh_active(pokemon)
+    for kind, message in messages:
+        if kind != "level":
+            if active_logger:
+                active_logger.log(kind, message)
+        elif still_active() and not in_bulk:
+            try:
+                if active_logger:
+                    active_logger.game_log(f"Level Up: {message}")
+                tooltipWithColour(message, "#6A4DAC")
+                if (
+                    settings_obj
+                    and settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True
+                    and active_logger
+                ):
+                    active_logger.log_and_showinfo("info", message)
+            except Exception:
+                # Notification failure must not make a durable reward look
+                # unprocessed to the replay caller.
+                pass
+    if still_active() and not in_bulk:
+        for move in learned:
+            try:
+                tooltipWithColour(
+                    f"{pokemon.get('name', '').capitalize()} learned {move}!", "#6A4DAC"
+                )
+            except Exception:
+                pass
+        for move in pending:
+            if not still_active():
+                return
+            attacks = pokemon.get("attacks", [])
+            if not isinstance(attacks, list):
+                return
+            try:
+                selected = services.ui.choose_attack_to_replace(attacks, move)
+            except Exception as error:
+                if active_logger:
+                    active_logger.log("error", f"Mobile move prompt failed: {error}")
+                return
+            if not still_active():
+                return
+            if selected not in attacks:
+                continue
+            chosen = list(attacks)
+            chosen[chosen.index(selected)] = move
+            try:
+                updated = db.update_pokemon_attacks(
+                    companion_id,
+                    pokemon,
+                    chosen,
+                    expected_db_identity=identity,
+                )
+            except Exception as error:
+                if active_logger:
+                    active_logger.log(
+                        "warning",
+                        f"Mobile reward saved, but move choice failed: {error}; use Remember Attacks.",
+                    )
+                return
+            if updated is None:
+                return
+            pokemon = updated
+            refresh_active(pokemon)
+
+
+def _calculate_mobile_reward(
+    pkmndata, xp_gained, ev_yield_gained, settings_obj, battles_fought, *, xp_share
+):
+    """Mutate a locked current record; return notifications and deferred choices.
+
+    No UI or live singleton mutations may happen until the database write succeeds.
+    """
+    from .. import utils
     from .pokemon_functions import (
         find_experience_for_level,
         get_levelup_move_for_pokemon,
     )
-    from .drawing_utils import tooltipWithColour
     from ..pyobj.pokemon_obj import PokemonObject
-    from .. import utils
 
     growth_rate = pkmndata.get("growth_rate", "medium-fast")
     level = int(pkmndata.get("level", 1))
@@ -2902,16 +3002,7 @@ def _attribute_xp_and_evs_to_companion(
     else:
         level_cap = 100
 
-    from ..services import services
-
-    main_pokemon_singleton = services.main_pokemon
-    is_active = (
-        main_pokemon_singleton is not None
-        and getattr(main_pokemon_singleton, "individual_id", None) == companion_id
-    )
-    in_bulk = getattr(utils, "in_bulk_resolve", False)
-
-    color = "#6A4DAC"
+    messages, learned, pending = [], [], []
 
     levels_gained = 0
     # level-ups
@@ -2919,20 +3010,12 @@ def _attribute_xp_and_evs_to_companion(
         level_cap is None or level < level_cap
     ):
         if levels_gained >= 10:
-            if is_active and not in_bulk:
-                try:
-                    active_logger = logger or (
-                        services.logger
-                        if (services and getattr(services, "logger", None))
-                        else None
-                    )
-                    if active_logger:
-                        active_logger.log(
-                            "error",
-                            f"Mobile sync level-up loop exceeded safety cap of 10 for {pkmndata.get('name')}",
-                        )
-                except Exception:
-                    pass
+            messages.append(
+                (
+                    "error",
+                    f"Mobile sync level-up loop exceeded safety cap of 10 for {pkmndata.get('name')}",
+                )
+            )
             next_level_cost = int(
                 find_experience_for_level(growth_rate, level, remove_cap)
             )
@@ -2940,24 +3023,9 @@ def _attribute_xp_and_evs_to_companion(
             break
         levels_gained += 1
         level += 1
-        if is_active and main_pokemon_singleton:
-            main_pokemon_singleton.level = level
-            main_pokemon_singleton.update_stats()
         msg = f"Your {pkmndata.get('name', 'Pokemon')} is now level {level} !"
 
-        if is_active and not in_bulk:
-            try:
-                if services.logger:
-                    services.logger.game_log(f"Level Up: {msg}")
-                tooltipWithColour(msg, color)
-                if (
-                    settings_obj
-                    and settings_obj.get("gui.pop_up_dialog_message_on_defeat") is True
-                ):
-                    if services.logger:
-                        services.logger.log_and_showinfo("info", f"{msg}")
-            except Exception:
-                pass
+        messages.append(("level", msg))
 
         xp = int(max(0, xp - int(experience_req)))
         experience_req = int(find_experience_for_level(growth_rate, level, remove_cap))
@@ -2976,20 +3044,9 @@ def _attribute_xp_and_evs_to_companion(
             for new_attack in new_attacks:
                 if len(attacks) < 4 and new_attack not in attacks:
                     attacks.append(new_attack)
-                    if is_active and not in_bulk:
-                        msg_learn = f"{pkmndata.get('name', '').capitalize()} learned {new_attack}!"
-                        tooltipWithColour(msg_learn, color)
-                elif new_attack not in attacks:
-                    if is_active and not in_bulk:
-                        from ..pyobj.attack_dialog import AttackDialog
-                        from PyQt6.QtWidgets import QDialog
-
-                        dialog = AttackDialog(attacks, new_attack)
-                        if dialog.exec() == QDialog.DialogCode.Accepted:
-                            selected_attack = dialog.selected_attack
-                            if selected_attack in attacks:
-                                idx = attacks.index(selected_attack)
-                                attacks[idx] = new_attack
+                    learned.append(new_attack)
+                elif new_attack not in attacks and new_attack not in pending:
+                    pending.append(new_attack)
             pkmndata["attacks"] = attacks
 
     pkmndata["level"] = level
@@ -3077,12 +3134,12 @@ def _attribute_xp_and_evs_to_companion(
         if is_valid_base_stats(base_stats):
             pkmndata["base_stats"] = base_stats
         else:
-            from ..services import services
-
-            services.logger.log(
-                "warning",
-                f"Could not resolve base_stats for {pkmndata.get('name')!r} "
-                f"({pkmndata.get('individual_id')}); stats left unscaled.",
+            messages.append(
+                (
+                    "warning",
+                    f"Could not resolve base_stats for {pkmndata.get('name')!r} "
+                    f"({pkmndata.get('individual_id')}); stats left unscaled.",
+                )
             )
 
     if is_valid_base_stats(base_stats):
@@ -3112,20 +3169,4 @@ def _attribute_xp_and_evs_to_companion(
         int(pkmndata.get("pokemon_defeated", 0)) + battles_fought
     )
 
-    # Call db.save_pokemon(updated_entry)
-    db.save_pokemon(pkmndata)
-
-    # 4. If active, also update the in-memory singleton
-    if is_active:
-        mp = main_pokemon_singleton
-        mp.xp = pkmndata["xp"]
-        mp.level = pkmndata["level"]
-        mp.ev = pkmndata["ev"].copy()
-        mp.friendship = pkmndata["friendship"]
-        mp.pokemon_defeated = pkmndata["pokemon_defeated"]
-        if "attacks" in pkmndata:
-            mp.attacks = list(pkmndata["attacks"])
-        mp.invalidate_cp_cache()
-        # Level-up refreshes happen before EV awards. Refresh again after the
-        # final state is applied, including for EV-only mobile progress.
-        mp.update_stats()
+    return messages, learned, pending
