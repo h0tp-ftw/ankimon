@@ -42,7 +42,7 @@ from ..functions.friendship_evolution import (
     check_friendship_evolution_for_pokemon,
 )
 from ..pyobj.error_handler import show_warning_with_traceback
-from ..functions.trainer_functions import xp_share_gain_exp
+from ..functions.trainer_functions import learn_levelup_moves, xp_share_gain_exp
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.drawing_utils import tooltipWithColour
 from ..move_names import format_move_name
@@ -1387,6 +1387,35 @@ def save_main_pokemon_progress(
     logger: ShowInfoLogger,
     evo_window: EvoWindow,
 ):
+    """Award battle XP to the active Pokemon and resolve its level-ups.
+
+    Applies ``exp`` (respecting the level-100 cap unless disabled), raises
+    the level while the XP curve allows (at most 10 levels per call), and on
+    each new level learns that level's moves through the shared
+    ``learn_levelup_moves`` checklist flow before running the level and
+    friendship evolution checks, so a move-based evolution sees the moves of
+    that very level. Persists the updated main record.
+
+    Parameters
+    ----------
+    main_pokemon : PokemonObject
+        The live active Pokemon; level, xp and stats are updated in place.
+    enemy_pokemon : PokemonObject
+        The defeated Pokemon, source of EV yield and base experience.
+    exp : int
+        Experience points to award.
+    achievements : dict
+        Badge state, updated when a level-up badge is earned.
+    logger : ShowInfoLogger
+        Logger for level-up and move messages.
+    evo_window : EvoWindow
+        Window used to offer evolutions.
+
+    Returns
+    -------
+    int
+        The Pokemon's level after the award.
+    """
     if settings_obj.get("misc.remove_level_cap") is True:
         main_pokemon.xp += exp
         level_cap = None
@@ -1508,71 +1537,19 @@ def save_main_pokemon_progress(
         if main_pokemon_data:
             mainpkmndata = main_pokemon_data
             if mainpkmndata["name"] == main_pokemon.name.capitalize():
-                attacks = mainpkmndata["attacks"]
-                new_attacks = get_levelup_move_for_pokemon(
-                    main_pokemon.name.lower(), int(main_pokemon.level)
+                # Same flow as XP Share recipients (#973): free slots are filled
+                # silently, then at most ONE moveset checklist dialog for this
+                # level instead of one replace-dialog per move. Runs before the
+                # evolution check below so a levelMove evolution sees the moves.
+                learn_levelup_moves(
+                    logger,
+                    mainpkmndata,
+                    int(main_pokemon.level) - 1,
+                    int(main_pokemon.level),
+                    show_popup=settings_obj.get("gui.pop_up_dialog_message_on_defeat")
+                    is True,
                 )
-                if new_attacks:
-                    msg = ""
-                    msg += translator.translate(
-                        "mainpokemon_can_learn_new_attack",
-                        main_pokemon_name=_disp_name(main_pokemon),
-                    )
-                for new_attack in new_attacks:
-                    if len(attacks) < 4 and new_attack not in attacks:
-                        attacks.append(new_attack)
-                        msg += translator.translate(
-                            "mainpokemon_learned_new_attack",
-                            new_attack_name=format_move_name(new_attack),
-                            main_pokemon_name=_disp_name(main_pokemon),
-                        )
-                        color = "#6A4DAC"
-                        if not _in_bulk_resolve():
-                            tooltipWithColour(msg, color)
-                            if (
-                                settings_obj.get("gui.pop_up_dialog_message_on_defeat")
-                                is True
-                            ):
-                                logger.log_and_showinfo("info", f"{msg}")
-                    elif new_attack not in attacks:
-                        if _in_bulk_resolve():
-                            # Never pop a move-replace dialog while replaying a
-                            # bulk backlog; log and discard instead.
-                            try:
-                                logger.log(
-                                    "info",
-                                    f"[Bulk Resolve] Discarded learning new move {new_attack} on {main_pokemon.name}.",
-                                )
-                            except Exception:
-                                pass
-                            continue
-                        # Ask via the UI port (real dialog under Anki; scripted
-                        # choice headless). None => discard the new move.
-                        selected_attack = services.ui.choose_attack_to_replace(
-                            attacks, new_attack
-                        )
-                        if selected_attack is not None:
-                            index_to_replace = None
-                            for index, attack in enumerate(attacks):
-                                if attack == selected_attack:
-                                    index_to_replace = index
-                            # If the attack is found, replace it with 'new_attack'
-                            if index_to_replace is not None:
-                                attacks[index_to_replace] = new_attack
-                                logger.log_and_showinfo(
-                                    "info",
-                                    f"Replaced '{selected_attack}' with '{new_attack}'",
-                                )
-                            else:
-                                logger.log_and_showinfo(
-                                    "info", f"'{selected_attack}' not found in the list"
-                                )
-                        else:
-                            # User declined to replace a move; discard the new one.
-                            logger.log_and_showinfo(
-                                "info", f"{new_attack} will be discarded."
-                            )
-                mainpkmndata["attacks"] = attacks
+                attacks = mainpkmndata["attacks"]
 
         # Request to open the pokemon evo window — AFTER the level-up attack
         # merge above, so a move-based (levelMove) evolution sees moves learned

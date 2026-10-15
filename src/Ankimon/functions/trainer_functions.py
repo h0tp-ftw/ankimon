@@ -33,15 +33,20 @@ def _in_bulk_resolve() -> bool:
     return bool(getattr(utils, "in_bulk_resolve", False))
 
 
-def _learn_levelup_moves(logger, pokemon, start_level, end_level):
-    """Teach an XP Share recipient the moves of every level it just gained.
+def learn_levelup_moves(logger, pokemon, start_level, end_level, show_popup=False):
+    """Teach one stored Pokemon the level-up moves of a level range.
 
-    Mirrors the active Pokemon's level-up in ``encounter_functions``, with one
-    difference: a recipient can jump several levels off a single win, so all
-    new moves are collected first. Free slots are filled silently; if moves
-    remain and the set is full, the user gets ONE ``choose_moveset`` prompt
-    for this Pokemon rather than one per move. Declined moves stay available
-    through Remember Attacks.
+    Shared by the active Pokemon's level-up (``encounter_functions``, called
+    once per gained level) and the XP Share award below (called once for the
+    whole award). The range ``start_level + 1 .. end_level`` may be a single
+    level. Moves already known are skipped; free slots are filled silently
+    with the "learned" tooltip; if candidates remain and the set is full, the
+    user gets ONE ``choose_moveset`` prompt for this Pokemon rather than one
+    per move. On decline, an invalid selection, a presenter exception or
+    during bulk resolve the current set is kept. The helper mutates
+    ``pokemon["attacks"]`` (always a list of move ids afterwards) and does
+    not persist the record; declined moves stay available through Remember
+    Attacks.
 
     Parameters
     ----------
@@ -55,6 +60,10 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
         Level before the XP was applied (exclusive).
     end_level : int
         Level after the XP was applied (inclusive).
+    show_popup : bool, optional
+        Also show the "learned" message as an info popup (the active
+        Pokemon's ``gui.pop_up_dialog_message_on_defeat`` behaviour).
+        Never shown during bulk resolve.
 
     Returns
     -------
@@ -105,6 +114,8 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
         logger.log("info", msg)
         if not _in_bulk_resolve():
             tooltipWithColour(msg, LEVEL_UP_COLOR)
+            if show_popup:
+                logger.log_and_showinfo("info", msg)
 
     if new_attacks:
         if _in_bulk_resolve():
@@ -119,6 +130,9 @@ def _learn_levelup_moves(logger, pokemon, start_level, end_level):
 
     pokemon["attacks"] = attacks
 
+
+# Backwards-compatible alias for the pre-#973 private name.
+_learn_levelup_moves = learn_levelup_moves
 
 def _normalize_move_id(move):
     """Normalise a move id the way the move-evolution gate does.
@@ -446,7 +460,7 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         # new moves persist with the level-up and a move-based evolution sees
         # them on this very level (same ordering as the active Pokemon).
         if levels_gained > 0:
-            _learn_levelup_moves(
+            learn_levelup_moves(
                 logger, pokemon, current_level - levels_gained, current_level
             )
 
