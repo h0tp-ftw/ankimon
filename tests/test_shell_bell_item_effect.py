@@ -448,6 +448,98 @@ def test_full_hp_holder_heals_after_contact_damage(
     assert _heals(engine, outcome) == pytest.approx([-contact_damage, 2])
 
 
+@pytest.mark.parametrize("side", ["user", "opponent"])
+@pytest.mark.parametrize("substitute", [False, True])
+@pytest.mark.parametrize("holder_hp", [6, 50, 100])
+@pytest.mark.parametrize("move", ["bodyslam", "thunderpunch"])
+@pytest.mark.parametrize(
+    ("ability", "item", "contact_damage"),
+    [
+        ("roughskin", None, 100 / 16),
+        ("ironbarbs", None, 100 / 8),
+        (None, "rockyhelmet", 100 / 6),
+    ],
+)
+def test_secondary_status_failure_keeps_contact_damage_and_shell_bell(
+    engine, side, substitute, holder_hp, move, ability, item, contact_damage
+):
+    state = _state(engine, hp=holder_hp)
+    state.opponent.active.ability = ability
+    state.opponent.active.item = item
+    if substitute:
+        state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    if side == "opponent":
+        state.user, state.opponent = state.opponent, state.user
+    moves = {"user_move": "splash", "opponent_move": "splash"}
+    moves[f"{side}_move"] = move
+    outcomes = _outcomes(engine, state, **moves)
+    assert len(outcomes) == 2  # Both status success and failure are real hits.
+    damage = 25 if substitute else (36 if move == "bodyslam" else 32)
+    expected = [-min(holder_hp, contact_damage)]
+    if holder_hp > contact_damage:
+        expected.append(damage // 8)
+    for outcome in outcomes:
+        assert _heals(engine, outcome, side) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("substitute", [False, True])
+def test_deferred_recovery_does_not_turn_a_missed_attack_into_a_hit(engine, substitute):
+    state = _state(engine, speed=50)
+    state.opponent.active.ability = "roughskin"
+    # A faster foe may spend HP on Substitute before the holder's missed hit.
+    outcomes = _outcomes(
+        engine,
+        state,
+        user_move="takedown",
+        opponent_move="substitute" if substitute else "splash",
+    )
+    (missed,) = [
+        outcome for outcome in outcomes if outcome.percentage == pytest.approx(0.15)
+    ]
+    assert _heals(engine, missed) == []
+
+
+@pytest.mark.parametrize("prevented_by", ["immunity", "paralysis"])
+def test_prevented_hit_does_not_run_deferred_contact_or_shell_bell(
+    engine, prevented_by
+):
+    state = _state(engine)
+    state.opponent.active.item = "rockyhelmet"
+    if prevented_by == "immunity":
+        state.opponent.active.ability = "flashfire"
+    else:
+        state.user.active.status = engine.constants.PARALYZED
+    outcomes = _outcomes(engine, state, user_move="firepunch")
+    prevented = [
+        outcome
+        for outcome in outcomes
+        if not _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent")
+    ]
+    assert prevented
+    assert all(_heals(engine, outcome) == [] for outcome in prevented)
+
+
+@pytest.mark.parametrize("item", [None, "shellbell"])
+def test_failed_secondary_contact_still_faints_attacker_after_recoil(engine, item):
+    state = _state(engine, hp=20, item=item)
+    state.opponent.active.item = "rockyhelmet"
+    outcomes = _outcomes(engine, state, user_move="flareblitz")
+    assert len(outcomes) == 2
+    for outcome in outcomes:
+        assert _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE) == [16]
+        assert _heals(engine, outcome) == [-4]
+
+
+def test_defenders_failed_secondary_preserves_sheer_force_suppression(engine):
+    state = _state(engine, ability="sheerforce")
+    state.opponent.active.ability = "static"
+    state.opponent.active.item = "rockyhelmet"
+    outcomes = _outcomes(engine, state, user_move="bodyslam")
+    assert len(outcomes) == 2  # Static can still fail after a Sheer Force hit.
+    for outcome in outcomes:
+        assert _heals(engine, outcome) == pytest.approx([-100 / 6])
+
+
 def test_contact_recovery_uses_this_moves_damage_after_earlier_recoil(engine):
     state = _state(engine, speed=50)
     state.opponent.active.ability = "roughskin"
@@ -638,7 +730,7 @@ def test_reloading_upgrades_the_previous_damage_wrapper(engine, version):
         generator.get_instructions_from_damage = installed
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine, version):
     generator = engine.hook.instruction_generator
     installed = generator.get_instructions_from_attacker_recovery
@@ -672,5 +764,9 @@ def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine, ver
         assert _heals(engine, outcome) == [damage // 2, max(1, damage // 8)]
         (outcome,) = _outcomes(engine, _state(engine, hp=20), user_move="painsplit")
         assert _heals(engine, outcome) == [40]
+        state = _state(engine)
+        state.opponent.active.ability = "roughskin"
+        for outcome in _outcomes(engine, state, user_move="bodyslam"):
+            assert _heals(engine, outcome) == [-6.25, 4]
     finally:
         generator.get_instructions_from_attacker_recovery = installed

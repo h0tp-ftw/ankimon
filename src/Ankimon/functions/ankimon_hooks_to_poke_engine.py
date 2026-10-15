@@ -148,18 +148,25 @@ def _shell_bell_substitute_damage(mutator, defender, damage, move, instruction):
         mutator.reverse(instruction.instructions)
 
 
+def _shell_bell_hit_damage(instruction_set, defender, first_added, substitute_damage=0):
+    """Count only this move's landed damage, including damage to Substitute."""
+    return substitute_damage + sum(
+        instr[2]
+        for instr in instruction_set.instructions[first_added:]
+        if instr[0] == constants.MUTATOR_DAMAGE
+        and instr[1] == defender
+        and instr[2] > 0
+    )
+
+
 def _add_shell_bell_healing(
     mutator, instruction_set, defender, first_added, move, substitute_damage=0
 ):
     """Append bounded healing from this hit without changing the input state."""
     if instruction_set.frozen or move.get(_SHELL_BELL_SUPPRESSED_KEY):
         return
-    actual_damage = substitute_damage + sum(
-        instr[2]
-        for instr in instruction_set.instructions[first_added:]
-        if instr[0] == constants.MUTATOR_DAMAGE
-        and instr[1] == defender
-        and instr[2] > 0
+    actual_damage = _shell_bell_hit_damage(
+        instruction_set, defender, first_added, substitute_damage
     )
     if actual_damage <= 0:
         return
@@ -378,7 +385,7 @@ def _install_shell_bell_sheer_force():
     modify_attack_being_used.ability_lookup["sheerforce"] = mark_sheer_force
 
 
-_SHELL_BELL_RECOVERY_VERSION = 4
+_SHELL_BELL_RECOVERY_VERSION = 5
 
 
 def _install_shell_bell_recovery():
@@ -437,14 +444,31 @@ def _install_shell_bell_recovery():
             recovery_fn = original
 
         def after_recovery(mutator, attacker_string, move, instruction):
-            results = recovery_fn(mutator, attacker_string, move, instruction)
             # Pain Split uses synthetic damage/recovery to set both HP values;
             # that redistribution is not attack damage eligible for Shell Bell.
             if move.get(constants.ID) == "painsplit":
-                return results
+                return recovery_fn(mutator, attacker_string, move, instruction)
             context = getattr(mutator, "_ankimon_shell_bell_move", None)
-            if context is not None and context[0] == attacker_string:
-                _, defender, first_added = context
+            if context is None or context[0] != attacker_string:
+                return recovery_fn(mutator, attacker_string, move, instruction)
+            _, defender, first_added = context
+            substitute_damage = getattr(
+                instruction, "_ankimon_shell_bell_substitute_damage", 0
+            )
+            # A failed status secondary also freezes a successful hit. Its
+            # contact cost must still resolve before Shell Bell checks survival.
+            # Actual misses and prevented moves have no damage in this slice.
+            secondary_failed = (
+                instruction.frozen
+                and _shell_bell_hit_damage(
+                    instruction, defender, first_added, substitute_damage
+                )
+                > 0
+            )
+            if secondary_failed:
+                instruction.frozen = False
+            try:
+                results = recovery_fn(mutator, attacker_string, move, instruction)
                 for outcome in results:
                     substitute_damage = getattr(
                         outcome, "_ankimon_shell_bell_substitute_damage", 0
@@ -461,7 +485,10 @@ def _install_shell_bell_recovery():
                         move,
                         substitute_damage,
                     )
-            return results
+                return results
+            finally:
+                if secondary_failed:
+                    instruction.frozen = True
 
         after_recovery._ankimon_shell_bell_version = _SHELL_BELL_RECOVERY_VERSION
         after_recovery._ankimon_wrapped_function = recovery_fn
