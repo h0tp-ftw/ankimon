@@ -191,6 +191,34 @@ def test_drain_punch_cannot_heal_past_full_hp(engine):
     assert _heals(engine, outcome) == [5]
 
 
+@pytest.mark.parametrize("side", ["user", "opponent"])
+@pytest.mark.parametrize(("holder_hp", "foe_hp"), [(20, 100), (80, 20), (60, 60)])
+def test_pain_split_only_equalizes_hp(engine, side, holder_hp, foe_hp):
+    state = _state(engine, hp=holder_hp)
+    state.opponent.active.hp = foe_hp
+    if side == "opponent":
+        state.user, state.opponent = state.opponent, state.user
+    moves = {"user_move": "splash", "opponent_move": "splash"}
+    moves[f"{side}_move"] = "painsplit"
+    (outcome,) = _outcomes(engine, state, **moves)
+    expected_hp = (holder_hp + foe_hp) // 2
+    mutator = engine.hook.StateMutator(state)
+    mutator.apply(outcome.instructions)
+    try:
+        assert state.user.active.hp == expected_hp
+        assert state.opponent.active.hp == expected_hp
+    finally:
+        mutator.reverse(outcome.instructions)
+
+
+@pytest.mark.parametrize("move", ["nightshade", "seismictoss"])
+def test_fixed_damage_attacks_still_activate_shell_bell(engine, move):
+    (outcome,) = _outcomes(engine, _state(engine), user_move=move)
+    damage = sum(_amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent"))
+    assert damage > 0
+    assert _heals(engine, outcome) == [max(1, damage // 8)]
+
+
 def test_lethal_recoil_cannot_be_undone_by_shell_bell(engine):
     (outcome,) = _outcomes(engine, _state(engine, hp=1), user_move="doubleedge")
     assert _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE) == [1]
@@ -470,7 +498,8 @@ def test_reloading_upgrades_the_previous_damage_wrapper(engine, version):
         generator.get_instructions_from_damage = installed
 
 
-def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine):
+@pytest.mark.parametrize("version", [1, 2])
+def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine, version):
     generator = engine.hook.instruction_generator
     installed = generator.get_instructions_from_attacker_recovery
     recovery_fn = installed._ankimon_wrapped_function
@@ -481,7 +510,9 @@ def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine):
             outcome.add_instruction((engine.constants.MUTATOR_HEAL, attacker_string, 1))
         return outcomes
 
-    legacy_recovery._ankimon_shell_bell_version = 1
+    legacy_recovery._ankimon_shell_bell_version = version
+    if version > 1:
+        legacy_recovery._ankimon_wrapped_function = recovery_fn
     generator.get_instructions_from_attacker_recovery = legacy_recovery
     try:
         _load_hook()
@@ -499,5 +530,7 @@ def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine):
             _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent")
         )
         assert _heals(engine, outcome) == [damage // 2, max(1, damage // 8)]
+        (outcome,) = _outcomes(engine, _state(engine, hp=20), user_move="painsplit")
+        assert _heals(engine, outcome) == [40]
     finally:
         generator.get_instructions_from_attacker_recovery = installed

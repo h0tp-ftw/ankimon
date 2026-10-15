@@ -301,7 +301,7 @@ def _install_shell_bell_sheer_force():
     modify_attack_being_used.ability_lookup["sheerforce"] = mark_sheer_force
 
 
-_SHELL_BELL_RECOVERY_VERSION = 2
+_SHELL_BELL_RECOVERY_VERSION = 3
 
 
 def _install_shell_bell_recovery():
@@ -361,6 +361,10 @@ def _install_shell_bell_recovery():
 
         def after_recovery(mutator, attacker_string, move, instruction):
             results = recovery_fn(mutator, attacker_string, move, instruction)
+            # Pain Split uses synthetic damage/recovery to set both HP values;
+            # that redistribution is not attack damage eligible for Shell Bell.
+            if move.get(constants.ID) == "painsplit":
+                return results
             context = getattr(mutator, "_ankimon_shell_bell_move", None)
             if context is not None and context[0] == attacker_string:
                 _, defender, first_added = context
