@@ -29,6 +29,7 @@ settings_obj = None
 # it for 17 of the engine's 37 damaging Electric moves, Thunderbolt included.
 _ON_HIT_BOOSTS_KEY = "_ankimon_on_hit_boosts"
 _ON_HIT_ITEM_KEY = "_ankimon_on_hit_item"
+_SHELL_BELL_SUPPRESSED_KEY = "_ankimon_shell_bell_suppressed"
 
 
 def _effective_boost(active, stat, stages):
@@ -93,9 +94,9 @@ def _on_hit_item_triggers(mutator, instruction_set, defender, boosts, first_adde
         mutator.reverse(instruction_set.instructions)
 
 
-def _add_shell_bell_healing(mutator, instruction_set, defender, first_added):
+def _add_shell_bell_healing(mutator, instruction_set, defender, first_added, move):
     """Append bounded healing from this hit without changing the input state."""
-    if instruction_set.frozen:
+    if instruction_set.frozen or move.get(_SHELL_BELL_SUPPRESSED_KEY):
         return
     actual_damage = sum(
         instr[2]
@@ -154,7 +155,7 @@ def _add_shell_bell_healing(mutator, instruction_set, defender, first_added):
 # how a Cell Battery holder would sit through a whole session doing nothing after an
 # update, since the item registration below would still stash a payload that the
 # older wrapper does not know how to read.
-_DAMAGE_WRAPPER_VERSION = 3
+_DAMAGE_WRAPPER_VERSION = 4
 
 
 def _damage_wrapper_version(fn):
@@ -235,7 +236,9 @@ if (
             and attacking_move.get(constants.HEAL) is None
         ):
             for instruction_set in results:
-                _add_shell_bell_healing(mutator, instruction_set, defender, first_added)
+                _add_shell_bell_healing(
+                    mutator, instruction_set, defender, first_added, attacking_move
+                )
 
         if on_hit_boosts:
             spent_item = attacking_move.get(_ON_HIT_ITEM_KEY)
@@ -272,6 +275,33 @@ if (
     instruction_generator.get_instructions_from_damage = (
         _wrapped_get_instructions_from_damage
     )
+
+
+def _install_shell_bell_sheer_force():
+    """Remember actual Sheer Force activation before its secondary is removed."""
+    from ..poke_engine.special_effects.abilities import modify_attack_being_used
+
+    original = modify_attack_being_used.ability_lookup["sheerforce"]
+    if getattr(original, "_ankimon_shell_bell_version", 0):
+        return
+
+    def mark_sheer_force(attacking_move, *args, **kwargs):
+        result = original(attacking_move, *args, **kwargs)
+        if attacking_move.get(constants.SECONDARY) and not result.get(
+            constants.SECONDARY
+        ):
+            # The dispatcher skips this callback under Neutralizing Gas. Tag
+            # the resulting move, rather than rechecking abilities after a KO.
+            result = result.copy()
+            result[_SHELL_BELL_SUPPRESSED_KEY] = True
+        return result
+
+    mark_sheer_force._ankimon_shell_bell_version = 1
+    mark_sheer_force._ankimon_wrapped_function = original
+    modify_attack_being_used.ability_lookup["sheerforce"] = mark_sheer_force
+
+
+_SHELL_BELL_RECOVERY_VERSION = 2
 
 
 def _install_shell_bell_recovery():
@@ -314,7 +344,20 @@ def _install_shell_bell_recovery():
         find_state_instructions.get_state_instructions_from_move = with_move_context
 
     recovery_fn = instruction_generator.get_instructions_from_attacker_recovery
-    if not getattr(recovery_fn, "_ankimon_shell_bell_version", 0):
+    recovery_version = getattr(recovery_fn, "_ankimon_shell_bell_version", 0)
+    if recovery_version < _SHELL_BELL_RECOVERY_VERSION:
+        if recovery_version:
+            original = getattr(recovery_fn, "_ankimon_wrapped_function", None)
+            if original is None and recovery_version == 1:
+                # The first wrapper predates the explicit pristine pointer.
+                original = dict(
+                    zip(recovery_fn.__code__.co_freevars, recovery_fn.__closure__)
+                ).get("recovery_fn")
+                if original is not None:
+                    original = original.cell_contents
+            if original is None or getattr(original, "_ankimon_shell_bell_version", 0):
+                raise RuntimeError("Cannot unwrap the older Shell Bell recovery hook")
+            recovery_fn = original
 
         def after_recovery(mutator, attacker_string, move, instruction):
             results = recovery_fn(mutator, attacker_string, move, instruction)
@@ -322,10 +365,13 @@ def _install_shell_bell_recovery():
             if context is not None and context[0] == attacker_string:
                 _, defender, first_added = context
                 for outcome in results:
-                    _add_shell_bell_healing(mutator, outcome, defender, first_added)
+                    _add_shell_bell_healing(
+                        mutator, outcome, defender, first_added, move
+                    )
             return results
 
-        after_recovery._ankimon_shell_bell_version = 1
+        after_recovery._ankimon_shell_bell_version = _SHELL_BELL_RECOVERY_VERSION
+        after_recovery._ankimon_wrapped_function = recovery_fn
         instruction_generator.get_instructions_from_attacker_recovery = after_recovery
 
 
@@ -730,6 +776,7 @@ _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
+_apply_engine_patch(_install_shell_bell_sheer_force)
 _apply_engine_patch(_install_shell_bell_recovery)
 
 

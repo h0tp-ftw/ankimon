@@ -71,11 +71,15 @@ def engine():
     items = importlib.import_module(
         "Ankimon.poke_engine.special_effects.items.modify_attack_against"
     )
+    abilities = importlib.import_module(
+        "Ankimon.poke_engine.special_effects.abilities.modify_attack_being_used"
+    )
     previous_damage_fn = instruction_generator.get_instructions_from_damage
     previous_recovery_fn = instruction_generator.get_instructions_from_attacker_recovery
     previous_move_fn = instructions.get_state_instructions_from_move
     previous_calc = config.damage_calc_type
     previous_items = dict(items.item_lookup)
+    previous_abilities = dict(abilities.ability_lookup)
     try:
         hook = _load_hook()
         config.damage_calc_type = "average"
@@ -99,6 +103,8 @@ def engine():
         config.damage_calc_type = previous_calc
         items.item_lookup.clear()
         items.item_lookup.update(previous_items)
+        abilities.ability_lookup.clear()
+        abilities.ability_lookup.update(previous_abilities)
 
 
 def _state(engine, hp=50, speed=200, item="shellbell", ability=None):
@@ -306,6 +312,52 @@ def test_each_secondary_outcome_heals_and_leaves_state_unchanged(engine):
         assert _heals(engine, outcome)
 
 
+@pytest.mark.parametrize("side", ["user", "opponent"])
+@pytest.mark.parametrize("move", ["thunderbolt", "bodyslam"])
+@pytest.mark.parametrize("contact", [False, True])
+def test_sheer_force_boosted_moves_do_not_activate_shell_bell(
+    engine, side, move, contact
+):
+    state = _state(engine, ability="sheerforce")
+    if contact:
+        state.opponent.active.ability = "roughskin"
+    if side == "opponent":
+        state.user, state.opponent = state.opponent, state.user
+    moves = {"user_move": "splash", "opponent_move": "splash"}
+    moves[f"{side}_move"] = move
+    outcomes = _outcomes(engine, state, **moves)
+    for outcome in outcomes:
+        assert all(heal <= 0 for heal in _heals(engine, outcome, side))
+
+
+def test_sheer_force_preserves_healing_for_a_move_without_secondary(engine):
+    (outcome,) = _outcomes(engine, _state(engine, ability="sheerforce"))
+    assert _heals(engine, outcome) == [2]
+
+
+@pytest.mark.parametrize("foe_hp", [1, 100])
+def test_neutralizing_gas_preserves_healing_even_when_the_foe_faints(engine, foe_hp):
+    state = _state(engine, ability="sheerforce")
+    state.opponent.active.ability = "neutralizinggas"
+    state.opponent.active.hp = foe_hp
+    outcomes = _outcomes(engine, state, user_move="thunderbolt")
+    for outcome in outcomes:
+        damage = sum(
+            _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent")
+        )
+        assert _heals(engine, outcome) == [max(1, damage // 8)]
+
+
+def test_sheer_force_does_not_modify_the_shared_move_definition(engine):
+    original = engine.instructions.lookup_move("thunderbolt")
+    before = _snapshot(original)
+    _outcomes(engine, _state(engine, ability="sheerforce"), user_move="thunderbolt")
+    assert _snapshot(original) == before
+    assert engine.hook._SHELL_BELL_SUPPRESSED_KEY not in original
+    outcomes = _outcomes(engine, _state(engine), user_move="thunderbolt")
+    assert all(_heals(engine, outcome) == [4] for outcome in outcomes)
+
+
 def test_opponent_holder_also_heals(engine):
     state = _state(engine, item=None)
     state.opponent.active.item = "shellbell"
@@ -396,7 +448,8 @@ def test_reloading_does_not_stack_damage_move_or_recovery_wrappers(engine):
     )
 
 
-def test_reloading_upgrades_the_previous_damage_wrapper(engine):
+@pytest.mark.parametrize("version", [2, 3])
+def test_reloading_upgrades_the_previous_damage_wrapper(engine, version):
     generator = engine.hook.instruction_generator
     installed = generator.get_instructions_from_damage
     pristine = engine.hook._original_get_instructions_from_damage
@@ -404,7 +457,7 @@ def test_reloading_upgrades_the_previous_damage_wrapper(engine):
     def old_wrapper(*args):
         return pristine(*args)
 
-    old_wrapper._ankimon_damage_wrapper_version = 2
+    old_wrapper._ankimon_damage_wrapper_version = version
     old_wrapper._ankimon_wrapped_function = pristine
     generator.get_instructions_from_damage = old_wrapper
     try:
@@ -415,3 +468,36 @@ def test_reloading_upgrades_the_previous_damage_wrapper(engine):
         assert _heals(engine, outcome) == [4]
     finally:
         generator.get_instructions_from_damage = installed
+
+
+def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine):
+    generator = engine.hook.instruction_generator
+    installed = generator.get_instructions_from_attacker_recovery
+    recovery_fn = installed._ankimon_wrapped_function
+
+    def legacy_recovery(mutator, attacker_string, move, instruction):
+        outcomes = recovery_fn(mutator, attacker_string, move, instruction)
+        for outcome in outcomes:
+            outcome.add_instruction((engine.constants.MUTATOR_HEAL, attacker_string, 1))
+        return outcomes
+
+    legacy_recovery._ankimon_shell_bell_version = 1
+    generator.get_instructions_from_attacker_recovery = legacy_recovery
+    try:
+        _load_hook()
+        upgraded = generator.get_instructions_from_attacker_recovery
+        assert upgraded is not legacy_recovery
+        assert upgraded._ankimon_wrapped_function is recovery_fn
+        _load_hook()
+        assert generator.get_instructions_from_attacker_recovery is upgraded
+        state = _state(engine, ability="sheerforce")
+        state.opponent.active.ability = "roughskin"
+        outcomes = _outcomes(engine, state, user_move="bodyslam")
+        assert all(all(heal <= 0 for heal in _heals(engine, o)) for o in outcomes)
+        (outcome,) = _outcomes(engine, _state(engine), user_move="drainpunch")
+        damage = sum(
+            _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent")
+        )
+        assert _heals(engine, outcome) == [damage // 2, max(1, damage // 8)]
+    finally:
+        generator.get_instructions_from_attacker_recovery = installed
