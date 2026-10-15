@@ -402,44 +402,24 @@ _STAT_STAGE_ABILITIES = frozenset({"contrary"})
 # simply join the allowlist above.
 _STAGE_MULTIPLIER_ABILITIES = {"simple": 2}
 
-# Abilities that switch a held item off. The engine models no item-disabling ability
-# at all -- 'klutz' appears nowhere in it, and ``item_modify_attack_against`` invokes
-# a registered callback unconditionally -- and nothing upstream strips the item
-# either, since ``to_engine_format`` passes ability and held item through side by
-# side. So an on-hit item has to ask this itself before it fires.
-_ITEM_DISABLING_ABILITIES = frozenset({"klutz"})
-
 # Bumped when the shape of what an on-hit effect stashes on a move changes, or when
 # what it stashes it FOR does, so an in-process reload replaces an older shim instead
 # of leaving it registered. Version 2 added the Simple and Klutz interactions: a v1
 # shim stashes a payload this wrapper still understands, but one that is +1 under
 # Simple and present at all under Klutz.
-_ON_HIT_ITEM_VERSION = 2
+# Version 3 shares the engine's Embargo/Gastro Acid/Neutralizing Gas checks.
+_ON_HIT_ITEM_VERSION = 3
 
 
 def _ability_suppressed(attacking_pokemon, defending_pokemon):
-    """Whether the engine would treat the defender's ability as switched off.
+    """Share active ability checks with the engine, including move-only bypass."""
+    from ..poke_engine.effect_state import ability_is_suppressed, effective_ability
 
-    Mirrors the guard at the top of the engine's ``ability_modify_attack_against``:
-    Neutralizing Gas on either side turns both abilities off, and a mold-breaker
-    attacker ignores a defender ability the engine lists as bypassable.
-
-    Mirrored rather than read back out of that dispatcher by probing it with an
-    ability it does implement, because such a probe answers this question only for as
-    long as the ability probed with stays implemented AND stays a detectable
-    transform. A submodule bump that renamed Contrary's handler would leave the probe
-    reporting every defender as suppressed -- Simple quietly no longer doubling and,
-    worse, Klutz quietly no longer disabling. Only the three-line structure is copied
-    here: WHICH abilities suppress and which are bypassable is still read from the
-    engine's own constants, so a bump that adds to either set is picked up for free.
-    """
-    if (
-        attacking_pokemon.ability == "neutralizinggas"
-        or defending_pokemon.ability == "neutralizinggas"
-    ):
+    if ability_is_suppressed(defending_pokemon, attacking_pokemon):
         return True
     return (
-        attacking_pokemon.ability in constants.ABILITIES_THAT_IGNORE_OTHER_ABILITIES
+        effective_ability(attacking_pokemon, defending_pokemon)
+        in constants.ABILITIES_THAT_IGNORE_OTHER_ABILITIES
         and defending_pokemon.ability in constants.BYPASSABLE_ABILITIES
     )
 
@@ -531,15 +511,11 @@ def _install_on_hit_boost_items():
 
     def _on_hit_boost(move_type, stat, stages):
         def effect(attacking_move, attacking_pokemon, defending_pokemon):
-            # Klutz switches the item off, so the hit lands but the battery neither
-            # boosts nor is spent -- refusing here, before anything is stashed, is
-            # what keeps BOTH of those out of the wrapper's hands. Suppression-aware
-            # on purpose: Neutralizing Gas turns Klutz off as well, and then the
-            # battery works normally, so an unconditional check on the ability name
-            # would be wrong in exactly that matchup.
-            if defending_pokemon.ability in _ITEM_DISABLING_ABILITIES and (
-                not _ability_suppressed(attacking_pokemon, defending_pokemon)
-            ):
+            from ..poke_engine.effect_state import item_is_suppressed
+
+            # Check the shared policy even when a caller invokes this handler
+            # directly, outside the native item dispatcher.
+            if item_is_suppressed(defending_pokemon, attacking_pokemon):
                 return attacking_move
             # Requiring a damaging category rules out the Electric-absorbing
             # abilities (Volt Absorb / Lightning Rod / Motor Drive): they run first
