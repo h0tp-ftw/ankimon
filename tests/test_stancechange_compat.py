@@ -75,6 +75,7 @@ def hook_env(monkeypatch):
             State=dummy,
             StateMutator=dummy,
             Side=dummy,
+            TransposeInstruction=dummy,
         ),
     )
     monkeypatch.setitem(

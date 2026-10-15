@@ -9,7 +9,13 @@ from ..services import services
 import math
 
 from ..poke_engine.battle import Move
-from ..poke_engine.objects import Pokemon, State, StateMutator, Side
+from ..poke_engine.objects import (
+    Pokemon,
+    State,
+    StateMutator,
+    Side,
+    TransposeInstruction,
+)
 from ..poke_engine.helpers import normalize_name
 from ..poke_engine.find_state_instructions import get_all_state_instructions
 from ..poke_engine import instruction_generator, find_state_instructions
@@ -94,11 +100,61 @@ def _on_hit_item_triggers(mutator, instruction_set, defender, boosts, first_adde
         mutator.reverse(instruction_set.instructions)
 
 
-def _add_shell_bell_healing(mutator, instruction_set, defender, first_added, move):
+class _ShellBellInstruction(TransposeInstruction):
+    """Keep absorbed damage through the engine's secondary-outcome copies."""
+
+    __slots__ = ("_ankimon_shell_bell_substitute_damage",)
+
+    def __init__(self, instruction, substitute_damage):
+        super().__init__(
+            instruction.percentage, instruction.instructions, instruction.frozen
+        )
+        self._ankimon_shell_bell_substitute_damage = substitute_damage
+
+    def __copy__(self):
+        return type(self)(
+            super().__copy__(), self._ankimon_shell_bell_substitute_damage
+        )
+
+
+def _shell_bell_substitute_damage(mutator, defender, damage, move, instruction):
+    """Read the engine's absorbed damage before a hit can remove Substitute."""
+    if (
+        instruction.frozen
+        or damage is None
+        or damage <= 0
+        or move.get(_SHELL_BELL_SUPPRESSED_KEY)
+        or move.get(constants.ID) == "painsplit"
+    ):
+        return 0
+    mutator.apply(instruction.instructions)
+    try:
+        target = instruction_generator.get_side_from_state(
+            mutator.state, defender
+        ).active
+        attacker = instruction_generator.get_side_from_state(
+            mutator.state, instruction_generator.opposite_side[defender]
+        ).active
+        # Match the engine's hit_sub branch, including sound and Infiltrator
+        # bypasses. Earlier turn instructions may have created the substitute.
+        if (
+            constants.SUBSTITUTE in target.volatile_status
+            and constants.SOUND not in move.get(constants.FLAGS, {})
+            and attacker.ability != "infiltrator"
+        ):
+            return min(damage, target.maxhp * 0.25)
+        return 0
+    finally:
+        mutator.reverse(instruction.instructions)
+
+
+def _add_shell_bell_healing(
+    mutator, instruction_set, defender, first_added, move, substitute_damage=0
+):
     """Append bounded healing from this hit without changing the input state."""
     if instruction_set.frozen or move.get(_SHELL_BELL_SUPPRESSED_KEY):
         return
-    actual_damage = sum(
+    actual_damage = substitute_damage + sum(
         instr[2]
         for instr in instruction_set.instructions[first_added:]
         if instr[0] == constants.MUTATOR_DAMAGE
@@ -155,7 +211,7 @@ def _add_shell_bell_healing(mutator, instruction_set, defender, first_added, mov
 # how a Cell Battery holder would sit through a whole session doing nothing after an
 # update, since the item registration below would still stash a payload that the
 # older wrapper does not know how to read.
-_DAMAGE_WRAPPER_VERSION = 4
+_DAMAGE_WRAPPER_VERSION = 5
 
 
 def _damage_wrapper_version(fn):
@@ -220,6 +276,13 @@ if (
             else:
                 damage = math.floor(damage * mutator.review_based_damage_multiplier)
             mutator.review_based_damage_multiplier_applied = True
+        substitute_damage = (
+            _shell_bell_substitute_damage(
+                mutator, defender, damage, attacking_move, instruction
+            )
+            if hasattr(instruction, "instructions")
+            else 0
+        )
         results = _original_get_instructions_from_damage(
             mutator, defender, damage, accuracy, attacking_move, instruction
         )
@@ -237,8 +300,22 @@ if (
         ):
             for instruction_set in results:
                 _add_shell_bell_healing(
-                    mutator, instruction_set, defender, first_added, attacking_move
+                    mutator,
+                    instruction_set,
+                    defender,
+                    first_added,
+                    attacking_move,
+                    substitute_damage,
                 )
+        elif substitute_damage:
+            # Damage to Substitute emits no DAMAGE instruction. Preserve it
+            # across branching until deferred recovery/contact damage resolves.
+            results = [
+                _ShellBellInstruction(outcome, substitute_damage)
+                if not outcome.frozen
+                else outcome
+                for outcome in results
+            ]
 
         if on_hit_boosts:
             spent_item = attacking_move.get(_ON_HIT_ITEM_KEY)
@@ -301,7 +378,7 @@ def _install_shell_bell_sheer_force():
     modify_attack_being_used.ability_lookup["sheerforce"] = mark_sheer_force
 
 
-_SHELL_BELL_RECOVERY_VERSION = 3
+_SHELL_BELL_RECOVERY_VERSION = 4
 
 
 def _install_shell_bell_recovery():
@@ -369,8 +446,20 @@ def _install_shell_bell_recovery():
             if context is not None and context[0] == attacker_string:
                 _, defender, first_added = context
                 for outcome in results:
+                    substitute_damage = getattr(
+                        outcome, "_ankimon_shell_bell_substitute_damage", 0
+                    )
+                    if substitute_damage:
+                        # Do not carry this hit's damage into the other side's
+                        # move when its instructions are copied later this turn.
+                        outcome._ankimon_shell_bell_substitute_damage = 0
                     _add_shell_bell_healing(
-                        mutator, outcome, defender, first_added, move
+                        mutator,
+                        outcome,
+                        defender,
+                        first_added,
+                        move,
+                        substitute_damage,
                     )
             return results
 

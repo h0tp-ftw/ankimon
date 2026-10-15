@@ -461,6 +461,146 @@ def test_contact_recovery_uses_this_moves_damage_after_earlier_recoil(engine):
     assert _heals(engine, hit) == [-6.25, 2]
 
 
+@pytest.mark.parametrize("side", ["user", "opponent"])
+@pytest.mark.parametrize(
+    ("move", "healing", "breaks"), [("tackle", 2, False), ("psychic", 3, True)]
+)
+def test_substitute_damage_heals_without_damaging_the_target(
+    engine, side, move, healing, breaks
+):
+    state = _state(engine)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    if side == "opponent":
+        state.user, state.opponent = state.opponent, state.user
+    target = "opponent" if side == "user" else "user"
+    moves = {"user_move": "splash", "opponent_move": "splash"}
+    moves[f"{side}_move"] = move
+    for outcome in _outcomes(engine, state, **moves):
+        # Tackle deals 17 damage; Psychic is capped by the 25-HP Substitute.
+        assert _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, target) == []
+        assert _heals(engine, outcome, side) == [healing]
+        removed_substitute = (
+            engine.constants.MUTATOR_REMOVE_VOLATILE_STATUS,
+            target,
+            engine.constants.SUBSTITUTE,
+        )
+        assert (removed_substitute in outcome.instructions) is breaks
+
+
+@pytest.mark.parametrize(("multiplier", "healing"), [(0.5, 1), (2, 3)])
+def test_substitute_healing_uses_scaled_damage_capped_at_substitute_hp(
+    engine, multiplier, healing
+):
+    state = _state(engine)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    (outcome,) = _outcomes(engine, state, multiplier=multiplier)
+    assert _heals(engine, outcome) == [healing]
+
+
+def test_only_the_hit_outcome_heals_against_substitute(engine):
+    state = _state(engine)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    outcomes = _outcomes(engine, state, user_move="takedown")
+    (hit,) = [
+        outcome for outcome in outcomes if outcome.percentage == pytest.approx(0.85)
+    ]
+    (missed,) = [outcome for outcome in outcomes if outcome is not hit]
+    assert _amounts(engine, hit, engine.constants.MUTATOR_DAMAGE) == [6]
+    assert _heals(engine, hit) == [3]
+    assert _heals(engine, missed) == []
+
+
+def test_substitute_damage_heals_in_addition_to_move_drain(engine):
+    state = _state(engine)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    (outcome,) = _outcomes(engine, state, user_move="drainpunch")
+    assert _heals(engine, outcome) == [8, 2]
+
+
+@pytest.mark.parametrize(("holder_hp", "healing"), [(6, [-6]), (100, [-6.25, 2])])
+def test_substitute_shell_bell_waits_until_after_contact_damage(
+    engine, holder_hp, healing
+):
+    state = _state(engine, hp=holder_hp)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    state.opponent.active.ability = "roughskin"
+    (outcome,) = _outcomes(engine, state)
+    assert _heals(engine, outcome) == healing
+
+
+def test_sheer_force_still_suppresses_substitute_shell_bell_after_contact(engine):
+    state = _state(engine, ability="sheerforce")
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    state.opponent.active.ability = "roughskin"
+    for outcome in _outcomes(engine, state, user_move="bodyslam"):
+        assert _heals(engine, outcome) == [-6.25]
+
+
+@pytest.mark.parametrize("contact", [False, True])
+def test_substitute_creation_cost_is_not_counted_as_the_holders_damage(engine, contact):
+    state = _state(engine, speed=50)
+    if contact:
+        state.opponent.active.ability = "roughskin"
+    (outcome,) = _outcomes(engine, state, opponent_move="substitute")
+    assert _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent") == [
+        25
+    ]
+    assert _heals(engine, outcome) == ([-6.25, 2] if contact else [2])
+
+
+@pytest.mark.parametrize(
+    ("move", "ability", "damage", "healing"),
+    [("hypervoice", None, 37, 4), ("tackle", "infiltrator", 17, 2)],
+)
+def test_substitute_bypass_heals_from_target_hp_damage_once(
+    engine, move, ability, damage, healing
+):
+    state = _state(engine, ability=ability)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    (outcome,) = _outcomes(engine, state, user_move=move)
+    assert _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE, "opponent") == [
+        damage
+    ]
+    assert _heals(engine, outcome) == [healing]
+
+
+def test_substitute_rolls_keep_separate_deferred_healing_amounts(engine, monkeypatch):
+    monkeypatch.setattr(engine.instructions.ShowdownConfig, "damage_calc_type", "all")
+    state = _state(engine)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    state.opponent.active.ability = "roughskin"
+    outcomes = _outcomes(engine, state, multiplier=0.9)
+    assert len(outcomes) == 2
+    assert {tuple(_heals(engine, outcome)) for outcome in outcomes} == {
+        (-6.25, 1),
+        (-6.25, 2),
+    }
+
+
+@pytest.mark.parametrize("move", ["tackle", "bodyslam"])
+def test_absorbed_damage_does_not_heal_the_opponents_later_move(engine, move):
+    state = _state(engine, ability="roughskin")
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    state.opponent.active.hp = 50
+    state.opponent.active.item = "shellbell"
+    state.opponent.active.ability = "roughskin"
+    outcomes = _outcomes(engine, state, user_move=move, opponent_move="tackle")
+    # Body Slam creates a copied status-miss branch and a paralysis branch;
+    # neither may carry absorbed damage into the opponent's deferred recovery.
+    if move == "bodyslam":
+        assert len(outcomes) == 3
+    for outcome in outcomes:
+        damage = _amounts(engine, outcome, engine.constants.MUTATOR_DAMAGE)
+        assert _heals(engine, outcome, "opponent") == ([-6.25, 2] if damage else [])
+
+
+def test_pain_split_does_not_heal_from_substitute_or_synthetic_damage(engine):
+    state = _state(engine, hp=20)
+    state.opponent.active.volatile_status.add(engine.constants.SUBSTITUTE)
+    (outcome,) = _outcomes(engine, state, user_move="painsplit")
+    assert _heals(engine, outcome) == [40]
+
+
 def test_reloading_does_not_stack_damage_move_or_recovery_wrappers(engine):
     generator = engine.hook.instruction_generator
     previous = (
@@ -476,7 +616,7 @@ def test_reloading_does_not_stack_damage_move_or_recovery_wrappers(engine):
     )
 
 
-@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("version", [2, 3, 4])
 def test_reloading_upgrades_the_previous_damage_wrapper(engine, version):
     generator = engine.hook.instruction_generator
     installed = generator.get_instructions_from_damage
@@ -498,7 +638,7 @@ def test_reloading_upgrades_the_previous_damage_wrapper(engine, version):
         generator.get_instructions_from_damage = installed
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_reloading_upgrades_legacy_recovery_without_stacking_healing(engine, version):
     generator = engine.hook.instruction_generator
     installed = generator.get_instructions_from_attacker_recovery
