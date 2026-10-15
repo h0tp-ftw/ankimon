@@ -36271,7 +36271,7 @@ full HP, it will endure a potential KO attack with
 也能仅以１ＨＰ撑过去１次。"
 253,8,9,"An item to be held by a Pokémon.
 If the holder moves after the foe, its
-critical-hit ratio will be boosted."
+accuracy will be boosted."
 253,9,9,"An item to be held by a Pokémon.
 If the holder moves after the foe, its
 accuracy will be boosted."
@@ -45470,7 +45470,7 @@ of Water-type moves."
 pour lui infliger une brûlure."
 315,19,6,"Angriff mit unheimlicher Flamme, die beim Ziel
 Verbrennungen verursacht."
-315,19,7,Siniestra llama morada que produce quemaduras. 
+315,19,7,Siniestra llama morada que produce quemaduras.
 315,19,8,"Fiamme intense di colore viola causano
 una scottatura al bersaglio."
 315,19,9,"The user shoots a sinister flame at the target to inflict
@@ -51463,7 +51463,7 @@ raise the user’s Defense stat."
 355,19,5,"Une violente tempête de neige s’abat sur l’ennemi.
 Peut aussi le geler."
 355,19,6,"Ein Schneesturm wütet, der das Ziel einfrieren kann."
-355,19,7,Tormenta de hielo que puede llegar a congelar. 
+355,19,7,Tormenta de hielo que puede llegar a congelar.
 355,19,8,"Colpisce i nemici intorno con una tremenda
 tempesta di ghiaccio che può anche congelarli."
 355,19,9,"A howling blizzard is summoned to strike opposing
