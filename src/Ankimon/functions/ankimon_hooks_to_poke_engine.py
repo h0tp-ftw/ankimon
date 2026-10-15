@@ -9,16 +9,10 @@ from ..services import services
 import math
 
 from ..poke_engine.battle import Move
-from ..poke_engine.objects import (
-    Pokemon,
-    State,
-    StateMutator,
-    Side,
-    TransposeInstruction,
-)
+from ..poke_engine.objects import Pokemon, State, StateMutator, Side
 from ..poke_engine.helpers import normalize_name
 from ..poke_engine.find_state_instructions import get_all_state_instructions
-from ..poke_engine import instruction_generator, find_state_instructions
+from ..poke_engine import instruction_generator
 from ..pyobj.error_handler import show_warning_with_traceback
 
 # Shared state used as bare module globals below; bound to the live registry
@@ -35,7 +29,6 @@ settings_obj = None
 # it for 17 of the engine's 37 damaging Electric moves, Thunderbolt included.
 _ON_HIT_BOOSTS_KEY = "_ankimon_on_hit_boosts"
 _ON_HIT_ITEM_KEY = "_ankimon_on_hit_item"
-_SHELL_BELL_SUPPRESSED_KEY = "_ankimon_shell_bell_suppressed"
 
 
 def _effective_boost(active, stat, stages):
@@ -100,105 +93,6 @@ def _on_hit_item_triggers(mutator, instruction_set, defender, boosts, first_adde
         mutator.reverse(instruction_set.instructions)
 
 
-class _ShellBellInstruction(TransposeInstruction):
-    """Keep absorbed damage through the engine's secondary-outcome copies."""
-
-    __slots__ = ("_ankimon_shell_bell_substitute_damage",)
-
-    def __init__(self, instruction, substitute_damage):
-        super().__init__(
-            instruction.percentage, instruction.instructions, instruction.frozen
-        )
-        self._ankimon_shell_bell_substitute_damage = substitute_damage
-
-    def __copy__(self):
-        return type(self)(
-            super().__copy__(), self._ankimon_shell_bell_substitute_damage
-        )
-
-
-def _shell_bell_substitute_damage(mutator, defender, damage, move, instruction):
-    """Read the engine's absorbed damage before a hit can remove Substitute."""
-    if (
-        instruction.frozen
-        or damage is None
-        or damage <= 0
-        or move.get(_SHELL_BELL_SUPPRESSED_KEY)
-        or move.get(constants.ID) == "painsplit"
-    ):
-        return 0
-    mutator.apply(instruction.instructions)
-    try:
-        target = instruction_generator.get_side_from_state(
-            mutator.state, defender
-        ).active
-        attacker = instruction_generator.get_side_from_state(
-            mutator.state, instruction_generator.opposite_side[defender]
-        ).active
-        # Match the engine's hit_sub branch, including sound and Infiltrator
-        # bypasses. Earlier turn instructions may have created the substitute.
-        if (
-            constants.SUBSTITUTE in target.volatile_status
-            and constants.SOUND not in move.get(constants.FLAGS, {})
-            and attacker.ability != "infiltrator"
-        ):
-            return min(damage, target.maxhp * 0.25)
-        return 0
-    finally:
-        mutator.reverse(instruction.instructions)
-
-
-def _shell_bell_hit_damage(instruction_set, defender, first_added, substitute_damage=0):
-    """Count only this move's landed damage, including damage to Substitute."""
-    return substitute_damage + sum(
-        instr[2]
-        for instr in instruction_set.instructions[first_added:]
-        if instr[0] == constants.MUTATOR_DAMAGE
-        and instr[1] == defender
-        and instr[2] > 0
-    )
-
-
-def _add_shell_bell_healing(
-    mutator, instruction_set, defender, first_added, move, substitute_damage=0
-):
-    """Append bounded healing from this hit without changing the input state."""
-    if instruction_set.frozen or move.get(_SHELL_BELL_SUPPRESSED_KEY):
-        return
-    actual_damage = _shell_bell_hit_damage(
-        instruction_set, defender, first_added, substitute_damage
-    )
-    if actual_damage <= 0:
-        return
-
-    attacker = instruction_generator.opposite_side[defender]
-    # Outcomes contain the whole turn: earlier damage, item changes, and this
-    # move's drain/recoil must all take effect before checking the holder.
-    mutator.apply(instruction_set.instructions)
-    try:
-        holder = instruction_generator.get_side_from_state(
-            mutator.state, attacker
-        ).active
-        opponent = instruction_generator.get_side_from_state(
-            mutator.state, defender
-        ).active
-        if holder.item != "shellbell" or not 0 < holder.hp < holder.maxhp:
-            return
-        # Mold Breaker ignores a defender's ability, not the attacker's own
-        # Klutz. A surviving Neutralizing Gas opponent does suppress Klutz and
-        # restores the item; a KO ends that suppression before Shell Bell fires.
-        if holder.ability in _ITEM_DISABLING_ABILITIES and (
-            opponent.ability != "neutralizinggas" or opponent.hp <= 0
-        ):
-            return
-        heal_amount = min(max(1, actual_damage // 8), holder.maxhp - holder.hp)
-    finally:
-        mutator.reverse(instruction_set.instructions)
-
-    # Append only after reversing: the new heal has not been applied yet.
-    instruction_set.add_instruction((constants.MUTATOR_HEAL, attacker, heal_amount))
-
-
 # --- F37: review-based damage multiplier, applied at the poke-engine level ---
 # poke_engine.find_state_instructions calls
 # ``instruction_generator.get_instructions_from_damage`` via module attribute, so
@@ -218,7 +112,7 @@ def _add_shell_bell_healing(
 # how a Cell Battery holder would sit through a whole session doing nothing after an
 # update, since the item registration below would still stash a payload that the
 # older wrapper does not know how to read.
-_DAMAGE_WRAPPER_VERSION = 5
+_DAMAGE_WRAPPER_VERSION = 2
 
 
 def _damage_wrapper_version(fn):
@@ -267,10 +161,11 @@ if (
     ):
         # Everything this call appends starts here. The instruction set arrives
         # carrying the whole turn so far, and an on-hit item must only read the
-        # blow it is reacting to. Some review-multiplier unit tests hand this
-        # wrapper an opaque stand-in instead of a real instruction set.
+        # blow it is reacting to. Read before delegating, and only for a move that
+        # actually carries a payload -- callers that do not (the F37 unit tests
+        # among them) hand this wrapper an opaque instruction stand-in.
         on_hit_boosts = attacking_move.get(_ON_HIT_BOOSTS_KEY)
-        first_added = len(getattr(instruction, "instructions", ()))
+        first_added = len(instruction.instructions) if on_hit_boosts else 0
         if (
             defender == constants.OPPONENT
             and hasattr(mutator, "review_based_damage_multiplier")
@@ -283,13 +178,6 @@ if (
             else:
                 damage = math.floor(damage * mutator.review_based_damage_multiplier)
             mutator.review_based_damage_multiplier_applied = True
-        substitute_damage = (
-            _shell_bell_substitute_damage(
-                mutator, defender, damage, attacking_move, instruction
-            )
-            if hasattr(instruction, "instructions")
-            else 0
-        )
         results = _original_get_instructions_from_damage(
             mutator, defender, damage, accuracy, attacking_move, instruction
         )
@@ -299,31 +187,6 @@ if (
         # absorbers (Volt Absorb / Lightning Rod / Motor Drive) are out. The engine
         # then freezes the instruction on a miss and on an immune hit (damage == 0),
         # and ``_on_hit_item_triggers`` covers the rest.
-        # Contact damage and move recovery encoded in HEAL are resolved later.
-        # Those moves receive Shell Bell healing after that recovery stage.
-        if (
-            hasattr(instruction, "instructions")
-            and attacking_move.get(constants.HEAL) is None
-        ):
-            for instruction_set in results:
-                _add_shell_bell_healing(
-                    mutator,
-                    instruction_set,
-                    defender,
-                    first_added,
-                    attacking_move,
-                    substitute_damage,
-                )
-        elif substitute_damage:
-            # Damage to Substitute emits no DAMAGE instruction. Preserve it
-            # across branching until deferred recovery/contact damage resolves.
-            results = [
-                _ShellBellInstruction(outcome, substitute_damage)
-                if not outcome.frozen
-                else outcome
-                for outcome in results
-            ]
-
         if on_hit_boosts:
             spent_item = attacking_move.get(_ON_HIT_ITEM_KEY)
             boosted = []
@@ -359,140 +222,6 @@ if (
     instruction_generator.get_instructions_from_damage = (
         _wrapped_get_instructions_from_damage
     )
-
-
-def _install_shell_bell_sheer_force():
-    """Remember actual Sheer Force activation before its secondary is removed."""
-    from ..poke_engine.special_effects.abilities import modify_attack_being_used
-
-    original = modify_attack_being_used.ability_lookup["sheerforce"]
-    if getattr(original, "_ankimon_shell_bell_version", 0):
-        return
-
-    def mark_sheer_force(attacking_move, *args, **kwargs):
-        result = original(attacking_move, *args, **kwargs)
-        if attacking_move.get(constants.SECONDARY) and not result.get(
-            constants.SECONDARY
-        ):
-            # The dispatcher skips this callback under Neutralizing Gas. Tag
-            # the resulting move, rather than rechecking abilities after a KO.
-            result = result.copy()
-            result[_SHELL_BELL_SUPPRESSED_KEY] = True
-        return result
-
-    mark_sheer_force._ankimon_shell_bell_version = 1
-    mark_sheer_force._ankimon_wrapped_function = original
-    modify_attack_being_used.ability_lookup["sheerforce"] = mark_sheer_force
-
-
-_SHELL_BELL_RECOVERY_VERSION = 5
-
-
-def _install_shell_bell_recovery():
-    """Resolve Shell Bell after deferred contact damage and before pivot switches."""
-    move_fn = find_state_instructions.get_state_instructions_from_move
-    if not getattr(move_fn, "_ankimon_shell_bell_version", 0):
-
-        def with_move_context(
-            mutator,
-            attacking_move,
-            defending_move,
-            attacker,
-            defender,
-            first_move,
-            instructions,
-        ):
-            previous = getattr(mutator, "_ankimon_shell_bell_move", None)
-            mutator._ankimon_shell_bell_move = (
-                attacker,
-                defender,
-                len(instructions.instructions),
-            )
-            try:
-                return move_fn(
-                    mutator,
-                    attacking_move,
-                    defending_move,
-                    attacker,
-                    defender,
-                    first_move,
-                    instructions,
-                )
-            finally:
-                if previous is None:
-                    del mutator._ankimon_shell_bell_move
-                else:
-                    mutator._ankimon_shell_bell_move = previous
-
-        with_move_context._ankimon_shell_bell_version = 1
-        find_state_instructions.get_state_instructions_from_move = with_move_context
-
-    recovery_fn = instruction_generator.get_instructions_from_attacker_recovery
-    recovery_version = getattr(recovery_fn, "_ankimon_shell_bell_version", 0)
-    if recovery_version < _SHELL_BELL_RECOVERY_VERSION:
-        if recovery_version:
-            original = getattr(recovery_fn, "_ankimon_wrapped_function", None)
-            if original is None and recovery_version == 1:
-                # The first wrapper predates the explicit pristine pointer.
-                original = dict(
-                    zip(recovery_fn.__code__.co_freevars, recovery_fn.__closure__)
-                ).get("recovery_fn")
-                if original is not None:
-                    original = original.cell_contents
-            if original is None or getattr(original, "_ankimon_shell_bell_version", 0):
-                raise RuntimeError("Cannot unwrap the older Shell Bell recovery hook")
-            recovery_fn = original
-
-        def after_recovery(mutator, attacker_string, move, instruction):
-            # Pain Split uses synthetic damage/recovery to set both HP values;
-            # that redistribution is not attack damage eligible for Shell Bell.
-            if move.get(constants.ID) == "painsplit":
-                return recovery_fn(mutator, attacker_string, move, instruction)
-            context = getattr(mutator, "_ankimon_shell_bell_move", None)
-            if context is None or context[0] != attacker_string:
-                return recovery_fn(mutator, attacker_string, move, instruction)
-            _, defender, first_added = context
-            substitute_damage = getattr(
-                instruction, "_ankimon_shell_bell_substitute_damage", 0
-            )
-            # A failed status secondary also freezes a successful hit. Its
-            # contact cost must still resolve before Shell Bell checks survival.
-            # Actual misses and prevented moves have no damage in this slice.
-            secondary_failed = (
-                instruction.frozen
-                and _shell_bell_hit_damage(
-                    instruction, defender, first_added, substitute_damage
-                )
-                > 0
-            )
-            if secondary_failed:
-                instruction.frozen = False
-            try:
-                results = recovery_fn(mutator, attacker_string, move, instruction)
-                for outcome in results:
-                    substitute_damage = getattr(
-                        outcome, "_ankimon_shell_bell_substitute_damage", 0
-                    )
-                    if substitute_damage:
-                        # Do not carry this hit's damage into the other side's
-                        # move when its instructions are copied later this turn.
-                        outcome._ankimon_shell_bell_substitute_damage = 0
-                    _add_shell_bell_healing(
-                        mutator,
-                        outcome,
-                        defender,
-                        first_added,
-                        move,
-                        substitute_damage,
-                    )
-                return results
-            finally:
-                if secondary_failed:
-                    instruction.frozen = True
-
-        after_recovery._ankimon_shell_bell_version = _SHELL_BELL_RECOVERY_VERSION
-        after_recovery._ankimon_wrapped_function = recovery_fn
-        instruction_generator.get_instructions_from_attacker_recovery = after_recovery
 
 
 # --- Non-canonical form-id tolerance for engine pokedex lookups ---------------
@@ -896,8 +625,6 @@ _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
-_apply_engine_patch(_install_shell_bell_sheer_force)
-_apply_engine_patch(_install_shell_bell_recovery)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:

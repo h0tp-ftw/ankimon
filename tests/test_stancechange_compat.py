@@ -49,7 +49,6 @@ def hook_env(monkeypatch):
     instruction_generator = _module(
         "Ankimon.poke_engine.instruction_generator",
         get_instructions_from_damage=lambda *a, **k: None,
-        get_instructions_from_attacker_recovery=lambda *a, **k: [],
     )
     monkeypatch.setitem(
         sys.modules, instruction_generator.__name__, instruction_generator
@@ -75,7 +74,6 @@ def hook_env(monkeypatch):
             State=dummy,
             StateMutator=dummy,
             Side=dummy,
-            TransposeInstruction=dummy,
         ),
     )
     monkeypatch.setitem(
@@ -89,7 +87,6 @@ def hook_env(monkeypatch):
         _module(
             "Ankimon.poke_engine.find_state_instructions",
             get_all_state_instructions=lambda *a, **k: [],
-            get_state_instructions_from_move=lambda *a, **k: [],
         ),
     )
     monkeypatch.setitem(

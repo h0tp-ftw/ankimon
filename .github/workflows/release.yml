@@ -206,7 +206,7 @@ jobs:
               existing = set(zf.namelist())
               added = 0
               for root, dirs, files in os.walk(submodule_src):
-                  dirs[:] = [d for d in dirs if d != "__pycache__"]
+                  dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
                   for fname in files:
                       if fname.endswith((".pyc", ".pyo")):
                           continue
