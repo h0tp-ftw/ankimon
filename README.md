@@ -182,7 +182,13 @@ Support my Caffeine Addiction (something that helps building this Addon):
    Your permanent Pokédex caught history remains recorded after releasing, evolving, or trading away a Pokémon. The reviewer Pokéball indicator, encounter Capture Requirements, and “Catch if uncollected” mode use this history, not just the Pokémon currently in your PC. Incoming traded Pokémon are recorded immediately; merely seeing a Pokémon does not count as catching it. Forms retain distinct caught records.
    Use an escape item from the Bag to leave a battle and encounter a new Pokémon. A successful escape uses one item; if the encounter cannot be replaced, Ankimon reports whether the item was returned to your Bag.
 3. **Training:** Train your Pokémon using various methods to strengthen them for battles.
+   Use vitamins, wings, mochi, and effort candies from the Bag to train your main Pokémon's EVs (effort values). The item is consumed and the training saved together: if validation or saving fails, the attempt leaves your item and Pokémon unchanged. If mobile reviews are being resolved, wait for them to finish and try again. An item is still consumed when the EV caps (252 per stat, 510 total) prevent any gain.
+
+   HP training recalculates maximum HP without healing or reviving your Pokémon. Trained stats and the reviewer HP display update immediately. Training during an encounter preserves current HP, boosts, statuses, moves, held items, and field conditions, including copied stats from Transform and Aegislash's active stance.
+
    In Pokémon details, a ready level evolution has an Evolve button even when an item evolution is also available; item requirements appear as hints. Use evolution items from the Bag, not the Pokémon details screen. If the same item can evolve a Pokémon into both a regional and a standard form, the active region's form takes priority; otherwise the standard form is chosen. Regional item evolutions with no standard alternative for that item remain available in any region.
+
+   When choosing a Pokémon for an item in the web Bag, search by its custom nickname, localized species name, or English species name (including internal names such as `wooperpaldea`). Custom nicknames remain separate from species names; automatically assigned English names do not replace localized species names.
 4. **Battles:** Challenge other users on Pokémon Showdown to battles using your trained Pokémon.
 5. **Bug Reporting:** If you encounter any issues or bugs, please report them on the [GitHub Issues Page](https://github.com/Unlucky-Life/ankimon/issues). Your feedback helps improve the addon for everyone.
 
