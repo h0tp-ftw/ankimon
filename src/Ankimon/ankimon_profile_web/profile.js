@@ -24,10 +24,17 @@
     };
     let trainer = null;
 
-    function esc(s) {
-        const d = document.createElement('div');
-        d.textContent = s == null ? '' : String(s);
-        return d.innerHTML;
+    // This helper is used for both text nodes and quoted HTML attributes.
+    // Serialising a temporary text node only escapes &, < and >; quotes remain
+    // dangerous when the result is interpolated into src/alt/data-* attributes.
+    function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        })[char]);
     }
     function num(n) { return (Number(n) || 0).toLocaleString(); }
     // Pokémon names arrive lowercase from the DB ("dragonite", "mr-mime");
@@ -115,7 +122,7 @@
             const m = team[i];
             if (m) {
                 html += `<div class="team-mini">
-                    <div class="tm-sprite"><img src="${m.sprite || pkmnSprite(m)}" alt="${esc(m.n)}" onerror="this.onerror=null;this.src='${SPRITE_BASE}/0.png';"></div>
+                    <div class="tm-sprite"><img src="${esc(m.sprite || pkmnSprite(m))}" alt="${esc(m.n)}" onerror="this.onerror=null;this.src='${SPRITE_BASE}/0.png';"></div>
                     <div class="tm-name">${esc(capName(m.n))}</div>
                     <div class="tm-lv">Lv ${esc(m.l)}</div>
                 </div>`;
@@ -157,7 +164,7 @@
         el.innerHTML = recent.map((m, i) => {
             const isNew = animateNew && !shownRecentKeys.has(keys[i]);
             return `<div class="team-mini${isNew ? ' just-caught' : ''}">
-                <div class="tm-sprite"><img src="${m.sprite || pkmnSprite(m)}" alt="${esc(m.n)}" onerror="this.onerror=null;this.src='${SPRITE_BASE}/0.png';"></div>
+                <div class="tm-sprite"><img src="${esc(m.sprite || pkmnSprite(m))}" alt="${esc(m.n)}" onerror="this.onerror=null;this.src='${SPRITE_BASE}/0.png';"></div>
                 <div class="tm-name">${esc(capName(m.n))}${m.s ? ' <span class="shiny-dot">★</span>' : ''}</div>
                 <div class="tm-lv">Lv ${esc(m.l)}</div>
             </div>`;
@@ -203,7 +210,7 @@
             const cell = document.createElement('div');
             cell.className = 'badge-cell' + (b.unlocked ? ' unlocked' : ' locked');
             cell.innerHTML = `
-                <img src="${BADGE_BASE}/${b.id}.png" alt="${esc(b.name)}"
+                <img src="${BADGE_BASE}/${esc(b.id)}.png" alt="${esc(b.name)}"
                      onerror="this.onerror=null;this.src='${BADGE_BASE}/default.png';">
                 <span class="badge-tip">${esc(b.name)}</span>`;
             frag.appendChild(cell);

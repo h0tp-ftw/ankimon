@@ -1,5 +1,7 @@
+import copy
 import random
 import csv
+import time
 from typing import Any, Optional
 
 from aqt import mw
@@ -40,6 +42,8 @@ from ..functions.pokedex_functions import (
 from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
+from ..functions.update_main_pokemon import save_main_pokemon
+from ..functions.ev_items import VITAMINS, WINGS, MOCHI, CANDIES, apply_ev_item
 from ..services import services
 from ..utils import get_item_sprite_path, play_effect_sound, is_alive
 from .error_handler import show_warning_with_traceback
@@ -100,6 +104,11 @@ class ItemWindow(QWidget):
             "plume-fossil": 566,
         }
 
+        # Vitamins/wings/mochi/candies: covered by functions.ev_items, not a
+        # literal dict here — this set is only for the "is it one of these"
+        # branch below.
+        self.ev_items = set(VITAMINS) | set(WINGS) | set(MOCHI) | set(CANDIES)
+
         self.pokeball_chances = {
             "dive-ball": 11,  # Increased chance when fishing or underwater
             "dusk-ball": 11,  # Increased chance at night or in caves
@@ -119,6 +128,12 @@ class ItemWindow(QWidget):
             "smoke-ball": 1,  # Used to flee from wild battles, no catch chance
             "timer-ball": 13,  # Higher chance the longer the battle goes
             "ultra-ball": 13,  # Increased catch rate (original was 10, now 13)
+        }
+
+        self.escape_items = {
+            "poke-doll": True,
+            "smoke-ball": True,
+            "fluffy-tail": True,
         }
 
         self.evolution_items = set()
@@ -351,14 +366,14 @@ class ItemWindow(QWidget):
         info_item_button = QPushButton("More Info")
         info_item_button.clicked.connect(lambda: self.more_info_button_act(item_name))
 
-        item_name_for_label = item_name.replace(
-            "-", " "
-        )  # Remove hyphens from item_name
-        item_name_for_label = (
-            f"{item_name_for_label.capitalize()} x{quantity}"  # Display quantity
-        )
+        from ..localized_text import item_name as _item_name, move_name as _move_name
+
         if item_type == "TM":
-            item_name_for_label = f"TM: {item_name_for_label}"
+            # TM labels are "TM: <Move Name>" — localize the move.
+            item_name_for_label = f"TM: {_move_name(item_name, item_name.replace('-', ' ').title())} x{quantity}"
+        else:
+            _pretty = item_name.replace("-", " ").capitalize()
+            item_name_for_label = f"{_item_name(item_name, _pretty)} x{quantity}"
         item_name_label = QLabel(item_name_for_label)
         item_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -408,6 +423,9 @@ class ItemWindow(QWidget):
             use_item_button.clicked.connect(
                 lambda: self.Evolve_Fossil(item_name, fossil_id, fossil_pokemon_name)
             )
+        elif item_name in self.escape_items:
+            use_item_button = QPushButton("Escape from battle")
+            use_item_button.clicked.connect(lambda: self.Handle_EscapeItem(item_name))
         elif item_name in self.pokeball_chances:
             use_item_button = QPushButton("Try catching wild Pokemon")
             use_item_button.clicked.connect(lambda: self.Handle_Pokeball(item_name))
@@ -431,6 +449,9 @@ class ItemWindow(QWidget):
             use_item_button.clicked.connect(
                 lambda: self._prompt_and_check_evo_item(item_name)
             )
+        elif item_name in self.ev_items:
+            use_item_button = QPushButton("Train Mainpokemon's EVs")
+            use_item_button.clicked.connect(lambda: self._use_ev_item(item_name))
         elif (
             item_name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
             or item_name.endswith("-berry")
@@ -499,12 +520,34 @@ class ItemWindow(QWidget):
                     "ok": False,
                     "message": f"Failed to revive {fossil_pokemon_name}.",
                 }
+            if name in self.escape_items:
+                if self.Handle_EscapeItem(name):
+                    return {"ok": True, "message": f"Escaped using {name}."}
+                return {"ok": False, "message": f"Could not escape using {name}."}
             if name in self.pokeball_chances:
                 self.Handle_Pokeball(name)
                 return {"ok": True, "message": f"Threw {name}."}
             if name in self.evolution_items:
                 self._prompt_and_check_evo_item(name)
                 return {"ok": True, "message": ""}
+            if name in self.ev_items:
+                if not self.main_pokemon:
+                    return {"ok": False, "message": "No active Pokémon to train."}
+                spent, granted = self._use_ev_item(name)
+                if not spent:
+                    return {
+                        "ok": False,
+                        "message": f"Could not use {name}. Your item and Pokémon were unchanged.",
+                    }
+                if granted > 0:
+                    return {
+                        "ok": True,
+                        "message": f"Trained {self.main_pokemon.name}'s EVs with {name}! (+{granted} EV)",
+                    }
+                return {
+                    "ok": True,
+                    "message": f"Used {name}, but it had no effect on {self.main_pokemon.name}.",
+                }
             if (
                 name in GiveItemWindow.NOT_YET_IMPLEMENTED_ITEMS
                 or name.endswith("-berry")
@@ -648,6 +691,98 @@ class ItemWindow(QWidget):
 
         return catch_chance
 
+    def Handle_EscapeItem(self, item_name: str) -> bool:
+        """Spend an escape item, replace the encounter, and record its outcome."""
+        if self.enemy_pokemon is None or self.main_pokemon is None:
+            self.logger.log_and_showinfo("error", "No active battle to escape.")
+            return False
+
+        # Resolve imports and the window before spending the item. A missing
+        # dependency must not leave the player with neither item nor escape.
+        from ..functions.encounter_functions import new_pokemon
+        from ..singletons import get_test_window, reviewer_obj
+
+        test_window = get_test_window()
+        enemy = self.enemy_pokemon
+        companion = self.main_pokemon
+        history = {
+            "timestamp": int(time.time() * 1000),
+            "enemy_id": enemy.id,
+            "enemy_name": enemy.name,
+            "enemy_level": enemy.level,
+            "enemy_shiny": enemy.shiny,
+            "companion_name": companion.name,
+            "companion_level": companion.level,
+            "companion_id": companion.individual_id,
+            "outcome": "escaped",
+            "xp_gained": 0,
+            "trainer_xp_gained": 0,
+            "cash_gained": 0,
+        }
+
+        item = services.db.get_item(item_name)
+        token_before = getattr(enemy, "_ankimon_encounter_token", None)
+        if not item or not self._consume_one(item_name):
+            return False
+        try:
+            new_pokemon(
+                enemy,
+                test_window,
+                services.tracker,
+                reviewer_obj,
+                update_hud=True,
+            )
+        except Exception as exc:
+            # new_pokemon sets a fresh token once the enemy's stats and HP
+            # have been replaced. Later scene/HUD errors must not grant a free
+            # reroll or report that a completed escape failed.
+            if getattr(enemy, "_ankimon_encounter_token", None) is token_before:
+                try:
+                    services.db.refund_item(item)
+                except Exception as refund_exc:
+                    self.logger.log(
+                        "error",
+                        f"Could not return {item_name} after escape failed: {refund_exc}",
+                    )
+                    message = (
+                        f"Could not escape. Your {item_name} could not be returned "
+                        "to your bag. Please report this problem before using "
+                        "another escape item."
+                    )
+                else:
+                    message = (
+                        f"Could not escape. Your {item_name} was returned to your bag. "
+                        "Please try again."
+                    )
+                self.logger.log("error", f"Could not escape with {item_name}: {exc}")
+                self._refresh_bag()
+                services.ui.warn(message)
+                return False
+            else:
+                self.logger.log(
+                    "warning",
+                    f"Escape with {item_name} succeeded with display errors: {exc}",
+                )
+
+        try:
+            self._refresh_bag()
+        except Exception as exc:
+            self.logger.log("warning", f"Could not refresh the bag after escape: {exc}")
+        if self.settings_obj.get("mobile.enabled", True):
+            try:
+                if not services.db.add_mobile_history_entry(history):
+                    self.logger.log(
+                        "warning", "Could not record the escaped encounter."
+                    )
+            except Exception as exc:
+                self.logger.log(
+                    "warning", f"Could not record the escaped encounter: {exc}"
+                )
+        self.logger.log_and_showinfo(
+            "info", f"You used the {item_name} and successfully escaped the battle!"
+        )
+        return True
+
     def Handle_Pokeball(self, item_name: str):
         # Check if the item exists in the pokeball chances
         if item_name in self.pokeball_chances:
@@ -786,6 +921,7 @@ class ItemWindow(QWidget):
         check = check_for_badge(achievements, 20)
         if check is False:
             receive_badge(20, achievements)
+        save_main_pokemon(self.main_pokemon)
         self._refresh_bag()
         play_effect_sound(self.settings_obj, "HpHeal")
         self.logger.log_and_showinfo(
@@ -808,6 +944,144 @@ class ItemWindow(QWidget):
             item_name,
             self.achievements,
         )
+
+    def _use_ev_item(self, item_name: str) -> tuple[bool, int]:
+        """Commit one item and its EV gain together, then update live state.
+
+        Serialize with mobile rewards, and verify the persisted snapshot under
+        the writer lock before charging. Preparing a copy recalculates maximum
+        HP without changing the live companion. A failed transaction needs no
+        refund and leaves both the save and live combat state untouched.
+        Items still cost one unit when the EV caps prevent any gain.
+        """
+        main = self.main_pokemon
+        if main is None:
+            self.logger.log_and_showinfo("error", "No active Pokemon to train.")
+            return False, 0
+        if item_name not in self.ev_items:
+            return False, 0
+
+        from ..functions.mobile_sync import _mobile_sync_lock
+
+        # A bulk resolution may own the writer lock for a long time. Refuse
+        # promptly instead of freezing Qt or snapshotting half-published rewards.
+        if not _mobile_sync_lock.acquire(blocking=False):
+            self.logger.log_and_showinfo(
+                "info",
+                "Mobile reviews are being resolved. Please try again when they finish.",
+            )
+            return False, 0
+        try:
+            try:
+                expected = services.db.get_main_pokemon()
+                if not expected or expected.get("individual_id") != main.individual_id:
+                    saved = False
+                else:
+                    candidate = copy.copy(main)
+                    # Preserve the latest saved progress/metadata while retaining
+                    # combat HP and status, which may be newer than the saved row.
+                    candidate.update_stats(
+                        **{
+                            **expected,
+                            "hp": main.hp,
+                            "current_hp": main.current_hp,
+                            "battle_status": main.battle_status,
+                            "stat_stages": main.stat_stages,
+                            "volatile_status": main.volatile_status,
+                        }
+                    )
+                    new_ev, granted = apply_ev_item(dict(candidate.ev), item_name)
+                    candidate.update_stats(ev=new_ev)
+                    candidate_data = candidate.to_dict()
+                    pokemon_data = {**expected, **candidate_data}
+                    saved = services.db.consume_item_and_save_main_pokemon(
+                        item_name, pokemon_data, expected_pokemon_data=expected
+                    )
+            except Exception as exc:
+                self.logger.log(
+                    "error", f"Could not train {main.name} with {item_name}: {exc}"
+                )
+                self.logger.log_and_showinfo(
+                    "error",
+                    f"Could not train {main.name}'s EVs. Your {item_name} and Pokémon "
+                    "were unchanged; please try again.",
+                )
+                return False, 0
+            if not saved:
+                self.logger.log_and_showinfo(
+                    "info",
+                    f"Could not use {item_name}: the item is unavailable or the active "
+                    "Pokémon changed. Please refresh your bag and try again.",
+                )
+                return False, 0
+
+            # The save is durable. A publication failure must not be reported as
+            # a rejected spend; keep the mobile lock through this live update.
+            try:
+                main.update_stats(**candidate_data)
+            except Exception as exc:
+                self.logger.log(
+                    "warning",
+                    f"EV training was saved but the live Pokémon did not update: {exc}",
+                )
+        finally:
+            _mobile_sync_lock.release()
+
+        self._refresh_ev_training_state(main, item_name, granted)
+        self._refresh_bag()
+        try:
+            play_effect_sound(self.settings_obj, "HpHeal")
+            if granted > 0:
+                self.logger.log_and_showinfo(
+                    "info", f"{main.name}'s stats rose! (+{granted} EV)"
+                )
+            else:
+                self.logger.log_and_showinfo(
+                    "info", f"It won't have any effect on {main.name}."
+                )
+        except Exception as exc:
+            self.logger.log(
+                "warning", f"EV training succeeded with a display error: {exc}"
+            )
+        return True, granted
+
+    def _refresh_ev_training_state(self, main, item_name, granted):
+        """Publish committed training without resetting an ongoing encounter."""
+        try:
+            from ..battle_loop import _state
+            from ..functions.ankimon_hooks_to_poke_engine import (
+                sync_active_pokemon_stats,
+            )
+
+            sync_active_pokemon_stats(_state.new_state, main)
+        except Exception as exc:
+            self.logger.log("warning", f"Could not refresh trained battle stats: {exc}")
+        try:
+            if services.reviewer is not None:
+                services.reviewer.refresh_hud()
+        except Exception as exc:
+            self.logger.log(
+                "warning", f"Could not refresh the trained Pokémon HUD: {exc}"
+            )
+        try:
+            from ..events import events
+
+            events.emit(
+                "stats_changed",
+                source="ev_item",
+                pokemon=main.individual_id,
+                item=item_name,
+                granted=granted,
+            )
+            if is_alive(services.pokemon_pc):
+                services.pokemon_pc.refresh_gui()
+            from ..singletons import notify_stats_changed
+
+            notify_stats_changed()
+        except Exception as exc:
+            self.logger.log(
+                "warning", f"Could not refresh trained Pokémon views: {exc}"
+            )
 
     def Check_Evo_Item(
         self,
@@ -1026,5 +1300,9 @@ class ItemWindow(QWidget):
         self.show()
 
     def more_info_button_act(self, item_name: str):
-        description = get_id_and_description_by_item_name(item_name)
+        from ..localized_text import item_description
+
+        description = item_description(
+            item_name, get_id_and_description_by_item_name(item_name) or ""
+        )
         self.logger.log_and_showinfo("info", f"{description}")

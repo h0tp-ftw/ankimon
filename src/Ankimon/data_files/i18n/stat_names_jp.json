@@ -1,0 +1,10 @@
+{
+ "accuracy": "めいちゅう",
+ "attack": "こうげき",
+ "defense": "ぼうぎょ",
+ "evasion": "かいひ",
+ "hp": "HP",
+ "specialattack": "とくこう",
+ "specialdefense": "とくぼう",
+ "speed": "すばやさ"
+}

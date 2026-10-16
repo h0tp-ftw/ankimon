@@ -69,6 +69,36 @@ def test_finds_native_discord_socket(runtime_dir):
     assert get_ipc_path() == str(sock_path)
 
 
+def test_macos_finds_discord_socket_above_tempdir(tmp_path, monkeypatch):
+    """Exercise the macOS tempfile fallback, not just an XDG override."""
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    monkeypatch.setattr(pypresence_utils.sys, "platform", "darwin")
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(pypresence_utils.tempfile, "gettempdir", lambda: str(runtime_dir))
+    real_exists = pypresence_utils.os.path.exists
+    monkeypatch.setattr(
+        pypresence_utils.os.path,
+        "exists",
+        lambda path: False if str(path).startswith("/run/user/") else real_exists(path),
+    )
+    sock_path = tmp_path / "discord-ipc-0"
+    sock_path.write_text("")
+
+    assert get_ipc_path() == str(sock_path)
+
+
+def test_prefers_native_socket_over_parent_socket(tmp_path, monkeypatch):
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime_dir))
+    native = runtime_dir / "discord-ipc-0"
+    native.write_text("")
+    (tmp_path / "discord-ipc-0").write_text("")
+
+    assert get_ipc_path() == str(native)
+
+
 def test_finds_vesktop_flatpak_sandbox_socket(runtime_dir):
     """The actual bug this fixed: Vesktop's Flatpak build doesn't write its
     IPC socket into XDG_RUNTIME_DIR directly — it lands inside the sandbox's

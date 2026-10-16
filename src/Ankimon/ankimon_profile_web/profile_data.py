@@ -26,6 +26,41 @@ def _capitalize_name(s):
     return re.sub(r"(^|[\s\-/])([a-z])", lambda m: m.group(1) + m.group(2).upper(), str(s))
 
 
+def _local_species_name(internal_name, pokedex_id):
+    """Localized species name for the current language; English fallback."""
+    fallback = format_pokemon_name(internal_name or "?")
+    try:
+        lang = int(services.settings.get("misc.language", 9))
+        if lang == 9:
+            return fallback
+        from ..functions.pokedex_functions import (
+            get_pokemon_diff_lang_name,
+            search_pokedex,
+        )
+
+        if not pokedex_id and internal_name:
+            pokedex_id = search_pokedex(internal_name, "id") or search_pokedex(
+                internal_name, "num"
+            )
+        if pokedex_id:
+            loc = get_pokemon_diff_lang_name(int(pokedex_id), lang)
+            if loc and loc != "No Translation in this language":
+                return loc
+    except Exception:
+        pass
+    return fallback
+
+
+def _local_type_labels(english_types):
+    """Localized labels parallel to the (English, logic-keyed) type list."""
+    try:
+        from ..localized_text import type_name
+
+        return [type_name(t, str(t)) for t in (english_types or []) if t]
+    except Exception:
+        return list(english_types or [])
+
+
 def _species_name(s):
     """Canonical species display name via the shared utils.POKEMON_NAME_LOOKUP
     (single source of truth — e.g. "mrmime" -> "Mr. Mime"), falling back to
@@ -297,8 +332,8 @@ class ProfileData:
             "total_xp": _safe(lambda: int(tc.total_xp), 0),
             "xp_for_next_level": _safe(lambda: int(tc.xp_for_next_level()), 0),
             "cash": _safe(lambda: int(tc.cash), 0),
-            "favorite_pokemon": format_pokemon_name(
-                getattr(tc, "favorite_pokemon", "") or "None"
+            "favorite_pokemon": _local_species_name(
+                getattr(tc, "favorite_pokemon", "") or "None", None
             ),
             "highest_level_pokemon": _format_with_level(
                 _safe(lambda: tc.get_highest_level_pokemon(), "None") or "None"
@@ -385,7 +420,7 @@ class ProfileData:
         if not row or not row[1]:
             return None
         p = {"id": row[0] or 0, "name": row[1], "shiny": bool(row[2]), "gender": row[3]}
-        return {"n": format_pokemon_name(row[1]), "sprite": self._sprite_url(p)}
+        return {"n": _local_species_name(row[1], row[0]), "sprite": self._sprite_url(p)}
 
     def _favorite_stub(self):
         """The trainer's main/favorite Pokémon as {n, sprite} (or None)."""
@@ -500,13 +535,15 @@ class ProfileData:
             p = by_id.get(ind_id)
             if not p:
                 continue
+            _types = self._pokemon_types(p.get("name"))
             stub = {
                 "id": ind_id,
                 "p": p.get("id") or 0,
-                "n": format_pokemon_name(p.get("name") or "?"),
+                "n": _local_species_name(p.get("name"), p.get("id")),
                 "l": int(p.get("level") or 0),
                 "sprite": self._sprite_url(p),
-                "types": self._pokemon_types(p.get("name")),
+                "types": _types,
+                "ti": _local_type_labels(_types),
             }
             if p.get("shiny"):
                 stub["s"] = 1
@@ -540,7 +577,7 @@ class ProfileData:
                 types = self._pokemon_types(p.get("name"))
         except Exception:
             pass
-        return {"cp": cp, "types": types}
+        return {"cp": cp, "types": types, "ti": _local_type_labels(types)}
 
     def _sprite_url(self, p):
         """Web URL for a Pokémon's front sprite, resolved by the addon's own
@@ -594,7 +631,7 @@ class ProfileData:
             stub = {
                 "id": row[0],
                 "p": row[3] or 0,
-                "n": format_pokemon_name(name),
+                "n": _local_species_name(name, row[3]),
                 "l": int(row[2]) if row[2] is not None else 0,
                 "sprite": self._sprite_url(p),
             }
@@ -660,7 +697,7 @@ class ProfileData:
         stub = {
             "id": ind_id,
             "p": p.get("id") or 0,
-            "n": format_pokemon_name(p.get("name") or "?"),
+            "n": _local_species_name(p.get("name"), p.get("id")),
             "l": int(p.get("level") or 0),
             "sprite": self._sprite_url(p),
         }
@@ -699,13 +736,15 @@ class ProfileData:
                 continue
             pid = row[3] or 0
             shiny = bool(row[4])
+            _types = self._pokemon_types(name)
             entry = {
                 "id": ind_id,
                 "p": pid,
-                "n": format_pokemon_name(name),
+                "n": _local_species_name(name, pid),
                 "l": int(row[2]) if row[2] is not None else 0,
                 "cp": int(row[5]) if row[5] is not None else 0,
-                "types": self._pokemon_types(name),
+                "types": _types,
+                "ti": _local_type_labels(_types),
             }
             if shiny:
                 entry["s"] = 1

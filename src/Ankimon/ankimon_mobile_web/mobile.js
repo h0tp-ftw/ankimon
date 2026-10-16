@@ -8,6 +8,92 @@ function escapeHtml(value) {
     });
 }
 
+// --- Battle-text localization -------------------------------------------------
+// The desktop battle already routes its narration through the Python Translator;
+// this mobile view is a separate hand-rolled path, so it carries its own small
+// string table. Placeholders: {enemy} {companion} {move} {xp} are substituted by
+// the caller (names arrive pre-wrapped in <strong>). Only the languages we
+// localize battle text for are listed; everything else falls back to English.
+window.__ankimonLang = 'en';
+
+const MOBILE_I18N = {
+    en: {
+        wild_appeared: 'Wild {enemy} appeared!',
+        companion_lost: '{companion} fainted! Wild {enemy} won the battle.',
+        enemy_vulnerable: 'Wild {enemy} is vulnerable! What will you do?',
+        companion_used: '{companion} used {move}!',
+        enemy_used: 'Wild {enemy} used {move}!',
+        caught: 'You caught {enemy}! <span style="color: var(--accent-green)">Success!</span>',
+        defeated: '{enemy} was defeated! {xp}',
+        btn_catch: 'Catch',
+        btn_defeat: 'Defeat',
+        btn_continue: 'Continue',
+        btn_next_battle: 'Next Battle ▶',
+        btn_finish: 'Finish ✓',
+    },
+    jp: {
+        wild_appeared: '野生の{enemy}が現れた！',
+        companion_lost: '{companion}は倒れた！野生の{enemy}に敗れてしまった…',
+        enemy_vulnerable: '野生の{enemy}は目を回している！どうする？',
+        companion_used: '{companion}の{move}！',
+        enemy_used: '野生の{enemy}の{move}！',
+        caught: 'やった！{enemy}を捕まえた！',
+        defeated: '野生の{enemy}を倒した！ {xp}',
+        btn_catch: '捕まえる',
+        btn_defeat: 'たおす',
+        btn_continue: 'つづける',
+        btn_next_battle: 'つぎのバトル ▶',
+        btn_finish: '完了 ✓',
+    },
+    sp: {
+        wild_appeared: '¡Un {enemy} salvaje apareció!',
+        companion_lost: '¡{companion} se debilitó! El {enemy} salvaje ganó el combate.',
+        enemy_vulnerable: '¡El {enemy} salvaje está vulnerable! ¿Qué quieres hacer?',
+        companion_used: '¡{companion} usó {move}!',
+        enemy_used: '¡El {enemy} salvaje usó {move}!',
+        caught: '¡Atrapaste a {enemy}! <span style="color: var(--accent-green)">¡Bien hecho!</span>',
+        defeated: '¡Derrotaste al {enemy} salvaje! {xp}',
+        btn_catch: 'Atrapar',
+        btn_defeat: 'Derrotar',
+        btn_continue: 'Continuar',
+        btn_next_battle: 'Siguiente combate ▶',
+        btn_finish: 'Finalizar ✓',
+    },
+};
+MOBILE_I18N.es_latam = MOBILE_I18N.sp;
+
+function mt(key, vars) {
+    const table = MOBILE_I18N[window.__ankimonLang] || MOBILE_I18N.en;
+    let s = table[key] || MOBILE_I18N.en[key] || key;
+    if (vars) {
+        for (const k in vars) {
+            s = s.split('{' + k + '}').join(vars[k]);
+        }
+    }
+    return s;
+}
+
+// Pull the language out of whatever payload Python last pushed.
+function absorbLang(payload) {
+    if (payload && typeof payload.language === 'string' && payload.language) {
+        window.__ankimonLang = payload.language;
+    }
+}
+
+// Localize the static battle-action buttons (their labels are also reset
+// dynamically mid-battle, but the resting state comes from the HTML).
+function applyMobileBattleI18n() {
+    const map = {
+        'replay-catch-btn': 'btn_catch',
+        'replay-defeat-btn': 'btn_defeat',
+        'replay-next-btn': 'btn_next_battle',
+    };
+    for (const id in map) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = mt(map[id]);
+    }
+}
+
 function showConfirm(message, onConfirm, onCancel = null) {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -229,6 +315,7 @@ window.updateMobileEstimates = function(estimates) {
 };
 
 window.onResolveNextReady = function(result) {
+    absorbLang(result);
     if (!_replayRunning) return;
     if (result.done) {
         _replayRunning = false;
@@ -246,6 +333,8 @@ window.onResolveNextReady = function(result) {
 
 
 function render(status) {
+    absorbLang(status);
+    applyMobileBattleI18n();
     _currentMobileStatus = status;
     const loadingEl = document.getElementById('loading');
     if (loadingEl) {
@@ -749,7 +838,7 @@ function renderReplayBattle(result) {
     // Set initial narration
     const narrateEl = document.getElementById('narration-text');
     if (narrateEl) {
-        narrateEl.innerHTML = `<span class="narrate-encounter">Wild <strong>${escapeHtml(result.enemy_name)}</strong> appeared!</span>`;
+        narrateEl.innerHTML = `<span class="narrate-encounter">${mt('wild_appeared', { enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` })}</span>`;
     }
 
     // Timeline sequence: animate turns list sequentially
@@ -766,10 +855,10 @@ function renderReplayBattle(result) {
                 if (choiceBox) {
                     choiceBox.classList.remove('hidden');
                     if (catchBtn) catchBtn.disabled = true;
-                    if (defeatBtn) { defeatBtn.disabled = false; defeatBtn.textContent = 'Continue'; }
+                    if (defeatBtn) { defeatBtn.disabled = false; defeatBtn.textContent = mt('btn_continue'); }
                 }
                 if (narrateEl) {
-                    narrateEl.innerHTML = `<strong>${escapeHtml(result.companion_name)}</strong> fainted! Wild <strong>${escapeHtml(result.enemy_name)}</strong> won the battle.`;
+                    narrateEl.innerHTML = mt('companion_lost', { companion: `<strong>${escapeHtml(result.companion_name)}</strong>`, enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` });
                 }
                 return;
             }
@@ -777,10 +866,10 @@ function renderReplayBattle(result) {
             if (choiceBox) {
                 choiceBox.classList.remove('hidden');
                 if (catchBtn) catchBtn.disabled = false;
-                if (defeatBtn) { defeatBtn.disabled = false; defeatBtn.textContent = 'Defeat'; }
+                if (defeatBtn) { defeatBtn.disabled = false; defeatBtn.textContent = mt('btn_defeat'); }
             }
             if (narrateEl) {
-                narrateEl.innerHTML = `Wild <strong>${escapeHtml(result.enemy_name)}</strong> is vulnerable! What will you do?`;
+                narrateEl.innerHTML = mt('enemy_vulnerable', { enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` });
             }
             return;
         }
@@ -790,7 +879,7 @@ function renderReplayBattle(result) {
         // 1. Player Attack
         playerCard.classList.add('attack-dash');
         if (narrateEl) {
-            narrateEl.innerHTML = `<strong>${escapeHtml(result.companion_name)}</strong> used <strong>${escapeHtml(turn.user_attack)}</strong>!`;
+            narrateEl.innerHTML = mt('companion_used', { companion: `<strong>${escapeHtml(result.companion_name)}</strong>`, move: `<strong>${escapeHtml(turn.user_attack)}</strong>` });
         }
 
         const tPlayer = setTimeout(() => {
@@ -821,7 +910,7 @@ function renderReplayBattle(result) {
                 // 2. Enemy Attack
                 enemyCard.classList.add('attack-dash');
                 if (narrateEl) {
-                    narrateEl.innerHTML = `Wild <strong>${escapeHtml(result.enemy_name)}</strong> used <strong>${escapeHtml(turn.enemy_attack)}</strong>!`;
+                    narrateEl.innerHTML = mt('enemy_used', { enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>`, move: `<strong>${escapeHtml(turn.enemy_attack)}</strong>` });
                 }
 
                 const tEnemyAttack = setTimeout(() => {
@@ -902,7 +991,7 @@ function animateResolution(outcome, xp_gained, remaining) {
 
     if (outcome === 'caught') {
         if (narrateEl) {
-            narrateEl.innerHTML = `You caught <strong>${escapeHtml(result.enemy_name)}</strong>! <span style="color: var(--accent-green)">Success!</span>`;
+            narrateEl.innerHTML = mt('caught', { enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` });
         }
         if (catchFlash) {
             catchFlash.classList.remove('hidden');
@@ -912,14 +1001,16 @@ function animateResolution(outcome, xp_gained, remaining) {
     } else if (replayCompanionFainted(result)) {
         // The companion fainted — this encounter was lost, not a victory.
         if (narrateEl) {
-            narrateEl.innerHTML = `<strong>${escapeHtml(result.companion_name)}</strong> fainted! Wild <strong>${escapeHtml(result.enemy_name)}</strong> won the battle.`;
+            narrateEl.innerHTML = mt('companion_lost', { companion: `<strong>${escapeHtml(result.companion_name)}</strong>`, enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>` });
         }
         const playerSprite = document.getElementById('replay-player-sprite');
         if (playerSprite) playerSprite.classList.add('fainted-fade');
     } else {
         if (narrateEl) {
-            narrateEl.innerHTML = `<strong>${escapeHtml(result.enemy_name)}</strong> was defeated! <span style="color: var(--accent-blue)">+${xp_gained} XP</span>` +
-                (result.cash_gained > 0 ? ` <span style="color: var(--accent-gold)">+${result.cash_gained}¥</span>` : '');
+            narrateEl.innerHTML = mt('defeated', {
+                enemy: `<strong>${escapeHtml(result.enemy_name)}</strong>`,
+                xp: `<span style="color: var(--accent-blue)">+${xp_gained} XP</span>`,
+            }) + (result.cash_gained > 0 ? ` <span style="color: var(--accent-gold)">+${result.cash_gained}¥</span>` : '');
         }
         enemySprite.classList.add('fainted-fade');
     }
@@ -927,10 +1018,10 @@ function animateResolution(outcome, xp_gained, remaining) {
     if (nextBtn) {
         nextBtn.classList.remove('hidden');
         if (remaining === 0) {
-            nextBtn.textContent = 'Finish ✓';
+            nextBtn.textContent = mt('btn_finish');
             nextBtn.onclick = function() { _replayRunning = false; loadStatus(); };
         } else {
-            nextBtn.textContent = 'Next Battle ▶';
+            nextBtn.textContent = mt('btn_next_battle');
             nextBtn.onclick = nextReplayBattle;
         }
         nextBtn.disabled = false;

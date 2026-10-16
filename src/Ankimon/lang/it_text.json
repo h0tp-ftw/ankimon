@@ -467,5 +467,22 @@
   "evolve_now_button": "⇈ Evolvi in {evo_name} ora! ⇈",
   "badge_ready": "⇈ Pronto per l'evoluzione!",
   "badge_wait_day": "☀️ Pronto per l'evoluzione durante il giorno",
-  "badge_wait_night": "🌙 Pronto per l'evoluzione di notte"
+  "badge_wait_night": "🌙 Pronto per l'evoluzione di notte",
+  "switched_pokemon": "Scambio con {pokemon_name}! Lv. {level}",
+  "release_update_available": "Aggiornamento di Ankimon disponibile",
+  "release_prompt_title": "È disponibile una nuova versione {channel}: {tag}",
+  "release_data_preserved": "I tuoi dati Pokémon, la squadra e le impostazioni saranno conservati.",
+  "release_notes": "Note di rilascio:",
+  "release_snooze_week": "Non avvisarmi per una settimana",
+  "release_later": "Più tardi",
+  "release_update_now": "Aggiorna ora",
+  "release_invalid_title": "Versione non valida",
+  "release_invalid_body": "I dati della versione sono incompleti e non è possibile installarla.\n\nRiprova più tardi o controlla manualmente gli aggiornamenti.",
+  "release_later_title": "Aggiorna più tardi",
+  "release_later_body": "Puoi controllare e installare gli aggiornamenti in seguito da Ankimon → Aiuto → Controlla aggiornamenti.",
+  "release_channel_stable": "Stabile",
+  "release_channel_experimental": "Sperimentale",
+  "ankimon_update_button": "Aggiorna Ankimon",
+  "nature_chart_button": "Consulta la tabella delle nature",
+  "effect_item_consumed": "{pokemon_name} ha consumato il suo oggetto {item}!"
 }

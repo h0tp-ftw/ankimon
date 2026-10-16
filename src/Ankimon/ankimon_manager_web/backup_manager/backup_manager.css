@@ -1,0 +1,415 @@
+/*
+  Backup Manager - Styles
+
+  This stylesheet dresses up the Backup Manager window. It assumes the
+  shared shop.css is already loaded, since it relies on that file's theme
+  variables (--text-bright, --text-muted, --text-main, --bg-card,
+  --border-main, --accent-blue, --accent-red) for colours and typography.
+
+  What's in here:
+
+  - Two local accent colours at the top: a warm gold for the cash amount
+    shown on each backup card, and red for the destructive "Delete" button.
+
+  - Layout for the main content area and its heading ("Available Backups").
+
+  - Styling for the backup list and each backup card. Backup metadata is
+    grouped into two compact columns; at narrower widths the actions move
+    below the details and a dashed divider separates the metadata groups.
+
+  - Smaller typographic rules for the labels inside each card, plus a
+    monospaced gold style for the cash value.
+
+  - Styling for the Restore and Delete buttons, the "no backups yet"
+    empty state, and the error state (which shows a title plus a
+    scrollable, selectable traceback so users can copy it).
+
+  - The confirmation modal: a dimmed full-screen overlay with a centred
+    card, heading, message, and Cancel / Confirm buttons.
+
+  - A toast element (shared class .shop-toast, mostly styled elsewhere)
+    that the JavaScript uses for short success/failure messages.
+
+  - Responsive card and modal layouts for narrow windows.
+*/
+
+:root {
+    --backup-accent: #f2cc60;
+    --backup-danger: #f85149;
+}
+
+.backup-content {
+    padding: 30px 34px 64px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.backup-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+.backup-heading h2 {
+    margin: 0 0 6px;
+    color: var(--text-bright);
+}
+
+.backup-list {
+    display: grid;
+    gap: 12px;
+}
+
+.backup-status {
+    margin-bottom: 18px;
+    padding: 16px 18px;
+    border: 1px solid var(--accent-blue);
+    border-radius: 12px;
+    color: var(--text-main);
+    background: var(--bg-card);
+    line-height: 1.5;
+}
+
+.backup-status.hidden {
+    display: none;
+}
+
+.backup-status strong {
+    display: block;
+    color: var(--text-bright);
+}
+
+.backup-status p {
+    margin: 8px 0 0;
+}
+
+.backup-status-warning {
+    color: #ffcc80;
+}
+
+.backup-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px 16px;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border-main);
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: border-color .15s ease, transform .15s ease;
+}
+
+.backup-details {
+    display: grid;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: 24px;
+    min-width: 0;
+}
+
+.backup-detail-group {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.backup-card:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-1px);
+}
+
+.backup-date strong,
+.backup-trainer strong {
+    display: block;
+    color: var(--text-bright);
+    font-size: 1rem;
+}
+
+.backup-date span,
+.backup-trainer span,
+.backup-stat span {
+    color: var(--text-muted);
+    font-size: .78rem;
+}
+
+.backup-trainer strong {
+    font-size: 1.05rem;
+}
+
+.backup-stat {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, auto));
+    justify-content: start;
+    gap: 4px 12px;
+}
+
+.backup-cash {
+    color: var(--backup-accent);
+    font: 700 1rem 'JetBrains Mono', monospace;
+}
+
+.backup-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+    border-left: 1px dashed var(--border-main);
+    padding-left: 16px;
+}
+
+.backup-actions button {
+    border: 1px solid var(--accent-blue);
+    border-radius: 6px;
+    padding: 5px 9px;
+    color: #06111e;
+    background: var(--accent-blue);
+    cursor: pointer;
+    font: 600 .72rem 'Outfit', sans-serif;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.backup-actions button:hover {
+    border-color: var(--accent-blue);
+    color: #06111e;
+}
+
+.backup-actions button:disabled,
+#manual-backup-btn:disabled,
+#open-folder-btn:disabled {
+    cursor: wait;
+    opacity: .6;
+}
+
+.backup-actions .restore-btn {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #06111e;
+}
+
+.backup-actions .delete-btn {
+    background: var(--backup-danger);
+    border-color: var(--backup-danger);
+    color: #06111e;
+}
+
+#manual-backup-btn,
+#open-folder-btn {
+    background: linear-gradient(135deg,
+        rgba(88, 166, 255, 0.18),
+        rgba(88, 166, 255, 0.07));
+    border: 1px solid rgba(88, 166, 255, 0.35);
+}
+
+#manual-backup-btn:hover,
+#open-folder-btn:hover {
+    background: linear-gradient(135deg,
+        rgba(88, 166, 255, 0.3),
+        rgba(88, 166, 255, 0.14));
+    border-color: var(--accent-blue);
+}
+
+.backup-actions .restore-btn:hover {
+    background: #79b8ff;
+    border-color: #79b8ff;
+}
+
+.backup-actions .delete-btn:hover {
+    background: #ff6a63;
+    border-color: #ff6a63;
+}
+
+.backup-empty {
+    padding: 56px 20px;
+    text-align: center;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    border: 1px dashed var(--border-main);
+    border-radius: 12px;
+}
+
+.backup-error {
+    text-align: left;
+    border-color: var(--accent-red);
+    color: #ffb4ae;
+}
+
+.backup-error strong {
+    display: block;
+    color: var(--text-bright);
+    margin-bottom: 12px;
+}
+
+.backup-error pre {
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    user-select: text;
+    -webkit-user-select: text;
+    font: .72rem 'JetBrains Mono', monospace;
+}
+
+.nav-action {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.backup-modal {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    z-index: 20;
+    background: rgba(0, 0, 0, .68);
+}
+
+.backup-modal.hidden {
+    display: none;
+}
+
+.backup-modal-card {
+    width: min(420px, calc(100vw - 36px));
+    max-height: calc(100vh - 36px);
+    overflow: auto;
+    padding: 26px;
+    border: 1px solid var(--border-main);
+    border-radius: 18px;
+    background: var(--bg-card);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
+}
+
+.backup-modal-card.error {
+    border-color: var(--backup-danger);
+}
+
+.backup-modal-card h2 {
+    color: var(--text-bright);
+    margin-bottom: 10px;
+}
+
+.backup-modal-card p {
+    color: var(--text-muted);
+    line-height: 1.5;
+    white-space: pre-line;
+}
+
+.backup-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.backup-modal-actions .btn {
+    border-radius: 999px;
+    padding: 10px 16px;
+    border: 1px solid var(--accent-blue);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.backup-modal-actions .btn-primary {
+    background: var(--accent-blue);
+    color: #06111e;
+}
+
+.backup-modal-actions .btn-secondary {
+    background: transparent;
+    color: var(--text-main);
+    border-color: var(--border-main);
+}
+
+.backup-modal-actions .btn.hidden {
+    display: none;
+}
+
+@media (max-width: 1100px) {
+    .backup-content {
+        padding: 24px 22px 48px;
+    }
+
+    .backup-heading {
+        align-items: flex-start;
+    }
+
+    .backup-card {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 14px;
+    }
+
+    .backup-details {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 18px;
+    }
+
+    .backup-trainer-meta {
+        border: 0;
+        padding: 0;
+    }
+
+    .backup-actions {
+        grid-column: 1;
+        justify-content: flex-start;
+        border-left: 0;
+        border-top: 1px dashed var(--border-main);
+        padding: 12px 0 0;
+    }
+
+    .backup-actions button {
+        flex: 0 1 auto;
+    }
+
+    .backup-trainer,
+    .backup-date {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media (max-width: 600px) {
+    .backup-content {
+        padding: 18px 14px 40px;
+    }
+
+    .backup-heading {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .backup-card {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        padding: 16px;
+    }
+
+    .backup-details {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .backup-stat {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .backup-trainer-meta {
+        border: 0;
+        padding: 0;
+    }
+
+    .backup-actions {
+        grid-column: 1;
+        flex-direction: column;
+    }
+
+    .backup-actions button {
+        flex: none;
+        width: 100%;
+        box-sizing: border-box;
+        white-space: normal;
+    }
+}

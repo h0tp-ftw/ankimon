@@ -136,6 +136,10 @@ def team_cycle():
                 search_pokedex=lambda name, key: dict(_INCOMING_BASE_STATS),
             ),
             "Ankimon.functions.encounter_functions": MagicMock(),
+            "Ankimon.functions.drawing_utils": _make_module(
+                "Ankimon.functions.drawing_utils",
+                show_in_ankimon_window=lambda message: False,
+            ),
             "Ankimon.texts": MagicMock(),
             "Ankimon.utils": MagicMock(),
         }

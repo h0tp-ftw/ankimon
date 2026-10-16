@@ -834,7 +834,7 @@ def test_apply_update_pins_engine_and_saved_state_to_downloaded_branch(
     monkeypatch.setattr(
         um,
         "_download_and_extract_submodule",
-        lambda sha, dest, status: installed_engines.append((sha, dest)),
+        lambda sha, dest, *args, **kwargs: installed_engines.append((sha, dest)),
     )
     monkeypatch.setattr(
         um, "save_update_state", lambda *args: saved_states.append(args)

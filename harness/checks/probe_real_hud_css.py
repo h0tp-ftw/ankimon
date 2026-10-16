@@ -43,6 +43,7 @@ def main():
         },
     )
     from aqt.theme import theme_manager
+    from Ankimon.functions.pokemon_functions import find_experience_for_level
 
     view = QWebEngineView()
     page = CheckedPage(view)
@@ -110,12 +111,28 @@ def main():
     }, unstyled
     session.services.settings.set("gui.hud_styling", True)
 
+    main_pokemon = session.services.reviewer.main_pokemon
+    experience = find_experience_for_level(
+        main_pokemon.growth_rate,
+        main_pokemon.level,
+        session.services.settings.get("misc.remove_level_cap"),
+    )
+    assert experience > 0, experience
+    xp_values = (-1, 0, experience // 2, experience - 1, experience, experience * 2)
     cases = 0
-    for mode, dark, location in itertools.product((0, 1, 2), (False, True), (1, 2)):
-        case = (mode, dark, location)
+    for width, mode, dark, location, xp_value in itertools.product(
+        (320, 900, 1280), (0, 1, 2), (False, True), (1, 2), xp_values
+    ):
+        case = (width, mode, dark, location, xp_value)
+        if view.width() != width:
+            view.resize(width, 500)
+            assert _wait_until(
+                lambda: _run_javascript(page, "window.innerWidth") == width
+            ), (case, "viewport did not resize")
         theme_manager.night_mode = dark
         session.services.settings.set("gui.show_mainpkmn_in_reviewer", mode)
         session.services.settings.set("gui.xp_bar_location", location)
+        main_pokemon.xp = xp_value
         calls.clear()
         session.services.reviewer.invalidate_hud_cache()
         session.services.reviewer.refresh_hud()
@@ -129,11 +146,23 @@ def main():
             (() => {
                 const root = window.testHudRoot;
                 const style = id => getComputedStyle(root.querySelector('#' + id));
+                const rect = id => {
+                    const r = root.querySelector('#' + id).getBoundingClientRect();
+                    return {left: r.left, right: r.right, top: r.top,
+                        bottom: r.bottom, width: r.width, height: r.height,
+                        centerY: (r.top + r.bottom) / 2};
+                };
                 const xp = style('xp_text');
                 const hp = style('hp-display');
+                const track = style('xp-bar');
                 return {
                     xpColor: xp.color, xpFont: xp.fontFamily,
-                    xpTop: xp.top, xpBottom: xp.bottom,
+                    xpLabel: rect('xp_text'), xpTrack: rect('xp-bar'),
+                    xpFill: rect('xp-bar-fill'),
+                    xpInnerWidth: rect('xp-bar').width
+                        - parseFloat(track.borderLeftWidth) - parseFloat(track.borderRightWidth),
+                    xpOverflow: track.overflow,
+                    viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
                     hpColor: hp.color, hpBackground: hp.backgroundColor,
                     lifePosition: style('life-bar').position,
                     lifeHeight: parseFloat(style('life-bar').height),
@@ -147,7 +176,39 @@ def main():
         )
         assert result["xpColor"] == "rgba(0, 191, 255, 0.85)", (case, result)
         assert result["xpFont"] == "Arial, sans-serif", (case, result)
-        assert result["xpTop" if location == 1 else "xpBottom"] == "2px", (case, result)
+        # Verify the rendered relationship rather than the old label inset:
+        # its transform centers the label on the track at either screen edge.
+        label, track, fill = (result[key] for key in ("xpLabel", "xpTrack", "xpFill"))
+        assert abs(label["centerY"] - track["centerY"]) < 0.5, (case, result)
+        assert 0 <= label["left"] < label["right"] < track["left"], (case, result)
+        assert 0 <= label["top"] < label["bottom"] <= result["viewportHeight"], (
+            case,
+            result,
+        )
+        assert 0 <= track["left"] < track["right"] <= result["viewportWidth"], (
+            case,
+            result,
+        )
+        assert 0 <= track["top"] < track["bottom"] <= result["viewportHeight"], (
+            case,
+            result,
+        )
+        assert (track["centerY"] < result["viewportHeight"] / 2) == (location == 1), (
+            case,
+            result,
+        )
+        assert track["left"] <= fill["left"] <= fill["right"] <= track["right"], (
+            case,
+            result,
+        )
+        assert track["top"] <= fill["top"] < fill["bottom"] <= track["bottom"], (
+            case,
+            result,
+        )
+        expected_percent = min(100, max(0, int(xp_value / experience * 100)))
+        expected_width = result["xpInnerWidth"] * expected_percent / 100
+        assert abs(fill["width"] - expected_width) < 0.1, (case, result)
+        assert result["xpOverflow"] == "hidden", (case, result)
         assert result["hpColor"] == (
             "rgb(255, 255, 255)" if dark else "rgb(109, 109, 110)"
         ), (case, result)
@@ -179,7 +240,7 @@ def main():
         assert view.grab().save(sys.argv[1]), "could not save screenshot"
     print(
         f"PASS: Chromium {qWebEngineChromiumVersion()}, Styling-off reproduction "
-        f"and recovery, {cases} HUD layout/theme/XP cases"
+        f"and recovery, {cases} HUD viewport/layout/theme/XP cases"
     )
     view.close()
     return 0

@@ -45,6 +45,7 @@ def get_ipc_path(pipe=None):
         tempdir = os.environ.get('XDG_RUNTIME_DIR') or (f"/run/user/{os.getuid()}" if os.path.exists(f"/run/user/{os.getuid()}") else tempfile.gettempdir())
         paths = [
             '.',
+            '..',
             'snap.discord',
             'app/com.discordapp.Discord',
             'app/com.discordapp.DiscordCanary',

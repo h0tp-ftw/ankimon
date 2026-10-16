@@ -57,7 +57,7 @@ class AnkimonTracker:
             "good": 0,
             "easy": 0,
         }
-        self.cards_until_calc_multiplier = 2
+        self.cards_until_calc_multiplier = self._get_cards_per_round()
 
         self.card_streak = 0  # Streak for follow up right cards
 
@@ -90,6 +90,13 @@ class AnkimonTracker:
 
         # Start the session timer when the object is initialized
         self.start_session_timer()
+
+    def _get_cards_per_round(self) -> int:
+        try:
+            from ..battle_loop import _get_cards_per_round
+            return max(1, _get_cards_per_round())
+        except Exception:
+            return 2
 
     def get_total_reviews(self):
         col = services.col
@@ -198,19 +205,30 @@ class AnkimonTracker:
         """Retrieve stats of a specific Pokémon by its ID."""
         return self.pokemon_stats.get(pokemon_id)
 
-    def review(self, grade):
-        """Track review statistics based on the grade."""
+    def review(self, grade, *, multiplier_grade=None):
+        """Track review statistics based on the grade.
+
+        ``multiplier_grade``, when set, is the grade that enters the
+        battle-damage window. Streak and the session grade tallies still
+        follow ``grade``, so Ignore Learning Cards can keep a learning
+        answer from lowering damage without recording a button the user
+        did not press.
+        """
+        if multiplier_grade is None:
+            multiplier_grade = grade
+        if grade not in ("again", "hard", "good", "easy"):
+            raise ValueError("Invalid grade type")
+        if multiplier_grade not in ("again", "hard", "good", "easy"):
+            raise ValueError("Invalid grade type")
 
         if grade == "again":
             # Reset streak
             self.card_streak = 0
-        elif grade in ["good", "hard", "easy"]:
+        else:
             # Increment streak
             self.card_streak += 1
-        else:
-            raise ValueError("Invalid grade type")
         self.card_ratings_count[grade] += 1
-        self.multiplier_card_ratings_count[grade] += 1
+        self.multiplier_card_ratings_count[multiplier_grade] += 1
 
         # Stop the card timer after answering
         self.reset_card_timer()
@@ -218,7 +236,7 @@ class AnkimonTracker:
         self.cards_until_calc_multiplier -= 1
         # After 2 cards - calculate multiplier
         if self.cards_until_calc_multiplier <= 0:
-            self.cards_until_calc_multiplier = 2
+            self.cards_until_calc_multiplier = self._get_cards_per_round()
             self.calc_multiply_card_rating()
 
     # def update_streak(self, new_day):
@@ -271,7 +289,10 @@ class AnkimonTracker:
     def calc_multiply_card_rating(self):
         """Calculate the multiplier based on recent card rating counts."""
 
-        max_points = 20
+        max_points = sum(self.multiplier_card_ratings_count.values()) * 10
+        if max_points == 0:
+            max_points = 20
+
         multiply_sum = (
             self.multiplier_card_ratings_count["easy"] * 20
             + self.multiplier_card_ratings_count["hard"] * 5

@@ -1,5 +1,6 @@
 import os
 from collections import OrderedDict
+from threading import Lock
 
 from ..services import services
 from ..resources import pkmnimgfolder
@@ -10,11 +11,16 @@ SUBSTITUTE_PATH = f"{pkmnimgfolder}/front_default/substitute.png"
 # repaint. Bound it because unknown IDs can arrive throughout a long Anki session.
 _SPRITE_CACHE_MAXSIZE = 4096
 _PATH_VALIDITY_CACHE = OrderedDict()
+_PATH_VALIDITY_CACHE_LOCK = Lock()
+_PATH_VALIDITY_CACHE_GENERATION = 0
 
 
 def _clear_sprite_cache():
     """Forget cached hits and misses after a sprite download or update finishes."""
-    _PATH_VALIDITY_CACHE.clear()
+    global _PATH_VALIDITY_CACHE_GENERATION
+    with _PATH_VALIDITY_CACHE_LOCK:
+        _PATH_VALIDITY_CACHE.clear()
+        _PATH_VALIDITY_CACHE_GENERATION += 1
 
 
 def _load_pokedex():
@@ -68,28 +74,40 @@ def _path_format(back: bool, id: int, gif: bool, shiny: bool, female: bool):
 
 def _get_cached_valid_path(path):
     """Return a validated logical sprite path, caching contained hits and misses."""
-    try:
-        result = _PATH_VALIDITY_CACHE.pop(path)
-    except KeyError:
-        sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
-        resolved_path = os.path.realpath(path)
+    with _PATH_VALIDITY_CACHE_LOCK:
         try:
-            if os.path.commonpath((sprite_root, resolved_path)) != sprite_root:
-                return None
-            result = None
-            if os.path.exists(resolved_path):
-                # Web consumers need the logical user_files/sprites prefix even
-                # when the root is a symlink. Rebase the validated target, not
-                # the unchecked input, so internal symlinks remain contained.
-                relative_path = os.path.relpath(resolved_path, sprite_root)
-                relative_path = relative_path.replace(os.sep, "/")
-                result = f"{pkmnimgfolder}/{relative_path}"
-        except ValueError:
-            return None
+            result = _PATH_VALIDITY_CACHE.pop(path)
+        except KeyError:
+            generation = _PATH_VALIDITY_CACHE_GENERATION
+        else:
+            _PATH_VALIDITY_CACHE[path] = result
+            return result
 
-    _PATH_VALIDITY_CACHE[path] = result
-    if len(_PATH_VALIDITY_CACHE) > _SPRITE_CACHE_MAXSIZE:
-        _PATH_VALIDITY_CACHE.popitem(last=False)
+    # Sprite lookups also run on workers. Keep disk access outside the lock so a
+    # cold worker lookup cannot stall a warmed lookup on the UI thread.
+    sprite_root = os.path.realpath(os.fspath(pkmnimgfolder))
+    resolved_path = os.path.realpath(path)
+    try:
+        if os.path.commonpath((sprite_root, resolved_path)) != sprite_root:
+            return None
+        result = None
+        if os.path.exists(resolved_path):
+            # Web consumers need the logical user_files/sprites prefix even
+            # when the root is a symlink. Rebase the validated target, not
+            # the unchecked input, so internal symlinks remain contained.
+            relative_path = os.path.relpath(resolved_path, sprite_root)
+            relative_path = relative_path.replace(os.sep, "/")
+            result = f"{pkmnimgfolder}/{relative_path}"
+    except ValueError:
+        return None
+
+    with _PATH_VALIDITY_CACHE_LOCK:
+        # A download may have cleared the cache while this lookup was checking
+        # the filesystem. Do not restore an obsolete result after invalidation.
+        if generation == _PATH_VALIDITY_CACHE_GENERATION:
+            _PATH_VALIDITY_CACHE[path] = result
+            if len(_PATH_VALIDITY_CACHE) > _SPRITE_CACHE_MAXSIZE:
+                _PATH_VALIDITY_CACHE.popitem(last=False)
     return result
 
 
@@ -152,7 +170,9 @@ def get_sprite_path(
             raise ValueError
         id = validated_id
     except (TypeError, ValueError, OverflowError):
-        services.logger.log("warning", f"Invalid sprite id {id!r}; using substitute sprite.")
+        services.logger.log(
+            "warning", f"Invalid sprite id {id!r}; using substitute sprite."
+        )
         return SUBSTITUTE_PATH
 
     gif = sprite_type == "gif"
@@ -163,7 +183,9 @@ def get_sprite_path(
 
     # For Mega/Gmax forms, try to get the form-specific ID from pokedex.
     base_species_id = None
-    if pokemon_name and any(form in pokemon_name.lower() for form in ["mega", "gmax", "gigantamax"]):
+    if pokemon_name and any(
+        form in pokemon_name.lower() for form in ["mega", "gmax", "gigantamax"]
+    ):
         forme_id = _get_pokemon_id_from_pokedex(pokemon_name)
         if forme_id:
             lookup_id = forme_id

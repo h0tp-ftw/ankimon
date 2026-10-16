@@ -169,8 +169,14 @@ class PokemonObject:
             if pretty_name == "No Translation in this language":
                 pretty_name = get_pretty_name_for_name(self.name)
 
+            # The English pretty name — the catch flow auto-stores THIS as the
+            # "nickname" regardless of the current language, so a JP/DE/… player
+            # would otherwise see "Paldean Wooper" instead of パルデアウパー.
+            english_name = get_pretty_name_for_name(self.name)
+
             if self.nickname:
-                # Check if the nickname is just a variation of the internal/pretty name.
+                # Check if the nickname is just a variation of the internal /
+                # localized / English name.
                 def normalize(s):
                     return (
                         str(s)
@@ -183,8 +189,10 @@ class PokemonObject:
                     )
 
                 norm_nick = normalize(self.nickname)
-                if norm_nick != normalize(self.name) and norm_nick != normalize(
-                    pretty_name
+                if norm_nick not in (
+                    normalize(self.name),
+                    normalize(pretty_name),
+                    normalize(english_name),
                 ):
                     return self.nickname
 
@@ -707,16 +715,29 @@ class PokemonObject:
         db.update_item_quantity(held_item, -1)
         self.held_item = held_item
 
+        if held_item == "everstone":
+            self.everstone = True
+        else:
+            self.everstone = False
+
         # Save to captured_pokemon in database
         pokemon_data = db.get_pokemon(self.individual_id)
         if pokemon_data:
             pokemon_data["held_item"] = held_item
+            if held_item == "everstone":
+                pokemon_data["everstone"] = True
+            else:
+                pokemon_data["everstone"] = False
             db.save_pokemon(pokemon_data)
 
         # Also update main_pokemon if this is the main pokemon
         main_pokemon = db.get_main_pokemon()
         if main_pokemon and main_pokemon.get("individual_id") == self.individual_id:
             main_pokemon["held_item"] = held_item
+            if held_item == "everstone":
+                main_pokemon["everstone"] = True
+            else:
+                main_pokemon["everstone"] = False
             db.save_main_pokemon(main_pokemon)
 
         # Sync the in-memory main_pokemon singleton if it is the target.
@@ -726,6 +747,10 @@ class PokemonObject:
             and getattr(main_pkmn, "individual_id", None) == self.individual_id
         ):
             main_pkmn.held_item = held_item
+            if held_item == "everstone":
+                main_pkmn.everstone = True
+            else:
+                main_pkmn.everstone = False
 
     def remove_held_item(self) -> None:
         """
@@ -736,10 +761,11 @@ class PokemonObject:
 
         db = services.db
 
+        self.everstone = False
+
         from ..utils import (
             give_item,
         )  # lazy: avoids the utils<->pokedex<->pokemon_obj cycle
-
         give_item(self.held_item)  # We put the item back in the item bag
         self.held_item = None
 
@@ -747,12 +773,16 @@ class PokemonObject:
         pokemon_data = db.get_pokemon(self.individual_id)
         if pokemon_data:
             pokemon_data["held_item"] = None
+            if pokemon_data.get("everstone", False):
+                pokemon_data["everstone"] = False
             db.save_pokemon(pokemon_data)
 
         # Also update main_pokemon if this is the main pokemon
         main_pokemon = db.get_main_pokemon()
         if main_pokemon and main_pokemon.get("individual_id") == self.individual_id:
             main_pokemon["held_item"] = None
+            if main_pokemon.get("everstone", False):
+                main_pokemon["everstone"] = False
             db.save_main_pokemon(main_pokemon)
 
         # Sync the in-memory main_pokemon singleton if it is the target.
@@ -762,6 +792,7 @@ class PokemonObject:
             and getattr(main_pkmn, "individual_id", None) == self.individual_id
         ):
             main_pkmn.held_item = None
+            main_pkmn.everstone = False
 
 
 class PokemonEncoder(json.JSONEncoder):

@@ -11,6 +11,7 @@ from ..addon_files.lib.pypresence import (
     ResponseTimeout,
     ServerError,
 )
+from ..addon_files.lib.pypresence.exceptions import PipeClosed
 from ..events import events
 
 if TYPE_CHECKING:
@@ -224,6 +225,9 @@ class DiscordPresence:
             if self.RPC is None:
                 return
             action(self.RPC)
+        except PipeClosed:
+            self.logger_obj.log("warning", f"{log_prefix}: Discord pipe was closed")
+            self._drop_connection()
         except Exception as e:
             self.logger_obj.log("error", f"{log_prefix}: {e}")
             if isinstance(e, self.TRANSIENT_RPC_ERRORS):
@@ -266,6 +270,12 @@ class DiscordPresence:
             return
         while self.loop:
             try:
+                # A main-thread clear/break call can discover a closed pipe
+                # while this worker is asleep. start() re-arms that same live
+                # worker, so it must reconnect before the next update.
+                if not self.connected and not self._connect():
+                    self.loop = False
+                    return
                 with self._rpc_lock:
                     if self.RPC is None:
                         break
@@ -274,6 +284,13 @@ class DiscordPresence:
                         large_image=self.large_image_url,
                         start=self.start_time
                     )
+            except PipeClosed:
+                self.logger_obj.log(
+                    "warning", "Discord pipe was closed during update. Stopping rich presence loop."
+                )
+                self.loop = False
+                self._drop_connection(close=True)
+                return
             except Exception as e:
                 self.logger_obj.log("error", f"Error with Discord Rich Presence: {e}")
                 if isinstance(e, self.TRANSIENT_RPC_ERRORS):

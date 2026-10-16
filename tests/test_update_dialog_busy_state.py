@@ -1,6 +1,8 @@
 """Focused Tier-1 coverage for the updater dialog's busy-state controls."""
 
 import importlib.util
+import json
+import string
 import sys
 import types
 from pathlib import Path
@@ -39,6 +41,7 @@ def _load_update_dialog():
         )
         for name in (
             "QDialog",
+            "QIcon",
             "QVBoxLayout",
             "QHBoxLayout",
             "QLabel",
@@ -121,6 +124,20 @@ def _load_update_dialog():
 
 
 update_dialog = _load_update_dialog()
+
+
+def _use_catalog(monkeypatch, locale="en"):
+    catalog = json.loads(
+        (_SRC / "Ankimon" / "lang" / f"{locale}_text.json").read_text(encoding="utf-8")
+    )
+    monkeypatch.setattr(
+        update_dialog.services,
+        "translator",
+        types.SimpleNamespace(
+            translate=lambda key, **kwargs: catalog[key].format(**kwargs)
+        ),
+    )
+    return catalog
 
 
 class _Control:
@@ -254,7 +271,9 @@ def _make_dialog():
     dialog._set_action_enabled = types.MethodType(
         update_dialog.UpdateDialog._set_action_enabled, dialog
     )
-    dialog._begin_busy = types.MethodType(update_dialog.UpdateDialog._begin_busy, dialog)
+    dialog._begin_busy = types.MethodType(
+        update_dialog.UpdateDialog._begin_busy, dialog
+    )
     dialog._end_busy = types.MethodType(update_dialog.UpdateDialog._end_busy, dialog)
     dialog._defer_close_for_sprite_thread = types.MethodType(
         update_dialog.UpdateDialog._defer_close_for_sprite_thread, dialog
@@ -678,14 +697,19 @@ def test_updates_dialog_refreshes_sprite_cache(monkeypatch, tmp_path, outcome):
     (root / "front_default").mkdir(parents=True)
     (root / "front_default" / "25.png").touch()
     monkeypatch.setattr(sf, "pkmnimgfolder", root)
-    monkeypatch.setattr(sf.services, "logger", types.SimpleNamespace(log=lambda *args: None))
+    monkeypatch.setattr(
+        sf.services, "logger", types.SimpleNamespace(log=lambda *args: None)
+    )
     monkeypatch.setattr(resources, "user_path_sprites", root)
     worker_module = types.ModuleType("Ankimon.pyobj.sprite_updater")
     worker_module.SpriteUpdateDiffThread = _FakeSpriteThread
     monkeypatch.setitem(sys.modules, worker_module.__name__, worker_module)
     monkeypatch.setattr(
-        update_dialog, "mw",
-        types.SimpleNamespace(taskman=types.SimpleNamespace(run_on_main=lambda fn: fn())),
+        update_dialog,
+        "mw",
+        types.SimpleNamespace(
+            taskman=types.SimpleNamespace(run_on_main=lambda fn: fn())
+        ),
     )
     sf._clear_sprite_cache()
     try:
@@ -1049,3 +1073,276 @@ def test_branch_progress_dialog_does_not_stamp_when_the_install_failed():
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = module
+
+
+def _release_note_links(markdown):
+    from html.parser import HTMLParser
+
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.targets = []
+            self.text = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.targets.append(dict(attrs)["href"])
+
+        def handle_data(self, data):
+            self.text.append(data)
+
+    parser = Links()
+    parser.feed(update_dialog.markdown_to_html(markdown))
+    return parser.targets, "".join(parser.text)
+
+
+def test_release_notes_preserve_query_and_literal_entity_urls():
+    for url in (
+        "https://example.org/notes?version=2.0&channel=stable",
+        "https://example.org/notes?literal=&amp;value",
+        "https://example.org/search?q=\"pokemon\"&kind='fire'",
+    ):
+        for markdown in (url, f"[Release details]({url})"):
+            targets, _ = _release_note_links(markdown)
+            assert targets == [url]
+
+
+def test_release_notes_do_not_format_urls_as_markdown():
+    for url in (
+        "https://example.org/search?q=*pokemon*",
+        "https://example.org/search?q=**pokemon**",
+        "https://example.org/search?q=~~pokemon~~",
+    ):
+        for prefix in ("", "# ", "## ", "### ", "- "):
+            for markdown in (url, f"[**Search**]({url})"):
+                targets, text = _release_note_links(prefix + markdown)
+                assert targets == [url]
+                assert (url if markdown == url else "Search") in text
+
+
+def test_release_notes_keep_link_label_and_surrounding_formatting():
+    url = "https://example.org/notes?a=1&b=2"
+    html = update_dialog.markdown_to_html(f"**See [*notes*]({url}) now**")
+    assert html.startswith("<b>See ")
+    assert html.endswith(" now</b>")
+    assert "<i>notes</i>" in html
+    assert _release_note_links(f"[A & B]({url})") == ([url], "A & B")
+
+
+def test_release_notes_keep_html_escaped_and_unsafe_links_inert():
+    html = update_dialog.markdown_to_html(
+        "<script>alert</script> [unsafe](javascript:alert) "
+        '[safe](https://example.org/?q="onmouseover"&value=<b>)'
+    )
+    assert "<script>" not in html
+    assert "<b>" not in html
+    targets, _ = _release_note_links(
+        '[unsafe](javascript:alert) [safe](https://example.org/?q="onmouseover"&value=<b>)'
+    )
+    assert targets == ['https://example.org/?q="onmouseover"&value=<b>']
+
+
+@pytest.mark.parametrize("action", ["update", "later", "close"])
+@pytest.mark.parametrize("checked", [False, True])
+@pytest.mark.parametrize("locale", ["en", "de"])
+def test_release_prompt_snoozes_only_when_dismissed(monkeypatch, action, checked, locale):
+    """A checked snooze must not suppress the next release after Update Now."""
+    from unittest.mock import Mock
+
+    buttons = {}
+    dialogs = []
+    labels = []
+    catalog = _use_catalog(monkeypatch, locale)
+
+    class Signal:
+        def __init__(self):
+            self.callbacks = []
+
+        def connect(self, callback):
+            self.callbacks.append(callback)
+
+        def emit(self, *args):
+            for callback in self.callbacks:
+                callback(*args)
+
+    class Widget:
+        def __init__(self, *args):
+            if args and isinstance(args[0], str):
+                labels.append(args[0])
+
+        def __getattr__(self, name):
+            return lambda *args: None
+
+    class Dialog(Widget):
+        DialogCode = types.SimpleNamespace(Accepted=1, Rejected=0)
+
+        def __init__(self, *args):
+            self.finished = Signal()
+            dialogs.append(self)
+
+        def accept(self):
+            self.finished.emit(self.DialogCode.Accepted)
+
+        def reject(self):
+            self.finished.emit(self.DialogCode.Rejected)
+
+        def exec(self):
+            if action == "close":
+                self.reject()
+            else:
+                key = "release_update_now" if action == "update" else "release_later"
+                buttons[catalog[key]].clicked.emit()
+
+    class Button(Widget):
+        def __init__(self, label):
+            self.clicked = Signal()
+            buttons[label] = self
+
+    class CheckBox(Widget):
+        def isChecked(self):
+            return checked
+
+    manager = types.ModuleType("Ankimon.pyobj.update_manager")
+    manager.set_update_skip_until = Mock()
+    messages = Mock()
+    progress = Mock()
+    monkeypatch.setitem(sys.modules, manager.__name__, manager)
+    monkeypatch.setattr(update_dialog, "QDialog", Dialog)
+    monkeypatch.setattr(update_dialog, "QVBoxLayout", Widget)
+    monkeypatch.setattr(update_dialog, "QHBoxLayout", Widget)
+    monkeypatch.setattr(update_dialog, "QLabel", Widget)
+    monkeypatch.setattr(update_dialog, "QPushButton", Button)
+    monkeypatch.setattr(update_dialog, "QCheckBox", CheckBox)
+    monkeypatch.setattr(update_dialog, "QMessageBox", messages)
+    monkeypatch.setattr(update_dialog, "BranchUpdateProgressDialog", progress)
+    monkeypatch.setattr(update_dialog, "icon_path", None)
+    icon = Mock()
+    monkeypatch.setattr(update_dialog, "QIcon", icon)
+
+    release = {"name": "2.4-E", "zipball_url": "https://example.org/archive.zip"}
+    update_dialog.show_release_update_prompt("Experimental", release)
+
+    assert len(dialogs) == 1
+    assert catalog["release_data_preserved"] in labels
+    assert catalog["release_snooze_week"] in labels
+    assert catalog["release_update_now"] in buttons
+    assert catalog["release_later"] in buttons
+    assert any(catalog["release_channel_experimental"] in label for label in labels)
+    assert manager.set_update_skip_until.call_count == (checked and action != "update")
+    if checked and action != "update":
+        import time
+
+        skip_until = manager.set_update_skip_until.call_args.args[0]
+        assert abs(skip_until - (time.time() + 604800)) < 5
+    assert progress.call_count == (action == "update")
+    assert messages.information.call_count == (action == "later")
+    icon.assert_not_called()
+
+
+def test_release_prompt_rejects_incomplete_release(monkeypatch):
+    """Malformed release data shows a warning before creating a dialog."""
+    from unittest.mock import Mock
+
+    messages = Mock()
+    dialog = Mock()
+    catalog = _use_catalog(monkeypatch, "de")
+    monkeypatch.setattr(update_dialog, "QMessageBox", messages)
+    monkeypatch.setattr(update_dialog, "QDialog", dialog)
+
+    update_dialog.show_release_update_prompt("Stable", {"name": "2.4-E"})
+
+    messages.warning.assert_called_once()
+    assert messages.warning.call_args.args[1:] == (
+        catalog["release_invalid_title"],
+        catalog["release_invalid_body"],
+    )
+    dialog.assert_not_called()
+
+
+def test_release_prompt_keys_and_placeholders_exist_in_every_catalog():
+    lang_dir = _SRC / "Ankimon" / "lang"
+    english = json.loads((lang_dir / "en_text.json").read_text(encoding="utf-8"))
+    prompt_keys = {key for key in english if key.startswith("release_")}
+    reviewed_keys = prompt_keys | {
+        "ankimon_update_button", "nature_chart_button", "effect_item_consumed",
+        "weather_rain_still",
+    }
+    formatter = string.Formatter()
+
+    def fields(template):
+        return {field for _, field, _, _ in formatter.parse(template) if field}
+
+    for path in lang_dir.glob("*_text.json"):
+        catalog = json.loads(path.read_text(encoding="utf-8"))
+        for key in reviewed_keys:
+            assert key in catalog, (path.name, key)
+            assert fields(catalog[key]) == fields(english[key]), (path.name, key)
+
+
+def test_branch_completion_action_matches_outcome(monkeypatch):
+    """Failures dismiss the dialog; success explicitly offers to close Anki."""
+    from unittest.mock import Mock
+
+    manager = types.ModuleType("Ankimon.pyobj.update_manager")
+    manager._download_branch_zip = Mock(return_value="archive.zip")
+    manager._download_zip_to_temp = Mock(return_value="archive.zip")
+    manager.apply_update = Mock(return_value=(True, "Installed", None))
+    manager.stamp_addon_mod = Mock()
+    monkeypatch.setitem(sys.modules, manager.__name__, manager)
+    monkeypatch.setattr(update_dialog, "QueryOp", _FakeQueryOp)
+    monkeypatch.setattr(update_dialog, "QMessageBox", Mock())
+    main_window = Mock()
+    monkeypatch.setattr(update_dialog, "mw", main_window)
+
+    for outcome in (
+        "success",
+        "download",
+        "install",
+        "worker",
+        "malformed",
+        "submission",
+    ):
+        for release in (None, {"name": "2.1", "zipball_url": "test"}):
+            main_window.reset_mock()
+            dialog = types.SimpleNamespace(
+                release=release,
+                branch_name="main",
+                remote_sha="abc123",
+                on_progress=lambda *args: None,
+                btn_close=_Control(False),
+                status_label=_Label(),
+                progress_bar=_Progress(),
+                _update_succeeded=False,
+                accept=Mock(),
+            )
+            manager._download_branch_zip.return_value = (
+                None if outcome == "download" else "archive.zip"
+            )
+            manager._download_zip_to_temp.return_value = (
+                manager._download_branch_zip.return_value
+            )
+            manager.apply_update.return_value = (
+                outcome != "install",
+                "Install result",
+                None,
+            )
+            with monkeypatch.context() as context:
+                context.setattr(_FakeQueryOp, "raise_on_run", outcome == "submission")
+                update_dialog.BranchUpdateProgressDialog.start_update(dialog)
+            op = _FakeQueryOp.last
+            if outcome == "worker":
+                op.fail(RuntimeError("download crashed"))
+            elif outcome == "malformed":
+                op.success(None)
+            elif outcome != "submission":
+                op.success(op.op(None))
+
+            assert dialog.btn_close.enabled
+            succeeded = outcome == "success"
+            assert dialog.btn_close.text == ("Close Anki" if succeeded else "Close")
+            assert dialog.progress_bar.value == (100 if succeeded else 0)
+            if succeeded:
+                assert "reopen" in dialog.status_label.text
+            update_dialog.BranchUpdateProgressDialog._on_close_clicked(dialog)
+            dialog.accept.assert_called_once_with()
+            assert main_window.close.call_count == int(succeeded)

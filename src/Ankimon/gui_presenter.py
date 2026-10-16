@@ -18,6 +18,7 @@ from aqt.utils import showInfo, showWarning
 
 from .classes.choose_move_dialog import MoveSelectionDialog
 from .pyobj.attack_dialog import AttackDialog
+from .pyobj.moveset_dialog import MovesetDialog
 from .pyobj.error_handler import show_warning_with_traceback
 
 
@@ -68,6 +69,38 @@ class QtPresenter:
         try:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 return dialog.selected_attack
+            return None
+        finally:
+            dialog.deleteLater()
+
+    def choose_moveset(self, pokemon_name, attacks, new_attacks):
+        """Show :class:`MovesetDialog` and return the user's choice.
+
+        Parameters
+        ----------
+        pokemon_name : str
+            Display name of the Pokemon learning the moves.
+        attacks : Sequence[str]
+            Raw move ids the Pokemon currently knows.
+        new_attacks : Sequence[str]
+            Raw move ids newly available from the levels just gained.
+
+        Returns
+        -------
+        list of str or None
+            The chosen moveset, or None if the user kept the current moves.
+        """
+        dialog = MovesetDialog(pokemon_name, list(attacks), list(new_attacks), parent=mw)
+        QTimer.singleShot(
+            0,
+            lambda: (
+                dialog.raise_(),
+                dialog.activateWindow(),
+            ),
+        )
+        try:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                return dialog.selected_moves
             return None
         finally:
             dialog.deleteLater()

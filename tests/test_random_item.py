@@ -1,3 +1,16 @@
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def reset_random_item_cache():
+    """Each sprite-directory scenario starts with its own item cache."""
+    import Ankimon.utils as utils
+
+    utils.clear_utils_caches()
+    yield
+    utils.clear_utils_caches()
+
+
 def test_random_item_returns_none_when_sprite_directory_is_missing(monkeypatch, tmp_path):
     import Ankimon.utils as utils
 

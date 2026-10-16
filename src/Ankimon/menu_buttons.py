@@ -26,7 +26,7 @@ from .pyobj.achievement_window import AchievementWindow
 from .pyobj.ankimon_tracker_window import AnkimonTrackerWindow
 from .pyobj.backup_manager import BackupManager
 from .pyobj.save_transfer import (
-    export_save, import_save, cancel_pending_save_import, browse_recovered_saves,
+    export_save, import_save, cancel_pending_save_import_async, browse_recovered_saves,
 )
 from .gui_classes.backup_manager_dialog import BackupManagerDialog
 from .gui_entities import (
@@ -132,7 +132,7 @@ def create_menu_actions(
         # by the next push. Only touch the profile action when actually opening
         # Profile, so opening another screen can't clobber a queued action (or
         # leave a stale one behind).
-        w = get_items_window()
+        w = get_items_window(backup_manager=backup_manager)
         if view is not None:
             w.pending_view = view
         if screen == "profile":
@@ -149,6 +149,7 @@ def create_menu_actions(
         w.show()
         w.raise_()
         w.activateWindow()
+        return w
 
     if database_complete:
         # Pokémon PC
@@ -187,6 +188,16 @@ def create_menu_actions(
         )
         profile_menu.addAction(achievement_bag_action)
 
+        def open_monthly_challenge():
+            from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
+            check_and_award_monthly_pokemon(logger, reclaim=True)
+
+        monthly_action = QAction(mw.translator.translate("monthly_challenge_button"), mw)
+        monthly_action.setObjectName("ankimon_monthly_challenge")
+        monthly_action.setMenuRole(QAction.MenuRole.NoRole)
+        monthly_action.triggered.connect(open_monthly_challenge)
+        profile_menu.addAction(monthly_action)
+
         # Showdown Teambuilder
         pokemon_showdown_action = QAction(mw.translator.translate("open_showdown_teambuilder_button"), mw)
         pokemon_showdown_action.setMenuRole(QAction.MenuRole.NoRole)
@@ -219,7 +230,7 @@ def create_menu_actions(
     # Backup Manager
     backup_manager_action = QAction("Backup Manager", mw)
     backup_manager_action.setMenuRole(QAction.MenuRole.NoRole)
-    backup_manager_action.triggered.connect(lambda: BackupManagerDialog(backup_manager, mw).exec())
+    backup_manager_action.triggered.connect(lambda: _open_shell_at("backup_manager"))
     game_menu.addAction(backup_manager_action)
 
     # Manual save transfer. This is the supported way to move a save between
@@ -239,7 +250,15 @@ def create_menu_actions(
 
     cancel_import_action = QAction("Cancel Pending Save Import", mw)
     cancel_import_action.setMenuRole(QAction.MenuRole.NoRole)
-    cancel_import_action.triggered.connect(cancel_pending_save_import)
+    def _cancel_pending_save_import_in_backup_manager():
+        window = _open_shell_at("backup_manager")
+        try:
+            context = backup_manager.capture_context(require_backup_path=False)
+            cancel_pending_save_import_async(context, notify=window.show_backup_notice)
+        except Exception as error:
+            window.show_backup_notice(str(error), True)
+
+    cancel_import_action.triggered.connect(_cancel_pending_save_import_in_backup_manager)
     game_menu.addAction(cancel_import_action)
 
     recovery_action = QAction("Browse Pre-import Recovery Saves…", mw)

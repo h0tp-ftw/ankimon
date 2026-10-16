@@ -348,10 +348,13 @@ def get_pokemon_pc():
 _items_web_window = None
 
 
-def get_items_window():
+def get_items_window(backup_manager=None):
     global _items_web_window
     if is_alive(_items_web_window):
+        if backup_manager is not None:
+            _items_web_window.backup_manager = backup_manager
         return _items_web_window
+
     from .ankimon_items_web.shop_obj import AnkimonItemsWeb
 
     _items_web_window = AnkimonItemsWeb(
@@ -362,6 +365,7 @@ def get_items_window():
         trainer_card=trainer_card,
         settings_obj=settings_obj,
         logger=logger,
+        backup_manager=backup_manager,
     )
     mw.items_web_window = _items_web_window
     return _items_web_window
@@ -479,6 +483,9 @@ def swap_ankimon_account():
         # returns a fresh, unrelated PokemonObject. Discarding that would leave
         # the live singleton — shared by test_window / battle_loop / pokemon_pc —
         # still showing the previous account's Pokemon, so apply it back.
+        from .battle_loop import _cancel_main_faint_deferral
+
+        _cancel_main_faint_deferral()
         new_main, _ = update_main_pokemon(services.main_pokemon)
         if new_main is not None and new_main is not services.main_pokemon:
             services.main_pokemon.update_stats(**new_main.to_dict())

@@ -5,7 +5,8 @@ from PyQt6.QtGui import QFont, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QEvent, QTimer
 
 from ..functions.pokedex_functions import find_details_move
-from ..move_names import format_move_name
+from ..move_names import format_move_name, format_move_description
+import random
 
 
 # Digit selection exists only for Key_1..Key_9, so one range bounds both the
@@ -23,7 +24,6 @@ DIGIT_SHORTCUT_COUNT = Qt.Key.Key_9 - Qt.Key.Key_1 + 1
 CHORD_MODIFIERS = (Qt.KeyboardModifier.ControlModifier
                    | Qt.KeyboardModifier.AltModifier
                    | Qt.KeyboardModifier.MetaModifier)
-
 
 class MoveSelectionDialog(QDialog):
     def __init__(self, mainpokemon_attacks, parent=None):
@@ -73,8 +73,10 @@ class MoveSelectionDialog(QDialog):
             # would kill the turn before exec() ever ran.
             move_detail = find_details_move(move) or {}
             move_name = format_move_name(move_detail.get('name', move))
-            move_label = QLabel(f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {move_detail.get('shortDesc', 'Unknown')}")
-            move_label.setToolTip(f"{move_detail.get('desc', 'No description available')}")
+            short_desc = format_move_description(move, move_detail.get('shortDesc', 'Unknown'))
+            long_desc = format_move_description(move, move_detail.get('desc', 'No description available'))
+            move_label = QLabel(f"{index + 1}. {move_name}({move_detail.get('basePower', 'Unknown')}): {short_desc}")
+            move_label.setToolTip(long_desc)
             move_label.setFont(QFont("Arial", 12))
             move_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             # One filter on the dialog, rather than a closure per label: an

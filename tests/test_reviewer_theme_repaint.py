@@ -242,3 +242,30 @@ def test_flipping_the_theme_repaints_rather_than_being_cached_away():
     assert 'class=\\"night_mode\\"' in _painted_markup(reviewer), (
         "the repaint after the theme flip still carried the light palette"
     )
+
+
+def test_hud_escapes_pokemon_display_data_but_preserves_generated_markup():
+    """Imported nicknames/data are text, not markup, in the reviewer HUD."""
+    mod, mgr, _, _ = _manager()
+    mgr.settings.values["gui.show_mainpkmn_in_reviewer"] = 1
+
+    enemy_payload = "<img src=x onerror=pycmd(1)>&"
+    main_payload = "<svg/onload=pycmd(2)>"
+    mgr.enemy_pokemon.display_name = enemy_payload
+    mgr.main_pokemon.display_name = main_payload
+
+    # These two helpers own deliberate HUD markup. Escaping the completed name
+    # or HUD fragment would break it, so keep this behavior under regression.
+    mgr.get_boost_values_string = lambda *a, **k: "<em>BOOST</em>"
+    mod.create_status_html = lambda *a, **k: "<strong>STATUS</strong>"
+
+    reviewer = MagicMock()
+    mgr.update_life_bar(reviewer, 0, 0)
+    painted = _painted_markup(reviewer)
+
+    assert enemy_payload not in painted
+    assert main_payload not in painted
+    assert "&lt;img src=x onerror=pycmd(1)&gt;&amp;" in painted
+    assert "&lt;svg/onload=pycmd(2)&gt;" in painted
+    assert "<em>BOOST</em>" in painted
+    assert "<strong>STATUS</strong>" in painted

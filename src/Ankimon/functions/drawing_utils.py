@@ -94,6 +94,45 @@ def tooltipWithColour(
             logger.log_and_showinfo("game", msg)
 
 
+def show_in_ankimon_window(msg: str) -> bool:
+    """Put ``msg`` in the Ankimon Window's own message box, if it's open on
+    the battle view — used for confirmations (caught a Pokémon, switched the
+    active companion) that used to only ever appear as a floating Anki
+    tooltip. With the window open, that tooltip visually overlapped/competed
+    with the window's own message box for the same on-screen text; routing
+    the message into the window itself instead reads as one coherent log.
+    No-op (not an error) when the window doesn't exist, isn't alive, is
+    hidden, or is on a different view (death/first-encounter).
+
+    Returns True only when the message really was painted into the window, so
+    callers can fall back to their own tooltip in every other case WITHOUT
+    double-showing it when the window did take it.
+    """
+    if not _HAVE_QT:
+        return False
+    try:
+        from ..utils import is_alive
+
+        test_window = services.test_window
+        # isVisible() matters as much as is_alive(): TestWindow.closeEvent()
+        # leaves current_view alone, and QWidget.close() only hides the widget
+        # (no WA_DeleteOnClose here), so a closed window still answers True to
+        # both is_alive() and current_view == "battle". Without this check the
+        # message would be painted into a window nobody can see AND report
+        # success, which suppresses the caller's tooltip fallback — the text
+        # would simply vanish.
+        if (
+            is_alive(test_window)
+            and test_window.isVisible()
+            and test_window.current_view == "battle"
+        ):
+            test_window.force_display_battle(message_text=msg)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def draw_gender_symbols(
     main_pokemon: PokemonObject,
     enemy_pokemon: PokemonObject,

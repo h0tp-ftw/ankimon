@@ -50,16 +50,20 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
         d = Driver(settings_overrides=overrides)
 
     kinds = Counter()
+    error_details = Counter()
     gc.collect()
     if app:
         app.processEvents()
     rss0 = _rss_mb()
-    t0 = time.time()
+    t0 = time.perf_counter()
     rows = [(0, rss0)]
 
     for i in range(1, n + 1):
         for e in d.answer("good"):
             kinds[e["type"]] += 1
+            if e["type"] == "error":
+                detail = e.get("exception") or e.get("message") or repr(e)
+                error_details[str(detail)] += 1
         # Pump the loop so Qt actually frees deleteLater'd widgets (real tier).
         if app and i % 50 == 0:
             app.processEvents()
@@ -71,10 +75,10 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
             rows.append((i, rss))
             if verbose:
                 print(f"  {i:6d} reviews | RSS {rss:7.1f} MB (+{rss - rss0:6.1f}) "
-                      f"| {i / (time.time() - t0):5.0f}/s | enc {kinds['encounter']} "
+                      f"| {i / (time.perf_counter() - t0):5.0f}/s | enc {kinds['encounter']} "
                       f"err {kinds['error']}", flush=True)
 
-    dt = time.time() - t0
+    dt = time.perf_counter() - t0
     rss_end = rows[-1][1]
     growth = rss_end - rss0
     result = {
@@ -83,13 +87,18 @@ def run(n=10000, tier="real", sample=1000, verbose=True):
         "rss_start_mb": round(rss0, 1), "rss_end_mb": round(rss_end, 1),
         "growth_mb": round(growth, 1), "mb_per_1k_reviews": round(growth / n * 1000, 3),
         "encounters": kinds["encounter"], "errors": kinds["error"],
+        "error_details": dict(error_details),
     }
     if verbose:
         print(f"\nsoak ({tier}): {n} reviews in {dt:.1f}s ({n / dt:.0f}/s)")
         print(f"  RSS {rss0:.1f} -> {rss_end:.1f} MB  (growth {growth:+.1f} MB, "
               f"{growth / n * 1000:.3f} MB per 1000 reviews)")
         print(f"  encounters {kinds['encounter']}, errors {kinds['error']}")
-    assert kinds["error"] == 0, f"{kinds['error']} error events during soak"
+        for detail, count in error_details.most_common():
+            print(f"  error x{count}: {detail}")
+    assert kinds["error"] == 0, (
+        f"{kinds['error']} error events during soak: {dict(error_details)}"
+    )
     return result
 
 

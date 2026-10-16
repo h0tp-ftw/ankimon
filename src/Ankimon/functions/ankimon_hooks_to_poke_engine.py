@@ -662,6 +662,112 @@ def reset_side(pokemon: Pokemon, side_conditions: Union[dict, None] = None) -> S
     return side
 
 
+class _AnkimonEngineState(State):
+    """Keep the active individual's identity alongside the slotted engine state."""
+
+    __slots__ = ("_ankimon_main_individual_id", "_ankimon_main_stats")
+
+
+def _bind_main_pokemon(state, main_pokemon):
+    if not isinstance(state, _AnkimonEngineState):
+        state = _AnkimonEngineState(
+            state.user, state.opponent, state.weather, state.field, state.trick_room
+        )
+    state._ankimon_main_individual_id = getattr(main_pokemon, "individual_id", None)
+    state._ankimon_main_stats = dict(main_pokemon.stats)
+    return state
+
+
+def sync_active_pokemon_stats(state, main_pokemon):
+    """Apply committed training to this individual's ongoing battle in place.
+
+    Engine raw stats can differ from the owner's intrinsic stats after a form
+    change. Apply only the intrinsic difference so training preserves that live
+    form, as well as HP, boosts, statuses, moves, held items and field conditions.
+    The snapshot makes repeated notifications idempotent. Transform retains its
+    copied non-HP stats; its HP and the owner's EVs still belong to the original.
+    """
+    individual_id = getattr(main_pokemon, "individual_id", None)
+    if (
+        state is None
+        or individual_id is None
+        or str(getattr(state, "_ankimon_main_individual_id", None))
+        != str(individual_id)
+    ):
+        return False
+    active = state.user.active
+    if active.id != normalize_name(main_pokemon.name):
+        return False
+
+    old_stats = state._ankimon_main_stats
+    new_stats = dict(main_pokemon.stats)
+    new_evs = tuple(
+        main_pokemon.ev.get(stat, 0)
+        for stat in ("hp", "atk", "def", "spa", "spd", "spe")
+    )
+    stat_fields = (
+        ("atk", "attack"),
+        ("def", "defense"),
+        ("spa", "special_attack"),
+        ("spd", "special_defense"),
+        ("spe", "speed"),
+    )
+    if constants.TRANSFORM not in active.volatile_status:
+        deltas = {stat: new_stats[stat] - old_stats[stat] for stat, _ in stat_fields}
+        if active.ability == "stancechange" and active.id in (
+            "aegislash",
+            "aegislashshield",
+            "aegislashblade",
+        ):
+            # Stance Change leaves the id unchanged and recalculates four stats
+            # with the engine's formula. Identify that live form before applying
+            # training: a nature's rounding can differ between Blade and Shield.
+            from ..poke_engine.helpers import calculate_stats
+
+            stance_fields = tuple(
+                zip(
+                    stat_fields[:4],
+                    (
+                        constants.ATTACK,
+                        constants.DEFENSE,
+                        constants.SPECIAL_ATTACK,
+                        constants.SPECIAL_DEFENSE,
+                    ),
+                )
+            )
+            for form in ("aegislash", "aegislashblade"):
+                base_stats = _engine_pokedex[form][constants.BASESTATS]
+                before = calculate_stats(
+                    base_stats, active.level, evs=active.evs, nature=active.nature
+                )
+                if not all(
+                    getattr(active, field) == before[engine_stat]
+                    for (_, field), engine_stat in stance_fields
+                ):
+                    continue
+                after = calculate_stats(
+                    base_stats,
+                    main_pokemon.level,
+                    evs=new_evs,
+                    nature=main_pokemon.nature,
+                )
+                deltas.update(
+                    {
+                        stat: after[engine_stat] - before[engine_stat]
+                        for (stat, _), engine_stat in stance_fields
+                    }
+                )
+                break
+        for stat, field in stat_fields:
+            setattr(active, field, getattr(active, field) + deltas[stat])
+    active.maxhp = main_pokemon.max_hp
+    active.level = main_pokemon.level
+    active.nature = main_pokemon.nature
+    active.evs = new_evs
+    state._ankimon_main_stats = new_stats
+    return True
+
+
 def simulate_battle_with_poke_engine(
     main_pokemon: Pokemon,
     enemy_pokemon: Pokemon,
@@ -715,6 +821,11 @@ def simulate_battle_with_poke_engine(
 
     if (state is not None) and (
         state.user.active.id != normalize_name(main_pokemon.name)
+        or (
+            getattr(state, "_ankimon_main_individual_id", None) is not None
+            and str(state._ankimon_main_individual_id)
+            != str(getattr(main_pokemon, "individual_id", None))
+        )
     ):
         mutator_full_reset = 1  # reset AFTER Pokemon is changed !
     if mutator_full_reset not in (0, 1):
@@ -765,6 +876,7 @@ def simulate_battle_with_poke_engine(
                 field=None,
                 trick_room=False,
             )
+            state = _bind_main_pokemon(state, main_pokemon)
         else:
             if mutator_full_reset == 0:  # Combat is ongoing
                 pass
@@ -797,6 +909,7 @@ def simulate_battle_with_poke_engine(
                 state.weather = None  # Reset weather to None
                 state.field = None  # Reset field to None
                 state.trick_room = False  # Reset trick room to None
+                state = _bind_main_pokemon(state, main_pokemon)
 
             else:
                 raise ValueError(
@@ -1044,19 +1157,22 @@ def diff_states(state_before, state_after, path="", changes=None):
         )
         return changes
 
-    # Custom class: recurse into attributes (__dict__ and __slots__ on the class)
+    # Custom class: inherited slots remain part of the battle state too.
     attrs = set()
     for obj in (state_before, state_after):
         # __dict__ attributes
         if hasattr(obj, "__dict__"):
             attrs.update(vars(obj).keys())
-        # __slots__ attributes (check on the class)
-        if hasattr(obj.__class__, "__slots__"):
-            for slot in obj.__class__.__slots__:
-                attrs.add(slot)
+        for cls in obj.__class__.__mro__:
+            slots = cls.__dict__.get("__slots__", ())
+            if isinstance(slots, str):
+                slots = (slots,)
+            attrs.update(slots)
 
     if attrs:
         for attr in attrs:
+            if attr in ("__dict__", "__weakref__") or attr.startswith("_ankimon_"):
+                continue
             before_val = getattr(state_before, attr, None)
             after_val = getattr(state_after, attr, None)
             new_path = f"{path}.{attr}" if path else attr

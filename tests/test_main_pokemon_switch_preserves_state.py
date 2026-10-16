@@ -126,6 +126,11 @@ def collection_dialog():
         "Ankimon.functions.migration": _make_module(
             "Ankimon.functions.migration", migrate_starter_individual_id=MagicMock()
         ),
+        "Ankimon.battle_loop": _make_module(
+            "Ankimon.battle_loop",
+            _main_faint_pending_for=MagicMock(return_value=False),
+            _cancel_main_faint_deferral=MagicMock(),
+        ),
         # Imported at the very END of MainPokemon's body.
         "Ankimon.singletons": singletons,
         "Ankimon.business": business,

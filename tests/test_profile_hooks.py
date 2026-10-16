@@ -69,6 +69,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     clear_encounter = MagicMock(name="clear_encounter_cache")
     clear_auto_battle = MagicMock(name="clear_auto_battle_override")
     warm_evolution = MagicMock(name="warm_evolution_caches", return_value=507)
+    clear_utils = MagicMock(name="clear_utils_caches")
 
     monkeypatch.setitem(
         sys.modules,
@@ -92,7 +93,11 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.utils",
-        _stub_module("Ankimon.utils", test_online_connectivity=lambda: False),
+        _stub_module(
+            "Ankimon.utils",
+            test_online_connectivity=lambda: False,
+            clear_utils_caches=clear_utils,
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -166,6 +171,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         clear_learnset,
         clear_encounter,
         clear_auto_battle,
+        clear_utils,
     )
     profile_hooks._warm = warm_evolution
     return profile_hooks
@@ -407,3 +413,25 @@ def test_profile_open_warm_failure_does_not_break_the_rest_of_the_handler(monkey
         "error",
         "Error warming evolution caches on profile open: data_files unreadable",
     )
+
+
+def test_connectivity_completions_belong_to_the_opening_collection(monkeypatch):
+    _fresh_services(monkeypatch)
+    hooks = _exec_profile_hooks(monkeypatch, _fresh_gui_hooks())
+    hooks.settings_obj.get.side_effect = lambda key, default=None: False
+    queued = []
+    hooks.mw.taskman = SimpleNamespace(run_in_background=lambda task, done: queued.append(done))
+    hooks.mw.col = object()
+    handler = hooks._on_profile_did_open(True)
+    handler()
+    old_done = queued.pop()
+    hooks.mw.col = object()
+    handler()
+    new_done = queued.pop()
+    old_done(_Future(True))
+    hooks.check_and_award_monthly_pokemon.assert_not_called()
+    new_done(_Future(True))
+    hooks.check_and_award_monthly_pokemon.assert_called_once_with(hooks.logger)
+    hooks.mw.col = None
+    new_done(_Future(True))
+    hooks.check_and_award_monthly_pokemon.assert_called_once()

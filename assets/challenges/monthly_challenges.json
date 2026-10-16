@@ -795,5 +795,82 @@
             "held_item": null,
             "evos": []
         }
+    },
+    {
+        "code": "MONTHLY-2026-10-PHANTUMP",
+        "month": "October 2026",
+        "description": "A spooky challenge for October 2026, featuring Phantump!",
+        "previous_challenge_individual_id": "c46ae93c-0368-4dfe-8f1f-90ad8a892fbb",
+        "defeat_threshold": 250,
+        "pokemon": {
+            "name": "Phantump",
+            "nickname": "",
+            "id": 708,
+            "level": 5,
+            "ability": "Frisk",
+            "type": [
+                "Ghost",
+                "Grass"
+            ],
+            "stats": {
+                "hp": 43,
+                "atk": 70,
+                "def": 48,
+                "spa": 50,
+                "spd": 60,
+                "spe": 38,
+                "xp": 0
+            },
+            "base_stats": {
+                "hp": 43,
+                "atk": 70,
+                "def": 48,
+                "spa": 50,
+                "spd": 60,
+                "spe": 38
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 20,
+                "atk": 29,
+                "def": 21,
+                "spa": 23,
+                "spd": 16,
+                "spe": 2
+            },
+            "attacks": [
+                "Branch poke",
+                "Astonish",
+                "Confuse ray",
+                "Tackle"
+            ],
+            "growth_rate": "medium",
+            "base_experience": 62,
+            "gender": "M",
+            "shiny": false,
+            "nature": "serious",
+            "xp": 0,
+            "current_hp": 43,
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "mega": false,
+            "special_form": null,
+            "special-form": null,
+            "tier": "Normal",
+            "captured_date": "2026-09-28 21:31:52",
+            "capture_date": "2026-09-28 21:31:52",
+            "individual_id": "7b581fa6-0e56-4f4e-bd4e-a5eabf2634a7",
+            "is_favorite": false,
+            "held_item": null,
+            "evos": []
+        }
     }
 ]

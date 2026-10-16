@@ -255,6 +255,107 @@ def test_victory_path_move_gate_sees_moves_learned_at_level_up():
         % (result["db_attacks"],)
     )
 
+def test_amulet_coin_doubles_cash_reward_interval():
+    """Amulet Coin / Lucky Incense held by the main Pokemon double the
+    trainer.cash payout at the reward interval — mirrors their identical
+    "double prize money" effect in the mainline games, adapted onto
+    Ankimon's own per-review cash-interval reward."""
+    result = _subrun(
+        "from harness.driver import Driver\n"
+        "overrides = {'battle.cards_per_round': 1, 'trainer.cash_reward_interval': 1, 'trainer.cash_reward_amount': 50}\n"
+        "d = Driver(settings_overrides=overrides)\n"
+        "d.services.main_pokemon.held_item = None\n"
+        "before = d.services.settings.get('trainer.cash', 0)\n"
+        "d.answer('good')\n"
+        "no_item_gain = d.services.settings.get('trainer.cash', 0) - before\n"
+        "d2 = Driver(settings_overrides=overrides)\n"
+        "d2.services.main_pokemon.held_item = 'amulet-coin'\n"
+        "before2 = d2.services.settings.get('trainer.cash', 0)\n"
+        "d2.answer('good')\n"
+        "amulet_gain = d2.services.settings.get('trainer.cash', 0) - before2\n"
+        "print(%r + json.dumps({'no_item_gain': no_item_gain, 'amulet_gain': amulet_gain}))"
+        % _MARKER
+    )
+    assert result["no_item_gain"] == 50
+    assert result["amulet_gain"] == 100
+
+
+def test_faint_persists_healed_hp_without_dropping_moves_or_is_main():
+    """A faint heal must land on the stored row without replacing it.
+
+    Level-up writes a new move onto the database dict only; the in-memory
+    moveset stays stale for the rest of the session. Saving the object on
+    faint used to overwrite that learned move, and save_main_pokemon()
+    forced is_main back on after it had been cleared.
+    """
+    result = _subrun(
+        "from harness.driver import Driver\n"
+        "d = Driver(seed={'main': {'species': 'Slowpoke', 'level': 11,\n"
+        "                          'attacks': ['tackle'], 'friendship': 0}},\n"
+        "           settings_overrides={'battle.cards_per_round': 1},\n"
+        "           first_encounter=False, evolution_policy='ignore')\n"
+        "from Ankimon.functions.encounter_functions import (\n"
+        "    handle_main_pokemon_faint, save_main_pokemon_progress)\n"
+        "from Ankimon.functions.pokemon_functions import find_experience_for_level\n"
+        "main = d.services.main_pokemon\n"
+        "db = d.services.db\n"
+        "cost = int(find_experience_for_level(\n"
+        "    main.growth_rate, main.level,\n"
+        "    d.services.settings.get('misc.remove_level_cap')))\n"
+        "main.xp = 0\n"
+        "save_main_pokemon_progress(main, d.services.enemy_pokemon, cost + 1,\n"
+        "    d.services.achievements, d.services.logger, d.services.evo_window)\n"
+        "stored = db.get_main_pokemon()\n"
+        "learned = list(stored.get('attacks') or [])\n"
+        "memory = list(main.attacks)\n"
+        "stored['hp'] = 0\n"
+        "stored['current_hp'] = 0\n"
+        "db.save_main_pokemon(stored)\n"
+        "main.hp = 0\n"
+        "main.current_hp = 0\n"
+        "handle_main_pokemon_faint(main, d.services.enemy_pokemon,\n"
+        "    d.services.test_window, d.services.reviewer, d.services.translator,\n"
+        "    spawn_replacement=False)\n"
+        "reloaded = db.get_main_pokemon()\n"
+        "d2 = Driver(seed={'main': {'species': 'Pikachu', 'level': 20,\n"
+        "                           'attacks': ['thundershock']}},\n"
+        "            settings_overrides={'battle.cards_per_round': 1},\n"
+        "            first_encounter=False, evolution_policy='ignore')\n"
+        "main2 = d2.services.main_pokemon\n"
+        "db2 = d2.services.db\n"
+        "db2.execute('UPDATE captured_pokemon SET is_main = 0')\n"
+        "db2._get_connection().commit()\n"
+        "main2.hp = 0\n"
+        "main2.current_hp = 0\n"
+        "handle_main_pokemon_faint(main2, d2.services.enemy_pokemon,\n"
+        "    d2.services.test_window, d2.services.reviewer, d2.services.translator,\n"
+        "    spawn_replacement=False)\n"
+        "flag = db2.execute(\n"
+        "    'SELECT is_main FROM captured_pokemon WHERE individual_id = ?',\n"
+        "    (main2.individual_id,)).fetchone()\n"
+        "row2 = db2.get_pokemon(main2.individual_id)\n"
+        "print(%r + json.dumps({\n"
+        "    'level': int(main.level),\n"
+        "    'learned': learned,\n"
+        "    'memory': memory,\n"
+        "    'reloaded_attacks': list((reloaded or {}).get('attacks') or []),\n"
+        "    'current_hp': None if not reloaded else reloaded.get('current_hp'),\n"
+        "    'hp': None if not reloaded else reloaded.get('hp'),\n"
+        "    'max_hp': int(main.max_hp),\n"
+        "    'is_main': None if flag is None else int(flag[0]),\n"
+        "    'cleared_hp': None if not row2 else row2.get('current_hp'),\n"
+        "    'cleared_max': int(main2.max_hp),\n"
+        "}))" % _MARKER
+    )
+    assert result["level"] == 12, result
+    assert "confusion" in result["learned"], result
+    assert "confusion" not in result["memory"], result
+    assert "confusion" in result["reloaded_attacks"], result
+    assert result["current_hp"] == result["max_hp"], result
+    assert result["hp"] == result["max_hp"], result
+    assert result["is_main"] == 0, result
+    assert result["cleared_hp"] == result["cleared_max"], result
+
 
 if __name__ == "__main__":
     test_play_session_runs_without_errors()
@@ -262,6 +363,8 @@ if __name__ == "__main__":
     test_auto_battle_mode_cycles()
     test_battle_loop_survives_dead_windows()
     test_victory_path_move_gate_sees_moves_learned_at_level_up()
+    test_amulet_coin_doubles_cash_reward_interval()
+    test_faint_persists_healed_hp_without_dropping_moves_or_is_main()
     print("headless harness tests: OK")
 
 

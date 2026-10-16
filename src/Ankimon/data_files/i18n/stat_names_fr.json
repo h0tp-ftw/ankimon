@@ -1,0 +1,10 @@
+{
+ "accuracy": "Précision",
+ "attack": "Attaque",
+ "defense": "Défense",
+ "evasion": "Esquive",
+ "hp": "PV",
+ "specialattack": "Attaque Spéciale",
+ "specialdefense": "Défense Spéciale",
+ "speed": "Vitesse"
+}

@@ -34,6 +34,15 @@ class _RecordingFake:
         # observable stream stays clean on every guarded touch.
         return self._target
 
+    def isVisible(self) -> bool:
+        # Same reasoning as objectName(): callers probe this to decide whether
+        # the real window can display a message for them, and a headless fake
+        # displays nothing — so answer False without recording a ``ui`` event.
+        # Left to __getattr__ it would emit a spurious per-encounter event into
+        # the observable stream AND return None, which reads as "not visible"
+        # only by accident.
+        return False
+
     def __getattr__(self, name):
         def _record(*args, **kwargs):
             events.emit("ui", target=self._target, method=name)

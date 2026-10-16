@@ -60,6 +60,9 @@ Set `animate_time` to `true` to enable a small animation in the reviewer. This a
 Set `gif_in_collection` to `true` to view GIF images instead of sprites of your caught Pokémon in your collection.
 - `gif_in_collection` [True/False]
 
+`gui.show_sprites_across_ankimon` also controls sprites in the evolution prompt and completion screen. When enabled, shiny Pokémon use shiny sprites on both screens; if either shiny sprite is missing, that image uses the ordinary sprite. Set it to `false` to hide sprites on both evolution screens.
+- `gui.show_sprites_across_ankimon` [True/False] (default: True)
+
 Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface.
 - `gui.hud_hp_bars` [True/False]
 
@@ -78,17 +81,21 @@ Ankimon also supports the following granular HUD element toggles (set to `true` 
 - `gui.hud_pokemon_lvl` [True/False] — Show/hide level.
 - `gui.hud_pokemon_name` [True/False] — Show/hide Pokémon names.
 - `gui.hud_status_badge` [True/False] — Show/hide status/type badge.
-- `gui.hud_owned_indicator` [True/False] — Show/hide Pokeball owned icon.
+- `gui.hud_owned_indicator` [True/False] (default: True) — Show/hide the Pokéball indicating that the encountered Pokémon's exact species or form has been caught before. It remains shown after that Pokémon is released, evolved, or traded away. New caught records, including incoming trades, update the indicator without restarting Anki.
 - `gui.hud_enemy_shiny_indicator` [True/False] — Show/hide the enemy shiny star.
 - `gui.hud_player_shiny_indicator` [True/False] — Show/hide the player companion shiny star.
 
 Setting `YouShallNotPass_Ankimon_News` to `true` deactivates the update patch notes pop-up on Anki startup.
 - `YouShallNotPass_Ankimon_News` [True/False]
 
-Setting `automate_battle` to `0` deactivates the automatic defeat or catch in the reviewer. Pokemon will stay alive until you decide to choose to defeat or catch them in the Ankimon Window.
-- `automate_battle` [0/1/2]
-    - If set to `1`, the wild Pokemon will be automatically caught if it has no more HP.
-    - If set to `2`, the wild Pokemon will be defeated if its HP reaches 0, and your main Pokemon will gain experience.
+Setting `battle.automatic_battle` to `0` leaves the catch or defeat decision to you in the Ankimon Window when the wild Pokémon reaches 0 HP, unless the Pokémon is in `battle.auto_catch_wishlist`.
+- `battle.automatic_battle` [0/1/2/3] (default: 0)
+    - If set to `1`, the wild Pokémon will be automatically caught when it reaches 0 HP.
+    - If set to `2`, the wild Pokémon will be defeated when it reaches 0 HP, and your main Pokémon will gain experience. Shiny encounters, wishlist Pokémon, and Pokémon covered by enabled always-auto-catch settings are caught instead.
+    - If set to `3` (“Catch if uncollected”), Pokémon not in your permanent Pokédex caught history will be caught; previously caught Pokémon will be defeated. Releasing, evolving, or trading away a Pokémon does not make it uncollected. History is refreshed for each completed encounter, including evolution, trade, and import changes. Forms are checked by their exact IDs, and seeing a Pokémon alone does not count as collecting it. Shiny encounters, Pokémon in `battle.auto_catch_wishlist`, and Pokémon covered by enabled always-auto-catch settings are still caught.
+
+Wild encounter level cap:
+- `misc.remove_level_cap` [True/False] (default: False) — When `false`, your main Pokémon and other Pokémon receiving shared XP cannot level past 100, and wild encounters are capped at level 100. Below main level 100, wild levels roll across the full range from three below to three above, then any result above 100 is reduced to 100 (for example, levels 95–101 at main level 98 and 96–102 at 99 before the cap). At main level 100 or higher, wild encounters are always level 100. When `true`, Pokémon can level beyond 100 and wild levels use the usual uncapped roll from three levels below to three levels above your main Pokémon (minimum level 1).
 
 Setting `catch_key` to a letter allows you to catch pokemons inside of the reviewer when their hp reaches 0 by pressing control and your letter - default is D.
 - `catch_key` [A - Z]

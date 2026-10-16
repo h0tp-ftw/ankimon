@@ -1,6 +1,7 @@
-"""Unified shell window — Items (Mart + Bag) and Ankidex live in one QDialog.
+"""Unified shell window — Items (Mart + Bag), Ankidex, Profile, Team, Settings,
+and Mobile all live in one QDialog.
 
-The same QWebEngineView swaps between two screens by changing its URL. No
+The same QWebEngineView swaps between screens by changing its URL. No
 window close/open flicker; the dropdown switcher in either screen calls back
 through QWebChannel to swap content in place.
 """
@@ -13,11 +14,37 @@ import time
 import traceback
 import threading
 import base64
+import hashlib
+from pathlib import Path
+from copy import copy
 from datetime import datetime
+import requests
 from aqt import QDialog, QVBoxLayout, QWebEngineView, QWebEnginePage, mw
 from aqt.qt import Qt, QUrl, QFrame, QWebEngineProfile
-from PyQt6.QtCore import QObject, pyqtSlot, QTimer, QByteArray
-from PyQt6.QtGui import QColor
+
+try:
+    from aqt.operations import QueryOp
+except ImportError:
+
+    class QueryOp:
+        def __init__(self, parent=None, op=None, success=None):
+            self.parent = parent
+            self.op = op
+            self.success = success
+
+        def without_collection(self):
+            return self
+
+        def run_in_background(self):
+            if self.op:
+                result = self.op(None)
+                if self.success:
+                    self.success(result)
+            return self
+
+
+from PyQt6.QtCore import QObject, pyqtSlot, QTimer, QByteArray, QVariant
+from PyQt6.QtGui import QColor, QDesktopServices, QIcon
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWidgets import QStackedWidget
 import csv
@@ -32,7 +59,12 @@ except ImportError:  # dev helper not landed yet (thread-reload-and-misc-utils u
         return False
 
 
-from ..resources import items_path, csv_file_items_cost, csv_file_descriptions
+from ..resources import (
+    items_path,
+    csv_file_items_cost,
+    csv_file_descriptions,
+    icon_path,
+)
 
 
 class SafeWebEnginePage(QWebEnginePage):
@@ -83,12 +115,28 @@ from ..business import calculate_cp_from_dict
 from ..ankimon_profile_web.profile_data import ProfileData
 from ..services import services
 from ..events import events
+from .channel_policy import register_screen_bridges
 
 # NOTE: functions/mobile_sync.py is a later (mobile) unit and is intentionally
 # NOT a module-load dependency of the web-shell host. The MobileBridge slots
 # lazy-import it in-method and degrade to a benign/neutral payload when it is
 # absent, so the host, shop, settings, profile and team screens all work with
 # mobile not yet installed.
+
+
+def _local_pokemon_name(pokedex_id, english_fallback):
+    """Localized species name for the current language, English fallback."""
+    try:
+        lang = int(services.settings.get("misc.language", 9))
+        if lang != 9 and pokedex_id:
+            from ..functions.pokedex_functions import get_pokemon_diff_lang_name
+
+            loc = get_pokemon_diff_lang_name(int(pokedex_id), lang)
+            if loc and loc != "No Translation in this language":
+                return loc
+    except Exception:
+        pass
+    return english_fallback
 
 
 SCREEN_ITEMS = "items"
@@ -98,6 +146,7 @@ SCREEN_PROFILE = "profile"
 SCREEN_TEAM = "team"
 SCREEN_MOBILE = "mobile"
 SCREEN_HISTORY = "history"
+SCREEN_BACKUP = "backup_manager"
 
 SPRITE_VISIBILITY_SCREENS = (
     SCREEN_ITEMS,
@@ -105,6 +154,7 @@ SPRITE_VISIBILITY_SCREENS = (
     SCREEN_SETTINGS,
     SCREEN_PROFILE,
     SCREEN_TEAM,
+    SCREEN_BACKUP,
 )
 
 
@@ -150,6 +200,14 @@ class NavBridge(QObject):
     @pyqtSlot()
     def openHistory(self):
         self._w.load_screen(SCREEN_HISTORY)
+
+    @pyqtSlot()
+    def openBackupManager(self):
+        self._w.load_screen(SCREEN_BACKUP)
+
+    @pyqtSlot()
+    def closeWindow(self):
+        self._w.close()
 
 
 class TrainerBridge(QObject):
@@ -337,6 +395,14 @@ class MobileBridge(QObject):
         """
         try:
             db = services.db
+            # Language code (jp / sp / es_latam / en / ...) so the mobile battle
+            # narration can localize itself; mirrors move_names._current_lang_code.
+            try:
+                from ..move_names import _current_lang_code
+
+                mobile_language = _current_lang_code()
+            except Exception:
+                mobile_language = "en"
             # 1. Count and ease breakdown in one GROUP BY query (lightweight)
             rows = db.execute(
                 """SELECT ease, COUNT(*) as cnt FROM pending_mobile_battles
@@ -366,7 +432,12 @@ class MobileBridge(QObject):
             battle_count = resolved_battles + math.ceil(pending_count / cards_per_round)
 
             if pending_count == 0:
-                return {"pending_count": 0, "cap": 10000, "battle_count": 0}
+                return {
+                    "pending_count": 0,
+                    "cap": 10000,
+                    "battle_count": 0,
+                    "language": mobile_language,
+                }
 
             # Populate ease breakdown from rows count
             ease_breakdown = {"1": 0, "2": 0, "3": 0, "4": 0}
@@ -535,6 +606,7 @@ class MobileBridge(QObject):
                 "main_pokemon_sprite": main_pokemon_sprite,
                 "sprite_mode": sprite_mode,
                 "team_status": self.getTeamStatus(),
+                "language": mobile_language,
             }
         except Exception as e:
             import traceback
@@ -549,6 +621,7 @@ class MobileBridge(QObject):
                 "pending_count": 0,
                 "pending_count_at_start": 0,
                 "cap": 10000,
+                "language": "en",
             }
 
     @pyqtSlot(result="QVariant")
@@ -1025,6 +1098,657 @@ class MobileBridge(QObject):
             return {"success": False, "error": str(e)}
 
 
+class BackupBridge(QObject):
+    """Backup-manager actions exposed to the Web UI."""
+
+    def __init__(self, window):
+        super().__init__()
+        self._w = window
+        self._operation = None
+        self._action_active = False
+        self._action_state_lock = threading.Lock()
+        self._status_active = False
+
+    def _manager(self):
+        manager = getattr(self._w, "backup_manager", None)
+        if manager is None:
+            raise RuntimeError("Backup manager is not available.")
+        return manager
+
+    def _context_token(self):
+        from ..services import services
+
+        manager = self._manager()
+        profile_manager = getattr(mw, "pm", None)
+        settings = getattr(services, "settings", None)
+        db = getattr(services, "db", None)
+        confirmed = manager.capture_context()
+        context = {
+            "generation": confirmed.identity,
+            "database_object": id(confirmed.db),
+            "profile_epoch": confirmed.profile_epoch,
+            "profile": str(getattr(profile_manager, "name", "") or ""),
+            "profile_folder": str(manager._active_profile_folder() or ""),
+            "database": str(getattr(db, "db_path", "") or ""),
+            "account": str(settings.get("leaderboard.username", "") or "")
+            if settings is not None
+            else "",
+            "trainer_id": str(settings.get("trainer.id", "") or "")
+            if settings is not None
+            else "",
+            "trainer_name": str(settings.get("trainer.name", "") or "")
+            if settings is not None
+            else "",
+        }
+        payload = json.dumps(context, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _context_matches(self, expected):
+        try:
+            return bool(expected) and expected == self._context_token()
+        except RuntimeError:
+            return False
+
+    def _begin_action(self):
+        from ..save_import import SaveOperationBusyError, reserve_save_operation
+
+        with self._action_state_lock:
+            if self._action_active:
+                return False
+            try:
+                self._operation = reserve_save_operation()
+            except SaveOperationBusyError:
+                return False
+            self._action_active = True
+            return True
+
+    def _end_action(self, operation):
+        with self._action_state_lock:
+            # A delayed completion must never release a newer request.
+            if self._operation is operation:
+                self._action_active = False
+                self._operation = None
+            operation.release()
+
+    def _deliver_action_result(self, callback_name, result, finished):
+        with finished["lock"]:
+            if finished["delivered"]:
+                return
+            finished["delivered"] = True
+        self._end_action(finished["operation"])
+        try:
+            self._w.webview_backup.page().runJavaScript(
+                f"if (window.{callback_name}) window.{callback_name}({json.dumps(result)});"
+            )
+        except Exception as error:
+            manager = getattr(self._w, "backup_manager", None)
+            if manager is not None:
+                manager.logger.log(
+                    "error",
+                    f"Could not deliver Backup Manager action result: {error}",
+                )
+
+    def _permitted_backup_paths(self, manager):
+        """Return the set of resolved paths the manager currently lists as
+        restorable backups. Used to confine WebChannel-supplied paths to
+        entries the UI has actually shown the user."""
+        entries = manager.get_backups(include_inactive=False) or []
+        permitted = set()
+        for entry in entries:
+            # Entries may be dicts (with a "path" key) or plain path strings.
+            if isinstance(entry, dict):
+                raw = entry.get("path") or entry.get("backup_path")
+            else:
+                raw = entry
+            if not raw:
+                continue
+            try:
+                resolved = manager._resolve_backup_path(raw)
+            except Exception:
+                # If the manager can't resolve it, it isn't a valid backup.
+                continue
+            if resolved is not None:
+                permitted.add(str(resolved))
+        return permitted
+
+    def _validate_backup_path(self, backup_path):
+        """Raise ValueError unless backup_path resolves to a listed backup."""
+        if not backup_path:
+            raise ValueError("No backup path supplied.")
+        manager = self._manager()
+        permitted = self._permitted_backup_paths(manager)
+        try:
+            resolved = manager._resolve_backup_path(backup_path)
+        except Exception as error:
+            raise ValueError(f"Unresolvable backup path: {error}") from error
+        if resolved is None or str(resolved) not in permitted:
+            raise ValueError("Backup path is not one of the listed backups.")
+        return resolved
+
+    @pyqtSlot(str, result="QVariant")
+    def getBackups(self, request_id):
+        """Read backup/status files off-thread; correlate the reply with its page."""
+        if self._status_active:
+            return {"request_id": request_id, "retry": True}
+        try:
+            manager = self._manager()
+            manager.refresh_profile_path()
+            context = manager.capture_context()
+            token = self._context_token()
+            worker_manager = copy(manager)
+            worker_manager.backups_path = context.backups_path
+        except Exception as error:
+            return {"request_id": request_id, "error": str(error)}
+        self._status_active = True
+
+        def read_status(_col):
+            pending = None
+            if context is not None:
+                from ..save_import import pending_import_status
+
+                target = context.target
+                try:
+                    pending_status = pending_import_status(target)
+                except Exception as status_error:
+                    manager.logger.log(
+                        "error",
+                        f"Could not determine pending save import status: {status_error}",
+                    )
+                    pending_status = {
+                        "state": "unknown",
+                        "error": str(status_error),
+                    }
+                status = pending_status["state"]
+                if status != "none":
+                    info = pending_status.get("info", {})
+                    messages = {
+                        "pending": (
+                            "This save is prepared for installation at the next full "
+                            "Anki restart. The current session continues using its "
+                            "active save until then. Use Ankimon → Game → Cancel "
+                            "Pending Save Import to cancel it."
+                        ),
+                        "installed": (
+                            "This save import has already installed. Only its leftover "
+                            "record remains; use Ankimon → Game → Cancel Pending Save "
+                            "Import to clear it. It will not install again."
+                        ),
+                        "unknown": (
+                            "Ankimon could not determine whether this save import has "
+                            "installed. Use Ankimon → Game → Cancel Pending Save Import "
+                            "before choosing another save."
+                        ),
+                        "cancelled": (
+                            "This save import was cancelled and will not install."
+                        ),
+                    }
+                    pending = {
+                        "state": status,
+                        "target": target.name,
+                        "token": info.get("token"),
+                        "warning": info.get("warning", ""),
+                        "message": messages[status],
+                    }
+                    if pending_status.get("error"):
+                        pending["message"] += f" Details: {pending_status['error']}"
+            return {
+                "backups": worker_manager.get_backups(
+                    include_inactive=False,
+                    active_filename=context.source_filename,
+                ),
+                "path": str(context.backups_path),
+                "context": token,
+                "pending": pending,
+            }
+
+        def deliver(result):
+            from ..save_import import save_operation_busy
+
+            self._status_active = False
+            try:
+                context.validate()
+                if not self._context_matches(token):
+                    raise RuntimeError("The active save changed during refresh.")
+            except Exception:
+                result = {"stale": True}
+            with self._action_state_lock:
+                result["busy"] = self._action_active or save_operation_busy()
+            result["request_id"] = request_id
+            try:
+                self._w.webview_backup.page().runJavaScript(
+                    "if (window.onBackupsLoaded) window.onBackupsLoaded("
+                    + json.dumps(result)
+                    + ");"
+                )
+            except Exception as error:
+                manager.logger.log("error", f"Could not deliver backup status: {error}")
+
+        def failed(error):
+            deliver({"error": str(error)})
+
+        try:
+            from aqt.operations import QueryOp
+
+            QueryOp(parent=self._w, op=read_status, success=deliver).failure(
+                failed,
+            ).without_collection().run_in_background()
+        except Exception as error:
+            self._status_active = False
+            return {"request_id": request_id, "error": str(error)}
+        return {"pending": True, "request_id": request_id}
+
+    @pyqtSlot(str, result="QVariant")
+    def createBackup(self, expected_context):
+        """Kick off backup creation off the GUI thread.
+
+        Returns immediately with {"pending": True}; the result is pushed to
+        the webview via window.onBackupCreated(...) once the background
+        task finishes.
+        """
+        manager = getattr(self._w, "backup_manager", None)
+        if manager is None:
+            return {"ok": False, "error": "Backup manager is not available."}
+        if not self._context_matches(expected_context):
+            return {
+                "ok": False,
+                "error": "The confirmed account or Anki profile changed. Reopen Backup Manager and confirm again.",
+            }
+        try:
+            context = manager.capture_context()
+        except Exception as error:
+            return {"ok": False, "error": str(error)}
+        if not self._begin_action():
+            return {
+                "ok": False,
+                "error": "Another save operation is already in progress. Please wait.",
+            }
+        operation = self._operation
+        context_changed = [False]
+
+        def run_backup(_col):
+            def validate_context():
+                try:
+                    context.validate()
+                except RuntimeError:
+                    context_changed[0] = True
+                    raise RuntimeError(
+                        "The confirmed account or Anki profile changed before the "
+                        "backup could be published."
+                    )
+
+            try:
+                operation.validate()
+                validate_context()
+                return manager.create_backup(
+                    manual=True,
+                    show_notifications=False,
+                    before_publish=validate_context,
+                    context=context,
+                )
+            finally:
+                self._end_action(operation)
+
+        finished = {
+            "lock": threading.Lock(),
+            "delivered": False,
+            "operation": operation,
+        }
+
+        def finish_without_push():
+            with finished["lock"]:
+                if finished["delivered"]:
+                    return
+                finished["delivered"] = True
+            self._end_action(operation)
+
+        def on_success(ok, notify=True):
+            result = {"ok": bool(ok)}
+            if not ok:
+                result["error"] = (
+                    "The confirmed account or Anki profile changed before the "
+                    "backup could be published. No backup was created."
+                    if context_changed[0]
+                    else getattr(manager, "last_error", None)
+                    or "Could not create backup."
+                )
+                tb = getattr(manager, "last_traceback", None)
+                if tb:
+                    result["traceback"] = tb
+            if notify:
+                self._deliver_action_result("onBackupCreated", result, finished)
+            else:
+                finish_without_push()
+            return result
+
+        def on_error(exception, notify=True):
+            result = {
+                "ok": False,
+                "error": (
+                    "The confirmed account or Anki profile changed before the "
+                    "backup could be published. No backup was created."
+                    if context_changed[0]
+                    else "Could not create backup."
+                ),
+                "traceback": "".join(
+                    traceback.format_exception(
+                        type(exception),
+                        exception,
+                        exception.__traceback__,
+                    )
+                ),
+            }
+            if notify:
+                self._deliver_action_result("onBackupCreated", result, finished)
+            else:
+                finish_without_push()
+            return result
+
+        try:
+            from aqt.operations import QueryOp
+        except ImportError:
+            # aqt.operations unavailable (very old Anki / test harness):
+            # fall back to synchronous behaviour rather than dropping the call.
+            try:
+                return on_success(run_backup(None), notify=False)
+            except Exception as error:
+                return on_error(error, notify=False)
+
+        try:
+            op = QueryOp(parent=mw, op=run_backup, success=on_success)
+            if hasattr(op, "failure"):
+                op.failure(on_error).without_collection().run_in_background()
+            else:
+                op.without_collection().run_in_background()
+        except Exception as error:
+            on_error(error)
+            return {"ok": False, "error": str(error)}
+
+        return {"pending": True}
+
+    @pyqtSlot(str, str, result="QVariant")
+    def restoreBackup(self, backup_path, expected_context):
+        """Kick off restore off the GUI thread.
+
+        Returns {"pending": True} immediately, or {"ok": False, ...} if the
+        path is rejected up front. On success the webview receives
+        window.onBackupRestored({"ok": True, "pending_restart": <bool>}).
+        """
+        try:
+            if not self._context_matches(expected_context):
+                raise ValueError(
+                    "The confirmed account or Anki profile changed. Reopen Backup Manager and confirm again."
+                )
+            resolved = self._validate_backup_path(backup_path)
+            context = self._manager().capture_context()
+            source_file = (
+                self._manager()._resolve_backup_path(resolved, context.source_filename)
+                / context.source_filename
+            ).resolve()
+        except (ValueError, RuntimeError) as error:
+            return {"ok": False, "error": str(error)}
+
+        manager = self._manager()
+        if not self._begin_action():
+            return {
+                "ok": False,
+                "error": "Another save operation is already in progress. Please wait.",
+            }
+        operation = self._operation
+
+        def deliver_result(result):
+            self._deliver_action_result("onBackupRestored", result, finished)
+
+        finished = {
+            "lock": threading.Lock(),
+            "delivered": False,
+            "operation": operation,
+        }
+
+        def launch_restore(confirm_unverified=False):
+            def prepare_restore(_col):
+                restored = manager.restore_backup(
+                    str(resolved),
+                    interactive=False,
+                    confirm_unverified=confirm_unverified,
+                    context=context,
+                    source_file=source_file,
+                    operation=operation,
+                )
+
+                if isinstance(restored, dict) and restored.get("status") == "staged":
+                    warnings = []
+                    if restored.get("warning"):
+                        warnings.append(restored["warning"])
+                    if confirm_unverified:
+                        warnings.append(
+                            "The current save was reported as damaged. It will be "
+                            "kept as-is in recovery before the selected backup is installed."
+                        )
+                    pending_token = restored.get("pending_token")
+                    if not isinstance(pending_token, str) or not pending_token:
+                        manager.logger.log(
+                            "error",
+                            "Backup restore completed without returning its staged token.",
+                        )
+                    elif warnings:
+                        try:
+                            from ..save_import import set_pending_import_warning
+
+                            if not set_pending_import_warning(
+                                Path(restored["pending_target"]),
+                                "\n\n".join(warnings),
+                                expected_token=pending_token,
+                            ):
+                                manager.logger.log(
+                                    "warning",
+                                    "The staged restore changed before its warning could be saved.",
+                                )
+                        except Exception as error:
+                            manager.logger.log(
+                                "error",
+                                f"Could not persist the prepared restore warning: {error}",
+                            )
+                    if warnings:
+                        restored["warning"] = "\n\n".join(warnings)
+                    if isinstance(pending_token, str) and pending_token:
+                        restored["pending_token"] = pending_token
+                        restored["pending_target"] = str(context.target)
+                return restored
+
+            def run_restore(_col):
+                needs_confirmation = False
+                try:
+                    operation.validate()
+                    restored = prepare_restore(_col)
+                    needs_confirmation = (
+                        isinstance(restored, dict)
+                        and restored.get("status") == "confirmation_required"
+                    )
+                    return restored
+                finally:
+                    # Keep ownership through the GUI confirmation and retry,
+                    # but terminal workers release even if their view is gone.
+                    if not needs_confirmation:
+                        self._end_action(operation)
+
+            def on_success(restored):
+                if not isinstance(restored, dict):
+                    result = {
+                        "ok": False,
+                        "error": "Backup restore returned an invalid result.",
+                    }
+                elif restored.get("status") == "confirmation_required":
+                    if not is_alive(self._w) or not self._context_matches(
+                        expected_context
+                    ):
+                        deliver_result(
+                            {
+                                "ok": False,
+                                "error": (
+                                    "The confirmed account or Anki profile changed before "
+                                    "damaged-save confirmation. Nothing was prepared."
+                                ),
+                            }
+                        )
+                        return
+                    try:
+                        from aqt.utils import askUser
+
+                        confirmed = askUser(restored["message"], defaultno=True)
+                    except Exception as error:
+                        deliver_result(
+                            {
+                                "ok": False,
+                                "error": f"Could not confirm backup restore: {error}",
+                            }
+                        )
+                        return
+                    if not confirmed:
+                        deliver_result(
+                            {
+                                "ok": False,
+                                "cancelled": True,
+                                "error": "Backup restoration cancelled.",
+                            }
+                        )
+                        return
+                    if not self._context_matches(expected_context):
+                        deliver_result(
+                            {
+                                "ok": False,
+                                "error": (
+                                    "The confirmed account or Anki profile changed during "
+                                    "damaged-save confirmation. Nothing was prepared."
+                                ),
+                            }
+                        )
+                        return
+                    launch_restore(confirm_unverified=True)
+                    return
+                elif restored.get("status") == "staged":
+                    result = {
+                        "ok": True,
+                        "pending_restart": True,
+                    }
+                    result.update(
+                        {
+                            "pending_token": restored.get("pending_token"),
+                            "pending_target": Path(restored["pending_target"]).name,
+                            "warning": restored.get("warning", ""),
+                        }
+                    )
+                else:
+                    result = {
+                        "ok": False,
+                        "error": restored.get("error", "Backup restore failed."),
+                    }
+                deliver_result(result)
+
+            def on_error(exception):
+                deliver_result(
+                    {
+                        "ok": False,
+                        "error": str(exception),
+                        "traceback": "".join(
+                            traceback.format_exception(
+                                type(exception),
+                                exception,
+                                exception.__traceback__,
+                            )
+                        ),
+                    }
+                )
+
+            if QueryOp is None:
+                try:
+                    on_success(run_restore(None))
+                except Exception as error:
+                    on_error(error)
+                return
+
+            try:
+                op = QueryOp(parent=mw, op=run_restore, success=on_success)
+                if hasattr(op, "failure"):
+                    op.failure(on_error).without_collection().run_in_background()
+                else:
+                    op.without_collection().run_in_background()
+            except Exception as error:
+                on_error(error)
+
+        try:
+            from aqt.operations import QueryOp
+        except ImportError:
+            QueryOp = None
+
+        try:
+            launch_restore()
+        except Exception as error:
+            self._end_action(operation)
+            return {"ok": False, "error": str(error)}
+
+        return {"pending": True}
+
+    @pyqtSlot(str, result="QVariant")
+    def deleteBackup(self, backup_path):
+        if not self._begin_action():
+            return {
+                "ok": False,
+                "error": "Another save operation is already in progress. Please wait.",
+            }
+        operation = self._operation
+        try:
+            resolved = self._validate_backup_path(backup_path)
+        except Exception as error:
+            self._end_action(operation)
+            return {"ok": False, "error": str(error)}
+        try:
+            return self._w.backup_manager.delete_backup(
+                str(resolved),
+                interactive=False,
+            )
+        except Exception as error:
+            return {
+                "ok": False,
+                "error": str(error),
+                "traceback": traceback.format_exc(),
+            }
+        finally:
+            self._end_action(operation)
+
+    @pyqtSlot(result="QVariant")
+    def openBackupFolder(self):
+        if not self._begin_action():
+            return {
+                "ok": False,
+                "error": "Another save operation is already in progress. Please wait.",
+            }
+        operation = self._operation
+        try:
+            manager = self._w.backup_manager
+            manager.refresh_profile_path()
+            path = manager.backups_path
+            if not path:
+                return {"ok": False, "error": "Backup path is not initialized."}
+            if not path.exists():
+                return {"ok": False, "error": f"Backup path does not exist: {path}"}
+            if hasattr(os, "startfile"):
+                os.startfile(str(path))
+                return {"ok": True}
+            opened = bool(QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))))
+            return {
+                "ok": opened,
+                "error": None if opened else "Qt could not open the backup path.",
+            }
+        except Exception as error:
+            return {
+                "ok": False,
+                "error": str(error),
+                "traceback": traceback.format_exc(),
+            }
+        finally:
+            self._end_action(operation)
+
+
 class AnkimonItemsWeb(QDialog):
     def __init__(
         self,
@@ -1035,6 +1759,7 @@ class AnkimonItemsWeb(QDialog):
         trainer_card=None,
         settings_obj=None,
         logger=None,
+        backup_manager=None,
     ):
         """
         Initialize the persistent web-based Ankimon interface and its data bridges.
@@ -1053,6 +1778,7 @@ class AnkimonItemsWeb(QDialog):
         self.shop_manager = shop_manager
         self.item_window = item_window
         self.ankimon_tracker = ankimon_tracker
+        self.backup_manager = backup_manager
 
         # Instantiate isolated, private browser profile to prevent Anki
         # and other addons from injecting conflicting scripts/stylesheets
@@ -1075,6 +1801,7 @@ class AnkimonItemsWeb(QDialog):
         self._live_refresh_pending = False
         self.current_screen = None
         self.setWindowTitle("Ankimon")
+        self.setWindowIcon(QIcon(str(icon_path)))
 
         # Paint the shell dark from the first frame. The web views set their
         # own page background, but the surrounding QDialog/QFrame/QStackedWidget
@@ -1151,6 +1878,11 @@ class AnkimonItemsWeb(QDialog):
                 self.profile, SCREEN_HISTORY, logger, self.webview_history
             )
         )
+
+        self.webview_backup = QWebEngineView()
+        self.webview_backup.setPage(
+            SafeWebEnginePage(self.profile, SCREEN_BACKUP, logger, self.webview_backup)
+        )
         self._views = {
             SCREEN_ITEMS: self.webview_items,
             SCREEN_ANKIDEX: self.webview_ankidex,
@@ -1159,6 +1891,7 @@ class AnkimonItemsWeb(QDialog):
             SCREEN_TEAM: self.webview_team,
             SCREEN_MOBILE: self.webview_mobile,
             SCREEN_HISTORY: self.webview_history,
+            SCREEN_BACKUP: self.webview_backup,
         }
 
         self.bridge = ItemsBridge(self)
@@ -1167,22 +1900,27 @@ class AnkimonItemsWeb(QDialog):
         self.trainer_bridge = TrainerBridge(self)
         self.team_bridge = TeamBridge(self)
         self._mobile_bridge = MobileBridge(self)
+        self.backup_bridge = BackupBridge(self)
 
-        # Each screen gets its own channel, but every channel registers the
-        # same bridge objects so any page can navigate / call any action.
+        bridges_by_name = {
+            "bridge": self.bridge,
+            "nav": self.nav,
+            "settings": self.settings_bridge,
+            "trainer": self.trainer_bridge,
+            "team": self.team_bridge,
+            "mobile": self._mobile_bridge,
+            "backup": self.backup_bridge,
+        }
+
+        # Each page gets a separate channel containing only its native bridge
+        # and navigation. This limits what a compromised page can invoke.
         for screen, view in self._views.items():
             view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
             view.page().setBackgroundColor(QColor("#0d1117"))
             self.stack.addWidget(view)
 
             channel = QWebChannel(view)
-            channel.registerObject("bridge", self.bridge)
-            channel.registerObject("nav", self.nav)
-            channel.registerObject("settings", self.settings_bridge)
-            channel.registerObject("trainer", self.trainer_bridge)
-            channel.registerObject("team", self.team_bridge)
-            if screen in (SCREEN_MOBILE, SCREEN_HISTORY):
-                channel.registerObject("mobile", self._mobile_bridge)
+            register_screen_bridges(channel, screen, bridges_by_name)
             view.page().setWebChannel(channel)
 
             view.loadFinished.connect(
@@ -1198,6 +1936,7 @@ class AnkimonItemsWeb(QDialog):
         # entry (Mart vs Item Bag). Consumed by the next inventory push, then
         # cleared so later pushes (buy/use/reroll) don't reset the user's view.
         self.pending_view = None
+        self._pending_backup_notice = None
         # The first show() is fed by the open path; later re-shows refresh data.
         self._shown_once = False
 
@@ -1211,6 +1950,8 @@ class AnkimonItemsWeb(QDialog):
     # ------------------------------------------------------------------
     def load_screen(self, screen):
         def do_load():
+            if self.current_screen == SCREEN_BACKUP and screen != SCREEN_BACKUP:
+                self._retire_backup_confirmation()
             self.current_screen = screen
             if screen == SCREEN_ITEMS:
                 title = "Ankimon — Items"
@@ -1240,6 +1981,15 @@ class AnkimonItemsWeb(QDialog):
                 title = "Ankimon — Mobile History"
                 target_view = self.webview_history
                 path = self.addon_dir / "ankimon_mobile_web" / "history.html"
+            elif screen == SCREEN_BACKUP:
+                title = "Ankimon — Backup Manager"
+                target_view = self.webview_backup
+                path = (
+                    self.addon_dir
+                    / "ankimon_manager_web"
+                    / "backup_manager"
+                    / "backup_manager.html"
+                )
             else:
                 return
 
@@ -1272,6 +2022,24 @@ class AnkimonItemsWeb(QDialog):
             )
         if self.current_screen == screen:
             self.push_screen_data()
+            if screen == SCREEN_BACKUP:
+                self._push_backup_notice()
+
+    def show_backup_notice(self, message, is_error=False):
+        self._pending_backup_notice = (str(message), bool(is_error))
+        if self.current_screen == SCREEN_BACKUP and SCREEN_BACKUP in self.ready_screens:
+            self._push_backup_notice()
+
+    def _push_backup_notice(self):
+        if self._pending_backup_notice is None:
+            return
+        message, is_error = self._pending_backup_notice
+        self._pending_backup_notice = None
+        self.webview_backup.page().runJavaScript(
+            "if (window.showBackupNotice) "
+            f"window.showBackupNotice({json.dumps(message)}, "
+            f"{'true' if is_error else 'false'});"
+        )
 
     def _apply_sprite_visibility(self, show_sprites, screens=None):
         """Hide raster sprite content without collapsing the surrounding UI.
@@ -1358,6 +2126,11 @@ class AnkimonItemsWeb(QDialog):
             data = self._mobile_bridge.getMobileStatus()
             js = f"if (window.initializeMobile) window.initializeMobile({json.dumps(data)});"
             self.webview_mobile.page().runJavaScript(js)
+        elif self.current_screen == SCREEN_BACKUP:
+            self.webview_backup.page().runJavaScript(
+                "if (window.refreshBackups) window.refreshBackups();"
+            )
+            self._push_backup_notice()
         elif self.current_screen == SCREEN_HISTORY:
             db = services.db
             data = db.get_mobile_history() if db is not None else []
@@ -1528,13 +2301,20 @@ class AnkimonItemsWeb(QDialog):
         except Exception:
             pass
 
+    def _retire_backup_confirmation(self):
+        self.webview_backup.page().runJavaScript(
+            "if (window.retireBackupConfirmation) window.retireBackupConfirmation();"
+        )
+
     def closeEvent(self, event):
+        self._retire_backup_confirmation()
         if self.current_screen == SCREEN_ANKIDEX:
             self._save_ankidex_prefs()
         self._save_geometry()
         super().closeEvent(event)
 
     def hideEvent(self, event):
+        self._retire_backup_confirmation()
         self._save_geometry()
         super().hideEvent(event)
 
@@ -1579,7 +2359,12 @@ class AnkimonItemsWeb(QDialog):
                 if pid and int(pid) > 0:
                     pid_val = int(pid)
                     if pid_val not in encounter_data.UNAVAILABLE:
-                        results.append({"id": pid_val, "name": pretty_name})
+                        results.append(
+                            {
+                                "id": pid_val,
+                                "name": _local_pokemon_name(pid_val, pretty_name),
+                            }
+                        )
             if len(results) >= 20:
                 break
         results.sort(key=lambda r: r["name"].lower())
@@ -1605,7 +2390,7 @@ class AnkimonItemsWeb(QDialog):
                 results.append(
                     {
                         "id": int(pid),
-                        "name": pretty_name,
+                        "name": _local_pokemon_name(int(pid), pretty_name),
                     }
                 )
         # Sort by name alphabetically
@@ -1756,7 +2541,19 @@ class AnkimonItemsWeb(QDialog):
         owned_quantity,
         equipped_instances=None,
     ):
-        ui_name = name.replace("-", " ").title()
+        from ..localized_text import (
+            item_name as _item_name,
+            item_description as _item_desc,
+            move_name as _move_name,
+            move_description as _move_desc,
+            type_name as _type_name,
+        )
+
+        english_ui_name = name.replace("-", " ").title()
+        if is_tm:
+            ui_name = _move_name(name, english_ui_name)
+        else:
+            ui_name = _item_name(name, english_ui_name)
         entry = {
             "name": name,
             "ui_name": ui_name,
@@ -1775,12 +2572,13 @@ class AnkimonItemsWeb(QDialog):
             entry["image_url"] = QUrl.fromLocalFile(
                 str(items_path / f"Bag_TM_{move_type}_SV_Sprite.png")
             ).toString()
-            short_desc = move.get("shortDesc") or ""
+            short_desc = _move_desc(name, move.get("shortDesc") or "")
             entry["description"] = (
                 f"Teaches a compatible Pokémon the move {ui_name}."
                 + (f" {short_desc}" if short_desc else "")
             )
             entry["move_type"] = move_type
+            entry["move_type_label"] = _type_name(move_type, move_type)
             entry["move_power"] = self._coerce_int(move.get("basePower"))
             accuracy = move.get("accuracy")
             entry["move_accuracy"] = (
@@ -1792,8 +2590,8 @@ class AnkimonItemsWeb(QDialog):
             entry["image_url"] = QUrl.fromLocalFile(
                 str(get_item_sprite_path(name))
             ).toString()
-            entry["description"] = (
-                self._lookup_description(name) or f"A useful item: {ui_name}"
+            entry["description"] = _item_desc(
+                name, self._lookup_description(name) or f"A useful item: {ui_name}"
             )
 
         return entry
@@ -1812,6 +2610,8 @@ class AnkimonItemsWeb(QDialog):
                 return "pokeball"
             if name in getattr(bag, "evolution_items", set()):
                 return "evolution"
+            if name in getattr(bag, "ev_items", set()):
+                return "ev"
         return "other"
 
     def _lookup_price(self, name):
@@ -1983,6 +2783,8 @@ class AnkimonItemsWeb(QDialog):
         Enhancements:
         - Calculates CP for each Pokémon.
         - Provides base species ID ('b') for sprite fallbacks.
+        - Keeps localized species ('n'), custom nickname ('nk'), and optional
+          internal species search alias ('a') separate.
         - Checks evolution eligibility ('e') if an evolution item is used.
         - Sorts by eligibility (top), then active status, then level, then name.
         - Utilizes an instance cache for base results to maintain O(1) speed
@@ -2018,14 +2820,23 @@ class AnkimonItemsWeb(QDialog):
             main_individual_id = getattr(bag.main_pokemon, "individual_id", None)
 
         pokedex_data = _load_pokedex_cache()
-        from ..functions.pokedex_functions import search_pokedex_by_id
+        from ..functions.pokedex_functions import (
+            get_pretty_name_for_name,
+            resolve_display_name,
+            search_pokedex_by_id,
+        )
 
         # Pre-fetch the region setting to avoid repeated lookups
         active_region = None
+        lang = 9
         if services.settings:
             active_region = services.settings.get("misc.active_region")
             if active_region:
                 active_region = active_region.strip()
+            try:
+                lang = int(services.settings.get("misc.language", 9))
+            except (TypeError, ValueError):
+                lang = 9
 
         choices = []
         for data in pokemons:
@@ -2055,11 +2866,23 @@ class AnkimonItemsWeb(QDialog):
                 if p_details:
                     base_id = p_details.get("species_id") or pokedex_id
 
+                # Keep species searchable even when a Pokémon is nicknamed.
+                # The shared resolver also ignores autogenerated English
+                # nicknames, so they cannot replace a localized species name.
+                try:
+                    species_name = resolve_display_name(int(pokedex_id), name, "", lang)
+                    display_name = resolve_display_name(
+                        int(pokedex_id), name, nickname, lang
+                    )
+                except (TypeError, ValueError):
+                    species_name = name
+                    display_name = nickname or name
+
                 entry = {
                     "id": individual_id,
                     "p": pokedex_id or 0,
                     "b": base_id or 0,
-                    "n": name,
+                    "n": species_name,
                     "l": int(level) if level is not None else None,
                     "cp": calculate_cp_from_dict(data),
                 }
@@ -2069,8 +2892,19 @@ class AnkimonItemsWeb(QDialog):
                     entry["m"] = 1
                 if held_item:
                     entry["h"] = held_item
-                if nickname and nickname.lower() != (name or "").lower():
-                    entry["nk"] = nickname
+                if display_name != species_name:
+                    entry["nk"] = display_name
+                # Keep both internal and formatted English names searchable
+                # without displaying autogenerated nicknames as custom names.
+                # A single alias string preserves the compact picker payload.
+                aliases = []
+                seen_names = {species_name.casefold()}
+                for alias in (name, get_pretty_name_for_name(name)):
+                    if alias.casefold() not in seen_names:
+                        aliases.append(alias)
+                        seen_names.add(alias.casefold())
+                if aliases:
+                    entry["a"] = " ".join(aliases)
 
                 # Evolution eligibility (Optimized inline to avoid file I/O)
                 if is_evo_item and item_name and p_details:

@@ -297,8 +297,11 @@ def PokemonCollectionDetailsSplit(
         description_formated = "\n".join(result)
         description_txt = f"Description: \n {description_formated}"
         lvl = f" Level: {level}"
-        ability_txt = f" Ability: {ability.capitalize()}"
-        nature_display = (nature or "serious").strip().title()
+        from ..localized_text import ability_name, ability_description, nature_name
+        ability_local = ability_name(ability, ability.capitalize()) if ability else ""
+        ability_txt = f" Ability: {ability_local}"
+        ability_desc_local = ability_description(ability) if ability else ""
+        nature_display = nature_name(nature or "serious", (nature or "serious").strip().title())
         nature_txt = f" Nature: {nature_display}"
         _stats_dict = {}
         for key in ("hp", "atk", "def", "spa", "spd", "spe"):
@@ -318,7 +321,7 @@ def PokemonCollectionDetailsSplit(
 
         attacks_txt = "MOVES:"
         for attack in attacks:
-            attacks_txt += f"\n{attack.capitalize()}"
+            attacks_txt += f"\n{format_move_name(attack)}"
 
         CompleteTable_layout = PokemonDetailsStats(
             _stats_dict,
@@ -359,6 +362,8 @@ def PokemonCollectionDetailsSplit(
         cp_label = QLabel(cp_txt)
         cp_label.setToolTip(cp_tooltip)
         ability_label = QLabel(ability_txt)
+        if ability_desc_local:
+            ability_label.setToolTip(ability_desc_local)
         nature_label = QLabel(nature_txt)
         attacks_label = QLabel(attacks_txt)
         pokemon_defeated_label = QLabel(f"Pokémon Defeated: {pokemon_defeated}")
@@ -410,6 +415,7 @@ def PokemonCollectionDetailsSplit(
         # previously rejected this evolution (soft state) — the manual button
         # stays available so they can still evolve on demand.
         evolution_note_widget = None
+        item_hint_widget = None
         # The friendship/time evolution feature is gated behind a master toggle,
         # so its UI must only appear when the toggle is on. Every other
         # evolution method (level, and any future methods) is base-game
@@ -418,15 +424,19 @@ def PokemonCollectionDetailsSplit(
             readiness["method"] != "friendship" or friendship_time_enabled
         )
         if show_evolution_ui:
+            # Item evolutions are hints here; using an evolution item belongs to
+            # the Bag. Only a ready friendship or level route gets this button.
             if trigger_evo_callback is None and readiness["ready"]:
                 evo_name = readiness["evo_name"] or "the next form"
                 evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
                 evolve_now_button.setFont(custom_font)
-                evolve_now_button.setFixedWidth(230)
                 evolve_now_button.setStyleSheet(
                     "QPushButton { background-color: #FF69B4; color: white;"
                     " border-radius: 6px; padding: 5px; font-weight: bold; }"
                     " QPushButton:hover { background-color: #FF8DC7; }"
+                )
+                evolve_now_button.setMinimumWidth(
+                    max(230, evolve_now_button.sizeHint().width())
                 )
 
                 def evolve_now():
@@ -455,7 +465,15 @@ def PokemonCollectionDetailsSplit(
                     evolution_note_label.setStyleSheet("color: #FF69B4;")
                     evolution_note_widget = evolution_note_label
 
-        if show_evolution_ui and not readiness["ready"] and readiness["status_text"]:
+            if trigger_evo_callback is None and readiness.get("item_status_text"):
+                item_hint_widget = QLabel(readiness["item_status_text"])
+                item_hint_widget.setFont(custom_font)
+                item_hint_widget.setWordWrap(True)
+                item_hint_widget.setFixedWidth(230)
+                item_hint_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                item_hint_widget.setStyleSheet("color: #FF69B4;")
+
+        if show_evolution_ui and not readiness["ready"] and readiness.get("status_text"):
             evolution_req_label = QLabel(readiness["status_text"])
             evolution_req_label.setFont(custom_font)
             evolution_req_label.setWordWrap(True)
@@ -496,6 +514,8 @@ def PokemonCollectionDetailsSplit(
             TopL_layout_Box.addWidget(evolution_req_widget)
         if evolution_note_widget is not None:
             TopL_layout_Box.addWidget(evolution_note_widget)
+        if item_hint_widget is not None:
+            TopL_layout_Box.addWidget(item_hint_widget)
 
         attacks_details_button = QPushButton("Attack Details")
         qconnect(attacks_details_button.clicked, lambda: attack_details_window(attacks))
@@ -570,50 +590,78 @@ def PokemonCollectionDetailsSplit(
         # Caller-driven evolution trigger (split-panel path): render the evolve
         # button in the right-hand column and delegate the actual evolution to
         # the callback. The same friendship master-toggle gating applies.
-        if readiness["ready"] and trigger_evo_callback and show_evolution_ui:
-            translator = services.translator or Translator(language)
-            evolve_text = translator.translate(
-                "evolve_now_button",
-                evo_name=readiness["evo_name"] or "the next form",
-            )
-            evolve_now_button = QPushButton(evolve_text.upper())
-            evolve_now_button.setCursor(Qt.CursorShape.PointingHandCursor)
-            evolve_now_button.setObjectName("evolveNowButton")
+        if trigger_evo_callback and show_evolution_ui:
+            if readiness["ready"]:
+                if readiness.get("rejected"):
+                    evolution_note_label = QLabel(
+                        "Evolution rejected — tap Evolve now to override"
+                    )
+                    evolution_note_label.setFont(custom_font)
+                    evolution_note_label.setWordWrap(True)
+                    evolution_note_label.setFixedWidth(230)
+                    evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    evolution_note_label.setStyleSheet("color: #FF69B4;")
+                    TopR_layout_Box.addWidget(evolution_note_label)
 
-            # Match TM button typography/color exactly, but increase height to 40px
-            evolve_now_button.setFixedHeight(40)
-            evolve_now_button.setStyleSheet("""
-                QPushButton {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563eb, stop:1 #1d4ed8);
-                    color: #f8fafc;
-                    font-size: 11px;
-                    font-weight: 800;
-                    letter-spacing: 0.5px;
-                    border: 1px solid #1e40af;
-                    border-radius: 6px;
-                    margin-top: 12px;
-                    padding: 4px 8px;
-                    text-align: center;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3b82f6, stop:1 #2563eb);
-                    border-color: #3b82f6;
-                    margin-top: 12px;
-                    padding: 4px 8px;
-                    text-align: center;
-                }
-                QPushButton:pressed {
-                    background: #1e40af;
-                    margin-top: 12px;
-                    padding: 5px 8px 3px 8px;
-                    text-align: center;
-                }
-            """)
-            qconnect(
-                evolve_now_button.clicked,
-                lambda: trigger_evo_callback(readiness["method"]),
-            )
-            TopR_layout_Box.addWidget(evolve_now_button)
+                translator = services.translator or Translator(language)
+                evolve_text = translator.translate(
+                    "evolve_now_button",
+                    evo_name=readiness["evo_name"] or "the next form",
+                )
+                evolve_now_button = QPushButton(evolve_text.upper())
+                evolve_now_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                evolve_now_button.setObjectName("evolveNowButton")
+
+                # Match TM button typography/color exactly, but increase height to 40px
+                evolve_now_button.setFixedHeight(40)
+                evolve_now_button.setStyleSheet("""
+                    QPushButton {
+                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2563eb, stop:1 #1d4ed8);
+                        color: #f8fafc;
+                        font-size: 11px;
+                        font-weight: 800;
+                        letter-spacing: 0.5px;
+                        border: 1px solid #1e40af;
+                        border-radius: 6px;
+                        margin-top: 12px;
+                        padding: 4px 8px;
+                        text-align: center;
+                    }
+                    QPushButton:hover {
+                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #3b82f6, stop:1 #2563eb);
+                        border-color: #3b82f6;
+                        margin-top: 12px;
+                        padding: 4px 8px;
+                        text-align: center;
+                    }
+                    QPushButton:pressed {
+                        background: #1e40af;
+                        margin-top: 12px;
+                        padding: 5px 8px 3px 8px;
+                        text-align: center;
+                    }
+                """)
+                qconnect(
+                    evolve_now_button.clicked,
+                    lambda: trigger_evo_callback(readiness["method"]),
+                )
+                TopR_layout_Box.addWidget(evolve_now_button)
+                if readiness.get("item_status_text"):
+                    item_hint_label = QLabel(readiness["item_status_text"])
+                    item_hint_label.setFont(custom_font)
+                    item_hint_label.setWordWrap(True)
+                    item_hint_label.setFixedWidth(230)
+                    item_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item_hint_label.setStyleSheet("color: #FF69B4;")
+                    TopR_layout_Box.addWidget(item_hint_label)
+            elif readiness.get("status_text"):
+                evolution_req_label = QLabel(readiness["status_text"])
+                evolution_req_label.setFont(custom_font)
+                evolution_req_label.setWordWrap(True)
+                evolution_req_label.setFixedWidth(230)
+                evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                evolution_req_label.setStyleSheet("color: #FF69B4;")
+                TopR_layout_Box.addWidget(evolution_req_label)
 
         TopR_widget = QWidget()
         TopR_widget.setLayout(TopR_layout_Box)
@@ -1423,8 +1471,13 @@ def remember_attack(
     new_attack: str,
     logger: ShowInfoLogger,
     refresh_callback=None,
+    *,
+    parent_window=None,
+    can_save=None,
 ):
-    """Learn a new attack using database."""
+    """Learn a move; an editor may supply its parent and session/save guard."""
+    if can_save is not None and not can_save():
+        return
     db = services.db
 
     if new_attack in attacks:
@@ -1436,7 +1489,8 @@ def remember_attack(
         logger.log_and_showinfo("warning", "Pokemon not found!")
         return
 
-    attacks = pokemon_data["attacks"]
+    offered_attacks = list(pokemon_data["attacks"])
+    attacks = list(offered_attacks)
     if new_attack:
         msg = f"Your {pokemon_data['name'].capitalize()} can learn a new attack !"
         if len(attacks) < 4:
@@ -1444,7 +1498,8 @@ def remember_attack(
             msg += f"\n Your {pokemon_data['name'].capitalize()} has learned {new_attack} !"
             logger.log_and_showinfo("info", f"{msg}")
         else:
-            dialog = AttackDialog(attacks, new_attack, parent=mw)
+            parent = parent_window if parent_window is not None else mw
+            dialog = AttackDialog(attacks, new_attack, parent=parent)
             QTimer.singleShot(
                 0,
                 lambda: (
@@ -1456,6 +1511,8 @@ def remember_attack(
                 result = dialog.exec()
             finally:
                 dialog.deleteLater()
+            if can_save is not None and not can_save():
+                return
             if result == QDialog.DialogCode.Accepted:
                 selected_attack = dialog.selected_attack
                 try:
@@ -1469,6 +1526,16 @@ def remember_attack(
             else:
                 logger.log_and_showinfo("info", f"{new_attack} will be discarded.")
 
+    # The PC can be retired while a picker or an informational dialog runs.
+    # Recheck immediately before persistence, even after a rejected picker.
+    if can_save is not None and not can_save():
+        return
+    if can_save is not None:
+        current = db.get_pokemon(individual_id)
+        if current is None or current.get("attacks", []) != offered_attacks:
+            return
+        # Preserve progress committed while the PC's nested dialog was open.
+        pokemon_data = current
     pokemon_data["attacks"] = attacks
     db.save_pokemon(pokemon_data)
 

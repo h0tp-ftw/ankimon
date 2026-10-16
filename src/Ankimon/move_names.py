@@ -1,47 +1,39 @@
+"""Backwards-compatible move-name / move-description helpers.
+
+The actual localization now lives in :mod:`localized_text` (all categories, all
+languages). This module keeps the historical ``format_move_name`` /
+``format_move_description`` / ``_current_lang_code`` names other modules import,
+and adds the English base-name lookup used as the final fallback.
+"""
 import json
 from functools import lru_cache
-from .services import services
-from .pyobj.translator import LANG_NUMBERS
+
 from .resources import move_names_file_path
+from .localized_text import (  # noqa: F401  (re-exported)
+    current_lang_code as _current_lang_code,
+    move_description as _localized_move_description,
+    move_name as _localized_move_name,
+    normalize_key as _normalize_move_key,
+)
 
 
-def _current_lang_code() -> str:
+@lru_cache(maxsize=1)
+def _english_move_names() -> dict:
     try:
-        lang_id = int(services.settings.get("misc.language"))
-    except Exception:
-        lang_id = 9  # Default to English on failure
-    return LANG_NUMBERS.get(lang_id, "en")
-
-
-@lru_cache(maxsize=None)
-def _load_move_name_lookups(lang_code: str):
-    """
-    Load English move names and, if available, a localized set.
-    Falls back to English when the localized file is missing or invalid.
-    """
-    with open(move_names_file_path, "r", encoding="utf-8") as f:
-        base_lookup = json.load(f)
-
-    localized_path = move_names_file_path.with_name(f"move_names_{lang_code}.json")
-    try:
-        with open(localized_path, "r", encoding="utf-8") as f:
-            localized_lookup = json.load(f)
+        with open(move_names_file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        localized_lookup = {}
-
-    return base_lookup, localized_lookup
+        return {}
 
 
 def format_move_name(move: str) -> str:
-    """
-    Look up the move name using the normalized key.
-    Falls back to English then prettified name if not found.
-    """
-    lang_code = _current_lang_code()
-    base_lookup, localized_lookup = _load_move_name_lookups(lang_code)
-    key = move.replace(" ", "").replace("-", "").replace("_", "").lower()
-    return (
-        localized_lookup.get(key)
-        or base_lookup.get(key)
-        or " ".join(word.capitalize() for word in move.replace("_", " ").split())
-    )
+    """Localized move name, falling back to the English name then a prettified key."""
+    key = _normalize_move_key(move)
+    english = _english_move_names().get(key)
+    prettified = " ".join(w.capitalize() for w in move.replace("_", " ").split())
+    return _localized_move_name(move, english or prettified)
+
+
+def format_move_description(move: str, english_fallback: str = "") -> str:
+    """Localized in-game move description, or ``english_fallback`` if unavailable."""
+    return _localized_move_description(move, english_fallback)

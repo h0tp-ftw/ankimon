@@ -519,6 +519,30 @@ def test_base_path_shows_singleton_evolve_button_when_ready(details):
     assert any("Evolve into Raichu now" in b.text() for b in _buttons(header))
 
 
+def test_item_only_route_shows_requirement_without_held_item_button(details):
+    details._test_readiness.update(
+        {
+            "evolvable": True,
+            "ready": False,
+            "method": "item",
+            "evo_id": 26,
+            "evo_name": "Raichu",
+            "status_text": "Evolves into Raichu using a Thunder Stone",
+        }
+    )
+    header, _, _, _ = details.PokemonCollectionDetailsSplit(**_details_kwargs())
+    assert "Evolves into Raichu using a Thunder Stone" in _labels(header)
+    assert not any("Use Evolution Item" in b.text() for b in _buttons(header))
+
+
+def test_ready_level_route_shows_item_alternative(details):
+    _make_ready(details, method="level")
+    details._test_readiness["item_status_text"] = "Evolves into Gallade using a Dawn Stone"
+    header, _, _, _ = details.PokemonCollectionDetailsSplit(**_details_kwargs())
+    assert any("Evolve into Raichu now" in b.text() for b in _buttons(header))
+    assert "Evolves into Gallade using a Dawn Stone" in _labels(header)
+
+
 def test_friendship_master_toggle_hides_evolution_ui(details):
     _make_ready(details, method="friendship")
     header, _, _, _ = details.PokemonCollectionDetailsSplit(

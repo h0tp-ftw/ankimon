@@ -25,6 +25,10 @@ class _DiscordError(_PyPresenceException):
     """Discord answered with an error code. The socket is still open."""
 
 
+class _PipeClosed(_PyPresenceException):
+    """Discord closed the IPC connection."""
+
+
 #: Levels ``ShowInfoLogger._record`` actually writes. Anything else — "debug",
 #: notably — falls through every branch and is recorded nowhere.
 RECORDED_LOG_LEVELS = {"info", "warning", "error", "game"}
@@ -94,6 +98,11 @@ def discord_env(monkeypatch):
     presence_module.ResponseTimeout = _ResponseTimeout
     presence_module.ServerError = _ServerError
     modules[presence_module.__name__] = presence_module
+    exceptions_module = types.ModuleType(
+        "Ankimon.addon_files.lib.pypresence.exceptions"
+    )
+    exceptions_module.PipeClosed = _PipeClosed
+    modules[exceptions_module.__name__] = exceptions_module
 
     error_module = types.ModuleType("Ankimon.pyobj.error_handler")
     error_module.show_warning_with_traceback = MagicMock()
@@ -839,3 +848,148 @@ def test_reconnect_does_not_reset_the_elapsed_timer(discord_env, monkeypatch):
     assert instance._connect() is True
 
     assert instance.start_time == 12345.0
+
+
+@pytest.mark.parametrize("method_name", ["stop", "stop_presence"])
+def test_closed_pipe_in_main_thread_hook_is_quiet_and_reconnectable(
+    discord_env, method_name
+):
+    rpc = types.SimpleNamespace(
+        clear=MagicMock(side_effect=_PipeClosed()),
+        update=MagicMock(side_effect=_PipeClosed()),
+        close=MagicMock(),
+    )
+    instance = _presence_without_init(discord_env, loop=True, RPC=rpc)
+
+    getattr(instance, method_name)()
+
+    assert instance.loop is False
+    assert instance.connected is False
+    assert instance.RPC is None
+    rpc.close.assert_not_called()  # Closing the asyncio client is worker-only.
+    discord_env.logger.log.assert_called_once()
+    assert discord_env.logger.log.call_args.args[0] == "warning"
+    discord_env.event_emit.assert_not_called()
+    discord_env.tooltip.assert_not_called()
+
+
+def test_closed_pipe_reconnects_on_next_reviewer_answer(discord_env, monkeypatch):
+    """The real hook must restart the same presence after Discord closes its pipe."""
+    _patch_clock(discord_env, monkeypatch)
+    clients = []
+
+    class _RPC:
+        def __init__(self, client_id):
+            self.client_id = client_id
+            self.updates = []
+            self.closed = False
+            clients.append(self)
+
+        def connect(self):
+            return None
+
+        def update(self, **kwargs):
+            if self is clients[0]:
+                raise _PipeClosed()
+            self.updates.append(kwargs)
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(discord_env.module, "Presence", _RPC)
+    hooks = types.SimpleNamespace(
+        reviewer_did_answer_card=[], reviewer_will_end=[], sync_did_finish=[]
+    )
+    monkeypatch.setattr(sys.modules["aqt"], "gui_hooks", hooks, raising=False)
+    settings = types.SimpleNamespace(get=lambda _key: True)
+    singletons = types.ModuleType("Ankimon.singletons")
+    singletons.ankimon_tracker_obj = object()
+    singletons.logger = discord_env.logger
+    singletons.settings_obj = settings
+    monkeypatch.setitem(sys.modules, singletons.__name__, singletons)
+
+    source = Path(__file__).parents[1] / "src" / "Ankimon" / "discord_integration.py"
+    spec = importlib.util.spec_from_file_location("Ankimon.discord_integration", source)
+    integration = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, integration)
+    spec.loader.exec_module(integration)
+    integration.setup_discord_hooks()
+    presence = discord_env.mw.ankimon_presence
+    monkeypatch.setattr(
+        discord_env.module.time, "sleep", _stop_after_one_update(presence)
+    )
+
+    hooks.reviewer_did_answer_card[0](None, None, None)
+    presence.thread.join(timeout=2)
+    assert not presence.thread.is_alive()
+    assert presence.loop is False
+    assert presence.connected is False
+    assert presence.RPC is None
+    assert clients[0].closed is True
+    discord_env.logger.log.assert_called_once()
+    assert discord_env.logger.log.call_args.args[0] == "warning"
+    discord_env.event_emit.assert_not_called()
+
+    hooks.reviewer_did_answer_card[0](None, None, None)
+    presence.thread.join(timeout=2)
+    assert not presence.thread.is_alive()
+    assert discord_env.mw.ankimon_presence is presence
+    assert presence.connected is True
+    assert presence.RPC is clients[1]
+    assert len(clients[1].updates) == 1
+    discord_env.event_emit.assert_not_called()
+
+
+def test_closed_pipe_during_clear_reconnects_parked_worker(discord_env, monkeypatch):
+    """A pipe closed by sync must reconnect even if the old worker is asleep."""
+    parked = threading.Event()
+    release = threading.Event()
+    updates = []
+    sleeps = {"count": 0}
+
+    class _OldRPC:
+        def update(self, **_kwargs):
+            updates.append("old")
+            parked.set()
+
+        def clear(self):
+            raise _PipeClosed()
+
+    class _NewRPC:
+        def __init__(self, client_id):
+            self.client_id = client_id
+
+        def connect(self):
+            return None
+
+        def update(self, **_kwargs):
+            updates.append("new")
+
+    def sleep(_seconds):
+        sleeps["count"] += 1
+        if sleeps["count"] == 1:
+            release.wait(2)
+        else:
+            instance.loop = False
+
+    monkeypatch.setattr(discord_env.module, "Presence", _NewRPC)
+    _patch_clock(discord_env, monkeypatch, sleep=sleep)
+    instance = _presence_without_init(discord_env, RPC=_OldRPC())
+    instance.start()
+    worker = instance.thread
+    assert parked.wait(2)
+
+    instance.stop()
+    assert instance.connected is False
+    assert instance.RPC is None
+    instance.start()
+    assert instance.thread is worker
+    release.set()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert updates == ["old", "new"]
+    assert isinstance(instance.RPC, _NewRPC)
+    assert instance.connected is True
+    assert discord_env.logger.log.call_args.args[0] == "warning"
+    discord_env.event_emit.assert_not_called()

@@ -19,6 +19,7 @@
         pokeball: 'Ball',
         evolution: 'Evolution',
         fossil: 'Fossil',
+        ev: 'EV Training',
         other: '',
     };
 
@@ -428,7 +429,7 @@
         if (item.is_tm && item.move_type) {
             const t = document.createElement('span');
             t.className = 'mini-type';
-            t.textContent = item.move_type;
+            t.textContent = item.move_type_label || item.move_type;
             t.style.background = TYPE_COLORS[item.move_type.toLowerCase()] || 'var(--border-main)';
             tagsRow.appendChild(t);
         } else if (CATEGORY_LABELS[item.category]) {
@@ -511,7 +512,7 @@
         if (item.is_tm && item.move_type) {
             const t = document.createElement('span');
             t.className = 'det-pill move-type';
-            t.textContent = item.move_type;
+            t.textContent = item.move_type_label || item.move_type;
             t.style.background = TYPE_COLORS[item.move_type.toLowerCase()] || 'var(--border-main)';
             statusRow.appendChild(t);
         }
@@ -643,6 +644,7 @@
             case 'fossil': return 'Revive Fossil';
             case 'pokeball': return 'Throw at Wild Pokémon';
             case 'evolution': return 'Evolve a Pokémon';
+            case 'ev': return 'Train Active Pokémon';
             default: return 'Give to a Pokémon';
         }
     }
@@ -945,11 +947,12 @@
 
         const q = state.picker.search.trim().toLowerCase();
         // Compact field names from Python — see get_pokemon_choices:
-        //   id=individual_id, p=pokedex_id, n=name, l=level,
-        //   s=shiny, m=is_main, h=held_item, nk=nickname (if differs)
+        //   id=individual_id, p=pokedex_id, n=localized species, l=level,
+        //   s=shiny, m=is_main, h=held_item, nk=custom nickname,
+        //   a=optional internal species search alias
         const matched = q
             ? choices.filter((c) => {
-                const hay = [c.nk, c.n, c.h, String(c.l || ''), String(c.p || '')]
+                const hay = [c.nk, c.n, c.a, c.h, String(c.l || ''), String(c.p || '')]
                     .filter(Boolean).join(' ').toLowerCase();
                 return hay.includes(q);
             })
@@ -1007,7 +1010,8 @@
     }
 
     function buildPickerCard(choice) {
-        // Compact fields from Python: id, p, b (base_id), n, l, cp, s, m, h, nk.
+        // n is the localized species; nk is a meaningful custom nickname.
+        // Other compact fields: id, p, b (base_id), l, cp, s, m, h, a (search alias).
         // Match the Ankidex `.pokemon-card` shape so it picks up the same
         // hover/sprite/border treatment automatically. Team-specific bits
         // (level, CP, active/shiny marks, held item) layer on top.
@@ -1098,7 +1102,7 @@
         if (heldItem) {
             metaParts.push(`<span class="meta-held">Holds ${esc(titleCase(heldItem))}</span>`);
         } else if (nickname && name && nickname.toLowerCase() !== name.toLowerCase()) {
-            metaParts.push(esc(titleCase(name)));
+            metaParts.push(esc(name));
         }
         if (metaParts.length > 0) {
             const meta = document.createElement('div');

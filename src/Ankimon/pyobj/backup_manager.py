@@ -1,13 +1,17 @@
-
 import base64
 import json
+import hashlib
 import os
+import shutil
 import datetime
 import sqlite3
 import tempfile
 import time
 import uuid
+import threading
+from copy import copy
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -16,6 +20,40 @@ from aqt.utils import showInfo, showWarning, askUser
 from ..services import services
 from ..utils import close_anki
 from ..resources import user_path, addon_dir
+
+
+@dataclass(frozen=True)
+class BackupContext:
+    """The save and profile confirmed on the GUI thread, never reselected later."""
+
+    manager: Any
+    db: Any
+    identity: tuple
+    profile_epoch: int
+    target: Path
+    source_filename: str
+    backups_path: Optional[Path]
+
+    def validate(self):
+        with self.manager._context_lock:
+            if (
+                services.db is not self.db
+                or self.manager._profile_epoch != self.profile_epoch
+                or self.manager.backups_path != self.backups_path
+                or self.db.identity_token() != self.identity
+            ):
+                raise RuntimeError(
+                    "The confirmed account or Anki profile changed. "
+                    "Reopen Backup Manager and confirm again."
+                )
+
+    def publish(self, operation):
+        # Match the lock order used by capture/validation. The actual rename is
+        # the only I/O under the lifecycle barriers; retry sleeps happen outside.
+        with self.manager._context_lock:
+            self.validate()
+            return self.db.run_with_identity(self.identity, operation)
+
 
 class BackupManager:
     """Handles creating, managing, and restoring Ankimon backups."""
@@ -36,14 +74,469 @@ class BackupManager:
     # Retention renames a directory to this prefix before deleting inside it,
     # taking it out of the listing and the count; a later pass finishes it.
     DISCARD_PREFIX = ".discard_"
+    MIGRATING_PREFIX = ".migrating_"
+    MIGRATION_RECORD = ".legacy-migration.json"
 
     def __init__(self, logger, settings_obj):
         self.logger = logger
         self.settings_obj = settings_obj
         self.user_files_path = user_path
         self.addon_path = addon_dir
-        self.backups_path = self.addon_path.parent / "ankimon_backups"
-        self.backups_path.mkdir(exist_ok=True)
+        self.backups_path: Optional[Path] = None
+        self._profile_backup_candidate: Optional[Path] = None
+        self._profile_work_lock = threading.RLock()
+        self._context_lock = threading.RLock()
+        self._profile_epoch = 0
+        self._migrated_paths = {}
+        self._startup_backup_pending = not getattr(services, "_is_reloading", False)
+        self.refresh_profile_path()
+
+    @staticmethod
+    def _active_profile_folder() -> Optional[Path]:
+        try:
+            from aqt import mw
+
+            profile_manager = getattr(mw, "pm", None)
+            profile_folder = (
+                profile_manager.profileFolder() if profile_manager else None
+            )
+            return Path(profile_folder) if profile_folder else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _is_link(path: Path) -> bool:
+        from ..save_import import _is_link
+
+        return _is_link(path)
+
+    @staticmethod
+    def _publish_via_staging(
+        source: Path, destination: Path, relocations=None, before_publish=None
+    ) -> None:
+        """Publish a complete copy; leave the original for the caller to remove."""
+        from ..save_import import _fsync_directory
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        staging = destination.with_name(
+            f"{BackupManager.MIGRATING_PREFIX}{uuid.uuid4().hex[:8]}_{destination.name}"
+        )
+        try:
+            BackupManager._copy_migration_entry(
+                source, staging, destination, relocations
+            )
+            if destination.exists() or BackupManager._is_link(destination):
+                raise FileExistsError(f"Backup migration collision: {destination}")
+            if before_publish is not None:
+                before_publish(staging)
+            os.replace(str(staging), str(destination))
+            _fsync_directory(destination.parent)
+        except Exception:
+            # Staging is only a copy, including after an interrupted publication.
+            BackupManager._discard_migration_staging(staging)
+            raise
+
+    @staticmethod
+    def _copy_migration_entry(source, staging, destination, relocations):
+        """Copy without following links; rebase links for their final location."""
+        from ..save_import import _fsync_directory, _fsync_file
+
+        if BackupManager._is_link(source):
+            target = BackupManager._relocate_link(source, destination, relocations)
+            if target is None:
+                raise OSError(f"Cannot preserve linked backup entry: {source}")
+            os.symlink(target, staging, target_is_directory=source.is_dir())
+        elif source.is_dir():
+            staging.mkdir()
+            for child in source.iterdir():
+                BackupManager._copy_migration_entry(
+                    child,
+                    staging / child.name,
+                    destination / child.name,
+                    relocations,
+                )
+            shutil.copystat(source, staging, follow_symlinks=False)
+            _fsync_directory(staging)
+        else:
+            # Sync with write access before applying a source's read-only mode.
+            # Windows FlushFileBuffers rejects read-only handles.
+            shutil.copyfile(source, staging, follow_symlinks=False)
+            _fsync_file(staging)
+            shutil.copystat(source, staging, follow_symlinks=False)
+
+    @staticmethod
+    def _discard_migration_staging(staging: Path) -> None:
+        try:
+            if staging.is_dir() and not BackupManager._is_link(staging):
+                shutil.rmtree(staging, ignore_errors=True)
+            else:
+                staging.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _relocate_link(
+        item: Path, destination: Path, relocations=None
+    ) -> Optional[str]:
+        try:
+            referent = item.resolve(strict=False)
+        except (OSError, RuntimeError):
+            return None
+        # Resolve while every original still exists. Longest roots win so a
+        # collision-renamed backup overrides the mapping of the legacy root.
+        for original, relocated in sorted(
+            (relocations or {}).items(),
+            key=lambda pair: len(pair[0].parts),
+            reverse=True,
+        ):
+            try:
+                suffix = referent.relative_to(original)
+            except ValueError:
+                continue
+            referent = relocated / suffix
+            break
+        try:
+            return os.path.relpath(referent, destination.parent)
+        except ValueError:
+            # Relative paths cannot cross Windows drives.
+            return str(referent)
+
+    @staticmethod
+    def _migration_record(source: Path, destination: Path) -> Dict[str, Any]:
+        record = destination / BackupManager.MIGRATION_RECORD
+        if not record.exists():
+            return {"source": str(source.resolve()), "entries": {}, "digests": {}}
+        data = json.loads(record.read_text(encoding="utf-8"))
+        if data["source"] != str(source.resolve()):
+            raise ValueError("Backup migration record belongs to another source")
+        plan = data["entries"]
+        if not isinstance(plan, dict) or any(
+            not isinstance(name, str)
+            or name in ("", ".", "..")
+            or Path(name).name != name
+            or "/" in name
+            or "\\" in name
+            for pair in plan.items()
+            for name in pair
+        ):
+            raise ValueError("Invalid backup migration record")
+        digests = data.setdefault("digests", {})
+        if not isinstance(digests, dict) or any(
+            name not in plan
+            or not isinstance(digest, str)
+            or len(digest) != 64
+            or any(c not in "0123456789abcdef" for c in digest)
+            for name, digest in digests.items()
+        ):
+            raise ValueError("Invalid backup migration digests")
+        return data
+
+    @staticmethod
+    def _migration_plan(source: Path, destination: Path) -> Dict[str, str]:
+        return BackupManager._migration_record(source, destination)["entries"]
+
+    @staticmethod
+    def _write_migration_record(destination: Path, data) -> None:
+        from ..save_import import _fsync_directory
+
+        record = destination / BackupManager.MIGRATION_RECORD
+        temporary = record.with_name(f"{record.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temporary.open("w", encoding="utf-8") as output:
+                json.dump(data, output)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, record)
+            _fsync_directory(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _migration_digest(path: Path) -> str:
+        """Fingerprint a publication's names, bytes and links without following links.
+
+        Saved BEFORE publication, this also identifies a complete copy after a
+        crash between publication and source deletion. Runs only on the worker.
+        """
+        digest = hashlib.sha256()
+
+        def field(value):
+            encoded = value.encode("utf-8", errors="surrogatepass")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+
+        def visit(entry):
+            if BackupManager._is_link(entry):
+                field("link")
+                field(os.readlink(entry))
+            elif entry.is_dir():
+                field("directory")
+                for child in sorted(entry.iterdir(), key=lambda item: item.name):
+                    field(child.name)
+                    visit(child)
+                field("end")
+            else:
+                field("file")
+                content = hashlib.sha256()
+                with entry.open("rb") as stream:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        content.update(block)
+                digest.update(content.digest())
+
+        visit(path)
+        return digest.hexdigest()
+
+    @staticmethod
+    def _move_backup_contents(
+        source: Path, destination: Path, on_published=None
+    ) -> None:
+        """Publish verified copies before deleting any originals.
+
+        A reserved name is not proof of publication: another backup can occupy
+        it after a failed copy. Persist a digest of the completed staging tree
+        before renaming it, and require that proof on retries.
+        """
+        data = BackupManager._migration_record(source, destination)
+        plan, digests = data["entries"], data["digests"]
+        reserved = {destination / name for name in plan.values()}
+        reserved.add(destination / BackupManager.MIGRATION_RECORD)
+        for item in source.iterdir():
+            if item.name in plan:
+                continue
+            target = destination / item.name
+            while (
+                target in reserved or target.exists() or BackupManager._is_link(target)
+            ):
+                target = BackupManager._legacy_collision_name(destination / item.name)
+            plan[item.name] = target.name
+            reserved.add(target)
+        BackupManager._write_migration_record(destination, data)
+        planned = [
+            (source / name, destination / target) for name, target in plan.items()
+        ]
+        relocations = {source.resolve(): destination.resolve()}
+        relocations.update(
+            {
+                item.resolve(): target.absolute()
+                for item, target in planned
+                if not BackupManager._is_link(item)
+            }
+        )
+        for item, target in planned:
+
+            def record_copy(staging):
+                digests[item.name] = BackupManager._migration_digest(staging)
+                BackupManager._write_migration_record(destination, data)
+
+            if target.exists() or BackupManager._is_link(target):
+                expected = digests.get(item.name)
+                if expected is None:
+                    # Upgrade old journals only when the still-present original
+                    # proves which complete snapshot belongs at this target.
+                    staging = (
+                        destination
+                        / f"{BackupManager.MIGRATING_PREFIX}{uuid.uuid4().hex}"
+                    )
+                    try:
+                        BackupManager._copy_migration_entry(
+                            item, staging, target, relocations
+                        )
+                        expected = BackupManager._migration_digest(staging)
+                    finally:
+                        BackupManager._discard_migration_staging(staging)
+                if BackupManager._migration_digest(target) != expected:
+                    raise FileExistsError(
+                        f"Unverified backup migration destination: {target}"
+                    )
+                digests[item.name] = expected
+                BackupManager._write_migration_record(destination, data)
+            else:
+                BackupManager._publish_via_staging(
+                    item, target, relocations, record_copy
+                )
+            if on_published is not None:
+                on_published(item, target)
+
+        for item, target in planned:
+            if BackupManager._migration_digest(target) != digests[item.name]:
+                raise OSError(f"Backup migration destination changed: {target}")
+            if item.is_symlink():
+                item.unlink()
+            elif BackupManager._is_link(item):
+                item.rmdir()
+            elif item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink(missing_ok=True)
+
+    @staticmethod
+    def _legacy_collision_name(target: Path) -> Path:
+        return target.with_name(f"{target.name}__legacy_{uuid.uuid4().hex[:8]}")
+
+    def _migrate_legacy_backups(self, profile_folder: Path) -> None:
+        legacy_path = self.addon_path.parent / "ankimon_backups"
+        new_path = profile_folder / "Ankimon_Backups"
+        if legacy_path == new_path:
+            return
+        if not legacy_path.exists():
+            # A crash may occur between removing the empty source root and
+            # removing its record. No source remains to retry in that case.
+            if not self._is_link(new_path):
+                (new_path / self.MIGRATION_RECORD).unlink(missing_ok=True)
+            return
+        if self._is_link(legacy_path):
+            self.logger.log(
+                "error",
+                f"Refusing to migrate linked legacy backups directory: {legacy_path}",
+            )
+            return
+        if self._is_link(new_path):
+            self.logger.log(
+                "error",
+                f"Refusing to migrate into linked backups directory: {new_path}",
+            )
+            return
+
+        new_path.mkdir(parents=True, exist_ok=True)
+        for original in list(self._migrated_paths):
+            if original.parent == legacy_path:
+                del self._migrated_paths[original]
+        self._move_backup_contents(
+            legacy_path,
+            new_path,
+            lambda original, relocated: self._migrated_paths.__setitem__(
+                original, relocated
+            ),
+        )
+        legacy_path.rmdir()
+        (new_path / self.MIGRATION_RECORD).unlink(missing_ok=True)
+
+    def refresh_profile_path(self) -> None:
+        profile_folder = self._active_profile_folder()
+        candidate = profile_folder / "Ankimon_Backups" if profile_folder else None
+        with self._context_lock:
+            if candidate != self._profile_backup_candidate:
+                self._profile_epoch += 1
+                self.backups_path = None
+                self._profile_backup_candidate = candidate
+        if profile_folder is None:
+            return
+        if self._is_link(candidate):
+            with self._context_lock:
+                if self.backups_path is not None:
+                    self._profile_epoch += 1
+                    self.backups_path = None
+            self.logger.log(
+                "error",
+                f"Refusing to activate linked backups directory: {candidate}",
+            )
+            return
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+        except Exception as error:
+            with self._context_lock:
+                if self.backups_path is not None:
+                    self._profile_epoch += 1
+                    self.backups_path = None
+            self.logger.log("error", f"Failed to create backup directory: {error}")
+            return
+        with self._context_lock:
+            self.backups_path = candidate
+
+    def invalidate_context(self):
+        """Called before profile close, including closing and reopening one profile."""
+        with self._context_lock:
+            self._profile_epoch += 1
+
+    def capture_context(self, *, require_backup_path=True):
+        """Capture save ownership; cancelling imports needs no backup directory."""
+        with self._context_lock:
+            db = services.db
+            if db is None or (require_backup_path and self.backups_path is None):
+                raise RuntimeError("Open an Anki profile before using Backup Manager.")
+            identity = db.identity_token()
+            return BackupContext(
+                self,
+                db,
+                identity,
+                self._profile_epoch,
+                Path(identity[0]).resolve(),
+                Path(identity[0]).name,
+                self.backups_path,
+            )
+
+    def run_profile_backup_tasks(self) -> None:
+        """Run on a worker; serialize startup and profile-open requests."""
+        with self._profile_work_lock:
+            if self.backups_path is None:
+                return  # Keep the startup request pending until a profile opens.
+            worker = copy(self)
+            try:
+                worker._migrate_legacy_backups(worker.backups_path.parent)
+            except Exception as error:
+                self.logger.log("error", f"Failed to migrate legacy backups: {error}")
+            if self.backups_path != worker.backups_path:
+                return
+            if self._startup_backup_pending:
+                if not self.settings_obj.get("misc.developer_mode"):
+                    self._startup_backup_pending = False
+                elif worker.create_backup(manual=False):
+                    self._startup_backup_pending = False
+
+    def schedule_profile_backup_tasks(self) -> None:
+        """Called on the GUI thread after resolving the profile path."""
+        from aqt import mw
+
+        def completed(future):
+            try:
+                future.result()
+            except Exception as error:
+                self.logger.log("error", f"Background backup work failed: {error}")
+
+        try:
+            mw.taskman.run_in_background(
+                self.run_profile_backup_tasks,
+                completed,
+                uses_collection=False,
+            )
+        except TypeError as error:
+            if "unexpected keyword argument 'uses_collection'" not in str(error):
+                raise
+            # Anki 2.1.66 predates collection-specific workers and this keyword.
+            mw.taskman.run_in_background(self.run_profile_backup_tasks, completed)
+
+    def _backup_directories(self, required_file=None, supported_files=None):
+        """Keep originals discoverable until their complete copies are published."""
+        roots = [self.backups_path]
+        legacy = self.addon_path.parent / "ankimon_backups"
+        plan = {}
+        if legacy.is_dir() and not self._is_link(legacy):
+            roots.append(legacy)
+            try:
+                plan = self._migration_plan(legacy, self.backups_path)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass  # A damaged record must not hide the original backups.
+        for root in roots:
+            try:
+                entries = sorted(root.iterdir(), reverse=True)
+            except OSError:
+                continue
+            for entry in entries:
+                if root == legacy and entry.name in plan:
+                    target = self.backups_path / plan[entry.name]
+                    needed = (
+                        {required_file}
+                        if required_file
+                        else set(supported_files or self.FILES_TO_BACKUP)
+                    )
+                    originals = {name for name in needed if (entry / name).is_file()}
+                    if (
+                        self._resolve_backup_path(entry, required_file) == target
+                        and originals
+                        and all((target / name).is_file() for name in originals)
+                    ):
+                        continue
+                yield entry
 
     def _deobfuscate_data(self, obfuscated_str: str) -> Optional[Dict[str, Any]]:
         """De-obfuscates string back into a dictionary."""
@@ -62,60 +555,126 @@ class BackupManager:
 
             obfuscated_bytes = base64.b64decode(obfuscated_data)
             deobfuscated_bytes = bytearray()
-            key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
+            key_bytes = self._OBFUSCATION_KEY.encode("utf-8")
             for i, byte in enumerate(obfuscated_bytes):
                 deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-            return json.loads(deobfuscated_bytes.decode('utf-8'))
+            return json.loads(deobfuscated_bytes.decode("utf-8"))
         except Exception as e:
             self.logger.log("error", f"Failed to deobfuscate data: {e}")
             return None
 
-    def get_backups(self) -> List[Dict[str, Any]]:
+    def get_backups(
+        self, include_inactive: bool = False, active_filename=None
+    ) -> List[Dict[str, Any]]:
         """Returns a list of available backups with their summary stats.
 
         Only backups that contain the database for the *currently active* mode
         (normal ``ankimon.db`` vs developer ``ankimonDEV.db``) are shown, and the
         per-DB stats section for the active mode is merged onto the root of the
         summary so the dialog can read them without knowing about dual-DB.
+        ``include_inactive`` includes backups containing only the other mode's
+        database, for interfaces that need to display every saved backup.
         """
         backups = []
-        # If the database service isn't initialized yet (e.g. early boot or a
-        # headless environment), there is no active mode to filter on — return an
-        # empty list rather than crashing on ``None.db_path``.
-        if services.db is None:
+        if self.backups_path is None:
             return backups
-        active_db = services.db.db_path.name
-        for backup_dir in sorted(self.backups_path.iterdir(), reverse=True):
+        # Preserve the default active-mode filtering when the DB service is not
+        # initialized, while allowing all backups to be listed without it.
+        if services.db is None and not include_inactive:
+            return backups
+        active_db = active_filename or (
+            services.db.db_path.name if services.db is not None else None
+        )
+        supported = set(self.FILES_TO_BACKUP) | ({active_db} if active_db else set())
+        required_file = None if include_inactive else active_db
+        for backup_dir in self._backup_directories(required_file, supported):
             if backup_dir.name.startswith("backup_") and backup_dir.is_dir():
                 # Only show a backup if it contains the database for the active mode.
-                if not (backup_dir / active_db).exists():
+                if not include_inactive and not (backup_dir / active_db).exists():
+                    continue
+                has_normal_db = (backup_dir / "ankimon.db").exists()
+                has_dev_db = (backup_dir / "ankimonDEV.db").exists()
+                if include_inactive and not any(
+                    (backup_dir / name).is_file() for name in supported
+                ):
                     continue
                 summary_path = backup_dir / "summary.json"
                 if summary_path.exists():
-                    with open(summary_path, 'r', encoding='utf-8') as f:
-                        try:
+                    try:
+                        with open(summary_path, "r", encoding="utf-8") as f:
                             summary = json.load(f)
-                            # Shape the summary to match what the UI expects for the active DB.
-                            stats_key = "dev_stats" if active_db == "ankimonDEV.db" else "normal_stats"
+                            # Shape the summary to match the active DB, or the DB
+                            # actually present when listing an inactive backup.
+                            if active_db == "ankimonDEV.db":
+                                stats_key = "dev_stats"
+                            elif active_db == "ankimon.db":
+                                stats_key = "normal_stats"
+                            else:
+                                stats_key = "normal_stats"
+                            if include_inactive:
+                                if active_db == "ankimonDEV.db" and has_dev_db:
+                                    stats_key = "dev_stats"
+                                elif active_db == "ankimon.db" and has_normal_db:
+                                    stats_key = "normal_stats"
+                                elif has_normal_db:
+                                    stats_key = "normal_stats"
+                                elif has_dev_db:
+                                    stats_key = "dev_stats"
                             db_stats = summary.get(stats_key, {})
 
                             # Merge DB-specific stats into the root summary object for the UI.
                             summary.update(db_stats)
-                            summary['path'] = str(backup_dir)
+                            summary["path"] = str(backup_dir)
                             backups.append(summary)
-                        except json.JSONDecodeError:
-                            self.logger.log("error", f"Could not read summary for backup: {backup_dir.name}")
-                elif active_db == "ankimon.db":
+                    except (OSError, json.JSONDecodeError):
+                        self.logger.log(
+                            "error",
+                            f"Could not read summary for backup: {backup_dir.name}",
+                        )
+                elif include_inactive or active_db == "ankimon.db":
                     # Fallback for older backups without summary.json.
                     summary = {
-                        "date": backup_dir.name.replace("backup_", "").replace("_", " "),
+                        "date": backup_dir.name.replace("backup_", "").replace(
+                            "_", " "
+                        ),
                         "path": str(backup_dir),
                     }
                     backups.append(summary)
         return backups
 
-    def create_backup(self, manual=False, required_file: str = None,
-                      deadline: float = None) -> bool:
+    def _reserve_backup_directory(self, destination, timestamp, deadline):
+        """Reserve a distinct staging name, including overlapping shutdown work."""
+        protected = self._migration_protected_paths()
+        name = f"backup_{timestamp}"
+        while True:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("the shutdown backup budget expired")
+            backup_dir = destination / name
+            staging_dir = destination / f".{name}"
+            if backup_dir not in protected and not os.path.lexists(backup_dir):
+                try:
+                    # mkdir is the reservation shared by all backup creators;
+                    # checking only the published directory races with workers.
+                    staging_dir.mkdir()
+                except FileExistsError:
+                    pass
+                else:
+                    # Another worker may have published after our first check,
+                    # freeing its staging name just before we reserved it.
+                    if not os.path.lexists(backup_dir):
+                        return backup_dir, staging_dir
+                    staging_dir.rmdir()
+            name = f"backup_{timestamp}_{uuid.uuid4().hex[:8]}"
+
+    def create_backup(
+        self,
+        manual=False,
+        required_file: str = None,
+        deadline: float = None,
+        show_notifications: bool = True,
+        before_publish=None,
+        context=None,
+    ) -> bool:
         """Creates a new backup.
 
         ``deadline`` is an absolute ``time.monotonic()`` instant that bounds the
@@ -128,34 +687,67 @@ class BackupManager:
         active-mode database when it is omitted. The result is about THAT file:
         each file is snapshotted in isolation below, so one file's failure
         neither blanks another file's success nor is hidden by it."""
+        if self.backups_path is None:
+            self.logger.log(
+                "error", "Cannot create backup without an active profile path"
+            )
+            if manual and show_notifications:
+                showWarning(
+                    "Manual backup failed: no active Anki profile folder is "
+                    "available. Open a profile and try again."
+                )
+            return False
+
+        if context is not None:
+            context.validate()
+        destination = context.backups_path if context is not None else self.backups_path
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        backup_dir = self.backups_path / f"backup_{timestamp}"
-        staging_dir = self.backups_path / f".{backup_dir.name}"
 
         success = False
         created_directory = False
         try:
-            if backup_dir.exists():
-                raise FileExistsError(f"Backup already exists: {backup_dir.name}")
-            staging_dir.mkdir()
+            backup_dir, staging_dir = self._reserve_backup_directory(
+                destination, timestamp, deadline
+            )
             created_directory = True
 
-            active_path = Path(services.db.db_path) if services.db is not None else None
+            active_path = (
+                context.target
+                if context is not None
+                else Path(services.db.db_path)
+                if services.db is not None
+                else None
+            )
+            active_filename = (
+                context.source_filename
+                if context is not None
+                else active_path.name
+                if active_path is not None
+                else "ankimon.db"
+            )
             # For manual backups, only back up the currently active database.
-            sources = {name: self.user_files_path / name for name in self.FILES_TO_BACKUP}
+            sources = {
+                name: self.user_files_path / name for name in self.FILES_TO_BACKUP
+            }
             if active_path is not None:
                 # Profiles can choose a different directory or filename. Never
                 # substitute the default save for the active file being protected.
+                # A symlink's logical filename identifies the account in backups;
+                # its resolved destination is only the source of snapshot bytes.
                 if manual:
-                    sources = {active_path.name: active_path}
+                    sources = {active_filename: active_path}
                 else:
-                    sources[active_path.name] = active_path
+                    sources[active_filename] = active_path
 
             completed = set()
-            needed = required_file or (active_path.name if active_path else "ankimon.db")
+            needed = required_file or active_filename
             # A shared budget is spent on the file `success` depends on first,
             # so a locked companion database cannot starve the one that matters.
-            order = sorted(sources, key=lambda name: name != needed) if deadline else sources
+            order = (
+                sorted(sources, key=lambda name: name != needed)
+                if deadline
+                else sources
+            )
             for filename in order:
                 source_path = sources[filename]
                 if source_path.exists():
@@ -170,9 +762,11 @@ class BackupManager:
                                 # Refuse rather than start a snapshot whose own
                                 # deadline check would fail it after the copy.
                                 raise TimeoutError(
-                                    "the shutdown backup budget expired before this file")
-                            self._snapshot_database(source_path, staging_dir / filename,
-                                                    timeout=remaining)
+                                    "the shutdown backup budget expired before this file"
+                                )
+                            self._snapshot_database(
+                                source_path, staging_dir / filename, timeout=remaining
+                            )
                         completed.add(filename)
                     except Exception as e:
                         self.logger.log("error", f"Failed to back up {filename}: {e}")
@@ -184,10 +778,10 @@ class BackupManager:
             # busy timeout would re-enter the very lock wait `deadline` exists
             # to bound — describing a backup that is about to be discarded.
             if needed in completed and (staging_dir / needed).is_file():
-                summary = self._generate_summary(staging_dir)
-                summary['date'] = timestamp.replace("_", " ")
-                summary['manual'] = manual
-                with open(staging_dir / "summary.json", 'w', encoding='utf-8') as f:
+                summary = self._generate_summary(staging_dir, needed)
+                summary["date"] = timestamp.replace("_", " ")
+                summary["manual"] = manual
+                with open(staging_dir / "summary.json", "w", encoding="utf-8") as f:
                     json.dump(summary, f, indent=4)
 
                 if backup_dir.exists():
@@ -197,14 +791,24 @@ class BackupManager:
                 # On Windows a scanner still reading a snapshot just written
                 # blocks renaming its folder. Retry the rename, within the
                 # shutdown budget when there is one.
-                _retry_on_file_lock(lambda: staging_dir.rename(backup_dir), deadline)
+                def publish():
+                    if before_publish is not None:
+                        before_publish()
+                    operation = lambda: staging_dir.rename(backup_dir)
+                    return (
+                        context.publish(operation)
+                        if context is not None
+                        else operation()
+                    )
+
+                _retry_on_file_lock(publish, deadline)
                 success = True
                 self.logger.log("info", f"Created backup: {backup_dir.name}")
 
             # Report manual feedback based on the ACTUAL outcome — never claim
             # success when the DB copy failed (per-file copy errors are logged,
             # not raised), or the user would trust a backup that isn't there.
-            if manual:
+            if manual and show_notifications:
                 if success:
                     showInfo("Manual backup created successfully.")
                 else:
@@ -215,9 +819,11 @@ class BackupManager:
 
         except Exception as e:
             self.logger.log("error", f"Failed to create backup: {e}")
-            if manual:
+            if manual and show_notifications:
                 showWarning(f"Failed to create backup: {e}")
 
+        housekeeping = copy(self)
+        housekeeping.backups_path = destination
         if success:
             # Retention is housekeeping, and this runs on Anki's synchronous
             # profile_will_close hook, which does not catch what its handlers
@@ -227,10 +833,10 @@ class BackupManager:
             # gets what is left of the shutdown budget: deleting directories is
             # not work to do while the user waits for Anki to exit.
             try:
-                self.cleanup_backups(deadline=deadline)
+                housekeeping.cleanup_backups(deadline=deadline)
             except Exception as error:
                 self.logger.log("error", f"Backup retention did not finish: {error}")
-        elif created_directory:
+        elif not success and created_directory:
             # Failed attempts stay outside listings and retention even if a
             # locked file prevents deletion. Remove only staging directories
             # created by this attempt, never a pre-existing timestamp collision.
@@ -238,8 +844,11 @@ class BackupManager:
             # attempt may hold a whole companion save.
             try:
                 if not self._remove_tree(staging_dir, deadline):
-                    self.logger.log("error", "The shutdown budget ran out removing an "
-                                    "incomplete backup; retention sweeps it once stale")
+                    self.logger.log(
+                        "error",
+                        "The shutdown budget ran out removing an "
+                        "incomplete backup; retention sweeps it once stale",
+                    )
             except OSError as error:
                 self.logger.log("error", f"Failed to remove incomplete backup: {error}")
         if not success:
@@ -248,13 +857,15 @@ class BackupManager:
             # anyway. Retention still waits for a success: evicting old backups
             # with nothing replacing them would leave none. Same hook, same budget.
             try:
-                self._sweep_leftovers(deadline)
+                housekeeping._sweep_leftovers(deadline)
             except Exception as error:
                 self.logger.log("error", f"Backup cleanup did not finish: {error}")
         return success
 
     @staticmethod
-    def _snapshot_database(source_path: Path, destination_path: Path, timeout: float = 30.0):
+    def _snapshot_database(
+        source_path: Path, destination_path: Path, timeout: float = 30.0
+    ):
         """Publish a verified standalone snapshot, including committed WAL pages.
 
         A checkpoint can return busy while leaving committed pages in WAL, so
@@ -270,11 +881,16 @@ class BackupManager:
         """
         # Imported before the temporary exists: the cleanup below needs it.
         from ..save_import import (
-            _remove_owned_copy, _retry_on_file_lock, _sqlite_uri, _verify_save,
+            _remove_owned_copy,
+            _retry_on_file_lock,
+            _sqlite_uri,
+            _verify_save,
         )
 
         deadline = time.monotonic() + timeout
-        fd, name = tempfile.mkstemp(prefix=".snapshot-", suffix=".db", dir=destination_path.parent)
+        fd, name = tempfile.mkstemp(
+            prefix=".snapshot-", suffix=".db", dir=destination_path.parent
+        )
         os.close(fd)
         temporary = Path(name)
 
@@ -285,8 +901,10 @@ class BackupManager:
 
         try:
             uri = _sqlite_uri(source_path, "ro")
-            with closing(sqlite3.connect(uri, uri=True, timeout=timeout)) as source, \
-                 closing(sqlite3.connect(temporary, timeout=timeout)) as snapshot:
+            with (
+                closing(sqlite3.connect(uri, uri=True, timeout=timeout)) as source,
+                closing(sqlite3.connect(temporary, timeout=timeout)) as snapshot,
+            ):
                 source.backup(snapshot, pages=256, progress=check_deadline, sleep=0.05)
                 # A backup is a single file: do not require WAL sidecars on restore.
                 # It also lets the read-only check below open the file alone.
@@ -295,7 +913,9 @@ class BackupManager:
             # published, and bounded by the same deadline.
             _verify_save(temporary, deadline)
             check_deadline(0, 0, 0)
-            _retry_on_file_lock(lambda: os.replace(temporary, destination_path), deadline)
+            _retry_on_file_lock(
+                lambda: os.replace(temporary, destination_path), deadline
+            )
         finally:
             _remove_owned_copy(temporary)
 
@@ -321,6 +941,7 @@ class BackupManager:
         import sqlite3
         import json
         from contextlib import closing
+
         try:
             with closing(sqlite3.connect(str(db_file_path))) as conn:
                 conn.row_factory = sqlite3.Row
@@ -337,7 +958,9 @@ class BackupManager:
                 # a raw file directly can raise "no such column: is_main". Guard
                 # it so the trainer/config read below still runs.
                 try:
-                    cursor.execute("SELECT data FROM captured_pokemon WHERE is_main = 1 LIMIT 1")
+                    cursor.execute(
+                        "SELECT data FROM captured_pokemon WHERE is_main = 1 LIMIT 1"
+                    )
                     main_row = cursor.fetchone()
                     if main_row:
                         main_data = json.loads(main_row["data"])
@@ -353,6 +976,7 @@ class BackupManager:
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='config'"
                 )
                 if cursor.fetchone():
+
                     def _cfg(key):
                         cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
                         r = cursor.fetchone()
@@ -372,17 +996,23 @@ class BackupManager:
                             except (ValueError, TypeError):
                                 pass
         except Exception as e:
-            self.logger.log("error", f"Failed to read stats from {db_file_path.name}: {e}")
+            self.logger.log(
+                "error", f"Failed to read stats from {db_file_path.name}: {e}"
+            )
         return stats
 
-    def _generate_summary(self, backup_dir: Path) -> Dict[str, Any]:
+    def _generate_summary(
+        self, backup_dir: Path, active_filename=None
+    ) -> Dict[str, Any]:
         """Generates a summary for a backup, with per-database (normal/dev) stats."""
-        active_db_name = (
+        active_db_name = active_filename or (
             services.db.db_path.name if services.db is not None else "ankimon.db"
         )
 
         # Read stats from the database files stored inside this backup directory.
-        normal_name = "ankimon.db" if active_db_name == "ankimonDEV.db" else active_db_name
+        normal_name = (
+            "ankimon.db" if active_db_name == "ankimonDEV.db" else active_db_name
+        )
         normal_stats = self._get_db_file_stats(backup_dir / normal_name)
         dev_stats = self._get_db_file_stats(backup_dir / "ankimonDEV.db")
 
@@ -415,7 +1045,9 @@ class BackupManager:
                 else:
                     normal_stats = live_stats
             except Exception as e:
-                self.logger.log("error", f"Failed to get DB stats for backup summary: {e}")
+                self.logger.log(
+                    "error", f"Failed to get DB stats for backup summary: {e}"
+                )
 
         summary = {
             "date": backup_dir.name.replace("backup_", "").replace("_", " "),
@@ -444,19 +1076,23 @@ class BackupManager:
             # Read mainpokemon.json for main Pokémon info
             mainpokemon_path = backup_dir / "mainpokemon.json"
             if mainpokemon_path.exists():
-                with open(mainpokemon_path, 'r', encoding='utf-8') as f:
+                with open(mainpokemon_path, "r", encoding="utf-8") as f:
                     try:
                         mainpokemon_data = json.load(f)
                         if mainpokemon_data:
-                            legacy_stats["main_pokemon_name"] = mainpokemon_data[0].get("name", "N/A")
-                            legacy_stats["main_pokemon_level"] = mainpokemon_data[0].get("level", "N/A")
+                            legacy_stats["main_pokemon_name"] = mainpokemon_data[0].get(
+                                "name", "N/A"
+                            )
+                            legacy_stats["main_pokemon_level"] = mainpokemon_data[
+                                0
+                            ].get("level", "N/A")
                     except (json.JSONDecodeError, IndexError):
                         pass
 
             # Read mypokemon.json for total Pokémon count
             mypokemon_path = backup_dir / "mypokemon.json"
             if mypokemon_path.exists():
-                with open(mypokemon_path, 'r', encoding='utf-8') as f:
+                with open(mypokemon_path, "r", encoding="utf-8") as f:
                     try:
                         mypokemon_data = json.load(f)
                         legacy_stats["pokemon_count"] = len(mypokemon_data)
@@ -466,21 +1102,25 @@ class BackupManager:
             # Read items.json for total item count
             items_path = backup_dir / "items.json"
             if items_path.exists():
-                with open(items_path, 'r', encoding='utf-8') as f:
+                with open(items_path, "r", encoding="utf-8") as f:
                     try:
                         items_data = json.load(f)
-                        legacy_stats["item_count"] = sum(item.get('quantity', 0) for item in items_data)
+                        legacy_stats["item_count"] = sum(
+                            item.get("quantity", 0) for item in items_data
+                        )
                     except json.JSONDecodeError:
                         pass
 
             # Read config.obf for trainer info (legacy backups predate the DB config table)
             config_path = backup_dir / "config.obf"
             if config_path.exists():
-                with open(config_path, 'r', encoding='utf-8') as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     obfuscated_data = f.read()
                 config_data = self._deobfuscate_data(obfuscated_data)
                 if config_data:
-                    legacy_stats["trainer_name"] = config_data.get("trainer.name", "N/A")
+                    legacy_stats["trainer_name"] = config_data.get(
+                        "trainer.name", "N/A"
+                    )
                     legacy_stats["trainer_cash"] = config_data.get("trainer.cash", 0)
                     legacy_stats["trainer_level"] = config_data.get("trainer.level", 1)
 
@@ -499,20 +1139,93 @@ class BackupManager:
                 f"A pending save import could not be reported to the user: {error}",
             )
 
-    def restore_backup(self, backup_path_str: str):
+    def restore_backup(
+        self,
+        backup_path_str: str,
+        interactive: bool = True,
+        confirm_unverified: bool = False,
+        context_validator=None,
+        context=None,
+        source_file=None,
+        operation=None,
+    ):
         """Stage the selected backup for the next full process start.
 
         Never copy over a database that the current runtime still has open.
         Restore uses the same crash-safe installation gate as manual Import,
         while retaining credentials because Backup Manager snapshots are private
-        local recovery material rather than portable exports.
+        local recovery material rather than portable exports. Noninteractive
+        callers handle the initial confirmation and restart themselves.
         """
-        backup_path = Path(backup_path_str)
-        if not backup_path.is_dir():
-            showWarning("Selected backup path does not exist.")
-            return
+        from ..save_import import reserve_save_operation
 
-        if not askUser(
+        owns_operation = operation is None
+        try:
+            if owns_operation:
+                operation = reserve_save_operation()
+            else:
+                operation.validate()
+        except RuntimeError as error:
+            if interactive:
+                showWarning(str(error))
+                return
+            return {"status": "failed", "error": str(error)}
+
+        try:
+            return self._restore_backup(
+                backup_path_str,
+                interactive=interactive,
+                confirm_unverified=confirm_unverified,
+                context_validator=context_validator,
+                context=context,
+                source_file=source_file,
+                operation=operation,
+            )
+        finally:
+            # The Web UI owns its reservation across damaged-save confirmation
+            # and the second worker. Native calls own only this invocation.
+            if owns_operation:
+                operation.release()
+
+    def _restore_backup(
+        self,
+        backup_path_str: str,
+        interactive: bool = True,
+        confirm_unverified: bool = False,
+        context_validator=None,
+        context=None,
+        source_file=None,
+        operation=None,
+    ):
+        try:
+            context = context or self.capture_context()
+            context.validate()
+            target = context.target
+            source_filename = context.source_filename
+            source_file = (
+                source_file
+                or (
+                    self._resolve_backup_path(backup_path_str, source_filename)
+                    / source_filename
+                ).resolve()
+            )
+        except Exception as error:
+            if interactive:
+                showWarning(str(error))
+                return
+            return {"status": "failed", "error": str(error)}
+        backup_path = self._resolve_backup_path(backup_path_str, source_filename)
+        if not backup_path.is_dir():
+            # Publication can complete between resolving and checking the row.
+            backup_path = self._resolve_backup_path(backup_path_str)
+            if not backup_path.is_dir():
+                message = "Selected backup path does not exist."
+                if interactive:
+                    showWarning(message)
+                    return
+                return {"status": "failed", "error": message}
+
+        if interactive and not askUser(
             "Prepare this backup for restore? It will replace the current Ankimon "
             "save on the next full Anki restart. The final current save will be "
             "retained as a separate recovery copy first."
@@ -523,75 +1236,135 @@ class BackupManager:
         # first bound inside the try is unbound there when anything before the
         # import raises, and the handler itself then raises UnboundLocalError.
         from ..save_import import (
-            ImportAlreadyPendingError, ImportStagedError,
-            damaged_save_question, describe_recovery_destination,
-            pending_import_is_installed, should_confirm_unverified_copy, stage_import,
+            ImportAlreadyPendingError,
+            ImportStagedError,
+            damaged_save_question,
+            describe_recovery_destination,
+            pending_import_is_installed,
+            should_confirm_unverified_copy,
+            stage_import,
         )
 
-        try:
-            if services.db is None:
-                showWarning("The Ankimon database is not initialized yet; cannot restore a backup.")
-                return
-
-            target = Path(services.db.db_path)
-            backup_file = backup_path / target.name
-            if not backup_file.is_file():
-                showWarning(
-                    "The selected backup does not contain a backup for the active "
-                    f"database ({target.name})."
+        def validate_context():
+            context.validate()
+            if context_validator is not None and not context_validator():
+                raise RuntimeError(
+                    "The confirmed account or Anki profile changed. "
+                    "Nothing was prepared; reopen Backup Manager and confirm again."
                 )
-                return
+
+        try:
+            validate_context()
+            if services.db is None:
+                message = "The Ankimon database is not initialized yet; cannot restore a backup."
+                if interactive:
+                    showWarning(message)
+                    return
+                return {"status": "failed", "error": message}
 
             # A damaged save cannot give the verified copy the question above
             # promised, so its replacement needs its own answer.
             retain_unverified = should_confirm_unverified_copy(target)
-            if retain_unverified and not askUser(
-                damaged_save_question(target, "the selected backup"), defaultno=True
-            ):
-                return
+            if retain_unverified:
+                question = damaged_save_question(target, "the selected backup")
+                if interactive:
+                    if not askUser(question, defaultno=True):
+                        return
+                elif not confirm_unverified:
+                    return {
+                        "status": "confirmation_required",
+                        "message": question,
+                    }
 
-            pending = stage_import(
-                backup_file, target, sanitize_credentials=False,
-                retain_unverified=retain_unverified,
-            )
+            validate_context()
+            # Every confirmation can run the event loop while migration moves
+            # the selection. Resolve after ALL dialogs and hold its source
+            # stable until staging has finished, without waiting on the GUI.
+            if not self._profile_work_lock.acquire(blocking=False):
+                message = "Backups are being moved. Please try restoring again shortly."
+                if interactive:
+                    showWarning(message)
+                    return
+                return {"status": "failed", "error": message}
+            try:
+                validate_context()
+                backup_file = Path(source_file)
+                if not backup_file.is_file():
+                    # Migration may have moved a symlink's resolved source.
+                    # Follow the selected backup entry so its link retains the
+                    # source filename and any nested path, not a sibling save.
+                    backup_file = (
+                        self._resolve_backup_path(backup_path_str, source_filename)
+                        / source_filename
+                    )
+                if not backup_file.is_file():
+                    message = (
+                        "The selected backup does not contain a backup for the active "
+                        f"database ({source_filename})."
+                    )
+                    if interactive:
+                        showWarning(message)
+                        return
+                    return {"status": "failed", "error": message}
+                # Even a read-only SQLite connection can create WAL/SHM files
+                # beside a backup. Keep the journaled migration tree unchanged
+                # by opening only a private copy, including committed WAL data.
+                # Resolve links just as stage_import's SQLite URI does, so the
+                # journals come from the actual database's directory.
+                source = backup_file.resolve()
+                private = Path(tempfile.mkdtemp(prefix="ankimon-backup-restore-"))
+                try:
+                    snapshot = self._copy_restore_source(source, private)
+                    pending = stage_import(
+                        snapshot,
+                        target,
+                        sanitize_credentials=False,
+                        retain_unverified=retain_unverified,
+                        before_publish=validate_context,
+                        publish_guard=context.publish,
+                        operation=operation,
+                    )
+                finally:
+                    # Cleanup cannot turn a successfully armed restore into a
+                    # reported staging failure. Windows may still hold a file.
+                    self._discard_migration_staging(private)
+            finally:
+                self._profile_work_lock.release()
         except ImportAlreadyPendingError:
-            # Guarded like the success notice below: showWarning reaches into
-            # Qt, and an exception raised inside an except clause is not caught
-            # by its siblings -- it would leave restore_backup entirely, with
-            # an import armed and nothing said about it.
+            # Interactive callers report this through Qt; worker callers return
+            # data for the bridge to deliver without opening dialogs here.
             installed = pending_import_is_installed(target)
             if installed:
-                # The record outlived the import; that replacement has already
-                # happened and no restart will repeat it.
-                self._warn_about_pending_import(
+                message = (
                     "The previous save import has ALREADY installed and is the "
                     "save you are playing now. Only its leftover record could "
                     "not be cleared.\n\nUse Ankimon → Game → Cancel Pending Save Import "
                     "to clear that record, then restore this backup again. Nothing "
                     "will be installed a second time."
                 )
-                return
-            if installed is None:
-                # The record or the save could not be read in time to tell, so
-                # claim neither.
-                self._warn_about_pending_import(
+            elif installed is None:
+                message = (
                     "A save import is already recorded for this save, and Ankimon "
                     "could not tell whether it has already installed."
                     "\n\nUse Ankimon → Game → Cancel Pending Save Import to "
                     "clear that record, then restore this backup again."
                 )
+            else:
+                message = (
+                    "A save import is already pending and will install at the next "
+                    "full Anki restart.\n\nUse Ankimon → Game → Cancel Pending Save Import "
+                    "first if you want to restore this backup instead."
+                )
+            if interactive:
+                self._warn_about_pending_import(message)
                 return
-            self._warn_about_pending_import(
-                "A save import is already pending and will install at the next "
-                "full Anki restart.\n\nUse Ankimon → Game → Cancel Pending Save Import "
-                "first if you want to restore this backup instead."
-            )
-            return
+            return {"status": "already_pending", "error": message}
         except ImportStagedError as e:
             # The restore is published and will install; calling it a failure
-            # to prepare would hide an armed replacement from the user.
+            # to prepare would hide an armed replacement from the user. Do not
+            # show a Qt warning from the noninteractive worker-thread path.
             self.logger.log("error", f"Backup restore staged but unfinished: {e}")
-            self._warn_about_pending_import(
+            message = (
                 f"The backup restore could not be finished cleanly: {e}.\n\n"
                 "Your current save is still active, but the restore is now "
                 "PENDING and will install at the next full Anki restart. The "
@@ -599,15 +1372,51 @@ class BackupManager:
                 "recovery copy first. Use "
                 "Ankimon → Game → Cancel Pending Save Import if you do not want it."
             )
-            return
+            try:
+                from ..save_import import set_pending_import_warning
+
+                warning_saved = set_pending_import_warning(
+                    target,
+                    message,
+                    expected_token=e.token,
+                )
+                if not warning_saved:
+                    self.logger.log(
+                        "warning",
+                        "The prepared restore changed before its warning could be saved.",
+                    )
+            except Exception as warning_error:
+                self.logger.log(
+                    "error",
+                    f"Could not persist the warning for a prepared backup restore: {warning_error}",
+                )
+            if interactive:
+                self._warn_about_pending_import(message)
+                return
+            return {
+                "status": "staged",
+                "warning": message,
+                "pending_token": e.token,
+                "pending_target": str(target),
+            }
         except Exception as e:
             self.logger.log("error", f"Failed to prepare backup restore: {e}")
-            showWarning(f"Failed to prepare backup restore: {e}")
-            return
+            message = f"Failed to prepare backup restore: {e}"
+            if interactive:
+                showWarning(message)
+                return
+            return {"status": "failed", "error": message}
 
         # Past staging, and outside the guard above: the restore is committed,
         # so a failure to announce it must never be reported as one to prepare
         # it. Import keeps its own notice outside its guard for the same reason.
+        if not interactive:
+            return {
+                "status": "staged",
+                "pending_token": pending["token"],
+                "pending_target": pending["target"],
+            }
+
         try:
             showInfo(
                 "Backup restore prepared for the next full Anki restart.\n\n"
@@ -632,7 +1441,117 @@ class BackupManager:
                 "active and the prepared restore remains pending."
             )
 
-    def delete_backup(self, backup_path_str: str):
+    @staticmethod
+    def _copy_restore_source(source: Path, private: Path) -> Path:
+        """Copy a stable SQLite file family without opening the source in SQLite.
+
+        A linked backup may still be open in another process. A checkpoint
+        between copying its main file and WAL can otherwise produce a valid
+        but stale save. Verify identities, timestamps, membership and bytes;
+        retry changes before allowing stage_import to see the private copy.
+        """
+        from ..save_import import _digest
+
+        family = [Path(str(source) + suffix) for suffix in ("", "-wal", "-journal")]
+        deadline = time.monotonic() + 30.0
+
+        def signatures():
+            result = []
+            for member in family:
+                try:
+                    stat = member.stat()
+                except FileNotFoundError:
+                    result.append(None)
+                else:
+                    result.append(
+                        (
+                            stat.st_dev,
+                            stat.st_ino,
+                            stat.st_size,
+                            stat.st_mtime_ns,
+                            stat.st_ctime_ns,
+                        )
+                    )
+            return result
+
+        for _ in range(3):
+            if time.monotonic() >= deadline:
+                break
+            # A retry must not reuse a WAL that disappeared after the last copy.
+            for member in family:
+                (private / member.name).unlink(missing_ok=True)
+            before = signatures()
+            try:
+                if before[0] is None:
+                    raise FileNotFoundError(source)
+                present = [
+                    member for member, stamp in zip(family, before) if stamp is not None
+                ]
+                for member in present:
+                    shutil.copyfile(member, private / member.name)
+                if signatures() != before:
+                    continue
+                if any(
+                    _digest(member, deadline)
+                    != _digest(private / member.name, deadline)
+                    for member in present
+                ):
+                    continue
+                if signatures() == before:
+                    return private / source.name
+            except FileNotFoundError:
+                # Checkpoints and journal cleanup may remove a member mid-copy.
+                continue
+        raise OSError(
+            "The selected backup changed while being copied. Please try restoring again."
+        )
+
+    def _resolve_backup_path(self, path, required_file=None) -> Path:
+        """Keep selections made before migration usable for this session."""
+        path = Path(path)
+        relocated = self._migrated_paths.get(path, path)
+        if required_file is None and relocated != path:
+            active = Path(services.db.db_path).name if services.db is not None else None
+            supported = set(self.FILES_TO_BACKUP) | ({active} if active else set())
+            if any(
+                (path / name).is_file() and not (relocated / name).is_file()
+                for name in supported
+            ):
+                return path
+        # A published directory can contain a rebased link to a sibling that
+        # failed to publish. Retain the usable original until that dependency
+        # exists; top-level directory links need the same fallback.
+        original_entry = path / required_file if required_file else path
+        relocated_entry = relocated / required_file if required_file else relocated
+        if not relocated_entry.exists() and original_entry.exists():
+            return path
+        return relocated
+
+    def _migration_protected_paths(self):
+        if self.backups_path is None:
+            return set()
+        legacy = self.addon_path.parent / "ankimon_backups"
+        try:
+            plan = self._migration_plan(legacy, self.backups_path)
+        except (OSError, ValueError, KeyError, TypeError):
+            # Unknown metadata cannot justify deleting possible recovery copies.
+            return set(self.backups_path.glob("*")) | set(legacy.glob("*"))
+        return {legacy / name for name in plan} | {
+            self.backups_path / name for name in plan.values()
+        }
+
+    def delete_backup(self, backup_path_str: str, interactive: bool = True):
+        if not self._profile_work_lock.acquire(blocking=False):
+            error = "Backup migration is running. Please try again shortly."
+            if interactive:
+                showWarning(error)
+            return {"ok": False, "error": error}
+        try:
+            return self._delete_backup(backup_path_str, interactive)
+        finally:
+            self._profile_work_lock.release()
+
+    def _delete_backup(self, backup_path_str: str, interactive: bool = True):
         """Deletes a selected backup.
 
         Renamed out of the ``backup_`` namespace first, as retention does. A
@@ -640,37 +1559,43 @@ class BackupManager:
         and retention, which orders by mtime, then kept those hidden remains as
         the newest backup and evicted a good one to make room for them.
         """
-        backup_path = Path(backup_path_str)
+        backup_path = self._resolve_backup_path(backup_path_str)
+        if backup_path in self._migration_protected_paths():
+            error = "This backup is needed while legacy migration is incomplete."
+            if interactive:
+                showWarning(error)
+            return {"ok": False, "error": error}
         if not backup_path.is_dir():
-            showWarning("Selected backup path does not exist.")
-            return
+            error = "Selected backup path does not exist."
+            if interactive:
+                showWarning(error)
+            return {"ok": False, "error": error}
         try:
             doomed = backup_path.rename(self._discard_name(backup_path))
         except Exception as e:
             self.logger.log("error", f"Failed to delete backup: {e}")
-            showWarning(f"Failed to delete backup: {e}")
-            return
+            error = f"Failed to delete backup: {e}"
+            if interactive:
+                showWarning(error)
+            return {"ok": False, "error": error}
         try:
             self._remove_tree(doomed, None)
             self.logger.log("info", f"Deleted backup: {backup_path.name}")
         except Exception as e:
             # Out of the listing and the count already; retention finishes it.
-            self.logger.log("error", f"Backup {backup_path.name} is deleted, but some "
-                            f"of its files remain until the next backup: {e}")
-        showInfo("Backup deleted successfully.")
+            self.logger.log(
+                "error",
+                f"Backup {backup_path.name} is deleted, but some "
+                f"of its files remain until the next backup: {e}",
+            )
+        if interactive:
+            showInfo("Backup deleted successfully.")
+        return {"ok": True}
 
     def _discard_name(self, directory: Path) -> Path:
         return directory.with_name(
-            f"{self.DISCARD_PREFIX}{uuid.uuid4().hex[:8]}_{directory.name.lstrip('.')}")
-
-    @staticmethod
-    def _is_link(path: Path) -> bool:
-        # A Windows junction is not a symlink to pathlib, and walking one deletes
-        # what it points at. The import code's check reads the reparse tag on
-        # every Python; os.path.isjunction only exists from 3.12.
-        from ..save_import import _is_link
-
-        return _is_link(path)
+            f"{self.DISCARD_PREFIX}{uuid.uuid4().hex[:8]}_{directory.name.lstrip('.')}"
+        )
 
     def _remove_tree(self, directory: Path, deadline) -> bool:
         """Delete a directory one entry at a time, stopping at the deadline.
@@ -736,27 +1661,45 @@ class BackupManager:
             try:
                 directory.rename(doomed)
             except Exception as error:
-                self.logger.log("error", f"Failed to delete {what} {directory.name}: {error}")
+                self.logger.log(
+                    "error", f"Failed to delete {what} {directory.name}: {error}"
+                )
                 return True
         try:
             finished = self._remove_tree(doomed, deadline)
         except Exception as error:
-            self.logger.log("error", f"Failed to finish deleting {what} {directory.name}: {error}")
+            self.logger.log(
+                "error", f"Failed to finish deleting {what} {directory.name}: {error}"
+            )
             return True
         if finished:
             self.logger.log("info", f"Deleted {what}: {directory.name}")
         return finished
 
     def cleanup_backups(self, deadline: float = None):
+        if not self._profile_work_lock.acquire(blocking=False):
+            return
+        try:
+            return self._cleanup_backups(deadline=deadline)
+        finally:
+            self._profile_work_lock.release()
+
+    def _cleanup_backups(self, deadline: float = None):
         """Deletes old backups based on retention policy."""
+        if self.backups_path is None:
+            return
+        protected = self._migration_protected_paths()
         # Taken before this pass renames anything, so a removal that fails now
         # is retried by the next pass rather than twice in this one.
         leftovers = self._discarded()
         # Only published backups enter retention. Failed or interrupted staging
         # directories must not displace recoverable saves even if they remain.
         backups = sorted(
-            [p for p in self.backups_path.iterdir()
-             if p.name.startswith("backup_") and p.is_dir()],
+            [
+                p
+                for p in self.backups_path.iterdir()
+                if p.name.startswith("backup_") and p.is_dir() and p not in protected
+            ],
             key=os.path.getmtime,
         )
 
@@ -779,11 +1722,28 @@ class BackupManager:
         self._sweep_leftovers(deadline, leftovers)
 
     def _discarded(self) -> List[Path]:
+        if self.backups_path is None:
+            return []
         # A link counts even when dangling: _remove_tree removes the link itself.
-        return [p for p in self.backups_path.glob(f"{self.DISCARD_PREFIX}*")
-                if p.is_dir() or p.is_symlink()]
+        return [
+            p
+            for p in self.backups_path.glob(f"{self.DISCARD_PREFIX}*")
+            if p.is_dir() or p.is_symlink()
+        ]
 
     def _sweep_leftovers(self, deadline: float = None, leftovers: List[Path] = None):
+        # Failed backup attempts also call this directly, outside retention's
+        # lock. Do not race a worker publishing new migration entries.
+        if not self._profile_work_lock.acquire(blocking=False):
+            return
+        try:
+            return self._sweep_leftovers_locked(deadline, leftovers)
+        finally:
+            self._profile_work_lock.release()
+
+    def _sweep_leftovers_locked(
+        self, deadline: float = None, leftovers: List[Path] = None
+    ):
         """Remove abandoned staging directories and unfinished removals.
 
         Neither is a backup anyone can list or restore, so unlike retention this
@@ -791,6 +1751,9 @@ class BackupManager:
         a caller took before renaming anything itself; by default it is taken
         here, before the staging sweep renames anything.
         """
+        if self.backups_path is None:
+            return
+        protected = self._migration_protected_paths()
         if leftovers is None:
             leftovers = self._discarded()
 
@@ -801,6 +1764,8 @@ class BackupManager:
         # Age-gated because the name is only reserved while an attempt is live,
         # and a snapshot takes seconds, never an hour.
         for staging in self.backups_path.glob(".backup_*"):
+            if staging in protected:
+                continue
             try:
                 if not staging.is_dir():
                     continue
@@ -811,9 +1776,29 @@ class BackupManager:
             if not self._discard(staging, "incomplete backup", deadline):
                 return
 
+        migrating_entries = (
+            []
+            if (self.backups_path / self.MIGRATION_RECORD).exists()
+            else (self.backups_path.glob(f"{self.MIGRATING_PREFIX}*"))
+        )
+        for migrating in migrating_entries:
+            if migrating in protected:
+                continue
+            try:
+                if not migrating.is_dir() or self._is_link(migrating):
+                    continue
+                if time.time() - os.path.getmtime(migrating) < self.STALE_STAGING_AGE:
+                    continue
+            except OSError:
+                continue
+            if not self._discard(migrating, "incomplete migration copy", deadline):
+                return
+
         # What an earlier pass renamed out of the listing but could not finish
         # deleting -- stopped by the deadline, or by a locked file -- ends here.
         for leftover in leftovers:
+            if leftover in protected:
+                continue
             if not self._discard(leftover, "discarded backup", deadline):
                 return
 
@@ -825,5 +1810,6 @@ class BackupManager:
         close for twice as long.
         """
         # This logic can be expanded with the developer mode setting
-        self.create_backup(manual=False,
-                           deadline=time.monotonic() + self.SHUTDOWN_BACKUP_BUDGET)
+        self.create_backup(
+            manual=False, deadline=time.monotonic() + self.SHUTDOWN_BACKUP_BUDGET
+        )

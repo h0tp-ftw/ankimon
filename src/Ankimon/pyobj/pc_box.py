@@ -148,9 +148,39 @@ class MoveManagerWidget(QWidget):
         self.pkmn_id = pkmn_id
         self.logger = logger
         self.save_fn = save_fn
+        self._active = True
+        self._db = services.db
+        self._db_token = self._db.identity_token()
+        self._collection = getattr(mw, "col", None)
         self.full_data = None
         self.setup_ui()
         self.refresh()
+
+    def invalidate(self):
+        """Retire this editor, including dialogs running nested event loops."""
+        self._active = False
+        if not is_alive(self):
+            return
+        self.setEnabled(False)
+        for dialog in self.findChildren(QDialog):
+            if is_alive(dialog):
+                dialog.reject()
+
+    def _current_pokemon(self):
+        """Only edit an existing individual in the session that opened us."""
+        if not self._active or not is_alive(self):
+            return None
+        if (
+            services.db is not self._db
+            or self._db.identity_token() != self._db_token
+            or getattr(mw, "col", None) is not self._collection
+        ):
+            self.invalidate()
+            return None
+        pokemon = self._db.get_pokemon(self.individual_id)
+        if pokemon is None:
+            self.invalidate()
+        return pokemon
 
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
@@ -290,6 +320,8 @@ class MoveManagerWidget(QWidget):
         return {}
 
     def refresh(self):
+        if not self._active or not is_alive(self):
+            return
         self.full_data = self._fetch_full(self.individual_id)
         attacks = self.full_data.get("attacks", [])
         all_moves = self.full_data.get("all_attacks", []) or self.full_data.get(
@@ -324,7 +356,8 @@ class MoveManagerWidget(QWidget):
                 move_data = find_details_move(move)
                 m_type = move_data.get("type", "Normal")
                 color = MOVE_TYPE_COLORS.get(m_type, "#777")
-                slot["type_chip"].setText(m_type.upper())
+                from ..localized_text import type_name as _type_name
+                slot["type_chip"].setText(_type_name(m_type, m_type).upper())
                 slot["type_chip"].setStyleSheet(
                     f"background-color: {color}; border-radius: 4px; font-size: 9px; font-weight: bold; color: white;"
                 )
@@ -352,6 +385,8 @@ class MoveManagerWidget(QWidget):
             del self.no_moves_label
 
     def on_forget_clicked(self, idx):
+        if self._current_pokemon() is None:
+            return
         move = self.slots[idx]["move"]
         if not move:
             return
@@ -385,11 +420,14 @@ class MoveManagerWidget(QWidget):
         self.layout.insertWidget(idx + 1, conf_widget)  # +1 because of header
 
         def on_yes():
-            attacks = self.full_data.get("attacks", [])
-            if move in attacks:
+            pokemon = self._current_pokemon()
+            if pokemon is None:
+                return
+            attacks = pokemon.get("attacks", [])
+            if move in attacks and len(attacks) > 1:
                 attacks.remove(move)
-                self.full_data["attacks"] = attacks
-                self.save_fn(self.full_data)
+                pokemon["attacks"] = attacks
+                self.save_fn(pokemon)
                 self.refresh()
             conf_widget.setParent(None)
             slot_container.show()
@@ -402,10 +440,12 @@ class MoveManagerWidget(QWidget):
         no_btn.clicked.connect(on_no)
 
     def on_learn_clicked(self, idx):
+        if self._current_pokemon() is None:
+            return
         all_moves = self.full_data.get("all_attacks", []) or self.full_data.get(
             "learnable_moves", []
         )
-        current_moves = self.full_data.get("attacks", [])
+        current_moves = list(self.full_data.get("attacks", []))
 
         nickname = self.full_data.get("nickname")
         raw_name = self.full_data.get("name")
@@ -428,19 +468,23 @@ class MoveManagerWidget(QWidget):
         dialog = MovePickerDialog(
             pretty_name, all_moves, current_moves, self, force_show_current=True
         )
-        if dialog.exec():
+        accepted = dialog.exec()
+        pokemon = self._current_pokemon()
+        if accepted and pokemon is not None and is_alive(dialog):
             new_move = dialog.get_selected_move()
-            if new_move:
-                attacks = self.full_data.get("attacks", [])
+            if new_move and pokemon.get("attacks", []) == current_moves:
+                attacks = pokemon.get("attacks", [])
                 if idx < len(attacks):
                     attacks[idx] = new_move
                 else:
                     attacks.append(new_move)
-                self.full_data["attacks"] = attacks
-                self.save_fn(self.full_data)
+                pokemon["attacks"] = attacks
+                self.save_fn(pokemon)
                 self.refresh()
 
     def on_tm_clicked(self):
+        if self._current_pokemon() is None:
+            return
         # 1. Get species/base name for TM lookup
         internal_name = search_pokedex_by_id(self.pkmn_id)
         # search_pokedex_by_id returns the sentinel "Pokémon not found" (a truthy
@@ -505,20 +549,26 @@ class MoveManagerWidget(QWidget):
         dialog = MovePickerDialog(title, learnable_tm_moves, current_moves, self)
         dialog.setWindowTitle("Learn from TMs")
 
-        if dialog.exec():
+        accepted = dialog.exec()
+        if accepted and self._current_pokemon() is not None and is_alive(dialog):
             new_move = dialog.get_selected_move()
             if new_move:
                 self.learn_move_from_tm(new_move)
 
     def learn_move_from_tm(self, move_name):
+        pokemon = self._current_pokemon()
+        if pokemon is None:
+            return
         remember_attack(
             self.individual_id,
-            self.full_data.get("attacks", []),
+            pokemon.get("attacks", []),
             move_name,
             self.logger,
             refresh_callback=lambda: self.save_fn(
                 services.db.get_pokemon(self.individual_id)
             ),
+            parent_window=self,
+            can_save=lambda: self._current_pokemon() is not None,
         )
 
 
@@ -1382,6 +1432,8 @@ class PokemonPC(QDialog):
         Switches the details panel to placeholder mode and recreates the placeholder
         widget to reflect the current sprite visibility setting.
         """
+        if hasattr(self, "move_manager") and is_alive(self.move_manager):
+            self.move_manager.invalidate()
         if hasattr(self, "details_panel_stack"):
             # Remove the old placeholder widget if it exists
             if hasattr(self, "_placeholder_widget"):
@@ -2455,7 +2507,13 @@ class PokemonPC(QDialog):
 
                     # Add new Move Manager
                     def _save_pokemon(data):
-                        services.db.save_pokemon(data)
+                        current = new_move_manager._current_pokemon()
+                        if current is None or not data:
+                            return
+                        # A move editor must not restore cached progress or a
+                        # deleted individual after a nested modal interaction.
+                        current["attacks"] = list(data.get("attacks", []))
+                        services.db.save_pokemon(current)
                         # Keep the live main-pokemon singleton in step with a
                         # moveset edit, mirroring give_held_item/remove_held_item.
                         main_pkmn = services.main_pokemon
@@ -2470,6 +2528,7 @@ class PokemonPC(QDialog):
                     # swapped header stack), so without this it would linger as
                     # an orphaned child and accumulate over the session.
                     if hasattr(self, "move_manager") and is_alive(self.move_manager):
+                        self.move_manager.invalidate()
                         self.move_manager.deleteLater()
 
                     # Initialize FIRST (this might be slightly heavy)

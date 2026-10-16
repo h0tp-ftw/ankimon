@@ -11,8 +11,7 @@ BRRRR_Experimental onto main's ``src/Ankimon/lang/*_text.json`` files:
 * ``evolve_now_button`` honours the ``{evo_name}`` placeholder contract in every
   language (this is exactly what ``Translator.translate(key, evo_name=...)``
   does: ``template.format(**kwargs)``);
-* ``en_text.json`` gained the ``nature_chart_button`` menu label -- and no other
-  language file did (they fall back to English via ``Translator``);
+* ``nature_chart_button`` is available in every language catalog;
 * main's pre-existing guard keys (``pokemon_about_to_evolve_friendship`` and the
   ``cp_label``/``bp_label``/``combat_power``/``battle_power`` block, both
   DONE-IN-BASE per GUARDS-TO-REAPPLY) survive in all eleven languages and keep
@@ -122,17 +121,13 @@ def test_english_reference_values_exact():
         )
 
 
-def test_nature_chart_button_only_in_english_per_upstream():
-    # Upstream added nature_chart_button to en_text.json only; the other
-    # languages fall back to English via Translator. Pin that contract.
-    assert "nature_chart_button" in _load("en_text")
+def test_nature_chart_button_is_localized():
+    english = _load("en_text")["nature_chart_button"]
     for lang in TEXT_LANGS:
-        if lang == "en":
-            continue
-        assert "nature_chart_button" not in _load(f"{lang}_text"), (
-            f"nature_chart_button leaked into {lang}_text.json; upstream keeps "
-            "it English-only (other languages fall back via Translator)"
-        )
+        value = _load(f"{lang}_text").get("nature_chart_button")
+        assert isinstance(value, str) and value.strip(), lang
+        if lang != "en":
+            assert value != english, lang
 
 
 @pytest.mark.parametrize("lang", TEXT_LANGS)

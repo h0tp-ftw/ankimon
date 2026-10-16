@@ -316,23 +316,6 @@ USELESS_ITEMS = {
     "relic-gold",
     "tiny-mushroom",
     # catching / escape / encounter rate items
-    "dive-ball",
-    "dusk-ball",
-    "great-ball",
-    "heal-ball",
-    "luxury-ball",
-    "master-ball",
-    "nest-ball",
-    "net-ball",
-    "poke-ball",
-    "premier-ball",
-    "quick-ball",
-    "repeat-ball",
-    "safari-ball",
-    "timer-ball",
-    "ultra-ball",
-    "smoke-ball",  # escape from wild battles
-    "fluffy-tail",  # escape from wild battles
     "repel",
     "max-repel",
     "super-repel",
@@ -354,7 +337,6 @@ USELESS_ITEMS = {
     "yellow-shard",
     # Contest / Grooming / Friendship items outside battle
     "soothe-bell",
-    "luxury-ball",
     "pretty-wing",
     # Miscellaneous items for info
     "heart-scale",
@@ -372,19 +354,6 @@ USELESS_ITEMS = {
     "old-gateau",
     "heal-powder",
     "paralyze-heal",
-    # Non-battle stat=ups or contests
-    "calcium",
-    "carbos",
-    "clever-wing",
-    "genius-wing",
-    "health-wing",
-    "hp-up",
-    "iron",
-    "muscle-wing",
-    "protein",
-    "resist-wing",
-    "swift-wing",
-    "zinc",
     # Rare candy and PP / elixirs
     "rare-candy",
     "pp-max",
@@ -398,6 +367,15 @@ USELESS_ITEMS = {
 }
 
 
+_random_item_cache = None
+
+
+def clear_utils_caches():
+    """Clear performance caches in utils.py when profile closes."""
+    global _random_item_cache
+    _random_item_cache = None
+
+
 def random_item() -> Optional[str]:
     """Grant and return a random item with an available sprite.
 
@@ -405,40 +383,45 @@ def random_item() -> Optional[str]:
     present files may be filtered out. In that case there is no renderable reward,
     so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
     """
-    item_names: list[str] = []
+    global _random_item_cache
+    if _random_item_cache is None:
+        item_names: list[str] = []
 
-    try:
-        files = os.listdir(items_path)
-    except OSError:
-        return None
+        try:
+            files = os.listdir(items_path)
+        except OSError:
+            return None
 
-    # Iterate over each file in the directory
-    for file in files:
-        # Check if the file is a .png file
-        if not file.endswith(".png"):
-            continue
+        # Iterate over each file in the directory
+        for file in files:
+            # Check if the file is a .png file
+            if not file.endswith(".png"):
+                continue
 
-        # File name without the .png extension to the list
-        name = file[:-4]
+            # File name without the .png extension to the list
+            name = file[:-4]
 
-        if name in USELESS_ITEMS:
-            continue
-        if name.endswith("-ball"):
-            continue
-        if name.endswith("-repel"):
-            continue
-        if name.endswith("-incense"):
-            continue
-        if name.endswith("-fang"):
-            continue
-        if name.endswith("dust"):
-            continue
-        if name.endswith("-piece"):
-            continue
-        if name.endswith("-nugget"):
-            continue
+            if name in USELESS_ITEMS:
+                continue
+            if name.endswith("-ball"):
+                continue
+            if name.endswith("-repel"):
+                continue
+            if name.endswith("-incense"):
+                continue
+            if name.endswith("-fang"):
+                continue
+            if name.endswith("dust"):
+                continue
+            if name.endswith("-piece"):
+                continue
+            if name.endswith("-nugget"):
+                continue
 
-        item_names.append(name)
+            item_names.append(name)
+        _random_item_cache = item_names
+    else:
+        item_names = _random_item_cache
 
     if not item_names:
         return None
@@ -449,10 +432,23 @@ def random_item() -> Optional[str]:
     return item_name
 
 
-# Supply missing icons for older downloaded packs.
+# Supply missing icons for older downloaded packs, and for items this add-on
+# implements that were never part of the downloaded sprite pack at all (the
+# effort candies and mochi: placeholder icons, since no official art exists
+# in that pack to fall back to).
 _BUNDLED_ITEM_SPRITES = {
     "linking-cord": addon_dir / "addon_sprites" / "items" / "linking-cord.png",
 }
+for _prefix in ("health", "muscle", "resist", "genius", "clever", "swift"):
+    _BUNDLED_ITEM_SPRITES[f"{_prefix}-mochi"] = (
+        addon_dir / "addon_sprites" / "items" / f"{_prefix}-mochi.png"
+    )
+for _prefix in ("health", "mighty", "tough", "smart", "courage", "quick"):
+    for _suffix in ("", "-l", "-xl"):
+        _BUNDLED_ITEM_SPRITES[f"{_prefix}-candy{_suffix}"] = (
+            addon_dir / "addon_sprites" / "items" / f"{_prefix}-candy{_suffix}.png"
+        )
+del _prefix, _suffix
 
 
 def get_item_sprite_path(item_name):
@@ -904,8 +900,10 @@ def play_sound(enemy_pokemon_id: int, settings_obj: Settings):
 
 
 def load_collected_pokemon_ids() -> set:
-    """Loads all captured pokemon IDs from the database."""
-    return services.db.get_all_pokemon_ids()
+    """Loads all captured pokemon IDs from the pokedex history."""
+    if services.db:
+        return services.db.get_caught_ids()
+    return set()
 
 
 def limit_ev_yield(

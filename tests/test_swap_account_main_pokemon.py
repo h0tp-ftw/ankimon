@@ -174,7 +174,11 @@ def swap_env(monkeypatch):
     monkeypatch.setitem(
         sys.modules,
         "Ankimon.battle_loop",
-        _stub_module("Ankimon.battle_loop", init_battle_state=MagicMock()),
+        _stub_module(
+            "Ankimon.battle_loop",
+            init_battle_state=MagicMock(),
+            _cancel_main_faint_deferral=MagicMock(),
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -211,6 +215,7 @@ def test_swap_applies_fresh_main_pokemon_to_live_singleton(swap_env):
     swap_env.singletons.swap_ankimon_account()
 
     swap_env.update_main_pokemon.assert_called_once_with(swap_env.main_pokemon)
+    sys.modules["Ankimon.battle_loop"]._cancel_main_faint_deferral.assert_called_once()
     swap_env.main_pokemon.update_stats.assert_called_once_with(name="Ditto", level=5)
 
 
