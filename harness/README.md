@@ -19,6 +19,24 @@ the regression test), runs each isolated, and returns a single PASS/FAIL. It's t
 **exact command CI runs on every PR** (`.github/workflows/harness.yml`), so the loop is:
 **agent writes code → `python3 harness/check.py` → green → review → ship.**
 
+## Native engine regression gate
+
+```bash
+python -m pip install pytest requests
+git submodule update --init --recursive
+python harness/check_engine.py
+```
+
+The separate `Engine regressions` workflow runs this command on every PR and on
+pushes to main, against the addon's exact pinned engine commit. It covers native
+after-move items and effect suppression without loading Anki or Qt. Test failures,
+collection errors, and missing regression modules fail the job.
+
+This is a focused gate, not the entire upstream engine suite: unrelated legacy
+engine failures remain outside its scope. Add new regression modules to
+`TEST_MODULES` in `check_engine.py`; new test cases inside those modules are
+collected automatically. The runner and tests are not shipped in the addon.
+
 ## Why this exists
 
 Anki add-ons are painful to test: every module historically imported `aqt`, so
