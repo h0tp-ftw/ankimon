@@ -11,6 +11,7 @@ what the services-registry refactor targets.)
 """
 
 import importlib.util
+import io
 import json
 import os
 import sys
@@ -34,8 +35,12 @@ def _load_update_manager():
     # (Removing the need for this global stubbing is what the #437 service-registry
     # refactor targets.)
     _keys = (
-        "aqt", "aqt.operations", "Ankimon", "Ankimon.pyobj",
-        "Ankimon.resources", "Ankimon.pyobj.update_manager",
+        "aqt",
+        "aqt.operations",
+        "Ankimon",
+        "Ankimon.pyobj",
+        "Ankimon.resources",
+        "Ankimon.pyobj.update_manager",
     )
     _saved = {k: sys.modules.get(k) for k in _keys}
     try:
@@ -63,7 +68,9 @@ def _load_update_manager():
             ("Ankimon.resources", "resources.py"),
             ("Ankimon.pyobj.update_manager", "pyobj/update_manager.py"),
         ]:
-            spec = importlib.util.spec_from_file_location(modname, _SRC / "Ankimon" / relpath)
+            spec = importlib.util.spec_from_file_location(
+                modname, _SRC / "Ankimon" / relpath
+            )
             module = importlib.util.module_from_spec(spec)
             sys.modules[modname] = module
             spec.loader.exec_module(module)
@@ -174,6 +181,7 @@ def test_apply_update_refuses_on_git_clone_and_cleans_zip(tmp_path, monkeypatch)
 
 # --- git helpers fakes -------------------------------------------------------
 
+
 class _FakeProc:
     def __init__(self, returncode=0, stdout="", stderr=""):
         self.returncode = returncode
@@ -183,8 +191,10 @@ class _FakeProc:
 
 def _fake_git(responses):
     """Fake subprocess.run dispatching on the git subcommand (cmd[3])."""
+
     def _run(cmd, **kwargs):
         return responses.get(cmd[3], _FakeProc(0))
+
     return _run
 
 
@@ -307,10 +317,14 @@ def test_git_checkout_source_reports_head_position_if_merge_fails_late(
     monkeypatch.setattr(
         um.subprocess,
         "run",
-        _fake_git({
-            "show-ref": _FakeProc(0, ""),
-            "merge": _FakeProc(1, "", "fatal: Not possible to fast-forward, aborting."),
-        }),
+        _fake_git(
+            {
+                "show-ref": _FakeProc(0, ""),
+                "merge": _FakeProc(
+                    1, "", "fatal: Not possible to fast-forward, aborting."
+                ),
+            }
+        ),
     )
 
     ok, msg = um.git_checkout_source("branch", "main")
@@ -382,18 +396,53 @@ def test_git_checkout_source_reattach_is_atomic_against_real_git(tmp_path, monke
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
     def git(cwd, *args):
-        return sp.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True)
+        return sp.run(
+            ["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True
+        )
 
     canonical = tmp_path / "canonical"
     canonical.mkdir()
     git(canonical, "init", "-q")
     git(canonical, "symbolic-ref", "HEAD", "refs/heads/main")
-    git(canonical, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base")
+    git(
+        canonical,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "base",
+    )
     clone = tmp_path / "clone"
     git(tmp_path, "clone", "-q", str(canonical), str(clone))
-    git(clone, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "local only")
+    git(
+        clone,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "local only",
+    )
     git(clone, "checkout", "-q", "-b", "feature")
-    git(canonical, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "upstream moved")
+    git(
+        canonical,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "upstream moved",
+    )
 
     monkeypatch.setattr(um, "_git_repo_root", lambda: clone)
     monkeypatch.setattr(um, "GIT_REMOTE_URL", str(canonical))
@@ -407,6 +456,7 @@ def test_git_checkout_source_reattach_is_atomic_against_real_git(tmp_path, monke
 
 # --- pre-v2.0 version filtering ----------------------------------------------
 
+
 def test_version_filter_keeps_2_0_and_above():
     assert um._is_supported_version("2.01-E") is True
     assert um._is_supported_version("2.0-E") is True
@@ -414,25 +464,40 @@ def test_version_filter_keeps_2_0_and_above():
 
 
 def test_version_filter_drops_pre_2_0_and_non_versions():
-    for name in ["1.52-E", "1.931-E", "1.3962-E", "sprites", "nightly-release", "archive/h0tp/x"]:
+    for name in [
+        "1.52-E",
+        "1.931-E",
+        "1.3962-E",
+        "sprites",
+        "nightly-release",
+        "archive/h0tp/x",
+    ]:
         assert um._is_supported_version(name) is False, name
 
 
 def test_fetch_releases_filters_pre_2_0(monkeypatch):
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"tag_name": "sprites", "zipball_url": "z", "body": ""},
-        {"tag_name": "2.01-E", "zipball_url": "z", "body": ""},
-        {"tag_name": "1.52-E", "zipball_url": "z", "body": ""},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {"tag_name": "sprites", "zipball_url": "z", "body": ""},
+            {"tag_name": "2.01-E", "zipball_url": "z", "body": ""},
+            {"tag_name": "1.52-E", "zipball_url": "z", "body": ""},
+        ],
+    )
     assert [r["name"] for r in um.fetch_releases()] == ["2.01-E"]
 
 
 def test_fetch_tags_filters_pre_2_0(monkeypatch):
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"name": "nightly-release", "zipball_url": "z"},
-        {"name": "2.0-E", "zipball_url": "z"},
-        {"name": "1.3962-E", "zipball_url": "z"},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {"name": "nightly-release", "zipball_url": "z"},
+            {"name": "2.0-E", "zipball_url": "z"},
+            {"name": "1.3962-E", "zipball_url": "z"},
+        ],
+    )
     assert [t["name"] for t in um.fetch_tags()] == ["2.0-E"]
 
 
@@ -463,19 +528,36 @@ def test_parse_iso8601_handles_github_timestamps():
 
 
 def test_fetch_releases_keeps_published_at(monkeypatch):
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"tag_name": "2.4", "zipball_url": "z", "body": "",
-         "published_at": "2026-08-08T11:02:30Z"},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {
+                "tag_name": "2.4",
+                "zipball_url": "z",
+                "body": "",
+                "published_at": "2026-08-08T11:02:30Z",
+            },
+        ],
+    )
     assert um.fetch_releases()[0]["published_at"] == "2026-08-08T11:02:30Z"
 
 
 def test_fetch_releases_falls_back_to_created_at(monkeypatch):
     """A draft promoted later can carry a null published_at."""
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"tag_name": "2.4", "zipball_url": "z", "body": "",
-         "published_at": None, "created_at": "2026-07-01T09:00:00Z"},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {
+                "tag_name": "2.4",
+                "zipball_url": "z",
+                "body": "",
+                "published_at": None,
+                "created_at": "2026-07-01T09:00:00Z",
+            },
+        ],
+    )
     assert um.fetch_releases()[0]["published_at"] == "2026-07-01T09:00:00Z"
 
 
@@ -516,7 +598,8 @@ def test_fetch_ref_date_resolves_a_tag_name(monkeypatch):
 
 def test_fetch_ref_date_falls_back_to_author_date(monkeypatch):
     monkeypatch.setattr(
-        um, "_api_get",
+        um,
+        "_api_get",
         lambda _ep: {"commit": {"author": {"date": "2026-01-02T03:04:05Z"}}},
     )
     assert um.fetch_ref_date("abc1234def") == "2026-01-02T03:04:05Z"
@@ -565,7 +648,8 @@ def test_resolve_build_mtime_prefers_release_published_at(monkeypatch):
 
 def test_resolve_build_mtime_falls_back_to_commit_date(monkeypatch):
     monkeypatch.setattr(
-        um, "fetch_ref_date",
+        um,
+        "fetch_ref_date",
         lambda ref: "2026-01-02T03:04:05Z" if ref == "abc1234def" else None,
     )
     assert um.resolve_build_mtime("branch", "main", "abc1234def") == 1767323045
@@ -573,7 +657,8 @@ def test_resolve_build_mtime_falls_back_to_commit_date(monkeypatch):
 
 def test_resolve_build_mtime_dates_a_tag_by_its_name(monkeypatch):
     monkeypatch.setattr(
-        um, "fetch_ref_date",
+        um,
+        "fetch_ref_date",
         lambda ref: "2026-01-02T03:04:05Z" if ref == "2.4" else None,
     )
     assert um.resolve_build_mtime("tag", "2.4", None) == 1767323045
@@ -586,7 +671,8 @@ def test_resolve_build_mtime_returns_none_when_unresolvable(monkeypatch):
 
 def test_stamp_addon_mod_writes_when_newer(tmp_path, monkeypatch):
     path = _meta_at(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         '{"mod": 100, "config": {"a": 1}, "disabled": false, "name": "Ankimon"}',
     )
     assert um.stamp_addon_mod(500) is True
@@ -692,7 +778,13 @@ def test_resolve_build_mtime_does_not_repeat_a_failed_lookup(monkeypatch):
 # --- apply_update end to end ---------------------------------------------------
 
 
-def _staged_install(tmp_path, monkeypatch):
+_ENGINE_SHA = "e" * 40
+_ARCHIVE_SHA = "a" * 40
+
+
+def _staged_install(
+    tmp_path, monkeypatch, archive_root="ankimon-main", archive_sha=None
+):
     """Set apply_update up to run past the git-clone guard against a temp dir."""
     addon = tmp_path / "addon"
     addon.mkdir()
@@ -703,18 +795,216 @@ def _staged_install(tmp_path, monkeypatch):
     )
     zip_path = tmp_path / "update.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("ankimon-main/src/Ankimon/__init__.py", "new")
-        zf.writestr("ankimon-main/src/Ankimon/new.py", "new")
+        zf.writestr(f"{archive_root}/src/Ankimon/__init__.py", "new")
+        zf.writestr(f"{archive_root}/src/Ankimon/new.py", "new")
+        if archive_sha:
+            zf.comment = archive_sha.encode("ascii")
 
     monkeypatch.setattr(um, "addon_dir", addon)
     monkeypatch.setattr(um, "is_git_clone", lambda: False)
     monkeypatch.setattr(um, "_get_gitignore_patterns", lambda: [])
-    monkeypatch.setattr(um, "_fetch_submodule_sha", lambda _ref: None)
+    monkeypatch.setattr(um, "_fetch_submodule_sha", lambda _ref: _ENGINE_SHA)
     monkeypatch.setattr(um, "_download_and_extract_submodule", lambda *a, **k: None)
     monkeypatch.setattr(um, "save_update_state", lambda *a, **k: None)
     monkeypatch.setattr(um, "get_meta_json_path", lambda: addon / "meta.json")
     monkeypatch.setattr(um, "fetch_ref_date", lambda _ref: None)  # no network
     return addon, zip_path
+
+
+@pytest.mark.parametrize("branch", ["main", "fix/shell-bell"])
+def test_apply_update_pins_engine_and_saved_state_to_downloaded_branch(
+    tmp_path, monkeypatch, branch
+):
+    addon, zip_path = _staged_install(
+        tmp_path,
+        monkeypatch,
+        archive_root="ankimon-" + branch.replace("/", "-"),
+        archive_sha=_ARCHIVE_SHA,
+    )
+    lookups, installed_engines, saved_states = [], [], []
+
+    def fetch_pin(ref):
+        # Metadata must be resolved before any installed code is removed.
+        assert (addon / "old.py").read_text() == "old"
+        assert not (addon / "new.py").exists()
+        lookups.append(ref)
+        return _ENGINE_SHA
+
+    monkeypatch.setattr(um, "_fetch_submodule_sha", fetch_pin)
+    monkeypatch.setattr(
+        um,
+        "_download_and_extract_submodule",
+        lambda sha, dest, status: installed_engines.append((sha, dest)),
+    )
+    monkeypatch.setattr(
+        um, "save_update_state", lambda *args: saved_states.append(args)
+    )
+    monkeypatch.setattr(
+        um,
+        "fetch_branch_sha",
+        lambda _name: pytest.fail("Must not resolve a moving branch"),
+    )
+
+    # The branch advanced after the dialog's poll but before its ZIP download.
+    ok, msg, _ = um.apply_update(str(zip_path), "branch", branch, "b" * 40)
+
+    assert ok, msg
+    assert lookups == [_ARCHIVE_SHA]
+    assert installed_engines == [(_ENGINE_SHA, addon / "poke_engine")]
+    assert saved_states == [("branch", branch, _ARCHIVE_SHA)]
+    assert (addon / "new.py").read_text() == "new"
+
+
+def test_apply_update_uses_known_branch_commit_without_archive_metadata(
+    tmp_path, monkeypatch
+):
+    _, zip_path = _staged_install(
+        tmp_path, monkeypatch, archive_root="ankimon-fix-shell-bell"
+    )
+    lookups = []
+    monkeypatch.setattr(
+        um, "_fetch_submodule_sha", lambda ref: lookups.append(ref) or _ENGINE_SHA
+    )
+    monkeypatch.setattr(
+        um,
+        "fetch_branch_sha",
+        lambda _name: pytest.fail("Must preserve the selected commit"),
+    )
+
+    ok, msg, _ = um.apply_update(
+        str(zip_path), "branch", "fix/shell-bell", _ARCHIVE_SHA
+    )
+
+    assert ok, msg
+    assert lookups == [_ARCHIVE_SHA]
+
+
+@pytest.mark.parametrize("failure", ["missing_pin", "unknown_branch_commit"])
+def test_apply_update_unresolved_engine_leaves_install_untouched(
+    tmp_path, monkeypatch, failure
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    state_path = addon / "user_files" / "update_state.json"
+    state_path.parent.mkdir()
+    state_path.write_text('{"source_type": "branch", "source_name": "main"}')
+
+    def snapshot():
+        return {
+            path.relative_to(addon): path.read_bytes()
+            for path in addon.rglob("*")
+            if path.is_file()
+        }
+
+    before = snapshot()
+    opened, closed_before_cleanup = [], []
+    real_zipfile, real_unlink = um.zipfile.ZipFile, um.os.unlink
+
+    def open_zip(*args, **kwargs):
+        archive = real_zipfile(*args, **kwargs)
+        opened.append(archive)
+        return archive
+
+    def unlink(path, *args, **kwargs):
+        if Path(path) == zip_path:
+            closed = all(archive.fp is None for archive in opened)
+            closed_before_cleanup.append(closed)
+            if not closed:
+                raise PermissionError("Windows refuses to unlink an open ZIP")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(um.zipfile, "ZipFile", open_zip)
+    monkeypatch.setattr(um.os, "unlink", unlink)
+    monkeypatch.setattr(um, "_fetch_submodule_sha", lambda _ref: None)
+    monkeypatch.setattr(
+        um,
+        "_collect_code_files",
+        lambda _patterns: pytest.fail("Must fail before backup"),
+    )
+    monkeypatch.setattr(
+        um,
+        "fetch_branch_sha",
+        lambda _name: pytest.fail("Cannot identify downloaded bytes"),
+    )
+    monkeypatch.setattr(
+        um, "save_update_state", lambda *args: pytest.fail("Must preserve update state")
+    )
+
+    ok, msg, pending_mod = um.apply_update(
+        str(zip_path),
+        "branch",
+        "fix/shell-bell",
+        _ARCHIVE_SHA if failure == "missing_pin" else None,
+    )
+
+    assert not ok
+    assert "matching battle engine" in msg
+    assert pending_mod is None
+    assert snapshot() == before
+    assert closed_before_cleanup == [True]
+    assert not zip_path.exists()
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        None,
+        {"type": "file", "sha": _ENGINE_SHA},
+        {"type": "submodule"},
+        {"type": "submodule", "sha": "not-a-commit"},
+        {"type": "submodule", "sha": ["e" * 40]},
+    ],
+)
+def test_apply_update_rejects_malformed_engine_metadata_before_install(
+    tmp_path, monkeypatch, metadata
+):
+    fetch_pin = um._fetch_submodule_sha
+    addon, zip_path = _staged_install(tmp_path, monkeypatch, archive_sha=_ARCHIVE_SHA)
+    before = {path.name: path.read_bytes() for path in addon.iterdir()}
+    monkeypatch.setattr(um, "_fetch_submodule_sha", fetch_pin)
+    monkeypatch.setattr(
+        um.urllib.request,
+        "urlopen",
+        lambda *a, **k: io.BytesIO(json.dumps(metadata).encode()),
+    )
+
+    ok, msg, _ = um.apply_update(str(zip_path), "branch", "main")
+
+    assert not ok
+    assert "matching battle engine" in msg
+    assert {path.name: path.read_bytes() for path in addon.iterdir()} == before
+
+
+@pytest.mark.parametrize(
+    ("source_type", "source_name", "archive_root", "expected_ref"),
+    [
+        ("tag", "2.4", "ankimon-2.4", "2.4"),
+        ("release", "2.4", "ankimon-2.4", "2.4"),
+        (None, None, "h0tp-ftw-ankimon-abcdef1", "abcdef1"),
+    ],
+)
+def test_apply_update_preserves_tag_and_commit_archive_resolution(
+    tmp_path, monkeypatch, source_type, source_name, archive_root, expected_ref
+):
+    fetch_pin = um._fetch_submodule_sha
+    _, zip_path = _staged_install(tmp_path, monkeypatch, archive_root=archive_root)
+    requested = []
+
+    def response(request, **kwargs):
+        requested.append(request.full_url)
+        return io.BytesIO(
+            json.dumps({"type": "submodule", "sha": _ENGINE_SHA}).encode()
+        )
+
+    # Restore the production resolver rather than the install fixture's stub.
+    monkeypatch.setattr(um, "_fetch_submodule_sha", fetch_pin)
+    monkeypatch.setattr(um.urllib.request, "urlopen", response)
+
+    ok, msg, _ = um.apply_update(str(zip_path), source_type, source_name)
+
+    assert ok, msg
+    assert requested == [
+        f"{um.GITHUB_API}/contents/src/Ankimon/poke_engine?ref={expected_ref}"
+    ]
 
 
 def test_apply_update_returns_the_release_date_to_stamp(tmp_path, monkeypatch):

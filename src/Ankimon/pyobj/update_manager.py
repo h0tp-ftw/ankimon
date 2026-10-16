@@ -23,7 +23,7 @@ GITHUB_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}"
 GIT_REMOTE_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}.git"
 DOWNLOAD_TIMEOUT = 30
 USER_AGENT = "Ankimon-Updater (https://github.com/h0tp-ftw/ankimon)"
-DEFAULT_SUBMODULE_SHA = "f3092b03fbe1e37d1788ef802dee98906d621e36"
+_COMMIT_SHA_RE = re.compile(r"[0-9a-fA-F]{40}")
 # The in-app updater shipped in v2.0. Installing an older release would strip the
 # updater out (older versions predate it), so pre-2.0 versions are filtered from
 # the release/tag pickers — going back would break the update feature itself.
@@ -203,7 +203,9 @@ def git_checkout_source(
         # below asks, and git itself refuses to overwrite them on a checkout.
         status = _git("status", "--porcelain", "--untracked-files=no", timeout=30)
         if status.returncode != 0:
-            return False, (status.stderr or status.stdout or "git status failed").strip()
+            return False, (
+                status.stderr or status.stdout or "git status failed"
+            ).strip()
         if status.stdout.strip():
             return False, (
                 "Your Ankimon checkout has local changes. Commit, stash, or discard "
@@ -236,7 +238,10 @@ def git_checkout_source(
         checkout_ref = "FETCH_HEAD"
         if source_type == "branch":
             local_branch = _git(
-                "show-ref", "--verify", "--quiet", f"refs/heads/{source_name}",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{source_name}",
                 timeout=30,
             )
             if local_branch.returncode == 0:
@@ -244,8 +249,10 @@ def git_checkout_source(
                 # the checkout exactly as it was, not parked on another branch
                 # with an "Update Failed" box on screen.
                 ancestor = _git(
-                    "merge-base", "--is-ancestor",
-                    f"refs/heads/{source_name}", checkout_ref,
+                    "merge-base",
+                    "--is-ancestor",
+                    f"refs/heads/{source_name}",
+                    checkout_ref,
                     timeout=30,
                 )
                 if ancestor.returncode == 1:
@@ -258,13 +265,19 @@ def git_checkout_source(
                     return False, (
                         f"Could not compare local branch '{source_name}' with the "
                         "Ankimon repository. Nothing was changed.\n\n"
-                        + (ancestor.stderr or ancestor.stdout or "Unknown git error").strip()
+                        + (
+                            ancestor.stderr or ancestor.stdout or "Unknown git error"
+                        ).strip()
                     )
                 checkout = _git("checkout", source_name)
                 if checkout.returncode != 0:
                     return False, (
                         f"Could not check out local branch '{source_name}'.\n\n"
-                        + (checkout.stderr or checkout.stdout or "Unknown git checkout error").strip()
+                        + (
+                            checkout.stderr
+                            or checkout.stdout
+                            or "Unknown git checkout error"
+                        ).strip()
                     )
                 log(f"Fast-forwarding local branch '{source_name}'...")
                 merge = _git("merge", "--ff-only", checkout_ref)
@@ -274,7 +287,9 @@ def git_checkout_source(
                     return False, (
                         f"Branch '{source_name}' is now checked out but could not be "
                         "fast-forwarded; its commits were left unchanged.\n\n"
-                        + (merge.stderr or merge.stdout or "Unknown git merge error").strip()
+                        + (
+                            merge.stderr or merge.stdout or "Unknown git merge error"
+                        ).strip()
                     )
                 checkout_ref = None
 
@@ -284,7 +299,11 @@ def git_checkout_source(
             if checkout.returncode != 0:
                 return False, (
                     f"Could not check out {display}.\n\n"
-                    + (checkout.stderr or checkout.stdout or "Unknown git checkout error").strip()
+                    + (
+                        checkout.stderr
+                        or checkout.stdout
+                        or "Unknown git checkout error"
+                    ).strip()
                 )
 
         operation = "Updated" if checkout_ref is None else "Checked out"
@@ -971,13 +990,17 @@ def _extract_ref_from_prefix(src_prefix: str) -> str:
 
 
 def _fetch_submodule_sha(ref: str) -> Optional[str]:
+    if not _is_safe_ref(ref):
+        return None
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/src/Ankimon/poke_engine?ref={ref}"
     req = _make_request(url)
     try:
         with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
             data = json.loads(resp.read().decode())
             if isinstance(data, dict) and data.get("type") == "submodule":
-                return data.get("sha")
+                sha = data.get("sha")
+                if isinstance(sha, str) and _COMMIT_SHA_RE.fullmatch(sha):
+                    return sha
     except Exception:
         pass
     return None
@@ -988,7 +1011,7 @@ def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None):
         if status_cb:
             status_cb(msg)
 
-    url = f"https://github.com/ArdentRoe/poke-engine/archive/{sha}.zip"
+    url = f"https://github.com/h0tp-ftw/poke-engine/archive/{sha}.zip"
     log("Downloading poke_engine submodule package...")
 
     zip_path = _download_zip_to_temp(url)
@@ -1113,6 +1136,36 @@ def apply_update(
 
             log(f"Archive validated: {len(new_files)} files to install.")
 
+            # GitHub source ZIPs carry the archived commit in their ZIP comment.
+            # Prefer it to a previously polled branch SHA: a branch may move
+            # between that poll and the download, and ZIP directory names also
+            # replace slashes in branch names with hyphens.
+            archive_sha = zf.comment.decode("ascii", errors="replace")
+            if _COMMIT_SHA_RE.fullmatch(archive_sha):
+                commit_sha = archive_sha
+                ref = archive_sha
+            elif source_type == "branch":
+                # Older/manual archives can still supply their known commit.
+                # Looking up the moving branch now cannot identify these bytes.
+                ref = commit_sha if _COMMIT_SHA_RE.fullmatch(commit_sha or "") else None
+            else:
+                ref = commit_sha
+                if not ref and source_type in {"tag", "release"}:
+                    ref = source_name
+                if not ref:
+                    # API ZIP roots include a commit abbreviation. Preserve that
+                    # source-only path, but never guess a branch from its name.
+                    prefix_ref = _extract_ref_from_prefix(src_prefix)
+                    if re.fullmatch(r"[0-9a-fA-F]{7,40}", prefix_ref):
+                        ref = prefix_ref
+            log(f"Resolving poke_engine submodule for ref '{ref}'...")
+            sub_sha = _fetch_submodule_sha(ref) if ref else None
+            if not sub_sha:
+                raise ValueError(
+                    "Could not resolve the matching battle engine for this update. "
+                    "No installed files were changed. Please retry the download."
+                )
+
             # --- Backup current code files ---
             log("Backing up current addon code...")
             backup_dir = Path(tempfile.mkdtemp(prefix="ankimon_update_backup_"))
@@ -1165,10 +1218,6 @@ def apply_update(
                         raise pe
 
             # --- Download and install matching poke_engine submodule version ---
-            ref = _extract_ref_from_prefix(src_prefix)
-            log(f"Resolving poke_engine submodule for ref '{ref}'...")
-            sub_sha = _fetch_submodule_sha(ref) or DEFAULT_SUBMODULE_SHA
-
             _download_and_extract_submodule(
                 sub_sha, addon_dir / "poke_engine", status_cb
             )
@@ -1216,6 +1265,11 @@ def apply_update(
             )
 
     except Exception as e:
+        if backup_dir is None:
+            # The ZipFile context has closed before cleanup, including on Windows.
+            cleanup()
+            log(f"Update not applied: {e}")
+            return False, f"Update not applied: {e}", None
         # --- Rollback ---
         log(f"Update failed: {e}. Rolling back...")
         rollback_count = 0

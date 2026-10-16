@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = ROOT / "src" / "Ankimon" / "poke_engine"
+TEST_TIMEOUT_SECONDS = 240
 TEST_MODULES = (
     "test_after_move_items.py",
     "test_after_move_items_battles.py",
@@ -47,22 +49,38 @@ def main():
     # also import the addon's __init__ and require a live Anki/Qt environment.
     with tempfile.TemporaryDirectory(prefix="ankimon-engine-check-") as temporary:
         package = Path(temporary) / "poke_engine"
-        package.symlink_to(ENGINE, target_is_directory=True)
+        try:
+            package.symlink_to(ENGINE, target_is_directory=True)
+        except OSError:
+            # Windows commonly requires elevated permissions for symlinks.
+            shutil.copytree(
+                ENGINE,
+                package,
+                ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache"),
+            )
         env = os.environ.copy()
         env["PYTHONPATH"] = temporary
         env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "--import-mode=importlib",
-                "-q",
-                *(str(package / "tests" / name) for name in TEST_MODULES),
-            ],
-            cwd=temporary,
-            env=env,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "--import-mode=importlib",
+                    "-q",
+                    *(str(package / "tests" / name) for name in TEST_MODULES),
+                ],
+                cwd=temporary,
+                env=env,
+                timeout=TEST_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired:
+            print(
+                f"Engine regressions timed out after {TEST_TIMEOUT_SECONDS}s.",
+                file=sys.stderr,
+            )
+            return 124
         return result.returncode
 
 
