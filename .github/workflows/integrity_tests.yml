@@ -13,21 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      uses: actions/checkout@v4
       with:
         submodules: recursive
         persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     - name: Install uv
-      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
         cache-dependency-glob: "requirements.txt"
     - name: Cache apt packages
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@v4
       with:
         path: /var/cache/apt/archives
         key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/integrity_tests.yml') }}
@@ -52,16 +52,16 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      uses: actions/checkout@v4
       with:
         submodules: recursive
         persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
     - name: Install uv
-      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
     - name: Install test dependencies
