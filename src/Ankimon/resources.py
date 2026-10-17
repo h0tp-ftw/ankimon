@@ -391,6 +391,8 @@ POKEMON_TIERS = {
     999, 1000, 1005,	# gimmighoul, gholdengo, roaring-moon
     1006, 1011, 1012,	# iron-valiant, dipplin, poltchageist
     1013, 1018, 1019,	# sinistcha, archaludon, hydrapple
+    10126, 10152,  # lycanrocmidnight, lycanrocdusk
+    10136, 10137, 10138, 10139, 10140, 10141, 10142,  # minior forms
 ],
   "Legendary": [
   # Gen 1
