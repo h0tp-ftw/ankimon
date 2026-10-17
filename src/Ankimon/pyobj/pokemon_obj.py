@@ -515,9 +515,21 @@ class PokemonObject:
             setattr(self, key, value)
         # Derived caches — recompute from the (possibly updated)
         # base_stats/level/iv/ev so they don't go stale.
+        old_max_hp = getattr(self, "max_hp", 0)
         self.max_hp = self.calculate_max_hp()
+
+        # When stats change (e.g. level up, EVs), Max HP might increase.
+        # Add the difference to Current HP to match the mainline games' behavior.
+        # We only do this if old_max_hp > 0 so we don't heal freshly created instances weirdly.
+        hp_diff = self.max_hp - old_max_hp
         raw_hp = getattr(self, "hp", None)
+        if isinstance(raw_hp, (int, float)) and old_max_hp > 0 and hp_diff > 0 and raw_hp > 0:
+            raw_hp += hp_diff
+
         raw_current_hp = getattr(self, "current_hp", None)
+        if isinstance(raw_current_hp, (int, float)) and old_max_hp > 0 and hp_diff > 0 and raw_current_hp > 0:
+            raw_current_hp += hp_diff
+
         hp_fallback = raw_current_hp if raw_current_hp is not None else self.max_hp
         self.hp = self._normalize_hp(raw_hp, hp_fallback, self.max_hp)
         self.current_hp = self._normalize_hp(raw_current_hp, self.hp, self.max_hp)
