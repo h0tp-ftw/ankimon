@@ -1025,39 +1025,56 @@ def _run_mobile_battles_impl(
         cards_in_encounter = seed_idx + 1
         temp_tracker = TempTracker(initial_reviews + cards_in_encounter)
 
-        enc_data = _generate_encounter(
-            stable_max_level,
-            temp_tracker,
-            collected_ids,
-            settings_obj,
-            None,
-            trainer_card,
-            main_pokemon,
-        )
-        adjusted_level = max(
-            1, active_max_level + (enc_data["level"] - stable_max_level)
-        )
-        current_enemy_pokemon = PokemonObject(
-            type=enc_data["type"],
-            name=enc_data["name"],
-            id=enc_data["id"],
-            shiny=enc_data["shiny"],
-            level=adjusted_level,
-            ability=enc_data["ability"],
-            gender=enc_data["gender"],
-            growth_rate=enc_data["growth_rate"],
-            captured_date=None,
-            tier=enc_data["tier"],
-            individual_id=str(uuid.uuid4()),
-            base_stats=enc_data["base_stats"],
-            attacks=enc_data["attacks"],
-            base_experience=enc_data["base_experience"],
-            ev=enc_data["ev"],
-            iv=enc_data["iv"],
-            battle_status=enc_data["battle_status"],
-            ev_yield=enc_data["ev_yield"],
-            nature=enc_data["nature"],
-        )
+        unfinished_state = None
+        try:
+            row = db.execute("SELECT value FROM metadata WHERE key = 'mobile_unfinished_battle'").fetchone()
+            if row:
+                import json
+                unfinished_state = json.loads(row[0])
+                # Note: We do NOT delete it here in `mode == "next"` until it's finished via `commitReplayOutcome`.
+        except Exception:
+            pass
+
+        if unfinished_state and "enemy" in unfinished_state:
+            enemy_dict = unfinished_state["enemy"]
+            current_enemy_pokemon = PokemonObject(**enemy_dict)
+            accumulated_evs = unfinished_state.get("accumulated_evs", {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0})
+            engine_state = unfinished_state.get("engine_state", None)
+            mutator_full_reset = 1
+        else:
+            enc_data = _generate_encounter(
+                stable_max_level,
+                temp_tracker,
+                collected_ids,
+                settings_obj,
+                None,
+                trainer_card,
+                main_pokemon,
+            )
+            adjusted_level = max(
+                1, active_max_level + (enc_data["level"] - stable_max_level)
+            )
+            current_enemy_pokemon = PokemonObject(
+                type=enc_data["type"],
+                name=enc_data["name"],
+                id=enc_data["id"],
+                shiny=enc_data["shiny"],
+                level=adjusted_level,
+                ability=enc_data["ability"],
+                gender=enc_data["gender"],
+                growth_rate=enc_data["growth_rate"],
+                captured_date=None,
+                tier=enc_data["tier"],
+                individual_id=str(uuid.uuid4()),
+                base_stats=enc_data["base_stats"],
+                attacks=enc_data["attacks"],
+                base_experience=enc_data["base_experience"],
+                ev=enc_data["ev"],
+                iv=enc_data["iv"],
+                battle_status=enc_data["battle_status"],
+                ev_yield=enc_data["ev_yield"],
+                nature=enc_data["nature"],
+            )
 
         selected_override = None
         if companion_override_id:
@@ -1107,12 +1124,14 @@ def _run_mobile_battles_impl(
                 "error": "No active companion or main Pokémon available to battle.",
             }
 
-        mutator_full_reset = 1
-        engine_state = None
+
+        if not unfinished_state:
+            mutator_full_reset = 1
+            engine_state = None
+            accumulated_evs = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
 
         reviews_list = []
         turns_log = []
-        accumulated_evs = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
 
         # Read multiplier/boosts settings
         xp_multiplier = 1.0
@@ -1285,6 +1304,7 @@ def _run_mobile_battles_impl(
             "review_ids": [r["id"] for r in reviews_list],
             "companion_fainted": (comp_hp_after <= 0),
             "gained_cash": gained_cash,
+            "engine_state": engine_state,
         }
 
         pending_total_at_start = len(all_unresolved)
@@ -1663,59 +1683,82 @@ def _run_mobile_battles_impl(
                     encounters_fought += 1
                     current_encounter_reviews = len(current_turn_reviews)
 
-                    # Stable seeding based on encounter index
-                    if all_reviews:
-                        seed_idx = min(
-                            len(all_reviews) - 1,
-                            (encounter_idx + 1) * cards_per_round - 1,
-                        )
-                        seed_review = all_reviews[seed_idx]
-                        enc_seed = (
-                            seed_review.get("revlog_id") or seed_review.get("id") or 42
+                    unfinished_state = None
+                    try:
+                        row = db.execute("SELECT value FROM metadata WHERE key = 'mobile_unfinished_battle'").fetchone()
+                        if row:
+                            import json
+                            unfinished_state = json.loads(row[0])
+                            with db._get_connection():
+                                db._get_connection().execute("DELETE FROM metadata WHERE key = 'mobile_unfinished_battle'")
+                    except Exception:
+                        pass
+
+                    if unfinished_state and "enemy" in unfinished_state:
+                        enemy_dict = unfinished_state["enemy"]
+                        current_enemy_pokemon = PokemonObject(**enemy_dict)
+                        accumulated_evs = unfinished_state.get("accumulated_evs", {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0})
+                        engine_state = unfinished_state.get("engine_state", None)
+                        mutator_full_reset = 1
+
+                        main_pokemon_clone = select_best_companion(
+                            team_clones, current_enemy_pokemon
                         )
                     else:
-                        enc_seed = 42
-                    random.seed(enc_seed)
-                    encounter_idx += 1
 
-                    enc_data = _generate_encounter(
-                        stable_max_level,
-                        temp_tracker,
-                        collected_ids,
-                        settings_obj,
-                        None,
-                        trainer_card,
-                        main_pokemon,
-                    )
-                    adjusted_level = max(
-                        1, active_max_level + (enc_data["level"] - stable_max_level)
-                    )
-                    current_enemy_pokemon = PokemonObject(
-                        type=enc_data["type"],
-                        name=enc_data["name"],
-                        id=enc_data["id"],
-                        shiny=enc_data["shiny"],
-                        level=adjusted_level,
-                        ability=enc_data["ability"],
-                        gender=enc_data["gender"],
-                        growth_rate=enc_data["growth_rate"],
-                        captured_date=None,
-                        tier=enc_data["tier"],
-                        individual_id=str(uuid.uuid4()),
-                        base_stats=enc_data["base_stats"],
-                        attacks=enc_data["attacks"],
-                        base_experience=enc_data["base_experience"],
-                        ev=enc_data["ev"],
-                        iv=enc_data["iv"],
-                        battle_status=enc_data["battle_status"],
-                        ev_yield=enc_data["ev_yield"],
-                        nature=enc_data["nature"],
-                    )
-                    main_pokemon_clone = select_best_companion(
-                        team_clones, current_enemy_pokemon
-                    )
-                    mutator_full_reset = 1
-                    engine_state = None
+                        # Stable seeding based on encounter index
+                        if all_reviews:
+                            seed_idx = min(
+                                len(all_reviews) - 1,
+                                (encounter_idx + 1) * cards_per_round - 1,
+                            )
+                            seed_review = all_reviews[seed_idx]
+                            enc_seed = (
+                                seed_review.get("revlog_id") or seed_review.get("id") or 42
+                            )
+                        else:
+                            enc_seed = 42
+                        random.seed(enc_seed)
+                        encounter_idx += 1
+
+                        enc_data = _generate_encounter(
+                            stable_max_level,
+                            temp_tracker,
+                            collected_ids,
+                            settings_obj,
+                            None,
+                            trainer_card,
+                            main_pokemon,
+                        )
+                        adjusted_level = max(
+                            1, active_max_level + (enc_data["level"] - stable_max_level)
+                        )
+                        current_enemy_pokemon = PokemonObject(
+                            type=enc_data["type"],
+                            name=enc_data["name"],
+                            id=enc_data["id"],
+                            shiny=enc_data["shiny"],
+                            level=adjusted_level,
+                            ability=enc_data["ability"],
+                            gender=enc_data["gender"],
+                            growth_rate=enc_data["growth_rate"],
+                            captured_date=None,
+                            tier=enc_data["tier"],
+                            individual_id=str(uuid.uuid4()),
+                            base_stats=enc_data["base_stats"],
+                            attacks=enc_data["attacks"],
+                            base_experience=enc_data["base_experience"],
+                            ev=enc_data["ev"],
+                            iv=enc_data["iv"],
+                            battle_status=enc_data["battle_status"],
+                            ev_yield=enc_data["ev_yield"],
+                            nature=enc_data["nature"],
+                        )
+                        main_pokemon_clone = select_best_companion(
+                            team_clones, current_enemy_pokemon
+                        )
+                        mutator_full_reset = 1
+                        engine_state = None
 
                 # Turn simulation
                 main_attacks = getattr(main_pokemon_clone, "attacks", None)
@@ -1993,6 +2036,22 @@ def _run_mobile_battles_impl(
 
         if commit and current_enemy_pokemon is not None:
             # Insert history for escaped / unfinished battle
+            try:
+                import json
+                state_obj = {
+                    "enemy": current_enemy_pokemon.to_dict(),
+                    "accumulated_evs": accumulated_evs,
+                    "engine_state": engine_state
+                }
+                with db._get_connection():
+                    db._get_connection().execute(
+                        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                        ("mobile_unfinished_battle", json.dumps(state_obj))
+                    )
+            except Exception as ex:
+                if logger:
+                    logger.log("error", f"Failed to save unfinished battle state: {ex}")
+
             try:
                 history_entries_to_add.append(
                     {
@@ -2497,7 +2556,7 @@ def commit_replay_outcome(
         # We will split the DB operations (heavy) and the GUI updates.
         # Run DB operations in the background thread:
         def do_db_work(col):
-            nonlocal battle_xp
+            nonlocal battle_xp, total_xp, total_trainer_xp, gained_cash
             # Set in_bulk_resolve to avoid tooltips/dialogs in background thread
             from .. import utils
 
@@ -2510,8 +2569,40 @@ def commit_replay_outcome(
             # a concurrent auto-resolve can't double-resolve reviews or race writes.
             _mobile_sync_lock.acquire()
             try:
+                # If we are finalizing a choice (Catch/Defeat), ensure any unfinished bookmark is cleared.
+                if choice in ("catch", "defeat"):
+                    try:
+                        with db._get_connection():
+                            db._get_connection().execute("DELETE FROM metadata WHERE key = 'mobile_unfinished_battle'")
+                    except Exception:
+                        pass
+
+                # 0. Continue logic
+                if choice == "continue":
+                    import json
+                    enemy_dict = enemy_pokemon.to_dict()
+
+                    engine_state = outcome_data.get("engine_state", None)
+                    state_obj = {
+                        "enemy": enemy_dict,
+                        "accumulated_evs": accumulated_evs,
+                        "engine_state": engine_state
+                    }
+
+                    with db._get_connection():
+                        db._get_connection().execute(
+                            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+                            ("mobile_unfinished_battle", json.dumps(state_obj))
+                        )
+
+                    # Zero out rewards for continue
+                    battle_xp = 0
+                    total_xp = 0
+                    total_trainer_xp = 0
+                    gained_cash = 0
+
                 # 1. Catch logic
-                if choice == "catch":
+                elif choice == "catch":
                     from .encounter_functions import save_caught_pokemon
 
                     capture_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2594,28 +2685,29 @@ def commit_replay_outcome(
                     if revlog_ids:
                         db.sync_resolutions_to_other_db(revlog_ids, now_ms)
 
-                    try:
-                        cursor = db.execute(
-                            "SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'"
-                        )
-                        row = cursor.fetchone()
-                        if row is not None:
-                            new_count_meta = int(row[0]) + 1
-                        else:
+                    if choice != "continue":
+                        try:
                             cursor = db.execute(
-                                "SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1"
+                                "SELECT value FROM metadata WHERE key = 'mobile_resolved_encounters_count'"
                             )
-                            resolved_reviews = cursor.fetchone()[0]
-                            cards_per_round, _ = _parse_cards_per_round(settings_obj)
-                            new_count_meta = resolved_reviews // cards_per_round
+                            row = cursor.fetchone()
+                            if row is not None:
+                                new_count_meta = int(row[0]) + 1
+                            else:
+                                cursor = db.execute(
+                                    "SELECT COUNT(*) FROM pending_mobile_battles WHERE resolved = 1"
+                                )
+                                resolved_reviews = cursor.fetchone()[0]
+                                cards_per_round, _ = _parse_cards_per_round(settings_obj)
+                                new_count_meta = resolved_reviews // cards_per_round
 
-                        with db._get_connection():
-                            db._get_connection().execute(
-                                "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_resolved_encounters_count', ?)",
-                                (str(new_count_meta),),
-                            )
-                    except Exception:
-                        pass
+                            with db._get_connection():
+                                db._get_connection().execute(
+                                    "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_resolved_encounters_count', ?)",
+                                    (str(new_count_meta),),
+                                )
+                        except Exception:
+                            pass
 
                 # 4. Save to mobile history
                 try:
@@ -2634,9 +2726,12 @@ def commit_replay_outcome(
                             )
                             comp_level = getattr(active_comp, "level", 5)
 
-                    outcome_val = "caught" if choice == "catch" else "defeated"
-                    if outcome_data.get("companion_fainted", False):
-                        outcome_val = "lost"
+                    if choice == "continue":
+                        outcome_val = "escaped"
+                    else:
+                        outcome_val = "caught" if choice == "catch" else "defeated"
+                        if outcome_data.get("companion_fainted", False):
+                            outcome_val = "lost"
 
                     db.add_mobile_history_entry(
                         {
