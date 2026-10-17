@@ -57,6 +57,7 @@ DEFAULT_CONFIG = {
     "gui.hud_pokemon_gen": True,
     "gui.hud_pokemon_lvl": True,
     "gui.hud_pokemon_name": True,
+    "gui.hud_quick_heal_button": True,
     "gui.hud_status_badge": True,
     "gui.hud_owned_indicator": True,
     "gui.hud_enemy_shiny_indicator": True,
