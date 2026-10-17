@@ -227,9 +227,34 @@ class Reviewer_Manager:
         enemy_hp, enemy_max_hp = self._safe_hp_pair(
             self.enemy_pokemon.hp, self.enemy_pokemon.max_hp
         )
-        main_hp, main_max_hp = self._safe_hp_pair(
-            self.main_pokemon.hp, self.main_pokemon.max_hp
-        )
+        try:
+            individual_id = getattr(self.main_pokemon, "individual_id", None)
+            saved = services.db.get_pokemon(str(individual_id)) if individual_id else None
+            if not saved or saved.get("current_hp") is None:
+                raise RuntimeError("Active Pokémon has no saved current_hp")
+            saved_hp = saved["current_hp"]
+            if isinstance(saved_hp, bool):
+                raise RuntimeError("Active Pokémon has invalid saved current_hp")
+            max_hp = services.db._pokemon_max_hp(saved)
+            if max_hp is None:
+                max_hp = getattr(self.main_pokemon, "max_hp", None)
+            try:
+                main_max = int(max_hp)
+            except (TypeError, ValueError, OverflowError):
+                main_max = 1
+            if main_max < 1:
+                main_max = 1
+            main_hp = max(0, min(int(saved_hp), main_max))
+            self.main_pokemon.max_hp = main_max
+            self.main_pokemon.hp = main_hp
+            self.main_pokemon.current_hp = main_hp
+        except Exception as exc:
+            if services.logger is not None:
+                services.logger.log("error", f"Could not read reviewer HP from database: {exc}")
+            reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
+            self._last_state = None
+            return
+        main_hp, main_max_hp = self._safe_hp_pair(main_hp, main_max)
 
         # The Pokeball records a previous catch, including released or evolved
         # Pokemon. Keep exact form IDs and cache the result for this encounter.

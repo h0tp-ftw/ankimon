@@ -1,3 +1,5 @@
+import copy
+
 from anki.hooks import wrap
 from aqt.reviewer import Reviewer
 from aqt.utils import downArrow, tooltip, tr
@@ -78,7 +80,6 @@ def cycle_team_pokemon():
     try:
         from .functions.update_main_pokemon import (
             _apply_loaded_hp,
-            save_main_pokemon,
         )
 
         cycle_count = _team_cycle_count()
@@ -109,6 +110,8 @@ def cycle_team_pokemon():
         if not pokemon_data or not pokemon_data.get("id"):
             tooltip("Invalid pokemon data")
             return
+        if str(active_id) == str(next_id):
+            return
 
         try:
             from .functions.pokedex_functions import (
@@ -135,17 +138,23 @@ def cycle_team_pokemon():
             # individual. The pending faint belongs to the previous one.
             from .battle_loop import _cancel_main_faint_deferral
 
-            _cancel_main_faint_deferral()
-            main_pokemon.update_stats(**pokemon_data)
-            # update_stats only overwrites the HP keys the incoming row carries,
-            # so hp/current_hp can still hold the outgoing Pokemon's values.
-            # Resolve HP from the incoming row like the launch-time loader does
-            # (current_hp, then hp, then max HP) and write it to both fields;
-            # this also recalculates max_hp.
-            _apply_loaded_hp(main_pokemon, pokemon_data)
-            main_pokemon.reset_bonuses()
+            outgoing_id = getattr(main_pokemon, "individual_id", None)
+            if outgoing_id:
+                if not services.db.save_pokemon(main_pokemon.to_dict()):
+                    tooltip("Could not save the active Pokémon; switch cancelled.")
+                    return
 
-            save_main_pokemon(main_pokemon)
+            incoming = copy.copy(main_pokemon)
+            incoming.update_stats(**pokemon_data)
+            # Apply the incoming row's saved HP to the runtime battle object.
+            _apply_loaded_hp(incoming, pokemon_data)
+            incoming.reset_bonuses()
+
+            if not services.db.save_main_pokemon(incoming.to_dict()):
+                tooltip("Could not save the selected Pokémon; switch cancelled.")
+                return
+            _cancel_main_faint_deferral()
+            main_pokemon.__dict__.update(incoming.__dict__)
         except Exception as e:
             print(f"Error updating pokemon: {e}")
             tooltip(f"Error switching pokemon: {e}")

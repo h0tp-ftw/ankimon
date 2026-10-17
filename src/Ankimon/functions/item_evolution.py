@@ -81,6 +81,7 @@ def save_item_evolution(db, expected_pokemon, evolved_pokemon, item_name) -> boo
     ):
         return False
     species_ids = (int(expected_pokemon["id"]), int(evolved_pokemon["id"]))
+    evolved_pokemon = db._canonicalize_pokemon_hp(evolved_pokemon)
     evolved_data = db._obfuscate(evolved_pokemon)
 
     deadline = time.monotonic() + _LOCK_TOTAL_BUDGET_S

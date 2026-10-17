@@ -2879,6 +2879,11 @@ def _attribute_xp_and_evs_to_companion(
     if not pkmndata:
         return
 
+    try:
+        saved_current_hp = max(0, int(pkmndata.get("current_hp", 0)))
+    except (TypeError, ValueError, OverflowError):
+        saved_current_hp = 0
+
     from .pokemon_functions import (
         find_experience_for_level,
         get_levelup_move_for_pokemon,
@@ -3098,7 +3103,8 @@ def _attribute_xp_and_evs_to_companion(
             for k, val in base_stats.items()
             if k in ("hp", "atk", "def", "spa", "spd", "spe")
         }
-        pkmndata["current_hp"] = pkmndata["stats"].get("hp", 15)
+        max_hp = int(pkmndata["stats"].get("hp", 15))
+        pkmndata["current_hp"] = min(saved_current_hp, max_hp)
 
     friendship = int(pkmndata.get("friendship", 0))
     friendship_gain = random.randint(1, 2) if xp_share else random.randint(5, 9)

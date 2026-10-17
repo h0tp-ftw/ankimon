@@ -142,24 +142,46 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
 
 def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
     """Creates a Pokémon dictionary from monthly challenge data."""
-    base_stats = pokemon_data.get("stats", {})
+    base_stats = pokemon_data.get("stats")
+    if not isinstance(base_stats, dict):
+        base_stats = {}
+    ev = pokemon_data.get("ev")
+    if not isinstance(ev, dict):
+        ev = {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+    iv = pokemon_data.get("iv")
+    if not isinstance(iv, dict):
+        iv = {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
+    level = max(1, int(pokemon_data.get("level", 1)))
+    hp = max(
+        1,
+        10
+        + level
+        + (
+            (2 * int(base_stats.get("hp", 1)))
+            + int(iv.get("hp", 15))
+            + int(int(ev.get("hp", 0)) / 4)
+        )
+        * level
+        // 100
+    )
     return {
         "name": pokemon_data["name"],
         "nickname": pokemon_data.get("nickname", ""),
         "id": pokemon_data["id"],
-        "level": pokemon_data.get("level", 1),
+        "level": level,
         "ability": pokemon_data.get("ability", "No Ability"),
         "type": pokemon_data.get("type", ["Normal"]),
         "stats": base_stats,
-        "ev": pokemon_data.get("ev", {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}),
-        "iv": pokemon_data.get("iv", {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}),
+        "base_stats": base_stats,
+        "ev": ev,
+        "iv": iv,
         "attacks": pokemon_data.get("attacks", ["Tackle"]),
         "growth_rate": pokemon_data.get("growth_rate", "medium"),
         "base_experience": pokemon_data.get("base_experience", 64),
         "gender": pokemon_data.get("gender", "N"),
         "shiny": pokemon_data.get("shiny", False) or make_shiny,
         "xp": pokemon_data.get("xp", 0),
-        "current_hp": pokemon_data.get("current_hp", base_stats.get("hp")),
+        "current_hp": hp,
         "friendship": pokemon_data.get("friendship", 0),
         "pokemon_defeated": pokemon_data.get("pokemon_defeated", 0),
         "everstone": pokemon_data.get("everstone", False),

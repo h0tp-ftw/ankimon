@@ -42,7 +42,6 @@ from ..functions.pokedex_functions import (
 from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
-from ..functions.update_main_pokemon import save_main_pokemon
 from ..functions.ev_items import VITAMINS, WINGS, MOCHI, CANDIES, apply_ev_item
 from ..services import services
 from ..utils import get_item_sprite_path, play_effect_sound, is_alive
@@ -883,49 +882,100 @@ class ItemWindow(QWidget):
 
         Returns True only when the item was actually spent AND the heal applied.
 
-        Consume BEFORE healing: the bag UI is the only thing that used to stop a
-        player healing with an item they no longer own -- the Qt "Heal
-        Mainpokemon" button (``ItemLabel``) checks nothing at all and relies on
-        ``renewWidgets`` having rebuilt itself in time -- and ``delete_item``
-        used to drop the database's "item not found" warning on the floor. The
-        heal was therefore granted whether or not anything was spent. Paying
-        first makes the effect impossible to get for free from any call path.
-
-        Consume with ``_consume_one`` rather than ``delete_item``: the latter
-        redraws the bag as part of paying, and rebuilding the grid reads every
-        row and rebuilds every widget. Anything that threw in there would leave
-        the item spent and the HP never granted -- the same free item bug in
-        the other direction.
+        The database transaction charges the item and writes current_hp together,
+        so a stale bag or a concurrent update cannot grant a free heal.
         """
         if self.main_pokemon is None:
             self.logger.log_and_showinfo("error", "No active Pokemon to heal.")
             return False
 
-        if not self._consume_one(item_name):
-            self.logger.log_and_showinfo("info", f"You have no {item_name} left.")
+        db = services.db
+        try:
+            expected = db.get_main_pokemon() if db is not None else None
+        except Exception as exc:
+            self.logger.log("error", f"Could not load active Pokémon HP: {exc}")
+            self.logger.log_and_showinfo(
+                "error", "Could not load saved HP; no item was used."
+            )
+            return False
+        individual_id = getattr(self.main_pokemon, "individual_id", None)
+        if (
+            not expected
+            or not individual_id
+            or str(expected.get("individual_id")) != str(individual_id)
+        ):
+            self.logger.log_and_showinfo(
+                "error", "The active Pokémon changed or is missing from the database."
+            )
             return False
 
-        if item_name == "fullrestore" or item_name == "maxpotion":
-            heal_points = self.main_pokemon.max_hp
-        self.main_pokemon.hp += heal_points
-        if self.main_pokemon.hp > (self.main_pokemon.max_hp):
-            self.main_pokemon.hp = self.main_pokemon.max_hp
-        # Keep the persisted mirror in step. to_dict() writes ``hp`` and
-        # ``current_hp`` independently and update_main_pokemon
-        # ._normalize_loaded_hp reads ``current_hp`` first, so bumping ``hp``
-        # alone makes the heal disappear the next time this record is loaded.
-        self.main_pokemon.current_hp = self.main_pokemon.hp
+        try:
+            current_hp = int(expected.get("current_hp"))
+        except (TypeError, ValueError, OverflowError):
+            self.logger.log_and_showinfo(
+                "error", "The active Pokémon has invalid saved HP; no item was used."
+            )
+            return False
+        max_hp = int(db._pokemon_max_hp(expected))
+        current_hp = max(0, min(current_hp, max_hp))
+        if current_hp == 0:
+            self.logger.log_and_showinfo(
+                "info", f"{prevo_name} has fainted and cannot use a potion."
+            )
+            return False
+        if current_hp >= max_hp:
+            self.logger.log_and_showinfo("info", f"{prevo_name} is already at full HP.")
+            return False
+
+        heal_points = max(0, int(heal_points))
+        if item_name in ("full-restore", "max-potion"):
+            heal_points = max_hp
+        healed_hp = min(current_hp + heal_points, max_hp)
+        actual_heal = healed_hp - current_hp
+        if actual_heal <= 0:
+            self.logger.log_and_showinfo("info", f"{prevo_name} cannot be healed.")
+            return False
+
+        updated = dict(expected)
+        updated.pop("hp", None)
+        updated["current_hp"] = healed_hp
+        try:
+            saved = db.consume_item_and_save_main_pokemon(
+                item_name, updated, expected_pokemon_data=expected
+            )
+        except Exception as exc:
+            self.logger.log("error", f"Could not heal {prevo_name}: {exc}")
+            self.logger.log_and_showinfo(
+                "error", "Could not save the heal; no item was used. Please try again."
+            )
+            return False
+        if not saved:
+            self.logger.log_and_showinfo(
+                "info",
+                f"Could not use {item_name}: it is unavailable or the active Pokémon changed.",
+            )
+            return False
+
+        self.main_pokemon.hp = healed_hp
+        self.main_pokemon.current_hp = healed_hp
+        self.main_pokemon.max_hp = max_hp
+
+        # Existing reviewer HUD code updates the Shadow-DOM HUD through eval;
+        # this repaints it immediately without requiring a reviewer reload.
+        reviewer = services.reviewer
+        if reviewer is not None:
+            reviewer.refresh_hud()
+
         # Everything below is bookkeeping and presentation, and runs only once
         # the HP is safely granted. Badge 20 is "used a healing item", so it is
         # awarded here rather than before the heal: an item was really spent.
         check = check_for_badge(achievements, 20)
         if check is False:
             receive_badge(20, achievements)
-        save_main_pokemon(self.main_pokemon)
         self._refresh_bag()
         play_effect_sound(self.settings_obj, "HpHeal")
         self.logger.log_and_showinfo(
-            "info", f"{prevo_name} was healed for {heal_points}"
+            "info", f"{prevo_name} was healed for {actual_heal} HP."
         )
         return True
 
@@ -983,7 +1033,6 @@ class ItemWindow(QWidget):
                     candidate.update_stats(
                         **{
                             **expected,
-                            "hp": main.hp,
                             "current_hp": main.current_hp,
                             "battle_status": main.battle_status,
                             "stat_stages": main.stat_stages,

@@ -137,12 +137,12 @@ class PokemonObject:
         self.nature = kwargs.get("nature", "serious")
         self.held_item = held_item
 
-        # HP calculation. ``hp`` is an explicit parameter, so looking for it in
-        # ``kwargs`` silently ignored persisted values.  Keep both HP fields
-        # numeric and preserve 0, which represents a fainted Pokemon.
+        # ``hp`` is accepted only for older callers; persisted data uses
+        # current_hp as the single source of current health.
         self.max_hp = self.calculate_max_hp()
-        self.hp = self._normalize_hp(hp, self.max_hp, self.max_hp)
-        self.current_hp = self._normalize_hp(current_hp, self.hp, self.max_hp)
+        initial_hp = current_hp if current_hp is not None else hp
+        self.hp = self._normalize_hp(initial_hp, self.max_hp, self.max_hp)
+        self.current_hp = self.hp
 
         self.is_favorite = is_favorite
         self.captured_date = captured_date
@@ -441,7 +441,6 @@ class PokemonObject:
             "mega": getattr(self, "mega", False),
             "special_form": getattr(self, "special_form", None),
             "xp": self.xp,
-            "hp": self.hp,  # Current HP
             "friendship": self.friendship,
             "pokemon_defeated": self.pokemon_defeated,
             "tier": self.tier,  # Added tier
@@ -516,19 +515,22 @@ class PokemonObject:
         # Derived caches — recompute from the (possibly updated)
         # base_stats/level/iv/ev so they don't go stale.
         self.max_hp = self.calculate_max_hp()
-        raw_hp = getattr(self, "hp", None)
         raw_current_hp = getattr(self, "current_hp", None)
-        hp_fallback = raw_current_hp if raw_current_hp is not None else self.max_hp
-        self.hp = self._normalize_hp(raw_hp, hp_fallback, self.max_hp)
-        self.current_hp = self._normalize_hp(raw_current_hp, self.hp, self.max_hp)
+        if "current_hp" in kwargs:
+            current_hp = kwargs["current_hp"]
+        elif "hp" in kwargs:
+            current_hp = kwargs["hp"]
+        else:
+            current_hp = raw_current_hp
+        self.hp = self._normalize_hp(current_hp, self.max_hp, self.max_hp)
+        self.current_hp = self.hp
         self.battle_status = self._normalize_battle_status(
             getattr(self, "battle_status", None)
         )
         self._update_battle_stats()  # Update battle stats
 
     def reset_stats(self):
-        """Reset the stats of the Pokémon to default values."""
-        self.hp = self.max_hp
+        """Reset temporary battle state without restoring lost HP."""
         self.battle_status = "fighting"
         self._update_battle_stats()
 
@@ -571,7 +573,7 @@ class PokemonObject:
                 self.ev.get("spe", 0),
             ),
             "types": [normalize_name(t) for t in self.type],
-            "hp": self.hp,
+            "hp": self.current_hp,
             "maxhp": self.max_hp,
             "ability": normalize_name(self.ability) if self.ability else "none",
             "item": normalize_name(self.held_item) if self.held_item else None,
