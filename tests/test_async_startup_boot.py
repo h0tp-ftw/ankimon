@@ -54,6 +54,7 @@ ENEMY_INFO = (
     {"hp": 0},  # ev_yield
     False,  # shiny
     "hardy",  # nature
+    None,  # special_form
 )
 
 AUTO_CATCH_KEYS = (

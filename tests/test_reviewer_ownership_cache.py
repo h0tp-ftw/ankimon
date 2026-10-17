@@ -615,6 +615,7 @@ def _load_encounter_functions():
         {},
         False,
         "hardy",
+        None,
     )
     return ef
 
