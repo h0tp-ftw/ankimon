@@ -80,6 +80,33 @@ Regardless of a player's $EP$, a tier's weight is immediately set to `0.0` befor
 *   **Gmax:** Level 65+
 *   **Mythical:** Level 75+
 
+### Species and Form Minimum Wild Levels
+
+Both encounter systems also filter species/forms using
+`check_min_generate_level()`, independently of the main-Pokémon tier locks:
+
+* An explicit evolution level supplies the minimum wild level.
+* An evolution method without an explicit level requires **wild level 100**.
+  This is an intentional encounter balance rule for item, friendship, trade,
+  move, and other non-level evolutions. It preserves the value of evolving
+  Pokémon through their normal requirements.
+* Species without evolution requirements start at wild level 1.
+
+The existing rarity minimum is applied on top of that minimum, including for
+regional, Mega, and Gigantamax forms. A lower tier threshold does not override
+a species/form's level-100 restriction. For example, the canonical encounter
+entry for Sandslash-Alola requires wild level 100, while ordinary Sandslash
+requires level 22. Encounter selection uses the canonical names resolved from
+actual IDs; existing display-name alias fallbacks are preserved separately.
+
+The restriction concerns the **wild Pokémon's level**, not the player's main
+Pokémon's level. A main Pokémon at level 97 can roll a level-100 encounter
+because wild levels range from the main level minus 3 to plus 3. Restricted
+species can therefore spawn at the endgame threshold; they are not excluded
+from wild encounters permanently. This rule does not alter the player's
+evolution requirements. Any lower species/form minimum or evolution-only
+eligibility rule must be proposed as a separate, explicit balance change.
+
 ---
 
 ## 4. The Independent Pity System
