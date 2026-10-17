@@ -520,7 +520,7 @@ def test_answercard_after_records_desktop_review(monkeypatch):
 
 
 def test_commit_replay_mobile_cash_cap(monkeypatch):
-    """Verifies that commit_replay_outcome caps cash at 400 per day."""
+    """Verifies that commit_replay_outcome caps cash at 400 (or 800) per day."""
     class _S:
         def __init__(self, d): self._d = dict(d)
         def get(self, k, default=None): return self._d.get(k, default)
