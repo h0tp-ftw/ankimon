@@ -182,6 +182,13 @@ Support my Caffeine Addiction (something that helps building this Addon):
    Your permanent Pokédex caught history remains recorded after releasing, evolving, or trading away a Pokémon. The reviewer Pokéball indicator, encounter Capture Requirements, and “Catch if uncollected” mode use this history, not just the Pokémon currently in your PC. Incoming traded Pokémon are recorded immediately; merely seeing a Pokémon does not count as catching it. Forms retain distinct caught records.
    Use an escape item from the Bag to leave a battle and encounter a new Pokémon. A successful escape uses one item; if the encounter cannot be replaced, Ankimon reports whether the item was returned to your Bag.
 3. **Training:** Train your Pokémon using various methods to strengthen them for battles.
+
+   XP Share saves earned XP and friendship before opening a level-up moveset dialog. Cancelling or a dialog error keeps those rewards. Confirming updates only the moves, preserving mobile rewards and other edits saved while the dialog was open. Evolution checks then use the latest saved Pokémon and moves.
+
+   In the XP Share moveset dialog, select exactly four distinct moves to confirm. Duplicate spellings that differ only in capitalization, spaces, or hyphens count as one move and appear once. Each confirmed move is retained once, with retained moves keeping their original slots where possible. If fewer than four distinct moves are available in total, new moves are learned automatically without a dialog.
+
+   If the recipient was released, its species or moves changed, or you switched saves while the dialog was open, the old move choice is skipped. Use **Remember Attacks** on the intended Pokémon to teach skipped or declined moves later.
+
    Use vitamins, wings, mochi, and effort candies from the Bag to train your main Pokémon's EVs (effort values). The item is consumed and the training saved together: if validation or saving fails, the attempt leaves your item and Pokémon unchanged. If mobile reviews are being resolved, wait for them to finish and try again. An item is still consumed when the EV caps (252 per stat, 510 total) prevent any gain.
 
    HP training recalculates maximum HP without healing or reviving your Pokémon. Trained stats and the reviewer HP display update immediately. Training during an encounter preserves current HP, boosts, statuses, moves, held items, and field conditions, including copied stats from Transform and Aegislash's active stance.
