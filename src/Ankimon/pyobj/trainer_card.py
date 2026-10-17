@@ -282,7 +282,7 @@ class TrainerCard:
                 "trainerRank": f"{find_trainer_rank(highest_level, level)}",
                 "trainerName": settings_obj.get("trainer.name", self.trainer_name),
                 "level": max(1, level),
-                "pokedex": services.db.execute("SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon WHERE pokedex_id IS NOT NULL").fetchone()[0],
+                "pokedexCount": services.db.execute("SELECT COUNT(DISTINCT pokedex_id) FROM captured_pokemon WHERE pokedex_id IS NOT NULL").fetchone()[0],
                 "caughtPokemon": services.db.get_pokemon_count(),
                 "trainerLevel": level,
                 "highestLevel": highest_level,
