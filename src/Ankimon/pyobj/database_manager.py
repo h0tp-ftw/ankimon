@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import uuid
 import weakref
-import gc
+import shutil
 import time
 import contextlib
 from pathlib import Path
@@ -143,11 +143,10 @@ class ConnectionWrapper:
                     #   "closed database" -- sqlite rolled this connection's
                     #   transaction back when the connection was closed.
                     #
-                    #   "malformed"/"disk image" -- repair_database() rebuilds the
-                    #   file from a *separate* connection's iterdump(), which cannot
-                    #   see this connection's uncommitted rows, then quiesces every
-                    #   registered connection and swaps the rebuilt file into place.
-                    #   The pending transaction does not survive either step.
+                    #   "malformed"/"disk image" -- repair_database() quiesces all
+                    #   registered connections and rebuilds the file from a
+                    #   separate connection's iterdump(). The pending transaction
+                    #   cannot survive closing its connection and replacement.
                     #
                     # So heal the file -- leaving it corrupt helps nobody -- but let
                     # the original failure propagate. Callers such as consume_item
@@ -599,6 +598,27 @@ class AnkimonDB:
         finally:
             conn.release_lease()
 
+    def _refuse_missing_repair_save(self):
+        """Check recovery artifacts only when opening a new SQLite handle."""
+        if self.db_path.exists():
+            return
+        recovery_files = [
+            *self.db_path.parent.glob(self.db_path.name + ".corrupt_backup*"),
+            *self.db_path.parent.glob(self.db_path.name + ".repair-*.tmp"),
+        ]
+        legacy_tmp = self.db_path.with_name(self.db_path.name + ".tmp")
+        if legacy_tmp.exists():
+            recovery_files.append(legacy_tmp)
+        if recovery_files:
+            # Older repair versions moved the active file away before installing
+            # its replacement. Never create an empty save or discard its journals.
+            raise RuntimeError(
+                f"Database {self.db_path} is missing after an interrupted repair. "
+                f"Recovery files: {', '.join(str(path) for path in recovery_files)}. "
+                "Close Anki and restore a verified recovery copy to the database "
+                "path before reopening this save."
+            )
+
     def _get_connection(self) -> ConnectionWrapper:
         """Gets or creates a database connection for the CURRENT thread.
 
@@ -622,6 +642,7 @@ class AnkimonDB:
                             local.conn.close()
                         except Exception:
                             pass
+                    self._refuse_missing_repair_save()
                     conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
                     local.conn = self._prepare_connection(conn)
                     local.db_path = self.db_path
@@ -642,6 +663,7 @@ class AnkimonDB:
                         self._connection.close()
                     except Exception:
                         pass
+                self._refuse_missing_repair_save()
                 conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
                 self._connection = self._prepare_connection(conn)
                 self._connection_epoch_gui = epoch
@@ -724,31 +746,76 @@ class AnkimonDB:
 
     def repair_database(self):
         """Repair a corrupted/malformed database out-of-place."""
-        if self._is_repairing:
-            return
-        self._is_repairing = True
+        # The snapshot and publication must belong to one database generation.
+        # Draining only before replacement lets a writer commit after the dump,
+        # then silently replaces its progress with the older snapshot.
+        with self._conn_lock:
+            if self._is_repairing:
+                return
+            self._is_repairing = True
+            try:
+                with self.quiesce(2.0) as closed:
+                    if not closed:
+                        raise RuntimeError(
+                            "Database repair aborted because active operations did not finish"
+                        )
+                    self._repair_database_locked()
+            finally:
+                self._is_repairing = False
+
+    def _repair_database_locked(self):
+        """Rebuild with all managed handles closed and the lifecycle lock held."""
+        from ..save_import import (
+            _digest,
+            _fsync_directory,
+            _fsync_file,
+            _retry_on_file_lock,
+        )
+
         self._log(
             "warning",
             "SQLite database corruption detected! Initiating out-of-place self-healing repair...",
         )
 
+        dest_conn = None
         try:
             db_file = self.db_path
-            tmp_db = db_file.with_name(db_file.name + ".tmp")
+            if not db_file.is_file():
+                raise RuntimeError("Database repair requires an existing save")
+            # Failed or interrupted attempts retain their recovery material.
+            # A retry must not unlink the previous attempt's only readable copy.
+            token = uuid.uuid4().hex
+            tmp_db = db_file.with_name(db_file.name + f".repair-{token}.tmp")
             backup_db = db_file.with_name(db_file.name + ".corrupt_backup")
-
-            if tmp_db.exists():
-                try:
-                    tmp_db.unlink()
-                except Exception:
-                    pass
+            if backup_db.exists():
+                backup_db = db_file.with_name(db_file.name + f".corrupt_backup-{token}")
+            backup_tmp = db_file.with_name(db_file.name + f".repair-backup-{token}.tmp")
 
             # Dump current database safely
             src_conn = sqlite3.connect(str(db_file))
             try:
+                if src_conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal":
+                    busy, _, _ = src_conn.execute(
+                        "PRAGMA wal_checkpoint(TRUNCATE)"
+                    ).fetchone()
+                    if busy:
+                        raise RuntimeError(
+                            "Database repair could not checkpoint the active WAL"
+                        )
                 lines = list(src_conn.iterdump())
             finally:
                 src_conn.close()
+
+            # Closing the last SQLite handle removes its journals. If another
+            # handle still owns them, refuse to replace the file underneath it;
+            # deleting a live WAL can lose committed progress.
+            if any(
+                Path(str(db_file) + suffix).exists()
+                for suffix in ("-wal", "-shm", "-journal")
+            ):
+                raise RuntimeError(
+                    "Database repair aborted because SQLite journals remain"
+                )
 
             # Modify schema to define generated columns as physical columns initially,
             # which allows SQL dump inserts (which contain all values) to succeed.
@@ -894,91 +961,40 @@ class AnkimonDB:
             cursor.execute("PRAGMA integrity_check")
             check_result = cursor.fetchone()[0]
 
-            if check_result == "ok":
-                dest_conn.commit()
-                dest_conn.close()
-
-                # Keep connection creation blocked until the repaired file is in
-                # place; otherwise a new raw handle can appear after close() but
-                # before either rename.
-                with self.quiesce(2.0) as closed:
-                    if not closed:
-                        raise RuntimeError(
-                            "Database repair aborted because active operations did not finish"
-                        )
-
-                    # Clean up existing corrupted backup
-                    if backup_db.exists():
-                        try:
-                            backup_db.unlink()
-                        except Exception:
-                            pass
-                    try:
-                        for attempt in range(3):
-                            try:
-                                db_file.replace(backup_db)
-                                break
-                            except Exception as e:
-                                if attempt == 2:
-                                    self._log(
-                                        "warning",
-                                        f"Failed to backup corrupt database: {e}",
-                                    )
-                                    break
-                                time.sleep(0.1)
-                                gc.collect()
-                    except Exception:
-                        pass
-
-                    # Swap in repaired file and clean WAL/SHM sidecars
-                    try:
-                        for attempt in range(3):
-                            try:
-                                tmp_db.replace(db_file)
-                                break
-                            except Exception:
-                                if attempt == 2:
-                                    raise
-                                time.sleep(0.1)
-                                gc.collect()
-                        for sidecar in ("-wal", "-shm"):
-                            sidecar_file = db_file.with_name(db_file.name + sidecar)
-                            try:
-                                if sidecar_file.exists():
-                                    sidecar_file.unlink()
-                            except Exception:
-                                pass
-                        self._log(
-                            "info",
-                            "SQLite self-healing completed successfully! Database index repaired.",
-                        )
-                    except Exception as e:
-                        self._log("error", f"Failed to swap repaired database: {e}")
-                        if backup_db.exists() and not db_file.exists():
-                            try:
-                                backup_db.replace(db_file)
-                            except Exception:
-                                pass
-            else:
-                dest_conn.rollback()
-                dest_conn.close()
-                self._log(
-                    "error", f"Integrity check on repaired DB failed: {check_result}"
+            if check_result != "ok":
+                raise RuntimeError(
+                    f"Integrity check on repaired DB failed: {check_result}"
                 )
-                if tmp_db.exists():
-                    tmp_db.unlink()
+            dest_conn.commit()
+            dest_conn.close()
+            dest_conn = None
+            _fsync_file(tmp_db)
+
+            # Preserve the original without ever removing its active pathname.
+            # The source may be corrupt, so verify the backup byte-for-byte,
+            # rather than demanding SQLite integrity from the recovery copy.
+            shutil.copyfile(db_file, backup_tmp)
+            _fsync_file(backup_tmp)
+            if _digest(db_file) != _digest(backup_tmp):
+                raise RuntimeError("Database repair backup verification failed")
+            _retry_on_file_lock(lambda: backup_tmp.replace(backup_db))
+            _fsync_directory(db_file.parent)
+
+            # One same-directory atomic replace leaves either the original or
+            # repaired save at the active name even if the process stops here.
+            # On failure both the original and completed repair remain intact.
+            _retry_on_file_lock(lambda: tmp_db.replace(db_file))
+            _fsync_directory(db_file.parent)
+            self._log(
+                "info",
+                "SQLite self-healing completed successfully! Database index repaired.",
+            )
         except Exception as e:
             self._log("error", f"Self-healing database repair failed: {e}")
             raise
         finally:
-            self._is_repairing = False
-            # Clean up the temporary database file if it was left behind due to a crash/exception
-            try:
-                tmp_db_path = self.db_path.with_name(self.db_path.name + ".tmp")
-                if tmp_db_path.exists():
-                    tmp_db_path.unlink()
-            except Exception:
-                pass
+            if dest_conn is not None:
+                dest_conn.close()
 
     def switch_database(self, db_filename: str, wait_seconds: float = 2.0) -> bool:
         """Close the active profile and reopen against ``db_filename``.

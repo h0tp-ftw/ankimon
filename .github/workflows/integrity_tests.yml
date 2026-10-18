@@ -71,3 +71,5 @@ jobs:
         python -m pytest -q tests/test_save_import.py tests/test_backup_manager.py
         -k "damaged_save or file_lock or lock_that or windows_handle or
         not_a_lock or publishes_through_locks"
+    - name: Exercise repair writer ordering and native file locks
+      run: python -m pytest -q tests/test_database_repair_safety.py
