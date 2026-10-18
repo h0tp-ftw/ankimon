@@ -1287,10 +1287,6 @@ def apply_update(
                 progress_cb=submodule_progress,
             )
 
-            # --- Save update state if provided ---
-            if source_type and source_name:
-                save_update_state(source_type, source_name, commit_sha or "")
-
             cleanup()
             log(f"Update complete. Installed {installed} files.")
 
@@ -1319,6 +1315,11 @@ def apply_update(
 
             # Signal successful completion at 100%
             send_progress(100, 100, "Update complete!")
+
+            # Publish the installed build only after callbacks can no longer
+            # trigger rollback; restored code must keep its previous update state.
+            if source_type and source_name:
+                save_update_state(source_type, source_name, commit_sha or "")
 
             # Keep recovery files until even the final UI callback has returned:
             # an exception before this point still enters the rollback handler.

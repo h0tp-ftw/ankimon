@@ -1092,15 +1092,42 @@ def test_missing_backup_is_reported_and_other_files_still_restore(
     _assert_preserved_data(addon, original)
 
 
-def test_final_progress_failure_can_still_restore_original_files(tmp_path, monkeypatch):
-    addon, zip_path, backup, original = _recovery_install(tmp_path, monkeypatch)
+@pytest.fixture
+def tracked_recovery_install(tmp_path, monkeypatch):
+    save_update_state = um.save_update_state
+    install = _recovery_install(tmp_path, monkeypatch)
+    # Exercise the real state writer; the shared install fixture stubs it out.
+    monkeypatch.setattr(um, "save_update_state", save_update_state)
+    resources = types.ModuleType("Ankimon.resources")
+    resources.addon_ver = "2.5"
+    monkeypatch.setitem(sys.modules, resources.__name__, resources)
+    return install
 
-    def final_progress_failure(message):
-        if message == "__PROGRESS__100|100":
+
+@pytest.mark.parametrize("had_state", [False, True])
+@pytest.mark.parametrize(
+    "failure_message",
+    ["Update complete. Installed", "__PROGRESS__100|100", "Update complete!"],
+)
+def test_completion_failure_restores_code_and_preserves_update_state(
+    tracked_recovery_install, had_state, failure_message
+):
+    addon, zip_path, backup, original = tracked_recovery_install
+    state_path = addon / "user_files" / "update_state.json"
+    old_state = b'{"source_type":"branch","source_name":"main","commit_sha":"old-sha","skip_until":123}'
+    if had_state:
+        state_path.write_bytes(old_state)
+
+    def completion_failure(message):
+        if message.startswith(failure_message):
             raise RuntimeError("final status failed")
 
     ok, message, pending_mod = um.apply_update(
-        str(zip_path), status_cb=final_progress_failure
+        str(zip_path),
+        "branch",
+        "exp",
+        "new-sha",
+        status_cb=completion_failure,
     )
 
     assert not ok and pending_mod is None
@@ -1108,6 +1135,41 @@ def test_final_progress_failure_can_still_restore_original_files(tmp_path, monke
     assert "final status failed" in message
     for name, data in original.items():
         assert (addon / name).read_bytes() == data
+    if had_state:
+        assert state_path.read_bytes() == old_state
+    else:
+        assert not state_path.exists()
+    assert not backup.exists()
+    assert not zip_path.exists()
+
+
+@pytest.mark.parametrize("had_state", [False, True])
+def test_completed_update_records_installed_build(tracked_recovery_install, had_state):
+    addon, zip_path, backup, original = tracked_recovery_install
+    state_path = addon / "user_files" / "update_state.json"
+    if had_state:
+        state_path.write_text(
+            json.dumps({"commit_sha": "old-sha", "skip_until": 123}),
+            encoding="utf-8",
+        )
+
+    ok, _message, _pending_mod = um.apply_update(
+        str(zip_path), "branch", "exp", "new-sha"
+    )
+
+    assert ok
+    assert (addon / "new.py").read_bytes() == b"new"
+    assert not (addon / "old.py").exists()
+    _assert_preserved_data(addon, original)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["source_type"] == "branch"
+    assert state["source_name"] == "exp"
+    assert state["commit_sha"] == "new-sha"
+    assert state["addon_version"] == "2.5"
+    if had_state:
+        assert state["skip_until"] == 123
+    else:
+        assert "skip_until" not in state
     assert not backup.exists()
     assert not zip_path.exists()
 
