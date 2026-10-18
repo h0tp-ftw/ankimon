@@ -1169,10 +1169,7 @@ def _run_mobile_battles_impl(
     from .encounter_data import MEGA, GMAX, REGIONAL_FORM_REGION
     from ..business import calc_experience, calculate_cp_from_dict
     from ..pyobj.pokemon_obj import PokemonObject
-    try:
-        from ..singletons import get_evo_window
-    except ImportError:
-        get_evo_window = lambda: None
+    from ..singletons import get_evo_window
 
     initial_reviews = _compute_initial_reviews(
         db,
@@ -2342,7 +2339,7 @@ def _attribute_xp_and_evs_to_companion(companion_id: str, xp_gained: int, ev_yie
     
     friendship = int(pkmndata.get("friendship", 0))
     friendship += random.randint(5, 9)
-    pkmndata["friendship"] = friendship
+    pkmndata["friendship"] = min(255, friendship)
     
     pkmndata["pokemon_defeated"] = int(pkmndata.get("pokemon_defeated", 0)) + battles_fought
 
