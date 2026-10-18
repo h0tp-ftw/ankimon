@@ -1,26 +1,27 @@
 import pytest
 
+# We only run start_session ONCE at the module level!
+import harness.headless_env
+env = harness.headless_env.start_session()
+from Ankimon.poke_engine import constants
+from Ankimon.poke_engine.special_effects.moves import modify_move
+from Ankimon.poke_engine.objects import Pokemon, Side
+
+class DummyPkmn:
+    def __init__(self, item=""):
+        self.id = "dummy"
+        self.item = item
+        self.ability = "dummy"
+        self.types = ["normal"]
+        self.hp = 100
+        self.maxhp = 100
+
+class DummySide:
+    def __init__(self, pkmn):
+        self.active = pkmn
+        self.reserve = {}
+
 def test_widelens_accuracy():
-    import harness.headless_env
-    env = harness.headless_env.start_session()
-    from Ankimon.poke_engine import constants
-    from Ankimon.poke_engine.special_effects.moves import modify_move
-    from Ankimon.poke_engine.objects import Pokemon, Side
-
-    class DummyPkmn:
-        def __init__(self, item=""):
-            self.id = "dummy"
-            self.item = item
-            self.ability = "dummy"
-            self.types = ["normal"]
-            self.hp = 100
-            self.maxhp = 100
-
-    class DummySide:
-        def __init__(self, pkmn):
-            self.active = pkmn
-            self.reserve = {}
-
     p1 = DummyPkmn("widelens")
     s1 = DummySide(p1)
     move = {constants.ID: "tackle", constants.ACCURACY: 90, constants.BASE_POWER: 40}
@@ -28,26 +29,6 @@ def test_widelens_accuracy():
     assert new_move[constants.ACCURACY] == pytest.approx(99.0)
 
 def test_zoomlens_accuracy():
-    import harness.headless_env
-    env = harness.headless_env.start_session()
-    from Ankimon.poke_engine import constants
-    from Ankimon.poke_engine.special_effects.moves import modify_move
-    from Ankimon.poke_engine.objects import Pokemon, Side
-
-    class DummyPkmn:
-        def __init__(self, item=""):
-            self.id = "dummy"
-            self.item = item
-            self.ability = "dummy"
-            self.types = ["normal"]
-            self.hp = 100
-            self.maxhp = 100
-
-    class DummySide:
-        def __init__(self, pkmn):
-            self.active = pkmn
-            self.reserve = {}
-
     p1 = DummyPkmn("zoomlens")
     s1 = DummySide(p1)
     move = {constants.ID: "tackle", constants.ACCURACY: 90, constants.BASE_POWER: 40}
