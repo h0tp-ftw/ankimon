@@ -118,6 +118,14 @@ def _load_pokedex_cache():
                     _pokedex_cache["ursaluna"]["evoType"] = "useItem"
                     _pokedex_cache["ursaluna"]["evoItem"] = "Peat Block"
 
+                # Urshifu forms
+                if "urshifu" in _pokedex_cache:
+                    _pokedex_cache["urshifu"]["evoType"] = "useItem"
+                    _pokedex_cache["urshifu"]["evoItem"] = "Scroll of Darkness"
+                if "urshifurapidstrike" in _pokedex_cache:
+                    _pokedex_cache["urshifurapidstrike"]["evoType"] = "useItem"
+                    _pokedex_cache["urshifurapidstrike"]["evoItem"] = "Scroll of Waters"
+
                 # Wyrdeer
                 if "wyrdeer" in _pokedex_cache:
                     _pokedex_cache["wyrdeer"]["evoRegion"] = "Hisui"
