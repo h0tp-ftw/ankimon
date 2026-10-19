@@ -318,26 +318,50 @@ def _generate_first_enemy_background():
 
 
 def _apply_first_enemy(enemy_info):
-    (
-        name,
-        id,
-        level,
-        ability,
-        type,
-        base_stats,
-        enemy_attacks,
-        base_experience,
-        growth_rate,
-        ev,
-        iv,
-        gender,
-        battle_status,
-        battle_stats,
-        tier,
-        ev_yield,
-        shiny,
-        nature,
-    ) = enemy_info
+    special_form = None
+    if len(enemy_info) >= 19:
+        (
+            name,
+            id,
+            level,
+            ability,
+            type,
+            base_stats,
+            enemy_attacks,
+            base_experience,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            tier,
+            ev_yield,
+            shiny,
+            nature,
+            special_form,
+        ) = enemy_info[:19]
+    else:
+        (
+            name,
+            id,
+            level,
+            ability,
+            type,
+            base_stats,
+            enemy_attacks,
+            base_experience,
+            growth_rate,
+            ev,
+            iv,
+            gender,
+            battle_status,
+            battle_stats,
+            tier,
+            ev_yield,
+            shiny,
+            nature,
+        ) = enemy_info
 
     enemy_pokemon.update_stats(
         name=name,
@@ -358,6 +382,7 @@ def _apply_first_enemy(enemy_info):
         tier=tier,
         ev_yield=ev_yield,
         shiny=shiny,
+        special_form=special_form,
     )
     max_hp = enemy_pokemon.calculate_max_hp()
     enemy_pokemon.current_hp = max_hp
