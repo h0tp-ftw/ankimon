@@ -480,6 +480,12 @@ def _fetch_gitignore_patterns() -> list[str]:
 
 
 def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
+    # Inventory prunes preserved directories; installation must also preserve
+    # their descendants so it never overwrites a file omitted from the backup.
+    parent = rel_path.rpartition("/")[0]
+    if parent and _should_preserve(parent, gitignore_patterns):
+        return True
+
     # Holy Ground: NEVER touch anything in user_files/ during an update,
     # regardless of gitignore patterns.
     if rel_path == "user_files" or rel_path.startswith("user_files/"):
@@ -1191,7 +1197,11 @@ def apply_update(
 
             # --- Backup current code files ---
             log("Backing up current addon code...")
-            backup_dir = Path(tempfile.mkdtemp(prefix="ankimon_update_backup_"))
+            backup_root = addon_dir / "user_files" / "update_backups"
+            backup_root.mkdir(parents=True, exist_ok=True)
+            backup_dir = Path(
+                tempfile.mkdtemp(prefix="ankimon_update_backup_", dir=backup_root)
+            )
             backed_up = 0
             for rel, full_path in code_files.items():
                 dest = backup_dir / rel

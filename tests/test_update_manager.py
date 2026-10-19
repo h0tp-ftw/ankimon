@@ -928,10 +928,12 @@ def _recovery_install(tmp_path, monkeypatch):
         for path in addon.rglob("*")
         if path.is_file()
     }
-    backup = tmp_path / "recovery-backup"
+    backup_root = addon / "user_files" / "update_backups"
+    backup = backup_root / "recovery-backup"
 
-    def make_backup(*, prefix):
+    def make_backup(*, prefix, dir):
         assert prefix == "ankimon_update_backup_"
+        assert Path(dir) == backup_root
         backup.mkdir()
         return str(backup)
 
@@ -942,6 +944,115 @@ def _recovery_install(tmp_path, monkeypatch):
 def _assert_preserved_data(addon, original):
     for name in ("meta.json", "user_files/ankimon.db"):
         assert (addon / name).read_bytes() == original[name]
+
+
+@pytest.mark.parametrize("outcome", ["success", "rollback", "incomplete"])
+def test_recovery_backups_are_durable_and_preserve_older_attempts(
+    tmp_path, monkeypatch, outcome
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    backup_root = addon / "user_files" / "update_backups"
+    previous = backup_root / "previous" / "old.py"
+    previous.parent.mkdir(parents=True)
+    previous.write_bytes(b"older recovery copy")
+    created = []
+    real_mkdtemp = um.tempfile.mkdtemp
+    real_copy = um._copy_verified
+
+    def make_backup(*args, **kwargs):
+        path = Path(real_mkdtemp(*args, **kwargs))
+        created.append(path)
+        return str(path)
+
+    def finish_install(*args, **kwargs):
+        if outcome != "success":
+            raise OSError("installation failed")
+
+    def copy(source, destination):
+        if outcome == "incomplete" and destination == addon / "old.py":
+            raise PermissionError("restore blocked")
+        real_copy(source, destination)
+
+    monkeypatch.setattr(um.tempfile, "mkdtemp", make_backup)
+    monkeypatch.setattr(um, "_download_and_extract_submodule", finish_install)
+    monkeypatch.setattr(um, "_copy_verified", copy)
+    try:
+        ok, message, _ = um.apply_update(str(zip_path))
+        assert ok is (outcome == "success")
+        assert len(created) == 1 and created[0].parent == backup_root
+        assert previous.read_bytes() == b"older recovery copy"
+        assert not any(
+            name.startswith("user_files/") for name in um._collect_code_files([])
+        )
+        if outcome == "incomplete":
+            assert str(created[0]) in message and "Rollback incomplete" in message
+            assert (created[0] / "old.py").read_bytes() == b"old"
+            if os.name == "posix":
+                assert created[0].stat().st_mode & 0o777 == 0o700
+        else:
+            assert not created[0].exists()
+    finally:
+        for path in created:
+            if path.exists():
+                um.shutil.rmtree(path)
+
+
+@pytest.mark.parametrize("obstacle", ["user_files", "user_files/update_backups"])
+def test_unavailable_recovery_storage_aborts_before_changing_code(
+    tmp_path, monkeypatch, obstacle
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    blocked = addon / obstacle
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.write_bytes(b"existing file")
+    original = {
+        path.relative_to(addon): path.read_bytes()
+        for path in addon.rglob("*")
+        if path.is_file()
+    }
+
+    ok, message, _ = um.apply_update(str(zip_path))
+
+    assert not ok and "before addon files were changed" in message
+    assert {
+        path.relative_to(addon): path.read_bytes()
+        for path in addon.rglob("*")
+        if path.is_file()
+    } == original
+    assert not zip_path.exists()
+
+
+@pytest.mark.parametrize("late_failure", [False, True])
+@pytest.mark.parametrize(
+    "patterns, directory",
+    [(["*.log"], "cache.log"), (["*.env"], "nested/cache.env"), ([], "HelpInfos.html")],
+)
+def test_install_preserves_contents_of_directories_excluded_from_backup(
+    tmp_path, monkeypatch, patterns, directory, late_failure
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    preserved = addon / directory / "old.py"
+    preserved.parent.mkdir(parents=True)
+    preserved.write_bytes(b"original preserved file")
+    with zipfile.ZipFile(zip_path, "a") as archive:
+        archive.writestr(f"ankimon-main/src/Ankimon/{directory}/old.py", "replacement")
+    monkeypatch.setattr(um, "_get_gitignore_patterns", lambda: patterns)
+    if late_failure:
+
+        def fail_install(*args, **kwargs):
+            raise OSError("installation failed")
+
+        monkeypatch.setattr(um, "_download_and_extract_submodule", fail_install)
+
+    ok, message, _ = um.apply_update(str(zip_path))
+
+    assert ok is not late_failure
+    assert preserved.read_bytes() == b"original preserved file"
+    if late_failure:
+        assert "original code files were restored" in message
+        assert (addon / "old.py").read_bytes() == b"old"
+    else:
+        assert (addon / "new.py").read_bytes() == b"new"
 
 
 @pytest.mark.parametrize("fault", ["copy", "mkdir", "verification"])
