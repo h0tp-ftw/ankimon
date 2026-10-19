@@ -1135,7 +1135,7 @@ function renderBriefing(p, id, visState, displayId) {
   else sprite.style.filter = "none";
 
   // 1. Determine Chain State & Requirements
-  let reqs = state.prerequisites[id] || [];
+  let reqs = state.prerequisites[resolveActualId(id)] || state.prerequisites[id] || [];
   let isOR = false;
   if (Array.isArray(reqs) && reqs[0] === "OR") {
     isOR = true;
@@ -1679,7 +1679,7 @@ function renderRequirements(p) {
     reqs = [p.species_id];
   } else {
     reqs =
-      state.prerequisites[p.species_id] || state.prerequisites[p.actual_id];
+      state.prerequisites[p.actual_id] || state.prerequisites[p.species_id];
   }
 
   if (!reqs) {
@@ -1746,7 +1746,7 @@ function buildMapNodes() {
     if (allIds.has(id)) continue;
     allIds.add(id);
 
-    const reqs = state.prerequisites[id];
+    const reqs = state.prerequisites[resolveActualId(id)] || state.prerequisites[id];
     if (reqs) {
       const ids =
         Array.isArray(reqs) && reqs[0] === "OR"
@@ -1765,7 +1765,7 @@ function buildMapNodes() {
   const getDepth = (id, visiting = new Set()) => {
     if (id in memo) return memo[id];
     if (visiting.has(id)) return 0; // break mutual prerequisite cycles
-    const reqs = state.prerequisites[id];
+    const reqs = state.prerequisites[resolveActualId(id)] || state.prerequisites[id];
     if (!reqs) return (memo[id] = 0);
     const ids =
       Array.isArray(reqs) && reqs[0] === "OR"
@@ -1882,7 +1882,7 @@ function buildMapNodes() {
 
   // Union each node with its prerequisites to form connected components
   allIds.forEach((id) => {
-    const reqs = state.prerequisites[id];
+    const reqs = state.prerequisites[resolveActualId(id)] || state.prerequisites[id];
     if (reqs) {
       const ids =
         Array.isArray(reqs) && reqs[0] === "OR"
@@ -2025,7 +2025,8 @@ function renderDiscoveryMap() {
 
   Object.entries(state.prerequisites).forEach(([tId, reqs]) => {
     const targetId = parseInt(tId);
-    if (!nodes[targetId]) return;
+    const displayTargetId = Object.values(state.fullSpeciesMap).find(p => p.actual_id === targetId)?.species_id || targetId;
+    if (!nodes[displayTargetId]) return;
     let srcIds =
       Array.isArray(reqs) && reqs[0] === "OR"
         ? reqs[1]
@@ -2033,11 +2034,12 @@ function renderDiscoveryMap() {
           ? reqs
           : [reqs];
     srcIds.forEach((reqId) => {
-      if (!nodes[reqId]) return;
-      const src = nodes[reqId];
-      const dst = nodes[targetId];
+      const displayReqId = Object.values(state.fullSpeciesMap).find(p => p.actual_id === reqId)?.species_id || reqId;
+      if (!nodes[displayReqId]) return;
+      const src = nodes[displayReqId];
+      const dst = nodes[displayTargetId];
       const srcCaught = state.collection.owned.has(resolveActualId(reqId));
-      const dstCaught = state.collection.owned.has(resolveActualId(targetId));
+      const dstCaught = state.collection.owned.has(resolveActualId(displayTargetId));
       let lineClass = "discovery-line";
       if (srcCaught) lineClass += " line-met";
       if (dstCaught) lineClass += " line-completed";
@@ -2297,7 +2299,7 @@ function clearChainPreview() {
 
 function getNodeState(id) {
   if (state.collection.owned.has(resolveActualId(id))) return "caught";
-  const reqs = state.prerequisites[id];
+  const reqs = state.prerequisites[resolveActualId(id)] || state.prerequisites[id];
   if (!reqs) return "available";
   let metCount = 0,
     total = 0;

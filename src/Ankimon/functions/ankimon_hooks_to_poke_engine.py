@@ -330,31 +330,6 @@ def _install_form_tolerant_pokedex():
     damage_calculator.pokedex = view
 
 
-def _install_judgment_plate_compat():
-    """Support type-changing plates for the move Judgment."""
-    from ..poke_engine.special_effects.moves import modify_move
-    from ..poke_engine import constants
-
-    if "judgment" in modify_move.move_lookup:
-        return
-
-    def judgment(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
-        if attacking_pokemon.item is not None and attacking_pokemon.item.endswith('plate'):
-            attacking_move = attacking_move.copy()
-            type_name = attacking_pokemon.item.replace('plate', '')
-            type_map = {
-                'icicle': 'ice', 'draco': 'dragon', 'dread': 'dark', 'earth': 'ground',
-                'fist': 'fighting', 'flame': 'fire', 'insect': 'bug', 'iron': 'steel',
-                'meadow': 'grass', 'mind': 'psychic', 'pixie': 'fairy', 'sky': 'flying',
-                'splash': 'water', 'spooky': 'ghost', 'stone': 'rock', 'toxic': 'poison',
-                'zap': 'electric'
-            }
-            attacking_move[constants.TYPE] = type_map.get(type_name, type_name)
-        return attacking_move
-
-    # Add to the engine's move_lookup table
-    modify_move.move_lookup["judgment"] = judgment
-
 def _install_stancechange_compat():
     """Support Shield's explicit id and reversible stats for all Aegislash forms.
 
@@ -649,7 +624,6 @@ def _apply_engine_patch(patch):
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
-_apply_engine_patch(_install_judgment_plate_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
 
 
