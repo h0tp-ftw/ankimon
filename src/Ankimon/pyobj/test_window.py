@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 from aqt import mw
@@ -17,8 +18,8 @@ from aqt.qt import (
 
 from aqt.utils import showWarning
 
-from PyQt6.QtGui import QIcon, QColor, QFontMetrics, QPainterPath
-from PyQt6.QtCore import QTimer, QRect
+from PyQt6.QtGui import QIcon, QColor, QFontMetrics, QPainterPath, QMovie, QRegion, QImage
+from PyQt6.QtCore import QTimer, QRect, QSize
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -28,6 +29,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QHBoxLayout,
     QLineEdit,
+    QSizePolicy,
 )
 
 from ..utils import random_item, load_custom_font
@@ -124,6 +126,9 @@ class TestWindow(QWidget):
         # Per-window render caches — see _cached_pixmap()/_scaled_sprite().
         self._pixmap_cache = {}
         self._sprite_cache = {}
+        # The last composite handed to main_label at its native (unscaled)
+        # resolution — see _display_scene_pixmap()/_refresh_scene_pixmap().
+        self._scene_native_pixmap = None
 
         self.init_ui()
         # self.update()
@@ -139,13 +144,59 @@ class TestWindow(QWidget):
         # The battle scene is a full-bleed backdrop, not a widget on a page, so
         # the layout keeps no contents margins: QVBoxLayout's default 11px inset
         # left only 534px for a 556px-wide scene, silently cropping 11px off
-        # each side (the window is sized to the scene, see setFixedWidth below).
+        # each side (the composite is stretched to fill main_label — see
+        # setScaledContents below).
         layout.setContentsMargins(0, 0, 0, 0)
 
         # Main label that will persist and show everything (Logo, Battle, Death)
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Deliberately NOT setScaledContents(True): Qt's own pixmap scaling
+        # for QLabel uses a smooth/bilinear resample, which turns hand-drawn
+        # pixel art into a blurry smear at any size off its native 556x371 —
+        # blown up OR shrunk, since bilinear downscaling of low-res source
+        # art looks just as mushy as upscaling it. _display_scene_pixmap() /
+        # _refresh_scene_pixmap() below do the scaling by hand instead, with
+        # nearest-neighbor sampling, so the art stays crisp at every size.
+        # Expanding size policy so the label still claims the extra layout
+        # space on resize instead of the layout shrink-wrapping it back to
+        # the pixmap's own native size.
+        self.main_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         layout.addWidget(self.main_label)
+
+        # Animated-sprite overlays (gui.gif_in_ankimon_window, default off).
+        # The battle scene is a single QPainter-composited pixmap and can't
+        # animate; when the setting is on and a .gif sprite exists for a
+        # battler, one of these QMovie-backed labels is positioned over that
+        # battler's slot instead and the composite skips drawing that sprite.
+        # Children of main_label so their geometry is in the composite's own
+        # pixel coordinates (offset by _gif_pixmap_origin() when the label is
+        # larger than the scene).
+        self._enemy_gif_label = QLabel(self.main_label)
+        self._main_gif_label = QLabel(self.main_label)
+        for _gl in (self._enemy_gif_label, self._main_gif_label):
+            _gl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            # Without this the label inherits the window's
+            # background-color: rgb(44,44,44) stylesheet and paints a solid
+            # dark box around the (transparent) sprite. The stylesheet rule
+            # alone is enough — WA_TranslucentBackground on a *child* widget
+            # is flaky on real X11/Wayland (stale backing store: the QMovie
+            # advances frames but the label never repaints, so the sprite
+            # looks frozen), and it is not needed here since the parent is
+            # opaque.
+            _gl.setStyleSheet("background: transparent;")
+            _gl.hide()
+        self._enemy_gif_movie = None
+        self._main_gif_movie = None
+        self._gif_native = {"enemy": None, "main": None}
+        self._gif_scaled = {"enemy": None, "main": None}
+        self._opaque_cache = {}
+        self._gif_origin = (0, 0)
+        self._gif_sprite_key = {"enemy": None, "main": None}
+        self._gif_geom = {"enemy": None, "main": None}
+        self._gif_path_exists = {}
 
         # Optional buttons for death screen (hidden by default)
         self.button_widget = QWidget()
@@ -165,20 +216,21 @@ class TestWindow(QWidget):
         pixmap = QPixmap(str(image_path))
         if not pixmap.isNull():
             scaled_pixmap = pixmap.scaled(400, 400, Qt.AspectRatioMode.KeepAspectRatio)
-            self.main_label.setPixmap(scaled_pixmap)
+            self._display_scene_pixmap(scaled_pixmap)
 
         self.setStyleSheet("background-color: rgb(44,44,44);")
         self._reset_window_title()
         self.setWindowIcon(QIcon(str(icon_path)))
-        # Pin the width to the battle scenes' own width (the art is 556x371 with
-        # the dialog box, 555x258 without) and let the layout own the height.
-        # A fixed 556x300 cropped every view: the scene with its dialog box needs
-        # 371, so the message bar at its foot was cut off, and the death screen
-        # needs 297 for the pokedex card plus the catch/defeat row. Heights vary
-        # per view, and Qt only ever raises a shown top-level window's minimum,
-        # so the window grows to whichever view needs the most and then holds
-        # steady — no per-view resize flicker.
-        self.setFixedWidth(556)
+        # The art is drawn at a fixed native resolution (556x371 with the
+        # dialog box, 555x258 without), but the window itself is user
+        # resizable — main_label's setScaledContents(True) above stretches
+        # whichever composite is on screen to fill the label's current size,
+        # so the whole scene (background, sprites, dialog boxes) scales and
+        # repositions together instead of staying pinned at native size with
+        # blank space around it. Only enforce a floor so the scene never
+        # shrinks to something illegible.
+        self.setMinimumSize(278, 150)
+        self.resize(556, 371)
 
     def open_dynamic_window(self):
         # Create and show the dynamic window
@@ -398,16 +450,29 @@ class TestWindow(QWidget):
         t = self._MESSAGE_BOX_BORDER_THICKNESS
 
         if self.last_message_text:
-            battle_text_font = load_custom_font(
-                20, int(self.settings_obj.get("misc.language"))
+            lang = int(self.settings_obj.get("misc.language"))
+            text_rect = rect.adjusted(t + 8, t + 6, -(t + 8), -(t + 6))
+            flags = (
+                Qt.AlignmentFlag.AlignLeft
+                | Qt.AlignmentFlag.AlignVCenter
+                | Qt.TextFlag.TextWordWrap
             )
+            # Start at the size the old single-line message used (28) and
+            # shrink only if the wrapped text would spill out of the box —
+            # 20 flat looked cramped and undersized next to the rest of the
+            # scene's text.
+            size = 28
+            while size > 16:
+                battle_text_font = load_custom_font(size, lang)
+                bounds = QFontMetrics(battle_text_font).boundingRect(
+                    text_rect, flags, self.last_message_text
+                )
+                if bounds.height() <= text_rect.height():
+                    break
+                size -= 2
             painter.setFont(battle_text_font)
             painter.setPen(QColor(240, 240, 208))
-            painter.drawText(
-                rect.adjusted(t + 8, t + 6, -(t + 8), -(t + 6)),
-                Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap,
-                self.last_message_text,
-            )
+            painter.drawText(text_rect, flags, self.last_message_text)
 
     def _cached_pixmap(self, path):
         """Decode a STATIC scene asset once per window instead of per repaint.
@@ -538,6 +603,388 @@ class TestWindow(QWidget):
         painter.drawPixmap(int(-w / 2), int(-h / 2), pixmap)
         painter.restore()
 
+    # --- Animated-sprite overlays (gui.gif_in_ankimon_window) ---------------
+
+    def _gif_in_window_enabled(self):
+        try:
+            return bool(self.settings_obj.get("gui.gif_in_ankimon_window", False))
+        except Exception:
+            return False
+
+    def _gif_sprite_path(self, pokemon, sprite_side):
+        """Resolved .gif sprite path for ``pokemon`` on ``sprite_side``
+        ("front"/"back"), or None when the file is not on disk. The
+        existence check is memoized — it runs on every battle repaint."""
+        try:
+            path = str(pokemon.get_sprite_path(sprite_side, "gif"))
+        except Exception:
+            return None
+        # get_sprite_path silently substitutes a static .png when the .gif is
+        # not downloaded — only treat a real .gif as animatable.
+        if not path.lower().endswith(".gif"):
+            return None
+        exists = self._gif_path_exists.get(path)
+        if exists is None:
+            exists = os.path.exists(path)
+            self._gif_path_exists[path] = exists
+        return path if exists else None
+
+    def _use_gif_for(self, pokemon, sprite_side, fainted):
+        """Whether the composite should leave this battler's slot empty for
+        an animated overlay this frame."""
+        if fainted or not self._gif_in_window_enabled():
+            return False
+        return self._gif_sprite_path(pokemon, sprite_side) is not None
+
+    def _opaque_rect(self, pixmap):
+        """Bounding box of the non-transparent pixels of ``pixmap``.
+
+        The gen5 PNG sprites carry transparent padding — notably a tall
+        footer, so the visible sprite stands ~15-20px above the canvas
+        bottom. The animated GIF frames are cropped tight, so the overlay
+        must be placed against THIS rect (where the PNG art actually is),
+        not the full canvas, or the GIF ends up sitting too low.
+        """
+        key = pixmap.cacheKey()
+        cached = self._opaque_cache.get(key)
+        if cached is None:
+            cached = self._opaque_cache[key] = self._compute_opaque_rect(pixmap)
+        return cached
+
+    @staticmethod
+    def _compute_opaque_rect(pixmap):
+        # Try the cheap route first (a QRegion off the alpha-derived mask).
+        try:
+            r = QRegion(pixmap.mask()).boundingRect()
+            if r.isValid() and not r.isEmpty() and r != pixmap.rect():
+                return r
+        except Exception:
+            pass
+        # Fall back to a direct alpha-channel scan — mask() can come back
+        # empty or full-canvas on some Qt builds, and silently using the full
+        # canvas is exactly the bug this method exists to avoid.
+        try:
+            img = pixmap.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+            w, h = img.width(), img.height()
+            minx, miny, maxx, maxy = w, h, -1, -1
+            for yy in range(h):
+                for xx in range(w):
+                    if (img.pixel(xx, yy) >> 24) & 0xFF > 8:
+                        minx = xx if xx < minx else minx
+                        maxx = xx if xx > maxx else maxx
+                        miny = yy if yy < miny else miny
+                        maxy = yy if yy > maxy else maxy
+            if maxx >= minx and maxy >= miny:
+                return QRect(minx, miny, maxx - minx + 1, maxy - miny + 1)
+        except Exception:
+            pass
+        return pixmap.rect()
+
+    def _stash_gif_geom(self, side, pokemon, sprite_side, pixmap, x, y, w, h, fainted):
+        """Record where this frame's composite left a hole for an animated
+        overlay (or clear it). Consumed by _sync_gif_overlays() after the
+        pixmap is on screen. The stashed rect is the PNG's *visible* content
+        box, so the GIF stands exactly where the static sprite would."""
+        if self._use_gif_for(pokemon, sprite_side, fainted):
+            path = self._gif_sprite_path(pokemon, sprite_side)
+            opq = self._opaque_rect(pixmap)
+            self._gif_geom[side] = (
+                path,
+                x + opq.left(),
+                y + opq.top(),
+                opq.width(),
+                opq.height(),
+            )
+        else:
+            self._gif_geom[side] = None
+
+    def _deferred_gif_sync(self):
+        """QTimer.singleShot target — the window may be gone by the time it
+        fires, so swallow the dead-C++-object error."""
+        try:
+            self._sync_gif_overlays(_deferred=True)
+        except RuntimeError:
+            pass
+
+    def _display_scene_pixmap(self, pixmap):
+        """Set ``pixmap`` (a native-resolution scene composite) as the scene
+        main_label shows, scaled to the label's current size by hand.
+
+        Not setScaledContents(True) — Qt's own QLabel pixmap scaling is a
+        smooth/bilinear resample, which reads as a blurry smear on hand-drawn
+        pixel art at any size off native (both blown up AND shrunk — a
+        bilinear downscale of low-res source art looks just as mushy as
+        upscaling it). Scaling here with FastTransformation keeps sprites and
+        background crisp at whatever size the window is."""
+        self._scene_native_pixmap = pixmap
+        self._refresh_scene_pixmap()
+
+    def _refresh_scene_pixmap(self):
+        """Re-scale the last composite to main_label's CURRENT size.
+
+        Called after _display_scene_pixmap() sets a new composite, and again
+        from resizeEvent() so an already-on-screen composite (e.g. the death
+        screen sitting there while the player drags the window) rescales too
+        instead of staying pinned at whatever size it was first drawn at."""
+        pixmap = self._scene_native_pixmap
+        if pixmap is None or pixmap.isNull():
+            return
+        target = self.main_label.size()
+        if target.width() <= 0 or target.height() <= 0:
+            return
+        if target == pixmap.size():
+            scaled = pixmap
+        else:
+            scaled = pixmap.scaled(
+                target,
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
+        self.main_label.setPixmap(scaled)
+
+    def _gif_pixmap_origin(self):
+        """Top-left offset and (x, y) scale factor of the composited scene
+        inside main_label, as (ox, oy, sx, sy).
+
+        main_label's displayed pixmap is scaled by hand to fill the label
+        (see _refresh_scene_pixmap), so the scene fills the whole label with
+        no offset — but the overlay labels are still positioned in the
+        composite's own NATIVE pixel coordinates (self._scene_native_pixmap),
+        so their geometry needs scaling by that same factor to land in the
+        right spot."""
+        native = self._scene_native_pixmap
+        if native is None or native.isNull() or native.width() <= 0 or native.height() <= 0:
+            return 0, 0, 1.0, 1.0
+        sx = self.main_label.width() / native.width()
+        sy = self.main_label.height() / native.height()
+        return 0, 0, sx, sy
+
+    def _clear_gif_overlay(self, side):
+        movie_attr = "_enemy_gif_movie" if side == "enemy" else "_main_gif_movie"
+        label = self._enemy_gif_label if side == "enemy" else self._main_gif_label
+        # Detach from the label BEFORE dropping the Python reference — QLabel
+        # does not own its QMovie, so a freed movie would leave a dangling
+        # pointer for the next paint.
+        try:
+            label.clear()
+            label.hide()
+        except RuntimeError:
+            pass
+        movie = getattr(self, movie_attr, None)
+        if movie is not None:
+            try:
+                movie.stop()
+            except RuntimeError:
+                pass
+            setattr(self, movie_attr, None)
+        self._gif_sprite_key[side] = None
+        self._gif_native[side] = None
+        self._gif_scaled[side] = None
+
+    def _paint_gif_frame(self, side):
+        """Scale the movie's CURRENT frame to ``self._gif_scaled[side]`` and
+        push it onto the label by hand.
+
+        This is the single place a frame is ever resized, called on every
+        ``frameChanged`` tick (see the label.setMovie() comment where the
+        connection is made) — so no individual frame, whatever its own raw
+        decoded size, can ever reach the screen unscaled.
+        """
+        movie_attr = "_enemy_gif_movie" if side == "enemy" else "_main_gif_movie"
+        label = self._enemy_gif_label if side == "enemy" else self._main_gif_label
+        movie = getattr(self, movie_attr, None)
+        target = self._gif_scaled.get(side)
+        if movie is None or target is None:
+            return
+        image = movie.currentImage()
+        if image.isNull():
+            return
+        fw, fh = target
+        scaled = image.scaled(
+            fw,
+            fh,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        try:
+            label.setPixmap(QPixmap.fromImage(scaled))
+        except RuntimeError:
+            pass
+
+    def hide_gif_overlays(self):
+        """Retire both overlays — call whenever main_label stops showing the
+        battle scene (death screen, logo, item/badge takeovers)."""
+        self._gif_geom = {"enemy": None, "main": None}
+        self._clear_gif_overlay("enemy")
+        self._clear_gif_overlay("main")
+
+    def _sync_gif_overlays(self, _deferred=False):
+        """Place/animate the overlays from the geometry the last composite
+        stashed in ``self._gif_geom``. Safe to call every repaint; a no-op
+        when the feature is off or neither side has a usable .gif."""
+        has_gif = bool(self._gif_geom.get("enemy") or self._gif_geom.get("main"))
+
+        # This runs synchronously inside display_battle()/display_first_encounter,
+        # BEFORE Qt has re-laid-out main_label for the pixmap that was just set.
+        # main_label.width()/height() are therefore whatever the widget was last
+        # laid out at — a frame behind — so _gif_pixmap_origin() returns a bogus
+        # (ox, oy) and the overlay visibly jitters down-and-right for one frame
+        # every turn before the next paint corrects it. Only trust the origin
+        # once the label actually matches the scene pixmap; until then pin the
+        # overlay to (0, 0) (its resting origin) and re-run after layout.
+        pm = self._scene_native_pixmap
+        # main_label's displayed pixmap is a hand-scaled copy of pm sized to
+        # whatever the label was last laid out at (_refresh_scene_pixmap), so
+        # "settled" no longer means the label matches the pixmap's native
+        # size — it means the label has actually been laid out at all
+        # (non-zero) since the composite was set.
+        settled = (
+            pm is not None
+            and not pm.isNull()
+            and self.main_label.width() > 0
+            and self.main_label.height() > 0
+        )
+        if not settled and has_gif and not _deferred:
+            QTimer.singleShot(0, self._deferred_gif_sync)
+
+        if settled:
+            ox, oy, sx, sy = self._gif_pixmap_origin()
+            self._gif_origin = (ox, oy, sx, sy)
+        else:
+            # Reuse the last settled origin/scale rather than a mid-layout
+            # bogus one.
+            ox, oy, sx, sy = getattr(self, "_gif_origin", (0, 0, 1.0, 1.0))
+
+        # TEMP diagnostic: log only the anomalies that could cause the reported
+        # "jitters down-and-right at random" — a non-zero origin or a
+        # not-yet-settled layout while a gif overlay is on screen.
+        if has_gif and (ox or oy or not settled):
+            try:
+                self.logger.log(
+                    "info",
+                    f"[gifjit] deferred={_deferred} settled={settled} "
+                    f"origin=({ox},{oy}) labelWH=({self.main_label.width()},{self.main_label.height()}) "
+                    f"pmWH=({pm.width() if pm else None},{pm.height() if pm else None}) "
+                    f"shake=e{self._enemy_shake_offset}/m{self._main_shake_offset} "
+                    f"view={self.current_view}",
+                )
+            except Exception:
+                pass
+        for side in ("enemy", "main"):
+            geom = self._gif_geom.get(side)
+            movie_attr = "_enemy_gif_movie" if side == "enemy" else "_main_gif_movie"
+            label = self._enemy_gif_label if side == "enemy" else self._main_gif_label
+            if geom is None:
+                self._clear_gif_overlay(side)
+                continue
+            path, x, y, w, h = geom
+            if w <= 0 or h <= 0:
+                self._clear_gif_overlay(side)
+                continue
+            if self._gif_sprite_key[side] != path:
+                self._clear_gif_overlay(side)
+                movie = QMovie(path)
+                if not movie.isValid():
+                    self._gif_path_exists[path] = False
+                    continue
+                movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                movie.jumpToFrame(0)
+                native = movie.currentPixmap().size()
+                self._gif_native[side] = (
+                    (native.width(), native.height())
+                    if native.width() > 0 and native.height() > 0
+                    else (w, h)
+                )
+                # Deliberately NOT label.setMovie(movie): that lets Qt scale
+                # each decoded frame to setScaledSize() internally, and on
+                # some Qt/GIF-plugin builds a frame whose own raw sub-image
+                # differs in size from frame 0 (common in hand-made sprite
+                # sheets — an attack frame's extended limb needs a taller
+                # canvas than the idle frame) is briefly emitted at ITS OWN
+                # native size before the scale re-applies: one frame flashes
+                # huge, then snaps back. Driving the label's pixmap by hand on
+                # every frameChanged makes our own resize the only source of
+                # truth for what's drawn, so no frame can ever bypass it.
+                movie.frameChanged.connect(
+                    lambda _idx, _side=side: self._paint_gif_frame(_side)
+                )
+                setattr(self, movie_attr, movie)
+                self._gif_scaled[side] = None
+                self._gif_sprite_key[side] = path
+            else:
+                movie = getattr(self, movie_attr, None)
+                if movie is None:
+                    continue
+            # Fit the GIF's own frame into the slot the composite left,
+            # aspect preserved (GIF sheets are framed tighter than the PNGs,
+            # so forcing them to the PNG box stretched them). Centre it
+            # horizontally and sit it on the slot's baseline so it stands
+            # where the static sprite stood.
+            #
+            # Never upscale past the sprite's own resolution: the gen5ani GIFs
+            # are small (~40-120px) and deliberately sized by species — blowing
+            # a 51px Cubchoo up to fill a 120px slot makes it blurry, oversized
+            # and floating off the platform. Only scale DOWN, for the rare GIF
+            # frame that is larger than the slot.
+            # (x, y, w, h) is the PNG's visible content box (see
+            # _stash_gif_geom). Fit the GIF frame into it aspect-preserved,
+            # never upscaling — the gen5ani GIFs are small and species-sized,
+            # so blowing a 51px Cubchoo up to a 120px slot looks wrong. Then
+            # centre it on that box and stand it on its bottom edge, i.e.
+            # exactly where the static sprite's feet were.
+            nw_src, nh_src = self._gif_native.get(side) or (w, h)
+            scale = min(w / nw_src, h / nh_src, 1.0)
+            fw = max(1, int(nw_src * scale))
+            fh = max(1, int(nh_src * scale))
+            fx = x + (w - fw) // 2
+            # Stand it on the content box's bottom edge (the PNG's feet), but
+            # hard-clamp so the sprite can never cross into the message box —
+            # a guaranteed constraint regardless of whether _opaque_rect
+            # measured the PNG padding correctly on this Qt build.
+            baseline = min(y + h, self._MESSAGE_BOX_RECT.top())
+            fy = baseline - fh
+            # Everything above is in the composite's NATIVE pixel coordinates
+            # (same space the static PNG sprites are painted in). main_label
+            # now stretches that composite to its own current size, so the
+            # overlay's screen geometry needs the same (sx, sy) scale factor
+            # applied, or it stays pinned at native size/position while the
+            # background scales around it.
+            sfw = max(1, int(fw * sx))
+            sfh = max(1, int(fh * sy))
+            # Record the target size for _paint_gif_frame (every frame is
+            # rescaled to this on the fly — see the label.setMovie() comment
+            # above). Only force an immediate repaint of the current frame
+            # when the target actually changed, so a shake's ~20 calls/turn
+            # don't re-render the same frame at the same size repeatedly.
+            if self._gif_scaled.get(side) != (sfw, sfh):
+                self._gif_scaled[side] = (sfw, sfh)
+                self._paint_gif_frame(side)
+            gx, gy = int(ox + fx * sx), int(oy + fy * sy)
+            # TEMP diagnostic: flag a jump bigger than a shake step (±7,±3).
+            _prev = getattr(self, "_gifjit_pos", {}).get(side)
+            if _prev is not None and (abs(_prev[0] - gx) > 10 or abs(_prev[1] - gy) > 10):
+                try:
+                    self.logger.log(
+                        "info",
+                        f"[gifjit] {side} JUMP {_prev} -> ({gx},{gy}) "
+                        f"content=({x},{y},{w},{h}) fit=({fw},{fh}) origin=({ox},{oy}) "
+                        f"deferred={_deferred} settled={settled}",
+                    )
+                except Exception:
+                    pass
+            self._gifjit_pos = getattr(self, "_gifjit_pos", {})
+            self._gifjit_pos[side] = (gx, gy)
+            label.setGeometry(gx, gy, sfw, sfh)
+            label.raise_()
+            label.show()
+            if self.isVisible():
+                try:
+                    if movie.state() != QMovie.MovieState.Running:
+                        movie.start()
+                    movie.setPaused(False)
+                except RuntimeError:
+                    pass
+
     def window_show(self, bckgimage_path, lang_name):
         """Composite the first-encounter frame (background, sprites, HP bars,
         CP/BP, message box) into a pixmap for the Ankimon Window."""
@@ -601,9 +1048,18 @@ class TestWindow(QWidget):
         mpkmn_width = new_width2 // 2
         mpkmn_height = new_height2
 
-        # draw pokemon image to a specific pixel
-        painter.drawPixmap((410 - wpkmn_width) + self._enemy_shake_offset[0], (170 - wpkmn_height) + self._enemy_shake_offset[1], pixmap)
-        painter.drawPixmap((144 - mpkmn_width) + self._main_shake_offset[0], (275 - mpkmn_height) + self._main_shake_offset[1], pixmap2)
+        # draw pokemon image to a specific pixel — or leave the slot empty
+        # and hand its geometry to an animated overlay (see _sync_gif_overlays)
+        enemy_x = (410 - wpkmn_width) + self._enemy_shake_offset[0]
+        enemy_y = (170 - wpkmn_height) + self._enemy_shake_offset[1]
+        main_x = (144 - mpkmn_width) + self._main_shake_offset[0]
+        main_y = (275 - mpkmn_height) + self._main_shake_offset[1]
+        self._stash_gif_geom("enemy", self.enemy_pokemon, "front", pixmap, enemy_x, enemy_y, new_width, new_height, False)
+        self._stash_gif_geom("main", self.main_pokemon, "back", pixmap2, main_x, main_y, new_width2, new_height2, False)
+        if self._gif_geom["enemy"] is None:
+            painter.drawPixmap(enemy_x, enemy_y, pixmap)
+        if self._gif_geom["main"] is None:
+            painter.drawPixmap(main_x, main_y, pixmap2)
 
         experience = int(
             find_experience_for_level(
@@ -807,17 +1263,29 @@ class TestWindow(QWidget):
         # draw pokemon image to a specific pixel — same spot as the intro
         # frame, since the dialog box (and thus the available space) no
         # longer changes turn to turn. Tipped on its side when fainted (hp
-        # <= 0) rather than just standing there under an empty HP bar.
-        self._draw_pokemon_sprite(
-            painter, pixmap,
-            (410 - wpkmn_width) + self._enemy_shake_offset[0], (170 - wpkmn_height) + self._enemy_shake_offset[1],
-            new_width, new_height, enemy_hp <= 0, tip_direction=1,
-        )
-        self._draw_pokemon_sprite(
-            painter, pixmap2,
-            (144 - mpkmn_width) + self._main_shake_offset[0], (275 - mpkmn_height) + self._main_shake_offset[1],
-            new_width2, new_height2, main_hp <= 0, tip_direction=-1,
-        )
+        # <= 0) rather than just standing there under an empty HP bar. A
+        # non-fainted side with an animated sprite leaves its slot empty for
+        # the QMovie overlay instead (see _sync_gif_overlays).
+        enemy_x = (410 - wpkmn_width) + self._enemy_shake_offset[0]
+        enemy_y = (170 - wpkmn_height) + self._enemy_shake_offset[1]
+        main_x = (144 - mpkmn_width) + self._main_shake_offset[0]
+        main_y = (275 - mpkmn_height) + self._main_shake_offset[1]
+        # A Pokemon mid-Dig is underground until the move lands next turn —
+        # draw its slot empty rather than leaving it standing on the surface.
+        enemy_hidden = "dig" in (getattr(self.enemy_pokemon, "volatile_status", None) or ())
+        main_hidden = "dig" in (getattr(self.main_pokemon, "volatile_status", None) or ())
+        self._stash_gif_geom("enemy", self.enemy_pokemon, "front", pixmap, enemy_x, enemy_y, new_width, new_height, enemy_hp <= 0 or enemy_hidden)
+        self._stash_gif_geom("main", self.main_pokemon, "back", pixmap2, main_x, main_y, new_width2, new_height2, main_hp <= 0 or main_hidden)
+        if self._gif_geom["enemy"] is None and not enemy_hidden:
+            self._draw_pokemon_sprite(
+                painter, pixmap, enemy_x, enemy_y,
+                new_width, new_height, enemy_hp <= 0, tip_direction=1,
+            )
+        if self._gif_geom["main"] is None and not main_hidden:
+            self._draw_pokemon_sprite(
+                painter, pixmap2, main_x, main_y,
+                new_width2, new_height2, main_hp <= 0, tip_direction=-1,
+            )
 
         experience = int(
             find_experience_for_level(
@@ -1192,7 +1660,8 @@ class TestWindow(QWidget):
         # encounter's last render (which could land inside the 50 ms window).
         self._last_display_time = 0
         new_label = self.pokemon_display_first_encounter()
-        self.main_label.setPixmap(new_label.pixmap())
+        self._display_scene_pixmap(new_label.pixmap())
+        self._sync_gif_overlays()
         self.button_widget.hide()
         self.setStyleSheet("background-color: rgb(44,44,44);")
         self.current_view = "battle"
@@ -1227,7 +1696,8 @@ class TestWindow(QWidget):
 
         # Update the existing label without clearing the layout
         new_label = self.pokemon_display_battle()
-        self.main_label.setPixmap(new_label.pixmap())
+        self._display_scene_pixmap(new_label.pixmap())
+        self._sync_gif_overlays()
         self.button_widget.hide()
         self.current_view = "battle"
 
@@ -1398,7 +1868,8 @@ class TestWindow(QWidget):
         img_label, kill_btn, catch_btn, nick_input = self.pokemon_display_dead_pokemon()
 
         # Update the image
-        self.main_label.setPixmap(img_label.pixmap())
+        self._display_scene_pixmap(img_label.pixmap())
+        self.hide_gif_overlays()
 
         # Sync the persistent buttons (update text/placeholder)
         self.kill_button.setText(kill_btn.text())
@@ -1432,12 +1903,52 @@ class TestWindow(QWidget):
             if widget:
                 widget.deleteLater()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Neither the scene composite nor the gif overlay labels resize
+        # themselves — both are placed by hand (see _refresh_scene_pixmap /
+        # _sync_gif_overlays) — so re-run both whenever the window (and
+        # therefore main_label) changes size, or they stay pinned at
+        # whatever size/position the previous layout put them at.
+        try:
+            self._refresh_scene_pixmap()
+            self._sync_gif_overlays()
+        except RuntimeError:
+            pass
+
     def closeEvent(self, event):
         # Nothing cancels the singleShot timers on close, so a shake mid-flight
         # keeps calling force_display_battle() on a window the player just shut
         # — and leaves the offsets frozen for the next time it is reopened.
         self._cancel_shakes()
+        self.hide_gif_overlays()
         self.pkmn_window = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Resume any animated sprite overlays paused while the window was hidden.
+        for attr in ("_enemy_gif_movie", "_main_gif_movie"):
+            movie = getattr(self, attr, None)
+            if movie is not None:
+                try:
+                    if movie.state() == QMovie.MovieState.NotRunning:
+                        movie.start()
+                    movie.setPaused(False)
+                except RuntimeError:
+                    pass
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        # Pause, don't stop(): hideEvent also fires on occlusion / workspace
+        # switches on some WMs, and stop() rewinds to frame 0 with no matching
+        # showEvent to restart it — which is one way the sprite ends up frozen.
+        for attr in ("_enemy_gif_movie", "_main_gif_movie"):
+            movie = getattr(self, attr, None)
+            if movie is not None:
+                try:
+                    movie.setPaused(True)
+                except RuntimeError:
+                    pass
 
     def _reset_window_title(self, callback_func=None):
         self.setWindowTitle("Ankimon Window")
