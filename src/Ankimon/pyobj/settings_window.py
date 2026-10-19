@@ -804,14 +804,14 @@ class SettingsWindow(QMainWindow):
             try:
                 orig_amount = int(working_config["trainer.cash_reward_amount"])
                 # Hard bounds
-                new_amount = max(10, min(400, orig_amount))
+                new_amount = max(10, min(800, orig_amount))
 
                 # Cheat Threshold
                 interval = int(working_config.get("trainer.cash_reward_interval", 10))
                 daily_average = int(working_config.get("battle.daily_average", 100))
                 if daily_average <= 0:
                     daily_average = 100
-                max_per_card = 400.0 / daily_average
+                max_per_card = 800.0 / daily_average
                 max_allowed = max(1, int(interval * max_per_card))
                 if new_amount > max_allowed:
                     new_amount = max_allowed
@@ -820,7 +820,7 @@ class SettingsWindow(QMainWindow):
                 elif new_amount != orig_amount:
                     has_adjustments = True
                     adjustment_msg += (
-                        f"- Reward Amount: Adjusted to {new_amount}¥ (Range: 10-400)\n"
+                        f"- Reward Amount: Adjusted to {new_amount}¥ (Range: 10-800)\n"
                     )
 
                 working_config["trainer.cash_reward_amount"] = new_amount
