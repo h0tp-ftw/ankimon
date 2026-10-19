@@ -159,7 +159,7 @@ def test_defeat_override_precedes_wishlist_and_catch_if_new():
     _assert_completed_override(result)
 
 
-def test_defeat_override_yields_to_legendary_auto_catch_safety_net():
+def test_defeat_override_overrides_legendary_auto_catch_safety_net():
     result = _run_override_scenario(
         1,
         "defeat",
@@ -167,12 +167,12 @@ def test_defeat_override_yields_to_legendary_auto_catch_safety_net():
         auto_catch_overrides={"battle.auto_catch_legendary": True},
     )
 
-    result.catch.assert_called_once()
-    result.defeat.assert_not_called()
+    result.defeat.assert_called_once()
+    result.catch.assert_not_called()
     _assert_completed_override(result)
 
 
-def test_defeat_override_yields_to_mythical_auto_catch_safety_net():
+def test_defeat_override_overrides_mythical_auto_catch_safety_net():
     result = _run_override_scenario(
         1,
         "defeat",
@@ -180,8 +180,8 @@ def test_defeat_override_yields_to_mythical_auto_catch_safety_net():
         auto_catch_overrides={"battle.auto_catch_mythical": True},
     )
 
-    result.catch.assert_called_once()
-    result.defeat.assert_not_called()
+    result.defeat.assert_called_once()
+    result.catch.assert_not_called()
     _assert_completed_override(result)
 
 
