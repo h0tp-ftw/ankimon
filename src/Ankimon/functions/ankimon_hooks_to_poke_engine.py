@@ -444,6 +444,35 @@ def _ability_suppressed(attacking_pokemon, defending_pokemon):
     )
 
 
+def _install_shell_bell():
+    from ..poke_engine.special_effects.items import modify_attack_being_used
+
+    _ON_USE_ITEM_VERSION = 1
+
+    original_fn = modify_attack_being_used.item_modify_attack_being_used
+    if getattr(original_fn, "_ankimon_on_use_item_version", 0) >= _ON_USE_ITEM_VERSION:
+        return
+
+    def patched_fn(item_name, attacking_move, attacking_pokemon, defending_pokemon):
+        attacking_move = original_fn(item_name, attacking_move, attacking_pokemon, defending_pokemon)
+
+        if item_name == 'shellbell':
+            if attacking_move.get(constants.CATEGORY) in constants.DAMAGING_CATEGORIES:
+                attacking_move = attacking_move.copy()
+                if constants.DRAIN in attacking_move:
+                    current_drain = attacking_move[constants.DRAIN]
+                    drain_fraction = current_drain[0] / current_drain[1] + (1 / 8)
+                    attacking_move[constants.DRAIN] = [int(drain_fraction * 1000), 1000]
+                else:
+                    attacking_move[constants.DRAIN] = [1, 8]
+
+        return attacking_move
+
+    patched_fn.__name__ = "item_modify_attack_being_used"
+    patched_fn._ankimon_on_use_item_version = _ON_USE_ITEM_VERSION
+    modify_attack_being_used.item_modify_attack_being_used = patched_fn
+
+
 def _install_on_hit_boost_items():
     """Give Cell Battery its battle effect: +1 Attack when hit by an Electric move.
 
@@ -625,6 +654,7 @@ _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
+_apply_engine_patch(_install_shell_bell)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
