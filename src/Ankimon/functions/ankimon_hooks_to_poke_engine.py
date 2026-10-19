@@ -330,6 +330,13 @@ def _install_form_tolerant_pokedex():
     damage_calculator.pokedex = view
 
 
+def _patch_megastarmie_ability():
+    # Ankimon engine poke_engine is a submodule. Instead of modifying its data file directly,
+    # which breaks submodule reference updates, patch the ability mapping dynamically.
+    if "starmiemega" in _engine_pokedex and "abilities" in _engine_pokedex["starmiemega"]:
+        _engine_pokedex["starmiemega"]["abilities"] = {"0": "Huge Power"}
+
+
 def _install_stancechange_compat():
     """Support Shield's explicit id and reversible stats for all Aegislash forms.
 
@@ -623,6 +630,7 @@ def _apply_engine_patch(patch):
 
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
+_apply_engine_patch(_patch_megastarmie_ability)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
 
