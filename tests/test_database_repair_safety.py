@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -199,6 +200,102 @@ def test_repair_refuses_an_external_wal_snapshot(repair_env):
     assert persisted_cash(db.db_path) == 9876
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX file permissions")
+@pytest.mark.parametrize("source_mode", [0o600, 0o640, 0o400])
+@pytest.mark.parametrize("creation_umask", [0o022, 0o077])
+def test_repair_files_start_private_and_preserve_original_mode(
+    repair_env, monkeypatch, source_mode, creation_umask
+):
+    module, db = repair_env
+    assert db.close()
+    db.db_path.chmod(source_mode)
+    original = db.db_path.read_bytes()
+    real_connect = module.sqlite3.connect
+    real_copy = module.shutil.copyfile
+    observed = []
+
+    def connect(path, *args, **kwargs):
+        candidate = Path(path)
+        if ".repair-" in candidate.name and candidate.suffix == ".tmp":
+            assert candidate.is_file(), "Create privately before SQLite writes data"
+            assert stat.S_IMODE(candidate.stat().st_mode) == 0o600
+            observed.append("repair")
+        return real_connect(path, *args, **kwargs)
+
+    def copy(source, target):
+        assert target.is_file(), "Create privately before copying save data"
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+        observed.append("backup")
+        result = real_copy(source, target)
+        assert stat.S_IMODE(target.stat().st_mode) == 0o600
+        return result
+
+    monkeypatch.setattr(module.sqlite3, "connect", connect)
+    monkeypatch.setattr(module.shutil, "copyfile", copy)
+    previous_umask = os.umask(creation_umask)
+    try:
+        db.repair_database()
+        assert observed == ["repair", "backup"]
+        backup = db.db_path.with_suffix(".db.corrupt_backup")
+        assert backup.read_bytes() == original
+        for path in (db.db_path, backup):
+            assert stat.S_IMODE(path.stat().st_mode) == source_mode
+            assert persisted_cash(path) == 100
+    finally:
+        os.umask(previous_umask)
+        db.db_path.chmod(0o600)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX file permissions")
+@pytest.mark.parametrize(
+    "failure", ["copy", "backup_permissions", "repair_permissions", "publish"]
+)
+def test_failed_repair_retains_only_private_save_copies(
+    repair_env, monkeypatch, failure
+):
+    module, db = repair_env
+    assert db.close()
+    db.db_path.chmod(0o600)
+    original = db.db_path.read_bytes()
+    real_copy = module.shutil.copyfile
+    real_chmod = Path.chmod
+    real_replace = Path.replace
+
+    def copy(source, target):
+        if failure == "copy":
+            target.write_bytes(b"private data from an interrupted copy")
+            raise OSError("injected private-copy failure")
+        return real_copy(source, target)
+
+    def chmod(path, mode, *args, **kwargs):
+        if ".repair-" in path.name:
+            is_backup = ".repair-backup-" in path.name
+            if failure == ("backup_permissions" if is_backup else "repair_permissions"):
+                raise OSError("injected private-permissions failure")
+        return real_chmod(path, mode, *args, **kwargs)
+
+    def replace(path, target):
+        if failure == "publish" and target == db.db_path:
+            raise OSError("injected private-publication failure")
+        return real_replace(path, target)
+
+    monkeypatch.setattr(module.shutil, "copyfile", copy)
+    monkeypatch.setattr(Path, "chmod", chmod)
+    monkeypatch.setattr(Path, "replace", replace)
+    previous_umask = os.umask(0o022)
+    try:
+        with pytest.raises(OSError, match="injected private-"):
+            db.repair_database()
+        assert db.db_path.read_bytes() == original
+        copies = list(db.db_path.parent.glob("ankimon.db*"))
+        assert len(copies) > 1, "Exercise retained recovery files"
+        for path in copies:
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert persisted_cash(db.db_path) == 100
+    finally:
+        os.umask(previous_umask)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="requires a real Windows sharing violation")
 @pytest.mark.parametrize("release_handle", [True, False])
 def test_windows_scanner_handle_retries_or_preserves_repair(
@@ -347,6 +444,9 @@ module = tests.load_database(root)
 db = module.AnkimonDB(db_path=root / "ankimon.db")
 db.set_config_value("trainer.cash", 4321)
 db.save_item(1, "potion", 7)
+if os.name == "posix":
+    os.umask(0o022)
+    db.db_path.chmod(0o600)
 real_replace = Path.replace
 boundary = sys.argv[3]
 def crash_replace(path, target):
@@ -370,6 +470,9 @@ raise AssertionError("Crash boundary was not reached")
     assert result.returncode == 77, result.stdout + result.stderr
     active = tmp_path / "ankimon.db"
     assert persisted_cash(active) == 4321
+    if os.name == "posix":
+        for path in tmp_path.glob("ankimon.db*"):
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
     # A distinct process must reopen the same populated save, not just find a
     # valid SQLite file through the parent test's existing handles.
     reopen = (

@@ -6,7 +6,9 @@ replacing multiple JSON files with a single, obfuscated database file.
 """
 
 import json
+import os
 import sqlite3
+import stat
 import threading
 import uuid
 import weakref
@@ -782,6 +784,14 @@ class AnkimonDB:
             db_file = self.db_path
             if not db_file.is_file():
                 raise RuntimeError("Database repair requires an existing save")
+            original_mode = stat.S_IMODE(db_file.stat().st_mode)
+
+            def preserve_permissions(path):
+                # Open before chmod so read-only saves can still be synced.
+                with path.open("r+b") as handle:
+                    path.chmod(original_mode)
+                    os.fsync(handle.fileno())
+
             # Failed or interrupted attempts retain their recovery material.
             # A retry must not unlink the previous attempt's only readable copy.
             token = uuid.uuid4().hex
@@ -838,7 +848,9 @@ class AnkimonDB:
                 modified_sql.append(line)
             full_sql = "\n".join(modified_sql)
 
-            # Write to temporary file
+            # Recovery files may survive failures. Keep them private from the
+            # first write, independently of the process's default umask.
+            tmp_db.touch(mode=0o600, exist_ok=False)
             dest_conn = sqlite3.connect(str(tmp_db))
             dest_conn.executescript(full_sql)
 
@@ -973,16 +985,19 @@ class AnkimonDB:
             # Preserve the original without ever removing its active pathname.
             # The source may be corrupt, so verify the backup byte-for-byte,
             # rather than demanding SQLite integrity from the recovery copy.
+            backup_tmp.touch(mode=0o600, exist_ok=False)
             shutil.copyfile(db_file, backup_tmp)
             _fsync_file(backup_tmp)
             if _digest(db_file) != _digest(backup_tmp):
                 raise RuntimeError("Database repair backup verification failed")
+            preserve_permissions(backup_tmp)
             _retry_on_file_lock(lambda: backup_tmp.replace(backup_db))
             _fsync_directory(db_file.parent)
 
             # One same-directory atomic replace leaves either the original or
             # repaired save at the active name even if the process stops here.
             # On failure both the original and completed repair remain intact.
+            preserve_permissions(tmp_db)
             _retry_on_file_lock(lambda: tmp_db.replace(db_file))
             _fsync_directory(db_file.parent)
             self._log(
