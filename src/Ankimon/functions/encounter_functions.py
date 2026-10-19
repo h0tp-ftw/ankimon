@@ -47,6 +47,7 @@ from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.drawing_utils import tooltipWithColour
 from ..move_names import format_move_name
 from ..utils import (
+    find_details_move,
     get_ev_spread,
     is_alive,
     limit_ev_yield,
@@ -1142,10 +1143,27 @@ def generate_random_pokemon(
     base_stats = search_pokedex(name, "baseStats")
 
     all_possible_moves = get_all_pokemon_moves(name, wild_pokemon_lvl)
+
+    # Try to guarantee at least one damaging move that isn't self-destructing
+    damaging_moves = []
+    for move in all_possible_moves:
+        details = find_details_move(move)
+        if details and details.get("category", "").lower() in ("physical", "special"):
+            move_name = details.get("id", "").lower()
+            if move_name not in ("explosion", "selfdestruct", "memento", "destinybond", "finalgambit", "healingwish", "lunardance"):
+                damaging_moves.append(move)
+
     if len(all_possible_moves) <= 4:
         moves = all_possible_moves
     else:
-        moves = random.sample(all_possible_moves, 4)
+        moves = []
+        if damaging_moves:
+            guaranteed_move = random.choice(damaging_moves)
+            moves.append(guaranteed_move)
+            remaining_moves = [m for m in all_possible_moves if m != guaranteed_move]
+            moves.extend(random.sample(remaining_moves, min(3, len(remaining_moves))))
+        else:
+            moves = random.sample(all_possible_moves, 4)
 
     ability = "no_ability"  # Default value for ability
     possible_abilities = search_pokedex(name, "abilities")
