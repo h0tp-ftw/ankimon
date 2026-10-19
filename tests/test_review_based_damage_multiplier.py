@@ -76,6 +76,7 @@ _spec.loader.exec_module(hook)
 
 class _FakeMutator:
     """Minimal stand-in; the wrapper only touches these attributes."""
+    state = None
 
 
 @pytest.fixture
