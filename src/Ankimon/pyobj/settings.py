@@ -74,6 +74,7 @@ DEFAULT_CONFIG = {
     "misc.gen7": True,
     "misc.gen8": True,
     "misc.gen9": False,
+    "misc.starters": False,
     "misc.active_region": None,
     "misc.remove_level_cap": False,
     "misc.language": 9,

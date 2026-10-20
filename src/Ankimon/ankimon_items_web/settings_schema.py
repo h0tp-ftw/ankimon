@@ -197,6 +197,13 @@ GROUPS = [
                 ("misc.gen9", "Gen 9"),
             ],
         },
+        "chip_group2": {
+            "label": "Enable Starters",
+            "description": "Toggle whether Starter Pokémon can spawn in the wild.",
+            "keys": [
+                ("misc.starters", "Starters"),
+            ],
+        },
     },
     {
         "label": "Mobile Reviews",
