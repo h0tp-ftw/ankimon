@@ -353,7 +353,7 @@ class SettingsWindow(QMainWindow):
                 "subgroups": {
                     "Technical Settings": {
                         "settings": [
-                            "SSH Access",
+                            "Allow Background Checks",
                             "Prevent Ankimon News on Startup",
                             "Developer Mode",
                         ]
