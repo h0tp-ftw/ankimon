@@ -53,7 +53,7 @@ Set `view_main_front` to `true` to view your main Pokémon from the front in the
 
 Allow Background Checks controls automatic checks for Ankimon updates and changelog downloads at startup. Set `misc.ssh` to `true` to allow these checks, or `false` to skip them if they cause connection errors, such as on restricted networks.
 
-Restart Anki after changing this setting. Sprite update checks are unaffected.
+Restart Anki after changing this setting.
 - `misc.ssh` [True/False] (default: True)
 
 Set `animate_time` to `true` to enable a small animation in the reviewer. This animation is displayed when you or the wild Pokémon is taking damage. `false` disables this.
