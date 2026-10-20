@@ -67,7 +67,7 @@
     "misc.gen9": "Include Pokémon from Generation 9.",
     "misc.remove_level_cap": "Allow Pokémon to level beyond 100 and wild encounters above level 100.",
     "misc.language": "Select language ID for Pokémon names and descriptions. [1: Japanese (Hir & Kata), 2: Japanese (Roomaji), 3: Korean, 4: Chinese (Traditional), 5: French, 6: German, 7: Spanish, 8: Italian, 9: English, 10: Czech, 11: Japanese, 12: Chinese (Simplified), 13: Portuguese (Brazil), 14: Spanish (Latin America)]",
-    "misc.ssh": "Enable background update checks if encountering connectivity issues (like Eduroam restrictions). For example, toggle this setting if you want to receive Ankimon update notifications in Anki but haven't been able to.",
+    "misc.ssh": "Allow automatic checks for Ankimon updates and changelog downloads at startup. Disable to skip these checks if they cause connection errors. Restart Anki after changing this setting. Sprite update checks are unaffected.",
     "misc.leaderboard": "Enable synchronization with Ankimon leaderboard. To set up, enter your Username and API Key below.",
     "misc.YouShallNotPass_Ankimon_News": "If enabled, you will not receive news pop-ups when Ankimon starts (like changelogs and updates).",
     "misc.discord_rich_presence": "Enable Discord Rich Presence for Ankimon. Shows in Discord as 'Playing Ankimon'.",
