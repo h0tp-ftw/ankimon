@@ -473,6 +473,7 @@ class SettingsWindow(QMainWindow):
                     "Generation 7",
                     "Generation 8",
                     "Generation 9",
+                    "Enable Wild Starters",
                 ]
             },
             "Leaderboard": {

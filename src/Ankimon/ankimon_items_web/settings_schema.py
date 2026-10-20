@@ -175,6 +175,7 @@ GROUPS = [
         "label": "Generations",
         "settings": [
             "Active Region",
+            "Enable Wild Starters",
         ],
         # The 9 per-generation booleans render as a single chip row instead of
         # 9 separate Enabled/Disabled rows — much faster to scan and toggle.
@@ -195,13 +196,6 @@ GROUPS = [
                 ("misc.gen7", "Gen 7"),
                 ("misc.gen8", "Gen 8"),
                 ("misc.gen9", "Gen 9"),
-            ],
-        },
-        "chip_group2": {
-            "label": "Enable Starters",
-            "description": "Toggle whether Starter Pokémon can spawn in the wild.",
-            "keys": [
-                ("misc.starters", "Starters"),
             ],
         },
     },
