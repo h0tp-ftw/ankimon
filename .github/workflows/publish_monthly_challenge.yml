@@ -1,0 +1,67 @@
+name: Publish Next Month's Pokémon Challenge
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC to check if we're within the reveal window before next month
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force release regardless of the calendar day'
+        type: boolean
+        default: false
+      target_month:
+        description: "Specific month to release (e.g., 'November 2026') or leave blank for next month"
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve GitHub App token (ruleset bypass)
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        continue-on-error: true
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token || github.token }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check and Update Challenge JSON
+        id: update_step
+        env:
+          UPCOMING_MONTHLY_CHALLENGES: ${{ secrets.UPCOMING_MONTHLY_CHALLENGES }}
+          FORCE_RELEASE: ${{ github.event.inputs.force }}
+          TARGET_MONTH: ${{ github.event.inputs.target_month }}
+          DAYS_AHEAD: 1
+        run: |
+          python scripts/release_monthly_challenge.py
+
+      - name: Commit and Push if updated
+        if: steps.update_step.outputs.updated == 'true'
+        shell: bash
+        run: |
+          git config user.name "ankimon-release-bot[bot]"
+          git config user.email "ankimon-release-bot[bot]@users.noreply.github.com"
+          git add assets/challenges/monthly_challenges.json
+          git commit -m "feat(monthly): reveal ${{ steps.update_step.outputs.month }} challenge (${{ steps.update_step.outputs.pokemon }})"
+          
+          # Push directly to main using the token configured in checkout
+          git push origin main
