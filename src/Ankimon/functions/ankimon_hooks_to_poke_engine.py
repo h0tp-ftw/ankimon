@@ -624,7 +624,34 @@ def _apply_engine_patch(patch):
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
+
+def _install_lens_items():
+    from ..poke_engine.special_effects.moves import modify_move
+    from ..poke_engine import constants
+
+    if getattr(modify_move.modify_attack_being_used, "_ankimon_lens_patched", False):
+        return
+
+    original_modify_attack = modify_move.modify_attack_being_used
+
+    def ankimon_modify_attack_being_used(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+        move = original_modify_attack(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain)
+
+        if move.get(constants.ACCURACY) is not True:
+            if attacking_pokemon.item == "widelens":
+                move = move.copy()
+                move[constants.ACCURACY] = move[constants.ACCURACY] * 1.1
+            elif attacking_pokemon.item == "zoomlens" and not first_move:
+                move = move.copy()
+                move[constants.ACCURACY] = move[constants.ACCURACY] * 1.2
+        return move
+
+    ankimon_modify_attack_being_used._ankimon_lens_patched = True
+    modify_move.modify_attack_being_used = ankimon_modify_attack_being_used
+
+
 _apply_engine_patch(_install_on_hit_boost_items)
+_apply_engine_patch(_install_lens_items)
 
 
 def reset_stat_boosts(pokemon: Pokemon) -> Pokemon:
