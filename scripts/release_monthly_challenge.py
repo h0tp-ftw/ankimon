@@ -4,6 +4,7 @@ release_monthly_challenge.py
 
 Automates revealing the upcoming month's Pokémon challenge from an encrypted
 secret (or environment variable) into `assets/challenges/monthly_challenges.json`.
+Also provides CLI tools to validate the format of challenge JSON strings or files.
 
 Supported Environment Variables:
   - UPCOMING_MONTHLY_CHALLENGES: JSON array string of future challenge objects.
@@ -23,7 +24,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 
 CHALLENGES_PATH = Path("assets/challenges/monthly_challenges.json")
@@ -72,18 +73,99 @@ def should_release(
     return target_date.month != reference_date.month
 
 
-def validate_challenge_structure(entry: Dict[str, Any]) -> None:
-    """Validate that challenge entry has all required fields."""
+def validate_challenge_structure(entry: Dict[str, Any], index: Optional[int] = None) -> List[str]:
+    """
+    Validate that a challenge entry has all required fields and correct types.
+    Returns a list of error strings (empty if valid).
+    """
+    errors: List[str] = []
+    prefix = f"Entry [{index}] " if index is not None else "Entry: "
+
+    if not isinstance(entry, dict):
+        return [f"{prefix}must be a JSON object, got {type(entry).__name__}"]
+
     required_keys = ["code", "month", "description", "pokemon"]
     for key in required_keys:
-        if key not in entry:
-            raise ValueError(f"Challenge entry missing required key: '{key}'")
+        if key not in entry or not entry[key]:
+            errors.append(f"{prefix}missing required field '{key}'")
 
-    pokemon = entry.get("pokemon", {})
-    pokemon_keys = ["name", "id", "level", "stats", "attacks"]
-    for pkey in pokemon_keys:
+    # Validate month format e.g. "November 2026"
+    month_val = entry.get("month", "")
+    if month_val:
+        try:
+            datetime.datetime.strptime(month_val.strip(), "%B %Y")
+        except ValueError:
+            errors.append(f"{prefix}field 'month' must be formatted as 'Month Year' (e.g. 'November 2026'), got '{month_val}'")
+
+    pokemon = entry.get("pokemon")
+    if not isinstance(pokemon, dict):
+        errors.append(f"{prefix}'pokemon' must be an object")
+        return errors
+
+    pokemon_required = ["name", "id", "level", "stats", "attacks"]
+    for pkey in pokemon_required:
         if pkey not in pokemon:
-            raise ValueError(f"Pokémon object inside challenge missing key: '{pkey}'")
+            errors.append(f"{prefix}pokemon missing required key '{pkey}'")
+
+    if "stats" in pokemon:
+        if not isinstance(pokemon["stats"], dict):
+            errors.append(f"{prefix}pokemon 'stats' must be a dictionary")
+        else:
+            stat_keys = ["hp", "atk", "def", "spa", "spd", "spe"]
+            for skey in stat_keys:
+                if skey not in pokemon["stats"]:
+                    errors.append(f"{prefix}pokemon stats missing '{skey}'")
+
+    if "attacks" in pokemon:
+        if not isinstance(pokemon["attacks"], list) or len(pokemon["attacks"]) == 0:
+            errors.append(f"{prefix}pokemon 'attacks' must be a non-empty list of move names")
+
+    return errors
+
+
+def validate_challenges_payload(raw_data: str) -> Tuple[bool, List[str], List[Dict[str, Any]]]:
+    """
+    Parses and thoroughly checks a challenges JSON payload.
+    Returns (is_valid, list_of_errors, parsed_entries).
+    """
+    errors: List[str] = []
+    if not raw_data.strip():
+        return False, ["Payload is empty."], []
+
+    try:
+        data = json.loads(raw_data)
+    except Exception as e:
+        return False, [f"Invalid JSON syntax: {e}"], []
+
+    # Support single entry dict or list of entries
+    if isinstance(data, dict):
+        entries = [data]
+    elif isinstance(data, list):
+        entries = data
+    else:
+        return False, [f"Expected JSON array or object, got {type(data).__name__}"], []
+
+    if len(entries) == 0:
+        return False, ["JSON array is empty."], []
+
+    seen_months = set()
+    seen_codes = set()
+    for i, entry in enumerate(entries):
+        entry_errors = validate_challenge_structure(entry, index=i)
+        errors.extend(entry_errors)
+        if isinstance(entry, dict):
+            m = entry.get("month", "").strip().lower()
+            if m:
+                if m in seen_months:
+                    errors.append(f"Entry [{i}]: duplicate month '{entry.get('month')}' in payload")
+                seen_months.add(m)
+            code = entry.get("code", "").strip().lower()
+            if code:
+                if code in seen_codes:
+                    errors.append(f"Entry [{i}]: duplicate code '{entry.get('code')}' in payload")
+                seen_codes.add(code)
+
+    return (len(errors) == 0, errors, entries)
 
 
 def process_monthly_release(
@@ -110,12 +192,9 @@ def process_monthly_release(
         set_github_output("updated", "false")
         return False
 
-    try:
-        upcoming_list: List[Dict[str, Any]] = json.loads(raw_secret_data)
-        if not isinstance(upcoming_list, list):
-            raise ValueError("UPCOMING_MONTHLY_CHALLENGES must be a JSON array of challenge objects.")
-    except Exception as e:
-        raise ValueError(f"Failed to parse UPCOMING_MONTHLY_CHALLENGES as JSON: {e}") from e
+    is_valid, errors, upcoming_list = validate_challenges_payload(raw_secret_data)
+    if not is_valid:
+        raise ValueError("Invalid UPCOMING_MONTHLY_CHALLENGES secret payload:\n  - " + "\n  - ".join(errors))
 
     with open(challenges_file, "r", encoding="utf-8") as f:
         existing_challenges: List[Dict[str, Any]] = json.load(f)
@@ -156,9 +235,6 @@ def process_monthly_release(
         set_github_output("updated", "false")
         return False
 
-    # Validate candidate structure before publishing
-    validate_challenge_structure(candidate)
-
     # If candidate previous_challenge_individual_id is not set or wants linking:
     # If the user omitted or left placeholder, link to the last existing challenge's pokemon individual_id
     if not candidate.get("previous_challenge_individual_id") and existing_challenges:
@@ -186,13 +262,40 @@ def process_monthly_release(
     return True
 
 
+def cmd_validate(target_input: str) -> int:
+    """Validate JSON text or file content."""
+    p = Path(target_input)
+    if p.exists() and p.is_file():
+        print(f"Validating file: {p}")
+        raw_text = p.read_text(encoding="utf-8")
+    else:
+        raw_text = target_input
+
+    is_valid, errors, entries = validate_challenges_payload(raw_text)
+    if not is_valid:
+        print("❌ Validation FAILED with errors:")
+        for err in errors:
+            print(f"  - {err}")
+        return 1
+
+    print(f"✅ Format is valid! Found {len(entries)} valid challenge(s):")
+    for i, e in enumerate(entries, 1):
+        poke = e.get("pokemon", {})
+        print(f"  {i}. {e.get('month')}: {poke.get('name')} (Level {poke.get('level')}) [Code: {e.get('code')}]")
+    return 0
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Automate monthly challenge releases.")
+    parser = argparse.ArgumentParser(description="Automate monthly challenge releases and validate challenge formats.")
+    parser.add_argument("--validate", type=str, metavar="FILE_OR_JSON", help="Validate a JSON string or file path containing challenge entries.")
     parser.add_argument("--force", action="store_true", help="Force release regardless of the calendar day.")
     parser.add_argument("--target-month", type=str, default=None, help="Explicit month to release (e.g. 'November 2026').")
     parser.add_argument("--days-ahead", type=int, default=1, help="Number of days ahead to target (default: 1).")
     parser.add_argument("--challenges-file", type=Path, default=CHALLENGES_PATH, help="Path to monthly_challenges.json.")
     args = parser.parse_args()
+
+    if args.validate:
+        return cmd_validate(args.validate)
 
     force_env = os.environ.get("FORCE_RELEASE", "").lower() in ("true", "1", "yes")
     force = args.force or force_env

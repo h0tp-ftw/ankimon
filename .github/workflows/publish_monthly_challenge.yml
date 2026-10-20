@@ -2,8 +2,9 @@ name: Publish Next Month's Pokémon Challenge
 
 on:
   schedule:
-    # Run daily at 00:00 UTC to check if we're within the reveal window before next month
-    - cron: '0 0 * * *'
+    # Run only at the end of every month (28th-31st) at 00:00 UTC
+    # Releases the upcoming month ~24h before the 1st
+    - cron: '0 0 28-31 * *'
   workflow_dispatch:
     inputs:
       force:

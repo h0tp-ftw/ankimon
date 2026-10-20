@@ -9,7 +9,9 @@ from scripts.release_monthly_challenge import (
     should_release,
     get_target_month,
     validate_challenge_structure,
+    validate_challenges_payload,
     process_monthly_release,
+    cmd_validate,
 )
 
 
@@ -52,12 +54,50 @@ def test_get_target_month():
 
 def test_validate_challenge_structure():
     valid = sample_challenge("November 2026")
-    validate_challenge_structure(valid)  # Should not raise
+    errors = validate_challenge_structure(valid)
+    assert len(errors) == 0
 
     invalid = sample_challenge("November 2026")
     del invalid["pokemon"]["stats"]
-    with pytest.raises(ValueError, match="missing key: 'stats'"):
-        validate_challenge_structure(invalid)
+    errors = validate_challenge_structure(invalid)
+    assert any("stats" in err for err in errors)
+
+    bad_month = sample_challenge("2026-11")
+    errors = validate_challenge_structure(bad_month)
+    assert any("Month Year" in err for err in errors)
+
+
+def test_validate_challenges_payload():
+    # Valid payload
+    payload = json.dumps([
+        sample_challenge("November 2026", "Gengar"),
+        sample_challenge("December 2026", "Delibird"),
+    ])
+    is_valid, errors, entries = validate_challenges_payload(payload)
+    assert is_valid is True
+    assert len(errors) == 0
+    assert len(entries) == 2
+
+    # Duplicate month payload
+    duplicate_payload = json.dumps([
+        sample_challenge("November 2026", "Gengar"),
+        sample_challenge("November 2026", "Haunter"),
+    ])
+    is_valid, errors, _ = validate_challenges_payload(duplicate_payload)
+    assert is_valid is False
+    assert any("duplicate month" in err for err in errors)
+
+
+def test_cmd_validate(tmp_path, capsys):
+    valid_file = tmp_path / "valid.json"
+    valid_file.write_text(json.dumps([sample_challenge("November 2026")]), encoding="utf-8")
+    assert cmd_validate(str(valid_file)) == 0
+    captured = capsys.readouterr()
+    assert "✅ Format is valid!" in captured.out
+
+    invalid_file = tmp_path / "invalid.json"
+    invalid_file.write_text("invalid json content", encoding="utf-8")
+    assert cmd_validate(str(invalid_file)) == 1
 
 
 def test_process_monthly_release_skips_when_not_in_window(tmp_path):
