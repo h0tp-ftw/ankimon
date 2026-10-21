@@ -2,10 +2,17 @@
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import textwrap
 
 import pytest
+
+BASH = shutil.which("bash", path=os.defpath)
+pytestmark = pytest.mark.skipif(
+    os.name == "nt" or BASH is None,
+    reason="Release resolver checks require a POSIX host with Bash",
+)
 
 
 def _extract_resolver(workflow):
@@ -33,7 +40,7 @@ def resolver_script():
 
 def _run_resolver(script, env_path, raw_version, experimental):
     return subprocess.run(
-        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
+        [BASH, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
         env={
             "PATH": os.defpath,
             "LC_ALL": "C",
