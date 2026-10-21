@@ -311,11 +311,14 @@ def _sqlite_uri(path, mode: str) -> str:
 
 
 def _connect_readonly(path: Path, deadline: float = None):
-    timeout = _budget(deadline)
-    conn = sqlite3.connect(_sqlite_uri(path, "ro"), uri=True, timeout=timeout)
-    limit = time.monotonic() + timeout
-    conn.set_progress_handler(lambda: int(time.monotonic() > limit), 2000)
-    return conn
+    # connecting to sqlite may encounter an I/O lock violation from cloud sync apps
+    def _do_connect():
+        timeout = _budget(deadline)
+        conn = sqlite3.connect(_sqlite_uri(path, "ro"), uri=True, timeout=timeout)
+        limit = time.monotonic() + timeout
+        conn.set_progress_handler(lambda: int(time.monotonic() > limit), 2000)
+        return conn
+    return _retry_on_file_lock(_do_connect, deadline)
 
 
 def _verify_save(path: Path, deadline: float = None) -> None:
@@ -378,10 +381,12 @@ def _digest(path: Path, deadline: float = None) -> str:
 
 def _copy_within(source: Path, dest: Path, deadline: float = None) -> None:
     """``shutil.copyfile`` that checks a shared budget between blocks."""
-    with source.open("rb") as reader, dest.open("wb") as writer:
-        for block in iter(lambda: reader.read(1024 * 1024), b""):
-            _budget(deadline)
-            writer.write(block)
+    def _do_copy():
+        with source.open("rb") as reader, dest.open("wb") as writer:
+            for block in iter(lambda: reader.read(1024 * 1024), b""):
+                _budget(deadline)
+                writer.write(block)
+    _retry_on_file_lock(_do_copy, deadline)
 
 
 def _prepare_incoming(

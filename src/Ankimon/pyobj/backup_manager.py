@@ -1488,7 +1488,10 @@ class BackupManager:
                     member for member, stamp in zip(family, before) if stamp is not None
                 ]
                 for member in present:
-                    shutil.copyfile(member, private / member.name)
+                    from ..save_import import _retry_on_file_lock
+                    _retry_on_file_lock(
+                        lambda m=member: shutil.copyfile(m, private / m.name), deadline
+                    )
                 if signatures() != before:
                     continue
                 if any(
