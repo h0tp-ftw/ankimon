@@ -83,6 +83,13 @@ jobs:
         id: resolve-version
         shell: bash
         run: |
+          # GITHUB_ENV treats newlines as additional assignments. Validate before
+          # exporting anything so malformed input cannot alter later steps.
+          if [[ ! "$RAW_VERSION" =~ ^v?[0-9]+(\.[0-9]+)*(-E)?$ ]]; then
+            echo "::error::Invalid version; expected e.g. 2.4 or v2.4-E."
+            exit 1
+          fi
+
           # Strip any leading 'v' or trailing '-E' if typed by habit
           RAW_VER="${RAW_VERSION#v}"
           BASE_VER="${RAW_VER%-E}"
@@ -93,8 +100,8 @@ jobs:
             FINAL_VER="${BASE_VER}"
             IS_EXP="false"
           fi
-          echo "VERSION=${FINAL_VER}" >> $GITHUB_ENV
-          echo "IS_EXP=${IS_EXP}" >> $GITHUB_ENV
+          echo "VERSION=${FINAL_VER}" >> "$GITHUB_ENV"
+          echo "IS_EXP=${IS_EXP}" >> "$GITHUB_ENV"
           echo "Resolved version: ${FINAL_VER} (experimental: ${IS_EXP})"
 
       - name: Checkout code
