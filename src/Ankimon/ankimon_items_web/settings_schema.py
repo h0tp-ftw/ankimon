@@ -175,6 +175,7 @@ GROUPS = [
         "label": "Generations",
         "settings": [
             "Active Region",
+            "Enable Wild Starters",
         ],
         # The 9 per-generation booleans render as a single chip row instead of
         # 9 separate Enabled/Disabled rows — much faster to scan and toggle.
