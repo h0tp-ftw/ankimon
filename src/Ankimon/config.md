@@ -51,9 +51,9 @@ To enable sound effects such as healing your main Pokémon, hurting your Pokémo
 Set `view_main_front` to `true` to view your main Pokémon from the front in the reviewer when `reviewer_image_gif` is also set to `true`. If `view_main_front` is set to `false`, you will see your main Pokémon's GIF from the back in the reviewer.
 - `view_main_front` [True/False]
 
-Allow Background Checks controls automatic checks for Ankimon updates and changelog downloads at startup. Set `misc.ssh` to `true` to allow these checks, or `false` to skip them if they cause connection errors, such as on restricted networks.
+Allow Background Checks (formerly SSH Access) controls automatic checks for Ankimon updates and changelog downloads at startup. Set `misc.ssh` to `true` to allow these checks, or `false` to skip them if they cause connection errors, such as on restricted networks.
 
-Restart Anki after changing this setting.
+Sprite update checks run independently and are not disabled by this setting. Restart Anki after changing this setting.
 - `misc.ssh` [True/False] (default: True)
 
 Set `animate_time` to `true` to enable a small animation in the reviewer. This animation is displayed when you or the wild Pokémon is taking damage. `false` disables this.
