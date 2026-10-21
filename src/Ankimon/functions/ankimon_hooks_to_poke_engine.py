@@ -621,6 +621,97 @@ def _apply_engine_patch(patch):
             pass
 
 
+
+def _patch_parentalbond_secondary_effects():
+    from ..poke_engine import find_state_instructions
+    from ..poke_engine import constants
+    from ..poke_engine import instruction_generator
+    from copy import copy
+
+    original_get_state_instructions_from_move = find_state_instructions.get_state_instructions_from_move
+    if getattr(original_get_state_instructions_from_move, "_ankimon_patched", False):
+        return
+
+    def patched_get_state_instructions_from_move(mutator, attacking_move, defending_move, attacker, defender, first_move, instructions):
+        instructions.frozen = False
+
+        if constants.SWITCH_STRING in attacking_move:
+            return [instruction_generator.get_instructions_from_switch(mutator, attacker, attacking_move[constants.SWITCH_STRING], instructions)]
+
+        if not first_move and constants.DRAG in defending_move.get(constants.FLAGS, {}):
+            return [instructions]
+
+        mutator.apply(instructions.instructions)
+        attacking_side = instruction_generator.get_side_from_state(mutator.state, attacker)
+        defending_side = instruction_generator.get_side_from_state(mutator.state, defender)
+        attacking_pokemon = attacking_side.active
+        defending_pokemon = defending_side.active
+
+        hits = 2 if attacking_pokemon.ability == 'parentalbond' and attacking_move.get(constants.CATEGORY) in constants.DAMAGING_CATEGORIES else 1
+
+        # We can temporarily patch the `instruction_generator` methods during this function call!
+        orig_status = instruction_generator.get_instructions_from_status_effects
+        orig_boosts = instruction_generator.get_instructions_from_boosts
+        orig_flinch = instruction_generator.get_instructions_from_flinching_moves
+
+        if hits == 2:
+            def wrap_status(mutator, defender, status, accuracy, instruction):
+                res = orig_status(mutator, defender, status, accuracy, instruction)
+                new_res = []
+                for i in res:
+                    new_res.extend(orig_status(mutator, defender, status, accuracy, i))
+                return new_res
+
+            def wrap_boosts(mutator, side_string, boosts, accuracy, instruction):
+                res = orig_boosts(mutator, side_string, boosts, accuracy, instruction)
+                new_res = []
+                for i in res:
+                    new_res.extend(orig_boosts(mutator, side_string, boosts, accuracy, i))
+                return new_res
+
+            def wrap_flinch(defender, accuracy, first_move, instruction):
+                res = orig_flinch(defender, accuracy, first_move, instruction)
+                new_res = []
+                for i in res:
+                    new_res.extend(orig_flinch(defender, accuracy, first_move, i))
+                return new_res
+
+            instruction_generator.get_instructions_from_status_effects = wrap_status
+            instruction_generator.get_instructions_from_boosts = wrap_boosts
+            instruction_generator.get_instructions_from_flinching_moves = wrap_flinch
+
+        try:
+            mutator.reverse(instructions.instructions)
+            return original_get_state_instructions_from_move(mutator, attacking_move, defending_move, attacker, defender, first_move, instructions)
+        finally:
+            if hits == 2:
+                instruction_generator.get_instructions_from_status_effects = orig_status
+                instruction_generator.get_instructions_from_boosts = orig_boosts
+                instruction_generator.get_instructions_from_flinching_moves = orig_flinch
+
+    patched_get_state_instructions_from_move._ankimon_patched = True
+    find_state_instructions.get_state_instructions_from_move = patched_get_state_instructions_from_move
+
+
+def _patch_objects_remove_volatile_status():
+    from ..poke_engine import objects
+    original_remove = objects.StateMutator.remove_volatile_status
+    if getattr(original_remove, "_ankimon_patched", False):
+        return
+
+    def patched_remove_volatile_status(self, side, volatile_status):
+        side = self.get_side(side)
+        try:
+            side.active.volatile_status.remove(volatile_status)
+        except KeyError:
+            pass
+
+    patched_remove_volatile_status._ankimon_patched = True
+    objects.StateMutator.remove_volatile_status = patched_remove_volatile_status
+
+
+_apply_engine_patch(_patch_objects_remove_volatile_status)
+_apply_engine_patch(_patch_parentalbond_secondary_effects)
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
