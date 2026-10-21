@@ -702,7 +702,7 @@ def _bind_main_pokemon(state, main_pokemon):
     return state
 
 
-def sync_active_pokemon_stats(state, main_pokemon):
+def sync_active_pokemon_stats(state, main_pokemon, sync_hp=False):
     """Apply committed training to this individual's ongoing battle in place.
 
     Engine raw stats can differ from the owner's intrinsic stats after a form
@@ -784,6 +784,11 @@ def sync_active_pokemon_stats(state, main_pokemon):
                 break
         for stat, field in stat_fields:
             setattr(active, field, getattr(active, field) + deltas[stat])
+    # Only sync HP if Ankimon object has valid HP tracking and sync_hp is explicitly requested
+    if sync_hp and hasattr(main_pokemon, 'hp'):
+        # Keep engine state in sync if Python object was healed/damaged out of band
+        active.hp = main_pokemon.hp
+
     active.maxhp = main_pokemon.max_hp
     active.level = main_pokemon.level
     active.nature = main_pokemon.nature

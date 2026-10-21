@@ -2333,6 +2333,14 @@ def handle_main_pokemon_faint(
         else:
             db.save_pokemon(stored)
 
+    # Keep engine state in sync if a battle is ongoing
+    try:
+        from ..battle_loop import _state
+        from ..functions.ankimon_hooks_to_poke_engine import sync_active_pokemon_stats
+        sync_active_pokemon_stats(_state.new_state, main_pokemon, sync_hp=True)
+    except Exception as exc:
+        pass
+
     if spawn_replacement:
         new_pokemon(
             enemy_pokemon, test_window, ankimon_tracker_obj, reviewer_obj
