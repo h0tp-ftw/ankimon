@@ -6,7 +6,16 @@ import requests
 from pathlib import Path, PurePosixPath
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QProgressBar, QLabel, QPushButton, QMessageBox, QHBoxLayout, QCheckBox
+from PyQt6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QProgressBar,
+    QLabel,
+    QPushButton,
+    QMessageBox,
+    QHBoxLayout,
+    QCheckBox,
+)
 
 from ..resources import user_path_sprites
 
@@ -76,7 +85,11 @@ def _fetch_remote_files(commit_sha: str) -> dict[str, str]:
             continue
         path = item.get("path")
         sha = item.get("sha")
-        if isinstance(path, str) and isinstance(sha, str) and _is_managed_sprite_path(path):
+        if (
+            isinstance(path, str)
+            and isinstance(sha, str)
+            and _is_managed_sprite_path(path)
+        ):
             remote_files[path] = sha
     return remote_files
 
@@ -86,6 +99,7 @@ class SpriteUpdateDiffThread(QThread):
     Background thread to download only added and modified sprites from raw.githubusercontent.com,
     and remove any deleted files.
     """
+
     progress_signal = pyqtSignal(int)
     status_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str)
@@ -117,12 +131,14 @@ class SpriteUpdateDiffThread(QThread):
                     return
 
                 if not _is_managed_sprite_path(path):
-                    self.finished_signal.emit(False, f"Unsafe sprite path rejected: {path}")
+                    self.finished_signal.emit(
+                        False, f"Unsafe sprite path rejected: {path}"
+                    )
                     return
 
                 self.status_signal.emit(f"Downloading ({i + 1}/{total_files}): {path}")
                 url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon-sprites/{self.remote_sha}/{path}"
-                
+
                 success = False
                 for attempt in range(3):
                     if self._is_cancelled:
@@ -139,7 +155,9 @@ class SpriteUpdateDiffThread(QThread):
                     except Exception:
                         time.sleep(1)
                 if not success:
-                    self.finished_signal.emit(False, f"Failed to download sprite: {path}")
+                    self.finished_signal.emit(
+                        False, f"Failed to download sprite: {path}"
+                    )
                     return
 
                 downloaded_count += 1
@@ -172,7 +190,9 @@ class SpriteUpdateDiffThread(QThread):
                 self.dest_dir.parent / "sprites_update_state.json", self.remote_sha
             )
         except OSError as exc:
-            self.finished_signal.emit(False, f"Failed to save sprite update state: {exc}")
+            self.finished_signal.emit(
+                False, f"Failed to save sprite update state: {exc}"
+            )
             return
         self.finished_signal.emit(True, f"Successfully updated {total_files} sprites!")
 
@@ -182,19 +202,22 @@ class SpriteUpdateDialog(QDialog):
     QDialog shown to the user displaying sprite diff analysis progress,
     update confirmation, and download progress. Used only when performing the actual updates.
     """
-    def __init__(self, parent=None, silent_on_up_to_date=False, precalculated_result=None):
+
+    def __init__(
+        self, parent=None, silent_on_up_to_date=False, precalculated_result=None
+    ):
         super().__init__(parent)
         self.dest_dir = Path(user_path_sprites)
         self.silent_on_up_to_date = silent_on_up_to_date
         self.precalculated_result = precalculated_result
         self.setWindowTitle("Ankimon Sprites Update")
         self.resize(450, 220)
-        
+
         # Ensure it modals and raises on top of parent Anki window
         self.setWindowModality(Qt.WindowModality.WindowModal)
-        
+
         self.init_ui()
-        
+
         if self.precalculated_result:
             self.on_diff_finished(self.precalculated_result)
 
@@ -238,7 +261,11 @@ class SpriteUpdateDialog(QDialog):
                 self.progress_bar.setValue(100)
         elif status == "error":
             if not self.silent_on_up_to_date:
-                QMessageBox.warning(self, "Update Error", f"Failed to check for sprite updates:\n{result.get('error')}")
+                QMessageBox.warning(
+                    self,
+                    "Update Error",
+                    f"Failed to check for sprite updates:\n{result.get('error')}",
+                )
             self.reject()
         elif status == "update_available":
             added = result.get("added", [])
@@ -262,20 +289,24 @@ class SpriteUpdateDialog(QDialog):
             if deleted:
                 msg += f"  • Obsolete to remove: {len(deleted)}\n"
             msg += "\nWould you like to download the update now?"
-            
+
             self.status_label.setText(msg)
             self.confirm_button.setVisible(True)
             self.cancel_button.setText("Later")
             self.snooze_checkbox.setVisible(True)
             self.adjustSize()
-            
+
             # Ensure it is displayed on top
             self.raise_()
             self.activateWindow()
 
     def reject(self):
         # Handle 7-day snooze if user opted in and dismissed the update
-        if hasattr(self, "snooze_checkbox") and self.snooze_checkbox.isVisible() and self.snooze_checkbox.isChecked():
+        if (
+            hasattr(self, "snooze_checkbox")
+            and self.snooze_checkbox.isVisible()
+            and self.snooze_checkbox.isChecked()
+        ):
             try:
                 state_path = self.dest_dir.parent / "sprites_update_state.json"
                 state_data = {}
@@ -285,7 +316,9 @@ class SpriteUpdateDialog(QDialog):
                     except Exception:
                         pass
                 state_data["snooze_until"] = time.time() + 7 * 24 * 60 * 60
-                state_path.write_text(json.dumps(state_data, indent=2), encoding="utf-8")
+                state_path.write_text(
+                    json.dumps(state_data, indent=2), encoding="utf-8"
+                )
             except Exception:
                 pass
         super().reject()
@@ -293,11 +326,13 @@ class SpriteUpdateDialog(QDialog):
     def save_state_only(self, sha):
         try:
             state_path = self.dest_dir.parent / "sprites_update_state.json"
-            state_path.write_text(json.dumps({
-                "commit_sha": sha,
-                "updated_at": time.time(),
-                "snooze_until": 0
-            }, indent=2), encoding="utf-8")
+            state_path.write_text(
+                json.dumps(
+                    {"commit_sha": sha, "updated_at": time.time(), "snooze_until": 0},
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         except Exception:
             pass
 
@@ -305,7 +340,7 @@ class SpriteUpdateDialog(QDialog):
         self.confirm_button.setVisible(False)
         self.cancel_button.setVisible(False)
         self.snooze_checkbox.setVisible(False)
-        
+
         self.cancel_button.setText("Cancel Download")
         self.cancel_button.clicked.disconnect()
         self.cancel_button.clicked.connect(self.cancel_download)
@@ -350,7 +385,9 @@ def get_local_sprites_manifest(dest_dir: Path) -> dict:
     cached_files = {}
     if manifest_path.exists():
         try:
-            cached_files = json.loads(manifest_path.read_text(encoding="utf-8")).get("files", {})
+            cached_files = json.loads(manifest_path.read_text(encoding="utf-8")).get(
+                "files", {}
+            )
         except Exception:
             pass
 
@@ -369,10 +406,14 @@ def get_local_sprites_manifest(dest_dir: Path) -> dict:
                     stat_info = full_path.stat()
                     mtime = stat_info.st_mtime
                     size = stat_info.st_size
-                    
+
                     # Leverage cache if size and mtime match
                     cache_entry = cached_files.get(rel_path)
-                    if cache_entry and cache_entry.get("mtime") == mtime and cache_entry.get("size") == size:
+                    if (
+                        cache_entry
+                        and cache_entry.get("mtime") == mtime
+                        and cache_entry.get("size") == size
+                    ):
                         local_files[rel_path] = cache_entry["sha"]
                     else:
                         hasher = hashlib.sha1()
@@ -385,7 +426,7 @@ def get_local_sprites_manifest(dest_dir: Path) -> dict:
                         cached_files[rel_path] = {
                             "mtime": mtime,
                             "size": size,
-                            "sha": sha
+                            "sha": sha,
                         }
                         changed = True
                 except Exception:
@@ -400,14 +441,18 @@ def get_local_sprites_manifest(dest_dir: Path) -> dict:
 
         if changed:
             try:
-                manifest_path.write_text(json.dumps({"files": cached_files}, indent=2), encoding="utf-8")
+                manifest_path.write_text(
+                    json.dumps({"files": cached_files}, indent=2), encoding="utf-8"
+                )
             except Exception:
                 pass
 
     return local_files
 
 
-def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: bool = False) -> dict:
+def calculate_sprite_diff(
+    dest_dir: Path, silent: bool = False, ignore_snooze: bool = False
+) -> dict:
     """Calculates local file Git SHA-1 hashes and diffs them against the remote repository tree."""
     try:
         # Read local state first to check for active snooze.
@@ -424,16 +469,27 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
                 pass
 
         # Check if update prompts are currently snoozed and exit early without network requests
-        if not ignore_snooze and silent and isinstance(snooze_until, (int, float)) and time.time() < snooze_until:
+        if (
+            not ignore_snooze
+            and silent
+            and isinstance(snooze_until, (int, float))
+            and time.time() < snooze_until
+        ):
             return {"status": "snoozed", "remote_sha": local_sha}
 
         # 1. Fetch latest remote commit SHA
-        res = requests.get("https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main", timeout=10)
+        res = requests.get(
+            "https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main",
+            timeout=10,
+        )
         res.raise_for_status()
         commit_data = res.json()
         remote_sha = commit_data.get("sha") if isinstance(commit_data, dict) else None
         if not isinstance(remote_sha, str) or not remote_sha:
-            return {"status": "error", "error": "Invalid API response for latest commit."}
+            return {
+                "status": "error",
+                "error": "Invalid API response for latest commit.",
+            }
 
         # If SHA matches and sprites exist, we are up to date.
         # Bypass this shortcut on manual checks (where ignore_snooze=True) to allow verification/repair.
@@ -478,7 +534,7 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
             "added": added,
             "modified": modified,
             "deleted": deleted,
-            "remote_sha": remote_sha
+            "remote_sha": remote_sha,
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -489,9 +545,9 @@ def trigger_sprites_update_check(parent=None, silent=False):
     from ..background_ops import call_when_anki_idle, run_query
     from ..services import services
     from aqt import mw
-    
+
     dest_dir = Path(user_path_sprites)
-    
+
     profile_col = getattr(mw, "col", None)
     generation = getattr(services, "_background_generation", 0)
 
@@ -503,23 +559,44 @@ def trigger_sprites_update_check(parent=None, silent=False):
         status = result.get("status")
         print(f"Sprite update check: finished with status {status}")
         if status == "update_available":
-            dialog = SpriteUpdateDialog(parent=parent or mw, silent_on_up_to_date=False, precalculated_result=result)
+            dialog = SpriteUpdateDialog(
+                parent=parent or mw,
+                silent_on_up_to_date=False,
+                precalculated_result=result,
+            )
             dialog.exec()
         elif status == "up_to_date":
             if not silent:
-                QMessageBox.information(parent or mw, "Ankimon Sprites Update", "Sprites are already up to date!")
+                QMessageBox.information(
+                    parent or mw,
+                    "Ankimon Sprites Update",
+                    "Sprites are already up to date!",
+                )
         elif status == "error":
             print(f"Sprite update check error: {result.get('error')}")
             if not silent:
-                QMessageBox.warning(parent or mw, "Update Error", f"Failed to check for sprite updates:\n{result.get('error')}")
+                QMessageBox.warning(
+                    parent or mw,
+                    "Update Error",
+                    f"Failed to check for sprite updates:\n{result.get('error')}",
+                )
 
     def on_done(result):
-        if (profile_col is None or mw.col is not profile_col
-                or generation != getattr(services, "_background_generation", 0)):
+        if (
+            profile_col is None
+            or mw.col is not profile_col
+            or generation != getattr(services, "_background_generation", 0)
+        ):
             return
         if silent:
-            call_when_anki_idle(lambda: display(result), reason="sprite update notification")
+            call_when_anki_idle(
+                lambda: display(result), reason="sprite update notification"
+            )
         else:
             display(result)
 
-    run_query(bg_check, on_done, lambda error: on_done({"status": "error", "error": str(error)}))
+    run_query(
+        bg_check,
+        on_done,
+        lambda error: on_done({"status": "error", "error": str(error)}),
+    )

@@ -63,9 +63,12 @@ def check_and_show_changelog(online_connectivity: bool, ssh: bool, no_more_news:
                 dialog.exec()
 
     def done(result):
-        if (generation == getattr(services, "_background_generation", 0)
-                and (profile_col is None or mw.col is profile_col)):
-            call_when_anki_idle(lambda: display(result), reason="changelog notification")
+        if generation == getattr(services, "_background_generation", 0) and (
+            profile_col is None or mw.col is profile_col
+        ):
+            call_when_anki_idle(
+                lambda: display(result), reason="changelog notification"
+            )
 
     run_query(download_changelog, done, done)
 
@@ -112,6 +115,7 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
     _log_info(f"check_branch_update: read_update_state={state}")
     if not state or state.get("addon_version") != addon_ver:
         from .pyobj.update_manager import is_git_clone
+
         if is_git_clone():
             _log_info("check_branch_update exited early: git clone detected")
             return
@@ -123,7 +127,9 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         # coercion if a tag happened to share a branch name). Fresh installs
         # (no state) still fall through and default to the main branch.
         if state and state.get("source_type") != "branch":
-            _log_info("check_branch_update: skipping branch init for non-branch install")
+            _log_info(
+                "check_branch_update: skipping branch init for non-branch install"
+            )
             return
 
         branch_name = (state.get("source_name") if state else None) or "main"
@@ -132,6 +138,7 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         def bg_init():
             try:
                 from .pyobj.update_manager import fetch_branch_sha, save_update_state
+
                 remote_sha = fetch_branch_sha(branch_name)
                 if remote_sha:
                     save_update_state("branch", branch_name, remote_sha)
@@ -141,8 +148,12 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
 
         run_query(
             bg_init,
-            lambda res: _log_info(f"Initialized update_state.json for {branch_name} branch: {res}"),
-            lambda error: _log_info(f"Could not initialize branch update state: {error}"),
+            lambda res: _log_info(
+                f"Initialized update_state.json for {branch_name} branch: {res}"
+            ),
+            lambda error: _log_info(
+                f"Could not initialize branch update state: {error}"
+            ),
         )
         return
 
@@ -182,8 +193,11 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
     generation = getattr(services, "_background_generation", 0)
 
     def done(result):
-        if (profile_col is None or mw.col is not profile_col
-                or generation != getattr(services, "_background_generation", 0)):
+        if (
+            profile_col is None
+            or mw.col is not profile_col
+            or generation != getattr(services, "_background_generation", 0)
+        ):
             return
         if isinstance(result, Exception) or not result:
             return
@@ -259,8 +273,11 @@ def _poll_release_channel(channel: str):
     generation = getattr(services, "_background_generation", 0)
 
     def done(result):
-        if (profile_col is None or mw.col is not profile_col
-                or generation != getattr(services, "_background_generation", 0)):
+        if (
+            profile_col is None
+            or mw.col is not profile_col
+            or generation != getattr(services, "_background_generation", 0)
+        ):
             return
         if isinstance(result, Exception) or not result:
             return
@@ -274,7 +291,9 @@ def _poll_release_channel(channel: str):
                 reason="release update notification",
             )
 
-    run_query(bg, done, lambda error: _log_info(f"Release update check failed: {error}"))
+    run_query(
+        bg, done, lambda error: _log_info(f"Release update check failed: {error}")
+    )
 
 
 def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
@@ -292,6 +311,7 @@ def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
         # blocking the main thread. Spawning update/sprite modals simultaneously
         # will cause a UI deadlock.
         from .services import services
+
         if services.db is not None and not services.db.is_migrated():
             _log_info("Skipping update checks: Database migration is pending.")
             return

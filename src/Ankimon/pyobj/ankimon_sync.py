@@ -119,7 +119,9 @@ def _synctmp_path(target_file: Path) -> Path:
     try:
         sys_tmp = Path(tempfile.gettempdir())
         if os.stat(sys_tmp).st_dev == os.stat(target_file.parent).st_dev:
-            fd, name = tempfile.mkstemp(prefix="ankimon-", suffix=".synctmp", dir=str(sys_tmp))
+            fd, name = tempfile.mkstemp(
+                prefix="ankimon-", suffix=".synctmp", dir=str(sys_tmp)
+            )
             os.close(fd)
             return Path(name)
     except Exception:
@@ -139,7 +141,9 @@ def _is_cross_device_error(exc: BaseException) -> bool:
     )
 
 
-def _atomic_write_over(src: Path, dest: Path, before_replace: Callable[[], Any] = None) -> None:
+def _atomic_write_over(
+    src: Path, dest: Path, before_replace: Callable[[], Any] = None
+) -> None:
     """Copy ``src`` over ``dest`` atomically: write a temp on the same volume as
     ``dest`` (``_synctmp_path`` prefers the system temp dir, else a sibling), then
     ``os.replace`` it into place, retrying a transient OneDrive/antivirus lock so
@@ -205,6 +209,7 @@ def _verify_sqlite_integrity(db_file: Path, timeout: float = 30.0) -> bool:
             return False
         import sqlite3
         from ..save_import import _sqlite_uri
+
         # A percent-encoded read-only URI, so a profile path with spaces or
         # unicode (e.g. C:\Users\John Doe\...) or on a network share
         # (\\server\share\...) opens — a raw f-string URI, or as_uri()'s
@@ -262,16 +267,16 @@ class AnkimonDataSync:
         """Obfuscates dictionary data into a string."""
         json_str = json.dumps(data)
         obfuscated_bytes = bytearray()
-        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
-        for i, byte in enumerate(json_str.encode('utf-8')):
+        key_bytes = self._OBFUSCATION_KEY.encode("utf-8")
+        for i, byte in enumerate(json_str.encode("utf-8")):
             obfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-        return base64.b64encode(obfuscated_bytes).decode('utf-8')
+        return base64.b64encode(obfuscated_bytes).decode("utf-8")
 
     def _deobfuscate_data(self, obfuscated_str: str) -> dict:
         """De-obfuscates string back into a dictionary."""
         new_separator = "---DATA_START---"
         old_separator = "\n---"
-        
+
         if new_separator in obfuscated_str:
             parts = obfuscated_str.split(new_separator)
             obfuscated_data = parts[1]
@@ -279,15 +284,14 @@ class AnkimonDataSync:
             parts = obfuscated_str.split(old_separator)
             obfuscated_data = parts[1]
         else:
-            obfuscated_data = obfuscated_str # Fallback for old format
+            obfuscated_data = obfuscated_str  # Fallback for old format
 
         obfuscated_bytes = base64.b64decode(obfuscated_data)
         deobfuscated_bytes = bytearray()
-        key_bytes = self._OBFUSCATION_KEY.encode('utf-8')
+        key_bytes = self._OBFUSCATION_KEY.encode("utf-8")
         for i, byte in enumerate(obfuscated_bytes):
             deobfuscated_bytes.append(byte ^ key_bytes[i % len(key_bytes)])
-        return json.loads(deobfuscated_bytes.decode('utf-8'))
-
+        return json.loads(deobfuscated_bytes.decode("utf-8"))
 
     def _close_live_db_connection(
         self, target_file: Path, *, required: bool = False
@@ -300,7 +304,10 @@ class AnkimonDataSync:
             if db is None:
                 return True
             db_path = getattr(db, "db_path", None)
-            if db_path is None or Path(db_path).resolve() != Path(target_file).resolve():
+            if (
+                db_path is None
+                or Path(db_path).resolve() != Path(target_file).resolve()
+            ):
                 return True
             closed = bool(db.close(2.0))
             if required and not closed:
@@ -329,7 +336,11 @@ class AnkimonDataSync:
 
         db = services.db
         db_path = getattr(db, "db_path", None) if db is not None else None
-        if db is None or db_path is None or Path(db_path).resolve() != Path(target_file).resolve():
+        if (
+            db is None
+            or db_path is None
+            or Path(db_path).resolve() != Path(target_file).resolve()
+        ):
             yield True
             return
 
@@ -369,12 +380,14 @@ _mobile_detection_warned = False
 # that version's ``sync_will_start`` handler gets unregistered.
 _SYNC_HOOK_RECORD = "_ankimon_sync_hook_handlers"
 
+
 def get_ankimon_sync() -> AnkimonDataSync:
     """Get the global AnkimonDataSync instance, creating it if needed."""
     global _ankimon_sync_instance
     if _ankimon_sync_instance is None:
         _ankimon_sync_instance = AnkimonDataSync()
     return _ankimon_sync_instance
+
 
 def schedule_mobile_sync(callback, reason):
     """Retry GUI mobile work after Anki and any existing replay become idle."""
@@ -430,9 +443,14 @@ def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
             if before_detection is not None and before_detection() is False:
                 return
             from ..services import services
+
             db = services.db
             col = services.col if services.col is not None else mw.col
-            if db is not None and col is not None and settings_obj.get("mobile.enabled", True):
+            if (
+                db is not None
+                and col is not None
+                and settings_obj.get("mobile.enabled", True)
+            ):
                 from ..functions.mobile_sync import (
                     detect_mobile_reviews,
                     get_desktop_session_revlog_ids,
@@ -481,11 +499,17 @@ def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
                             db.switch_database("ankimon.db")
                         rebase_after_import(db, col)
                         watermark_normal = db.get_mobile_watermark()
-                        all_mobile_normal = detect_mobile_reviews(col, watermark_normal, desktop_ids)
+                        all_mobile_normal = detect_mobile_reviews(
+                            col, watermark_normal, desktop_ids
+                        )
                         if all_mobile_normal:
                             all_mobile_normal = _cap_mobile(all_mobile_normal)
-                            newly_queued_normal = db.queue_mobile_battles(all_mobile_normal)
-                            db.set_mobile_watermark(max(r["id"] for r in all_mobile_normal))
+                            newly_queued_normal = db.queue_mobile_battles(
+                                all_mobile_normal
+                            )
+                            db.set_mobile_watermark(
+                                max(r["id"] for r in all_mobile_normal)
+                            )
 
                         max_revlog_id = col.db.scalar("SELECT MAX(id) FROM revlog")
                         if isinstance(max_revlog_id, (int, float)):
@@ -499,11 +523,17 @@ def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
                                 db.switch_database("ankimonDEV.db")
                             rebase_after_import(db, col)
                             watermark_dev = db.get_mobile_watermark()
-                            all_mobile_dev = detect_mobile_reviews(col, watermark_dev, desktop_ids)
+                            all_mobile_dev = detect_mobile_reviews(
+                                col, watermark_dev, desktop_ids
+                            )
                             if all_mobile_dev:
                                 all_mobile_dev = _cap_mobile(all_mobile_dev)
-                                newly_queued_dev = db.queue_mobile_battles(all_mobile_dev)
-                                db.set_mobile_watermark(max(r["id"] for r in all_mobile_dev))
+                                newly_queued_dev = db.queue_mobile_battles(
+                                    all_mobile_dev
+                                )
+                                db.set_mobile_watermark(
+                                    max(r["id"] for r in all_mobile_dev)
+                                )
 
                             if isinstance(max_revlog_id, (int, float)):
                                 current_watermark = db.get_mobile_watermark()
@@ -535,11 +565,14 @@ def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
                     msg_parts.append(f"{newly_queued_dev} in Dev")
 
                 if msg_parts:
-                    resolution_mode = settings_obj.get("mobile.resolution_mode", "manual")
+                    resolution_mode = settings_obj.get(
+                        "mobile.resolution_mode", "manual"
+                    )
 
                     if resolution_mode == "auto":
                         try:
                             from ..ankimon_items_web.shop_obj import MobileBridge
+
                             bridge = MobileBridge(mw)
                             result = bridge.resolveAll()
                             if result.get("success"):
@@ -548,29 +581,53 @@ def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
                                 caught_list = result.get("caught_list", [])
                                 resolved = result.get("resolved", 0)
                                 caught_names = [p["name"] for p in caught_list]
-                                caught_str = f" Caught: {', '.join(caught_names)}." if caught_names else ""
-                                tooltip(f"⚔ Auto-resolved {resolved} mobile/web reviews! +{xp_gained} XP, +{cash_gained}¥.{caught_str}")
-                                logger.log("info", f"Auto-resolved {resolved} mobile/web reviews on active DB. +{xp_gained} XP, +{cash_gained}¥.{caught_str}")
+                                caught_str = (
+                                    f" Caught: {', '.join(caught_names)}."
+                                    if caught_names
+                                    else ""
+                                )
+                                tooltip(
+                                    f"⚔ Auto-resolved {resolved} mobile/web reviews! +{xp_gained} XP, +{cash_gained}¥.{caught_str}"
+                                )
+                                logger.log(
+                                    "info",
+                                    f"Auto-resolved {resolved} mobile/web reviews on active DB. +{xp_gained} XP, +{cash_gained}¥.{caught_str}",
+                                )
                             else:
                                 error_msg = result.get("error", "Unknown error")
-                                tooltip(f"⚠ Auto-resolve failed: {error_msg}. Please resolve manually.")
+                                tooltip(
+                                    f"⚠ Auto-resolve failed: {error_msg}. Please resolve manually."
+                                )
                                 logger.log("error", f"Auto-resolve failed: {error_msg}")
                         except Exception as ex:
-                            tooltip(f"⚠ Auto-resolve error: {ex}. Please resolve manually.")
+                            tooltip(
+                                f"⚠ Auto-resolve error: {ex}. Please resolve manually."
+                            )
                             logger.log("error", f"Auto-resolve error: {ex}")
                     else:
-                        tooltip(f"⚔ Mobile/web reviews synced: {', '.join(msg_parts)}! Open Ankimon → Mobile & Web Reviews to resolve.")
-                        logger.log("info", f"Mobile/web reviews synced: {', '.join(msg_parts)}. Total active pending: {total_pending}.")
-                logger.log("info", f"Mobile dual-queue complete. Active DB restored to: {db.db_path.name}")
+                        tooltip(
+                            f"⚔ Mobile/web reviews synced: {', '.join(msg_parts)}! Open Ankimon → Mobile & Web Reviews to resolve."
+                        )
+                        logger.log(
+                            "info",
+                            f"Mobile/web reviews synced: {', '.join(msg_parts)}. Total active pending: {total_pending}.",
+                        )
+                logger.log(
+                    "info",
+                    f"Mobile dual-queue complete. Active DB restored to: {db.db_path.name}",
+                )
                 try:
                     from ..events import events
+
                     events.emit("stats_changed")
                     from ..singletons import notify_stats_changed
+
                     notify_stats_changed()
                 except Exception:
                     pass
         except Exception as e:
             from ..functions.mobile_sync import MobileSyncBusy
+
             if isinstance(e, MobileSyncBusy):
                 raise
             logger.log("error", f"Mobile review detection failed: {e}")
@@ -604,12 +661,11 @@ def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
     # handler be unregistered instead of being left attached to a module whose
     # file-sync functions no longer exist.
     from ..services import services
+
     for hook, handler in getattr(services, _SYNC_HOOK_RECORD, ()):
         hook.remove(handler)
 
-    _handlers = (
-        (gui_hooks.sync_did_finish, on_sync_did_finish),
-    )
+    _handlers = ((gui_hooks.sync_did_finish, on_sync_did_finish),)
     for hook, handler in _handlers:
         hook.append(handler)
     setattr(services, _SYNC_HOOK_RECORD, _handlers)

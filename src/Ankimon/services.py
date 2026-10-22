@@ -85,6 +85,7 @@ class Services:
         # UI port. Defaults to a GUI-less presenter so core logic can always
         # call ``services.ui.*`` safely; the production root swaps in a Qt one.
         from .ui_port import HeadlessPresenter
+
         self.ui = HeadlessPresenter()
 
         # GUI window objects, injected by the composition root: real Qt windows
@@ -174,6 +175,7 @@ class Services:
         self.trainer_card = None
         self.achievements = None
         from .ui_port import HeadlessPresenter
+
         self.ui = HeadlessPresenter()
         self.test_window = None
         self.evo_window = None

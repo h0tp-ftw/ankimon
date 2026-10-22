@@ -789,7 +789,7 @@ def boot_env(monkeypatch):
         addonManager=SimpleNamespace(
             setWebExports=rec("setWebExports"),
             addonFromModule=lambda name: "ankimon",
-        )
+        ),
     )
     aqt_stub = _stub_module(
         "aqt",
@@ -808,7 +808,8 @@ def boot_env(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        FakeBackupManager, "schedule_profile_backup_tasks",
+        FakeBackupManager,
+        "schedule_profile_backup_tasks",
         lambda self: calls.append(("schedule_profile_backup_tasks", (), {})),
         raising=False,
     )
@@ -1121,7 +1122,9 @@ def test_startup_on_anki_2166_submits_once_and_finishes(boot_env, monkeypatch):
             future.set_result(task())
             on_done(future)
 
-    monkeypatch.setattr(sys.modules["aqt.operations"], "QueryOp", type("QueryOp", (), {}))
+    monkeypatch.setattr(
+        sys.modules["aqt.operations"], "QueryOp", type("QueryOp", (), {})
+    )
     boot_env.mw.taskman = LegacyTaskman()
     boot_env.exec_init()
     assert len(submissions) == 1

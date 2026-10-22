@@ -47,7 +47,9 @@ def run_query(task, success, failure):
     return run_in_background(task, done)
 
 
-def call_when_anki_idle(callback, reason, *, on_cancel=None, delay_ms=0, profile_bound=True):
+def call_when_anki_idle(
+    callback, reason, *, on_cancel=None, delay_ms=0, profile_bound=True
+):
     """Defer automatic UI until a profile is open and Anki is idle.
 
     Always leave the current callback stack first. In particular,
@@ -95,7 +97,11 @@ def call_when_anki_idle(callback, reason, *, on_cancel=None, delay_ms=0, profile
             return
         busy = getattr(getattr(mw, "progress", None), "busy", None)
         modal = getattr(QApplication, "activeModalWidget", None)
-        if col is None or (callable(busy) and busy()) or (callable(modal) and modal() is not None):
+        if (
+            col is None
+            or (callable(busy) and busy())
+            or (callable(modal) and modal() is not None)
+        ):
             if not warned and time.monotonic() - started >= 30:
                 warned = True
                 logger = getattr(services, "logger", None)

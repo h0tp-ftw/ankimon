@@ -35,7 +35,9 @@ def env(monkeypatch):
     mod = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, spec.name, mod)
     spec.loader.exec_module(mod)
-    return SimpleNamespace(mod=mod, mw=mw, services=services, timers=timers, app=application)
+    return SimpleNamespace(
+        mod=mod, mw=mw, services=services, timers=timers, app=application
+    )
 
 
 class LegacyTaskman:
@@ -111,7 +113,11 @@ def test_dispatch_typeerror_is_never_retried(env):
 
 def test_slow_addon_task_does_not_occupy_collection_executor(env):
     entered, release = threading.Event(), threading.Event()
-    with ThreadPoolExecutor(max_workers=1) as collection, ThreadPoolExecutor(max_workers=1) as other:
+    with (
+        ThreadPoolExecutor(max_workers=1) as collection,
+        ThreadPoolExecutor(max_workers=1) as other,
+    ):
+
         def submit(task, on_done=None, args=None, uses_collection=True):
             return (collection if uses_collection else other).submit(task)
 
@@ -125,7 +131,10 @@ def test_slow_addon_task_does_not_occupy_collection_executor(env):
         try:
             assert entered.wait(1)
             # Anki's Checking/sync work must run while add-on I/O is stalled.
-            assert collection.submit(lambda: "sync complete").result(timeout=1) == "sync complete"
+            assert (
+                collection.submit(lambda: "sync complete").result(timeout=1)
+                == "sync complete"
+            )
         finally:
             release.set()
             worker.result(timeout=1)
@@ -145,7 +154,9 @@ def test_idle_gate_leaves_profile_open_stack_and_waits_for_sync(env):
     assert env.services._idle_callbacks == set()
 
 
-def test_idle_gate_never_opens_over_busy_progress_even_after_long_wait(env, monkeypatch):
+def test_idle_gate_never_opens_over_busy_progress_even_after_long_wait(
+    env, monkeypatch
+):
     now = [0]
     monkeypatch.setattr(env.mod.time, "monotonic", lambda: now[0])
     calls, logs = [], []

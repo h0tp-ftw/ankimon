@@ -214,4 +214,10 @@ def test_teardown_retires_manager_before_any_event_pump_or_widget_delete(monkeyp
     for _ in range(2):
         calls.clear()
         reloader.teardown_ankimon(addon.__name__)
-        assert calls == ["cancel_idle", "invalidate", *steps[:-1], "reset_db", steps[-1]]
+        assert calls == [
+            "cancel_idle",
+            "invalidate",
+            *steps[:-1],
+            "reset_db",
+            steps[-1],
+        ]

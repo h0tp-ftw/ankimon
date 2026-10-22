@@ -697,7 +697,10 @@ def test_profile_switch_preserves_warmed_evolution_rows_without_disk_reads(monke
     rows, index = pf._poke_evo_cache, pf._poke_evo_index
 
     with monkeypatch.context() as isolated:
-        isolated.setattr("builtins.open", mock.Mock(side_effect=AssertionError("profile switch read CSV")))
+        isolated.setattr(
+            "builtins.open",
+            mock.Mock(side_effect=AssertionError("profile switch read CSV")),
+        )
         pf.clear_pokedex_caches(preserve_evolution=True)
         assert pf._poke_evo_cache is rows
         assert pf._poke_evo_index is index

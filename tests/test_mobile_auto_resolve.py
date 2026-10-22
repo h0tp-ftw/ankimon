@@ -19,15 +19,34 @@ import pytest
 _SRC = Path(__file__).resolve().parent.parent / "src"
 
 for _name in (
-    "aqt", "aqt.qt", "aqt.utils", "aqt.gui_hooks", "aqt.operations",
-    "aqt.theme", "aqt.sound", "aqt.webview", "aqt.main",
-    "anki", "anki.hooks", "anki.collection", "anki.utils",
-    "PyQt6", "PyQt6.QtGui", "PyQt6.QtWidgets", "PyQt6.QtCore",
-    "PyQt6.QtWebChannel", "PyQt6.QtWebEngineWidgets",
+    "aqt",
+    "aqt.qt",
+    "aqt.utils",
+    "aqt.gui_hooks",
+    "aqt.operations",
+    "aqt.theme",
+    "aqt.sound",
+    "aqt.webview",
+    "aqt.main",
+    "anki",
+    "anki.hooks",
+    "anki.collection",
+    "anki.utils",
+    "PyQt6",
+    "PyQt6.QtGui",
+    "PyQt6.QtWidgets",
+    "PyQt6.QtCore",
+    "PyQt6.QtWebChannel",
+    "PyQt6.QtWebEngineWidgets",
 ):
     sys.modules.setdefault(_name, MagicMock())
 
-for _pkg in ("Ankimon", "Ankimon.functions", "Ankimon.pyobj", "Ankimon.ankimon_items_web"):
+for _pkg in (
+    "Ankimon",
+    "Ankimon.functions",
+    "Ankimon.pyobj",
+    "Ankimon.ankimon_items_web",
+):
     _existing = sys.modules.get(_pkg)
     if _existing is None or not hasattr(_existing, "__path__"):
         _mod = types.ModuleType(_pkg)
@@ -47,9 +66,14 @@ from Ankimon.pyobj import ankimon_sync as asy  # noqa: E402
 
 
 class _Logger:
-    def log(self, *a, **k): pass
-    def game_log(self, *a, **k): pass
-    def log_and_showinfo(self, *a, **k): pass
+    def log(self, *a, **k):
+        pass
+
+    def game_log(self, *a, **k):
+        pass
+
+    def log_and_showinfo(self, *a, **k):
+        pass
 
 
 class _Settings:
@@ -89,7 +113,8 @@ def wired(tmp_path, monkeypatch):
     from Ankimon import background_ops
 
     monkeypatch.setattr(
-        background_ops, "call_when_anki_idle",
+        background_ops,
+        "call_when_anki_idle",
         lambda callback, reason, **kwargs: callback(),
     )
     db = AnkimonDB(_Logger(), db_path=str(tmp_path / "ankimon.db"))
@@ -107,7 +132,10 @@ def wired(tmp_path, monkeypatch):
 
     mock_bridge = MagicMock()
     mock_bridge.resolveAll.return_value = {
-        "success": True, "resolved": 3, "xp_gained": 100, "cash_gained": 50,
+        "success": True,
+        "resolved": 3,
+        "xp_gained": 100,
+        "cash_gained": 50,
         "caught_list": [{"name": "Pikachu"}],
     }
     shop_stub = types.ModuleType("Ankimon.ankimon_items_web.shop_obj")
@@ -119,10 +147,12 @@ def wired(tmp_path, monkeypatch):
 
     def build(review_ids, resolution_mode="manual", mobile_enabled=True):
         services.col = _FakeCol(review_ids)
-        settings = _Settings({
-            "mobile.enabled": mobile_enabled,
-            "mobile.resolution_mode": resolution_mode,
-        })
+        settings = _Settings(
+            {
+                "mobile.enabled": mobile_enabled,
+                "mobile.resolution_mode": resolution_mode,
+            }
+        )
         # Capture through ankimon_sync's OWN gui_hooks reference: another test
         # module may have swapped sys.modules["aqt"] for a fresh MagicMock, so a
         # local ``from aqt import gui_hooks`` could resolve to a different object
@@ -184,10 +214,12 @@ def test_setup_hooks_reload_safe(wired):
     """A second setup in the same session removes the first handlers before
     re-appending (F31), so on_sync_did_finish is never double-registered."""
     db, build, tooltip, mock_bridge = wired
-    settings = _Settings({
-        "mobile.enabled": True,
-        "mobile.resolution_mode": "manual",
-    })
+    settings = _Settings(
+        {
+            "mobile.enabled": True,
+            "mobile.resolution_mode": "manual",
+        }
+    )
     sdf = MagicMock()
     sws = MagicMock()
     asy.gui_hooks.sync_did_finish = sdf
@@ -215,10 +247,12 @@ def test_mobile_detection_registers_with_shipped_defaults(wired):
     ``ankiweb_sync=True`` and so masked the bug; this one pins the DEFAULT."""
     db, build, tooltip, mock_bridge = wired
 
-    settings = _Settings({
-        "mobile.enabled": True,
-        "mobile.resolution_mode": "manual",
-    })
+    settings = _Settings(
+        {
+            "mobile.enabled": True,
+            "mobile.resolution_mode": "manual",
+        }
+    )
     services.col = _FakeCol([101, 102, 103])
     db.set_mobile_watermark(0)
 
@@ -229,7 +263,9 @@ def test_mobile_detection_registers_with_shipped_defaults(wired):
     asy.setup_ankimon_sync_hooks(settings, _Logger())
 
     # The detection hook IS registered even though ankiweb_sync is False.
-    assert sdf.append.called, "on_sync_did_finish was not registered for a default-config user"
+    assert sdf.append.called, (
+        "on_sync_did_finish was not registered for a default-config user"
+    )
 
     # Firing it (exactly what a real mid-session AnkiWeb sync does) queues the
     # reviews into pending battles — the behaviour a default user was missing.
@@ -247,6 +283,7 @@ def test_sync_did_finish_applies_queue_cap(wired, monkeypatch):
     """on_sync_did_finish bounds each queueing pass by MOBILE_QUEUE_CAP the same
     way the startup pass does: keep the newest N, discard the oldest."""
     from Ankimon.functions import mobile_sync as ms
+
     db, build, tooltip, mock_bridge = wired
     monkeypatch.setattr(ms, "MOBILE_QUEUE_CAP", 2)
     hook = build([1, 2, 3, 4], resolution_mode="manual")
@@ -260,6 +297,7 @@ def test_sync_did_finish_holds_lock_during_switch(wired, monkeypatch):
     """The dual-DB switch/queue pass runs under _mobile_sync_lock so it cannot
     interleave with an in-flight background mobile-resolve."""
     from Ankimon.functions import mobile_sync as ms
+
     db, build, tooltip, mock_bridge = wired
     observed = {}
     real_detect = ms.detect_mobile_reviews
@@ -301,14 +339,17 @@ def paused_mobile_worker():
         assert not thread.is_alive()
 
 
-def test_sync_yields_to_paused_replay_then_retries(wired, monkeypatch, paused_mobile_worker):
+def test_sync_yields_to_paused_replay_then_retries(
+    wired, monkeypatch, paused_mobile_worker
+):
     """A paused replay cannot block the GUI event that resumes it (#996)."""
     from Ankimon import background_ops
 
     db, build, _, _ = wired
     scheduled = []
     monkeypatch.setattr(
-        background_ops, "call_when_anki_idle",
+        background_ops,
+        "call_when_anki_idle",
         lambda callback, reason, **kwargs: scheduled.append((callback, kwargs)),
     )
     hook = build([1, 2, 3])
@@ -322,6 +363,7 @@ def test_sync_yields_to_paused_replay_then_retries(wired, monkeypatch, paused_mo
     assert not expired.is_set(), "GUI waited for the worker instead of yielding"
     resume.set()
     from Ankimon.functions import mobile_sync as ms
+
     # Synchronize with actual worker completion, not a guessed sleep.
     with ms._mobile_sync_lock:
         pass
@@ -331,7 +373,9 @@ def test_sync_yields_to_paused_replay_then_retries(wired, monkeypatch, paused_mo
     assert scheduled == []
 
 
-def test_gui_resolve_does_not_lease_database_while_worker_is_paused(paused_mobile_worker):
+def test_gui_resolve_does_not_lease_database_while_worker_is_paused(
+    paused_mobile_worker,
+):
     from Ankimon.functions import mobile_sync as ms
 
     db = MagicMock()
@@ -385,7 +429,8 @@ def test_deferred_mobile_detection_drops_changed_profile(wired, monkeypatch):
     db, build, _, _ = wired
     scheduled = []
     monkeypatch.setattr(
-        background_ops, "call_when_anki_idle",
+        background_ops,
+        "call_when_anki_idle",
         lambda callback, reason, **kwargs: scheduled.append(callback),
     )
     build([1, 2, 3])()
@@ -412,7 +457,13 @@ def test_mobile_worker_never_reads_anki_collection(wired, monkeypatch, day_cutof
     # actual worker entry path, without replacing the engine implementation.
     with ThreadPoolExecutor(max_workers=1) as pool:
         result = pool.submit(
-            ms.resolve_next, "", db, None, None, None, None,
+            ms.resolve_next,
+            "",
+            db,
+            None,
+            None,
+            None,
+            None,
             day_cutoff=day_cutoff,
         ).result(timeout=2)
     assert result == {"done": True}
@@ -424,10 +475,14 @@ def _open_mobile_profile(monkeypatch, review_ids):
 
     profile = _exec_profile_hooks(monkeypatch, _fresh_gui_hooks())
     monkeypatch.setitem(sys.modules, "Ankimon.pyobj.ankimon_sync", asy)
-    monkeypatch.setattr(profile, "setup_ankimon_sync_hooks", asy.setup_ankimon_sync_hooks)
+    monkeypatch.setattr(
+        profile, "setup_ankimon_sync_hooks", asy.setup_ankimon_sync_hooks
+    )
     monkeypatch.setattr(asy, "mw", profile.mw)
     asy.gui_hooks.sync_did_finish = MagicMock()
-    profile.settings_obj = _Settings({"mobile.enabled": True, "mobile.resolution_mode": "auto"})
+    profile.settings_obj = _Settings(
+        {"mobile.enabled": True, "mobile.resolution_mode": "auto"}
+    )
     profile.mw.taskman = types.SimpleNamespace(run_in_background=lambda *args: None)
     profile.mw.col = services.col = _FakeCol(review_ids)
     profile._on_profile_did_open(False)()
@@ -451,7 +506,11 @@ def test_profile_baseline_precedes_first_auto_sync(wired, monkeypatch, watermark
 @pytest.mark.parametrize("sync_callback_first", [False, True])
 @pytest.mark.parametrize("initial_state", ["first_run", "existing", "import"])
 def test_contended_profile_initializes_once_before_either_sync_callback(
-    wired, monkeypatch, paused_mobile_worker, sync_callback_first, initial_state,
+    wired,
+    monkeypatch,
+    paused_mobile_worker,
+    sync_callback_first,
+    initial_state,
 ):
     from Ankimon import background_ops
     from Ankimon.functions import mobile_sync as ms
@@ -464,10 +523,13 @@ def test_contended_profile_initializes_once_before_either_sync_callback(
     elif initial_state == "import":
         db.set_mobile_watermark(900)
         with db._get_connection() as conn:
-            conn.execute("INSERT OR REPLACE INTO metadata VALUES ('import_rebase_pending', '1')")
+            conn.execute(
+                "INSERT OR REPLACE INTO metadata VALUES ('import_rebase_pending', '1')"
+            )
     scheduled = []
     monkeypatch.setattr(
-        background_ops, "call_when_anki_idle",
+        background_ops,
+        "call_when_anki_idle",
         lambda callback, reason, **kwargs: scheduled.append(callback),
     )
     profile, sync_hook = _open_mobile_profile(monkeypatch, [100])
@@ -487,14 +549,22 @@ def test_contended_profile_initializes_once_before_either_sync_callback(
     assert clear_session.call_count == 3
     assert [r["revlog_id"] for r in db.get_next_pending_mobile_batch(10)] == [101, 102]
     assert db.get_mobile_watermark() == 102
-    assert db.execute("SELECT value FROM metadata WHERE key='import_rebase_pending'").fetchone() is None
+    assert (
+        db.execute(
+            "SELECT value FROM metadata WHERE key='import_rebase_pending'"
+        ).fetchone()
+        is None
+    )
     bridge.resolveAll.assert_called_once()
     assert not scheduled
 
 
 @pytest.mark.parametrize("stale_reason", ["profile", "reload"])
 def test_contended_profile_initializer_drops_stale_context(
-    wired, monkeypatch, paused_mobile_worker, stale_reason,
+    wired,
+    monkeypatch,
+    paused_mobile_worker,
+    stale_reason,
 ):
     from Ankimon import background_ops
     from Ankimon.functions import mobile_sync as ms
@@ -502,13 +572,16 @@ def test_contended_profile_initializer_drops_stale_context(
     db, _, _, bridge = wired
     scheduled = []
     monkeypatch.setattr(
-        background_ops, "call_when_anki_idle",
+        background_ops,
+        "call_when_anki_idle",
         lambda callback, reason, **kwargs: scheduled.append(callback),
     )
     _open_mobile_profile(monkeypatch, [100])
     if stale_reason == "reload":
         generation = getattr(services, "_background_generation", 0)
-        monkeypatch.setattr(services, "_background_generation", generation + 1, raising=False)
+        monkeypatch.setattr(
+            services, "_background_generation", generation + 1, raising=False
+        )
     else:
         services.col = _FakeCol([900])
     paused_mobile_worker[0].set()
@@ -520,9 +593,10 @@ def test_contended_profile_initializer_drops_stale_context(
     bridge.resolveAll.assert_not_called()
 
 
-
 def test_contended_initialization_keeps_desktop_answers_during_wait(
-    wired, monkeypatch, paused_mobile_worker,
+    wired,
+    monkeypatch,
+    paused_mobile_worker,
 ):
     from Ankimon import background_ops
     from Ankimon.functions import mobile_sync as ms
@@ -530,7 +604,8 @@ def test_contended_initialization_keeps_desktop_answers_during_wait(
     db, _, _, bridge = wired
     scheduled = []
     monkeypatch.setattr(
-        background_ops, "call_when_anki_idle",
+        background_ops,
+        "call_when_anki_idle",
         lambda callback, reason, **kwargs: scheduled.append(callback),
     )
     profile, _ = _open_mobile_profile(monkeypatch, [100])

@@ -76,6 +76,7 @@ def test_update_state_migration_from_experimental(tmp_path):
 
     with patch.object(update_manager, "get_update_state_path", return_value=state_file):
         import json
+
         legacy_state = {
             "source_type": "branch",
             "source_name": "BRRRR_Experimental",
@@ -120,7 +121,9 @@ def test_fetch_commit_date(mock_api_get):
 @patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
 @patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=False)
-def test_check_branch_update_no_state(mock_is_git_clone, mock_read_state, mock_run_query):
+def test_check_branch_update_no_state(
+    mock_is_git_clone, mock_read_state, mock_run_query
+):
     """Test check_branch_update initializes tracking silently if no update state exists."""
     mock_read_state.return_value = None
     changelog.check_branch_update(True, True)
@@ -449,19 +452,33 @@ def test_poll_release_channel_respects_snooze(mock_clone, mock_state, mock_run_q
     mock_run_query.assert_not_called()
 
 
-def test_automatic_branch_prompt_waits_for_idle_and_discards_old_profile_results(monkeypatch):
+def test_automatic_branch_prompt_waits_for_idle_and_discards_old_profile_results(
+    monkeypatch,
+):
     window = types.SimpleNamespace(col=object())
     monkeypatch.setattr(changelog, "mw", window)
-    monkeypatch.setattr(update_manager, "read_update_state", lambda: {
-        "source_type": "branch", "source_name": "main", "commit_sha": "old",
-        "addon_version": changelog.addon_ver,
-    })
+    monkeypatch.setattr(
+        update_manager,
+        "read_update_state",
+        lambda: {
+            "source_type": "branch",
+            "source_name": "main",
+            "commit_sha": "old",
+            "addon_version": changelog.addon_ver,
+        },
+    )
     prompts = types.ModuleType("Ankimon.pyobj.update_dialog")
     prompts.show_branch_update_prompt = MagicMock()
     monkeypatch.setitem(sys.modules, prompts.__name__, prompts)
     queued, idle = [], []
-    monkeypatch.setattr(changelog, "run_query", lambda task, done, failed: queued.append(done))
-    monkeypatch.setattr(changelog, "call_when_anki_idle", lambda callback, **kwargs: idle.append(callback))
+    monkeypatch.setattr(
+        changelog, "run_query", lambda task, done, failed: queued.append(done)
+    )
+    monkeypatch.setattr(
+        changelog,
+        "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append(callback),
+    )
 
     changelog.check_branch_update(True, True)
     queued[0](("new", []))
@@ -481,8 +498,14 @@ def test_changelog_started_before_profile_open_waits_for_first_idle_window(monke
     window = types.SimpleNamespace(col=None)
     monkeypatch.setattr(changelog, "mw", window)
     queued, idle = [], []
-    monkeypatch.setattr(changelog, "run_query", lambda task, done, failed: queued.append(done))
-    monkeypatch.setattr(changelog, "call_when_anki_idle", lambda callback, **kwargs: idle.append(callback))
+    monkeypatch.setattr(
+        changelog, "run_query", lambda task, done, failed: queued.append(done)
+    )
+    monkeypatch.setattr(
+        changelog,
+        "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append(callback),
+    )
     warning = MagicMock()
     monkeypatch.setattr(changelog, "showWarning", warning)
 

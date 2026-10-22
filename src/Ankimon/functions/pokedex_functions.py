@@ -873,48 +873,103 @@ def get_pokemon_descriptions(species_id, language):
 # · 8 it.
 _FORM_NAME_LOCALIZATION = {
     "-Alola": {
-        1: ("アローラ", ""), 3: ("알로라 ", ""), 4: ("阿羅拉", ""),
-        5: ("", " d'Alola"), 6: ("Alola-", ""), 7: ("", " de Alola"), 8: ("", " di Alola"),
+        1: ("アローラ", ""),
+        3: ("알로라 ", ""),
+        4: ("阿羅拉", ""),
+        5: ("", " d'Alola"),
+        6: ("Alola-", ""),
+        7: ("", " de Alola"),
+        8: ("", " di Alola"),
     },
     "-Galar": {
-        1: ("ガラル", ""), 3: ("가라르 ", ""), 4: ("伽勒爾", ""),
-        5: ("", " de Galar"), 6: ("Galar-", ""), 7: ("", " de Galar"), 8: ("", " di Galar"),
+        1: ("ガラル", ""),
+        3: ("가라르 ", ""),
+        4: ("伽勒爾", ""),
+        5: ("", " de Galar"),
+        6: ("Galar-", ""),
+        7: ("", " de Galar"),
+        8: ("", " di Galar"),
     },
     "-Hisui": {
-        1: ("ヒスイ", ""), 3: ("히스이 ", ""), 4: ("洗翠", ""),
-        5: ("", " de Hisui"), 6: ("Hisui-", ""), 7: ("", " de Hisui"), 8: ("", " di Hisui"),
+        1: ("ヒスイ", ""),
+        3: ("히스이 ", ""),
+        4: ("洗翠", ""),
+        5: ("", " de Hisui"),
+        6: ("Hisui-", ""),
+        7: ("", " de Hisui"),
+        8: ("", " di Hisui"),
     },
     "-Paldea": {
-        1: ("パルデア", ""), 3: ("팔데아 ", ""), 4: ("帕底亞", ""),
-        5: ("", " de Paldea"), 6: ("Paldea-", ""), 7: ("", " de Paldea"), 8: ("", " di Paldea"),
+        1: ("パルデア", ""),
+        3: ("팔데아 ", ""),
+        4: ("帕底亞", ""),
+        5: ("", " de Paldea"),
+        6: ("Paldea-", ""),
+        7: ("", " de Paldea"),
+        8: ("", " di Paldea"),
     },
     "-Mega": {
-        1: ("メガ", ""), 3: ("메가 ", ""), 4: ("超級", ""),
-        5: ("Méga-", ""), 6: ("Mega-", ""), 7: ("Mega-", ""), 8: ("Mega", ""),
+        1: ("メガ", ""),
+        3: ("메가 ", ""),
+        4: ("超級", ""),
+        5: ("Méga-", ""),
+        6: ("Mega-", ""),
+        7: ("Mega-", ""),
+        8: ("Mega", ""),
     },
     "-Mega-X": {
-        1: ("メガ", "Ｘ"), 3: ("메가 ", " X"), 4: ("超級", "Ｘ"),
-        5: ("Méga-", " X"), 6: ("Mega-", " X"), 7: ("Mega-", " X"), 8: ("Mega", " X"),
+        1: ("メガ", "Ｘ"),
+        3: ("메가 ", " X"),
+        4: ("超級", "Ｘ"),
+        5: ("Méga-", " X"),
+        6: ("Mega-", " X"),
+        7: ("Mega-", " X"),
+        8: ("Mega", " X"),
     },
     "-Mega-Y": {
-        1: ("メガ", "Ｙ"), 3: ("메가 ", " Y"), 4: ("超級", "Ｙ"),
-        5: ("Méga-", " Y"), 6: ("Mega-", " Y"), 7: ("Mega-", " Y"), 8: ("Mega", " Y"),
+        1: ("メガ", "Ｙ"),
+        3: ("메가 ", " Y"),
+        4: ("超級", "Ｙ"),
+        5: ("Méga-", " Y"),
+        6: ("Mega-", " Y"),
+        7: ("Mega-", " Y"),
+        8: ("Mega", " Y"),
     },
     "-Primal": {
-        1: ("ゲンシ", ""), 3: ("원시 ", ""), 4: ("原始", ""),
-        5: ("Primo-", ""), 6: ("Proto-", ""), 7: ("", " primigenio"), 8: ("", " Primevo"),
+        1: ("ゲンシ", ""),
+        3: ("원시 ", ""),
+        4: ("原始", ""),
+        5: ("Primo-", ""),
+        6: ("Proto-", ""),
+        7: ("", " primigenio"),
+        8: ("", " Primevo"),
     },
     # Ash-Greninja — a distinct localized name in the games.
     "-Ash": {
-        1: ("サトシ", ""), 3: ("지우 ", ""), 4: ("小智", ""),
-        5: ("", " Sacha"), 6: ("", "-Ash"), 7: ("", " Ash"), 8: ("", " Ash"),
+        1: ("サトシ", ""),
+        3: ("지우 ", ""),
+        4: ("小智", ""),
+        5: ("", " Sacha"),
+        6: ("", "-Ash"),
+        7: ("", " Ash"),
+        8: ("", " Ash"),
     },
 }
 
 # Battle-only / cosmetic forms with no distinct name in any language — show the
 # plain species name.
-_FORM_BASE_ONLY = {"-Bond", "-Totem", "-Meteor", "-Zen", "-Gulping", "-Gorging",
-                   "-Busted", "-Noice", "-Hangry", "-Ash-Gmax"}
+_FORM_BASE_ONLY = {
+    "-Bond",
+    "-Totem",
+    "-Meteor",
+    "-Zen",
+    "-Gulping",
+    "-Gorging",
+    "-Busted",
+    "-Noice",
+    "-Hangry",
+    "-Ash-Gmax",
+}
 
 
 def _localize_form_name(base_lang_name: str, suffix: str, language: int):
@@ -964,7 +1019,9 @@ def get_pokemon_diff_lang_name(pokemon_id: int, language: int):
     return "No Translation in this language"
 
 
-def resolve_display_name(pokemon_id: int, internal_name: str, nickname: str, language: int) -> str:
+def resolve_display_name(
+    pokemon_id: int, internal_name: str, nickname: str, language: int
+) -> str:
     """The name a player should see for one Pokémon: nickname if meaningfully
     custom, else the current-language pretty name.
 
@@ -984,6 +1041,7 @@ def resolve_display_name(pokemon_id: int, internal_name: str, nickname: str, lan
     english_name = get_pretty_name_for_name(internal_name)
 
     if nickname:
+
         def _normalize(s):
             return (
                 str(s)

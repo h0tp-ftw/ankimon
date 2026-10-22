@@ -4,6 +4,7 @@ Run ``python -m harness.scenarios.monthly_challenge`` in the Tier-2 environment.
 Audio is substituted: these tests exercise dialogs, not native audio devices.
 Set ANKIMON_MONTHLY_SCREENSHOTS to an output directory for sprite screenshots.
 """
+
 import copy
 import faulthandler
 import json
@@ -19,12 +20,23 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 SCENARIOS = (
-    "overlap", "profile", "warning_switch", "refresh", "reclaim",
-    "atomic_failure", "stale_decision", "sprites",
-    "pending_learn_reject", "pending_learn_close",
-    "pending_tm_reject", "pending_tm_close", "pending_tm_replacement_reject",
+    "overlap",
+    "profile",
+    "warning_switch",
+    "refresh",
+    "reclaim",
+    "atomic_failure",
+    "stale_decision",
+    "sprites",
+    "pending_learn_reject",
+    "pending_learn_close",
+    "pending_tm_reject",
+    "pending_tm_close",
+    "pending_tm_replacement_reject",
     "missing_move_row",
-    "tm_progress_accept", "tm_progress_cancel", "tm_moves_changed",
+    "tm_progress_accept",
+    "tm_progress_cancel",
+    "tm_moves_changed",
 )
 
 
@@ -33,9 +45,22 @@ def wide_gif():
     codes = [code for _ in range(143 * 24) for code in (4, 1)] + [5]
     bits = sum(code << (3 * i) for i, code in enumerate(codes))
     data = bits.to_bytes((len(codes) * 3 + 7) // 8, "little")
-    blocks = b"".join(bytes([len(data[i:i + 255])]) + data[i:i + 255] for i in range(0, len(data), 255))
+    blocks = b"".join(
+        bytes([len(data[i : i + 255])]) + data[i : i + 255]
+        for i in range(0, len(data), 255)
+    )
     size = struct.pack("<HH", 143, 24)
-    return b"GIF89a" + size + b"\x80\0\0\0\0\0\xd2\x32\x5a" + b"," + b"\0" * 4 + size + b"\0\x02" + blocks + b"\0;"
+    return (
+        b"GIF89a"
+        + size
+        + b"\x80\0\0\0\0\0\xd2\x32\x5a"
+        + b","
+        + b"\0" * 4
+        + size
+        + b"\0\x02"
+        + blocks
+        + b"\0;"
+    )
 
 
 def monthly_action():
@@ -47,12 +72,13 @@ def monthly_action():
     the profile_menu actions.
     """
     import Ankimon.menu_buttons as menu_buttons
+
     profile_menu = menu_buttons.profile_menu
-    
+
     for action in profile_menu.actions():
         if action.objectName() == "ankimon_monthly_challenge":
             return action
-    
+
     raise AssertionError("Monthly Challenge action is not found in profile_menu")
 
 
@@ -60,6 +86,7 @@ def run(scenario):
     from PyQt6.QtWidgets import QApplication, QDialog, QPushButton, QLabel
     from PyQt6.QtCore import QTimer
     import PyQt6.QtMultimedia as audio
+
     for name in ("QSoundEffect", "QAudioOutput", "QMediaPlayer"):
         setattr(audio, name, MagicMock)
     native_exec = QDialog.exec
@@ -68,28 +95,60 @@ def run(scenario):
     import requests
 
     def offline(*args, **kwargs):
-        raise requests.exceptions.ConnectionError("monthly regression: controlled network")
+        raise requests.exceptions.ConnectionError(
+            "monthly regression: controlled network"
+        )
 
-    with patch.object(requests, "get", side_effect=offline), patch.object(requests, "post", side_effect=offline), quiet():
-        d = RealDriver(first_run=True, first_encounter=False, neuter_network=False, settings_overrides={
-            "gui.show_sprites_across_ankimon": False,
-            "mobile.enabled": False, "misc.ankiweb_sync": False,
-        })
+    with (
+        patch.object(requests, "get", side_effect=offline),
+        patch.object(requests, "post", side_effect=offline),
+        quiet(),
+    ):
+        d = RealDriver(
+            first_run=True,
+            first_encounter=False,
+            neuter_network=False,
+            settings_overrides={
+                "gui.show_sprites_across_ankimon": False,
+                "mobile.enabled": False,
+                "misc.ankiweb_sync": False,
+            },
+        )
     QDialog.exec = lambda self: native_exec(self)
     import Ankimon.pyobj.pokemon_trade as trade
     import Ankimon.profile_hooks as profiles
+
     db = d.services.db
-    logger = SimpleNamespace(log=lambda level, message: print(level, message, flush=True))
+    logger = SimpleNamespace(
+        log=lambda level, message: print(level, message, flush=True)
+    )
     profiles.logger = logger
     db.set_user_data("rate_this", True)
     root = Path(__file__).resolve().parents[2]
-    payload = json.loads((root / "assets/challenges/monthly_challenges.json").read_text())[-1]
+    payload = json.loads(
+        (root / "assets/challenges/monthly_challenges.json").read_text()
+    )[-1]
     # English month names independent of the process locale.
-    months = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+    months = (
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    )
     now = datetime.now()
     payload["month"] = f"{months[now.month - 1]} {now.year}"
     iid = payload["pokemon"]["individual_id"]
-    response = SimpleNamespace(raise_for_status=lambda: None, json=lambda: [copy.deepcopy(payload)])
+    response = SimpleNamespace(
+        raise_for_status=lambda: None, json=lambda: [copy.deepcopy(payload)]
+    )
     queued = []
     d.aqt.mw.taskman.run_in_background = lambda task, done: queued.append((task, done))
     timer_errors = []
@@ -104,6 +163,7 @@ def run(scenario):
                 dialog = QApplication.activeModalWidget()
                 if dialog:
                     dialog.reject()
+
         QTimer.singleShot(0, checked)
 
     def press(name):
@@ -117,7 +177,11 @@ def run(scenario):
         dialog = QApplication.activeModalWidget()
         assert dialog is not None
         button = next(
-            (button for button in dialog.findChildren(QPushButton) if button.text() == text),
+            (
+                button
+                for button in dialog.findChildren(QPushButton)
+                if button.text() == text
+            ),
             None,
         )
         assert button is not None, (dialog.windowTitle(), text)
@@ -127,16 +191,27 @@ def run(scenario):
         def accept():
             later(lambda: press_text("Let's go!"))
             press("acceptBtn")
+
         later(accept)
 
     def finish():
         task, done = queued.pop(0)
         # Database access on this thread would violate the fetch-only contract.
-        db_methods = ("get_user_data", "get_pokemon", "set_monthly_challenge_state", "save_pokemon")
+        db_methods = (
+            "get_user_data",
+            "get_pokemon",
+            "set_monthly_challenge_state",
+            "save_pokemon",
+        )
         from contextlib import ExitStack
+
         with ExitStack() as stack:
             for name in db_methods:
-                stack.enter_context(patch.object(db, name, side_effect=AssertionError("worker touched DB")))
+                stack.enter_context(
+                    patch.object(
+                        db, name, side_effect=AssertionError("worker touched DB")
+                    )
+                )
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(task)
                 assert future.result(timeout=5) is not None
@@ -148,34 +223,52 @@ def run(scenario):
         while getattr(d.services, "_monthly_challenge_request", None) is not None:
             QApplication.processEvents()
             if time.monotonic() >= deadline:
-                raise AssertionError("Monthly challenge result did not finish while Anki was idle")
+                raise AssertionError(
+                    "Monthly challenge result did not finish while Anki was idle"
+                )
             time.sleep(0.001)
 
     def close_notice(fn):
         def wrapped(*args, **kwargs):
             later(lambda: QApplication.activeModalWidget().accept())
             return fn(*args, **kwargs)
+
         return wrapped
 
     native_decision = trade.show_monthly_challenge_dialog
+
     def decision(*args, **kwargs):
         seen.append("decision")
         later(lambda: press("acceptBtn"))
         return native_decision(*args, **kwargs)
 
-    with patch.object(trade.requests, "get", return_value=response), \
-         patch.object(trade, "show_monthly_challenge_dialog", side_effect=decision), \
-         patch.object(trade, "show_monthly_acceptance_dialog", side_effect=close_notice(trade.show_monthly_acceptance_dialog)), \
-         patch.object(trade, "show_monthly_rejection_dialog", side_effect=close_notice(trade.show_monthly_rejection_dialog)):
+    with (
+        patch.object(trade.requests, "get", return_value=response),
+        patch.object(trade, "show_monthly_challenge_dialog", side_effect=decision),
+        patch.object(
+            trade,
+            "show_monthly_acceptance_dialog",
+            side_effect=close_notice(trade.show_monthly_acceptance_dialog),
+        ),
+        patch.object(
+            trade,
+            "show_monthly_rejection_dialog",
+            side_effect=close_notice(trade.show_monthly_rejection_dialog),
+        ),
+    ):
         if scenario == "overlap":
+
             def nested(*args, **kwargs):
                 seen.append("decision")
+
                 def request_again():
                     trade.check_and_award_monthly_pokemon(logger)
                     assert not queued, "nested dialog started another request"
                     press("acceptBtn")
+
                 later(request_again)
                 return native_decision(*args, **kwargs)
+
             trade.show_monthly_challenge_dialog.side_effect = nested
             trade.check_and_award_monthly_pokemon(logger)
             trade.check_and_award_monthly_pokemon(logger)
@@ -187,7 +280,10 @@ def run(scenario):
 
         elif scenario == "profile":
             handler = profiles._on_profile_did_open(True)
-            with patch.object(profiles, "show_tip_of_the_day"), patch.object(profiles, "setup_ankimon_sync_hooks"):
+            with (
+                patch.object(profiles, "show_tip_of_the_day"),
+                patch.object(profiles, "setup_ankimon_sync_hooks"),
+            ):
                 handler()
                 old_done = queued.pop()[1]
                 old_col = d.aqt.mw.col
@@ -205,6 +301,7 @@ def run(scenario):
 
         elif scenario in ("warning_switch", "refresh"):
             from Ankimon.singletons import get_pokemon_pc
+
             pc = get_pokemon_pc()
             original = db.db_path.name
             db.switch_database("monthly-B.db")
@@ -212,6 +309,7 @@ def run(scenario):
             db.switch_database(original)
             native_warning = trade.show_warning_with_traceback
             warnings = []
+
             def warning(*args, **kwargs):
                 def close_error():
                     warnings.append("error")
@@ -220,12 +318,25 @@ def run(scenario):
                     if scenario == "warning_switch":
                         db.switch_database("monthly-B.db")
                     press("ok")
+
                 later(close_error)
                 return native_warning(*args, **kwargs)
+
             import Ankimon.pyobj.error_handler as errors
-            with patch.object(pc, "refresh_pokemon_grid", side_effect=RuntimeError("injected refresh error")), \
-                 patch.object(trade, "show_warning_with_traceback", side_effect=warning), \
-                 patch.object(errors, "load_error_images", return_value={"path": "", "credit": "", "url": ""}):
+
+            with (
+                patch.object(
+                    pc,
+                    "refresh_pokemon_grid",
+                    side_effect=RuntimeError("injected refresh error"),
+                ),
+                patch.object(trade, "show_warning_with_traceback", side_effect=warning),
+                patch.object(
+                    errors,
+                    "load_error_images",
+                    return_value={"path": "", "credit": "", "url": ""},
+                ),
+            ):
                 trade.check_and_award_monthly_pokemon(logger)
                 finish()
             assert warnings == ["error"]
@@ -239,9 +350,11 @@ def run(scenario):
             assert db.get_user_data("monthly_challenge") == 1
 
         elif scenario == "reclaim":
+
             def reject(*args, **kwargs):
                 later(lambda: press("rejectBtn"))
                 return native_decision(*args, **kwargs)
+
             trade.show_monthly_challenge_dialog.side_effect = reject
             trade.check_and_award_monthly_pokemon(logger)
             finish()
@@ -291,6 +404,7 @@ def run(scenario):
             conn.commit()
             native_warning = trade.show_warning_with_traceback
             warnings = []
+
             def warning(*args, **kwargs):
                 def close_error():
                     warnings.append("error")
@@ -298,13 +412,22 @@ def run(scenario):
                     assert db.get_user_data("monthly_challenge") == 2
                     assert not conn.in_transaction
                     press("ok")
+
                 later(close_error)
                 return native_warning(*args, **kwargs)
+
             import Ankimon.pyobj.error_handler as errors
+
             action = monthly_action()
-            with patch.object(trade, "show_warning_with_traceback", side_effect=warning), \
-                 patch.object(errors, "load_error_images", return_value={"path": "", "credit": "", "url": ""}), \
-                 patch.object(trade, "_refresh_collection") as refresh:
+            with (
+                patch.object(trade, "show_warning_with_traceback", side_effect=warning),
+                patch.object(
+                    errors,
+                    "load_error_images",
+                    return_value={"path": "", "credit": "", "url": ""},
+                ),
+                patch.object(trade, "_refresh_collection") as refresh,
+            ):
                 action.trigger()
                 schedule_manual_acceptance()
                 finish()
@@ -323,6 +446,7 @@ def run(scenario):
             assert db.get_user_data("monthly_challenge") == 1
 
         elif scenario == "stale_decision":
+
             def external_award(*args, **kwargs):
                 def change_and_reject():
                     owned = trade.create_monthly_challenge_pokemon(payload["pokemon"])
@@ -330,8 +454,10 @@ def run(scenario):
                     db.save_pokemon(owned)
                     db.set_monthly_challenge_state(iid, 1)
                     press("rejectBtn")
+
                 later(change_and_reject)
                 return native_decision(*args, **kwargs)
+
             trade.show_monthly_challenge_dialog.side_effect = external_award
             trade.check_and_award_monthly_pokemon(logger)
             finish()
@@ -351,12 +477,24 @@ def run(scenario):
                 moves = ["thundershock", "quickattack"]
                 if four_moves:
                     moves += ["tailwhip", "growl"]
-                seed_db({
-                    "main": {"species": "Bulbasaur", "level": 10,
-                             "individual_id": "monthly-picker-backup"},
-                    "box": [{"species": "Pikachu", "level": 50,
-                             "individual_id": iid, "moves": moves}],
-                }, db)
+                seed_db(
+                    {
+                        "main": {
+                            "species": "Bulbasaur",
+                            "level": 10,
+                            "individual_id": "monthly-picker-backup",
+                        },
+                        "box": [
+                            {
+                                "species": "Pikachu",
+                                "level": 50,
+                                "individual_id": iid,
+                                "moves": moves,
+                            }
+                        ],
+                    },
+                    db,
+                )
                 update_main_pokemon(d.services.main_pokemon)
                 db.set_monthly_challenge_state(iid, 1)
                 pc.show()
@@ -379,11 +517,16 @@ def run(scenario):
 
             # PyQt routes signal exceptions through sys.excepthook, separately
             # from exceptions in our timers. Both must fail the scenario.
-            with patch.object(sys, "excepthook", side_effect=lambda kind, error, tb: timer_errors.append(error)):
+            with patch.object(
+                sys,
+                "excepthook",
+                side_effect=lambda kind, error, tb: timer_errors.append(error),
+            ):
                 if scenario == "missing_move_row":
                     for edit in ("learn", "forget", "cached_save"):
                         manager, _ = open_editor()
                         if edit == "learn":
+
                             def remove_and_learn():
                                 picker = QApplication.activeModalWidget()
                                 assert isinstance(picker, MovePickerDialog)
@@ -391,13 +534,17 @@ def run(scenario):
                                 # No PC refresh: the save itself must revalidate
                                 # the row even when the editor remains cached.
                                 choose_move(picker)
+
                             later(remove_and_learn)
                             manager.slots[0]["learn_btn"].click()
                         elif edit == "forget":
                             manager.slots[0]["forget_btn"].click()
                             QApplication.processEvents()
-                            yes = next(button for button in manager.findChildren(QPushButton)
-                                       if button.text() == "Yes" and button.isVisible())
+                            yes = next(
+                                button
+                                for button in manager.findChildren(QPushButton)
+                                if button.text() == "Yes" and button.isVisible()
+                            )
                             assert db.reject_monthly_challenge(iid)
                             yes.click()
                         else:
@@ -406,7 +553,9 @@ def run(scenario):
                             assert db.reject_monthly_challenge(iid)
                             save(stale_data)
                         assert not timer_errors, timer_errors
-                        assert db.get_pokemon(iid) is None, f"Stale {edit} recreated the deleted row"
+                        assert db.get_pokemon(iid) is None, (
+                            f"Stale {edit} recreated the deleted row"
+                        )
                         assert db.get_user_data("monthly_challenge") == 2
                 elif scenario.startswith("tm_"):
                     from Ankimon.pyobj.attack_dialog import AttackDialog
@@ -426,8 +575,11 @@ def run(scenario):
                         if scenario == "tm_progress_cancel":
                             press_text("Reject Attack")
                         else:
-                            button = next(button for button in dialog.findChildren(QPushButton)
-                                          if button.property("raw_move") == before[0])
+                            button = next(
+                                button
+                                for button in dialog.findChildren(QPushButton)
+                                if button.property("raw_move") == before[0]
+                            )
                             button.click()
 
                     def choose_tm():
@@ -441,7 +593,9 @@ def run(scenario):
                     assert not timer_errors, timer_errors
                     assert captured["move"] == "protect"
                     saved = db.get_pokemon(iid)
-                    assert saved["level"] == 51, "TM replacement overwrote newer progress"
+                    assert saved["level"] == 51, (
+                        "TM replacement overwrote newer progress"
+                    )
                     assert saved["xp"] == 123 and saved["nickname"] == "Fresh progress"
                     if scenario == "tm_progress_accept":
                         expected = ["protect", *before[1:]]
@@ -455,9 +609,13 @@ def run(scenario):
                     replacement = scenario == "pending_tm_replacement_reject"
                     rejecting = scenario.endswith("reject")
                     manager, before = open_editor(four_moves=replacement)
-                    payload["pokemon"] = build_pokemon({
-                        "species": "Pikachu", "level": 1, "individual_id": iid,
-                    }).to_dict()
+                    payload["pokemon"] = build_pokemon(
+                        {
+                            "species": "Pikachu",
+                            "level": 1,
+                            "individual_id": iid,
+                        }
+                    ).to_dict()
                     if is_tm:
                         assert db.add_item("protect", 1, {"type": "TM"})
 
@@ -469,19 +627,26 @@ def run(scenario):
                         modal = QApplication.activeModalWidget()
                         if replacement:
                             from Ankimon.gui_classes.pokemon_details import AttackDialog
+
                             assert isinstance(modal, AttackDialog)
                         else:
                             assert isinstance(modal, MovePickerDialog)
                         captured["modal"] = modal
-                        assert modal.isVisible(), "Fetch must complete during the move dialog"
-                        later(reject_monthly if rejecting else lambda: press_text("Close"))
+                        assert modal.isVisible(), (
+                            "Fetch must complete during the move dialog"
+                        )
+                        later(
+                            reject_monthly if rejecting else lambda: press_text("Close")
+                        )
                         finish()
                         if rejecting:
                             assert db.get_pokemon(iid) is None
                             assert db.get_user_data("monthly_challenge") == 2
                             assert pc._selected_individual_id is None
                             assert not is_alive(manager) or not manager.isVisible()
-                            assert not is_alive(modal) or not modal.isVisible(), "Rejection left a move dialog open"
+                            assert not is_alive(modal) or not modal.isVisible(), (
+                                "Rejection left a move dialog open"
+                            )
                             if is_alive(modal):
                                 assert modal.result() == QDialog.DialogCode.Rejected
                         else:
@@ -508,21 +673,32 @@ def run(scenario):
                         manager.slots[0]["learn_btn"].click()
                     assert not timer_errors, timer_errors
                     if rejecting:
-                        assert db.get_pokemon(iid) is None, "A move dialog resurrected the rejected reward"
+                        assert db.get_pokemon(iid) is None, (
+                            "A move dialog resurrected the rejected reward"
+                        )
                         assert db.get_user_data("monthly_challenge") == 2
                     else:
-                        expected = before + [captured["move"]] if is_tm else [captured["move"], *before[1:]]
+                        expected = (
+                            before + [captured["move"]]
+                            if is_tm
+                            else [captured["move"], *before[1:]]
+                        )
                         assert db.get_pokemon(iid)["attacks"] == expected
                         assert db.get_user_data("monthly_challenge") == 1
 
         elif scenario == "sprites":
             import Ankimon.functions.sprite_functions as sprites
+
             path = Path(d.env.user_path) / "wide.gif"
             path.write_bytes(wide_gif())
             for container, size in ((160, 120), (80, 64)):
                 with patch.object(sprites, "get_sprite_path", return_value=str(path)):
-                    box = trade._build_sprite_box(container, size, payload["pokemon"], True)
-                    hidden = trade._build_sprite_box(container, size, payload["pokemon"], False)
+                    box = trade._build_sprite_box(
+                        container, size, payload["pokemon"], True
+                    )
+                    hidden = trade._build_sprite_box(
+                        container, size, payload["pokemon"], False
+                    )
                 box.show()
                 QApplication.processEvents()
                 label = box.findChild(QLabel)
@@ -531,7 +707,9 @@ def run(scenario):
                 movie.jumpToFrame(0)
                 frame = movie.currentPixmap()
                 print("sprite", size, frame.width(), frame.height(), flush=True)
-                assert frame.width() == size and abs(frame.height() - 24 * size / 143) <= 1
+                assert (
+                    frame.width() == size and abs(frame.height() - 24 * size / 143) <= 1
+                )
                 assert movie.parent() is label
                 assert hidden.findChild(QLabel).movie() is None
                 output = os.environ.get("ANKIMON_MONTHLY_SCREENSHOTS")
@@ -555,7 +733,10 @@ def main():
         return 77
     if len(sys.argv) == 1:
         for scenario in SCENARIOS:
-            result = subprocess.run([sys.executable, "-m", "harness.scenarios.monthly_challenge", scenario], timeout=45)
+            result = subprocess.run(
+                [sys.executable, "-m", "harness.scenarios.monthly_challenge", scenario],
+                timeout=45,
+            )
             if result.returncode:
                 return result.returncode
         return 0

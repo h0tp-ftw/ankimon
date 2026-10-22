@@ -112,6 +112,7 @@ register_card_hooks()
 # guarded; this aligns with that pattern.
 try:
     from .functions.browser_hooks import register_browser_hooks
+
     register_browser_hooks()
 except Exception as e:
     # Log the error but continue loading - badge 11 browser hooks will be disabled

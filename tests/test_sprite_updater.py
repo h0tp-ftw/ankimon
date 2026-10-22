@@ -12,25 +12,26 @@ from conftest import isolated_modules
 
 _SRC = Path(__file__).parent.parent / "src"
 
+
 def _load_sprite_updater():
     # Save original sys.modules state
     old_modules = dict(sys.modules)
-    
+
     # Setup stubs for collections & tests to bypass aqt/Qt dependencies in non-Anki test environment
     if "aqt" not in sys.modules:
         aqt = types.ModuleType("aqt")
         aqt.mw = None
         sys.modules["aqt"] = aqt
-        
+
     if "aqt.operations" not in sys.modules:
         ops = types.ModuleType("aqt.operations")
         ops.QueryOp = object
         sys.modules["aqt.operations"] = ops
-        
+
     ge = types.ModuleType("Ankimon.gui_entities")
     ge.AgreementDialog = object
     sys.modules["Ankimon.gui_entities"] = ge
-    
+
     for name, path in [
         ("Ankimon", _SRC / "Ankimon"),
         ("Ankimon.pyobj", _SRC / "Ankimon" / "pyobj"),
@@ -39,21 +40,28 @@ def _load_sprite_updater():
         ns.__path__ = [str(path)]
         sys.modules[name] = ns
 
-    spec = importlib.util.spec_from_file_location("Ankimon.resources", _SRC / "Ankimon" / "resources.py")
+    spec = importlib.util.spec_from_file_location(
+        "Ankimon.resources", _SRC / "Ankimon" / "resources.py"
+    )
     res_mod = importlib.util.module_from_spec(spec)
     sys.modules["Ankimon.resources"] = res_mod
     spec.loader.exec_module(res_mod)
 
-    spec = importlib.util.spec_from_file_location("Ankimon.pyobj.download_sprites", _SRC / "Ankimon" / "pyobj" / "download_sprites.py")
+    spec = importlib.util.spec_from_file_location(
+        "Ankimon.pyobj.download_sprites",
+        _SRC / "Ankimon" / "pyobj" / "download_sprites.py",
+    )
     ds_mod = importlib.util.module_from_spec(spec)
     sys.modules["Ankimon.pyobj.download_sprites"] = ds_mod
     spec.loader.exec_module(ds_mod)
 
-    spec = importlib.util.spec_from_file_location("Ankimon.pyobj.sprite_updater", _SRC / "Ankimon" / "pyobj" / "sprite_updater.py")
+    spec = importlib.util.spec_from_file_location(
+        "Ankimon.pyobj.sprite_updater", _SRC / "Ankimon" / "pyobj" / "sprite_updater.py"
+    )
     su_mod = importlib.util.module_from_spec(spec)
     sys.modules["Ankimon.pyobj.sprite_updater"] = su_mod
     spec.loader.exec_module(su_mod)
-    
+
     # Restore original sys.modules, keeping only the newly imported sprite_updater module
     for k in list(sys.modules.keys()):
         if k not in old_modules and k != "Ankimon.pyobj.sprite_updater":
@@ -61,8 +69,9 @@ def _load_sprite_updater():
     for k, v in old_modules.items():
         sys.modules[k] = v
     sys.modules["Ankimon.pyobj.sprite_updater"] = su_mod
-    
+
     return su_mod, ds_mod
+
 
 su, _ = _load_sprite_updater()
 
@@ -102,7 +111,9 @@ def test_download_completion_refreshes_sprite_fallbacks(
 
         module = downloader if download_kind == "zip" else updater
         dialog_type = (
-            downloader.DownloadDialog if download_kind == "zip" else updater.SpriteUpdateDialog
+            downloader.DownloadDialog
+            if download_kind == "zip"
+            else updater.SpriteUpdateDialog
         )
         monkeypatch.setattr(module, "QMessageBox", mock.Mock())
         dialog = types.SimpleNamespace(
@@ -217,22 +228,27 @@ def test_sprite_diff_logic(tmp_path, monkeypatch):
 def test_sprite_updater_snooze(tmp_path, monkeypatch):
     dest_dir = tmp_path / "sprites"
     dest_dir.mkdir()
-    
+
     import time
     import json
+
     state_path = tmp_path / "sprites_update_state.json"
-    state_path.write_text(json.dumps({
-        "commit_sha": "new_remote_commit_sha",
-        "snooze_until": time.time() + 3600
-    }), encoding="utf-8")
+    state_path.write_text(
+        json.dumps(
+            {"commit_sha": "new_remote_commit_sha", "snooze_until": time.time() + 3600}
+        ),
+        encoding="utf-8",
+    )
 
     mock_commits_api = {"sha": "new_remote_commit_sha"}
     calls = []
+
     def mock_get(url, *args, **kwargs):
         calls.append(url)
         return MockResponse(mock_commits_api)
 
     import requests
+
     monkeypatch.setattr(requests, "get", mock_get)
 
     res_snoozed = su.calculate_sprite_diff(dest_dir, silent=True, ignore_snooze=False)
@@ -240,15 +256,13 @@ def test_sprite_updater_snooze(tmp_path, monkeypatch):
     assert calls == []
 
     # 2. With snooze active and ignore_snooze=True -> should ignore snooze and proceed
-    mock_tree_api = {
-        "tree": [
-            {"path": "a.png", "type": "blob", "sha": "some_sha"}
-        ]
-    }
+    mock_tree_api = {"tree": [{"path": "a.png", "type": "blob", "sha": "some_sha"}]}
+
     def mock_get_full(url, *args, **kwargs):
         if "commits/main" in url:
             return MockResponse(mock_commits_api)
         return MockResponse(mock_tree_api)
+
     monkeypatch.setattr(requests, "get", mock_get_full)
 
     res_ignored = su.calculate_sprite_diff(dest_dir, silent=True, ignore_snooze=True)
@@ -296,8 +310,14 @@ def test_automatic_sprite_prompt_waits_for_idle_and_rejects_stale_result(monkeyp
     window = types.SimpleNamespace(col=object())
     monkeypatch.setattr(sys.modules["aqt"], "mw", window)
     queued, idle = [], []
-    monkeypatch.setattr(background_ops, "run_query", lambda task, done, failed: queued.append(done))
-    monkeypatch.setattr(background_ops, "call_when_anki_idle", lambda callback, **kwargs: idle.append(callback))
+    monkeypatch.setattr(
+        background_ops, "run_query", lambda task, done, failed: queued.append(done)
+    )
+    monkeypatch.setattr(
+        background_ops,
+        "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append(callback),
+    )
     dialog = mock.Mock()
     monkeypatch.setattr(su, "SpriteUpdateDialog", dialog)
     result = {"status": "update_available", "added": [], "modified": [], "deleted": []}

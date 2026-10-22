@@ -92,9 +92,14 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
             nonlocal mobile_initialized
             if mobile_initialized:
                 return True
-            current_col = services.col if services.col is not None else getattr(mw, "col", None)
-            if (services.db is not mobile_db or current_col is not mobile_col
-                    or generation != getattr(services, "_background_generation", 0)):
+            current_col = (
+                services.col if services.col is not None else getattr(mw, "col", None)
+            )
+            if (
+                services.db is not mobile_db
+                or current_col is not mobile_col
+                or generation != getattr(services, "_background_generation", 0)
+            ):
                 return False
             from .functions.mobile_sync import mobile_sync_guard
 
@@ -105,20 +110,28 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
                         from .menu_buttons import update_mobile_badge
                         from .save_import import rebase_after_import
 
-                        rebase_after_import(db, col, collection_watermark=initial_watermark)
+                        rebase_after_import(
+                            db, col, collection_watermark=initial_watermark
+                        )
                         if db.get_mobile_watermark() == 0:
                             baseline = initial_watermark
                             if baseline is None:
-                                baseline = col.db.scalar("SELECT MAX(id) FROM revlog") or 0
+                                baseline = (
+                                    col.db.scalar("SELECT MAX(id) FROM revlog") or 0
+                                )
                             db.set_mobile_watermark(baseline)
                         mobile_initialized = True
 
                         if detect_existing and settings_obj.get("mobile.enabled", True):
-                            from .functions.mobile_sync import process_mobile_reviews_after_sync
+                            from .functions.mobile_sync import (
+                                process_mobile_reviews_after_sync,
+                            )
 
                             process_mobile_reviews_after_sync(
-                                col=col, ankimon_db=db,
-                                settings_obj=settings_obj, logger=logger,
+                                col=col,
+                                ankimon_db=db,
+                                settings_obj=settings_obj,
+                                logger=logger,
                             )
                         update_mobile_badge(db.get_pending_mobile_count())
                     return True
@@ -136,7 +149,9 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
                 initialize_mobile_reviews(detect_existing=True)
             except MobileSyncBusy:
                 if mobile_col is not None:
-                    initial_watermark = mobile_col.db.scalar("SELECT MAX(id) FROM revlog") or 0
+                    initial_watermark = (
+                        mobile_col.db.scalar("SELECT MAX(id) FROM revlog") or 0
+                    )
                 deferred_mobile_initialization = True
         except Exception as e:
             logger.log("error", f"Could not initialize mobile detection: {e}")
@@ -189,7 +204,9 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
         # toggle — the hook self-gates internally.
         try:
             sync_handler = setup_ankimon_sync_hooks(
-                settings_obj, logger, before_detection=initialize_mobile_reviews,
+                settings_obj,
+                logger,
+                before_detection=initialize_mobile_reviews,
             )
             if deferred_mobile_initialization:
                 # Use the normal detector after the deferred initialization so
@@ -226,8 +243,11 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
             return online_connectivity
 
         def on_done(future) -> None:
-            if (profile_col is None or mw.col is not profile_col
-                    or generation != getattr(services, "_background_generation", 0)):
+            if (
+                profile_col is None
+                or mw.col is not profile_col
+                or generation != getattr(services, "_background_generation", 0)
+            ):
                 return
             # Future failures must stay in this callback, after profile identity
             # validation, so background connectivity cannot interrupt Anki.

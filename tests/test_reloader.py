@@ -54,7 +54,9 @@ def _load_reloader(monkeypatch, services, calls, on_process_events=None):
     monkeypatch.setitem(
         sys.modules,
         "aqt.utils",
-        _module("aqt.utils", tooltip=lambda message: calls.append(("tooltip", message))),
+        _module(
+            "aqt.utils", tooltip=lambda message: calls.append(("tooltip", message))
+        ),
     )
     monkeypatch.setitem(
         sys.modules,
@@ -122,7 +124,9 @@ def test_restart_yields_when_startup_ui_is_pending(monkeypatch):
     services = SimpleNamespace(_startup_in_progress=True, _startup_ui_pending=True)
     mod = _load_reloader(monkeypatch, services, calls)
     mod.restart_ankimon()
-    assert calls == [("tooltip", "Ankimon reload skipped — waiting for startup dialogs.")]
+    assert calls == [
+        ("tooltip", "Ankimon reload skipped — waiting for startup dialogs.")
+    ]
 
 
 def test_restart_yields_when_worker_completes_during_wait(monkeypatch):
