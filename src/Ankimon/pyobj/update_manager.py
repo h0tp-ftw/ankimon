@@ -15,7 +15,7 @@ from typing import Optional
 from aqt import mw
 from aqt.operations import QueryOp
 
-from ..resources import addon_dir
+from ..resources import addon_dir, manifest_path
 
 REPO_OWNER = "h0tp-ftw"
 REPO_NAME = "ankimon"
@@ -337,22 +337,26 @@ def _is_supported_version(name: str) -> bool:
 def _version_key(name: str) -> tuple:
     """Total-ordering key for this project's *decimal-minor* tag scheme, where the
     part after the major is a fraction — so 1.43 < 1.5, and 2.03 < 2.1. The "-E"
-    channel suffix is stripped first (it selects a channel, not an order). Unlike
+    channel suffix is stripped first (it selects a channel, not an order). A
+    trailing dotted component is a patch number, e.g. 2.4.1 > 2.4. Unlike
     ``_parse_version`` (a coarse threshold gate), this IS safe for max()/sorting.
     Non-version names sort lowest.
 
-    NOTE: assumes single-dot decimal versions (2.03, 1.52, 1.3962). A multi-part
-    semver like "2.0.1" won't match and sorts lowest — revisit if the scheme changes.
+    The minor component retains the decimal-minor convention; further dotted
+    components are ordered numerically as patch components.
     """
     t = name.strip().lstrip("v")
     if t.endswith("-E"):
         t = t[:-2]
-    m = re.match(r"(\d+)(?:\.(\d+))?$", t)
+    m = re.fullmatch(r"(\d+)(?:\.(\d+))?(?:\.(\d+(?:\.\d+)*))?", t)
     if not m:
-        return (-1, 0.0)
+        return (-1, 0.0, ())
     major = int(m.group(1))
-    frac = float("0." + m.group(2)) if m.group(2) else 0.0
-    return (major, frac)
+    minor = m.group(2)
+    patch = m.group(3)
+    frac = float("0." + minor) if minor else 0.0
+    patch_key = tuple(int(component) for component in patch.split(".")) if patch else ()
+    return (major, frac, patch_key)
 
 
 def channel_of_tag(tag: str) -> str:
@@ -368,6 +372,42 @@ def is_newer_version(candidate: str, installed: str) -> bool:
     return _version_key(candidate) > _version_key(installed)
 
 
+def is_commit_sha(value) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) >= 7
+        and all(char in "0123456789abcdefABCDEF" for char in value)
+    )
+
+
+def same_commit(left: str, right: str) -> bool:
+    if not is_commit_sha(left) or not is_commit_sha(right):
+        return False
+    left = left.lower()
+    right = right.lower()
+    return left == right or left.startswith(right) or right.startswith(left)
+
+
+def is_release_update_available(
+    candidate: str,
+    installed: str,
+    candidate_sha: str = "",
+    installed_sha: str = "",
+    commit_relation: Optional[str] = None,
+) -> bool:
+    """Whether a release is newer by version or advances the installed commit."""
+    if is_newer_version(candidate, installed):
+        return True
+    if is_newer_version(installed, candidate):
+        return False
+    return (
+        is_commit_sha(candidate_sha)
+        and is_commit_sha(installed_sha)
+        and not same_commit(candidate_sha, installed_sha)
+        and commit_relation == "ahead"
+    )
+
+
 def latest_release_for_channel(channel: str) -> Optional[dict]:
     """Newest supported release (>= MIN_UPDATER_VERSION) on ``channel``.
     stable = tags without "-E", experimental = tags ending in "-E". Returns the
@@ -376,7 +416,12 @@ def latest_release_for_channel(channel: str) -> Optional[dict]:
     if channel == CHANNEL_MAIN:
         return None
     matches = [r for r in fetch_releases() if channel_of_tag(r["name"]) == channel]
-    return max(matches, key=lambda r: _version_key(r["name"]), default=None)
+    return newest_release(matches)
+
+
+def newest_release(releases: list[dict]) -> Optional[dict]:
+    """Return the highest supported version from an already-fetched release list."""
+    return max(releases, key=lambda r: _version_key(r["name"]), default=None)
 
 
 def _get_settings():
@@ -556,6 +601,21 @@ def fetch_branch_sha(branch: str) -> Optional[str]:
     return None
 
 
+def fetch_ref_sha(ref: str) -> Optional[str]:
+    """Resolve a safe GitHub tag or commit ref to its full commit SHA."""
+    if not _is_safe_ref(ref):
+        return None
+    data = _api_get(f"commits/{ref}")
+    sha = data.get("sha") if isinstance(data, dict) else None
+    if (
+        isinstance(sha, str)
+        and len(sha) >= 7
+        and all(c in "0123456789abcdefABCDEF" for c in sha)
+    ):
+        return sha
+    return None
+
+
 def fetch_ref_date(ref: str) -> Optional[str]:
     """Committer date (ISO 8601) of whatever ``ref`` resolves to — SHA or tag.
 
@@ -587,14 +647,27 @@ def fetch_commit_date(sha: str) -> Optional[str]:
     return fetch_ref_date(sha)
 
 
-def fetch_branch_relation(local_sha: str, branch: str) -> Optional[str]:
-    """How the remote ``branch`` tip relates to ``local_sha`` (GitHub compare API).
+def fetch_ref_relation(local_sha: str, remote_ref: str) -> Optional[str]:
+    """How a remote tag/branch ref relates to ``local_sha`` (GitHub compare API).
 
     ``"ahead"``: the remote has commits the local commit lacks (an update is
     available); ``"behind"``: the local commit is ahead of the remote;
     ``"identical"``; ``"diverged"``. ``None`` when the comparison is unavailable,
     which includes a local commit GitHub has never seen (unpushed work).
     """
+    if (
+        not local_sha
+        or not all(c in "0123456789abcdefABCDEF" for c in local_sha)
+        or not _is_safe_ref(remote_ref)
+    ):
+        return None
+    data = _api_get(f"compare/{local_sha}...{remote_ref}")
+    status = data.get("status") if isinstance(data, dict) else None
+    return status if status in {"ahead", "behind", "identical", "diverged"} else None
+
+
+def fetch_branch_relation(local_sha: str, branch: str) -> Optional[str]:
+    """How the remote branch tip relates to ``local_sha``."""
     if not local_sha or not branch:
         return None
     data = _api_get(f"compare/{local_sha}...{branch}")
@@ -805,7 +878,6 @@ def save_update_state(
 ):
     try:
         import time
-        from ..resources import addon_ver
 
         path = get_update_state_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -823,7 +895,7 @@ def save_update_state(
             "source_name": source_name,
             "commit_sha": commit_sha,
             "installed_at": time.time(),
-            "addon_version": addon_ver,
+            "addon_version": read_installed_version(),
         }
         if skip_until is not None:
             state["skip_until"] = skip_until
@@ -833,6 +905,34 @@ def save_update_state(
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception as e:
         print(f"Ankimon Updater: Failed to save update state: {e}")
+
+
+def save_current_install_identity(version: str, commit_sha: str):
+    """Persist the installed Ankimon version and its resolved commit in ankimon.db."""
+    if (
+        not version
+        or not isinstance(commit_sha, str)
+        or len(commit_sha) < 7
+        or not all(c in "0123456789abcdefABCDEF" for c in commit_sha)
+    ):
+        raise ValueError("Both the installed version and commit SHA are required.")
+    from ..services import services
+
+    if services.db is None:
+        raise RuntimeError(
+            "Ankimon database is unavailable; install identity was not saved."
+        )
+    services.db.set_user_data("current_version", version)
+    services.db.set_user_data("current_commit", commit_sha)
+
+
+def read_installed_version() -> str:
+    """Read the installed version from the on-disk manifest."""
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    version = data.get("version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or not version:
+        raise ValueError("The installed Ankimon manifest has no version.")
+    return version
 
 
 def set_update_skip_until(skip_until: float):
@@ -1099,6 +1199,17 @@ def apply_update(
             None,
         )
 
+    if source_type in {"release", "tag"}:
+        resolved_sha = fetch_ref_sha(source_name or "")
+        if not resolved_sha:
+            cleanup()
+            return (
+                False,
+                f"Could not resolve GitHub commit for release {source_name}.",
+                None,
+            )
+        commit_sha = resolved_sha
+
     log("Fetching latest .gitignore from main...")
     gitignore_patterns = _get_gitignore_patterns()
 
@@ -1237,6 +1348,13 @@ def apply_update(
             # --- Save update state if provided ---
             if source_type and source_name:
                 save_update_state(source_type, source_name, commit_sha or "")
+                try:
+                    installed_version = read_installed_version()
+                except (OSError, json.JSONDecodeError, ValueError) as e:
+                    raise RuntimeError(
+                        f"Could not read the installed Ankimon version: {e}"
+                    ) from e
+                save_current_install_identity(installed_version, commit_sha or "")
 
             cleanup()
             log(f"Update complete. Installed {installed} files.")
