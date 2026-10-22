@@ -517,6 +517,33 @@ def test_mold_breaker_does_not_turn_klutz_off():
     assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
 
 
+@pytest.mark.parametrize(
+    ("ability", "volatile", "expected"),
+    [
+        ("synchronize", "embargo", []),
+        ("klutz", "gastroacid", [_ATTACK_UP]),
+        ("simple", "gastroacid", [_ATTACK_UP]),
+        ("contrary", "gastroacid", [_ATTACK_UP]),
+    ],
+)
+def test_native_suppression_policy_also_controls_cell_battery(
+    ability, volatile, expected
+):
+    outcomes = _outcomes("shockwave", ability=ability, volatile=volatile)
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == expected
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == (
+        [_SPENT] if expected else []
+    )
+
+
+def test_suppressed_neutralizing_gas_does_not_enable_klutz_battery():
+    state = _state(ability="klutz", attacker_ability="neutralizinggas")
+    state.opponent.active.volatile_status.add("gastroacid")
+    outcomes = get_all_state_instructions(StateMutator(state), "splash", "shockwave")
+    assert _of_type(outcomes, constants.MUTATOR_BOOST) == []
+    assert _of_type(outcomes, constants.MUTATOR_CHANGE_ITEM) == []
+
+
 def test_substitute_made_earlier_in_the_turn_does_not_trigger():
     """A holder that Substitutes first must not read its own HP cost as a hit.
 
