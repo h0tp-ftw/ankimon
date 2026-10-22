@@ -4,14 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version number (e.g., 2.32 or 2.4)"
+        description: "Version (e.g., 2.4 stable; 2.4-E experimental, auto-published)"
         required: true
         type: string
-      experimental:
-        description: "Experimental release (-E suffix & auto-publish)?"
-        required: true
-        type: boolean
-        default: true
       highlights:
         description: "Highlights/What's new summary (optional)"
         required: false
@@ -67,15 +62,14 @@ jobs:
     outputs:
       release_tag: ${{ steps.vars.outputs.release_tag }}
       module_name: ${{ steps.vars.outputs.module_name }}
-      is_experimental: ${{ steps.vars.outputs.is_experimental }}
+      channel: ${{ steps.resolve-version.outputs.channel }}
     # Bind the workflow_dispatch inputs to env vars once, then reference them as
-    # "$RAW_VERSION" / "$IS_EXPERIMENTAL" / "$HIGHLIGHTS". Expanding
+    # "$RAW_VERSION" / "$HIGHLIGHTS". Expanding
     # ${{ github.event.inputs.* }} straight into a shell script is a
     # template-injection vector (a value containing quotes or $(...) would
     # execute); a shell reading an env var is safe.
     env:
       RAW_VERSION: ${{ github.event.inputs.version }}
-      IS_EXPERIMENTAL: ${{ github.event.inputs.experimental }}
       HIGHLIGHTS: ${{ github.event.inputs.highlights }}
 
     steps:
@@ -85,24 +79,22 @@ jobs:
         run: |
           # GITHUB_ENV treats newlines as additional assignments. Validate before
           # exporting anything so malformed input cannot alter later steps.
-          if [[ ! "$RAW_VERSION" =~ ^v?[0-9]+(\.[0-9]+)*(-E)?$ ]]; then
+          if [[ ! "$RAW_VERSION" =~ ^v?[0-9]+(\.[0-9]+)*(-[Ee])?$ ]]; then
             echo "::error::Invalid version; expected e.g. 2.4 or v2.4-E."
             exit 1
           fi
 
-          # Strip any leading 'v' or trailing '-E' if typed by habit
-          RAW_VER="${RAW_VERSION#v}"
-          BASE_VER="${RAW_VER%-E}"
-          if [ "${IS_EXPERIMENTAL}" = "true" ] || [ "${IS_EXPERIMENTAL}" = "True" ]; then
-            FINAL_VER="${BASE_VER}-E"
-            IS_EXP="true"
-          else
-            FINAL_VER="${BASE_VER}"
-            IS_EXP="false"
+          # The suffix alone selects the channel. Canonicalize lowercase -e for
+          # the updater, which recognizes uppercase -E, before using the version.
+          VERSION="${RAW_VERSION#v}"
+          CHANNEL="stable"
+          if [[ "$VERSION" == *-[Ee] ]]; then
+            VERSION="${VERSION%-?}-E"
+            CHANNEL="experimental"
           fi
-          echo "VERSION=${FINAL_VER}" >> "$GITHUB_ENV"
-          echo "IS_EXP=${IS_EXP}" >> "$GITHUB_ENV"
-          echo "Resolved version: ${FINAL_VER} (experimental: ${IS_EXP})"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: ${VERSION} (channel: ${CHANNEL})"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -272,7 +264,6 @@ jobs:
           # Tags in this repo are unprefixed; strip a leading 'v' defensively.
           echo "release_tag=${VERSION}" >> $GITHUB_OUTPUT
           echo "version_no_prefix=${VERSION#v}" >> $GITHUB_OUTPUT
-          echo "is_experimental=${IS_EXP}" >> $GITHUB_OUTPUT
 
       - name: Get previous tag
         id: previoustag
@@ -366,7 +357,7 @@ jobs:
   #   3. Approve this job. The GitHub release then goes out, dated after it.
   publish-stable:
     name: Publish Stable (AnkiWeb Gate)
-    if: ${{ needs.build.outputs.is_experimental != 'true' }}
+    if: ${{ needs.build.outputs.channel == 'stable' }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -429,9 +420,11 @@ jobs:
 
   # Experimental (-E) releases: never uploaded to AnkiWeb, so they publish
   # automatically without waiting on the manual ankiweb environment gate.
+  # Keep the existing GitHub release-label convention: channels are selected by
+  # tag suffix in Ankimon, independently of GitHub's prerelease flag.
   publish-experimental:
     name: Publish Experimental (Direct)
-    if: ${{ needs.build.outputs.is_experimental == 'true' }}
+    if: ${{ needs.build.outputs.channel == 'experimental' }}
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -1,4 +1,4 @@
-"""Run only the release workflow's version resolver against disposable env files."""
+"""Validate release version resolution and the publishing approval boundary."""
 
 import os
 from pathlib import Path
@@ -38,15 +38,15 @@ def resolver_script():
     return _extract_resolver(workflow.read_text(encoding="utf-8"))
 
 
-def _run_resolver(script, env_path, raw_version, experimental):
+def _run_resolver(script, env_path, raw_version):
     return subprocess.run(
         [BASH, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
         env={
             "PATH": os.defpath,
             "LC_ALL": "C",
             "RAW_VERSION": raw_version,
-            "IS_EXPERIMENTAL": experimental,
             "GITHUB_ENV": str(env_path),
+            "GITHUB_OUTPUT": str(env_path.with_suffix(".outputs")),
         },
         capture_output=True,
         text=True,
@@ -56,34 +56,28 @@ def _run_resolver(script, env_path, raw_version, experimental):
 
 
 @pytest.mark.parametrize(
-    ("raw_version", "base_version"),
+    ("raw_version", "version", "channel"),
     [
-        ("2", "2"),
-        ("2.4", "2.4"),
-        ("2.4.2", "2.4.2"),
-        ("v2.4.2", "2.4.2"),
-        ("2.4.2-E", "2.4.2"),
-        ("v2.4.2-E", "2.4.2"),
-    ],
-)
-@pytest.mark.parametrize(
-    ("experimental", "suffix", "is_exp"),
-    [
-        ("true", "-E", "true"),
-        ("True", "-E", "true"),
-        ("false", "", "false"),
-        ("False", "", "false"),
+        ("2", "2", "stable"),
+        ("2.4", "2.4", "stable"),
+        ("2.4.2", "2.4.2", "stable"),
+        ("v2.4.2", "2.4.2", "stable"),
+        ("2.4.2-E", "2.4.2-E", "experimental"),
+        ("v2.4.2-E", "2.4.2-E", "experimental"),
+        ("2.4.2-e", "2.4.2-E", "experimental"),
+        ("v2.4.2-e", "2.4.2-E", "experimental"),
     ],
 )
 def test_resolver_preserves_version_and_channel_normalization(
-    resolver_script, tmp_path, raw_version, base_version, experimental, suffix, is_exp
+    resolver_script, tmp_path, raw_version, version, channel
 ):
     env_path = tmp_path / "github-env"
 
-    result = _run_resolver(resolver_script, env_path, raw_version, experimental)
+    result = _run_resolver(resolver_script, env_path, raw_version)
 
     assert result.returncode == 0, result.stderr
-    assert env_path.read_text() == f"VERSION={base_version}{suffix}\nIS_EXP={is_exp}\n"
+    assert env_path.read_text() == f"VERSION={version}\n"
+    assert env_path.with_suffix(".outputs").read_text() == f"channel={channel}\n"
 
 
 @pytest.mark.parametrize(
@@ -93,7 +87,8 @@ def test_resolver_preserves_version_and_channel_normalization(
         "v",
         "V2.4.2",
         "vv2.4.2",
-        "2.4.2-e",
+        "2.4.2-E-E",
+        "2.4.2-eE",
         "2.4.2-EE",
         "2..4",
         "2.4.",
@@ -111,20 +106,52 @@ def test_resolver_preserves_version_and_channel_normalization(
         "2.4.2\r\nRELEASE_TEST_SENTINEL=injected\r\nVERSION=2.4.3",
     ],
 )
-@pytest.mark.parametrize("experimental", ["true", "false"])
 @pytest.mark.parametrize("existing_env", [None, b"RELEASE_TEST_SENTINEL=original\n"])
 def test_resolver_rejects_invalid_input_before_any_environment_write(
-    resolver_script, tmp_path, raw_version, experimental, existing_env
+    resolver_script, tmp_path, raw_version, existing_env
 ):
     env_path = tmp_path / "github-env"
+    output_path = env_path.with_suffix(".outputs")
     if existing_env is not None:
         env_path.write_bytes(existing_env)
+        output_path.write_bytes(existing_env)
 
-    result = _run_resolver(resolver_script, env_path, raw_version, experimental)
+    result = _run_resolver(resolver_script, env_path, raw_version)
 
     assert result.returncode != 0, result.stdout
     assert "::error::Invalid version" in result.stdout
     if existing_env is None:
         assert not env_path.exists()
+        assert not output_path.exists()
     else:
         assert env_path.read_bytes() == existing_env
+        assert output_path.read_bytes() == existing_env
+
+
+def test_workflow_routes_only_explicit_channels_and_gates_stable():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github/workflows/release.yml"
+    ).read_text(encoding="utf-8")
+    build, stable = workflow.split("\n  publish-stable:\n", 1)
+    stable, experimental = stable.split("\n  publish-experimental:\n", 1)
+
+    # No independent input may override the channel implied by the version.
+    assert "inputs.experimental" not in workflow
+    assert "      experimental:" not in build
+    assert "      channel: ${{ steps.resolve-version.outputs.channel }}" in build
+    assert build.index("- name: Resolve release version") < build.index(
+        "- name: Checkout code"
+    )
+    assert 'python scripts/prepare_release.py --version "$VERSION"' in build
+    assert 'git tag "${VERSION}"' in build
+    assert 'echo "release_tag=${VERSION}"' in build
+
+    for channel, job in (("stable", stable), ("experimental", experimental)):
+        assert f"    if: ${{{{ needs.build.outputs.channel == '{channel}' }}}}" in job
+        assert "    needs: build\n" in job
+        assert "          tag_name: ${{ needs.build.outputs.release_tag }}" in job
+        assert "          name: ankiaddon\n" in job
+        assert "          files: build/*.ankiaddon\n" in job
+        assert "          fail_on_unmatched_files: true\n" in job
+    assert "    environment:\n      name: ankiweb\n" in stable
+    assert "    environment:" not in experimental
