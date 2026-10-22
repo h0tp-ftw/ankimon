@@ -11,6 +11,8 @@ module imports even when run standalone).
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 for _name in [
     "aqt", "aqt.qt", "aqt.utils", "aqt.gui_hooks", "aqt.operations",
     "aqt.reviewer", "aqt.webview", "aqt.main",
@@ -65,6 +67,40 @@ def test_is_newer_version():
 
 
 # --- newest release per channel ---
+
+@pytest.mark.parametrize("newer, older", [
+    ("2.4.1-E", "2.4-E"),
+    ("2.4.10-E", "2.4.9-E"),
+    ("2.10.0-E", "2.9.0-E"),
+    ("2.11.0-E", "2.10.99-E"),
+    ("2.100.0-E", "2.99.99-E"),
+])
+def test_dotted_release_ordering(newer, older):
+    assert um.is_newer_version(newer, older)
+    assert not um.is_newer_version(older, newer)
+    for tags in ((older, newer), (newer, older)):
+        releases = [{"tag_name": tag, "zipball_url": "unused"} for tag in tags]
+        with patch.object(um, "_api_get", return_value=releases):
+            latest = um.latest_release_for_channel(um.CHANNEL_EXPERIMENTAL)
+        assert latest["name"] == newer
+
+
+@pytest.mark.parametrize("compact, dotted", [
+    ("2.31-E", "2.3.1-E"),
+    ("2.330-E", "2.3.30-E"),
+    ("2.03", "2.0.3"),
+    ("2.10-E", "2.1.0-E"),
+    ("2.4-E", "2.4.0-E"),
+])
+def test_compact_tags_remain_equivalent_to_dotted_tags(compact, dotted):
+    assert um._version_key(compact) == um._version_key(dotted)
+    assert not um.is_newer_version(compact, dotted)
+    assert not um.is_newer_version(dotted, compact)
+
+
+def test_dotted_zero_patch_is_not_a_new_release():
+    assert um._version_key("2.10.0-E") == um._version_key("2.10.0.0-E")
+    assert not um.is_newer_version("2.10.0-E", "2.10.0-E")
 
 _FAKE_RELEASES = [
     {"name": "2.03", "body": "", "zipball_url": "u1"},    # newest stable

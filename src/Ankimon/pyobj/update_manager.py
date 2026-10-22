@@ -339,7 +339,10 @@ def _version_key(name: str) -> tuple:
 
     For example, 2.33 means 2.3.3, 2.330 means 2.3.30, and both 2.330 and
     2.3.30 produce the same key. Components after the minor are compared as
-    integers. Either experimental suffix, "-E" or "E", is ignored.
+    integers. Dotted tags keep the whole minor component, so 2.10.0 follows
+    2.9.0. Single-dot tags retain the legacy compact interpretation (2.10
+    means 2.1.0); use a patch component for an unambiguous two-digit minor.
+    Either experimental suffix, "-E" or "E", is ignored.
     """
     m = re.fullmatch(
         r"v?(\d+)(?:\.(\d+(?:\.\d+)*))?(?:-?E)?",
@@ -354,10 +357,13 @@ def _version_key(name: str) -> tuple:
         return (major, 0, ())
 
     components = version_tail.split(".")
-    minor_digits = components[0]
-    minor = int(minor_digits[0])
-    patches = [int(minor_digits[1:])] if len(minor_digits) > 1 else []
-    patches.extend(int(component) for component in components[1:])
+    if len(components) > 1:
+        minor = int(components[0])
+        patches = [int(component) for component in components[1:]]
+    else:
+        minor_digits = components[0]
+        minor = int(minor_digits[0])
+        patches = [int(minor_digits[1:])] if len(minor_digits) > 1 else []
     while patches and patches[-1] == 0:
         patches.pop()
     return (major, minor, tuple(patches))
