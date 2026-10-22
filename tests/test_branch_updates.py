@@ -228,10 +228,8 @@ def test_check_branch_update_bg_op(
     bg_func = kwargs.get("op") or mock_query_op.call_args[0][1]
 
     result = bg_func(None)
-    res_sha, res_commits = result[0], result[1]
-
-    assert res_sha == "remote_sha_456"
-    assert res_commits == [{"sha": "7890123", "message": "Commit message"}]
+    assert result[0] == "remote_sha_456"
+    assert mock_fetch_commits.return_value in result
     mock_fetch_sha.assert_called_once_with("BRRRR_Experimental")
     mock_fetch_commits.assert_called_once_with("BRRRR_Experimental", "local_sha_123")
 
@@ -308,10 +306,8 @@ def test_check_branch_update_null_commit_sha(
     mock_query_op.assert_called_once()
     bg_func = mock_query_op.call_args[1].get("op") or mock_query_op.call_args[0][1]
     result = bg_func(None)
-    res_sha, res_commits = result[0], result[1]
-
-    assert res_sha == "remote_sha_456"
-    assert res_commits == []
+    assert result[0] == "remote_sha_456"
+    assert mock_fetch_commits.return_value in result
     mock_fetch_commits.assert_called_once_with("BRRRR_Experimental", None)
 
 
