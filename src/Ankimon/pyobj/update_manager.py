@@ -9,6 +9,7 @@ import time
 import urllib.request
 import urllib.error
 import zipfile
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -336,29 +337,32 @@ def _is_supported_version(name: str) -> bool:
 
 def _version_key(name: str) -> tuple:
     """Total-ordering key for this project's *decimal-minor* tag scheme, where the
-    part after the major is a fraction — so 1.43 < 1.5, and 2.03 < 2.1. The "-E"
-    channel suffix is stripped first (it selects a channel, not an order). Unlike
-    ``_parse_version`` (a coarse threshold gate), this IS safe for max()/sorting.
-    Non-version names sort lowest.
-
-    NOTE: assumes single-dot decimal versions (2.03, 1.52, 1.3962). A multi-part
-    semver like "2.0.1" won't match and sorts lowest — revisit if the scheme changes.
+    part after the major is a fraction — so 1.43 < 1.5, and 2.03 < 2.1.
+    Dots between the remaining numeric components are ignored for ordering, so
+    2.3.4 is treated as 2.34 and sorts above 2.33. Either experimental suffix,
+    "-E" or "E", is ignored; suffix case is also ignored.
     """
-    t = name.strip().lstrip("v")
-    if t.endswith("-E"):
-        t = t[:-2]
-    m = re.match(r"(\d+)(?:\.(\d+))?$", t)
+    m = re.fullmatch(
+        r"v?(\d+)(?:\.(\d+(?:\.\d+)*))?(?:-?E)?",
+        name.strip(),
+        re.IGNORECASE,
+    )
     if not m:
-        return (-1, 0.0)
+        return (-1, Decimal(0))
     major = int(m.group(1))
-    frac = float("0." + m.group(2)) if m.group(2) else 0.0
-    return (major, frac)
+    fractional_digits = (m.group(2) or "").replace(".", "")
+    fraction = Decimal(f"0.{fractional_digits}") if fractional_digits else Decimal(0)
+    return (major, fraction)
 
 
 def channel_of_tag(tag: str) -> str:
-    """Which release channel a tag belongs to: experimental if it ends in "-E",
-    otherwise stable. (Main is a branch, never a tag, so it's not returned here.)"""
-    return CHANNEL_EXPERIMENTAL if tag.strip().endswith("-E") else CHANNEL_STABLE
+    """Which release channel a tag belongs to: experimental if it ends in E,
+    optionally preceded by a hyphen. Main is a branch, never a tag."""
+    return (
+        CHANNEL_EXPERIMENTAL
+        if re.search(r"-?E$", tag.strip(), re.IGNORECASE)
+        else CHANNEL_STABLE
+    )
 
 
 def is_newer_version(candidate: str, installed: str) -> bool:
