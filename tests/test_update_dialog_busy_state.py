@@ -13,6 +13,32 @@ import pytest
 _SRC = Path(__file__).parent.parent / "src"
 
 
+def _stub_module(name, attrs=None):
+    """Build a throwaway module.
+
+    ``attrs`` is applied eagerly. For ``update_manager`` we additionally install
+    an ``__getattr__`` so that *any* name imported from it resolves to a no-op.
+    This keeps the loader in lock-step with ``update_dialog``'s
+    ``from .update_manager import (...)`` list without maintaining a duplicate
+    tuple here: a name added to that import must never break collection of
+    these tests. Individual tests monkeypatch the specific symbols they care
+    about, so the no-op fallback only covers names these tests don't exercise.
+    """
+    module = types.ModuleType(name)
+    module.__path__ = []
+    if attrs:
+        for key, value in attrs.items():
+            setattr(module, key, value)
+
+    def _missing(attr_name):
+        value = lambda *args, **kwargs: None
+        setattr(module, attr_name, value)
+        return value
+
+    module.__getattr__ = _missing
+    return module
+
+
 def _load_update_dialog():
     module_names = (
         "aqt",
@@ -74,33 +100,9 @@ def _load_update_dialog():
             package.__package__ = name
             sys.modules[name] = package
 
-        update_manager = types.ModuleType("Ankimon.pyobj.update_manager")
-        for name in (
-            "fetch_releases",
-            "fetch_tags",
-            "fetch_branches",
-            "fetch_open_prs",
-            "apply_update",
-            "_download_zip_to_temp",
-            "_download_branch_zip",
-            "_download_pr_zip",
-            "read_update_state",
-            "fetch_branch_sha",
-            # This tuple mirrors update_dialog's `from .update_manager import`
-            # list — a name added there must be added here, or this module fails
-            # to import at collection time.
-            "published_at_for_tag",
-            "stamp_addon_mod",
-            # Git-checkout helpers. The default stub returns None, so
-            # is_git_clone() is falsy here and these tests keep exercising the
-            # non-Git download path.
-            "is_git_clone",
-            "get_git_checkout_info",
-            "git_checkout_source",
-            "fetch_branch_relation",
-        ):
-            setattr(update_manager, name, lambda *args, **kwargs: None)
-        sys.modules["Ankimon.pyobj.update_manager"] = update_manager
+        sys.modules["Ankimon.pyobj.update_manager"] = _stub_module(
+            "Ankimon.pyobj.update_manager"
+        )
 
         resources = types.ModuleType("Ankimon.resources")
         resources.addon_ver = "test"
