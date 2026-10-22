@@ -30,6 +30,7 @@ except ImportError:
 
 from .update_manager import (
     fetch_releases,
+    newest_release,
     fetch_tags,
     fetch_branches,
     fetch_open_prs,
@@ -44,6 +45,8 @@ from .update_manager import (
     fetch_branch_sha,
     published_at_for_tag,
     stamp_addon_mod,
+    save_current_install_identity,
+    read_installed_version,
 )
 
 from ..resources import addon_ver, IS_EXPERIMENTAL_BUILD
@@ -67,6 +70,7 @@ def _start_query_op(parent, op, success, failure):
 
 
 import re
+import sqlite3
 from html import escape as _escape
 
 
@@ -1477,8 +1481,9 @@ class UpdateDialog(QDialog):
 
     def _populate_ui(self):
         c = self._colors
-        if self._releases:
-            latest = self._releases[0]["name"]
+        latest_release = newest_release(self._releases)
+        if latest_release:
+            latest = latest_release["name"]
             if latest == addon_ver:
                 self.latest_tag_label.setText(f"You're up to date  ({latest})")
                 self.latest_tag_label.setStyleSheet(
@@ -1660,6 +1665,17 @@ class UpdateDialog(QDialog):
                 # HEAD moved: the banner, pull button and Branch tab all describe
                 # the checkout and must not keep showing the pre-checkout state.
                 self._refresh_git_state()
+                try:
+                    save_current_install_identity(
+                        read_installed_version(), self._git_info.get("full_sha", "")
+                    )
+                except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+                    QMessageBox.warning(
+                        self,
+                        "Update Tracking Failed",
+                        "The Git update succeeded, but Ankimon could not save its "
+                        f"version and commit to ankimon.db.\n\n{exc}",
+                    )
             if success:
                 QMessageBox.information(
                     self,
@@ -1682,9 +1698,10 @@ class UpdateDialog(QDialog):
         _start_query_op(self, bg, on_done, on_failed)
 
     def _on_latest_release_update(self):
-        if not self._releases:
+        release = newest_release(self._releases)
+        if not release:
             return
-        r = self._releases[0]
+        r = release
         self._run_update(
             lambda progress_cb: _download_zip_to_temp(r["zipball_url"], progress_cb),
             f"latest release ({r['name']})",
