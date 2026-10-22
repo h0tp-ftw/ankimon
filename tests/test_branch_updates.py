@@ -227,8 +227,8 @@ def test_check_branch_update_bg_op(
     kwargs = mock_query_op.call_args[1]
     bg_func = kwargs.get("op") or mock_query_op.call_args[0][1]
 
-    # Run the background function
-    res_sha, res_commits = bg_func(None)
+    result = bg_func(None)
+    res_sha, res_commits = result[0], result[1]
 
     assert res_sha == "remote_sha_456"
     assert res_commits == [{"sha": "7890123", "message": "Commit message"}]
@@ -307,7 +307,8 @@ def test_check_branch_update_null_commit_sha(
 
     mock_query_op.assert_called_once()
     bg_func = mock_query_op.call_args[1].get("op") or mock_query_op.call_args[0][1]
-    res_sha, res_commits = bg_func(None)
+    result = bg_func(None)
+    res_sha, res_commits = result[0], result[1]
 
     assert res_sha == "remote_sha_456"
     assert res_commits == []
