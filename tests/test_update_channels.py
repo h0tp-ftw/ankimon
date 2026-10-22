@@ -9,6 +9,7 @@ module imports even when run standalone).
 """
 
 import sys
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 for _name in [
@@ -50,8 +51,7 @@ def test_version_key_ignores_channel_suffix():
 def test_version_key_non_version_sorts_lowest():
     assert um._version_key("sprites") == (-1, 0.0)
     assert um._version_key("nightly-release") == (-1, 0.0)
-    # multi-part semver is intentionally unsupported (documented) -> lowest
-    assert um._version_key("2.0.1") == (-1, 0.0)
+    assert um._version_key("2.0.1") == (2, Decimal("0.01"))
 
 
 # --- newer-than ---
