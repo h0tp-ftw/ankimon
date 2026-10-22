@@ -9,7 +9,6 @@ import time
 import urllib.request
 import urllib.error
 import zipfile
-from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -336,11 +335,11 @@ def _is_supported_version(name: str) -> bool:
 
 
 def _version_key(name: str) -> tuple:
-    """Total-ordering key for this project's *decimal-minor* tag scheme, where the
-    part after the major is a fraction — so 1.43 < 1.5, and 2.03 < 2.1.
-    Dots between the remaining numeric components are ignored for ordering, so
-    2.3.4 is treated as 2.34 and sorts above 2.33. Either experimental suffix,
-    "-E" or "E", is ignored; suffix case is also ignored.
+    """Normalize compact major.minorpatch and dotted major.minor.patch tags.
+
+    For example, 2.33 means 2.3.3, 2.330 means 2.3.30, and both 2.330 and
+    2.3.30 produce the same key. Components after the minor are compared as
+    integers. Either experimental suffix, "-E" or "E", is ignored.
     """
     m = re.fullmatch(
         r"v?(\d+)(?:\.(\d+(?:\.\d+)*))?(?:-?E)?",
@@ -348,11 +347,20 @@ def _version_key(name: str) -> tuple:
         re.IGNORECASE,
     )
     if not m:
-        return (-1, Decimal(0))
+        return (-1, -1, ())
     major = int(m.group(1))
-    fractional_digits = (m.group(2) or "").replace(".", "")
-    fraction = Decimal(f"0.{fractional_digits}") if fractional_digits else Decimal(0)
-    return (major, fraction)
+    version_tail = m.group(2) or ""
+    if not version_tail:
+        return (major, 0, ())
+
+    components = version_tail.split(".")
+    minor_digits = components[0]
+    minor = int(minor_digits[0])
+    patches = [int(minor_digits[1:])] if len(minor_digits) > 1 else []
+    patches.extend(int(component) for component in components[1:])
+    while patches and patches[-1] == 0:
+        patches.pop()
+    return (major, minor, tuple(patches))
 
 
 def channel_of_tag(tag: str) -> str:
