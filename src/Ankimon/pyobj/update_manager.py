@@ -1348,13 +1348,13 @@ def apply_update(
             # --- Save update state if provided ---
             if source_type and source_name:
                 save_update_state(source_type, source_name, commit_sha or "")
-                try:
-                    installed_version = read_installed_version()
-                except (OSError, json.JSONDecodeError, ValueError) as e:
-                    raise RuntimeError(
-                        f"Could not read the installed Ankimon version: {e}"
-                    ) from e
-                save_current_install_identity(installed_version, commit_sha or "")
+                if is_commit_sha(commit_sha):
+                    try:
+                        save_current_install_identity(
+                            read_installed_version(), commit_sha
+                        )
+                    except Exception as e:
+                        log(f"Warning: could not record install identity: {e}")
 
             cleanup()
             log(f"Update complete. Installed {installed} files.")
