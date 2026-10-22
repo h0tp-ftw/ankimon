@@ -50,10 +50,16 @@ def test_version_key_ignores_channel_suffix():
 def test_version_key_non_version_sorts_lowest():
     k = um._version_key
     sentinel = k("0.0")
-    for junk in ("sprites", "nightly-release", "2.0.1"):
+    for junk in ("sprites", "nightly-release"):
         assert k(junk) < sentinel, junk
         assert k(junk) < k("0.1"), junk
-    assert k("sprites") == k("nightly-release") == k("2.0.1")
+    assert k("sprites") == k("nightly-release")
+
+
+def test_version_key_supports_multi_part_semver():
+    k = um._version_key
+    assert k("2.0") < k("2.0.1") < k("2.1")
+    assert k("2.0.1") > k("sprites")
 
 
 # --- newer-than ---
