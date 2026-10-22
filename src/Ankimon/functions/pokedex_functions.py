@@ -312,11 +312,10 @@ def warm_evolution_caches():
     and parsed the CSV mid-review, which is the synchronous disk I/O the repo
     rule forbids ("static data is parsed once at startup").
 
-    Two callers make that rule true. ``startup.run_startup_background_checks``
-    warms on the boot thread, before ``services.startup_finished`` opens the
-    review gate; ``profile_hooks``' did-open handler warms again, because a
-    profile switch runs :func:`clear_pokedex_caches` while the once-per-process
-    boot does not run a second time.
+    ``startup.run_startup_background_checks`` warms on the boot thread,
+    before ``services.startup_finished`` opens the review gate. Profile close
+    preserves this bundled, profile-independent table, so switching profiles
+    does not need a second disk read on the GUI or review thread.
 
     Purely an optimization, so it must not add a failure mode. Moving the first
     read earlier means a file that is momentarily unreadable at boot (an add-on
@@ -459,8 +458,14 @@ def _load_pokemon_descriptions_csv():
     return _pokemon_descriptions_cache
 
 
-def clear_pokedex_caches():
-    """Call this when pokedex data is updated or session ends"""
+def clear_pokedex_caches(*, preserve_evolution=False):
+    """Invalidate cached data; profile switches may retain bundled evolution rows.
+
+    The evolution CSV is identical across profiles. Keeping its warmed rows
+    avoids GUI-thread disk reads on the next profile open, or racing a fresh
+    worker against the first review. Data updates and reloads use the default
+    full invalidation.
+    """
     global \
         _pokedex_cache, \
         _poke_species_cache, \
@@ -476,11 +481,10 @@ def clear_pokedex_caches():
     _poke_species_cache = None
     _pokemon_csv_cache = None
     _stats_csv_cache = None
-    _poke_evo_cache = None
-    # Reset with its source cache: the index holds references into the rows
-    # _load_poke_evo_cache built, so leaving it warm past a clear would keep
-    # the pre-clear rows alive (parity with _pokedex_id_index above).
-    _poke_evo_index = None
+    if not preserve_evolution:
+        # The index holds references into the rows, so invalidate them together.
+        _poke_evo_cache = None
+        _poke_evo_index = None
     # ...and so does the memo built ON TOP of that index. _evolution_row_gender_id_cached
     # answers from _poke_evo_index (and, for form ids >= 10000, from
     # _pokedex_cache via search_pokedex_by_id), so a clear that leaves it warm

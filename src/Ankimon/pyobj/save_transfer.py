@@ -29,6 +29,7 @@ from aqt.utils import askUser, showInfo, showWarning
 from PyQt6.QtWidgets import QFileDialog
 
 from ..resources import user_path
+from ..background_ops import run_in_background, run_query
 from ..utils import close_anki
 
 # Keep normal/developer partitions separate and name each distinct save by
@@ -1024,7 +1025,6 @@ def cancel_pending_save_import(notify=None) -> None:
 
 def cancel_pending_save_import_async(context, notify=None) -> None:
     """Cancel captured saves on a worker without blocking Anki's menu or timers."""
-    from aqt.operations import QueryOp
     from ..save_import import SaveOperationBusyError, reserve_save_operation
 
     # Reserve before dispatch: a queued cancellation must exclude a replacement
@@ -1063,7 +1063,7 @@ def cancel_pending_save_import_async(context, notify=None) -> None:
         operation.release()
         current_notice(f"The pending save import could not be cancelled: {error}", True)
 
-    def run_cancellation(_col):
+    def run_cancellation():
         try:
             return _cancel_import_targets(targets, context.validate, operation)
         finally:
@@ -1072,11 +1072,7 @@ def cancel_pending_save_import_async(context, notify=None) -> None:
             operation.release()
 
     try:
-        QueryOp(
-            parent=mw,
-            op=run_cancellation,
-            success=done,
-        ).failure(failed).without_collection().run_in_background()
+        run_query(run_cancellation, done, failed)
     except Exception as error:
         failed(error)
 
@@ -2481,7 +2477,7 @@ def start_media_migration(settings_obj, logger) -> None:
 
         _MIGRATION_SCAN_STATE["running"] = True
         try:
-            mw.taskman.run_in_background(_scan, _done, uses_collection=False)
+            run_in_background(_scan, _done, taskman=mw.taskman)
         except Exception as error:
             _MIGRATION_SCAN_STATE["running"] = False
             logger.log("error", f"Could not schedule media recovery scan: {error}")

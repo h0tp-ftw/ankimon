@@ -1688,12 +1688,14 @@ def commit_pending_import(target: Path, logger=None, deadline: float = None) -> 
     return True
 
 
-def rebase_after_import(db, col) -> bool:
+def rebase_after_import(db, col, *, collection_watermark=None) -> bool:
     """Exclude existing destination reviews before any mobile detection runs.
 
     The next profile open sees reviews pulled by the previous shutdown sync.
     Retire the marker and set that collection's exact watermark in one database
-    transaction. Failures propagate so callers can skip detection and retry;
+    transaction. A captured ``collection_watermark`` preserves the profile-open
+    boundary if mobile work delayed initialization until after automatic sync.
+    Failures propagate so callers can skip detection and retry;
     the source save's watermark must never be used while the marker remains.
     """
     conn = db._get_connection()
@@ -1703,11 +1705,13 @@ def rebase_after_import(db, col) -> bool:
         ).fetchone()
         if marker is None or str(marker[0]) != "1":
             return False
-        if col is None:
-            raise RuntimeError(
-                "The Anki collection is not available to finish the import"
-            )
-        watermark = col.db.scalar("SELECT MAX(id) FROM revlog")
+        watermark = collection_watermark
+        if watermark is None:
+            if col is None:
+                raise RuntimeError(
+                    "The Anki collection is not available to finish the import"
+                )
+            watermark = col.db.scalar("SELECT MAX(id) FROM revlog")
         if watermark is None:
             watermark = 0
         if type(watermark) is not int or watermark < 0:

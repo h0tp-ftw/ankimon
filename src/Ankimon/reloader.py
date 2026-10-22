@@ -69,6 +69,9 @@ def restart_ankimon():
     # this module while the reload is still running.
     if getattr(services, "_reload_in_progress", False):
         return
+    if getattr(services, "_startup_ui_pending", False):
+        tooltip("Ankimon reload skipped — waiting for startup dialogs.")
+        return
     services._reload_in_progress = True
     try:
         # Wait for the active startup QueryOp before purging modules. Otherwise
@@ -76,6 +79,9 @@ def restart_ankimon():
         # Python's import lock, as teardown waits for that same database lock.
         deadline = time.monotonic() + _STARTUP_WAIT_TIMEOUT_SECONDS
         while getattr(services, "_startup_in_progress", False):
+            if getattr(services, "_startup_ui_pending", False):
+                tooltip("Ankimon reload skipped — waiting for startup dialogs.")
+                return
             if time.monotonic() >= deadline:
                 # Purging now is exactly what deadlocks, so abort the reload
                 # rather than trade a slow startup for a hung Anki.
@@ -275,6 +281,9 @@ def teardown_ankimon(addon_package):
     what preserves the active database file across the reload.
     """
     from .services import services
+    from .background_ops import cancel_pending_callbacks
+
+    cancel_pending_callbacks()
 
     # Old QueryOp workers can outlive their windows and module generation.
     # Retire their captured ownership before teardown pumps any Qt events.

@@ -515,6 +515,8 @@ class MobileBridge(QObject):
             }
             if pending_count > 0:
                 estimates_loading = True
+                # Read Anki's scheduler before the collection-free worker runs.
+                day_cutoff = mw.col.sched.day_cutoff if (mw and mw.col) else 0
 
                 def run_sim(col):
                     reviews_rows_thread = db.execute(
@@ -549,6 +551,7 @@ class MobileBridge(QObject):
                         trainer_card,
                         ankimon_tracker_obj,
                         ankimon_db=db,
+                        day_cutoff=day_cutoff,
                     )
 
                 def on_sim_success(sim_res):

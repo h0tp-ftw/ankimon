@@ -105,6 +105,7 @@ def _exec_profile_hooks(monkeypatch, gui_hooks):
         _stub_module(
             "Ankimon.pyobj.ankimon_sync",
             setup_ankimon_sync_hooks=MagicMock(),
+            schedule_mobile_sync=MagicMock(),
         ),
     )
     monkeypatch.setitem(
@@ -196,7 +197,8 @@ def test_on_profile_close_clears_all_caches(monkeypatch):
 
     profile_hooks._on_profile_close()
 
-    for clear in profile_hooks._clears:
+    profile_hooks._clears[0].assert_called_once_with(preserve_evolution=True)
+    for clear in profile_hooks._clears[1:]:
         clear.assert_called_once_with()
 
 
@@ -385,34 +387,12 @@ def test_a_refused_connectivity_dispatch_still_reaches_the_media_migration(monke
     )
 
 
-# --- Static-data re-warm on profile open ------------------------------------
-# _on_profile_close drops the pokedex caches, the evolution table among them.
-# The boot warm (startup.run_startup_background_checks) runs once per Anki
-# PROCESS — a profile switch never re-runs it — so without a re-warm here the
-# first level-up after a switch parses pokemon_evolution.csv inside
-# on_review_card, which is the review-path I/O AGENTS.md forbids.
-
-
-def test_profile_open_rewarms_the_evolution_table(monkeypatch):
+def test_profile_open_does_not_reparse_bundled_evolution_data(monkeypatch):
     profile_hooks, _, _ = _fire_profile_did_open(monkeypatch)
 
-    profile_hooks._warm.assert_called_once_with()
-
-
-def test_profile_open_warm_failure_does_not_break_the_rest_of_the_handler(monkeypatch):
-    """The warm is an optimization, and it runs first in the handler — a raise
-    would take the mobile-sync hook registration and the tip of the day down
-    with it, which costs far more than an unparsed CSV."""
-    profile_hooks, sync_mod, _ = _fire_profile_did_open(
-        monkeypatch, warm_error=OSError("data_files unreadable")
-    )
-
-    profile_hooks._warm.assert_called_once_with()
-    sync_mod.setup_ankimon_sync_hooks.assert_called_once()
-    profile_hooks.logger.log.assert_any_call(
-        "error",
-        "Error warming evolution caches on profile open: data_files unreadable",
-    )
+    # The profile-close hook preserves the startup-warmed evolution table.
+    # Opening another profile must not parse it on the GUI thread again.
+    profile_hooks._warm.assert_not_called()
 
 
 def test_connectivity_completions_belong_to_the_opening_collection(monkeypatch):
@@ -420,7 +400,7 @@ def test_connectivity_completions_belong_to_the_opening_collection(monkeypatch):
     hooks = _exec_profile_hooks(monkeypatch, _fresh_gui_hooks())
     hooks.settings_obj.get.side_effect = lambda key, default=None: False
     queued = []
-    hooks.mw.taskman = SimpleNamespace(run_in_background=lambda task, done: queued.append(done))
+    hooks.mw.taskman = SimpleNamespace(run_in_background=lambda task, done=None: queued.append(done))
     hooks.mw.col = object()
     handler = hooks._on_profile_did_open(True)
     handler()

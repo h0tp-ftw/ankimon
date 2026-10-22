@@ -46,7 +46,8 @@ def mock_mw(mock_db):
     with patch("Ankimon.pyobj.pokemon_trade.mw") as mw_mock, \
          patch("Ankimon.pyobj.pokemon_trade.services.db", mock_db):
         mw_mock.ankimon_db = mock_db
-        yield mw_mock
+        with patch.object(pokemon_trade_module, "call_when_anki_idle", side_effect=lambda callback, **kwargs: callback()):
+            yield mw_mock
 
 @pytest.fixture
 def mock_requests():
@@ -828,3 +829,40 @@ def test_menu_request_during_automatic_fetch_keeps_explicit_intent(monthly_case,
             assert kind == "warning"
             assert "try again" in message
         assert pokemon_trade_module.services._monthly_challenge_request is None
+
+
+def test_automatic_monthly_result_remains_pending_until_anki_is_idle(monthly_case, monkeypatch):
+    case = monthly_case
+    idle = []
+    monkeypatch.setattr(
+        pokemon_trade_module, "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append((callback, kwargs["on_cancel"])),
+    )
+    check_and_award_monthly_pokemon(MockLogger())
+    task, done = case.queued[0]
+    done(_Future(task()))
+    case.decision.assert_not_called()
+    case.add.assert_not_called()
+    assert pokemon_trade_module.services._monthly_challenge_request is not None
+
+    # Duplicate automatic checks during sync share the pending result.
+    check_and_award_monthly_pokemon(MockLogger())
+    assert len(case.queued) == 1
+    idle[0][0]()
+    case.add.assert_called_once()
+    assert pokemon_trade_module.services._monthly_challenge_request is None
+
+
+def test_cancelling_deferred_monthly_prompt_releases_request(monthly_case, monkeypatch):
+    case = monthly_case
+    idle = []
+    monkeypatch.setattr(
+        pokemon_trade_module, "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append(kwargs["on_cancel"]),
+    )
+    check_and_award_monthly_pokemon(MockLogger())
+    task, done = case.queued[0]
+    done(_Future(task()))
+    idle[0]()
+    case.add.assert_not_called()
+    assert pokemon_trade_module.services._monthly_challenge_request is None

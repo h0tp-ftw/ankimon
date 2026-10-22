@@ -485,17 +485,21 @@ def calculate_sprite_diff(dest_dir: Path, silent: bool = False, ignore_snooze: b
 
 
 def trigger_sprites_update_check(parent=None, silent=False):
-    """Entry point using Anki's QueryOp utility for thread-safety and background execution."""
-    from aqt.operations import QueryOp
+    """Check sprites without occupying Anki's collection queue."""
+    from ..background_ops import call_when_anki_idle, run_query
+    from ..services import services
     from aqt import mw
     
     dest_dir = Path(user_path_sprites)
     
-    def bg_check(_col):
+    profile_col = getattr(mw, "col", None)
+    generation = getattr(services, "_background_generation", 0)
+
+    def bg_check():
         print("Sprite update check: starting background check...")
         return calculate_sprite_diff(dest_dir, silent=silent, ignore_snooze=not silent)
 
-    def on_done(result):
+    def display(result):
         status = result.get("status")
         print(f"Sprite update check: finished with status {status}")
         if status == "update_available":
@@ -509,8 +513,13 @@ def trigger_sprites_update_check(parent=None, silent=False):
             if not silent:
                 QMessageBox.warning(parent or mw, "Update Error", f"Failed to check for sprite updates:\n{result.get('error')}")
 
-    QueryOp(
-        parent=parent or mw,
-        op=bg_check,
-        success=on_done
-    ).without_collection().run_in_background()
+    def on_done(result):
+        if (profile_col is None or mw.col is not profile_col
+                or generation != getattr(services, "_background_generation", 0)):
+            return
+        if silent:
+            call_when_anki_idle(lambda: display(result), reason="sprite update notification")
+        else:
+            display(result)
+
+    run_query(bg_check, on_done, lambda error: on_done({"status": "error", "error": str(error)}))

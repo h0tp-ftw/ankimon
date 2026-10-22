@@ -2,13 +2,13 @@ import time
 from typing import Union
 
 from aqt import gui_hooks, mw
-from aqt.operations import QueryOp
 from aqt.utils import showWarning
 
 from .resources import addon_ver, addon_dir
 from .utils import read_github_file, read_local_file, compare_files, write_local_file
 from .pyobj.error_handler import show_warning_with_traceback
 from .services import services
+from .background_ops import call_when_anki_idle, run_query
 
 update_infos_md = addon_dir / "updateinfos.md"
 
@@ -37,7 +37,10 @@ def check_and_show_changelog(online_connectivity: bool, ssh: bool, no_more_news:
     if not (online_connectivity and ssh):
         return
 
-    def done(result: Union[Exception, str, None]):
+    profile_col = getattr(mw, "col", None)
+    generation = getattr(services, "_background_generation", 0)
+
+    def display(result: Union[Exception, str, None]):
         if isinstance(result, Exception):
             show_warning_with_traceback(
                 parent=mw, exception=result, message="Error connecting to GitHub:"
@@ -59,11 +62,12 @@ def check_and_show_changelog(online_connectivity: bool, ssh: bool, no_more_news:
             if not no_more_news:
                 dialog.exec()
 
-    QueryOp(
-        parent=mw,
-        op=lambda _col: download_changelog(),
-        success=done,
-    ).without_collection().run_in_background()
+    def done(result):
+        if (generation == getattr(services, "_background_generation", 0)
+                and (profile_col is None or mw.col is profile_col)):
+            call_when_anki_idle(lambda: display(result), reason="changelog notification")
+
+    run_query(download_changelog, done, done)
 
 
 def _is_snoozed(state: dict) -> bool:
@@ -125,7 +129,7 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         branch_name = (state.get("source_name") if state else None) or "main"
 
         # Initialize branch check tracking silently
-        def bg_init(_col):
+        def bg_init():
             try:
                 from .pyobj.update_manager import fetch_branch_sha, save_update_state
                 remote_sha = fetch_branch_sha(branch_name)
@@ -135,11 +139,11 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
             except Exception as e:
                 return e
 
-        QueryOp(
-            parent=mw,
-            op=bg_init,
-            success=lambda res: _log_info(f"Initialized update_state.json for {branch_name} branch: {res}"),
-        ).without_collection().run_in_background()
+        run_query(
+            bg_init,
+            lambda res: _log_info(f"Initialized update_state.json for {branch_name} branch: {res}"),
+            lambda error: _log_info(f"Could not initialize branch update state: {error}"),
+        )
         return
 
     _log_info(
@@ -162,7 +166,7 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         _log_info("check_branch_update exited early: source_type is not branch")
         return
 
-    def bg(_col):
+    def bg():
         try:
             from .pyobj.update_manager import fetch_branch_sha, fetch_branch_commits
 
@@ -174,7 +178,13 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         except Exception as e:
             return e
 
+    profile_col = getattr(mw, "col", None)
+    generation = getattr(services, "_background_generation", 0)
+
     def done(result):
+        if (profile_col is None or mw.col is not profile_col
+                or generation != getattr(services, "_background_generation", 0)):
+            return
         if isinstance(result, Exception) or not result:
             return
 
@@ -185,13 +195,12 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         if local_sha != remote_sha:
             from .pyobj.update_dialog import show_branch_update_prompt
 
-            show_branch_update_prompt(source_name, remote_sha, commits)
+            call_when_anki_idle(
+                lambda: show_branch_update_prompt(source_name, remote_sha, commits),
+                reason="branch update notification",
+            )
 
-    QueryOp(
-        parent=mw,
-        op=bg,
-        success=done,
-    ).without_collection().run_in_background()
+    run_query(bg, done, lambda error: _log_info(f"Branch update check failed: {error}"))
 
 
 def check_for_update(online_connectivity: bool, ssh: bool):
@@ -240,13 +249,19 @@ def _poll_release_channel(channel: str):
         _log_info("_poll_release_channel exited early: skip_until active")
         return
 
-    def bg(_col):
+    def bg():
         try:
             return latest_release_for_channel(channel)
         except Exception as e:
             return e
 
+    profile_col = getattr(mw, "col", None)
+    generation = getattr(services, "_background_generation", 0)
+
     def done(result):
+        if (profile_col is None or mw.col is not profile_col
+                or generation != getattr(services, "_background_generation", 0)):
+            return
         if isinstance(result, Exception) or not result:
             return
         release = result
@@ -254,9 +269,12 @@ def _poll_release_channel(channel: str):
         if tag and is_newer_version(tag, addon_ver):
             from .pyobj.update_dialog import show_release_update_prompt
 
-            show_release_update_prompt(channel, release)
+            call_when_anki_idle(
+                lambda: show_release_update_prompt(channel, release),
+                reason="release update notification",
+            )
 
-    QueryOp(parent=mw, op=bg, success=done).without_collection().run_in_background()
+    run_query(bg, done, lambda error: _log_info(f"Release update check failed: {error}"))
 
 
 def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
@@ -279,7 +297,10 @@ def schedule_branch_update_check(online_connectivity: bool, ssh: bool) -> None:
             return
 
         if online_connectivity:
-            check_for_update(online_connectivity, ssh)
+            try:
+                check_for_update(online_connectivity, ssh)
+            except Exception as e:
+                _log_info(f"Failed to start update check: {e}")
         try:
             from .pyobj.sprite_updater import trigger_sprites_update_check
 

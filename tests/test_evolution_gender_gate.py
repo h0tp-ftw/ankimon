@@ -689,3 +689,21 @@ def test_item_and_level_paths_route_through_the_shared_gate(monkeypatch):
             is None
         )
     evo_window.ask_pokemon_evo.assert_not_called()
+
+
+def test_profile_switch_preserves_warmed_evolution_rows_without_disk_reads(monkeypatch):
+    pf.clear_pokedex_caches()
+    assert pf.warm_evolution_caches() > 0
+    rows, index = pf._poke_evo_cache, pf._poke_evo_index
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr("builtins.open", mock.Mock(side_effect=AssertionError("profile switch read CSV")))
+        pf.clear_pokedex_caches(preserve_evolution=True)
+        assert pf._poke_evo_cache is rows
+        assert pf._poke_evo_index is index
+        assert pf._load_poke_evo_index()["475"]
+        assert pf._evolution_row_gender_id(475, pf._ITEM_EVO_TRIGGERS) == 2
+
+    pf.clear_pokedex_caches()
+    assert pf._poke_evo_cache is None
+    assert pf._poke_evo_index is None

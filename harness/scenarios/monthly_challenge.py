@@ -12,6 +12,7 @@ from pathlib import Path
 import struct
 import subprocess
 import sys
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from types import SimpleNamespace
@@ -140,6 +141,15 @@ def run(scenario):
                 future = executor.submit(task)
                 assert future.result(timeout=5) is not None
         done(future)
+        # Automatic results now leave the worker-completion stack and wait for
+        # idle Anki. Deliver the real Qt timer (including its modal loops)
+        # before inspecting the award; explicit menu requests finish directly.
+        deadline = time.monotonic() + 5
+        while getattr(d.services, "_monthly_challenge_request", None) is not None:
+            QApplication.processEvents()
+            if time.monotonic() >= deadline:
+                raise AssertionError("Monthly challenge result did not finish while Anki was idle")
+            time.sleep(0.001)
 
     def close_notice(fn):
         def wrapped(*args, **kwargs):

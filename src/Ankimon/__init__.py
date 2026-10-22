@@ -206,7 +206,7 @@ def start_asynchronous_startup():
     a background thread; ``on_startup_complete`` marshals its results back to
     the main thread for the Qt half of the boot.
     """
-    from aqt.operations import QueryOp
+    from .background_ops import call_when_anki_idle, run_query
     from .startup import run_startup_background_checks, run_startup_ui_callbacks
 
     services._startup_in_progress = True
@@ -219,6 +219,7 @@ def start_asynchronous_startup():
         # next reload or silently suppress backups for the rest of the session,
         # so every exit path below runs this.
         services._startup_in_progress = False
+        services._startup_ui_pending = False
         services._is_reloading = False
 
     def run_startup_ui_sequence(results):
@@ -343,10 +344,25 @@ def start_asynchronous_startup():
         # the flag reset has to be a finally, or a single failing Qt-half step
         # (a raising migration dialog, a missing singleton) would strand the
         # lifecycle flags and wedge every later hot-reload.
-        try:
-            run_startup_ui_sequence(results)
-        finally:
-            clear_startup_lifecycle_flags()
+        services._startup_ui_pending = True
+
+        def finish_startup():
+            try:
+                run_startup_ui_sequence(results)
+                # Profile-open normally owns this maintenance. Also cover a
+                # late add-on load into an already open profile; the manager
+                # deduplicates submissions for the same profile context.
+                if not getattr(services, "_is_reloading", False):
+                    backup_manager.schedule_profile_backup_tasks()
+            finally:
+                clear_startup_lifecycle_flags()
+
+        call_when_anki_idle(
+            finish_startup,
+            "startup dialogs",
+            on_cancel=clear_startup_lifecycle_flags,
+            profile_bound=False,
+        )
 
     def on_startup_failed(exc):
         # QueryOp offers no automatic recovery: if the background half raises
@@ -359,23 +375,23 @@ def start_asynchronous_startup():
             logger.log("error", f"Ankimon async startup failed: {exc}")
         except Exception:
             pass
-        try:
+        clear_startup_lifecycle_flags()
+
+        def show_failure():
             show_warning_with_traceback(
                 parent=mw,
                 exception=exc,
                 message="Ankimon failed to start; its features are disabled for this session:",
             )
-        except Exception:
-            pass
 
-        clear_startup_lifecycle_flags()
+        call_when_anki_idle(show_failure, "startup failure", profile_bound=False)
 
     try:
-        QueryOp(
-            parent=mw,
-            op=lambda _col: run_startup_background_checks(backup_manager),
+        run_query(
+            lambda: run_startup_background_checks(backup_manager),
             success=on_startup_complete,
-        ).failure(on_startup_failed).without_collection().run_in_background()
+            failure=on_startup_failed,
+        )
     except Exception:
         # The op never got scheduled, so neither callback will ever run. Clear
         # the flags here too, otherwise the next hot-reload waits on a startup

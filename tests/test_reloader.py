@@ -117,6 +117,29 @@ def test_restart_waits_for_startup_before_teardown(monkeypatch):
     assert services._reload_in_progress is False
 
 
+def test_restart_yields_when_startup_ui_is_pending(monkeypatch):
+    calls = []
+    services = SimpleNamespace(_startup_in_progress=True, _startup_ui_pending=True)
+    mod = _load_reloader(monkeypatch, services, calls)
+    mod.restart_ankimon()
+    assert calls == [("tooltip", "Ankimon reload skipped — waiting for startup dialogs.")]
+
+
+def test_restart_yields_when_worker_completes_during_wait(monkeypatch):
+    calls = []
+    services = SimpleNamespace(_startup_in_progress=True)
+
+    def worker_finished():
+        services._startup_ui_pending = True
+
+    mod = _load_reloader(monkeypatch, services, calls, worker_finished)
+    mod.restart_ankimon()
+    assert ("teardown", "Ankimon") not in calls
+    assert ("import", "Ankimon") not in calls
+    assert calls.count("process_events") == 1
+    assert services._reload_in_progress is False
+
+
 def test_restart_aborts_when_startup_never_finishes(monkeypatch):
     """A wedged startup must cost a tooltip, not a permanently frozen Anki."""
     calls = []

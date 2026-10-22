@@ -288,3 +288,28 @@ def test_unsafe_paths_are_not_managed():
     assert not su._is_managed_sprite_path("C:/outside.png")
     assert not su._is_managed_sprite_path(".github/workflows/build.yml")
     assert su._is_managed_sprite_path("front_default/25.png")
+
+
+def test_automatic_sprite_prompt_waits_for_idle_and_rejects_stale_result(monkeypatch):
+    from Ankimon import background_ops
+
+    window = types.SimpleNamespace(col=object())
+    monkeypatch.setattr(sys.modules["aqt"], "mw", window)
+    queued, idle = [], []
+    monkeypatch.setattr(background_ops, "run_query", lambda task, done, failed: queued.append(done))
+    monkeypatch.setattr(background_ops, "call_when_anki_idle", lambda callback, **kwargs: idle.append(callback))
+    dialog = mock.Mock()
+    monkeypatch.setattr(su, "SpriteUpdateDialog", dialog)
+    result = {"status": "update_available", "added": [], "modified": [], "deleted": []}
+
+    su.trigger_sprites_update_check(silent=True)
+    queued[0](result)
+    dialog.assert_not_called()
+    idle.pop()()
+    dialog.return_value.exec.assert_called_once()
+
+    su.trigger_sprites_update_check(silent=True)
+    window.col = object()
+    queued[-1](result)
+    assert not idle
+    dialog.assert_called_once()

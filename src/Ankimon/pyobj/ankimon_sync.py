@@ -376,7 +376,28 @@ def get_ankimon_sync() -> AnkimonDataSync:
         _ankimon_sync_instance = AnkimonDataSync()
     return _ankimon_sync_instance
 
-def setup_ankimon_sync_hooks(settings_obj, logger):
+def schedule_mobile_sync(callback, reason):
+    """Retry GUI mobile work after Anki and any existing replay become idle."""
+    from ..background_ops import call_when_anki_idle
+    from ..functions.mobile_sync import MobileSyncBusy
+    from ..services import services
+
+    expected_db = services.db
+    expected_col = services.col if services.col is not None else mw.col
+
+    def attempt():
+        current_col = services.col if services.col is not None else mw.col
+        if services.db is not expected_db or current_col is not expected_col:
+            return
+        try:
+            callback()
+        except MobileSyncBusy:
+            call_when_anki_idle(attempt, reason=reason, delay_ms=100)
+
+    call_when_anki_idle(attempt, reason=reason)
+
+
+def setup_ankimon_sync_hooks(settings_obj, logger, *, before_detection=None):
     """Register the post-sync hook that turns mobile/web reviews into battles.
 
     Registered UNCONDITIONALLY (not gated on any setting) so that mobile-review
@@ -396,11 +417,18 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
     """
 
     def on_sync_did_finish():
-        """Called after sync finishes."""
+        # The hook can fire inside Anki's progress event loop while its
+        # collection worker is still active. Defer collection reads until idle.
+        schedule_mobile_sync(process_reviews, "mobile reviews after sync")
+
+    def process_reviews():
+        """Detect mobile reviews on the GUI once Anki is idle."""
         # === Mobile-review sync engine (F29): dual-DB detection + queueing ===
         # Runs regardless of the AnkiWeb-config auto-sync toggle below — mobile
         # review detection is independent of Ankimon-config file syncing.
         try:
+            if before_detection is not None and before_detection() is False:
+                return
             from ..services import services
             db = services.db
             col = services.col if services.col is not None else mw.col
@@ -409,18 +437,16 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                     detect_mobile_reviews,
                     get_desktop_session_revlog_ids,
                     clear_desktop_session,
-                    _mobile_sync_lock,
+                    mobile_sync_guard,
                     MOBILE_QUEUE_CAP,
                 )
                 from ..menu_buttons import update_mobile_badge
                 from ..save_import import rebase_after_import
 
                 dev_db_path = user_path / "ankimonDEV.db"
-                original_db_name = db.db_path.name
-                desktop_ids = get_desktop_session_revlog_ids(col)
-
                 newly_queued_normal = 0
                 newly_queued_dev = 0
+                cap_warnings = []
 
                 def _cap_mobile(reviews):
                     # Bound each queueing pass to the same MOBILE_QUEUE_CAP the
@@ -435,10 +461,7 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                             f"{MOBILE_QUEUE_CAP} system cap — the {discarded} oldest "
                             f"were discarded and will not become mobile battles."
                         )
-                        try:
-                            logger.log_and_showinfo("warning", msg)
-                        except Exception:
-                            logger.log("warning", msg)
+                        cap_warnings.append(msg)
                         return reviews[-MOBILE_QUEUE_CAP:]
                     return reviews
 
@@ -449,7 +472,9 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                 # background thread's next _get_connection() silently reopens
                 # against the wrong Ankimon DB file. The lock is released before
                 # the auto-resolve branch below (resolveAll reacquires it).
-                with _mobile_sync_lock:
+                with mobile_sync_guard():
+                    original_db_name = db.db_path.name
+                    desktop_ids = get_desktop_session_revlog_ids(col)
                     try:
                         # 1. Queue to ankimon.db
                         if db.db_path.name != "ankimon.db":
@@ -490,6 +515,14 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
 
                 # Clear desktop session to prevent indefinite exclusion-set accumulation
                 clear_desktop_session()
+
+                # A warning opens a nested Qt event loop. Deliver it only after
+                # the active save is restored and the mobile lock is released.
+                for message in cap_warnings:
+                    try:
+                        logger.log_and_showinfo("warning", message)
+                    except Exception:
+                        logger.log("warning", message)
 
                 # Always update the badge with the TOTAL pending count of the active DB
                 total_pending = db.get_pending_mobile_count()
@@ -537,6 +570,9 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
                 except Exception:
                     pass
         except Exception as e:
+            from ..functions.mobile_sync import MobileSyncBusy
+            if isinstance(e, MobileSyncBusy):
+                raise
             logger.log("error", f"Mobile review detection failed: {e}")
             # Surface a hard failure to the user ONCE per session — a silent log
             # is exactly what hid the original "sync not working" bug. Guarded so
@@ -579,3 +615,4 @@ def setup_ankimon_sync_hooks(settings_obj, logger):
     setattr(services, _SYNC_HOOK_RECORD, _handlers)
 
     logger.log("info", "Ankimon mobile-review sync hook registered")
+    return on_sync_did_finish

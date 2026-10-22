@@ -35,6 +35,7 @@ def _local_species_name(internal_name, pokedex_id):
     return fallback
 from ..services import services
 from ..events import events
+from ..background_ops import call_when_anki_idle, run_in_background
 import os
 
 
@@ -1105,6 +1106,8 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
           interrupting the user's Anki session
     """
 
+    generation = getattr(services, "_background_generation", 0)
+
     def _fetch_monthly_data(current_month_str):
         """Fetch and validate this month's challenge. Returns dict or None.
 
@@ -1173,7 +1176,8 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
     def _session_unchanged(db, db_token, col):
         """Return True while the database and Anki profile are the ones seen at dispatch."""
         try:
-            return services.db is db and mw.col is col and db.identity_token() == db_token
+            return (services.db is db and mw.col is col and db.identity_token() == db_token
+                    and generation == getattr(services, "_background_generation", 0))
         except Exception:
             return False
 
@@ -1434,9 +1438,19 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                     release()
                     logger.log("error", f"Error completing monthly check: {e}")
                     return
-                _complete(result_data)
+                if not _session_unchanged(db, db_token, col):
+                    release()
+                    return
+                if request["reclaim"]:
+                    _complete(result_data)
+                else:
+                    call_when_anki_idle(
+                        lambda: _complete(result_data),
+                        reason="monthly challenge notification",
+                        on_cancel=release,
+                    )
 
-            mw.taskman.run_in_background(lambda: _fetch_monthly_data(current_month_str), on_done)
+            run_in_background(lambda: _fetch_monthly_data(current_month_str), on_done, taskman=mw.taskman)
         else:
             _complete(_fetch_monthly_data(current_month_str))
     except Exception as e:
