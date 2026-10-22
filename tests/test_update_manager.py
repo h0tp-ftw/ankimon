@@ -714,7 +714,7 @@ def _staged_install(tmp_path, monkeypatch):
     monkeypatch.setattr(um, "save_update_state", lambda *a, **k: None)
     monkeypatch.setattr(um, "get_meta_json_path", lambda: addon / "meta.json")
     monkeypatch.setattr(um, "fetch_ref_date", lambda _ref: None)  # no network
-    monkeypatch.setattr(um, "_resolve_release_commit_sha", lambda *a, **k: "stub-sha")
+    monkeypatch.setattr(um, "fetch_ref_sha", lambda _ref: "stub-sha")
     return addon, zip_path
 
 
@@ -725,7 +725,6 @@ def test_apply_update_returns_the_release_date_to_stamp(tmp_path, monkeypatch):
     seen = {}
 
     def _spy(source_type, source_name, commit_sha, published_at=None):
-        seen["args"] = (source_type, source_name, commit_sha, published_at)
         return 1786186950
 
     monkeypatch.setattr(um, "resolve_build_mtime", _spy)
