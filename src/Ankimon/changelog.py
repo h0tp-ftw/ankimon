@@ -164,13 +164,22 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
 
     def bg(_col):
         try:
-            from .pyobj.update_manager import fetch_branch_sha, fetch_branch_commits
+            from .pyobj.update_manager import (
+                fetch_branch_sha,
+                fetch_branch_commits,
+                fetch_branch_relation,
+            )
 
             remote_sha = fetch_branch_sha(source_name)
+            relation = (
+                fetch_branch_relation(local_sha, source_name)
+                if remote_sha and local_sha and remote_sha != local_sha
+                else "identical"
+            )
             commits = []
-            if remote_sha and local_sha != remote_sha:
+            if remote_sha and relation == "ahead":
                 commits = fetch_branch_commits(source_name, local_sha)
-            return remote_sha, commits
+            return remote_sha, relation, commits
         except Exception as e:
             return e
 
@@ -178,11 +187,11 @@ def check_branch_update(online_connectivity: bool, ssh: bool):
         if isinstance(result, Exception) or not result:
             return
 
-        remote_sha, commits = result
+        remote_sha, relation, commits = result
         if not remote_sha:
             return
 
-        if local_sha != remote_sha:
+        if relation == "ahead":
             from .pyobj.update_dialog import show_branch_update_prompt
 
             show_branch_update_prompt(source_name, remote_sha, commits)
@@ -218,17 +227,19 @@ def check_for_update(online_connectivity: bool, ssh: bool):
 
 def _poll_release_channel(channel: str):
     """Prompt when the newest release on a release channel (stable/experimental)
-    is strictly newer than the installed version.
-
-    The installed ``addon_ver`` is the baseline — no per-channel state is needed,
-    so once the user updates the same release stops prompting. Dev clones (which
-    update via ``git pull``) and the weekly ``skip_until`` snooze are honored.
+    is newer than the installed version, or has newer commits at the same version.
+    Installed identity is reconciled with the running manifest and ankimon.db so
+    older/missing database metadata cannot cause a stale-version prompt.
     """
     from .pyobj.update_manager import (
         is_git_clone,
         latest_release_for_channel,
-        is_newer_version,
+        is_commit_sha,
+        same_commit,
+        is_release_update_available,
         read_update_state,
+        fetch_ref_sha,
+        fetch_ref_relation,
     )
 
     if is_git_clone():
@@ -242,16 +253,62 @@ def _poll_release_channel(channel: str):
 
     def bg(_col):
         try:
-            return latest_release_for_channel(channel)
+            release = latest_release_for_channel(channel)
+            if not release:
+                return None
+
+            current_version = addon_ver
+            db = services.db
+            stored_version = db.get_user_data("current_version", "") if db else ""
+            stored_sha = db.get_user_data("current_commit", "") if db else ""
+
+            current_sha = (
+                stored_sha
+                if stored_version == current_version and is_commit_sha(stored_sha)
+                else ""
+            )
+            if not current_sha:
+                state = read_update_state() or {}
+                if (
+                    state.get("source_name") == current_version
+                    and is_commit_sha(state.get("commit_sha"))
+                ):
+                    current_sha = state["commit_sha"]
+                else:
+                    current_sha = fetch_ref_sha(current_version) or ""
+
+            if db:
+                db.set_user_data("current_version", current_version)
+                db.set_user_data("current_commit", current_sha)
+            else:
+                _log_info("Release check could not persist identity: Ankimon database is unavailable.")
+
+            latest_sha = fetch_ref_sha(release["name"]) or ""
+            relation = (
+                fetch_ref_relation(current_sha, release["name"])
+                if is_commit_sha(current_sha)
+                and is_commit_sha(latest_sha)
+                and not same_commit(current_sha, latest_sha)
+                else "identical"
+            )
+            return release, current_version, current_sha, latest_sha, relation
         except Exception as e:
             return e
 
     def done(result):
-        if isinstance(result, Exception) or not result:
+        if isinstance(result, Exception):
+            _log_info(f"Release update check failed: {result}")
             return
-        release = result
+        if not result:
+            return
+        release, current_version, current_sha, latest_sha, relation = result
         tag = release.get("name")
-        if tag and is_newer_version(tag, addon_ver):
+        if not tag:
+            return
+
+        if is_release_update_available(
+            tag, current_version, latest_sha, current_sha, relation
+        ):
             from .pyobj.update_dialog import show_release_update_prompt
 
             show_release_update_prompt(channel, release)
