@@ -100,6 +100,12 @@ class ItemWindow(QWidget):
             "armor-fossil": 410,
             "cover-fossil": 564,
             "plume-fossil": 566,
+            "jaw-fossil": 696,
+            "sail-fossil": 698,
+            "fossilized-bird": 880,  # Dracozolt
+            "fossilized-dino": 881,  # Arctozolt
+            "fossilized-drake": 882, # Dracovish
+            "fossilized-fish": 883,  # Arctovish
         }
 
         self.pokeball_chances = {
