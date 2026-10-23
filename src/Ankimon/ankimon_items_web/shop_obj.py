@@ -1727,6 +1727,8 @@ class AnkimonItemsWeb(QDialog):
         for name in all_names:
             shop_entry = shop_index.get(name)
             owned_entry = owned_index.get(name)
+            # Safe default fallback for is_tm since it can be unbound on error otherwise
+            is_tm = False
             is_tm = bool(
                 (shop_entry or {}).get("is_tm")
                 or (owned_entry or {}).get("category_id") == 37
