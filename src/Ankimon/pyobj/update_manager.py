@@ -203,7 +203,9 @@ def git_checkout_source(
         # below asks, and git itself refuses to overwrite them on a checkout.
         status = _git("status", "--porcelain", "--untracked-files=no", timeout=30)
         if status.returncode != 0:
-            return False, (status.stderr or status.stdout or "git status failed").strip()
+            return False, (
+                status.stderr or status.stdout or "git status failed"
+            ).strip()
         if status.stdout.strip():
             return False, (
                 "Your Ankimon checkout has local changes. Commit, stash, or discard "
@@ -236,7 +238,10 @@ def git_checkout_source(
         checkout_ref = "FETCH_HEAD"
         if source_type == "branch":
             local_branch = _git(
-                "show-ref", "--verify", "--quiet", f"refs/heads/{source_name}",
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{source_name}",
                 timeout=30,
             )
             if local_branch.returncode == 0:
@@ -244,8 +249,10 @@ def git_checkout_source(
                 # the checkout exactly as it was, not parked on another branch
                 # with an "Update Failed" box on screen.
                 ancestor = _git(
-                    "merge-base", "--is-ancestor",
-                    f"refs/heads/{source_name}", checkout_ref,
+                    "merge-base",
+                    "--is-ancestor",
+                    f"refs/heads/{source_name}",
+                    checkout_ref,
                     timeout=30,
                 )
                 if ancestor.returncode == 1:
@@ -258,13 +265,19 @@ def git_checkout_source(
                     return False, (
                         f"Could not compare local branch '{source_name}' with the "
                         "Ankimon repository. Nothing was changed.\n\n"
-                        + (ancestor.stderr or ancestor.stdout or "Unknown git error").strip()
+                        + (
+                            ancestor.stderr or ancestor.stdout or "Unknown git error"
+                        ).strip()
                     )
                 checkout = _git("checkout", source_name)
                 if checkout.returncode != 0:
                     return False, (
                         f"Could not check out local branch '{source_name}'.\n\n"
-                        + (checkout.stderr or checkout.stdout or "Unknown git checkout error").strip()
+                        + (
+                            checkout.stderr
+                            or checkout.stdout
+                            or "Unknown git checkout error"
+                        ).strip()
                     )
                 log(f"Fast-forwarding local branch '{source_name}'...")
                 merge = _git("merge", "--ff-only", checkout_ref)
@@ -274,7 +287,9 @@ def git_checkout_source(
                     return False, (
                         f"Branch '{source_name}' is now checked out but could not be "
                         "fast-forwarded; its commits were left unchanged.\n\n"
-                        + (merge.stderr or merge.stdout or "Unknown git merge error").strip()
+                        + (
+                            merge.stderr or merge.stdout or "Unknown git merge error"
+                        ).strip()
                     )
                 checkout_ref = None
 
@@ -284,7 +299,11 @@ def git_checkout_source(
             if checkout.returncode != 0:
                 return False, (
                     f"Could not check out {display}.\n\n"
-                    + (checkout.stderr or checkout.stdout or "Unknown git checkout error").strip()
+                    + (
+                        checkout.stderr
+                        or checkout.stdout
+                        or "Unknown git checkout error"
+                    ).strip()
                 )
 
         operation = "Updated" if checkout_ref is None else "Checked out"
@@ -479,6 +498,12 @@ def _fetch_gitignore_patterns() -> list[str]:
 
 
 def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
+    # Inventory prunes preserved directories; installation must also preserve
+    # their descendants so it never overwrites a file omitted from the backup.
+    parent = rel_path.rpartition("/")[0]
+    if parent and _should_preserve(parent, gitignore_patterns):
+        return True
+
     # Holy Ground: NEVER touch anything in user_files/ during an update,
     # regardless of gitignore patterns.
     if rel_path == "user_files" or rel_path.startswith("user_files/"):
@@ -961,14 +986,37 @@ def _find_src_prefix(names: list[str]) -> Optional[str]:
 
 
 def _collect_code_files(gitignore_patterns: list[str]) -> dict[str, Path]:
+    def raise_walk_error(error):
+        # An incomplete inventory cannot establish that every old file is safe.
+        raise error
+
     code_files = {}
-    for root, dirs, files in os.walk(addon_dir):
+    for root, dirs, files in os.walk(addon_dir, onerror=raise_walk_error):
+        dirs[:] = [
+            name
+            for name in dirs
+            if not _should_preserve(
+                (Path(root) / name).relative_to(addon_dir).as_posix(),
+                gitignore_patterns,
+            )
+        ]
         for fname in files:
             full_path = Path(root) / fname
             rel = str(full_path.relative_to(addon_dir)).replace("\\", "/")
             if not _should_preserve(rel, gitignore_patterns):
                 code_files[rel] = full_path
     return code_files
+
+
+def _copy_verified(source: Path, destination: Path) -> None:
+    """Copy a recovery file and check its bytes before relying on it."""
+    shutil.copy2(source, destination)
+    with source.open("rb") as original, destination.open("rb") as copied:
+        while chunk := original.read(1024 * 1024):
+            if copied.read(len(chunk)) != chunk:
+                raise OSError(f"Recovery copy verification failed: {destination}")
+        if copied.read(1):
+            raise OSError(f"Recovery copy verification failed: {destination}")
 
 
 def _extract_ref_from_prefix(src_prefix: str) -> str:
@@ -1001,7 +1049,9 @@ def _fetch_submodule_sha(ref: str) -> Optional[str]:
     return None
 
 
-def _download_and_extract_submodule(sha: str, dest_dir: Path, status_cb=None, progress_cb=None):
+def _download_and_extract_submodule(
+    sha: str, dest_dir: Path, status_cb=None, progress_cb=None
+):
     def log(msg):
         if status_cb:
             status_cb(msg)
@@ -1122,6 +1172,8 @@ def apply_update(
 
     log("Validating update archive...")
     backup_dir = None
+    installation_started = False
+    code_files = {}
     try:
         with zipfile.ZipFile(zip_path) as zf:
             names = zf.namelist()
@@ -1163,38 +1215,43 @@ def apply_update(
 
             # --- Backup current code files ---
             log("Backing up current addon code...")
-            backup_dir = Path(tempfile.mkdtemp(prefix="ankimon_update_backup_"))
+            backup_root = addon_dir / "user_files" / "update_backups"
+            backup_root.mkdir(parents=True, exist_ok=True)
+            backup_dir = Path(
+                tempfile.mkdtemp(prefix="ankimon_update_backup_", dir=backup_root)
+            )
             backed_up = 0
             for rel, full_path in code_files.items():
                 dest = backup_dir / rel
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    shutil.copy2(full_path, dest)
-                    backed_up += 1
-                    if backed_up % 10 == 0 or backed_up == total_backup:
-                        progress_value = int((backed_up / main_work_total) * progress_scale)
-                        send_progress(
-                            progress_value,
-                            100,
-                            f"Backing up {backed_up}/{total_backup} files..."
-                        )
-                except Exception:
-                    pass
+                _copy_verified(full_path, dest)
+                backed_up += 1
+                if backed_up % 10 == 0 or backed_up == total_backup:
+                    progress_value = int((backed_up / main_work_total) * progress_scale)
+                    send_progress(
+                        progress_value,
+                        100,
+                        f"Backing up {backed_up}/{total_backup} files...",
+                    )
             log(f"Backed up {backed_up} code files to {backup_dir.name}.")
 
             # --- Remove old addon code ---
             log("Removing old addon code...")
+            installation_started = True
             removed = 0
             for rel, full_path in code_files.items():
                 try:
                     full_path.unlink()
                     removed += 1
                     if removed % 10 == 0 or removed == total_remove:
-                        progress_value = int(((total_backup + removed) / main_work_total) * progress_scale)
+                        progress_value = int(
+                            ((total_backup + removed) / main_work_total)
+                            * progress_scale
+                        )
                         send_progress(
                             progress_value,
                             100,
-                            f"Removing old files {removed}/{total_remove}..."
+                            f"Removing old files {removed}/{total_remove}...",
                         )
                 except Exception:
                     pass
@@ -1222,11 +1279,17 @@ def apply_update(
                         shutil.copyfileobj(source, target)
                     installed += 1
                     if installed % 5 == 0 or installed == total_files:
-                        progress_value = int(((total_backup + total_remove + installed) / main_work_total) * progress_scale)
+                        progress_value = int(
+                            (
+                                (total_backup + total_remove + installed)
+                                / main_work_total
+                            )
+                            * progress_scale
+                        )
                         send_progress(
                             progress_value,
                             100,
-                            f"Installing {installed}/{total_files} files..."
+                            f"Installing {installed}/{total_files} files...",
                         )
                 except PermissionError as pe:
                     if dest.exists():
@@ -1252,18 +1315,8 @@ def apply_update(
                 progress_cb=submodule_progress,
             )
 
-            # --- Save update state if provided ---
-            if source_type and source_name:
-                save_update_state(source_type, source_name, commit_sha or "")
-
             cleanup()
             log(f"Update complete. Installed {installed} files.")
-
-            # Cleanup backup on success
-            try:
-                shutil.rmtree(backup_dir)
-            except Exception:
-                pass
 
             # Work out the date to stamp meta.json with, so Anki stops treating
             # whichever build it last installed as the newer copy. Resolving it
@@ -1291,6 +1344,18 @@ def apply_update(
             # Signal successful completion at 100%
             send_progress(100, 100, "Update complete!")
 
+            # Publish the installed build only after callbacks can no longer
+            # trigger rollback; restored code must keep its previous update state.
+            if source_type and source_name:
+                save_update_state(source_type, source_name, commit_sha or "")
+
+            # Keep recovery files until even the final UI callback has returned:
+            # an exception before this point still enters the rollback handler.
+            try:
+                shutil.rmtree(backup_dir)
+            except Exception:
+                pass
+
             return (
                 True,
                 "Update applied successfully. Please restart Anki.",
@@ -1298,27 +1363,57 @@ def apply_update(
             )
 
     except Exception as e:
-        # --- Rollback ---
-        log(f"Update failed: {e}. Rolling back...")
-        rollback_count = 0
-        if backup_dir is not None:
-            for root, dirs, files in os.walk(backup_dir):
-                for fname in files:
-                    backup_path = Path(root) / fname
-                    rel = str(backup_path.relative_to(backup_dir)).replace("\\", "/")
-                    dest = addon_dir / rel
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    try:
-                        shutil.copy2(backup_path, dest)
-                        rollback_count += 1
-                    except Exception:
-                        pass
-            log(f"Rolled back {rollback_count} files.")
 
+        def recovery_log(message):
+            # A closed UI / failed status callback must never interrupt recovery.
             try:
-                shutil.rmtree(backup_dir)
+                log(message)
             except Exception:
                 pass
 
+        if not installation_started:
+            # A partial backup must never be copied over the still-intact addon.
+            # Nothing under addon_dir has been changed at this point.
+            if backup_dir is not None:
+                try:
+                    shutil.rmtree(backup_dir)
+                except Exception:
+                    pass
+            cleanup()
+            return False, f"Update aborted before addon files were changed: {e}", None
+
+        # --- Rollback ---
+        recovery_log(f"Update failed: {e}. Restoring original code files...")
+        rollback_count = 0
+        restore_errors = []
+        # Use the complete original inventory, so a missing backup is a failure
+        # rather than a file silently omitted by a directory walk.
+        for rel in code_files:
+            backup_path = backup_dir / rel
+            dest = addon_dir / rel
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                _copy_verified(backup_path, dest)
+                rollback_count += 1
+            except Exception as restore_error:
+                restore_errors.append(f"{rel}: {restore_error}")
+        recovery_log(f"Restored {rollback_count}/{len(code_files)} original files.")
+
         cleanup()
-        return False, f"Update failed and was rolled back: {e}", None
+        if restore_errors:
+            recovery_log("Rollback incomplete: " + "; ".join(restore_errors))
+            return (
+                False,
+                f"Update failed: {e}. Rollback incomplete: "
+                f"{len(restore_errors)} original file(s) could not be restored. "
+                f"First restore error: {restore_errors[0]}. "
+                f"Recovery backup retained at: {backup_dir}. "
+                "Keep this backup for manual recovery or reinstall Ankimon.",
+                None,
+            )
+
+        try:
+            shutil.rmtree(backup_dir)
+        except Exception:
+            pass
+        return False, f"Update failed; original code files were restored: {e}", None

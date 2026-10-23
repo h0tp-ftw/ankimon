@@ -34,8 +34,12 @@ def _load_update_manager():
     # (Removing the need for this global stubbing is what the #437 service-registry
     # refactor targets.)
     _keys = (
-        "aqt", "aqt.operations", "Ankimon", "Ankimon.pyobj",
-        "Ankimon.resources", "Ankimon.pyobj.update_manager",
+        "aqt",
+        "aqt.operations",
+        "Ankimon",
+        "Ankimon.pyobj",
+        "Ankimon.resources",
+        "Ankimon.pyobj.update_manager",
     )
     _saved = {k: sys.modules.get(k) for k in _keys}
     try:
@@ -63,7 +67,9 @@ def _load_update_manager():
             ("Ankimon.resources", "resources.py"),
             ("Ankimon.pyobj.update_manager", "pyobj/update_manager.py"),
         ]:
-            spec = importlib.util.spec_from_file_location(modname, _SRC / "Ankimon" / relpath)
+            spec = importlib.util.spec_from_file_location(
+                modname, _SRC / "Ankimon" / relpath
+            )
             module = importlib.util.module_from_spec(spec)
             sys.modules[modname] = module
             spec.loader.exec_module(module)
@@ -174,6 +180,7 @@ def test_apply_update_refuses_on_git_clone_and_cleans_zip(tmp_path, monkeypatch)
 
 # --- git helpers fakes -------------------------------------------------------
 
+
 class _FakeProc:
     def __init__(self, returncode=0, stdout="", stderr=""):
         self.returncode = returncode
@@ -183,8 +190,10 @@ class _FakeProc:
 
 def _fake_git(responses):
     """Fake subprocess.run dispatching on the git subcommand (cmd[3])."""
+
     def _run(cmd, **kwargs):
         return responses.get(cmd[3], _FakeProc(0))
+
     return _run
 
 
@@ -307,10 +316,14 @@ def test_git_checkout_source_reports_head_position_if_merge_fails_late(
     monkeypatch.setattr(
         um.subprocess,
         "run",
-        _fake_git({
-            "show-ref": _FakeProc(0, ""),
-            "merge": _FakeProc(1, "", "fatal: Not possible to fast-forward, aborting."),
-        }),
+        _fake_git(
+            {
+                "show-ref": _FakeProc(0, ""),
+                "merge": _FakeProc(
+                    1, "", "fatal: Not possible to fast-forward, aborting."
+                ),
+            }
+        ),
     )
 
     ok, msg = um.git_checkout_source("branch", "main")
@@ -382,18 +395,53 @@ def test_git_checkout_source_reattach_is_atomic_against_real_git(tmp_path, monke
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
     def git(cwd, *args):
-        return sp.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True)
+        return sp.run(
+            ["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True
+        )
 
     canonical = tmp_path / "canonical"
     canonical.mkdir()
     git(canonical, "init", "-q")
     git(canonical, "symbolic-ref", "HEAD", "refs/heads/main")
-    git(canonical, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base")
+    git(
+        canonical,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "base",
+    )
     clone = tmp_path / "clone"
     git(tmp_path, "clone", "-q", str(canonical), str(clone))
-    git(clone, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "local only")
+    git(
+        clone,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "local only",
+    )
     git(clone, "checkout", "-q", "-b", "feature")
-    git(canonical, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "upstream moved")
+    git(
+        canonical,
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "upstream moved",
+    )
 
     monkeypatch.setattr(um, "_git_repo_root", lambda: clone)
     monkeypatch.setattr(um, "GIT_REMOTE_URL", str(canonical))
@@ -407,6 +455,7 @@ def test_git_checkout_source_reattach_is_atomic_against_real_git(tmp_path, monke
 
 # --- pre-v2.0 version filtering ----------------------------------------------
 
+
 def test_version_filter_keeps_2_0_and_above():
     assert um._is_supported_version("2.01-E") is True
     assert um._is_supported_version("2.0-E") is True
@@ -414,25 +463,40 @@ def test_version_filter_keeps_2_0_and_above():
 
 
 def test_version_filter_drops_pre_2_0_and_non_versions():
-    for name in ["1.52-E", "1.931-E", "1.3962-E", "sprites", "nightly-release", "archive/h0tp/x"]:
+    for name in [
+        "1.52-E",
+        "1.931-E",
+        "1.3962-E",
+        "sprites",
+        "nightly-release",
+        "archive/h0tp/x",
+    ]:
         assert um._is_supported_version(name) is False, name
 
 
 def test_fetch_releases_filters_pre_2_0(monkeypatch):
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"tag_name": "sprites", "zipball_url": "z", "body": ""},
-        {"tag_name": "2.01-E", "zipball_url": "z", "body": ""},
-        {"tag_name": "1.52-E", "zipball_url": "z", "body": ""},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {"tag_name": "sprites", "zipball_url": "z", "body": ""},
+            {"tag_name": "2.01-E", "zipball_url": "z", "body": ""},
+            {"tag_name": "1.52-E", "zipball_url": "z", "body": ""},
+        ],
+    )
     assert [r["name"] for r in um.fetch_releases()] == ["2.01-E"]
 
 
 def test_fetch_tags_filters_pre_2_0(monkeypatch):
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"name": "nightly-release", "zipball_url": "z"},
-        {"name": "2.0-E", "zipball_url": "z"},
-        {"name": "1.3962-E", "zipball_url": "z"},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {"name": "nightly-release", "zipball_url": "z"},
+            {"name": "2.0-E", "zipball_url": "z"},
+            {"name": "1.3962-E", "zipball_url": "z"},
+        ],
+    )
     assert [t["name"] for t in um.fetch_tags()] == ["2.0-E"]
 
 
@@ -463,19 +527,36 @@ def test_parse_iso8601_handles_github_timestamps():
 
 
 def test_fetch_releases_keeps_published_at(monkeypatch):
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"tag_name": "2.4", "zipball_url": "z", "body": "",
-         "published_at": "2026-08-08T11:02:30Z"},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {
+                "tag_name": "2.4",
+                "zipball_url": "z",
+                "body": "",
+                "published_at": "2026-08-08T11:02:30Z",
+            },
+        ],
+    )
     assert um.fetch_releases()[0]["published_at"] == "2026-08-08T11:02:30Z"
 
 
 def test_fetch_releases_falls_back_to_created_at(monkeypatch):
     """A draft promoted later can carry a null published_at."""
-    monkeypatch.setattr(um, "_api_get", lambda _ep: [
-        {"tag_name": "2.4", "zipball_url": "z", "body": "",
-         "published_at": None, "created_at": "2026-07-01T09:00:00Z"},
-    ])
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda _ep: [
+            {
+                "tag_name": "2.4",
+                "zipball_url": "z",
+                "body": "",
+                "published_at": None,
+                "created_at": "2026-07-01T09:00:00Z",
+            },
+        ],
+    )
     assert um.fetch_releases()[0]["published_at"] == "2026-07-01T09:00:00Z"
 
 
@@ -516,7 +597,8 @@ def test_fetch_ref_date_resolves_a_tag_name(monkeypatch):
 
 def test_fetch_ref_date_falls_back_to_author_date(monkeypatch):
     monkeypatch.setattr(
-        um, "_api_get",
+        um,
+        "_api_get",
         lambda _ep: {"commit": {"author": {"date": "2026-01-02T03:04:05Z"}}},
     )
     assert um.fetch_ref_date("abc1234def") == "2026-01-02T03:04:05Z"
@@ -565,7 +647,8 @@ def test_resolve_build_mtime_prefers_release_published_at(monkeypatch):
 
 def test_resolve_build_mtime_falls_back_to_commit_date(monkeypatch):
     monkeypatch.setattr(
-        um, "fetch_ref_date",
+        um,
+        "fetch_ref_date",
         lambda ref: "2026-01-02T03:04:05Z" if ref == "abc1234def" else None,
     )
     assert um.resolve_build_mtime("branch", "main", "abc1234def") == 1767323045
@@ -573,7 +656,8 @@ def test_resolve_build_mtime_falls_back_to_commit_date(monkeypatch):
 
 def test_resolve_build_mtime_dates_a_tag_by_its_name(monkeypatch):
     monkeypatch.setattr(
-        um, "fetch_ref_date",
+        um,
+        "fetch_ref_date",
         lambda ref: "2026-01-02T03:04:05Z" if ref == "2.4" else None,
     )
     assert um.resolve_build_mtime("tag", "2.4", None) == 1767323045
@@ -586,7 +670,8 @@ def test_resolve_build_mtime_returns_none_when_unresolvable(monkeypatch):
 
 def test_stamp_addon_mod_writes_when_newer(tmp_path, monkeypatch):
     path = _meta_at(
-        tmp_path, monkeypatch,
+        tmp_path,
+        monkeypatch,
         '{"mod": 100, "config": {"a": 1}, "disabled": false, "name": "Ankimon"}',
     )
     assert um.stamp_addon_mod(500) is True
@@ -826,7 +911,411 @@ def test_apply_update_does_not_stamp_when_the_install_rolls_back(tmp_path, monke
     # The rollback really ran: the previous build's files are back. (It restores
     # the backup over the top rather than deleting files the update added, so
     # new.py survives — pre-existing behaviour, not what this test is about.)
-    assert "rolled back" in msg.lower()
+    assert "original code files were restored" in msg.lower()
     assert (addon / "old.py").read_text(encoding="utf-8") == "old"
     # ...and meta.json still describes the build that is actually on disk
     assert json.loads((addon / "meta.json").read_text(encoding="utf-8"))["mod"] == 100
+
+
+def _recovery_install(tmp_path, monkeypatch):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    (addon / "nested").mkdir()
+    (addon / "nested" / "legacy.py").write_bytes(b"old nested code")
+    (addon / "user_files").mkdir()
+    (addon / "user_files" / "ankimon.db").write_bytes(b"personal save canary")
+    original = {
+        path.relative_to(addon).as_posix(): path.read_bytes()
+        for path in addon.rglob("*")
+        if path.is_file()
+    }
+    backup_root = addon / "user_files" / "update_backups"
+    backup = backup_root / "recovery-backup"
+
+    def make_backup(*, prefix, dir):
+        assert prefix == "ankimon_update_backup_"
+        assert Path(dir) == backup_root
+        backup.mkdir()
+        return str(backup)
+
+    monkeypatch.setattr(um.tempfile, "mkdtemp", make_backup)
+    return addon, zip_path, backup, original
+
+
+def _assert_preserved_data(addon, original):
+    for name in ("meta.json", "user_files/ankimon.db"):
+        assert (addon / name).read_bytes() == original[name]
+
+
+@pytest.mark.parametrize("outcome", ["success", "rollback", "incomplete"])
+def test_recovery_backups_are_durable_and_preserve_older_attempts(
+    tmp_path, monkeypatch, outcome
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    backup_root = addon / "user_files" / "update_backups"
+    previous = backup_root / "previous" / "old.py"
+    previous.parent.mkdir(parents=True)
+    previous.write_bytes(b"older recovery copy")
+    created = []
+    real_mkdtemp = um.tempfile.mkdtemp
+    real_copy = um._copy_verified
+
+    def make_backup(*args, **kwargs):
+        path = Path(real_mkdtemp(*args, **kwargs))
+        created.append(path)
+        return str(path)
+
+    def finish_install(*args, **kwargs):
+        if outcome != "success":
+            raise OSError("installation failed")
+
+    def copy(source, destination):
+        if outcome == "incomplete" and destination == addon / "old.py":
+            raise PermissionError("restore blocked")
+        real_copy(source, destination)
+
+    monkeypatch.setattr(um.tempfile, "mkdtemp", make_backup)
+    monkeypatch.setattr(um, "_download_and_extract_submodule", finish_install)
+    monkeypatch.setattr(um, "_copy_verified", copy)
+    try:
+        ok, message, _ = um.apply_update(str(zip_path))
+        assert ok is (outcome == "success")
+        assert len(created) == 1 and created[0].parent == backup_root
+        assert previous.read_bytes() == b"older recovery copy"
+        assert not any(
+            name.startswith("user_files/") for name in um._collect_code_files([])
+        )
+        if outcome == "incomplete":
+            assert str(created[0]) in message and "Rollback incomplete" in message
+            assert (created[0] / "old.py").read_bytes() == b"old"
+            if os.name == "posix":
+                assert created[0].stat().st_mode & 0o777 == 0o700
+        else:
+            assert not created[0].exists()
+    finally:
+        for path in created:
+            if path.exists():
+                um.shutil.rmtree(path)
+
+
+@pytest.mark.parametrize("obstacle", ["user_files", "user_files/update_backups"])
+def test_unavailable_recovery_storage_aborts_before_changing_code(
+    tmp_path, monkeypatch, obstacle
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    blocked = addon / obstacle
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.write_bytes(b"existing file")
+    original = {
+        path.relative_to(addon): path.read_bytes()
+        for path in addon.rglob("*")
+        if path.is_file()
+    }
+
+    ok, message, _ = um.apply_update(str(zip_path))
+
+    assert not ok and "before addon files were changed" in message
+    assert {
+        path.relative_to(addon): path.read_bytes()
+        for path in addon.rglob("*")
+        if path.is_file()
+    } == original
+    assert not zip_path.exists()
+
+
+@pytest.mark.parametrize("late_failure", [False, True])
+@pytest.mark.parametrize(
+    "patterns, directory",
+    [(["*.log"], "cache.log"), (["*.env"], "nested/cache.env"), ([], "HelpInfos.html")],
+)
+def test_install_preserves_contents_of_directories_excluded_from_backup(
+    tmp_path, monkeypatch, patterns, directory, late_failure
+):
+    addon, zip_path = _staged_install(tmp_path, monkeypatch)
+    preserved = addon / directory / "old.py"
+    preserved.parent.mkdir(parents=True)
+    preserved.write_bytes(b"original preserved file")
+    with zipfile.ZipFile(zip_path, "a") as archive:
+        archive.writestr(f"ankimon-main/src/Ankimon/{directory}/old.py", "replacement")
+    monkeypatch.setattr(um, "_get_gitignore_patterns", lambda: patterns)
+    if late_failure:
+
+        def fail_install(*args, **kwargs):
+            raise OSError("installation failed")
+
+        monkeypatch.setattr(um, "_download_and_extract_submodule", fail_install)
+
+    ok, message, _ = um.apply_update(str(zip_path))
+
+    assert ok is not late_failure
+    assert preserved.read_bytes() == b"original preserved file"
+    if late_failure:
+        assert "original code files were restored" in message
+        assert (addon / "old.py").read_bytes() == b"old"
+    else:
+        assert (addon / "new.py").read_bytes() == b"new"
+
+
+@pytest.mark.parametrize("fault", ["copy", "mkdir", "verification"])
+def test_incomplete_backup_aborts_without_changing_any_original(
+    tmp_path, monkeypatch, fault
+):
+    addon, zip_path, backup, original = _recovery_install(tmp_path, monkeypatch)
+    real_copy = um.shutil.copy2
+    real_mkdir = Path.mkdir
+
+    def copy(source, destination):
+        if Path(destination) == backup / "nested" / "legacy.py":
+            # A copy can leave truncated output before raising; it must never
+            # subsequently be copied over the still-healthy original.
+            Path(destination).write_bytes(b"partial")
+            if fault == "copy":
+                raise PermissionError("backup copy failed")
+            if fault == "verification":
+                return str(destination)
+        return real_copy(source, destination)
+
+    def mkdir(path, *args, **kwargs):
+        if fault == "mkdir" and path == backup / "nested":
+            raise PermissionError("backup directory failed")
+        return real_mkdir(path, *args, **kwargs)
+
+    def unexpected_download(*args, **kwargs):
+        pytest.fail("An incomplete backup must abort before installation")
+
+    monkeypatch.setattr(um.shutil, "copy2", copy)
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    monkeypatch.setattr(um, "_download_and_extract_submodule", unexpected_download)
+
+    ok, message, pending_mod = um.apply_update(str(zip_path))
+
+    assert not ok and pending_mod is None
+    assert "before addon files were changed" in message
+    assert {
+        path.relative_to(addon).as_posix(): path.read_bytes()
+        for path in addon.rglob("*")
+        if path.is_file()
+    } == original
+    assert not backup.exists()
+    assert not zip_path.exists()
+
+
+def test_unreadable_inventory_aborts_before_any_backup_or_install(
+    tmp_path, monkeypatch
+):
+    addon, zip_path, backup, original = _recovery_install(tmp_path, monkeypatch)
+    real_walk = um.os.walk
+
+    def walk(path, *args, **kwargs):
+        if path == addon:
+            kwargs["onerror"](PermissionError("unreadable code directory"))
+        yield from real_walk(path, *args, **kwargs)
+
+    monkeypatch.setattr(um.os, "walk", walk)
+    ok, message, pending_mod = um.apply_update(str(zip_path))
+
+    assert not ok and pending_mod is None
+    assert "unreadable code directory" in message
+    assert "before addon files were changed" in message
+    for name, data in original.items():
+        assert (addon / name).read_bytes() == data
+    assert not backup.exists()
+
+
+@pytest.mark.parametrize("fault", ["copy", "mkdir", "verification"])
+def test_incomplete_rollback_retains_verified_backup_and_reports_recovery_path(
+    tmp_path, monkeypatch, fault
+):
+    addon, zip_path, backup, original = _recovery_install(tmp_path, monkeypatch)
+    real_copy = um.shutil.copy2
+    real_mkdir = Path.mkdir
+    restoring = False
+
+    def fail_download(*args, **kwargs):
+        nonlocal restoring
+        restoring = True
+        raise OSError("submodule download failed")
+
+    def copy(source, destination):
+        if restoring and Path(source) == backup / "nested" / "legacy.py":
+            Path(destination).write_bytes(b"partial restore")
+            if fault == "copy":
+                raise PermissionError("restore copy failed")
+            if fault == "verification":
+                return str(destination)
+        return real_copy(source, destination)
+
+    def mkdir(path, *args, **kwargs):
+        if restoring and fault == "mkdir" and path == addon / "nested":
+            raise PermissionError("restore directory failed")
+        return real_mkdir(path, *args, **kwargs)
+
+    def closed_ui(message):
+        if "Restoring original" in message or "Rollback incomplete" in message:
+            raise RuntimeError("status window closed")
+
+    monkeypatch.setattr(um, "_download_and_extract_submodule", fail_download)
+    monkeypatch.setattr(um.shutil, "copy2", copy)
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    ok, message, pending_mod = um.apply_update(str(zip_path), status_cb=closed_ui)
+
+    assert not ok and pending_mod is None
+    assert "Rollback incomplete" in message
+    assert "submodule download failed" in message
+    assert "nested/legacy.py" in message
+    assert str(backup) in message
+    assert "were restored" not in message
+    assert (addon / "old.py").read_bytes() == original["old.py"]
+    for name in ("old.py", "nested/legacy.py"):
+        assert (backup / name).read_bytes() == original[name]
+    _assert_preserved_data(addon, original)
+    assert not zip_path.exists()
+
+    # Once the transient failure clears, the retained original bytes really
+    # can reconstruct the old files. No other archive is needed.
+    restoring = False
+    for name in ("old.py", "nested/legacy.py"):
+        (addon / name).parent.mkdir(parents=True, exist_ok=True)
+        real_copy(backup / name, addon / name)
+        assert (addon / name).read_bytes() == original[name]
+
+
+def test_missing_backup_is_reported_and_other_files_still_restore(
+    tmp_path, monkeypatch
+):
+    addon, zip_path, backup, original = _recovery_install(tmp_path, monkeypatch)
+
+    def fail_download(*args, **kwargs):
+        # External deletion after verification must not make a directory walk
+        # silently omit this original and call the remaining restore complete.
+        (backup / "old.py").unlink()
+        raise OSError("submodule download failed")
+
+    monkeypatch.setattr(um, "_download_and_extract_submodule", fail_download)
+    ok, message, pending_mod = um.apply_update(str(zip_path))
+
+    assert not ok and pending_mod is None
+    assert "Rollback incomplete" in message
+    assert "old.py" in message and str(backup) in message
+    assert (backup / "nested" / "legacy.py").read_bytes() == original[
+        "nested/legacy.py"
+    ]
+    assert (addon / "nested" / "legacy.py").read_bytes() == original["nested/legacy.py"]
+    _assert_preserved_data(addon, original)
+
+
+@pytest.fixture
+def tracked_recovery_install(tmp_path, monkeypatch):
+    save_update_state = um.save_update_state
+    install = _recovery_install(tmp_path, monkeypatch)
+    # Exercise the real state writer; the shared install fixture stubs it out.
+    monkeypatch.setattr(um, "save_update_state", save_update_state)
+    resources = types.ModuleType("Ankimon.resources")
+    resources.addon_ver = "2.5"
+    monkeypatch.setitem(sys.modules, resources.__name__, resources)
+    return install
+
+
+@pytest.mark.parametrize("had_state", [False, True])
+@pytest.mark.parametrize(
+    "failure_message",
+    ["Update complete. Installed", "__PROGRESS__100|100", "Update complete!"],
+)
+def test_completion_failure_restores_code_and_preserves_update_state(
+    tracked_recovery_install, had_state, failure_message
+):
+    addon, zip_path, backup, original = tracked_recovery_install
+    state_path = addon / "user_files" / "update_state.json"
+    old_state = b'{"source_type":"branch","source_name":"main","commit_sha":"old-sha","skip_until":123}'
+    if had_state:
+        state_path.write_bytes(old_state)
+
+    def completion_failure(message):
+        if message.startswith(failure_message):
+            raise RuntimeError("final status failed")
+
+    ok, message, pending_mod = um.apply_update(
+        str(zip_path),
+        "branch",
+        "exp",
+        "new-sha",
+        status_cb=completion_failure,
+    )
+
+    assert not ok and pending_mod is None
+    assert "original code files were restored" in message
+    assert "final status failed" in message
+    for name, data in original.items():
+        assert (addon / name).read_bytes() == data
+    if had_state:
+        assert state_path.read_bytes() == old_state
+    else:
+        assert not state_path.exists()
+    assert not backup.exists()
+    assert not zip_path.exists()
+
+
+@pytest.mark.parametrize("had_state", [False, True])
+def test_completed_update_records_installed_build(tracked_recovery_install, had_state):
+    addon, zip_path, backup, original = tracked_recovery_install
+    state_path = addon / "user_files" / "update_state.json"
+    if had_state:
+        state_path.write_text(
+            json.dumps({"commit_sha": "old-sha", "skip_until": 123}),
+            encoding="utf-8",
+        )
+
+    ok, _message, _pending_mod = um.apply_update(
+        str(zip_path), "branch", "exp", "new-sha"
+    )
+
+    assert ok
+    assert (addon / "new.py").read_bytes() == b"new"
+    assert not (addon / "old.py").exists()
+    _assert_preserved_data(addon, original)
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["source_type"] == "branch"
+    assert state["source_name"] == "exp"
+    assert state["commit_sha"] == "new-sha"
+    assert state["addon_version"] == "2.5"
+    if had_state:
+        assert state["skip_until"] == 123
+    else:
+        assert "skip_until" not in state
+    assert not backup.exists()
+    assert not zip_path.exists()
+
+
+@pytest.mark.parametrize("late_failure", [False, True])
+@pytest.mark.parametrize("cleanup_failure", [False, True])
+def test_completed_update_or_restore_handles_backup_cleanup(
+    tmp_path, monkeypatch, late_failure, cleanup_failure
+):
+    addon, zip_path, backup, original = _recovery_install(tmp_path, monkeypatch)
+
+    if late_failure:
+
+        def fail_download(*args, **kwargs):
+            raise OSError("submodule download failed")
+
+        monkeypatch.setattr(um, "_download_and_extract_submodule", fail_download)
+    if cleanup_failure:
+
+        def fail_cleanup(path):
+            raise PermissionError("backup cleanup failed")
+
+        monkeypatch.setattr(um.shutil, "rmtree", fail_cleanup)
+
+    ok, message, pending_mod = um.apply_update(str(zip_path))
+
+    assert ok is not late_failure
+    assert pending_mod is None
+    assert backup.exists() is cleanup_failure
+    assert not zip_path.exists()
+    _assert_preserved_data(addon, original)
+    if late_failure:
+        assert "original code files were restored" in message
+        for name, data in original.items():
+            assert (addon / name).read_bytes() == data
+    else:
+        assert (addon / "new.py").read_bytes() == b"new"
+        assert not (addon / "old.py").exists()
