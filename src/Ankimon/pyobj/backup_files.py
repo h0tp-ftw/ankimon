@@ -33,13 +33,17 @@ def create_backup_folder(folder_path):
 
 def rotate_backups():
     """Manages the rolling backup system (backup_3 is deleted, 2 becomes 3, etc.)."""
-    if os.path.exists(backup_folders[-1]):
-        shutil.rmtree(backup_folders[-1])  # Delete oldest backup
+    try:
+        if os.path.exists(backup_folders[-1]):
+            shutil.rmtree(backup_folders[-1])  # Delete oldest backup
 
-    # Shift backups (backup_2 → backup_3, backup_1 → backup_2)
-    for i in range(len(backup_folders) - 1, 0, -1):
-        if os.path.exists(backup_folders[i - 1]):
-            shutil.move(backup_folders[i - 1], backup_folders[i])
+        # Shift backups (backup_2 → backup_3, backup_1 → backup_2)
+        for i in range(len(backup_folders) - 1, 0, -1):
+            if os.path.exists(backup_folders[i - 1]):
+                shutil.move(backup_folders[i - 1], backup_folders[i])
+    except Exception as e:
+        services.logger.log("error", f"Failed to rotate backups: {e}")
+        pass
 
 def is_backup_needed():
     """Checks if a new backup is required (every two weeks)."""
@@ -55,8 +59,11 @@ def is_backup_needed():
 def run_backup():
     """Main function to run the backup process."""
     if is_backup_needed():
-        rotate_backups()
-        create_backup_folder(backup_folders[0])
-        services.logger.log("game","New backup created successfully.")
+        try:
+            rotate_backups()
+            create_backup_folder(backup_folders[0])
+            services.logger.log("game","New backup created successfully.")
+        except Exception as e:
+            services.logger.log("error", f"Failed to create new backup: {e}")
     else:
         services.logger.log("game","No backup needed yet.")
