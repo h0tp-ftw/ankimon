@@ -615,8 +615,8 @@ def test_update_main_pokemon_repairs_none_hp_values():
         assert pokemon.hp == pokemon.max_hp
         assert pokemon.current_hp == pokemon.max_hp
         saved = calls["db"].save_main_pokemon.call_args.args[0]
-        assert saved["hp"] == pokemon.max_hp
         assert saved["current_hp"] == pokemon.max_hp
+        assert "hp" not in saved
     finally:
         services.reset()
 
@@ -665,7 +665,37 @@ def test_legacy_json_hp_is_normalized_before_database_save(tmp_path):
         assert pokemon.hp == pokemon.max_hp
         assert pokemon.current_hp == pokemon.max_hp
         saved = calls["db"].save_main_pokemon.call_args.args[0]
-        assert saved["hp"] == pokemon.max_hp
         assert saved["current_hp"] == pokemon.max_hp
+        assert "hp" not in saved
+    finally:
+        services.reset()
+
+
+def test_legacy_json_malformed_current_hp_falls_back_to_legacy_hp(tmp_path):
+    record = {
+        "id": 25,
+        "name": "pikachu",
+        "level": 5,
+        "ev": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "iv": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
+        "stats": {"hp": 35},
+        "hp": 7,
+        "current_hp": "invalid",
+    }
+    ump, services, calls = _load_update_main_pokemon(
+        {}, name_lookup="pikachu", migrated=False
+    )
+    legacy_path = tmp_path / "mainpokemon.json"
+    legacy_path.write_text(json.dumps([record]), encoding="utf-8")
+    ump.mainpokemon_path = legacy_path
+
+    try:
+        pokemon, is_empty = ump.update_main_pokemon()
+
+        assert is_empty is False
+        assert pokemon.hp == pokemon.current_hp == 7
+        saved = calls["db"].save_main_pokemon.call_args.args[0]
+        assert saved["current_hp"] == 7
+        assert "hp" not in saved
     finally:
         services.reset()

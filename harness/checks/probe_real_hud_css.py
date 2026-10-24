@@ -11,6 +11,7 @@ from __future__ import annotations
 import itertools
 import pathlib
 import sys
+import uuid
 
 # Configures Chromium and imports WebEngine before creating QApplication.
 from harness.checks.probe_real_webengine import _run_javascript, _wait_until
@@ -27,6 +28,112 @@ class CheckedPage(QWebEnginePage):
     def javaScriptConsoleMessage(self, level, message, line, source):
         if level == self.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
             self.errors.append(message)
+
+
+def _seed_valid_active_pokemon(session):
+    """Seed a valid active Pokémon into the disposable DB and mirror it onto the
+    live object so post-#975 ``update_life_bar`` can render.
+
+    ``update_life_bar`` now requires a matching DB row with a usable
+    ``current_hp``; without one it clears the HUD and returns, which leaves this
+    probe's ``unstyled`` result as ``None``. The renderer's fail-safe is correct
+    — the probe's pre-#975 fixture (no seeded active Pokémon, relying on the
+    in-memory placeholder) is what is stale. Seed the valid-state precondition
+    here and assert it before the first refresh.
+
+    Returns the shared ``individual_id``.
+    """
+
+    reviewer = session.services.reviewer
+    main_pokemon = reviewer.main_pokemon
+    assert main_pokemon is not None, "probe fixture: no active main Pokémon"
+
+    individual_id = getattr(main_pokemon, "individual_id", None) or str(
+        uuid.uuid4()
+    )
+
+    saved_row = {
+        "individual_id": individual_id,
+        "name": getattr(main_pokemon, "name", "Pikachu"),
+        "id": getattr(main_pokemon, "id", 25),
+        "level": getattr(main_pokemon, "level", 5),
+        "xp": getattr(main_pokemon, "xp", 0),
+        "growth_rate": getattr(main_pokemon, "growth_rate", "medium-fast"),
+        "base_stats": getattr(main_pokemon, "base_stats", None),
+        "ev": getattr(main_pokemon, "ev", None),
+        "iv": getattr(main_pokemon, "iv", None),
+        "nature": getattr(main_pokemon, "nature", "serious"),
+        "attacks": getattr(main_pokemon, "attacks", []),
+        "friendship": getattr(main_pokemon, "friendship", 0),
+        "pokemon_defeated": getattr(main_pokemon, "pokemon_defeated", 0),
+        "shiny": getattr(main_pokemon, "shiny", False),
+        "gender": getattr(main_pokemon, "gender", "N"),
+        "type": getattr(main_pokemon, "type", ["Normal"]),
+        "ability": getattr(main_pokemon, "ability", "Run Away"),
+        "base_experience": getattr(main_pokemon, "base_experience", 112),
+        "battle_status": getattr(main_pokemon, "battle_status", "Fighting"),
+        "ev_yield": getattr(main_pokemon, "ev_yield", {}),
+        "tier": getattr(main_pokemon, "tier", "Normal"),
+        "held_item": getattr(main_pokemon, "held_item", None),
+        "captured_date": getattr(main_pokemon, "captured_date", None),
+    }
+
+    live_max = getattr(main_pokemon, "max_hp", None)
+    try:
+        seeded_max = int(live_max) if live_max is not None else 0
+    except (TypeError, ValueError, OverflowError):
+        seeded_max = 0
+    if seeded_max < 1:
+        try:
+            seeded_max = int(session.services.db._pokemon_max_hp(saved_row))
+        except Exception:
+            seeded_max = 1
+    if seeded_max < 1:
+        seeded_max = 1
+
+    live_hp = getattr(main_pokemon, "current_hp", None)
+    if live_hp is None:
+        live_hp = getattr(main_pokemon, "hp", None)
+    try:
+        seeded_hp = int(live_hp) if live_hp is not None else seeded_max
+    except (TypeError, ValueError, OverflowError):
+        seeded_hp = seeded_max
+    seeded_hp = max(1, min(seeded_hp, seeded_max))
+
+    saved_row["current_hp"] = seeded_hp
+    saved_row["max_hp"] = seeded_max
+
+    main_pokemon.individual_id = individual_id
+    main_pokemon.max_hp = seeded_max
+    main_pokemon.hp = seeded_hp
+    main_pokemon.current_hp = seeded_hp
+
+    db = session.services.db
+    saved_ok = False
+    for save_name in ("save_pokemon", "upsert_pokemon", "save_captured_pokemon"):
+        save = getattr(db, save_name, None)
+        if callable(save):
+            try:
+                save(saved_row)
+                saved_ok = True
+                break
+            except Exception:
+                continue
+    if not saved_ok:
+        try:
+            db.save_pokemon_to_db(saved_row)
+            saved_ok = True
+        except Exception:
+            saved_ok = False
+
+    fetched = db.get_pokemon(str(individual_id))
+    assert fetched is not None, (
+        "probe fixture: seeded active Pokémon row is missing from the DB"
+    )
+    assert fetched.get("current_hp") is not None, (
+        "probe fixture: seeded active Pokémon row has no current_hp"
+    )
+    return individual_id
 
 
 def main():
@@ -78,6 +185,8 @@ def main():
 
     calls = []
     session.aqt.mw.reviewer.web.eval = lambda script, *a, **kw: calls.append(script)
+
+    _seed_valid_active_pokemon(session)
 
     # The report's missing bars/plain black text is also the intentional
     # Styling-off mode: empty divs lose their height and text uses normal flow.

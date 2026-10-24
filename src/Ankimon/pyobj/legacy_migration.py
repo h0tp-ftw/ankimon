@@ -10,6 +10,7 @@ from pathlib import Path
 from .database_manager import (
     aggregate_legacy_items,
     canonical_pokemon_name,
+    canonicalize_pokemon_record,
     find_matching_captured,
     is_valid_individual_id,
     legacy_species_id,
@@ -182,6 +183,27 @@ class LegacyMigration:
             "id": legacy_species_id(original),
             "iv": original.get("iv"),
         }
+
+    def canonical_expected_pokemon(self, pokemon):
+        """Build the record the database is expected to read back.
+
+        Delegates to ``database_manager.canonicalize_pokemon_record`` — the
+        same helper ``save_pokemon`` and every public read path use — so the
+        migration's expectation can never drift from the persisted shape.
+        ``allow_legacy_hp=True`` accepts the legacy top-level ``hp`` that
+        older JSON carries and folds it into ``current_hp`` (the saved row
+        never keeps ``hp``); ``_pokemon_max_hp`` clamping and the ``stats.hp``
+        fallback are applied by the same call, matching the read path exactly.
+        """
+        if not isinstance(pokemon, dict):
+            return pokemon
+        return canonicalize_pokemon_record(pokemon, allow_legacy_hp=True)
+
+    def read_back_matches(self, individual_id, expected):
+        saved = self.db.get_pokemon(individual_id)
+        if not isinstance(saved, dict):
+            return False
+        return saved == self.canonical_expected_pokemon(expected)
 
     @contextmanager
     def atomic_batch(self):
@@ -368,10 +390,7 @@ class LegacyMigration:
                     if not (preserve_existing or protected_main):
                         if not self.db.save_pokemon(pokemon):
                             raise ValueError("save_pokemon returned False")
-                    if (
-                        not isinstance(pokemon, dict)
-                        or self.db.get_pokemon(individual_id) != pokemon
-                    ):
+                    if not self.read_back_matches(individual_id, pokemon):
                         raise ValueError(
                             "saved Pokemon did not pass the read-back check"
                         )
@@ -491,10 +510,9 @@ class LegacyMigration:
                 )
             member = existing
         with self.atomic_batch():
-            if (
-                not self.db.save_main_pokemon(member)
-                or self.db.get_main_pokemon() != member
-            ):
+            if not self.db.save_main_pokemon(member):
+                raise ValueError("main Pokemon failed the save/read-back check")
+            if not self.read_back_matches(individual_id, member):
                 raise ValueError("main Pokemon failed the save/read-back check")
             self.main_candidate = self.mapping_candidate(original, individual_id)
             self.save_main_checkpoint()
@@ -787,7 +805,7 @@ class LegacyMigration:
         missing = [
             individual_id
             for individual_id, expected in self.expected_pokemon.items()
-            if self.db.get_pokemon(individual_id) != expected
+            if not self.read_back_matches(individual_id, expected)
         ]
         if missing:
             message = (

@@ -53,9 +53,11 @@ class _FakeDB:
     def save_main_pokemon(self, data):
         self._main = data
         self.saved_main.append(data)
+        return True
 
     def save_pokemon(self, data):
         self.saved_party.append(data)
+        return True
 
 
 def _make_module(name, **attrs):
@@ -231,8 +233,8 @@ def test_switch_preserves_wounded_hp(collection_dialog):
     assert main.hp == 7
     assert main.hp != main.max_hp, "the incoming main was full-healed"
     assert db.saved_main, "the new main must be persisted"
-    assert db.saved_main[-1]["hp"] == 7
     assert db.saved_main[-1]["current_hp"] == 7
+    assert "hp" not in db.saved_main[-1]
 
 
 def test_switch_preserves_nature_and_evolution_rejected(collection_dialog):
@@ -252,7 +254,8 @@ def test_hp_and_current_hp_stay_consistent(collection_dialog):
     assert main.hp == main.current_hp == 7
     assert 0 <= main.hp <= main.max_hp
     saved = db.saved_main[-1]
-    assert saved["hp"] == saved["current_hp"]
+    assert saved["current_hp"] == main.hp
+    assert "hp" not in saved
 
 
 def test_stale_hp_key_does_not_resurrect_a_full_heal(collection_dialog):
@@ -269,8 +272,8 @@ def test_stale_hp_key_does_not_resurrect_a_full_heal(collection_dialog):
 
     assert main.hp == 12, "a stale ``hp`` key full-healed the incoming main"
     assert main.current_hp == 12
-    assert db.saved_main[-1]["hp"] == 12
     assert db.saved_main[-1]["current_hp"] == 12
+    assert "hp" not in db.saved_main[-1]
 
 
 def test_stone_evolved_record_keeps_its_post_evolution_hp(collection_dialog):
@@ -284,15 +287,15 @@ def test_stone_evolved_record_keeps_its_post_evolution_hp(collection_dialog):
     main, db = _call(collection_dialog, stored)
 
     assert main.hp == 160
-    assert db.saved_main[-1]["hp"] == 160
+    assert db.saved_main[-1]["current_hp"] == 160
+    assert "hp" not in db.saved_main[-1]
 
 
 def test_persisted_hp_keys_never_disagree(collection_dialog):
     """Whatever the row shape, the round-trip must not write a split record.
 
-    ``to_dict()`` persists ``hp`` and ``current_hp`` independently, so a
-    disagreement here is silently resolved -- in the other direction -- by
-    ``_normalize_loaded_hp`` at the next launch.
+    ``to_dict()`` persists only ``current_hp`` so a stale legacy ``hp`` cannot
+    disagree with the newly selected main.
     """
     for row in (
         _stored_pokemon(hp=181, current_hp=12),
@@ -303,7 +306,8 @@ def test_persisted_hp_keys_never_disagree(collection_dialog):
     ):
         main, db = _call(collection_dialog, row)
         saved = db.saved_main[-1]
-        assert saved["hp"] == saved["current_hp"] == main.hp
+        assert saved["current_hp"] == main.hp
+        assert "hp" not in saved
         assert 0 <= main.hp <= main.max_hp
 
 
@@ -312,7 +316,7 @@ def test_fainted_pokemon_stays_fainted(collection_dialog):
     main, db = _call(collection_dialog, _stored_pokemon(hp=0, current_hp=0))
 
     assert main.hp == 0
-    assert db.saved_main[-1]["hp"] == 0
+    assert db.saved_main[-1]["current_hp"] == 0
 
 
 def test_special_form_does_not_leak_from_the_outgoing_main(collection_dialog):
@@ -399,7 +403,8 @@ def test_outgoing_save_failure_is_shown_to_the_player(collection_dialog):
         str(call.args[1]) for call in logger.log.call_args_list if len(call.args) > 1
     )
     assert "disk on fire" in logged, "the exception must still be diagnosable from the log"
-    assert db.saved_main, "the switch itself must still complete"
+    assert not db.saved_main, "the switch must be cancelled when saving fails"
+    assert outgoing.individual_id == "outgoing-uuid"
 
 
 def test_missing_hp_falls_back_to_current_hp(collection_dialog):
@@ -431,7 +436,8 @@ def test_malformed_current_hp_falls_back_to_valid_hp(collection_dialog, junk):
     assert main.hp == main.current_hp == 7
     assert main.hp != main.max_hp, "the malformed value triggered a full heal"
     saved = db.saved_main[-1]
-    assert saved["hp"] == saved["current_hp"] == 7
+    assert saved["current_hp"] == 7
+    assert "hp" not in saved
 
 
 @pytest.mark.parametrize("junk", ["", "??", {}, float("nan")])
@@ -452,7 +458,7 @@ def test_both_hp_fields_malformed_restores_full_hp(collection_dialog):
     main, db = _call(collection_dialog, _stored_pokemon(hp="??", current_hp="??"))
 
     assert main.hp == main.current_hp == main.max_hp
-    assert db.saved_main[-1]["hp"] == main.max_hp
+    assert db.saved_main[-1]["current_hp"] == main.max_hp
 
 
 def test_malformed_current_hp_preserves_a_fainted_hp(collection_dialog):
@@ -460,7 +466,7 @@ def test_malformed_current_hp_preserves_a_fainted_hp(collection_dialog):
     main, db = _call(collection_dialog, _stored_pokemon(hp=0, current_hp="??"))
 
     assert main.hp == main.current_hp == 0
-    assert db.saved_main[-1]["hp"] == 0
+    assert db.saved_main[-1]["current_hp"] == 0
 
 
 def test_string_digit_hp_is_accepted(collection_dialog):

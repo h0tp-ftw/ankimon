@@ -69,6 +69,12 @@ class FakeDB:
         self.get_pokemon_args.append(individual_id)
         return self._pokemon
 
+    def save_pokemon(self, data):
+        return True
+
+    def save_main_pokemon(self, data):
+        return True
+
 
 from Ankimon.pyobj.settings import DEFAULT_CONFIG
 
@@ -346,6 +352,7 @@ def _load_reviewer_ui(fake_services, dummy_reviewer=None, wrap_counter=None):
         "Ankimon.functions.encounter_functions",
         "Ankimon.functions.update_main_pokemon",
         "Ankimon.functions.pokedex_functions",
+        "Ankimon.battle_loop",
         "Ankimon.texts",
         "Ankimon.utils",
     ]:
@@ -570,6 +577,7 @@ def _load_encounter_functions():
         "Ankimon.functions.trainer_functions",
         "Ankimon.functions.badges_functions",
         "Ankimon.functions.drawing_utils",
+        "Ankimon.battle_loop",
         "Ankimon.functions.friendship_evolution",
         "Ankimon.functions.encounter_data",
         "Ankimon.utils",

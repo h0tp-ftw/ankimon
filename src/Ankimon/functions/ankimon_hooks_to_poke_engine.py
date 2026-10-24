@@ -990,6 +990,18 @@ def simulate_battle_with_poke_engine(
         else:
             instrs = chosen_outcome.instructions
 
+        # Ankimon's player-facing healing is item-only; battle moves, abilities,
+        # and held items must not silently restore the active collection Pokémon.
+        instrs = [
+            instr
+            for instr in instrs
+            if not (
+                instr[0] == constants.MUTATOR_HEAL
+                and instr[1] == constants.USER
+                and instr[2] > 0
+            )
+        ]
+
         user_hp_before = int(state.user.active.hp)
         opponent_hp_before = int(state.opponent.active.hp)
 

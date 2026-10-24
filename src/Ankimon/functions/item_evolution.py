@@ -81,6 +81,7 @@ def save_item_evolution(db, expected_pokemon, evolved_pokemon, item_name) -> boo
     ):
         return False
     species_ids = (int(expected_pokemon["id"]), int(evolved_pokemon["id"]))
+    evolved_pokemon = db._canonicalize_pokemon_hp(evolved_pokemon)
     evolved_data = db._obfuscate(evolved_pokemon)
 
     deadline = time.monotonic() + _LOCK_TOTAL_BUDGET_S
@@ -142,7 +143,13 @@ def _write_evolution(
             (individual_id,),
         )
         row = cursor.fetchone()
-        if row is None or db._deobfuscate(row["data"]) != expected_pokemon:
+        if row is None:
+            return False
+        current = db._deobfuscate(row["data"])
+        current = (
+            db._canonicalize_pokemon_hp(current) if isinstance(current, dict) else None
+        )
+        if current != expected_pokemon:
             return False
 
         cursor.execute(

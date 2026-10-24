@@ -59,6 +59,7 @@ class _FakeDB:
     def __init__(self, incoming_row):
         self._row = incoming_row
         self.saved_main = []
+        self.saved_party = []
 
     def get_team(self):
         return [{"individual_id": "outgoing-uuid"}, {"individual_id": "incoming-uuid"}]
@@ -69,6 +70,11 @@ class _FakeDB:
 
     def save_main_pokemon(self, data):
         self.saved_main.append(data)
+        return True
+
+    def save_pokemon(self, data):
+        self.saved_party.append(data)
+        return True
 
 
 def _make_module(name, **attrs):
@@ -130,6 +136,11 @@ def team_cycle():
             "Ankimon.business": business,
             "Ankimon.resources": _MockResources(),
             "Ankimon.singletons": singletons,
+            "Ankimon.battle_loop": _make_module(
+                "Ankimon.battle_loop",
+                _cancel_main_faint_deferral=MagicMock(),
+                _main_faint_pending_for=MagicMock(return_value=False),
+            ),
             "Ankimon.functions.pokedex_functions": _make_module(
                 "Ankimon.functions.pokedex_functions",
                 search_pokedex_by_id=lambda pkmn_id: "mewtwo",
@@ -241,4 +252,5 @@ def test_cycle_resolves_incoming_hp_like_the_loader(team_cycle, hp_fields, expec
     assert main.individual_id == "incoming-uuid"
     assert main.max_hp == _INCOMING_MAX_HP
     assert main.hp == main.current_hp == expected_hp
-    assert saved["hp"] == saved["current_hp"] == expected_hp
+    assert saved["current_hp"] == expected_hp
+    assert "hp" not in saved

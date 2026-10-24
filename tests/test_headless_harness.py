@@ -308,7 +308,6 @@ def test_faint_persists_healed_hp_without_dropping_moves_or_is_main():
         "stored = db.get_main_pokemon()\n"
         "learned = list(stored.get('attacks') or [])\n"
         "memory = list(main.attacks)\n"
-        "stored['hp'] = 0\n"
         "stored['current_hp'] = 0\n"
         "db.save_main_pokemon(stored)\n"
         "main.hp = 0\n"
@@ -352,7 +351,7 @@ def test_faint_persists_healed_hp_without_dropping_moves_or_is_main():
     assert "confusion" not in result["memory"], result
     assert "confusion" in result["reloaded_attacks"], result
     assert result["current_hp"] == result["max_hp"], result
-    assert result["hp"] == result["max_hp"], result
+    assert result["hp"] is None, result
     assert result["is_main"] == 0, result
     assert result["cleared_hp"] == result["cleared_max"], result
 

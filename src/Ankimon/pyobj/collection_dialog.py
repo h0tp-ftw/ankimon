@@ -17,36 +17,35 @@ from ..pyobj.translator import Translator
 from ..pyobj.test_window import TestWindow
 from ..pyobj.reviewer_obj import Reviewer_Manager
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
+from ..pyobj.database_manager import canonicalize_pokemon_record
 
 
 def _resolve_persisted_hp(pokemon_data):
-    """Return the first HP field that survives integer conversion, else ``None``.
+    """Return the saved current HP, preserving zero and rejecting malformed data.
 
-    Mirrors ``update_main_pokemon._normalize_loaded_hp`` -- the function that
-    reads this row back at the next Anki launch -- so the switch path and the
-    load path agree on which stored field wins. Keep the two in sync.
+    Delegates to ``canonicalize_pokemon_record(..., allow_legacy_hp=True)`` so
+    this switch path applies the SAME precedence the migration and the DB read
+    path do: a valid ``current_hp`` wins, a valid legacy ``hp`` is the fallback,
+    a malformed ``current_hp`` falls back to a valid ``hp`` (not to max HP), and
+    a record carrying neither yields ``None`` -- which lets ``PokemonObject``
+    fall back to ``max_hp`` only when there is genuinely no persisted value.
 
-    A field is only usable once it converts to ``int``: a malformed
-    ``current_hp`` (``"??"``, ``{}``, ``float("nan")``) must fall through to a
-    valid ``hp`` rather than being handed to the constructor, where
-    ``PokemonObject._normalize_hp`` would silently swap it for max HP and
-    ``db.save_main_pokemon()`` would persist that free full heal.
-
-    Only ``None`` is skipped without a conversion attempt -- ``0`` is a fainted
-    Pokemon and is a perfectly valid answer. Clamping to the Pokemon's range is
-    left to the constructor, which does it for both fields anyway. ``None`` here
-    means "neither field is usable"; the constructor then fills in max HP, which
-    is what ``_normalize_loaded_hp`` falls back to as well.
+    Reading only ``current_hp`` here (the old behaviour) is what full-healed a
+    wounded main on switch: a legacy row with ``hp: 7`` and no ``current_hp``
+    returned ``None``, the constructor got no HP, and ``_normalize_hp(None,
+    max_hp, max_hp)`` produced the max (26).
     """
-    for candidate in (pokemon_data.get("current_hp"), pokemon_data.get("hp")):
-        if candidate is None:
-            continue
-        try:
-            return int(candidate)
-        except (TypeError, ValueError, OverflowError):
-            continue
-
-    return None
+    if not isinstance(pokemon_data, dict):
+        return None
+    resolved = canonicalize_pokemon_record(
+        pokemon_data, allow_legacy_hp=True
+    ).get("current_hp")
+    if resolved is None or isinstance(resolved, bool):
+        return None
+    try:
+        return int(resolved)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def MainPokemon(
@@ -81,14 +80,10 @@ def MainPokemon(
         # Only save if there's already an active main pokemon to replace.
         if main_pokemon is not None and getattr(main_pokemon, "individual_id", None) and db.get_main_pokemon():
             # Use main_pokemon.to_dict() to capture in-memory stats like xp.
-            db.save_pokemon(main_pokemon.to_dict())
+            if not db.save_pokemon(main_pokemon.to_dict()):
+                raise RuntimeError("The outgoing Pokémon was not saved")
     except Exception as exc:
-        # Keep going -- a failure here must not block the switch -- but tell the
-        # PLAYER, not just the log file. Since the incoming main is no longer
-        # full-healed, this save is the only thing preserving the outgoing
-        # Pokemon's HP/xp/friendship earned since its last write; the switch
-        # below then overwrites that state in memory. Someone who is never told
-        # cannot know to re-check their old main.
+        # Do not switch away from an active Pokémon whose latest state was not saved.
         # Two lines on purpose: the exception text is diagnostic, and dropping a
         # raw repr into a message box tells the player nothing they can act on.
         # Keep it in the log file and show a message that names the Pokemon and
@@ -97,9 +92,10 @@ def MainPokemon(
         logger.log_and_showinfo(
             "error",
             f"Could not save {getattr(main_pokemon, 'name', 'your previous main')} "
-            "before switching. Any progress it gained since the last save may be "
-            "lost - check it in your PC box. See the Ankimon log for details.",
+            "before switching, so the switch was cancelled. Recent progress may "
+            "be lost. See the Ankimon log for details.",
         )
+        return
 
     # --- Now proceed to set the new mainpokemon as before ---
     pokemon_id = pokemon_data.get("id")
@@ -110,19 +106,7 @@ def MainPokemon(
     # behaviour) silently full-healed the incoming main and, via
     # db.save_main_pokemon(to_dict()) below, persisted that full HP.
     #
-    # ``current_hp`` FIRST, matching update_main_pokemon._normalize_loaded_hp --
-    # the function that reads this row back at the next Anki launch. On a stored
-    # record ``current_hp`` is the authoritative field and ``hp`` is the one that
-    # goes stale, because every writer that refreshes a single key refreshes
-    # ``current_hp``: encounter_functions.save_main_pokemon_progress after each
-    # defeat, evolution_window when a Pokemon evolves, and the fossil/trade
-    # record builders, which emit ``current_hp`` with no ``hp`` key at all.
-    # Reading ``hp`` first would resurrect that stale value -- re-picking the
-    # current main right after a win would still be a free heal, which is the
-    # bug this whole change exists to remove. ``hp`` stays as the fallback for
-    # rows written before the mirror existed -- and it has to catch a
-    # *malformed* ``current_hp`` too, not just a missing one, hence
-    # _resolve_persisted_hp rather than a plain ``is None`` check.
+    # Legacy rows are normalized by AnkimonDB before reaching this switch path.
     persisted_hp = _resolve_persisted_hp(pokemon_data)
 
     # Create NEW PokemonObject instance using class constructor
@@ -140,10 +124,7 @@ def MainPokemon(
         # ``or`` not a get() default: a record holding an explicit null nature
         # would otherwise reach get_nature_stat_mult() and blow up on None.lower().
         nature=pokemon_data.get("nature") or "serious",
-        # One resolved value into BOTH fields. to_dict() persists them
-        # independently, so letting them diverge here writes a row whose two HP
-        # keys disagree, and whichever one _normalize_loaded_hp does not pick is
-        # silently discarded at the next launch.
+        # Keep runtime battle HP aligned with the persisted current_hp.
         hp=persisted_hp,
         current_hp=persisted_hp,
         gender=pokemon_data.get("gender", "N"),
@@ -176,12 +157,19 @@ def MainPokemon(
     new_main_pokemon.mega = pokemon_data.get("mega", False)
     new_main_pokemon.special_form = pokemon_data.get("special_form", None)
 
-    # Update existing reference
+    # Commit the incoming persisted record before mutating the shared singleton.
+    try:
+        if not db.save_main_pokemon(new_main_pokemon.to_dict()):
+            raise RuntimeError("The incoming Pokémon was not saved as main")
+    except Exception as exc:
+        logger.log("error", f"Could not switch the main Pokémon: {exc}")
+        logger.log_and_showinfo(
+            "error", "Could not save the selected Pokémon as main; switch cancelled."
+        )
+        return
+
     _cancel_main_faint_deferral()
     main_pokemon.__dict__.update(new_main_pokemon.__dict__)
-
-    # Save to database
-    db.save_main_pokemon(main_pokemon.to_dict())
 
     logger.log_and_showinfo(
         "info",
