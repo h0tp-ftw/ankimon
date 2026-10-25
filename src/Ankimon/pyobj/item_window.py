@@ -761,6 +761,10 @@ class ItemWindow(QWidget):
                     "info", f"{item_name} successfully caught the Pokémon!"
                 )
                 self.delete_item(item_name)  # Delete the Poké Ball after use
+                from ..hook_registry import CatchPokemonHook
+                from ..reviewer_ui import _collected_pokemon_ids
+
+                CatchPokemonHook(_collected_pokemon_ids, force=True)
             else:
                 # Pokémon was not caught
                 self.logger.log_and_showinfo(
