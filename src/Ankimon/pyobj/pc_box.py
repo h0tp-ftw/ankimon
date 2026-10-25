@@ -357,6 +357,7 @@ class MoveManagerWidget(QWidget):
                 m_type = move_data.get("type", "Normal")
                 color = MOVE_TYPE_COLORS.get(m_type, "#777")
                 from ..localized_text import type_name as _type_name
+
                 slot["type_chip"].setText(_type_name(m_type, m_type).upper())
                 slot["type_chip"].setStyleSheet(
                     f"background-color: {color}; border-radius: 4px; font-size: 9px; font-weight: bold; color: white;"
@@ -2456,6 +2457,11 @@ class PokemonPC(QDialog):
 
         # --- Post-processing: Nature Indicators (Improvement G) ---
         self._apply_nature_indicators(pokemon)
+
+        # Long evolution requirements must fit above the description and stats.
+        self.header_stack.setMinimumHeight(
+            max(420, h_widget.minimumSizeHint().height())
+        )
 
         # Set initial state for animation
         if not is_same_pokemon:

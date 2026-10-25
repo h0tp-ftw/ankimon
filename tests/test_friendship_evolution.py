@@ -1029,17 +1029,40 @@ def test_readiness_reports_the_hidden_sylveon_gate():
     assert "Sylveon needs a Fairy-type move" in result["status_text"]
 
 
-def test_readiness_hint_also_shows_while_still_gaining_friendship():
+@pytest.mark.parametrize("hour", [9, 23])
+def test_readiness_hint_also_shows_while_still_gaining_friendship(hour):
     # This is the branch the details panel actually renders (it draws
     # status_text only when ready is False), and it covers the whole 0..159
     # friendship climb — i.e. the entire window in which the player can still
     # choose to teach a Fairy move.
     result = fe.evolution_readiness(
-        _eevee(100, ["Tackle"]), now=datetime(2024, 1, 1, 9, 0)
+        _eevee(106, ["Tackle"]), now=datetime(2024, 1, 1, hour, 0)
     )
     assert result["ready"] is False
-    assert "60 friendship to evolve into Espeon" in result["status_text"]
+    assert (
+        "Eevee needs 54 friendship to evolve into Espeon if day and Umbreon if night."
+        in result["status_text"]
+    )
     assert "Sylveon needs a Fairy-type move" in result["status_text"]
+
+
+@pytest.mark.parametrize(
+    ("species_id", "attacks", "expected"),
+    [
+        (42, ["Tackle"], "Golbat needs 54 friendship to evolve into Crobat."),
+        (447, ["Tackle"], "Riolu needs 54 friendship to evolve into Lucario if day."),
+        (133, ["Baby-Doll Eyes"], "Eevee needs 54 friendship to evolve into Sylveon."),
+    ],
+)
+def test_readiness_friendship_text_names_only_applicable_targets(
+    species_id, attacks, expected
+):
+    result = fe.evolution_readiness(
+        {"id": species_id, "friendship": 106, "attacks": attacks},
+        now=datetime(2024, 1, 1, 23, 0),
+    )
+    assert result["ready"] is False
+    assert result["status_text"].split(" · ")[-1] == expected
 
 
 def test_readiness_hint_disappears_once_the_gate_is_met():
@@ -1411,12 +1434,14 @@ def test_level_gender_gate_delegates_to_the_shared_helper(monkeypatch):
     assert fe._level_gender_gate(416, 1) is False
     assert fe.evolution_readiness(_lvl(1, 20, "M"), now=_NOON)["ready"] is False
 
+
 def test_pikachu_item_readiness():
     result = fe.evolution_readiness({"id": 25, "friendship": 0})
     assert result["method"] == "item"
     assert result["evolvable"] is True
     assert result["ready"] is False
     assert "Evolves into Raichu using a Thunder Stone" in result["status_text"]
+
 
 def test_eevee_item_readiness():
     result = fe.evolution_readiness({"id": 133, "friendship": 0})
@@ -1425,10 +1450,12 @@ def test_eevee_item_readiness():
     assert "Evolves into Vaporeon using a Water Stone" in result["status_text"]
     assert "160 friendship to evolve into" in result["status_text"]
 
+
 def test_gallade_gender_gate_male():
     result = fe.evolution_readiness({"id": 281, "friendship": 0, "gender": "M"})
     assert result["method"] == "item"
     assert "Evolves into Gallade using a Dawn Stone" in result["status_text"]
+
 
 def test_gallade_gender_gate_female():
     result = fe.evolution_readiness({"id": 281, "friendship": 0, "gender": "F"})
@@ -1453,6 +1480,7 @@ def test_ready_level_route_survives_item_alternative(
     assert result["evo_id"] == evo_id
     assert result["ready"] is True
     assert item_form in result["item_status_text"]
+
 
 def test_trade_evolution_linking_cord():
     result = fe.evolution_readiness({"id": 67, "friendship": 0})

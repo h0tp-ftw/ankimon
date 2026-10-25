@@ -298,10 +298,13 @@ def PokemonCollectionDetailsSplit(
         description_txt = f"Description: \n {description_formated}"
         lvl = f" Level: {level}"
         from ..localized_text import ability_name, ability_description, nature_name
+
         ability_local = ability_name(ability, ability.capitalize()) if ability else ""
         ability_txt = f" Ability: {ability_local}"
         ability_desc_local = ability_description(ability) if ability else ""
-        nature_display = nature_name(nature or "serious", (nature or "serious").strip().title())
+        nature_display = nature_name(
+            nature or "serious", (nature or "serious").strip().title()
+        )
         nature_txt = f" Nature: {nature_display}"
         _stats_dict = {}
         for key in ("hp", "atk", "def", "spa", "spd", "spe"):
@@ -406,7 +409,7 @@ def PokemonCollectionDetailsSplit(
         attacks_label.setFixedHeight(80)
 
         # Evolution UI: show the requirement line whenever the Pokémon is not
-        # ready (e.g. "40 friendship to evolve into Espeon · needs Day").
+        # ready (e.g. "Golbat needs 40 friendship to evolve into Crobat.").
         # When ready, the classic path renders its own "Evolve now" button only
         # if the caller did not supply trigger_evo_callback; callback callers
         # render their evolve button in the right-hand column instead.
@@ -473,13 +476,20 @@ def PokemonCollectionDetailsSplit(
                 item_hint_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 item_hint_widget.setStyleSheet("color: #FF69B4;")
 
-        if show_evolution_ui and not readiness["ready"] and readiness.get("status_text"):
+        if (
+            show_evolution_ui
+            and not readiness["ready"]
+            and readiness.get("status_text")
+        ):
             evolution_req_label = QLabel(readiness["status_text"])
             evolution_req_label.setFont(custom_font)
             evolution_req_label.setWordWrap(True)
             evolution_req_label.setFixedWidth(230)
             evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             evolution_req_label.setStyleSheet("color: #FF69B4;")
+            evolution_req_label.setMinimumHeight(
+                evolution_req_label.heightForWidth(230)
+            )
             evolution_req_widget = evolution_req_label
 
         first_layout = QHBoxLayout()
@@ -661,6 +671,9 @@ def PokemonCollectionDetailsSplit(
                 evolution_req_label.setFixedWidth(230)
                 evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 evolution_req_label.setStyleSheet("color: #FF69B4;")
+                evolution_req_label.setMinimumHeight(
+                    evolution_req_label.heightForWidth(230)
+                )
                 TopR_layout_Box.addWidget(evolution_req_label)
 
         TopR_widget = QWidget()
