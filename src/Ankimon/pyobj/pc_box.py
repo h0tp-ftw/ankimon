@@ -1320,7 +1320,7 @@ class PokemonPC(QDialog):
 
     def setup_details_panel(self, background_color):
         """Initializes the details panel with a persistent stack to avoid window flickering/resizing."""
-        from PyQt6.QtWidgets import QStackedWidget
+        from PyQt6.QtWidgets import QLayout, QStackedWidget
 
         self.details_panel_stack = QStackedWidget()
         self.details_panel_stack.setMinimumWidth(470)
@@ -1343,13 +1343,31 @@ class PokemonPC(QDialog):
         self.stats_stack = QStackedWidget()
         self.footer_stack = QStackedWidget()
 
-        # Lock the heights to prevent window jumping
-        self.header_stack.setMinimumHeight(420)
+        # Keep the complete overview and evolution routes together. The stats
+        # follow them in the same scroll area; the action footer stays visible.
+        details_body = QWidget()
+        body_layout = QVBoxLayout(details_body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(6)
+        body_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
+        body_layout.addWidget(self.header_stack)
+        body_layout.addWidget(self.stats_stack)
+        self.header_scroll = QScrollArea()
+        self.header_scroll.setObjectName("pokemonDetailsScroll")
+        self.header_scroll.setWidgetResizable(True)
+        self.header_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.header_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.header_scroll.setMinimumHeight(180)
+        self.header_scroll.setStyleSheet("QScrollArea { background: transparent; }")
+        self.header_scroll.viewport().setAutoFillBackground(False)
+        self.header_scroll.setWidget(details_body)
+        details_body.setAutoFillBackground(False)
         self.stats_stack.setFixedHeight(220)
         self.footer_stack.setMinimumHeight(90)
 
-        self.details_container_layout.addWidget(self.header_stack)
-        self.details_container_layout.addWidget(self.stats_stack)
+        self.details_container_layout.addWidget(self.header_scroll, 1)
         self.details_container_layout.addWidget(self.footer_stack)
 
         # Setup opacity effects for header
@@ -1364,7 +1382,7 @@ class PokemonPC(QDialog):
     def _create_placeholder_widget(self):
         """Creates and returns the beautiful placeholder widget."""
         widget = QWidget()
-        widget.setMinimumHeight(700)
+        widget.setMinimumHeight(480)
         widget.setObjectName("detailsPlaceholder")
 
         # Theme-aware styling
@@ -2458,10 +2476,14 @@ class PokemonPC(QDialog):
         # --- Post-processing: Nature Indicators (Improvement G) ---
         self._apply_nature_indicators(pokemon)
 
-        # Long evolution requirements must fit above the description and stats.
-        self.header_stack.setMinimumHeight(
-            max(420, h_widget.minimumSizeHint().height())
+        # The existing two-column overview has a minimum width. Reserve room
+        # for a vertical scrollbar so it cannot clip the right-hand controls.
+        self.header_scroll.setMinimumWidth(
+            h_widget.minimumSizeHint().width()
+            + self.header_scroll.verticalScrollBar().sizeHint().width()
         )
+        if not is_same_pokemon:
+            self.header_scroll.verticalScrollBar().setValue(0)
 
         # Set initial state for animation
         if not is_same_pokemon:

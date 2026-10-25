@@ -1443,6 +1443,78 @@ def test_pikachu_item_readiness():
     assert "Evolves into Raichu using a Thunder Stone" in result["status_text"]
 
 
+@pytest.mark.parametrize("hour", [5, 6, 17, 18, 23])
+def test_requirement_rows_share_clock_and_move_selection(hour):
+    now = datetime(2024, 1, 1, hour)
+    pokemon = _eevee(106, ["Tackle"])
+    readiness = fe.evolution_readiness(pokemon, now)
+    details = fe.evolution_requirement_details(pokemon, readiness, now=now)
+    assert details["summary"] == "Eevee needs 54 more friendship."
+    assert details["friendship_routes"] == [
+        {"name": "Espeon", "condition": "During the day"},
+        {"name": "Umbreon", "condition": "At night"},
+        {"name": "Sylveon", "condition": "Teach a Fairy-type move"},
+    ]
+    assert len(details["item_routes"]) == 5
+    assert {r["condition"] for r in details["item_routes"]} == {
+        "Water Stone",
+        "Thunder Stone",
+        "Fire Stone",
+        "Leaf Stone",
+        "Ice Stone",
+    }
+    pokemon["attacks"] = ["Baby-Doll Eyes"]
+    details = fe.evolution_requirement_details(
+        pokemon, fe.evolution_readiness(pokemon, now), now=now
+    )
+    assert details["friendship_routes"] == [
+        {"name": "Sylveon", "condition": "Fairy-type move known"}
+    ]
+
+
+def test_requirement_rows_hide_disabled_friendship_but_keep_items():
+    pokemon = _eevee(106, ["Tackle"])
+    details = fe.evolution_requirement_details(
+        pokemon, fe.evolution_readiness(pokemon), friendship_time_enabled=False
+    )
+    assert not details["summary"]
+    assert not details["friendship_routes"]
+    assert not details["status_text"]
+    assert len(details["item_routes"]) == 5
+
+
+@pytest.mark.parametrize(
+    "species, target, condition",
+    [(42, "Crobat", "Any time"), (447, "Lucario", "During the day")],
+)
+def test_requirement_rows_for_single_target_and_everstone(species, target, condition):
+    pokemon = {"id": species, "friendship": 160, "everstone": True}
+    details = fe.evolution_requirement_details(pokemon, fe.evolution_readiness(pokemon))
+    assert "enough friendship" in details["summary"]
+    assert details["status_text"] == "Everstone prevents evolution"
+    assert details["friendship_routes"] == [{"name": target, "condition": condition}]
+
+
+@pytest.mark.parametrize(
+    "gender, condition", [("M", "Dawn Stone"), ("F", "Dawn Stone · Male required")]
+)
+def test_requirement_rows_preserve_mixed_level_item_gender_gate(gender, condition):
+    pokemon = {"id": 281, "level": 20, "gender": gender}
+    details = fe.evolution_requirement_details(pokemon, fe.evolution_readiness(pokemon))
+    assert details["status_text"] == "Evolves into Gardevoir at Lv30"
+    assert details["item_routes"] == [{"name": "Gallade", "condition": condition}]
+
+
+def test_requirement_rows_keep_ready_rejection_notice_and_move_gate():
+    pokemon = _eevee(160, ["Tackle"])
+    pokemon["evolution_rejected"] = True
+    details = fe.evolution_requirement_details(pokemon, fe.evolution_readiness(pokemon))
+    assert details["status_text"] == "Evolution rejected — tap Evolve now to override"
+    pokemon = {"id": 439, "level": 20, "attacks": ["Tackle"]}
+    details = fe.evolution_requirement_details(pokemon, fe.evolution_readiness(pokemon))
+    assert "Mimic" in details["status_text"]
+
+
 def test_eevee_item_readiness():
     result = fe.evolution_readiness({"id": 133, "friendship": 0})
     # Since friendship is 0, item readiness takes precedence now to show the stones!

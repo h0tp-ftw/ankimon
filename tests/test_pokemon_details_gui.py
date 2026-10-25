@@ -169,10 +169,12 @@ def details(qapp, tmp_path):
         "Ankimon.functions.gui_functions",
         "Ankimon.functions.sprite_functions",
         "Ankimon.gui_entities",
+        "Ankimon.gui_classes.evolution_requirements",
         "Ankimon.utils",
         "Ankimon.resources",
         "Ankimon.texts",
         "aqt",
+        "aqt.theme",
         _MODULE_NAME,
     )
     saved = {name: sys.modules.get(name) for name in stub_names}
@@ -190,6 +192,9 @@ def details(qapp, tmp_path):
     aqt_mod.qconnect = lambda signal, func: signal.connect(func)
     aqt_mod.mw = types.SimpleNamespace()
     sys.modules["aqt"] = aqt_mod
+    theme = types.ModuleType("aqt.theme")
+    theme.theme_manager = types.SimpleNamespace(night_mode=False)
+    sys.modules["aqt.theme"] = theme
 
     sv = types.ModuleType("Ankimon.services")
     sv.services = types.SimpleNamespace(
@@ -304,6 +309,22 @@ def details(qapp, tmp_path):
     fe = types.ModuleType("Ankimon.functions.friendship_evolution")
     fe.READINESS = dict(_NOT_READY)
     fe.evolution_readiness = lambda pokemon, now=None: dict(fe.READINESS)
+    fe.evolution_requirement_details = lambda pokemon, readiness, **kw: {
+        "summary": "",
+        "friendship_routes": [],
+        "item_routes": [],
+        "status_text": (
+            " · ".join(
+                filter(
+                    None,
+                    (readiness.get("status_text"), readiness.get("item_status_text")),
+                )
+            )
+            if readiness.get("method") != "friendship"
+            or kw.get("friendship_time_enabled", True)
+            else ""
+        ),
+    }
     sys.modules["Ankimon.functions.friendship_evolution"] = fe
 
     gf = types.ModuleType("Ankimon.functions.gui_functions")
@@ -537,7 +558,9 @@ def test_item_only_route_shows_requirement_without_held_item_button(details):
 
 def test_ready_level_route_shows_item_alternative(details):
     _make_ready(details, method="level")
-    details._test_readiness["item_status_text"] = "Evolves into Gallade using a Dawn Stone"
+    details._test_readiness["item_status_text"] = (
+        "Evolves into Gallade using a Dawn Stone"
+    )
     header, _, _, _ = details.PokemonCollectionDetailsSplit(**_details_kwargs())
     assert any("Evolve into Raichu now" in b.text() for b in _buttons(header))
     assert "Evolves into Gallade using a Dawn Stone" in _labels(header)
@@ -596,9 +619,7 @@ def test_callback_path_keeps_requirement_text_when_not_ready(
     )
 
     assert status_text in _labels(header)
-    assert not any(
-        b.objectName() == "evolveNowButton" for b in _buttons(header)
-    )
+    assert not any(b.objectName() == "evolveNowButton" for b in _buttons(header))
 
 
 def test_callback_path_renders_button_and_invokes_callback(details):
