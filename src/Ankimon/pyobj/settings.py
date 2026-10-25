@@ -94,6 +94,7 @@ DEFAULT_CONFIG = {
     # share, no holder to pick. Defaults to "classic" so existing saves keep
     # their current behavior until the player opts in.
     "trainer.xp_share_mode": "classic",
+    "trainer.xp_share": None,
     "trainer.cash_reward_amount": 40,
     "trainer.cash_reward_interval": 10,
     "trainer.cash_earned_today": 0,
