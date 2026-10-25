@@ -904,6 +904,22 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
     time_ok = required_time is None or required_time == time_of_day
     ready = (not everstone) and friendship >= min_happiness and time_ok and move_ok
 
+    pokemon_name = (return_name_for_id(species_id) or str(species_id)).capitalize()
+    friendship_target = evo_name
+    if required_time is not None:
+        # Describe both clock outcomes using the same move-gate selection as
+        # readiness. Only combine branches sharing the displayed threshold.
+        targets = []
+        for period in ("day", "night"):
+            candidate = _select_evolution(evos, period, known_move_types)
+            if (
+                candidate.time_of_day == period
+                and candidate.min_happiness == min_happiness
+                and _satisfies_move_gate(candidate, known_move_types)
+            ):
+                targets.append(f"{candidate.evo_name} if {period}")
+        friendship_target = " and ".join(targets) or f"{evo_name} if {required_time}"
+
     # If the friendship evolution isn't ready (or even if it is, maybe they want to use an item),
     # we should check for item evolutions and build a combined status text.
     # Actually, if the friendship evolution is ready, it returns "ready" to show a button.
@@ -928,6 +944,8 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
                 everstone=everstone,
                 ready=ready,
                 evo_name=evo_name,
+                pokemon_name=pokemon_name,
+                friendship_target=friendship_target,
                 friendship_remaining=friendship_remaining,
                 required_time=required_time,
                 time_ok=time_ok,
@@ -945,7 +963,9 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
 
             item_readiness["current_friendship"] = friendship
             item_readiness["min_happiness"] = min_happiness
-            item_readiness["friendship_remaining"] = max(0, min_happiness - friendship) if min_happiness else 0
+            item_readiness["friendship_remaining"] = (
+                max(0, min_happiness - friendship) if min_happiness else 0
+            )
             item_readiness["required_move_type"] = required_move_type
             item_readiness["gated_alternatives"] = gated_alternatives
 
@@ -955,6 +975,8 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
         everstone=everstone,
         ready=ready,
         evo_name=evo_name,
+        pokemon_name=pokemon_name,
+        friendship_target=friendship_target,
         friendship_remaining=friendship_remaining,
         required_time=required_time,
         time_ok=time_ok,
@@ -1099,9 +1121,13 @@ def _item_readiness(
             # We know caller_gender_id is either 1 (female) or 2 (male) if it failed,
             # so the requirement is the other one.
             required_gender = "Female" if caller_gender_id == 2 else "Male"
-            representative_gender_gate = f"Needs to be {required_gender} to evolve into {evo.evo_name}"
+            representative_gender_gate = (
+                f"Needs to be {required_gender} to evolve into {evo.evo_name}"
+            )
         else:
-            status_parts.append(f"Evolves into {evo.evo_name} using a {evo.required_item}")
+            status_parts.append(
+                f"Evolves into {evo.evo_name} using a {evo.required_item}"
+            )
 
     if everstone:
         status_text = "Everstone prevents evolution"
@@ -1127,6 +1153,112 @@ def _item_readiness(
         "required_move_type": None,
         "gated_alternatives": (),
     }
+
+
+def evolution_requirement_details(
+    pokemon: Any,
+    readiness: dict,
+    *,
+    friendship_time_enabled: bool = True,
+    now: Optional[datetime] = None,
+) -> dict:
+    """Describe evolution routes for the PC without parsing ``status_text``.
+
+    This presentation-only view uses the same cached data, selector and gender
+    gates as readiness. It never changes eligibility or writes game state.
+    Friendship routes include both clock outcomes and unmet move alternatives;
+    a satisfied Fairy-move gate therefore selects only Sylveon.
+    """
+    get = (
+        pokemon.get
+        if isinstance(pokemon, dict)
+        else lambda k, d=None: getattr(pokemon, k, d)
+    )
+    species_id = _coerce_int(get("id"), 0)
+    result = {
+        "summary": "",
+        "friendship_routes": [],
+        "item_routes": [],
+        "status_text": "",
+    }
+    if not species_id or not readiness.get("evolvable"):
+        return result
+
+    friendship = _coerce_int(get("friendship", 0), 0)
+    evos = get_friendship_evolutions_for_species(species_id)
+    if evos and friendship_time_enabled:
+        move_types = _known_move_types(pokemon)
+        chosen = _select_evolution(evos, get_time_of_day(now), move_types)
+        remaining = max(0, chosen.min_happiness - friendship)
+        name = (return_name_for_id(species_id) or str(species_id)).capitalize()
+        result["summary"] = (
+            f"{name} needs {remaining} more friendship."
+            if remaining
+            else f"{name} has enough friendship to evolve."
+        )
+        selected = {
+            _select_evolution(evos, period, move_types).evo_id
+            for period in ("day", "night")
+        }
+        for evo in evos:
+            move_ok = _satisfies_move_gate(evo, move_types)
+            if evo.evo_id not in selected and move_ok:
+                continue
+            conditions = []
+            if evo.time_of_day:
+                conditions.append(
+                    "During the day" if evo.time_of_day == "day" else "At night"
+                )
+            if evo.known_move_type:
+                conditions.append(
+                    f"{evo.known_move_type.capitalize()}-type move known"
+                    if move_ok
+                    else f"Teach a {evo.known_move_type.capitalize()}-type move"
+                )
+            if evo.min_happiness != chosen.min_happiness:
+                conditions.append(
+                    f"{max(0, evo.min_happiness - friendship)} more friendship"
+                )
+            result["friendship_routes"].append(
+                {
+                    "name": evo.evo_name,
+                    "condition": " · ".join(conditions) or "Any time",
+                }
+            )
+
+    item_evos = get_item_evolutions_for_species(species_id)
+    gender_id = _csv_gender_id(_pokemon_gender(pokemon))
+    valid_items = [e for e in item_evos if _item_gender_gate(e.evo_id, gender_id)]
+    for evo in valid_items or item_evos[:1]:
+        condition = evo.required_item
+        if not _item_gender_gate(evo.evo_id, gender_id):
+            condition += " · " + (
+                "Female required" if gender_id == 2 else "Male required"
+            )
+        result["item_routes"].append({"name": evo.evo_name, "condition": condition})
+
+    if get("everstone", False):
+        if result["friendship_routes"] or result["item_routes"] or not evos:
+            result["status_text"] = "Everstone prevents evolution"
+    elif readiness.get("ready") and readiness.get("rejected"):
+        if not evos or friendship_time_enabled:
+            result["status_text"] = "Evolution rejected — tap Evolve now to override"
+    elif not evos and not readiness.get("ready"):
+        # Mixed level/item species retain level, move, defeat and gender gates.
+        # Item conditions are rendered separately, so ask the shared level
+        # helper for its own status rather than splitting a combined sentence.
+        level = _level_readiness(
+            species_id=species_id,
+            level=_coerce_int(get("level", 1), 1),
+            everstone=False,
+            friendship=friendship,
+            evolution_rejected=get("evolution_rejected", False),
+            not_evolvable={"status_text": ""},
+            time_of_day=get_time_of_day(now),
+            pokemon=pokemon,
+        )
+        result["status_text"] = level["status_text"]
+    return result
 
 
 def _level_readiness(
@@ -1332,6 +1464,8 @@ def _build_status_text(
     everstone: bool,
     ready: bool,
     evo_name: str,
+    pokemon_name: str,
+    friendship_target: str,
     friendship_remaining: int,
     required_time: Optional[str],
     time_ok: bool,
@@ -1363,8 +1497,8 @@ def _build_status_text(
         - ``"Everstone prevents evolution"``
         - ``"Ready to evolve into Espeon!"``
         - ``"Ready — waiting for Night (now Day)"``
-        - ``"40 friendship to evolve into Espeon · needs Day"``
-        - ``"40 friendship to evolve into Espeon · Sylveon needs a Fairy-type move"``
+        - ``"Eevee needs 40 friendship to evolve into Espeon if day and Umbreon if night."``
+        - ``"Golbat needs 40 friendship to evolve into Crobat."``
         - ``"Needs a Fairy-type move to evolve into Sylveon"``
     """
     if everstone:
@@ -1401,9 +1535,10 @@ def _build_status_text(
         )
 
     # Still needs more friendship.
-    text = f"{friendship_remaining} friendship to evolve into {evo_name}"
-    if required_time is not None:
-        text += f" · needs {required_time.capitalize()}"
+    text = (
+        f"{pokemon_name} needs {friendship_remaining} friendship "
+        f"to evolve into {friendship_target}."
+    )
     return text + hint
 
 
