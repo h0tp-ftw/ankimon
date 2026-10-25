@@ -160,7 +160,7 @@ def main():
             assert bag.dispatch_use("carbos")["ok"]
         assert main_pokemon.hp == main_pokemon.current_hp == 0
         assert main_pokemon.battle_status == "fainted"
-        assert db.get_main_pokemon()["hp"] == 0
+        assert db.get_main_pokemon()["current_hp"] == 0
 
         screenshots = os.environ.get("ANKIMON_PROOF_SCREENSHOTS")
         if screenshots:

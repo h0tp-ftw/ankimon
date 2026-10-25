@@ -157,6 +157,10 @@ class Reviewer_Manager:
         reviewer/webview — or no Anki at all (the agent harness uses a recording
         fake instead of this class) — is a silent no-op, not a crash. This is the
         single entry point battle_loop / encounter_functions use to repaint.
+
+        NOTE: ``update_life_bar`` persists the live battle HP to the DB before
+        building the HUD, so callers on the ordinary battle path (battle_loop
+        line 615) get the DB sync for free by routing through here.
         """
         try:
             from aqt import mw
@@ -205,6 +209,31 @@ class Reviewer_Manager:
         safe_hp = min(max(0, safe_hp), safe_max_hp)
         return safe_hp, safe_max_hp
 
+    def _persist_live_hp(self, individual_id, saved, hp, max_hp):
+        """Write the live battle HP back to the DB so the HUD and item checks
+        read the current value instead of a stale saved row.
+
+        Called from ``update_life_bar`` after the live HP has been clamped and
+        assigned back onto ``self.main_pokemon``. Only writes when the stored
+        value actually differs, to avoid churn on every repaint. Any DB failure
+        is non-fatal: the HUD still renders the live value, and the next turn
+        retries the write.
+        """
+        try:
+            previous = saved.get("current_hp") if saved else None
+            if previous is not None and not isinstance(previous, bool):
+                try:
+                    if int(previous) == int(hp):
+                        return
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            services.db.update_pokemon_current_hp(str(individual_id), int(hp))
+        except Exception as exc:
+            if services.logger is not None:
+                services.logger.log(
+                    "error", f"Could not persist reviewer HP to database: {exc}"
+                )
+
     def update_life_bar(self, reviewer, card, ease):
         # GUARD: only repaint on direct calls (refresh_hud / battle_loop pass
         # card=0, ease=0). The reviewer_did_answer_card hook fires with a real
@@ -219,17 +248,84 @@ class Reviewer_Manager:
             self._last_state = None
             return
 
+        enemy_hp, enemy_max_hp = self._safe_hp_pair(
+            self.enemy_pokemon.hp, self.enemy_pokemon.max_hp
+        )
+
+        individual_id = getattr(self.main_pokemon, "individual_id", None)
+        try:
+            saved = (
+                services.db.get_pokemon(str(individual_id))
+                if individual_id
+                else None
+            )
+        except Exception as exc:
+            saved = None
+            if services.logger is not None:
+                services.logger.log(
+                    "error", f"Could not read reviewer HP from database: {exc}"
+                )
+
+        if saved:
+            max_hp = services.db._pokemon_max_hp(saved)
+            if max_hp is None:
+                max_hp = getattr(self.main_pokemon, "max_hp", None)
+        else:
+            max_hp = getattr(self.main_pokemon, "max_hp", None)
+        try:
+            main_max = int(max_hp)
+        except (TypeError, ValueError, OverflowError):
+            main_max = 1
+        if main_max < 1:
+            main_max = 1
+
+        live_hp = getattr(self.main_pokemon, "current_hp", None)
+        if live_hp is None:
+            live_hp = getattr(self.main_pokemon, "hp", None)
+        if live_hp is None and saved:
+            live_hp = saved.get("current_hp")
+        if isinstance(live_hp, bool) or live_hp is None:
+            if services.logger is not None:
+                services.logger.log(
+                    "error",
+                    "Could not read reviewer HP from database: "
+                    "Active Pokémon has invalid current_hp",
+                )
+            reviewer.web.eval(
+                "if(window.__ankimonHud) window.__ankimonHud.clear();"
+            )
+            self._last_state = None
+            return
+
+        try:
+            main_hp = max(0, min(int(live_hp), main_max))
+        except (TypeError, ValueError, OverflowError):
+            if services.logger is not None:
+                services.logger.log(
+                    "error",
+                    "Could not read reviewer HP from database: "
+                    "Active Pokémon has invalid current_hp",
+                )
+            reviewer.web.eval(
+                "if(window.__ankimonHud) window.__ankimonHud.clear();"
+            )
+            self._last_state = None
+            return
+
+        self.main_pokemon.max_hp = main_max
+        self.main_pokemon.hp = main_hp
+        self.main_pokemon.current_hp = main_hp
+
+        if saved and individual_id:
+            self._persist_live_hp(individual_id, saved, main_hp, main_max)
+
+        # Hidden HUDs still need to save damage before another UI reloads HP.
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 3:
             reviewer.web.eval("if(window.__ankimonHud) window.__ankimonHud.clear();")
             self._last_state = None
             return
 
-        enemy_hp, enemy_max_hp = self._safe_hp_pair(
-            self.enemy_pokemon.hp, self.enemy_pokemon.max_hp
-        )
-        main_hp, main_max_hp = self._safe_hp_pair(
-            self.main_pokemon.hp, self.main_pokemon.max_hp
-        )
+        main_hp, main_max_hp = self._safe_hp_pair(main_hp, main_max)
 
         # The Pokeball records a previous catch, including released or evolved
         # Pokemon. Keep exact form IDs and cache the result for this encounter.

@@ -702,6 +702,28 @@ def _bind_main_pokemon(state, main_pokemon):
     return state
 
 
+def sync_active_pokemon_hp(state, main_pokemon):
+    """Publish committed HP to this individual's battle without resetting it."""
+    individual_id = getattr(main_pokemon, "individual_id", None)
+    if (
+        state is None
+        or individual_id is None
+        or str(getattr(state, "_ankimon_main_individual_id", None))
+        != str(individual_id)
+    ):
+        return False
+    try:
+        max_hp = int(main_pokemon.max_hp)
+        current_hp = int(main_pokemon.current_hp)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if max_hp < 1:
+        return False
+    state.user.active.maxhp = max_hp
+    state.user.active.hp = max(0, min(current_hp, max_hp))
+    return True
+
+
 def sync_active_pokemon_stats(state, main_pokemon):
     """Apply committed training to this individual's ongoing battle in place.
 
@@ -998,6 +1020,12 @@ def simulate_battle_with_poke_engine(
         # as ``battle_info_changes`` and consumed by battle_loop.
         state_before = copy.deepcopy(mutator.state)
         mutator.apply(instrs)
+        # Recovery can produce fractional HP (e.g. half of an odd maximum).
+        # Publish the integer health used by saves and the HUD into the cached
+        # engine state too, so the next turn cannot resurrect a lost fraction.
+        # Keep native instructions and within-turn calculations unchanged.
+        for side in (mutator.state.user, mutator.state.opponent):
+            side.active.hp = max(0, min(int(side.active.hp), int(side.active.maxhp)))
         state_after = mutator.state
         battle_info_changes = diff_states(state_before, state_after)
 

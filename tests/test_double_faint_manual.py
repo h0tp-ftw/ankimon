@@ -36,6 +36,15 @@ class Pokemon:
     def calculate_max_hp(self):
         return 100
 
+    def to_dict(self):
+        return {
+            "individual_id": self.individual_id,
+            "name": self.name,
+            "id": self.id,
+            "hp": self.hp,
+            "current_hp": self.current_hp,
+        }
+
     def reset_bonuses(self):
         self.reset_count += 1
 
@@ -160,6 +169,11 @@ def test_cycling_companion_cancels_pending_faint(game, monkeypatch):
     game.ui.services = types.SimpleNamespace(
         settings=types.SimpleNamespace(get=lambda *args: 2),
         translator=types.SimpleNamespace(translate=lambda *args, **kwargs: "Switched"),
+        db=types.SimpleNamespace(
+            get_main_pokemon=lambda: {"individual_id": "main-1"},
+            update_pokemon_current_hp=lambda individual_id, hp: True,
+            save_main_pokemon=lambda pokemon: True,
+        ),
     )
     game.ui.cycle_team_pokemon()
     assert game.main.individual_id == "main-2"

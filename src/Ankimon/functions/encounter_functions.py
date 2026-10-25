@@ -1704,6 +1704,7 @@ def save_main_pokemon_progress(
         main_pokemon.update_stats()
         mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
+        mainpkmndata.pop("hp", None)
         # Friendship is uncapped — it keeps climbing past MAX_FRIENDSHIP (400) so
         # players can flex a super-bonded Pokémon. The progress bar still fills at
         # MAX_FRIENDSHIP; the raw number above it is what keeps growing.
@@ -1962,7 +1963,6 @@ def save_caught_pokemon(
             "special_form": None,
             "is_favorite": False,
             "held_item": None,
-            "hp": _max_hp,
             "current_hp": _max_hp,
         }
     )
@@ -2320,7 +2320,6 @@ def handle_main_pokemon_faint(
     )
     if stored:
         healed = int(main_pokemon.max_hp)
-        stored["hp"] = healed
         stored["current_hp"] = healed
         main_row = db.get_main_pokemon()
         same_main = (

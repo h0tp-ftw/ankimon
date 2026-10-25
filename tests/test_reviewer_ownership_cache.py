@@ -69,6 +69,18 @@ class FakeDB:
         self.get_pokemon_args.append(individual_id)
         return self._pokemon
 
+    def get_main_pokemon(self):
+        return self._pokemon
+
+    def update_pokemon_current_hp(self, individual_id, hp):
+        return True
+
+    def save_pokemon(self, data):
+        return True
+
+    def save_main_pokemon(self, data):
+        return True
+
 
 from Ankimon.pyobj.settings import DEFAULT_CONFIG
 
@@ -285,6 +297,40 @@ def test_card_object_guard_blocks_hook_calls():
     assert db.query_count == 0
 
 
+@pytest.mark.parametrize("live_hp", [7, 0])
+def test_hidden_hud_refresh_persists_live_hp_without_rendering(live_hp):
+    db = FakeDB(pokemon={"individual_id": "main", "current_hp": 19})
+    db._pokemon_max_hp = lambda data: 20
+
+    def save_hp(individual_id, hp):
+        assert individual_id == "main"
+        db._pokemon["current_hp"] = hp
+        return True
+
+    db.update_pokemon_current_hp = MagicMock(side_effect=save_hp)
+    fake_services = types.SimpleNamespace(
+        db=db, settings=None, reviewer=None, logger=MagicMock()
+    )
+    mod, mgr = _new_manager(fake_services)
+    mgr.settings.values["gui.show_mainpkmn_in_reviewer"] = 3
+    mgr.main_pokemon.individual_id = "main"
+    mgr.main_pokemon.hp = mgr.main_pokemon.current_hp = live_hp
+    mgr._last_state = ("previously visible",)
+    reviewer = mod.mw.reviewer
+    reviewer.web.eval.reset_mock()
+
+    mgr.refresh_hud()
+
+    assert db.get_main_pokemon()["current_hp"] == live_hp
+    db.update_pokemon_current_hp.assert_called_once_with("main", live_hp)
+    assert mgr.main_pokemon.hp == mgr.main_pokemon.current_hp == live_hp
+    reviewer.web.eval.assert_called_once_with(
+        "if(window.__ankimonHud) window.__ankimonHud.clear();"
+    )
+    assert mgr._last_state is None
+    assert db.query_count == 0
+
+
 # --------------------------------------------------------------------------- #
 # reviewer_ui: team-cycle + hotkeys + idempotent wrapping
 # --------------------------------------------------------------------------- #
@@ -346,6 +392,7 @@ def _load_reviewer_ui(fake_services, dummy_reviewer=None, wrap_counter=None):
         "Ankimon.functions.encounter_functions",
         "Ankimon.functions.update_main_pokemon",
         "Ankimon.functions.pokedex_functions",
+        "Ankimon.battle_loop",
         "Ankimon.texts",
         "Ankimon.utils",
     ]:
@@ -570,6 +617,7 @@ def _load_encounter_functions():
         "Ankimon.functions.trainer_functions",
         "Ankimon.functions.badges_functions",
         "Ankimon.functions.drawing_utils",
+        "Ankimon.battle_loop",
         "Ankimon.functions.friendship_evolution",
         "Ankimon.functions.encounter_data",
         "Ankimon.utils",
