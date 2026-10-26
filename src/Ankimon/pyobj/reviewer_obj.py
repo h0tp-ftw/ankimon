@@ -5,6 +5,7 @@ from html import escape as html_escape
 from aqt import gui_hooks, mw, utils
 from aqt.utils import showInfo
 
+from ..const import status_colors_html
 from ..functions.create_css_for_reviewer import create_css_for_reviewer
 from ..functions.create_gui_functions import create_status_html
 from ..functions.pokemon_functions import find_experience_for_level
@@ -314,6 +315,7 @@ class Reviewer_Manager:
             self.main_pokemon.id,
             main_hp,
             main_max_hp,
+            self.main_pokemon.battle_status,
             self.main_pokemon.xp,
             self.settings.get("gui.show_mainpkmn_in_reviewer"),
             self.settings.get("gui.reviewer_image_gif"),
@@ -461,35 +463,68 @@ class Reviewer_Manager:
         plain_automatic_battle = (
             not hud_styling_enabled and automatic_battle_enabled
         )
+        show_plain_conditions = (
+            not hud_styling_enabled
+            and bool(self.settings.get("gui.hud_status_badge"))
+        )
+
+        def plain_condition_suffix(pokemon, hp):
+            if not show_plain_conditions or hp <= 0:
+                return ""
+            status = str(getattr(pokemon, "battle_status", "") or "").lower()
+            if status in ("", "fighting", "fainted"):
+                return ""
+            status_info = status_colors_html.get(status)
+            if not status_info:
+                return ""
+            return f" | *{status_info['name'].upper()}"
+
         show_stat_boosts = hud_styling_enabled or bool(
             self.settings.get("gui.hud_status_badge")
         )
+        enemy_condition = plain_condition_suffix(self.enemy_pokemon, enemy_hp)
         if enemy_parts:
             name_display_text = " ".join(enemy_parts)
-            if show_stat_boosts:
-                name_display_text += self.get_boost_values_string(
-                    self.enemy_pokemon, display_neutral_boost=False
-                )
             if (
+                show_plain_conditions
+                and enemy_condition
+                and is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+            ):
+                name_display_text += ' <span id="captured-state">[CAPTURED]</span>'
+            elif (
                 plain_automatic_battle
                 and is_pokemon_owned
                 and self.settings.get("gui.hud_owned_indicator")
             ):
                 name_display_text += ' <span id="captured-state">[CAPTURED]</span>'
+            if show_stat_boosts:
+                name_display_text += self.get_boost_values_string(
+                    self.enemy_pokemon, display_neutral_boost=False
+                )
+            name_display_text += enemy_condition
             enemy_hud_html += (
                 f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
             )
-        elif (
+        elif enemy_condition or (
             plain_automatic_battle
             and is_pokemon_owned
             and self.settings.get("gui.hud_owned_indicator")
         ):
+            captured_label = (
+                ' <span id="captured-state">[CAPTURED]</span>'
+                if is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+                and (enemy_condition or plain_automatic_battle)
+                else ""
+            )
             enemy_hud_html += (
-                '<div id="name-display" class="Ankimon">'
-                '<span id="captured-state">[CAPTURED]</span></div>'
+                f'<div id="name-display" class="Ankimon">{captured_label}{enemy_condition}</div>'
             )
 
-        if not plain_automatic_battle:
+        if not plain_automatic_battle and not (
+            show_plain_conditions and enemy_hp > 0 and enemy_condition
+        ):
             if enemy_hp > 0:
                 enemy_hud_html += create_status_html(
                     f"{self.enemy_pokemon.battle_status}",
@@ -558,10 +593,14 @@ class Reviewer_Manager:
 
             if main_parts:
                 main_name_display_text = " ".join(main_parts)
+                main_condition = plain_condition_suffix(
+                    self.main_pokemon, main_hp
+                )
                 if show_stat_boosts:
                     main_name_display_text += self.get_boost_values_string(
                         self.main_pokemon, display_neutral_boost=False
                     )
+                main_name_display_text += main_condition
                 main_hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
             if self.settings.get("gui.hud_hp_text"):
                 main_hud_html += f'<div id="myhp-display" class="Ankimon">HP: {main_hp}/{main_max_hp}</div>'
