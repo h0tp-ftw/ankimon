@@ -411,7 +411,7 @@ class Reviewer_Manager:
         xp_bar_enabled = bool(self.settings.get("gui.hud_xp_bar"))
         if hud_styling_enabled and xp_bar_enabled:
             xp_value_markup = (
-                f'<span id="xp-values" class="Ankimon">{xp_current}/{experience_for_next_lvl}</span>'
+                f'<span id="xp-values" class="Ankimon">XP: {xp_current}/{experience_for_next_lvl}</span>'
                 if xp_values_enabled
                 else ""
             )
@@ -419,12 +419,12 @@ class Reviewer_Manager:
                 '<div id="xp-bar" class="Ankimon"><div id="xp-bar-fill"></div>'
                 f"{xp_value_markup}</div>"
             )
+            if not xp_values_enabled:
+                hud_html += '<div id="xp_text" class="Ankimon">XP:</div>'
         if not hud_styling_enabled and xp_values_enabled:
             hud_html += (
                 f'<div id="xp-values" class="Ankimon">XP: {xp_current}/{experience_for_next_lvl}</div>'
             )
-        elif not hud_styling_enabled and xp_bar_enabled:
-            hud_html += '<div id="xp_text" class="Ankimon">XP</div>'
         elif hud_styling_enabled and not xp_bar_enabled and xp_values_enabled:
             hud_html += (
                 f'<div id="xp-values" class="Ankimon">XP: {xp_current}/{experience_for_next_lvl}</div>'
@@ -454,11 +454,15 @@ class Reviewer_Manager:
 
         enemy_hud_html = ""
         main_hud_html = ""
+        show_stat_boosts = hud_styling_enabled or bool(
+            self.settings.get("gui.hud_status_badge")
+        )
         if enemy_parts:
             name_display_text = " ".join(enemy_parts)
-            name_display_text += self.get_boost_values_string(
-                self.enemy_pokemon, display_neutral_boost=False
-            )
+            if show_stat_boosts:
+                name_display_text += self.get_boost_values_string(
+                    self.enemy_pokemon, display_neutral_boost=False
+                )
             enemy_hud_html += (
                 f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
             )
@@ -531,9 +535,10 @@ class Reviewer_Manager:
 
             if main_parts:
                 main_name_display_text = " ".join(main_parts)
-                main_name_display_text += self.get_boost_values_string(
-                    self.main_pokemon, display_neutral_boost=False
-                )
+                if show_stat_boosts:
+                    main_name_display_text += self.get_boost_values_string(
+                        self.main_pokemon, display_neutral_boost=False
+                    )
                 main_hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
             if self.settings.get("gui.hud_hp_text"):
                 main_hud_html += f'<div id="myhp-display" class="Ankimon">HP: {main_hp}/{main_max_hp}</div>'
@@ -541,13 +546,17 @@ class Reviewer_Manager:
                 main_hud_html += '<div id="mylife-bar" class="Ankimon"></div>'
 
         # Styled HUD elements use fixed CSS positions, so DOM order does not
-        # affect their layout. In plain mode this places the player's Pokémon
-        # above the opponent while keeping the XP label/values in place.
-        hud_html += main_hud_html + enemy_hud_html
+        # affect their layout. Plain mode keeps the wild Pokémon above the
+        # player's Pokémon, after the XP display.
+        if hud_styling_enabled:
+            hud_html += main_hud_html + enemy_hud_html
+        else:
+            hud_html += enemy_hud_html + main_hud_html
         hud_html += "</div>"
 
         # Build hud_css
         if hud_styling_enabled:
+            xp_bar_enabled = bool(self.settings.get("gui.hud_xp_bar"))
             xp_bar_location = self.settings.compute_special_variable(
                 "xp_bar_location"
             ) or (
@@ -555,11 +564,22 @@ class Reviewer_Manager:
                 if int(self.settings.get("gui.xp_bar_location", 2)) == 1
                 else "bottom"
             )
+            xp_bar_spacer = int(
+                self.settings.compute_special_variable("xp_bar_spacer")
+            )
+            if xp_bar_enabled:
+                xp_bar_spacer += 10 if xp_values_enabled else 5
+            if (
+                xp_values_enabled
+                and not xp_bar_enabled
+                and xp_bar_location == "bottom"
+            ):
+                xp_bar_spacer = 20
             hud_css = create_css_for_reviewer(
                 int(self.settings.get("gui.show_mainpkmn_in_reviewer")),
                 pokemon_hp_percent,
                 self.settings.get("gui.review_hp_bar_thickness") * 4,
-                int(self.settings.compute_special_variable("xp_bar_spacer")),
+                xp_bar_spacer,
                 -1
                 if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 1
                 else self.settings.compute_special_variable("view_main_front"),
