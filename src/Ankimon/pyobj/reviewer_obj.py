@@ -333,6 +333,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_pokemon_name"),
             self.settings.get("gui.hud_status_badge"),
             self.settings.get("gui.hud_owned_indicator"),
+            self.settings.get("battle.automatic_battle", 0),
             self.settings.get("gui.hud_enemy_shiny_indicator"),
             self.settings.get("gui.hud_player_shiny_indicator"),
             self.settings.get("gui.reviewer_text_message_box"),
@@ -454,6 +455,12 @@ class Reviewer_Manager:
 
         enemy_hud_html = ""
         main_hud_html = ""
+        automatic_battle_enabled = int(
+            self.settings.get("battle.automatic_battle", 0) or 0
+        ) in (1, 2, 3)
+        plain_automatic_battle = (
+            not hud_styling_enabled and automatic_battle_enabled
+        )
         show_stat_boosts = hud_styling_enabled or bool(
             self.settings.get("gui.hud_status_badge")
         )
@@ -463,26 +470,42 @@ class Reviewer_Manager:
                 name_display_text += self.get_boost_values_string(
                     self.enemy_pokemon, display_neutral_boost=False
                 )
+            if (
+                plain_automatic_battle
+                and is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+            ):
+                name_display_text += ' <span id="captured-state">[CAPTURED]</span>'
             enemy_hud_html += (
                 f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
             )
+        elif (
+            plain_automatic_battle
+            and is_pokemon_owned
+            and self.settings.get("gui.hud_owned_indicator")
+        ):
+            enemy_hud_html += (
+                '<div id="name-display" class="Ankimon">'
+                '<span id="captured-state">[CAPTURED]</span></div>'
+            )
 
-        if enemy_hp > 0:
-            enemy_hud_html += create_status_html(
-                f"{self.enemy_pokemon.battle_status}",
-                self.settings,
-                is_pokemon_owned,
-                addon_package,
-                plain_text=not hud_styling_enabled,
-            )
-        else:
-            enemy_hud_html += create_status_html(
-                "fainted",
-                self.settings,
-                is_pokemon_owned,
-                addon_package,
-                plain_text=not hud_styling_enabled,
-            )
+        if not plain_automatic_battle:
+            if enemy_hp > 0:
+                enemy_hud_html += create_status_html(
+                    f"{self.enemy_pokemon.battle_status}",
+                    self.settings,
+                    is_pokemon_owned,
+                    addon_package,
+                    plain_text=not hud_styling_enabled,
+                )
+            else:
+                enemy_hud_html += create_status_html(
+                    "fainted",
+                    self.settings,
+                    is_pokemon_owned,
+                    addon_package,
+                    plain_text=not hud_styling_enabled,
+                )
 
         if self.settings.get("gui.hud_hp_text"):
             enemy_hud_html += f'<div id="hp-display" class="Ankimon">HP: {enemy_hp}/{enemy_max_hp}</div>'
