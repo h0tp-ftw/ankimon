@@ -129,6 +129,10 @@ def _load_reviewer_obj(hooks, fake_services):
         sys.modules[name] = MagicMock()
     sys.modules["aqt"].gui_hooks = hooks
 
+    const_mod = types.ModuleType("Ankimon.const")
+    const_mod.status_colors_html = {}
+    sys.modules["Ankimon.const"] = const_mod
+
     services_mod = types.ModuleType("Ankimon.services")
     services_mod.services = fake_services
     sys.modules["Ankimon.services"] = services_mod
