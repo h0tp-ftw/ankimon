@@ -483,6 +483,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_status_badge")
         )
         enemy_condition = plain_condition_suffix(self.enemy_pokemon, enemy_hp)
+        enemy_name_html = ""
         if enemy_parts:
             name_display_text = " ".join(enemy_parts)
             if (
@@ -503,7 +504,7 @@ class Reviewer_Manager:
                     self.enemy_pokemon, display_neutral_boost=False
                 )
             name_display_text += enemy_condition
-            enemy_hud_html += (
+            enemy_name_html = (
                 f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
             )
         elif enemy_condition or (
@@ -518,29 +519,53 @@ class Reviewer_Manager:
                 and (enemy_condition or plain_automatic_battle)
                 else ""
             )
-            enemy_hud_html += (
+            enemy_name_html = (
                 f'<div id="name-display" class="Ankimon">{captured_label}{enemy_condition}</div>'
             )
 
+        enemy_status_html = ""
         if not plain_automatic_battle and not (
             show_plain_conditions and enemy_hp > 0 and enemy_condition
         ):
             if enemy_hp > 0:
-                enemy_hud_html += create_status_html(
+                enemy_status_html = create_status_html(
                     f"{self.enemy_pokemon.battle_status}",
                     self.settings,
-                    is_pokemon_owned,
+                    is_pokemon_owned and not hud_styling_enabled,
                     addon_package,
                     plain_text=not hud_styling_enabled,
                 )
             else:
-                enemy_hud_html += create_status_html(
+                enemy_status_html = create_status_html(
                     "fainted",
                     self.settings,
-                    is_pokemon_owned,
+                    is_pokemon_owned and not hud_styling_enabled,
                     addon_package,
                     plain_text=not hud_styling_enabled,
                 )
+
+        if hud_styling_enabled:
+            captured_icon = ""
+            if (
+                is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+            ):
+                pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
+                captured_icon = (
+                    f'<img id="owned-indicator-badge" src="{pokeball_url}" '
+                    'alt="Captured" class="Ankimon">'
+                )
+            status_row_class = " has-captured-icon" if captured_icon else ""
+            enemy_hud_html += (
+                '<div id="enemy-details" class="Ankimon">'
+                f'<div id="enemy-status-row" class="Ankimon{status_row_class}">'
+                f'{enemy_status_html}</div>'
+                '<div id="enemy-name-row" class="Ankimon">'
+                f'{captured_icon}{enemy_name_html}'
+                '</div></div>'
+            )
+        else:
+            enemy_hud_html += enemy_name_html + enemy_status_html
 
         if self.settings.get("gui.hud_hp_text"):
             enemy_hud_html += f'<div id="hp-display" class="Ankimon">HP: {enemy_hp}/{enemy_max_hp}</div>'
@@ -656,6 +681,60 @@ class Reviewer_Manager:
                 main_hp_true_percent,
                 xp_values_enabled,
             )
+            enemy_details_bottom = (
+                20 + xp_bar_spacer
+                if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 2
+                else 15
+                + xp_bar_spacer
+                + self.settings.get("gui.review_hp_bar_thickness") * 4
+            )
+            hud_css += f"""
+            #ankimon-hud #enemy-details {{
+                position: fixed;
+                right: 10px;
+                bottom: {enemy_details_bottom}px;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                width: max-content;
+            }}
+            #ankimon-hud #enemy-status-row.has-captured-icon {{
+                margin-left: 30px;
+            }}
+            #ankimon-hud #enemy-status-row #pokestatus-container {{
+                position: static !important;
+                right: auto !important;
+                bottom: auto !important;
+                margin: 0 !important;
+            }}
+            #ankimon-hud #enemy-status-row #pokestatus {{
+                margin: 0 !important;
+            }}
+            #ankimon-hud #enemy-name-row {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            #ankimon-hud #owned-indicator-badge {{
+                display: block;
+                flex: 0 0 22px;
+                width: 22px;
+                height: 22px;
+                background-color: var(--ankimon-outline);
+                border-radius: 50%;
+                padding: 2px;
+                box-sizing: border-box;
+            }}
+            #ankimon-hud #enemy-details #name-display {{
+                position: static !important;
+                right: auto !important;
+                bottom: auto !important;
+                flex: 0 0 auto;
+                text-align: left;
+            }}
+            """
             # Theme selectors are anchored on #ankimon-hud itself (see the
             # ``night_mode`` class added in hud_html above), never on an
             # ancestor such as ``.night_mode``/``html.dark``. The HUD lives in
