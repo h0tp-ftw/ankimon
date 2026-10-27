@@ -562,10 +562,11 @@ class TestWindow(QWidget):
         Receive_Window.setLayout(layout)
         Receive_Window.show()
 
-    def display_item(self):
+    def display_item(self, item_name=None):
         Receive_Window = QDialog(mw)
         layout = QHBoxLayout()
-        item_name = random_item()
+        if item_name is None:
+            item_name = random_item()
         item_widget = self.pokemon_display_item(item_name)
         layout.addWidget(item_widget)
         Receive_Window.setStyleSheet("background-color: rgb(44,44,44);")
