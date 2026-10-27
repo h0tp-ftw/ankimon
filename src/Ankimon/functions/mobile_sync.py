@@ -2482,11 +2482,13 @@ def commit_replay_outcome(
             # auto-resolve path.
             ci = max(1, int(settings_obj.get("trainer.cash_reward_interval", 5)))
             ca = int(settings_obj.get("trainer.cash_reward_amount", 10))
+            daily_cash_cap = 400
             if getattr(main_pokemon, "held_item", None) in (
                 "amulet-coin",
                 "luck-incense",
             ):
                 ca *= 2
+                daily_cash_cap = 800
 
             raw_gained_cash = (new_counter // ci) * ca
             remaining_counter = new_counter % ci
@@ -2507,8 +2509,8 @@ def commit_replay_outcome(
                 settings_obj.set("trainer.last_mobile_cash_reward_date", today_str)
                 settings_obj.set("trainer.mobile_cash_earned_today", 0)
 
-            if mobile_cash_earned_today < 400:
-                gained_cash = min(raw_gained_cash, 400 - mobile_cash_earned_today)
+            if mobile_cash_earned_today < daily_cash_cap:
+                gained_cash = min(raw_gained_cash, daily_cash_cap - mobile_cash_earned_today)
             else:
                 gained_cash = 0
 

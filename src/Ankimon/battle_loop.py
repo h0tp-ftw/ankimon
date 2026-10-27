@@ -256,8 +256,10 @@ def on_review_card(*args):
         # stacking if you somehow had both). There's no "trainer battle" here
         # to key off of, so the effect applies to Ankimon's own cash-reward
         # interval instead.
+        daily_cash_cap = 400
         if getattr(main_pokemon, "held_item", None) in ("amulet-coin", "luck-incense"):
             cash_amount *= 2
+            daily_cash_cap = 800
         if cash_interval > 0 and total_reviews % cash_interval == 0:
             from datetime import date
             today_str = str(date.today())
@@ -268,8 +270,8 @@ def on_review_card(*args):
                 cash_earned_today = 0
                 settings_obj.set("trainer.last_cash_reward_date", today_str)
             
-            if cash_earned_today < 400:
-                allowed_amount = min(cash_amount, 400 - cash_earned_today)
+            if cash_earned_today < daily_cash_cap:
+                allowed_amount = min(cash_amount, daily_cash_cap - cash_earned_today)
                 if allowed_amount > 0:
                     settings_obj.set("trainer.cash_earned_today", cash_earned_today + allowed_amount)
                     settings_obj.set("trainer.cash", settings_obj.get("trainer.cash") + allowed_amount)
