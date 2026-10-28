@@ -379,6 +379,7 @@ def test_background_checks_do_no_ui_work_and_return_contract(startup_env):
         "enemy_info",
         "needs_starter",
         "needs_rating",
+        "wishlist_items_found",
     }
     assert results["backup_error"] is None
     assert results["is_migrated"] is True
@@ -840,6 +841,7 @@ def boot_env(monkeypatch):
         "enemy_info": ENEMY_INFO,
         "needs_starter": False,
         "needs_rating": False,
+        "wishlist_items_found": [],
     }
 
     def run_startup_background_checks(backup_manager=None):

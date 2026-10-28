@@ -82,7 +82,6 @@ def run_startup_background_checks(backup_manager=None):
 
     # 1. Run backups unless this startup was triggered by a developer hot-reload.
     backup_error = None
-    from .services import services
 
     is_reloading = getattr(services, "_is_reloading", False)
     if not is_reloading:
@@ -142,6 +141,7 @@ def run_startup_background_checks(backup_manager=None):
     enemy_info = None
     needs_starter = False
     needs_rating = False
+    wishlist_items_found = []
 
     if database_complete:
         enemy_info = _generate_first_enemy_background()
@@ -154,10 +154,8 @@ def run_startup_background_checks(backup_manager=None):
             needs_rating = True
 
         # Check item wishlist against daily shop items
-        wishlist_items_found = []
         try:
             from .pyobj.ankimon_shop import PokemonShopManager
-            from .services import services
             sm = PokemonShopManager(logger, settings_obj, None, None)
             todays_items = sm.get_daily_items() or []
             todays_tms = sm.get_daily_tms() or []
@@ -261,7 +259,6 @@ def run_startup_ui_callbacks(results):
 
     # Item wishlist notification
     if results.get("wishlist_items_found"):
-        from .services import services
         items_str = ", ".join(item.replace('-', ' ').title() for item in results["wishlist_items_found"])
         services.ui.notify("info", f"Wishlist item(s) available in today's shop: {items_str}!")
 
