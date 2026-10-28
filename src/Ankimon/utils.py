@@ -1228,3 +1228,29 @@ def is_dev_mode() -> bool:
     except Exception:
         pass
     return False
+
+
+def get_current_anki_date():
+    """
+    Returns the current Anki date based on the user's rollover time.
+    If Anki is unavailable, falls back to the system's current date.
+    Returns a datetime.date object.
+    """
+    from datetime import datetime
+    try:
+        from aqt import mw
+        if mw and mw.col:
+            # cutoff is tomorrow's rollover time in seconds since epoch
+            cutoff = mw.col.sched.day_cutoff
+            # the start of the current Anki day is cutoff - 86400
+            start_of_day = cutoff - 86400
+            return datetime.fromtimestamp(start_of_day).date()
+    except Exception:
+        pass
+    return datetime.today().date()
+
+def get_current_anki_date_str():
+    """
+    Returns the current Anki date as a YYYY-MM-DD string.
+    """
+    return str(get_current_anki_date())
