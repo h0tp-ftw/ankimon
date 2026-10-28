@@ -83,11 +83,9 @@ def test_dev_mode_false_and_no_raise_when_settings_broken(monkeypatch):
     monkeypatch.setattr(utils_mod.services, "settings", _Broken())
     
     # Ensure profile name doesn't match either
-    try:
-        from aqt import mw
-        if mw:
-            mw.pm = None
-    except Exception:
-        pass
+    from aqt import mw
+
+    if mw:
+        monkeypatch.setattr(mw, "pm", None)
 
     assert is_dev_mode() is False
