@@ -405,7 +405,8 @@ class Settings:
         sound_effects = config.get("audio.sound_effects", False)
 
         view_main_front = config.get("gui.view_main_front", True)
-        self.view_main_front = -1 if view_main_front else 1
+        reviewer_image_gif = config.get("gui.reviewer_image_gif", False)
+        self.view_main_front = -1 if view_main_front and reviewer_image_gif else 1
 
         animate_time = config.get("gui.animate_time", False)
         self.animate_time = 0.8 if animate_time else 0
@@ -434,7 +435,8 @@ class Settings:
         # Dynamically compute and return the requested GUI variable
         if key == "view_main_front":
             view_main_front = self.config.get("gui.view_main_front", True)
-            return -1 if view_main_front else 1
+            reviewer_image_gif = self.config.get("gui.reviewer_image_gif", False)
+            return -1 if view_main_front and reviewer_image_gif else 1
 
         elif key == "animate_time":
             animate_time = self.config.get("gui.animate_time", False)

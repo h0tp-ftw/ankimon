@@ -53,12 +53,6 @@ def create_css_for_reviewer(
   transform: scaleX(-1) !important;
 }
 
-@keyframes ankimon-shake-flipped-important {
-  0%, 100% { transform: scaleX(-1) translateY(0) !important; }
-  10%, 30%, 50%, 70%, 90% { transform: scaleX(-1) translateY(-2px) !important; }
-  20%, 40%, 60%, 80% { transform: scaleX(-1) translateY(2px) !important; }
-}
-
 /* Theme variables. Keyed off the night_mode class the HUD carries (set from
    theme_manager.night_mode in reviewer_obj.py), not @media
    (prefers-color-scheme: dark): the media query tracks the OS, so once the

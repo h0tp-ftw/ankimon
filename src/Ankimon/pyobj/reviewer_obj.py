@@ -370,13 +370,14 @@ class Reviewer_Manager:
         main_pkmn_sprite_url = None
         side = "back"  # Default side
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
-            if self.settings.compute_special_variable("view_main_front") == -1:
-                side = "front"
-            else:
+            if image_format == "gif":
+                if self.settings.compute_special_variable("view_main_front") == -1:
+                    side = "front"
+                else:
+                    side = "back"
+            else:  # png
                 side = "back"
-            # Fallback to back-facing ID resolution for PNGs since they only have one file.
-            resolved_side = "back" if image_format == "png" else side
-            main_pkmn_sprite_url = get_sprite_url(self.main_pokemon, resolved_side)
+            main_pkmn_sprite_url = get_sprite_url(self.main_pokemon, side)
 
         pokemon_hp_percent = int((enemy_hp / enemy_max_hp) * 50)
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
@@ -463,11 +464,12 @@ class Reviewer_Manager:
                 # We will sacrifice the animation in this case to force the flip using a static class.
                 if image_format == "gif" and side == "front":
                     my_poke_html_attributes = 'class="force-flip"'
-                elif image_format == "png" and side == "front":
-                    # For front-facing PNGs, we must flip them to face right.
-                    # To avoid sacrificing the animation, we rely on the custom keyframe 'ankimon-shake-flipped-important'
-                    # which natively includes a scaleX(-1) transform alongside !important to override the force-flip class.
-                    my_poke_html_attributes = f'class="force-flip" style="animation: ankimon-shake-flipped-important {self.myseconds}s ease;"'
+                elif image_format == "png":
+                    # PNGs natively face left, so we always flip them to face right.
+                    # Using !important inside keyframes is ignored by Chromium, meaning force-flip locks the animation.
+                    # By applying a standard inline transform (without !important) and using the standard flipped animation
+                    # with a 'forwards' fill mode, the element stays flipped without freezing the shake.
+                    my_poke_html_attributes = f'style="transform: scaleX(-1); animation: ankimon-shake-flipped {self.myseconds}s ease forwards;"'
                 else:
                     # For all other cases, the flipped animation works correctly.
                     animation_style = (
