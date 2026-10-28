@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-from aqt import gui_hooks
-
 from ..services import services
 
 
@@ -55,6 +53,8 @@ def on_main_window_did_init(_main_window=None):
 
 def register_item_wishlist_hook():
     """Register one reload-safe check after Anki's main window is initialized."""
+    from aqt import gui_hooks
+
     previous = getattr(services, _HOOK_RECORD, None)
     if previous is not None:
         try:
