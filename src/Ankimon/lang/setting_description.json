@@ -1,7 +1,7 @@
 {
     "battle.automatic_battle": "Set automatic battle mode for wild Pokémon interactions when enemy HP is 0. \n[0: Disabled, 1: Auto-catch, 2: Auto-defeat (to gain XP), 3: Catch if NEW Pokémon (not in collection), otherwise defeat].",
     "battle.auto_catch_wishlist": "List of Pokémon IDs that are always caught when encountered, regardless of other auto-catch settings.",
-    "gui.item_wishlist": "List of item identifiers (e.g. \"linking-cord\") to notify you about when received or seen in the shop.",
+    "gui.item_wishlist": "Add the items you'd like. You will receive a message when the item shows up in your daily shop roll!",
     "battle.auto_catch_legendary": "Always catch Legendary Pokémon when encountered.",
     "battle.auto_catch_mythical": "Always catch Mythical Pokémon when encountered.",
     "battle.auto_catch_ultra": "Always catch Ultra Beast Pokémon when encountered.",
@@ -30,7 +30,7 @@
     "gui.pop_up_dialog_message_on_defeat": "Show a pop-up message when a wild Pokémon is defeated.",
     "gui.pop_up_dialog_message_on_encounter": "Show a pop-up message when a rare or shiny Pokémon appears.",
     "gui.pop_up_dialog_message_on_item": "Show a pop-up window when you receive an item. Turning this off still awards the item, it just does not interrupt your reviews.",
-    "gui.pop_up_dialog_message_wishlist_override": "Show a pop-up window when you receive an item that is on your item wishlist, even if the generic item pop-up setting is turned off.",
+    "gui.pop_up_dialog_message_wishlist_override": "Show a pop-up message when you receive an item on your wishlist, even if the general Pop-Up on Item Receive is turned off.",
     "gui.review_hp_bar_thickness": "Set the HP bar thickness for reviews [2: 8px, 3: 12px, 4: 16px, 5: 20px].",
     "gui.reviewer_image_gif": "Display Pokémon GIFs in the reviewer window.",
     "gui.reviewer_text_message_box": "Enable colorful pop-up messages in the reviewer.",
