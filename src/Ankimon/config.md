@@ -13,6 +13,7 @@ If you want to play with Pokemon from a certain generation, set them as True
 - `Generation7` [True/False]
 - `Generation8` [True/False]
 - `Generation9` [True/False]
+- `misc.starters` [True/False] — Allow Starter Pokémon to appear in wild encounters.
 
 Pokemon Gif Animations:
 You can decide if you want the Gif Animations in the anki reviewer

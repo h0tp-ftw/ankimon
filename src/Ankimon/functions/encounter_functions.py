@@ -878,9 +878,9 @@ def get_all_pokemon_in_tier(tier: str) -> list[int]:
         return encounter_data.MEGA
     if tier == "Gmax":
         return encounter_data.GMAX
-    # if tier == "Starter": return encounter_data.STARTERS #Uncomment to activate starters
     if tier == "Starter":
-        return []
+        from ..pyobj.settings import settings
+        return encounter_data.STARTERS if settings.get("misc.starters", False) else []
     return []
 
 

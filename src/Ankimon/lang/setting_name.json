@@ -70,6 +70,7 @@
     "misc.gen7": "Generation 7",
     "misc.gen8": "Generation 8",
     "misc.gen9": "Generation 9",
+    "misc.starters": "Enable Wild Starters",
     "misc.remove_level_cap": "Remove Level Cap",
     "misc.language": "Language",
     "misc.ssh": "Allow Background Checks",
