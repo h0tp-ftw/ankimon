@@ -64,7 +64,7 @@ class ShowInfoLogger:
         elif level == "game":
             self.game_logger.info(message)
 
-    def log_and_showinfo(self, level, message):
+    def log_and_showinfo(self, level, message, window_title=None, window_icon=None):
         # Log + emit always; show a blocking dialog only under a Qt GUI.
         self._record(level, message)
 
@@ -91,9 +91,13 @@ class ShowInfoLogger:
                     return
 
                 msg_box = QMessageBox()
-                msg_box.setWindowTitle("Log Message")
+                msg_box.setWindowTitle(window_title or "Log Message")
                 msg_box.setText(message)
                 msg_box.setIcon(QMessageBox.Icon.Information)
+                if window_icon is not None:
+                    from PyQt6.QtGui import QIcon
+
+                    msg_box.setWindowIcon(QIcon(str(window_icon)))
                 msg_box.exec()
             except Exception:
                 pass
