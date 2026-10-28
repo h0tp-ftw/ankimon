@@ -1253,4 +1253,4 @@ def get_current_anki_date_str():
     """
     Returns the current Anki date as a YYYY-MM-DD string.
     """
-    return str(get_current_anki_date())
+    return get_current_anki_date().strftime("%Y-%m-%d")
