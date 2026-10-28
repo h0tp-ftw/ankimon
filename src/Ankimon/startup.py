@@ -157,7 +157,7 @@ def run_startup_background_checks(backup_manager=None):
         # Check item wishlist against daily shop items
         try:
             from .pyobj.ankimon_shop import PokemonShopManager
-            sm = PokemonShopManager(logger, settings_obj, None, None)
+            sm = PokemonShopManager(logger, settings_obj, ankimon_db, None)
             todays_items = sm.get_daily_items() or []
             todays_tms = sm.get_daily_tms() or []
             wishlist = settings_obj.get("gui.item_wishlist", [])

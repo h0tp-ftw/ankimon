@@ -245,21 +245,19 @@ def on_review_card(*args):
                 except Exception:
                     pass
 
+            # Prevent double-grants on popup UI failure or skip by always pre-rolling
+            try:
+                if item_name is None:
+                    item_name = random_item()
+            except Exception:
+                pass
+
             if show_item_popup and is_alive(item_window):
                 try:
+                    # By this point item_name is determined, display_item simply displays it.
                     item_window.display_item(item_name)
                 except RuntimeError:
-                    if item_name is None:
-                        try:
-                            random_item()
-                        except Exception:
-                            pass
-            else:
-                if item_name is None:
-                    try:
-                        random_item()
-                    except Exception:
-                        pass
+                    pass
             if not check_for_badge(achievements, 6):
                 receive_badge(6, achievements)
 
