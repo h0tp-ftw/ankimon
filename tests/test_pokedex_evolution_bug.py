@@ -34,6 +34,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from conftest import isolated_modules
+
 _SRC = Path(__file__).parent.parent / "src"
 
 
@@ -48,40 +50,45 @@ def _load_ankimon_db():
     ``__path__``) are left intact so the second loader can still import
     ``Ankimon.services`` / ``Ankimon.pyobj.pokemon_obj`` for real.
     """
-    for name in [
+    with isolated_modules(
         "aqt",
-        "aqt.qt",
-        "aqt.utils",
-        "aqt.gui_hooks",
-        "aqt.operations",
-        "aqt.reviewer",
-        "aqt.webview",
-        "aqt.main",
         "anki",
-        "anki.hooks",
-        "anki.collection",
-        "anki.models",
-        "anki.notes",
-        "anki.template",
-        "anki.buildinfo",
-    ]:
-        sys.modules[name] = MagicMock()
+        extra=("Ankimon.resources", "Ankimon.pyobj.database_manager"),
+    ):
+        for name in [
+            "aqt",
+            "aqt.qt",
+            "aqt.utils",
+            "aqt.gui_hooks",
+            "aqt.operations",
+            "aqt.reviewer",
+            "aqt.webview",
+            "aqt.main",
+            "anki",
+            "anki.hooks",
+            "anki.collection",
+            "anki.models",
+            "anki.notes",
+            "anki.template",
+            "anki.buildinfo",
+        ]:
+            sys.modules[name] = MagicMock()
 
-    class MockResources(types.ModuleType):
-        user_path = Path("/tmp")
+        class MockResources(types.ModuleType):
+            user_path = Path("/tmp")
 
-        def __getattr__(self, name):
-            return Path("/tmp") / name
+            def __getattr__(self, name):
+                return Path("/tmp") / name
 
-    sys.modules["Ankimon.resources"] = MockResources("Ankimon.resources")
+        sys.modules["Ankimon.resources"] = MockResources("Ankimon.resources")
 
-    spec = importlib.util.spec_from_file_location(
-        "Ankimon.pyobj.database_manager",
-        _SRC / "Ankimon" / "pyobj" / "database_manager.py",
-    )
-    db_mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = db_mod
-    spec.loader.exec_module(db_mod)
+        spec = importlib.util.spec_from_file_location(
+            "Ankimon.pyobj.database_manager",
+            _SRC / "Ankimon" / "pyobj" / "database_manager.py",
+        )
+        db_mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = db_mod
+        spec.loader.exec_module(db_mod)
     return db_mod
 
 
@@ -253,25 +260,33 @@ def test_pokedex_evolution_caught_state_persists(temp_db):
 # --------------------------------------------------------------------------- #
 def _load_pokedex_functions():
     """Load ``pokedex_functions`` against the real resources + data files."""
-    sys.modules["aqt"] = MagicMock()
-    sys.modules["aqt.qt"] = MagicMock()
-    sys.modules["aqt.utils"] = MagicMock()
-    sys.modules["Ankimon.pyobj.error_handler"] = MagicMock()
+    with isolated_modules(
+        "aqt",
+        extra=(
+            "Ankimon.resources",
+            "Ankimon.pyobj.error_handler",
+            "Ankimon.functions.pokedex_functions",
+        ),
+    ):
+        sys.modules["aqt"] = MagicMock()
+        sys.modules["aqt.qt"] = MagicMock()
+        sys.modules["aqt.utils"] = MagicMock()
+        sys.modules["Ankimon.pyobj.error_handler"] = MagicMock()
 
-    res_spec = importlib.util.spec_from_file_location(
-        "Ankimon.resources", _SRC / "Ankimon" / "resources.py"
-    )
-    resources = importlib.util.module_from_spec(res_spec)
-    sys.modules["Ankimon.resources"] = resources
-    res_spec.loader.exec_module(resources)
+        res_spec = importlib.util.spec_from_file_location(
+            "Ankimon.resources", _SRC / "Ankimon" / "resources.py"
+        )
+        resources = importlib.util.module_from_spec(res_spec)
+        sys.modules["Ankimon.resources"] = resources
+        res_spec.loader.exec_module(resources)
 
-    pf_spec = importlib.util.spec_from_file_location(
-        "Ankimon.functions.pokedex_functions",
-        _SRC / "Ankimon" / "functions" / "pokedex_functions.py",
-    )
-    pf = importlib.util.module_from_spec(pf_spec)
-    sys.modules["Ankimon.functions.pokedex_functions"] = pf
-    pf_spec.loader.exec_module(pf)
+        pf_spec = importlib.util.spec_from_file_location(
+            "Ankimon.functions.pokedex_functions",
+            _SRC / "Ankimon" / "functions" / "pokedex_functions.py",
+        )
+        pf = importlib.util.module_from_spec(pf_spec)
+        sys.modules["Ankimon.functions.pokedex_functions"] = pf
+        pf_spec.loader.exec_module(pf)
     return pf
 
 
