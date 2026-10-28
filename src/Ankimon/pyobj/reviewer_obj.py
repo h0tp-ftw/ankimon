@@ -339,6 +339,8 @@ class Reviewer_Manager:
             # invalidate the repaint cache or the HUD keeps the old palette
             # until some other piece of state happens to change.
             _anki_night_mode(),
+            self.myseconds,
+            self.seconds,
         )
         if self._last_state == current_state and card is not None:
             return  # No changes, skip update
@@ -462,6 +464,12 @@ class Reviewer_Manager:
                 # We will sacrifice the animation in this case to force the flip using a static class.
                 if image_format == "gif" and side == "front":
                     my_poke_html_attributes = 'class="force-flip"'
+                elif image_format == "png":
+                    # PNGs natively face left, so we always flip them to face right.
+                    # Using !important inside keyframes is ignored by Chromium, meaning force-flip locks the animation.
+                    # By applying a standard inline transform (without !important) and using the standard flipped animation
+                    # with a 'forwards' fill mode, the element stays flipped without freezing the shake.
+                    my_poke_html_attributes = f'style="transform: scaleX(-1); animation: ankimon-shake-flipped {self.myseconds}s ease forwards;"'
                 else:
                     # For all other cases, the flipped animation works correctly.
                     animation_style = (
