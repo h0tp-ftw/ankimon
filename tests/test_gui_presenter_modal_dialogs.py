@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import isolated_modules
+
 
 _SRC = Path(__file__).parent.parent / "src"
 _MODULE_NAME = "Ankimon.gui_presenter"
@@ -20,48 +22,69 @@ class _QDialog:
     DialogCode = _DialogCode
 
 
+class _QDialogButtonBox:
+    class StandardButton:
+        Ok = 1
+
+
 @pytest.fixture
-def presenter_module(monkeypatch):
+def presenter_module():
     """Load the real presenter with only its Anki/dialog imports isolated."""
-    for package_name in ("Ankimon", "Ankimon.classes", "Ankimon.pyobj"):
-        package = types.ModuleType(package_name)
-        package.__path__ = [str(_SRC / package_name.replace(".", "/"))]
-        package.__package__ = package_name
-        monkeypatch.setitem(sys.modules, package_name, package)
+    with isolated_modules("Ankimon", "aqt", "PyQt6"):
+        for package_name in ("Ankimon", "Ankimon.classes", "Ankimon.pyobj"):
+            package = types.ModuleType(package_name)
+            package.__path__ = [str(_SRC / package_name.replace(".", "/"))]
+            package.__package__ = package_name
+            sys.modules[package_name] = package
 
-    aqt = types.ModuleType("aqt")
-    aqt.mw = object()
-    monkeypatch.setitem(sys.modules, "aqt", aqt)
+        aqt = types.ModuleType("aqt")
+        aqt.mw = object()
+        sys.modules["aqt"] = aqt
 
-    aqt_qt = types.ModuleType("aqt.qt")
-    aqt_qt.QDialog = _QDialog
-    aqt_qt.QTimer = object
-    monkeypatch.setitem(sys.modules, "aqt.qt", aqt_qt)
+        aqt_qt = types.ModuleType("aqt.qt")
+        aqt_qt.QDialog = _QDialog
+        aqt_qt.QDialogButtonBox = _QDialogButtonBox
+        aqt_qt.QLabel = object
+        aqt_qt.QTimer = object
+        aqt_qt.QVBoxLayout = object
+        sys.modules["aqt.qt"] = aqt_qt
 
-    aqt_utils = types.ModuleType("aqt.utils")
-    aqt_utils.showInfo = lambda *_args, **_kwargs: None
-    aqt_utils.showWarning = lambda *_args, **_kwargs: None
-    monkeypatch.setitem(sys.modules, "aqt.utils", aqt_utils)
+        aqt_utils = types.ModuleType("aqt.utils")
+        aqt_utils.showInfo = lambda *_args, **_kwargs: None
+        aqt_utils.showWarning = lambda *_args, **_kwargs: None
+        sys.modules["aqt.utils"] = aqt_utils
 
-    choose_move = types.ModuleType("Ankimon.classes.choose_move_dialog")
-    choose_move.MoveSelectionDialog = object
-    monkeypatch.setitem(sys.modules, "Ankimon.classes.choose_move_dialog", choose_move)
+        choose_move = types.ModuleType("Ankimon.classes.choose_move_dialog")
+        choose_move.MoveSelectionDialog = object
+        sys.modules["Ankimon.classes.choose_move_dialog"] = choose_move
 
-    attack_dialog = types.ModuleType("Ankimon.pyobj.attack_dialog")
-    attack_dialog.AttackDialog = object
-    monkeypatch.setitem(sys.modules, "Ankimon.pyobj.attack_dialog", attack_dialog)
+        attack_dialog = types.ModuleType("Ankimon.pyobj.attack_dialog")
+        attack_dialog.AttackDialog = object
+        sys.modules["Ankimon.pyobj.attack_dialog"] = attack_dialog
 
-    error_handler = types.ModuleType("Ankimon.pyobj.error_handler")
-    error_handler.show_warning_with_traceback = lambda *_args, **_kwargs: None
-    monkeypatch.setitem(sys.modules, "Ankimon.pyobj.error_handler", error_handler)
+        error_handler = types.ModuleType("Ankimon.pyobj.error_handler")
+        error_handler.show_warning_with_traceback = lambda *_args, **_kwargs: None
+        sys.modules["Ankimon.pyobj.error_handler"] = error_handler
 
-    spec = importlib.util.spec_from_file_location(
-        _MODULE_NAME, _SRC / "Ankimon" / "gui_presenter.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, _MODULE_NAME, module)
-    spec.loader.exec_module(module)
-    return module
+        moveset_dialog = types.ModuleType("Ankimon.pyobj.moveset_dialog")
+        moveset_dialog.MovesetDialog = object
+        sys.modules["Ankimon.pyobj.moveset_dialog"] = moveset_dialog
+
+        resources = types.ModuleType("Ankimon.resources")
+        resources.icon_path = ""
+        sys.modules["Ankimon.resources"] = resources
+
+        qt_gui = types.ModuleType("PyQt6.QtGui")
+        qt_gui.QIcon = object
+        sys.modules["PyQt6.QtGui"] = qt_gui
+
+        spec = importlib.util.spec_from_file_location(
+            _MODULE_NAME, _SRC / "Ankimon" / "gui_presenter.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[_MODULE_NAME] = module
+        spec.loader.exec_module(module)
+        yield module
 
 
 class _DialogProbe:
