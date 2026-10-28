@@ -1365,8 +1365,9 @@ class TestWindow(QWidget):
         Receive_Window.setLayout(layout)
         Receive_Window.show()
 
-    def display_item(self):
-        item_name = random_item()
+    def display_item(self, item_name=None):
+        if item_name is None:
+            item_name = random_item()
         if item_name is None:
             return
 

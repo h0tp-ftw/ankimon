@@ -370,6 +370,7 @@ class SettingsWindow(QMainWindow):
                 "settings": [
                     "Automatic Battle",
                     "Always Catch Wishlist",
+                    "Item Wishlist",
                     "Always Catch: Legendary",
                     "Always Catch: Mythical",
                     "Always Catch: Ultra Beast",
@@ -422,6 +423,7 @@ class SettingsWindow(QMainWindow):
                     "Pop-Up on Defeat",
                     "Pop-Up on Special Encounter",
                     "Pop-Up on Item Receive",
+                    "Wishlist Item Received Override",
                 ],
                 "subgroups": {
                     "HUD Element Toggles": {

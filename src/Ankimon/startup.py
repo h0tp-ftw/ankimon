@@ -153,6 +153,24 @@ def run_startup_background_checks(backup_manager=None):
         if len(badge_list) > 1 and ankimon_db.get_user_data("rate_this") is not True:
             needs_rating = True
 
+        # Check item wishlist against daily shop items
+        wishlist_items_found = []
+        try:
+            from .pyobj.ankimon_shop import PokemonShopManager
+            from .services import services
+            sm = PokemonShopManager(logger, settings_obj, None, None)
+            todays_items = sm.get_daily_items() or []
+            todays_tms = sm.get_daily_tms() or []
+            wishlist = settings_obj.get("gui.item_wishlist", [])
+            for item in todays_items:
+                if item["name"] in wishlist:
+                    wishlist_items_found.append(item["name"])
+            for tm in todays_tms:
+                if tm["name"] in wishlist:
+                    wishlist_items_found.append(tm["name"])
+        except Exception as e:
+            logger.log("error", f"Error checking wishlist items: {e}")
+
     # 7. Item-count consolidation (DB write; thread-safe layer).
     try:
         count_items_and_rewrite()
@@ -168,6 +186,7 @@ def run_startup_background_checks(backup_manager=None):
         "enemy_info": enemy_info,
         "needs_starter": needs_starter,
         "needs_rating": needs_rating,
+        "wishlist_items_found": wishlist_items_found,
     }
 
 
@@ -239,6 +258,12 @@ def run_startup_ui_callbacks(results):
     # Rate-this-addon prompt.
     if results["database_complete"] and results["needs_rating"]:
         rate_this_addon()
+
+    # Item wishlist notification
+    if results.get("wishlist_items_found"):
+        from .services import services
+        items_str = ", ".join(item.replace('-', ' ').title() for item in results["wishlist_items_found"])
+        services.ui.notify("info", f"Wishlist item(s) available in today's shop: {items_str}!")
 
     # Reset the encounter counter for the new session.
     ankimon_tracker_obj.pokemon_encounter = 0
