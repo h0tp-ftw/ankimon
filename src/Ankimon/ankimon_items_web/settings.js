@@ -226,7 +226,14 @@
     }
 
     function buildWishlistControl(setting) {
-        if (setting.names) {
+        const isItemWishlist = setting.key === 'gui.item_wishlist';
+        const itemOptions = (setting.item_options || []).map((item) => ({
+            id: String(item.id),
+            name: item.name || String(item.id).replace(/-/g, ' '),
+        }));
+        const itemNames = new Map(itemOptions.map((item) => [item.id, item.name]));
+
+        if (!isItemWishlist && setting.names) {
             state._wishlistNames = state._wishlistNames || {};
             for (const [id, name] of Object.entries(setting.names)) {
                 state._wishlistNames[Number(id)] = name;
@@ -243,7 +250,7 @@
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'setting-input';
-        input.placeholder = 'Search Pokémon name…';
+        input.placeholder = isItemWishlist ? 'Search item name…' : 'Search Pokémon name…';
 
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
@@ -254,8 +261,10 @@
         const chooseBtn = document.createElement('button');
         chooseBtn.type = 'button';
         chooseBtn.className = 'wishlist-choose-btn';
-        chooseBtn.textContent = 'Choose from Caught…';
-        chooseBtn.title = 'Open dialog to select from caught Pokémon';
+        chooseBtn.textContent = isItemWishlist ? 'Choose from Items…' : 'Choose from Caught…';
+        chooseBtn.title = isItemWishlist
+            ? 'Open dialog to select from obtainable items'
+            : 'Open dialog to select from caught Pokémon';
 
         const dropdown = document.createElement('div');
         dropdown.className = 'wishlist-dropdown hidden';
@@ -275,17 +284,21 @@
         let activeModalGrid = null;
         let caughtPokemon = [];
 
-        function getIds() {
-            return (currentValue(setting) || []).map(Number);
+        function getValues() {
+            const values = currentValue(setting);
+            if (!Array.isArray(values)) return [];
+            return isItemWishlist ? values.map(String) : values.map(Number);
         }
 
-        function togglePokemon(id, name) {
-            const current = getIds();
+        function toggleEntry(id, name) {
+            const current = getValues();
             let next;
             if (current.includes(id)) {
                 next = current.filter((v) => v !== id);
             } else {
-                (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                if (!isItemWishlist) {
+                    (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                }
                 next = [...current, id];
             }
             setEdit(setting.key, next);
@@ -298,10 +311,12 @@
             }
         }
 
-        function addPokemon(id, name) {
-            const current = getIds();
+        function addEntry(id, name) {
+            const current = getValues();
             if (!current.includes(id)) {
-                (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                if (!isItemWishlist) {
+                    (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                }
                 const next = [...current, id];
                 setEdit(setting.key, next);
                 renderChips();
@@ -319,26 +334,29 @@
 
         function renderChips() {
             chipList.innerHTML = '';
-            const ids = getIds();
-            if (ids.length === 0) {
+            const values = getValues();
+            if (values.length === 0) {
                 const empty = document.createElement('span');
                 empty.className = 'wishlist-empty';
-                empty.textContent = 'No Pokémon added yet.';
+                empty.textContent = isItemWishlist ? 'No items added yet.' : 'No Pokémon added yet.';
                 chipList.appendChild(empty);
                 return;
             }
-            ids.forEach((id) => {
+            values.forEach((id) => {
                 const chip = document.createElement('span');
                 chip.className = 'wishlist-chip';
-                const cached = (state._wishlistNames = state._wishlistNames || {});
-                chip.textContent = cached[id] ? `${cached[id]} (#${id})` : `#${id}`;
+                const cached = isItemWishlist ? {} : (state._wishlistNames = state._wishlistNames || {});
+                const name = isItemWishlist ? itemNames.get(id) : cached[id];
+                chip.textContent = name
+                    ? (isItemWishlist ? name : `${name} (#${id})`)
+                    : (isItemWishlist ? id : `#${id}`);
                 const x = document.createElement('button');
                 x.type = 'button';
                 x.textContent = '×';
                 x.className = 'wishlist-chip-remove';
                 x.title = 'Remove';
                 x.addEventListener('click', () => {
-                    const next = getIds().filter((v) => v !== id);
+                    const next = getValues().filter((v) => v !== id);
                     setEdit(setting.key, next);
                     renderChips();
                     updateDirtyUI();
@@ -365,6 +383,26 @@
                 lastResults = [];
                 return;
             }
+            if (isItemWishlist) {
+                lastResults = itemOptions.filter((item) =>
+                    item.name.toLowerCase().includes(q.toLowerCase())
+                    || item.id.toLowerCase().includes(q.toLowerCase())
+                ).slice(0, 20);
+                dropdown.innerHTML = '';
+                if (lastResults.length === 0) {
+                    dropdown.classList.add('hidden');
+                    return;
+                }
+                dropdown.classList.remove('hidden');
+                lastResults.forEach((item) => {
+                    const opt = document.createElement('div');
+                    opt.className = 'wishlist-option';
+                    opt.textContent = item.name;
+                    opt.addEventListener('click', () => addEntry(item.id, item.name));
+                    dropdown.appendChild(opt);
+                });
+                return;
+            }
             if (!bridge || !bridge.searchPokemon) return;
             bridge.searchPokemon(q, (res) => {
                 dropdown.innerHTML = '';
@@ -378,7 +416,7 @@
                     const opt = document.createElement('div');
                     opt.className = 'wishlist-option';
                     opt.textContent = `${r.name} (#${r.id})`;
-                    opt.addEventListener('click', () => addPokemon(r.id, r.name));
+                    opt.addEventListener('click', () => addEntry(r.id, r.name));
                     dropdown.appendChild(opt);
                 });
             });
@@ -388,8 +426,17 @@
             const q = input.value.trim();
             if (q.length < 2) return;
 
+            if (isItemWishlist) {
+                const result = itemOptions.find((item) =>
+                    item.name.toLowerCase().includes(q.toLowerCase())
+                    || item.id.toLowerCase().includes(q.toLowerCase())
+                );
+                if (result) addEntry(result.id, result.name);
+                return;
+            }
+
             if (lastResults.length > 0 && lastResults[0].name.toLowerCase().includes(q.toLowerCase())) {
-                addPokemon(lastResults[0].id, lastResults[0].name);
+                addEntry(lastResults[0].id, lastResults[0].name);
                 return;
             }
 
@@ -398,7 +445,7 @@
             bridge.searchPokemon(q, (res) => {
                 const results = (res && res.results) || [];
                 if (results.length > 0) {
-                    addPokemon(results[0].id, results[0].name);
+                    addEntry(results[0].id, results[0].name);
                 }
             });
         };
@@ -422,39 +469,59 @@
         // Modal Suggestions logic
         function renderModalGrid(grid) {
             grid.innerHTML = '';
-            if (caughtPokemon.length === 0) {
+            const entries = isItemWishlist
+                ? itemOptions
+                : caughtPokemon.map((pokemon) => ({
+                    id: Number(pokemon.id),
+                    name: pokemon.name,
+                }));
+            if (entries.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'wishlist-suggestions-empty';
-                empty.textContent = 'No caught Pokémon found.';
+                empty.textContent = isItemWishlist
+                    ? 'No obtainable items found.'
+                    : 'No caught Pokémon found.';
                 grid.appendChild(empty);
                 return;
             }
-            const activeIds = getIds();
-            caughtPokemon.forEach((p) => {
-                const isInWishlist = activeIds.includes(p.id);
+            const activeValues = getValues();
+            entries.forEach((entry) => {
+                const isInWishlist = activeValues.includes(entry.id);
 
                 const card = document.createElement('div');
                 card.className = `wishlist-suggestion-card${isInWishlist ? ' in-wishlist' : ''}`;
-                card.title = `${p.name} (#${p.id})`;
+                card.title = isItemWishlist ? entry.name : `${entry.name} (#${entry.id})`;
 
                 const img = document.createElement('img');
                 img.className = 'wishlist-suggestion-sprite';
-                img.src = `../user_files/sprites/front_default/${p.id}.png`;
+                img.src = isItemWishlist
+                    ? `../user_files/sprites/items/${encodeURIComponent(entry.id)}.png`
+                    : `../user_files/sprites/front_default/${entry.id}.png`;
+                let triedBundledItemSprite = false;
                 img.onerror = () => {
-                    img.src = '../user_files/sprites/front_default/0.png';
+                    if (isItemWishlist) {
+                        if (!triedBundledItemSprite) {
+                            triedBundledItemSprite = true;
+                            img.src = `../addon_sprites/items/${encodeURIComponent(entry.id)}.png`;
+                        } else {
+                            img.hidden = true;
+                        }
+                    } else {
+                        img.src = '../user_files/sprites/front_default/0.png';
+                    }
                 };
 
                 const nameLbl = document.createElement('div');
                 nameLbl.className = 'wishlist-suggestion-name';
-                nameLbl.textContent = p.name;
+                nameLbl.textContent = entry.name;
 
                 card.append(img, nameLbl);
-                card.addEventListener('click', () => togglePokemon(p.id, p.name));
+                card.addEventListener('click', () => toggleEntry(entry.id, entry.name));
                 grid.appendChild(card);
             });
         }
 
-        function openCaughtModal() {
+        function openChooseModal() {
             if (activeModalBackdrop) return;
 
             const backdrop = document.createElement('div');
@@ -469,7 +536,7 @@
 
             const title = document.createElement('h3');
             title.className = 'wishlist-modal-title';
-            title.textContent = 'Select from Caught Pokémon';
+            title.textContent = isItemWishlist ? 'Select Items' : 'Select from Caught Pokémon';
 
             const closeBtn = document.createElement('button');
             closeBtn.type = 'button';
@@ -503,7 +570,9 @@
 
             const subtitle = document.createElement('div');
             subtitle.className = 'wishlist-modal-subtitle';
-            subtitle.textContent = 'Toggle Pokémon below to add them to your Always-Catch Wishlist:';
+            subtitle.textContent = isItemWishlist
+                ? 'Toggle items below to add them to your Item Wishlist:'
+                : 'Toggle Pokémon below to add them to your Always-Catch Wishlist:';
 
             const grid = document.createElement('div');
             grid.className = 'wishlist-suggestions-grid';
@@ -514,7 +583,9 @@
             backdrop.append(content);
             document.body.appendChild(backdrop);
 
-            if (bridge && bridge.getCaughtPokemon) {
+            if (isItemWishlist) {
+                renderModalGrid(grid);
+            } else if (bridge && bridge.getCaughtPokemon) {
                 bridge.getCaughtPokemon((res) => {
                     caughtPokemon = (res && res.results) || [];
                     renderModalGrid(grid);
@@ -524,7 +595,7 @@
             }
         }
 
-        chooseBtn.addEventListener('click', openCaughtModal);
+        chooseBtn.addEventListener('click', openChooseModal);
 
         // Close dropdown on outside click
         document.addEventListener('click', (e) => {
