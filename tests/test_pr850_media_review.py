@@ -25,7 +25,7 @@ def media_host(transfer, tmp_path, monkeypatch):
     preference = [True]
     pm = SimpleNamespace(profile={}, profileFolder=lambda: str(tmp_path),
                          media_syncing_enabled=lambda: preference[0], save=lambda: None)
-    monkeypatch.setattr(st.mw, "pm", pm)
+    monkeypatch.setattr(st.mw, "pm", pm, raising=False)
     monkeypatch.setattr(st, "_MIGRATION_SCAN_STATE", {"running": False, "rerun": False})
     monkeypatch.setattr(st.mw.taskman, "run_in_background",
                         lambda work, done, **kwargs: queued.append((work, done)))
@@ -104,7 +104,7 @@ def test_dispatch_failure_keeps_guard_and_can_retry(transfer, media_host, monkey
     def refused(*args, **kwargs):
         raise RuntimeError("executor stopped")
 
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused, raising=False)
     st.start_media_migration(None, _Logger())
     assert media_host.pm.media_syncing_enabled() is False
     assert st.get_db_stats(source)["pokemon"] == 17
@@ -128,7 +128,7 @@ def test_removing_uncaptured_save_releases_guard_on_previously_settled_folder(
     def refused(*args, **kwargs):
         raise RuntimeError("executor stopped")
 
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused, raising=False)
     st.start_media_migration(None, _Logger())
     assert media_host.pm.media_syncing_enabled() is False
     source.rename(source.parent.parent / "moved-save.db")
@@ -891,7 +891,7 @@ def test_a_scan_that_could_not_be_dispatched_promises_no_timed_retry(
     def refused(*args, **kwargs):
         raise RuntimeError("executor stopped")
 
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused, raising=False)
     monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)
     st.start_media_migration(None, _Logger())
 
@@ -1256,7 +1256,7 @@ def test_a_settled_check_that_cannot_be_dispatched_warns_only_when_the_settle_is
     def refused(*args, **kwargs):
         raise RuntimeError("executor stopped")
 
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused, raising=False)
     st.showWarning.reset_mock()
     st.start_media_migration(None, _Logger())
 

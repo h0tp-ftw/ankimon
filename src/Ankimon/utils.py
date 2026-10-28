@@ -1212,11 +1212,12 @@ def is_dev_mode() -> bool:
         # Check Anki profile name (case-insensitive check for 'dev' triggers)
         try:
             from aqt import mw
-
-            if mw and mw.pm and mw.pm.name:
-                profile_name = mw.pm.name.lower()
-                if "dev_" in profile_name or "_dev" in profile_name:
-                    return True
+            if getattr(mw, "pm", None) is not None:
+                name = getattr(mw.pm, "name", None)
+                if name:
+                    profile_name = name.lower()
+                    if "dev_" in profile_name or "_dev" in profile_name:
+                        return True
         except Exception:
             pass
 
@@ -1239,12 +1240,15 @@ def get_current_anki_date():
     from datetime import datetime
     try:
         from aqt import mw
-        if mw and mw.col:
-            # cutoff is tomorrow's rollover time in seconds since epoch
-            cutoff = mw.col.sched.day_cutoff
-            # the start of the current Anki day is cutoff - 86400
-            start_of_day = cutoff - 86400
-            return datetime.fromtimestamp(start_of_day).date()
+        if getattr(mw, "col", None) is not None:
+            sched = getattr(mw.col, "sched", None)
+            if sched is not None:
+                day_cutoff = getattr(sched, "day_cutoff", None)
+                if day_cutoff is not None:
+                    # cutoff is tomorrow's rollover time in seconds since epoch
+                    # the start of the current Anki day is cutoff - 86400
+                    start_of_day = day_cutoff - 86400
+                    return datetime.fromtimestamp(start_of_day).date()
     except Exception:
         pass
     return datetime.today().date()
