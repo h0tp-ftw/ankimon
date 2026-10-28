@@ -529,8 +529,8 @@ def test_commit_replay_mobile_cash_cap(monkeypatch):
     import Ankimon.business as _biz
     monkeypatch.setattr(_biz, "calculate_cp_from_dict", lambda d: 10)
 
-    from datetime import date
-    today_str = str(date.today())
+    from Ankimon.utils import get_current_anki_date_str
+    today_str = get_current_anki_date_str()
 
     # Mock the companion attribution call so it doesn't try to query the mock DB
     monkeypatch.setattr(

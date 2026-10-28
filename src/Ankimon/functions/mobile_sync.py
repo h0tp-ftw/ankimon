@@ -1573,9 +1573,9 @@ def _run_mobile_battles_impl(
         else 0
     )
 
-    from datetime import date
+    from ..utils import get_current_anki_date_str
 
-    today_str = str(date.today())
+    today_str = get_current_anki_date_str()
     last_reward_date = (
         settings_obj.get("trainer.last_mobile_cash_reward_date", "")
         if settings_obj
@@ -2492,9 +2492,9 @@ def commit_replay_outcome(
             remaining_counter = new_counter % ci
 
             # Enforce daily mobile cash cap
-            from datetime import date
+            from ..utils import get_current_anki_date_str
 
-            today_str = str(date.today())
+            today_str = get_current_anki_date_str()
             last_reward_date = settings_obj.get(
                 "trainer.last_mobile_cash_reward_date", ""
             )
