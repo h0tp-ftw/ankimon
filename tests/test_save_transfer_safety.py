@@ -387,11 +387,15 @@ def test_rescue_recovery_includes_progress_after_staging(transfer, rescue, monke
     assert len(rescue.callbacks) == 1
 
     def finish_old_session(**kwargs):
-        with sqlite3.connect(transfer.active) as conn:
-            conn.executemany(
-                "INSERT INTO captured_pokemon VALUES (?, 0, '{}')",
-                [(f"mobile-{i}",) for i in range(5)],
-            )
+        conn = sqlite3.connect(transfer.active)
+        try:
+            with conn:
+                conn.executemany(
+                    "INSERT INTO captured_pokemon VALUES (?, 0, '{}')",
+                    [(f"mobile-{i}",) for i in range(5)],
+                )
+        finally:
+            conn.close()
         commit_in_new_process(transfer.active)
 
     monkeypatch.setattr(st, "close_anki", finish_old_session)
