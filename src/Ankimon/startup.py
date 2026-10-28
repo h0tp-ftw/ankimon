@@ -83,6 +83,7 @@ def run_startup_background_checks(backup_manager=None):
     # 1. Run backups unless this startup was triggered by a developer hot-reload.
     backup_error = None
 
+    from .services import services
     is_reloading = getattr(services, "_is_reloading", False)
     if not is_reloading:
         try:
@@ -260,6 +261,7 @@ def run_startup_ui_callbacks(results):
     # Item wishlist notification
     if results.get("wishlist_items_found"):
         items_str = ", ".join(item.replace('-', ' ').title() for item in results["wishlist_items_found"])
+        from .services import services
         services.ui.notify("info", f"Wishlist item(s) available in today's shop: {items_str}!")
 
     # Reset the encounter counter for the new session.

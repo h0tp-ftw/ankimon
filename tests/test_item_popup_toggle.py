@@ -45,7 +45,7 @@ _SPY_WINDOW = (
     "        self.display_item_calls = 0\n"
     "    def objectName(self):\n"
     "        return 'SpyWindow'\n"
-    "    def display_item(self):\n"
+    "    def display_item(self, item_name=None):\n"
     "        self.display_item_calls += 1\n"
     "    def __getattr__(self, name):\n"
     "        return lambda *a, **k: None\n"
