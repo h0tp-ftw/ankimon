@@ -27,6 +27,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from conftest import isolated_modules
+
 
 class DynamicMockModule(types.ModuleType):
     """A module stub that dynamically returns MagicMocks for any attribute
@@ -45,31 +47,29 @@ _SRC = Path(__file__).parent.parent / "src"
 def tracker_module():
     """Load ``AnkimonTracker`` in isolation with stubbed Anki/Qt modules and
     restore ``sys.modules`` afterwards so the rest of the suite is unaffected."""
-    original_modules = dict(sys.modules)
+    with isolated_modules("Ankimon", "aqt", "PyQt6", "anki"):
+        # Parent packages so relative imports resolve without executing the
+        # add-on entry point.
+        for package_name in ("Ankimon", "Ankimon.pyobj", "Ankimon.functions"):
+            package = types.ModuleType(package_name)
+            package.__path__ = [str(_SRC / package_name.replace(".", "/"))]
+            package.__package__ = package_name
+            sys.modules[package_name] = package
 
-    # Parent packages so the module's relative imports resolve against the real
-    # source tree without executing ``Ankimon/__init__.py`` (mirrors conftest).
-    parent_pkgs = {}
-    for _pkg in ("Ankimon", "Ankimon.pyobj", "Ankimon.functions"):
-        _mod = types.ModuleType(_pkg)
-        _mod.__path__ = [str(_SRC / _pkg.replace(".", "/"))]
-        _mod.__package__ = _pkg
-        parent_pkgs[_pkg] = _mod
+        sys.modules.update(
+            {
+                "aqt": DynamicMockModule("aqt"),
+                "aqt.qt": DynamicMockModule("aqt.qt"),
+                "aqt.utils": DynamicMockModule("aqt.utils"),
+                "PyQt6": DynamicMockModule("PyQt6"),
+                "PyQt6.QtWidgets": DynamicMockModule("PyQt6.QtWidgets"),
+                "PyQt6.QtCore": DynamicMockModule("PyQt6.QtCore"),
+                "PyQt6.QtMultimedia": DynamicMockModule("PyQt6.QtMultimedia"),
+                "anki": DynamicMockModule("anki"),
+                "anki.buildinfo": DynamicMockModule("anki.buildinfo"),
+            }
+        )
 
-    mocks = {
-        "aqt": DynamicMockModule("aqt"),
-        "aqt.qt": DynamicMockModule("aqt.qt"),
-        "aqt.utils": DynamicMockModule("aqt.utils"),
-        "PyQt6": DynamicMockModule("PyQt6"),
-        "PyQt6.QtWidgets": DynamicMockModule("PyQt6.QtWidgets"),
-        "PyQt6.QtCore": DynamicMockModule("PyQt6.QtCore"),
-        "PyQt6.QtMultimedia": DynamicMockModule("PyQt6.QtMultimedia"),
-        "anki": DynamicMockModule("anki"),
-        "anki.buildinfo": DynamicMockModule("anki.buildinfo"),
-    }
-    mocks.update(parent_pkgs)
-
-    with patch.dict(sys.modules, mocks):
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
@@ -84,13 +84,6 @@ def tracker_module():
         # thing steering ``get_total_reviews``.
         mod.services.reset()
         yield mod
-
-    # Restore sys.modules to EXACTLY its pre-test state, resolving side effects.
-    for key in list(sys.modules):
-        if key not in original_modules:
-            del sys.modules[key]
-        else:
-            sys.modules[key] = original_modules[key]
 
 
 def _make_tracker(mod):
