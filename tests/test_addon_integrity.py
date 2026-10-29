@@ -221,7 +221,7 @@ KNOWN_BENIGN_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 
-def test_ankimon_submodule_integrity(qapp):
+def test_ankimon_submodule_integrity(qapp, monkeypatch):
     """
     Imports every Ankimon submodule and asserts none raises an ImportError or
     AttributeError.  Uses the pytest-qt `qapp` fixture so that Qt widget
@@ -247,20 +247,20 @@ def test_ankimon_submodule_integrity(qapp):
         def _decrease_background_ops(self):
             pass
 
-    aqt.mw = MockMainWindow()
-    aqt.mw.taskman = MagicMock()
-    aqt.mw.logger = MagicMock()
-    aqt.mw.ankimon_db = MagicMock()
+    _mw = MockMainWindow()
+    _mw.taskman = MagicMock()
+    _mw.logger = MagicMock()
+    _mw.ankimon_db = MagicMock()
     # Ensure getattr(mw, "x", None) returns None for lazy-init guards
     # (MagicMock attributes are truthy, so we explicitly set common ones)
-    aqt.mw.main_pokemon = None
-    aqt.mw.enemy_pokemon = None
-    aqt.mw.trainer_card = None
-    aqt.mw.ankimon_tracker_obj = None
-    aqt.mw.shop_manager = None
-    aqt.mw.reviewer_obj = None
-    aqt.mw.achievements_dict = None
-    aqt.mw.translator = None
+    _mw.main_pokemon = None
+    _mw.enemy_pokemon = None
+    _mw.trainer_card = None
+    _mw.ankimon_tracker_obj = None
+    _mw.shop_manager = None
+    _mw.reviewer_obj = None
+    _mw.achievements_dict = None
+    _mw.translator = None
 
     # main re-fit: unlike exp (which routes settings through the service seam),
     # main's menu_buttons.py and gui_classes/overview_team.py read
@@ -274,47 +274,41 @@ def test_ankimon_submodule_integrity(qapp):
         def get(self, key, default=None):
             return self._defaults.get(key, default)
 
-    aqt.mw.settings_obj = _ImportSafeSettings()
+    _mw.settings_obj = _ImportSafeSettings()
+    monkeypatch.setattr(aqt, "mw", _mw)
 
     # Install pre-stubs so that imports of heavy modules are intercepted.
     # Force-install even when an entry already exists: other test modules
     # (e.g. test_location_evolutions, test_friendship_evolution) install bare
     # module-level stubs of Ankimon.singletons at collection time, and those
     # lack the names (main_pokemon, logger, ...) that real modules from-import.
-    # The prior entries are restored below so those suites keep their stubs.
-    _prev_stubs = {}
+
     for mod_name in PRE_STUB_MODULES:
-        _prev_stubs[mod_name] = sys.modules.get(mod_name)
-        sys.modules[mod_name] = MagicMock()
+        monkeypatch.setitem(sys.modules, mod_name, MagicMock())
 
     errors = []
     checked = 0
 
-    try:
-        for mod_name in MODULES_TO_CHECK:
-            # Exact-match skips, plus prefix skips for anything living *under* a
-            # skipped package.  The bare "Ankimon" entry must be exact-match only:
-            # every module in MODULES_TO_CHECK starts with "Ankimon.", so
-            # prefix-matching it would silently skip the entire list and make the
-            # test vacuous.
-            if mod_name in SKIP_MODULES or any(
-                mod_name.startswith(skip + ".")
-                for skip in SKIP_MODULES
-                if skip != "Ankimon"
-            ):
-                continue
+    for mod_name in MODULES_TO_CHECK:
+        if mod_name in SKIP_MODULES or any(
+            mod_name.startswith(skip + ".")
+            for skip in SKIP_MODULES
+            if skip != "Ankimon"
+        ):
+            continue
 
-            checked += 1
+        checked += 1
+        try:
+            cached = sys.modules.pop(mod_name, None)
             try:
                 importlib.import_module(mod_name)
-            except Exception:
-                tb = traceback.format_exc()
-                if not any(pat in tb for pat in KNOWN_BENIGN_PATTERNS):
-                    errors.append(f"[{mod_name}]\n{tb}")
-    finally:
-        for mod_name, _prev in _prev_stubs.items():
-            if _prev is not None:
-                sys.modules[mod_name] = _prev
+            finally:
+                if cached is not None and mod_name not in sys.modules:
+                    sys.modules[mod_name] = cached
+        except Exception:
+            tb = traceback.format_exc()
+            if not any(pat in tb for pat in KNOWN_BENIGN_PATTERNS):
+                errors.append(f"[{mod_name}]\n{tb}")
 
     if errors:
         divider = "\n" + "-" * 60 + "\n"
