@@ -33,13 +33,17 @@ import pytest
 _SRC = Path(__file__).resolve().parent.parent / "src"
 
 for _name in (
-    "aqt", "aqt.qt", "aqt.utils", "aqt.gui_hooks", "aqt.operations",
-    "aqt.theme", "aqt.sound", "aqt.webview", "aqt.main",
     "anki", "anki.hooks", "anki.collection", "anki.utils",
     "PyQt6", "PyQt6.QtGui", "PyQt6.QtWidgets", "PyQt6.QtCore",
     "PyQt6.QtWebChannel", "PyQt6.QtWebEngineWidgets",
 ):
     sys.modules.setdefault(_name, MagicMock())
+
+for _name in (
+    "aqt", "aqt.qt", "aqt.utils", "aqt.gui_hooks", "aqt.operations",
+    "aqt.reviewer", "aqt.theme", "aqt.sound", "aqt.webview", "aqt.main",
+):
+    sys.modules[_name] = MagicMock()
 
 for _pkg in ("Ankimon", "Ankimon.functions", "Ankimon.pyobj", "Ankimon.ankimon_items_web"):
     _existing = sys.modules.get(_pkg)
@@ -63,6 +67,8 @@ for _n in ("showInfo", "showWarning", "tooltip", "askUser"):
 
 import Ankimon.pyobj.save_transfer as st  # noqa: E402
 from test_save_import import commit_in_new_process
+
+st.QFileDialog = MagicMock()
 
 
 class _Logger:
