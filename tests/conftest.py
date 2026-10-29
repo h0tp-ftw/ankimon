@@ -58,24 +58,6 @@ def restore_package_stubs():
                 _mod.__package__ = _pkg
                 sys.modules[_pkg] = _mod
 
-        def _fresh_mock_for(obj, name):
-            """Return ``obj.name`` if it is a usable non-None, non-sentinel
-            mock; otherwise a fresh ``MagicMock``. Never raises on mocks."""
-            try:
-                value = getattr(obj, name)
-            except AttributeError:
-                return MagicMock()
-
-            if value is None or type(value).__name__ == "_DeletedType":
-                return MagicMock()
-            return value
-
-        def _is_restricted_mock(obj):
-            """True if ``obj`` is a mock whose spec forbids unknown attrs."""
-            if not isinstance(obj, MagicMock):
-                return False
-            return getattr(obj, "_mock_methods", None) is not None
-
         current_aqt = sys.modules.get("aqt")
         if (
             current_aqt is None
@@ -84,70 +66,82 @@ def restore_package_stubs():
         ):
             aqt_mod = types.ModuleType("aqt")
             mw = MagicMock()
+            aqt_mod.qt = types.ModuleType("aqt.qt")
+            aqt_mod.utils = types.ModuleType("aqt.utils")
             sys.modules["aqt"] = aqt_mod
         else:
             aqt_mod = current_aqt
-            try:
-                mw = aqt_mod.mw
-            except AttributeError:
+            mw = getattr(aqt_mod, "mw", None)
+            if mw is None:
                 mw = MagicMock()
-
-        if not isinstance(mw, MagicMock) or _is_restricted_mock(mw):
-            mw = MagicMock()
         aqt_mod.mw = mw
-        sys.modules["aqt.mw"] = mw
-
         if sys.modules.get("aqt.qt") is None:
             sys.modules["aqt.qt"] = types.ModuleType("aqt.qt")
-        aqt_mod.qt = sys.modules["aqt.qt"]
-        for attr in (
-            "QFileDialog",
-            "QDialog",
-            "QInputDialog",
-            "QMessageBox",
-            "QPushButton",
-            "QLabel",
-            "QWidget",
-        ):
-            if not hasattr(aqt_mod.qt, attr):
-                setattr(aqt_mod.qt, attr, MagicMock())
-
-        if not hasattr(aqt_mod.qt.QFileDialog, "getOpenFileName"):
-            aqt_mod.qt.QFileDialog.getOpenFileName = MagicMock()
-
         if not isinstance(sys.modules.get("aqt.utils"), types.ModuleType):
             sys.modules["aqt.utils"] = types.ModuleType("aqt.utils")
+        aqt_mod.qt = sys.modules["aqt.qt"]
         aqt_mod.utils = sys.modules["aqt.utils"]
-        for attr in (
-            "showInfo",
-            "showWarning",
-            "tooltip",
-            "askUser",
-            "qconnect",
-            "downArrow",
-            "showCritical",
-            "getText",
-            "openFolder",
-            "openLink",
-        ):
+        for attr in ("showInfo", "showWarning", "tooltip", "askUser"):
             if not hasattr(aqt_mod.utils, attr):
                 setattr(aqt_mod.utils, attr, MagicMock())
-
+        sys.modules["aqt.mw"] = mw
         gui_hooks = sys.modules.get("aqt.gui_hooks")
-        if gui_hooks is None or not isinstance(gui_hooks, MagicMock):
+        if gui_hooks is None:
             gui_hooks = MagicMock()
             sys.modules["aqt.gui_hooks"] = gui_hooks
         aqt_mod.gui_hooks = gui_hooks
 
-        mw.taskman = _fresh_mock_for(mw, "taskman")
-        mw.taskman.run_in_background = _fresh_mock_for(mw.taskman, "run_in_background")
-        mw.progress = _fresh_mock_for(mw, "progress")
-        mw.progress.single_shot = _fresh_mock_for(mw.progress, "single_shot")
-        pm = _fresh_mock_for(mw, "pm")
-        mw.pm = pm
+        for _attr in ("QFileDialog", "QDialog", "QInputDialog", "QMessageBox"):
+            if not hasattr(aqt_mod.qt, _attr):
+                setattr(aqt_mod.qt, _attr, MagicMock())
+        if not hasattr(aqt_mod.qt.QFileDialog, "getOpenFileName"):
+            aqt_mod.qt.QFileDialog.getOpenFileName = MagicMock()
+
+        for _attr in ("qconnect", "downArrow"):
+            if not hasattr(aqt_mod.utils, _attr):
+                setattr(aqt_mod.utils, _attr, MagicMock())
+
+        _aqt_exported_names = (
+            [(n, aqt_mod.qt) for n in (
+                "QFileDialog", "QDialog", "QInputDialog", "QMessageBox",
+                "QPushButton", "QLabel", "QWidget",
+            )]
+            + [(n, aqt_mod.utils) for n in (
+                "showInfo", "showWarning", "tooltip", "askUser", "qconnect",
+                "downArrow", "showCritical", "getText", "openFolder", "openLink",
+            )]
+            + [(n, aqt_mod) for n in ("mw", "gui_hooks", "qt", "utils")]
+        )
+        for _mod in list(sys.modules.values()):
+            if not isinstance(_mod, types.ModuleType):
+                continue
+            if not getattr(_mod, "__name__", "").startswith("Ankimon."):
+                continue
+            for _name, _src in _aqt_exported_names:
+                if not hasattr(_src, _name):
+                    continue
+                if not hasattr(_mod, _name):
+                    continue
+                if _mod.__dict__.get(_name) is getattr(_src, _name):
+                    continue
+                try:
+                    setattr(_mod, _name, getattr(_src, _name))
+                except (AttributeError, TypeError):
+                    pass
+
+        mw.taskman = getattr(mw, "taskman", MagicMock())
+        mw.taskman.run_in_background = getattr(
+            mw.taskman, "run_in_background", MagicMock()
+        )
+        mw.progress = getattr(mw, "progress", MagicMock())
+        mw.progress.single_shot = getattr(mw.progress, "single_shot", MagicMock())
+        pm = getattr(mw, "pm", None)
+        if pm is None:
+            pm = MagicMock()
+            mw.pm = pm
         if isinstance(pm, MagicMock) and not getattr(pm, "profile", None):
             pm.profile = {}
-        mw.col = _fresh_mock_for(mw, "col")
+        mw.col = getattr(mw, "col", MagicMock())
 
         # Also restore Ankimon.resources to the real resources module if it was mocked with tmp paths
         current_res = sys.modules.get("Ankimon.resources")
