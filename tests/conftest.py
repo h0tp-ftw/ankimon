@@ -117,15 +117,15 @@ def restore_package_stubs():
                 continue
             if not getattr(_mod, "__name__", "").startswith("Ankimon."):
                 continue
-            for _name, _src in _aqt_exported_names:
-                if not hasattr(_src, _name):
+            for _name, _source_module in _aqt_exported_names:
+                if not hasattr(_source_module, _name):
                     continue
                 if not hasattr(_mod, _name):
                     continue
-                if _mod.__dict__.get(_name) is getattr(_src, _name):
+                if _mod.__dict__.get(_name) is getattr(_source_module, _name):
                     continue
                 try:
-                    setattr(_mod, _name, getattr(_src, _name))
+                    setattr(_mod, _name, getattr(_source_module, _name))
                 except (AttributeError, TypeError):
                     pass
 
