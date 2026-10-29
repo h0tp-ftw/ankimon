@@ -1,5 +1,6 @@
 aqt
-pytest==9.1.0
+pytest==9.1.0; python_version >= "3.10"
+pytest==8.4.2; python_version < "3.10"
 pytest-qt
 requests
 PyQt6
