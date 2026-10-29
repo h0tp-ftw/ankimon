@@ -67,6 +67,11 @@ except ImportError:
     sys.modules["aqt.theme"] = MagicMock()
     sys.modules["aqt.sound"] = MagicMock()
     sys.modules["aqt.main"] = MagicMock()
+else:
+    import aqt
+
+    if getattr(aqt, "mw", None) is None:
+        aqt.mw = MagicMock()
 
 # ---------------------------------------------------------------------------
 # 2. Put src/ on sys.path so "import Ankimon.xxx" resolves correctly
