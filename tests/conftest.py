@@ -75,7 +75,7 @@ def restore_package_stubs():
             if mw is None:
                 mw = MagicMock()
         aqt_mod.mw = mw
-        if not isinstance(sys.modules.get("aqt.qt"), types.ModuleType):
+        if sys.modules.get("aqt.qt") is None:
             sys.modules["aqt.qt"] = types.ModuleType("aqt.qt")
         if not isinstance(sys.modules.get("aqt.utils"), types.ModuleType):
             sys.modules["aqt.utils"] = types.ModuleType("aqt.utils")
