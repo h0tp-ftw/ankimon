@@ -86,7 +86,7 @@ def test_dev_mode_false_and_no_raise_when_settings_broken(monkeypatch):
     try:
         from aqt import mw
         if mw:
-            mw.pm = None
+            monkeypatch.setattr(mw, "pm", None)
     except Exception:
         pass
 
