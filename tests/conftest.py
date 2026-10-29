@@ -58,57 +58,122 @@ def restore_package_stubs():
                 _mod.__package__ = _pkg
                 sys.modules[_pkg] = _mod
 
-        current_aqt = sys.modules.get("aqt")
-        if (
-            current_aqt is None
-            or isinstance(current_aqt, MagicMock)
-            or not hasattr(current_aqt, "mw")
-        ):
-            aqt_mod = types.ModuleType("aqt")
-            mw = MagicMock()
-            aqt_mod.qt = types.ModuleType("aqt.qt")
-            aqt_mod.utils = types.ModuleType("aqt.utils")
-            sys.modules["aqt"] = aqt_mod
-        else:
-            aqt_mod = current_aqt
-            mw = getattr(aqt_mod, "mw", None)
-            if mw is None:
-                mw = MagicMock()
-        aqt_mod.mw = mw
-        if sys.modules.get("aqt.qt") is None:
-            sys.modules["aqt.qt"] = types.ModuleType("aqt.qt")
-        if not isinstance(sys.modules.get("aqt.utils"), types.ModuleType):
-            sys.modules["aqt.utils"] = types.ModuleType("aqt.utils")
-        aqt_mod.qt = sys.modules["aqt.qt"]
-        aqt_mod.utils = sys.modules["aqt.utils"]
-        for attr in ("showInfo", "showWarning", "tooltip", "askUser"):
-            if not hasattr(aqt_mod.utils, attr):
-                setattr(aqt_mod.utils, attr, MagicMock())
-        sys.modules["aqt.mw"] = mw
-        gui_hooks = sys.modules.get("aqt.gui_hooks")
-        if gui_hooks is None:
-            gui_hooks = MagicMock()
-            sys.modules["aqt.gui_hooks"] = gui_hooks
-        aqt_mod.gui_hooks = gui_hooks
+        # ------------------------------------------------------------------
+        # aqt rebuild
+        #
+        # CI installs aqt==26.x from requirements.txt (see the "Install
+        # requirements" step). When a real aqt package is importable, prefer
+        # it. Replacing it with a bare types.ModuleType turns every
+        # ``from aqt.qt import QLabel`` into a MagicMock, which breaks real
+        # PyQt6 calls in migration_dialog._setup_ui (168 errors), and makes
+        # ``from aqt import qconnect`` raise ImportError (7 errors in
+        # test_addon_integrity). Only build the MagicMock stub when the real
+        # package is genuinely unavailable.
+        # ------------------------------------------------------------------
+        try:
+            import aqt as _real_aqt
+            import aqt.qt as _real_aqt_qt  # noqa: F401
+            import aqt.utils as _real_aqt_utils  # noqa: F401
+            _have_real_aqt = True
+        except ImportError:
+            _real_aqt = None
+            _have_real_aqt = False
 
-        for _attr in ("QFileDialog", "QDialog", "QInputDialog", "QMessageBox"):
-            if not hasattr(aqt_mod.qt, _attr):
-                setattr(aqt_mod.qt, _attr, MagicMock())
+        if _have_real_aqt:
+            aqt_mod = _real_aqt
+            sys.modules["aqt"] = aqt_mod
+            mw = getattr(aqt_mod, "mw", None) or MagicMock()
+            aqt_mod.mw = mw
+            sys.modules["aqt.mw"] = mw
+            # Fill in names aqt may not export (older/newer versions
+            # differ, and the test suite imports a superset). Only add
+            # missing attributes — never replace a real one.
+            for _attr in ("qconnect", "gui_hooks"):
+                if not hasattr(aqt_mod, _attr):
+                    setattr(aqt_mod, _attr, MagicMock())
+            for _attr in (
+                "QFileDialog", "QDialog", "QInputDialog", "QMessageBox",
+                "QPushButton", "QLabel", "QWidget", "QVBoxLayout",
+                "QHBoxLayout", "QFont", "QWebEngineView", "QWebEnginePage",
+                "QWebEngineSettings",
+            ):
+                if not hasattr(aqt_mod.qt, _attr):
+                    setattr(aqt_mod.qt, _attr, MagicMock())
+            for _attr in (
+                "showInfo", "showWarning", "tooltip", "askUser",
+                "qconnect", "downArrow", "tr", "showCritical", "getText",
+                "openFolder", "openLink", "QWebEngineSettings",
+                "QWebEnginePage", "QWebEngineView",
+            ):
+                if not hasattr(aqt_mod.utils, _attr):
+                    setattr(aqt_mod.utils, _attr, MagicMock())
+            gui_hooks = getattr(aqt_mod, "gui_hooks", None) or MagicMock()
+            aqt_mod.gui_hooks = gui_hooks
+            sys.modules["aqt.gui_hooks"] = gui_hooks
+        else:
+            current_aqt = sys.modules.get("aqt")
+            if (
+                current_aqt is None
+                or isinstance(current_aqt, MagicMock)
+                or not hasattr(current_aqt, "mw")
+            ):
+                aqt_mod = types.ModuleType("aqt")
+                mw = MagicMock()
+                aqt_mod.qt = types.ModuleType("aqt.qt")
+                aqt_mod.utils = types.ModuleType("aqt.utils")
+                sys.modules["aqt"] = aqt_mod
+            else:
+                aqt_mod = current_aqt
+                mw = getattr(aqt_mod, "mw", None)
+                if mw is None:
+                    mw = MagicMock()
+            aqt_mod.mw = mw
+            if sys.modules.get("aqt.qt") is None:
+                sys.modules["aqt.qt"] = types.ModuleType("aqt.qt")
+            if not isinstance(sys.modules.get("aqt.utils"), types.ModuleType):
+                sys.modules["aqt.utils"] = types.ModuleType("aqt.utils")
+            aqt_mod.qt = sys.modules["aqt.qt"]
+            aqt_mod.utils = sys.modules["aqt.utils"]
+            for _attr in ("showInfo", "showWarning", "tooltip", "askUser"):
+                if not hasattr(aqt_mod.utils, _attr):
+                    setattr(aqt_mod.utils, _attr, MagicMock())
+            sys.modules["aqt.mw"] = mw
+            gui_hooks = sys.modules.get("aqt.gui_hooks")
+            if gui_hooks is None:
+                gui_hooks = MagicMock()
+                sys.modules["aqt.gui_hooks"] = gui_hooks
+            aqt_mod.gui_hooks = gui_hooks
+            for _attr in (
+                "QFileDialog", "QDialog", "QInputDialog", "QMessageBox",
+                "QPushButton", "QLabel", "QWidget", "QVBoxLayout",
+                "QHBoxLayout", "QFont", "QWebEngineView", "QWebEnginePage",
+                "QWebEngineSettings",
+            ):
+                if not hasattr(aqt_mod.qt, _attr):
+                    setattr(aqt_mod.qt, _attr, MagicMock())
+            for _attr in (
+                "qconnect", "downArrow", "tr", "showCritical", "getText",
+                "openFolder", "openLink", "QWebEngineSettings",
+                "QWebEnginePage", "QWebEngineView",
+            ):
+                if not hasattr(aqt_mod.utils, _attr):
+                    setattr(aqt_mod.utils, _attr, MagicMock())
+
         if not hasattr(aqt_mod.qt.QFileDialog, "getOpenFileName"):
             aqt_mod.qt.QFileDialog.getOpenFileName = MagicMock()
-
-        for _attr in ("qconnect", "downArrow"):
-            if not hasattr(aqt_mod.utils, _attr):
-                setattr(aqt_mod.utils, _attr, MagicMock())
 
         _aqt_exported_names = (
             [(n, aqt_mod.qt) for n in (
                 "QFileDialog", "QDialog", "QInputDialog", "QMessageBox",
-                "QPushButton", "QLabel", "QWidget",
+                "QPushButton", "QLabel", "QWidget", "QVBoxLayout",
+                "QHBoxLayout", "QFont", "QWebEngineView", "QWebEnginePage",
+                "QWebEngineSettings",
             )]
             + [(n, aqt_mod.utils) for n in (
                 "showInfo", "showWarning", "tooltip", "askUser", "qconnect",
-                "downArrow", "showCritical", "getText", "openFolder", "openLink",
+                "downArrow", "tr", "showCritical", "getText", "openFolder",
+                "openLink", "QWebEngineSettings", "QWebEnginePage",
+                "QWebEngineView",
             )]
             + [(n, aqt_mod) for n in ("mw", "gui_hooks", "qt", "utils")]
         )
@@ -128,6 +193,29 @@ def restore_package_stubs():
                     setattr(_mod, _name, getattr(_source_module, _name))
                 except (AttributeError, TypeError):
                     pass
+
+        # Some tests install a bare MagicMock QFileDialog on a module and
+        # then monkeypatch.setattr(st.QFileDialog, "getSaveFileName", ...).
+        # A freshly-constructed MagicMock() has no such attribute, so the
+        # setattr raises AttributeError before the test can run. Seed the
+        # four static dialog methods on every MagicMock QFileDialog we can
+        # see, so those fixtures succeed regardless of which module owns it.
+        _QFD_STATICS = (
+            "getOpenFileName", "getOpenFileNames",
+            "getSaveFileName", "getExistingDirectory",
+        )
+        for _mod in list(sys.modules.values()):
+            if not isinstance(_mod, types.ModuleType):
+                continue
+            _qfd = getattr(_mod, "QFileDialog", None)
+            if not isinstance(_qfd, MagicMock):
+                continue
+            for _name in _QFD_STATICS:
+                if not hasattr(_qfd, _name):
+                    try:
+                        setattr(_qfd, _name, MagicMock())
+                    except (AttributeError, TypeError):
+                        pass
 
         mw.taskman = getattr(mw, "taskman", MagicMock())
         mw.taskman.run_in_background = getattr(
