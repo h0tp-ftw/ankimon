@@ -58,12 +58,48 @@ def restore_package_stubs():
                 _mod.__package__ = _pkg
                 sys.modules[_pkg] = _mod
 
-        # Link sub-packages to parent packages so attribute access works
-        if "Ankimon" in sys.modules:
-            for attr in ("functions", "pyobj", "ankimon_items_web"):
-                subpkg = f"Ankimon.{attr}"
-                if subpkg in sys.modules:
-                    setattr(sys.modules["Ankimon"], attr, sys.modules[subpkg])
+        current_aqt = sys.modules.get("aqt")
+        if (
+            current_aqt is None
+            or isinstance(current_aqt, MagicMock)
+            or not hasattr(current_aqt, "mw")
+        ):
+            aqt_mod = types.ModuleType("aqt")
+            mw = MagicMock()
+            aqt_mod.qt = types.ModuleType("aqt.qt")
+            aqt_mod.utils = types.ModuleType("aqt.utils")
+            sys.modules["aqt"] = aqt_mod
+        else:
+            aqt_mod = current_aqt
+            mw = getattr(aqt_mod, "mw", None)
+            if mw is None:
+                mw = MagicMock()
+        aqt_mod.mw = mw
+        if not isinstance(sys.modules.get("aqt.qt"), types.ModuleType):
+            sys.modules["aqt.qt"] = types.ModuleType("aqt.qt")
+        if not isinstance(sys.modules.get("aqt.utils"), types.ModuleType):
+            sys.modules["aqt.utils"] = types.ModuleType("aqt.utils")
+        aqt_mod.qt = sys.modules["aqt.qt"]
+        aqt_mod.utils = sys.modules["aqt.utils"]
+        for attr in ("showInfo", "showWarning", "tooltip", "askUser"):
+            if not hasattr(aqt_mod.utils, attr):
+                setattr(aqt_mod.utils, attr, MagicMock())
+        sys.modules["aqt.mw"] = mw
+        gui_hooks = sys.modules.get("aqt.gui_hooks")
+        if gui_hooks is None:
+            gui_hooks = MagicMock()
+            sys.modules["aqt.gui_hooks"] = gui_hooks
+        aqt_mod.gui_hooks = gui_hooks
+
+        mw.taskman = getattr(mw, "taskman", MagicMock())
+        mw.taskman.run_in_background = getattr(
+            mw.taskman, "run_in_background", MagicMock()
+        )
+        mw.progress = getattr(mw, "progress", MagicMock())
+        mw.progress.single_shot = getattr(mw.progress, "single_shot", MagicMock())
+        mw.pm = getattr(mw, "pm", MagicMock())
+        mw.pm.profile = {}
+        mw.col = getattr(mw, "col", MagicMock())
 
         # Also restore Ankimon.resources to the real resources module if it was mocked with tmp paths
         current_res = sys.modules.get("Ankimon.resources")
@@ -123,6 +159,38 @@ def restore_package_stubs():
                 else:
                     sys.modules.pop("Ankimon.utils", None)
                 raise
+
+        # ``Ankimon.business`` is also replaced by tests with minimal stubs.
+        # Restore its real implementation when a bare mock or partial module
+        # would otherwise leak into later tests.
+        current_business = sys.modules.get("Ankimon.business")
+        if (
+            current_business is None
+            or isinstance(current_business, MagicMock)
+            or not hasattr(current_business, "calculate_cp_from_dict")
+        ):
+            import importlib.util
+
+            business_spec = importlib.util.spec_from_file_location(
+                "Ankimon.business", _src / "Ankimon" / "business.py"
+            )
+            business_mod = importlib.util.module_from_spec(business_spec)
+            sys.modules["Ankimon.business"] = business_mod
+            try:
+                business_spec.loader.exec_module(business_mod)
+            except Exception:
+                if current_business is not None:
+                    sys.modules["Ankimon.business"] = current_business
+                else:
+                    sys.modules.pop("Ankimon.business", None)
+                raise
+
+        # Link sub-packages to parent packages so attribute access works.
+        if "Ankimon" in sys.modules:
+            for attr in ("functions", "pyobj", "ankimon_items_web", "business"):
+                subpkg = f"Ankimon.{attr}"
+                if subpkg in sys.modules:
+                    setattr(sys.modules["Ankimon"], attr, sys.modules[subpkg])
 
         # NOTE (main re-fit): exp additionally re-executed the real
         # ``Ankimon.singletons`` module here.  On main, singletons.py is the
