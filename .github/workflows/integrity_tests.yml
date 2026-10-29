@@ -65,7 +65,7 @@ jobs:
       with:
         enable-cache: true
     - name: Install test dependencies
-      run: uv pip install --system pytest requests
+      run: uv pip install --system pytest==9.1.0 requests
     - name: Exercise damaged-save recovery and file publication
       run: >
         python -m pytest -q tests/test_save_import.py tests/test_backup_manager.py
