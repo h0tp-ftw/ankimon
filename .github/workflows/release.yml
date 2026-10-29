@@ -133,7 +133,7 @@ jobs:
       - name: Install release-prep dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pytest pytest-qt PyQt6 markdown
+          pip install requests pytest==9.1.0 pytest-qt PyQt6 markdown
 
       - name: Prepare Release Files
         env:
