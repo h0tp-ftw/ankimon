@@ -97,8 +97,12 @@ def restore_package_stubs():
         )
         mw.progress = getattr(mw, "progress", MagicMock())
         mw.progress.single_shot = getattr(mw.progress, "single_shot", MagicMock())
-        mw.pm = getattr(mw, "pm", MagicMock())
-        mw.pm.profile = {}
+        pm = getattr(mw, "pm", None)
+        if pm is None:
+            pm = MagicMock()
+            mw.pm = pm
+        if isinstance(pm, MagicMock) and not getattr(pm, "profile", None):
+            pm.profile = {}
         mw.col = getattr(mw, "col", MagicMock())
 
         # Also restore Ankimon.resources to the real resources module if it was mocked with tmp paths
