@@ -1,5 +1,5 @@
 aqt
-pytest<8.0
+pytest
 pytest-qt
 requests
 PyQt6
