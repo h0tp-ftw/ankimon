@@ -26,6 +26,18 @@ def get_daily_items_pool():
     return _DAILY_ITEMS_POOL
 
 
+def invalidate_daily_items_pool():
+    """Drop the cached daily-shop pool so it rebuilds from current assets.
+
+    On a fresh install the pool can be built before item sprites finish
+    downloading, caching an empty list for the rest of the session. The
+    download-success callback calls this so the next ``get_daily_items_pool()``
+    rebuilds from the installed sprites without requiring an Anki restart.
+    """
+    global _DAILY_ITEMS_POOL
+    _DAILY_ITEMS_POOL = None
+
+
 class PokemonShopManager:
     """Daily Mart data provider.
 
