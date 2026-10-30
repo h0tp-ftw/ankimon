@@ -535,9 +535,19 @@ class DownloadDialog(QDialog):
             from ..functions.item_wishlist import on_main_window_did_init
 
             invalidate_daily_items_pool()
-            from aqt import mw
+            from PyQt6.QtCore import QTimer
 
-            mw.taskman.run_on_main(on_main_window_did_init)
+            try:
+                from aqt import mw
+
+                run_on_main = mw.taskman.run_on_main
+            except (ImportError, AttributeError):
+                run_on_main = None
+
+            if run_on_main is not None:
+                run_on_main(on_main_window_did_init)
+            else:
+                QTimer.singleShot(0, on_main_window_did_init)
 
             self.start_button.setText("Download Complete!")
             self.start_button.setEnabled(False)
