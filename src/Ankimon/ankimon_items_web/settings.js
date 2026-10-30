@@ -282,6 +282,7 @@
 
         let activeModalBackdrop = null;
         let activeModalGrid = null;
+        let activeCardById = new Map();
         let caughtPokemon = [];
 
         function getValues() {
@@ -307,7 +308,7 @@
             markRowDirty(setting.key);
 
             if (activeModalGrid) {
-                renderModalGrid(activeModalGrid);
+                updateModalCard(id);
             }
         }
 
@@ -324,7 +325,7 @@
                 markRowDirty(setting.key);
 
                 if (activeModalGrid) {
-                    renderModalGrid(activeModalGrid);
+                    updateModalCard(id);
                 }
             }
             input.value = '';
@@ -363,7 +364,7 @@
                     markRowDirty(setting.key);
 
                     if (activeModalGrid) {
-                        renderModalGrid(activeModalGrid);
+                        updateModalCard(id);
                     }
                 });
                 chip.appendChild(x);
@@ -469,6 +470,7 @@
         // Modal Suggestions logic
         function renderModalGrid(grid) {
             grid.innerHTML = '';
+            activeCardById = new Map();
             const entries = isItemWishlist
                 ? itemOptions
                 : caughtPokemon.map((pokemon) => ({
@@ -488,12 +490,15 @@
             entries.forEach((entry) => {
                 const isInWishlist = activeValues.includes(entry.id);
 
-                const card = document.createElement('div');
+                const card = document.createElement('button');
+                card.type = 'button';
                 card.className = `wishlist-suggestion-card${isInWishlist ? ' in-wishlist' : ''}`;
                 card.title = isItemWishlist ? entry.name : `${entry.name} (#${entry.id})`;
+                card.setAttribute('aria-pressed', String(isInWishlist));
 
                 const img = document.createElement('img');
                 img.className = 'wishlist-suggestion-sprite';
+                img.alt = '';
                 img.src = isItemWishlist
                     ? `../user_files/sprites/items/${encodeURIComponent(entry.id)}.png`
                     : `../user_files/sprites/front_default/${entry.id}.png`;
@@ -518,7 +523,16 @@
                 card.append(img, nameLbl);
                 card.addEventListener('click', () => toggleEntry(entry.id, entry.name));
                 grid.appendChild(card);
+                activeCardById.set(entry.id, card);
             });
+        }
+
+        function updateModalCard(id) {
+            const card = activeCardById.get(id);
+            if (!card) return;
+            const isInWishlist = getValues().includes(id);
+            card.classList.toggle('in-wishlist', isInWishlist);
+            card.setAttribute('aria-pressed', String(isInWishlist));
         }
 
         function openChooseModal() {
@@ -548,6 +562,7 @@
                 backdrop.remove();
                 activeModalBackdrop = null;
                 activeModalGrid = null;
+                activeCardById = new Map();
                 document.removeEventListener('keydown', handleEsc);
             };
 
@@ -954,6 +969,9 @@
         content.style.maxWidth = '420px';
 
         const header = document.createElement('div');
+        header.className = 'wishlist-modal-header';
+        const title = document
+                const header = document.createElement('div');
         header.className = 'wishlist-modal-header';
         const title = document.createElement('h3');
         title.className = 'wishlist-modal-title';
