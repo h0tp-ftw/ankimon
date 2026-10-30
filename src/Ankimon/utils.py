@@ -510,7 +510,14 @@ def daily_item_list():
 
 
 def get_item_wishlist_pool() -> list[str]:
-    """Return obtainable review and daily-shop items, including bundled sprites."""
+    """Return obtainable review and daily-shop items, including bundled sprites.
+
+    Shop TMs are included as identifiers as well: the daily notification
+    already checks TM names, and a wishlisted TM whose move name has no
+    matching item PNG must still be selectable and saveable. TM identifiers
+    are validated as strings at this ingestion boundary, matching the
+    item-name validation used above.
+    """
     item_names = set(get_review_item_pool())
     if Path(items_path).is_dir():
         item_names.update(item["name"] for item in daily_item_list())
@@ -530,6 +537,20 @@ def get_item_wishlist_pool() -> list[str]:
             and not any(item_name.endswith(suffix) for suffix in excluded_shop_suffixes)
         ):
             item_names.add(item_name)
+
+    try:
+        from .singletons import shop_manager
+
+        for tm in shop_manager.get_tm_pool() or []:
+            if isinstance(tm, str) and tm:
+                item_names.add(tm)
+            elif isinstance(tm, dict):
+                tm_name = tm.get("name")
+                if isinstance(tm_name, str) and tm_name:
+                    item_names.add(tm_name)
+    except Exception:
+        pass
+
     return sorted(item_names)
 
 
