@@ -101,7 +101,6 @@ def _scenario(popup_enabled, override=False, wishlist=None, forced_item=None):
         + "events = d.answer('good')\n"
         + "after = d.services.db.get_all_items()\n"
         + "errs = [e for e in events if e['type'] == 'error']\n"
-        + (f"if errs and 'display_item' in str(errs[0].get('exception', '')):\n    errs = []\n    spy.display_item_calls = 1\n" if forced_item else "")
         + "print(%r + json.dumps({\n" % _MARKER
         + "    'display_item_calls': spy.display_item_calls,\n"
         + "    'wishlist_popup_messages': wishlist_popup_messages,\n"
