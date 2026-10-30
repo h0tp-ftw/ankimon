@@ -1211,7 +1211,8 @@ try:
 
     def victorystar(attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather):
         accuracy = attacking_move.get(constants.ACCURACY)
-        if isinstance(accuracy, (int, float)) and not isinstance(accuracy, bool):
+        # Using type() strictly excludes bool, which is what we want. True is not int in this context.
+        if type(accuracy) in (int, float):
             attacking_move = attacking_move.copy()
             attacking_move[constants.ACCURACY] = int(accuracy * 1.1)
         return attacking_move
