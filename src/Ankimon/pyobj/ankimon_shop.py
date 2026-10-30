@@ -16,26 +16,32 @@ from ..resources import pokemon_tm_learnset_path
 # surface a download dialog from inside a stats notification, and a headless
 # run (the agent harness) aborted outright on the QWidget construction.
 _DAILY_ITEMS_POOL = None
+_DAILY_ITEMS_POOL_GEN = 0
 
 
 def get_daily_items_pool():
     """Return the daily-shop item pool, building it once on first call."""
     global _DAILY_ITEMS_POOL
     if _DAILY_ITEMS_POOL is None:
-        _DAILY_ITEMS_POOL = daily_item_list() or []
+        gen = _DAILY_ITEMS_POOL_GEN
+        built = daily_item_list() or []
+        if gen == _DAILY_ITEMS_POOL_GEN:
+            _DAILY_ITEMS_POOL = built
     return _DAILY_ITEMS_POOL
 
 
 def invalidate_daily_items_pool():
     """Drop the cached daily-shop pool so it rebuilds from current assets.
 
-    On a fresh install the pool can be built before item sprites finish
-    downloading, caching an empty list for the rest of the session. The
-    download-success callback calls this so the next ``get_daily_items_pool()``
-    rebuilds from the installed sprites without requiring an Anki restart.
+    Also bumps the pool generation so an in-flight build (e.g. one blocked on
+    the sprite-download dialog opened by daily_item_list()) cannot commit its
+    pre-download empty result after this invalidation runs. Called from the
+    download-success callback so the next get_daily_items_pool() rebuilds from
+    the installed sprites without requiring an Anki restart.
     """
-    global _DAILY_ITEMS_POOL
+    global _DAILY_ITEMS_POOL, _DAILY_ITEMS_POOL_GEN
     _DAILY_ITEMS_POOL = None
+    _DAILY_ITEMS_POOL_GEN += 1
 
 
 class PokemonShopManager:

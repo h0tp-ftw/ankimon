@@ -9,6 +9,25 @@ _HOOK_RECORD = "_item_wishlist_main_window_hook"
 _DATE_KEY = "date_today"
 
 
+def _item_assets_ready() -> bool:
+    """True when item sprites are present on disk.
+
+    Checked *before* touching the daily-shop pool: on a fresh install the
+    pool's first build opens the sprite-download dialog, and we do not want
+    to trigger that from a notification hook or commit an empty result as a
+    completed check. A genuinely empty shop with assets present reads True
+    and completes normally.
+    """
+    try:
+        from ..resources import items_path
+
+        return items_path.is_dir() and any(
+            p.endswith(".png") for p in (x.name for x in items_path.iterdir())
+        )
+    except OSError:
+        return False
+
+
 def on_main_window_did_init(_main_window=None):
     """Notify once per local date when a wishlisted item is in today's shop."""
     db = services.db
@@ -19,6 +38,9 @@ def on_main_window_did_init(_main_window=None):
     today = datetime.now().strftime("%d-%m-%y")
     try:
         if db.get_user_data(_DATE_KEY) == today:
+            return
+
+        if not _item_assets_ready():
             return
 
         wishlist = settings.get("gui.item_wishlist", [])
