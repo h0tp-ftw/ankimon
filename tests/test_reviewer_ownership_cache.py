@@ -157,6 +157,10 @@ def _install_common_mocks(fake_services):
     ]:
         sys.modules[name] = MagicMock()
 
+    const_mod = types.ModuleType("Ankimon.const")
+    const_mod.status_colors_html = {}
+    sys.modules["Ankimon.const"] = const_mod
+
     services_mod = types.ModuleType("Ankimon.services")
     services_mod.services = fake_services
     sys.modules["Ankimon.services"] = services_mod
