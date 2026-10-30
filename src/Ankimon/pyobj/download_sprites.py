@@ -531,6 +531,14 @@ class DownloadDialog(QDialog):
         self.status_label.setText(message)
         self.cancel_button.setEnabled(False)
         if success:
+            from ..pyobj.ankimon_shop import invalidate_daily_items_pool
+            from ..functions.item_wishlist import on_main_window_did_init
+
+            invalidate_daily_items_pool()
+            from aqt import mw
+
+            mw.taskman.run_on_main(on_main_window_did_init)
+
             self.start_button.setText("Download Complete!")
             self.start_button.setEnabled(False)
             self.progress_bar.setValue(100)
