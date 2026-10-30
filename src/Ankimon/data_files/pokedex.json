@@ -41197,7 +41197,8 @@
     ],
     "prevo": "Kubfu",
     "evoType": "other",
-    "evoCondition": "Defeat the Single Strike Tower",
+    "evoCondition": "minimumDefeated",
+    "evoDefeated": 100,
     "eggGroups": [
       "Undiscovered"
     ],
@@ -41241,7 +41242,8 @@
     "color": "Gray",
     "prevo": "Kubfu",
     "evoType": "other",
-    "evoCondition": "Defeat the Rapid Strike Tower",
+    "evoCondition": "minimumDefeated",
+    "evoDefeated": 100,
     "eggGroups": [
       "Undiscovered"
     ],
