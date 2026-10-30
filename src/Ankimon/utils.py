@@ -602,13 +602,18 @@ def get_item_id(item_name, file_path=csv_file_items_cost):
 
 # Function to return a random fossil
 def random_fossil():
-    fossil_names = []
-    # Iterate over each file in the directory
-    for file in os.listdir(items_path):
-        # Check if the file is a .png file
-        if file.endswith("-fossil.png"):
-            # Append the file name without the .png extension to the list
-            fossil_names.append(file[:-4])
+    # Fossils explicitly implemented in item_window.py
+    fossil_names = [
+        "helix-fossil",
+        "dome-fossil",
+        "old-amber",
+        "root-fossil",
+        "claw-fossil",
+        "skull-fossil",
+        "armor-fossil",
+        "cover-fossil",
+        "plume-fossil",
+    ]
     fossil_name = random.choice(fossil_names)
     give_item(fossil_name)
     return fossil_name
