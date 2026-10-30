@@ -27,8 +27,8 @@ def add_defeat_pokemon_hook(func):
     defeat_pokemon_hooks.append(func)
 
 
-def CatchPokemonHook(collected_pokemon_ids, force=False):
-    if enemy_pokemon.hp < 1 or force:
+def CatchPokemonHook(collected_pokemon_ids):
+    if enemy_pokemon.hp < 1:
         catch_pokemon(
             enemy_pokemon,
             ankimon_tracker_obj,
