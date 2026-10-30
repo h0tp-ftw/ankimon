@@ -3534,11 +3534,15 @@ class AnkimonItemsWeb(QDialog):
             if isinstance(incoming, list):
                 if key == "gui.item_wishlist":
                     available_items = set(get_item_wishlist_pool())
+                    previously_saved = set()
+                    if isinstance(existing, list):
+                        previously_saved = {item for item in existing if isinstance(item, str)}
                     return list(
                         dict.fromkeys(
                             item
                             for item in incoming
-                            if isinstance(item, str) and item in available_items
+                            if isinstance(item, str)
+                            and (item in available_items or item in previously_saved)
                         )
                     )
                 # Accept only integer IDs; silently drop anything non-numeric.
