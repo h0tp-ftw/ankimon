@@ -15,6 +15,8 @@
     let bridge = null;
     let nav = null;
     let unsavedGuardOpen = false;
+    let pendingInitializeData = null;
+    let domReady = false;
 
     const HUD_TOGGLE_AUTO_SYNC_KEYS = [
         'gui.hud_player_sprite',
@@ -33,40 +35,66 @@
             cb(null);
             return;
         }
-        new QWebChannel(qt.webChannelTransport, function (channel) {
-            bridge = channel.objects && channel.objects.settings;
-            nav = channel.objects && channel.objects.nav;
-            window.bridge = bridge;
-            window.nav = nav;
-            cb(bridge);
-        });
+        try {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                bridge = channel.objects && channel.objects.settings;
+                nav = channel.objects && channel.objects.nav;
+                window.bridge = bridge;
+                window.nav = nav;
+                cb(bridge);
+            });
+        } catch (e) {
+            console.warn('QWebChannel init failed — standalone mode', e);
+            cb(null);
+        }
     }
 
     window.initializeSettings = function (data) {
-        state.data = data || {groups: []};
-        state.edits = {};  // fresh data resets dirty state
-        state.explicitHudOverrides.clear();
-        renderAll();
+        if (!domReady || !document.getElementById('settings-content')) {
+            pendingInitializeData = data;
+            return;
+        }
+        try {
+            state.data = (data && typeof data === 'object') ? data : {groups: []};
+            state.edits = {};
+            state.explicitHudOverrides.clear();
+            renderAll();
+        } catch (e) {
+            console.error('Ankimon Settings: initializeSettings failed', e);
+        }
     };
+
+    function applyPendingInitialize() {
+        if (pendingInitializeData !== null) {
+            const data = pendingInitializeData;
+            pendingInitializeData = null;
+            window.initializeSettings(data);
+        }
+    }
 
     // ---------- Rendering ----------
     function renderAll() {
-        renderGroupJumps();
-        renderContent();
-        applySearchFilter();
-        updateDirtyUI();
+        try { renderGroupJumps(); } catch (e) { console.error('renderGroupJumps failed', e); }
+        try { renderContent(); } catch (e) { console.error('renderContent failed', e); }
+        try { applySearchFilter(); } catch (e) { console.error('applySearchFilter failed', e); }
+        try { updateDirtyUI(); } catch (e) { console.error('updateDirtyUI failed', e); }
         // Re-run the spy after render so the active button reflects the
         // post-render scroll position (in case the DOM rebuild moved things
         // around).
-        updateActiveSection();
+        try { updateActiveSection(); } catch (e) { console.error('updateActiveSection failed', e); }
+    }
+
+    function groups() {
+        return (state.data && Array.isArray(state.data.groups)) ? state.data.groups : [];
     }
 
     function renderGroupJumps() {
         const container = document.getElementById('group-jumps');
+        if (!container) return;
         // Build into a fragment then swap atomically to avoid a brief
         // empty-state on every save refresh.
         const frag = document.createDocumentFragment();
-        (state.data.groups || []).forEach((g) => {
+        groups().forEach((g) => {
             const btn = document.createElement('button');
             btn.className = 'group-jump';
             btn.dataset.group = g.label;
@@ -91,11 +119,12 @@
 
     function renderContent() {
         const root = document.getElementById('settings-content');
+        if (!root) return;
         // Build the whole settings tree into a fragment off-DOM, then swap
         // it in atomically. Without this, every save → re-fetch cycle
         // flashes an empty form area while ~60 rows rebuild sequentially.
         const frag = document.createDocumentFragment();
-        (state.data.groups || []).forEach((group) => {
+        groups().forEach((group) => {
             const groupEl = document.createElement('section');
             groupEl.className = 'settings-group';
             groupEl.dataset.group = group.label;
@@ -811,7 +840,7 @@
     }
 
     function findSetting(key) {
-        for (const g of (state.data.groups || [])) {
+        for (const g of groups()) {
             for (const s of (g.settings || [])) {
                 if (s.key === key) return s;
                 if (s.type === 'chips') {
@@ -863,18 +892,25 @@
         const discardBtn = document.getElementById('discard-btn');
         const pill = document.getElementById('dirty-count');
         const status = document.getElementById('save-status');
-        saveBtn.disabled = !dirty;
-        saveBtn.classList.toggle('dirty', dirty);
-        discardBtn.classList.toggle('hidden', !dirty);
-        if (dirty) {
-            pill.classList.remove('hidden');
-            pill.textContent = n;
-            status.textContent = n + ' unsaved';
-            status.style.color = 'var(--accent-gold)';
-        } else {
-            pill.classList.add('hidden');
-            status.textContent = 'All saved';
-            status.style.color = 'var(--accent-green)';
+        if (saveBtn) {
+            saveBtn.disabled = !dirty;
+            saveBtn.classList.toggle('dirty', dirty);
+        }
+        if (discardBtn) {
+            discardBtn.classList.toggle('hidden', !dirty);
+        }
+        if (pill) {
+            pill.classList.toggle('hidden', !dirty);
+            if (dirty) pill.textContent = n;
+        }
+        if (status) {
+            if (dirty) {
+                status.textContent = n + ' unsaved';
+                status.style.color = 'var(--accent-gold)';
+            } else {
+                status.textContent = 'All saved';
+                status.style.color = 'var(--accent-green)';
+            }
         }
         // Sync the row-level dirty markers (in case render rebuilt them).
         // Chip rows key their edits under each chip's sub-key, not the row's
@@ -910,7 +946,7 @@
             groupEl.classList.toggle('hidden', groupVisible === 0);
             visible += groupVisible;
         });
-        empty.classList.toggle('hidden', visible > 0);
+        if (empty) empty.classList.toggle('hidden', visible > 0);
     }
 
     // ---------- Save ----------
@@ -969,9 +1005,6 @@
         content.style.maxWidth = '420px';
 
         const header = document.createElement('div');
-        header.className = 'wishlist-modal-header';
-        const title = document
-                const header = document.createElement('div');
         header.className = 'wishlist-modal-header';
         const title = document.createElement('h3');
         title.className = 'wishlist-modal-title';
@@ -1049,6 +1082,7 @@
     function showToast(message, isError) {
         if (!message) return;
         const toast = document.getElementById('toast');
+        if (!toast) return;
         toast.textContent = message;
         toast.classList.toggle('error', !!isError);
         toast.classList.add('visible');
@@ -1111,7 +1145,7 @@
     }
 
     function cssEscape(s) {
-        return s.replace(/"/g, '\\"');
+        return String(s).replace(/"/g, '\\"');
     }
 
     function updateActiveSection() {
@@ -1157,20 +1191,26 @@
     function bindUI() {
         const search = document.getElementById('settings-search');
         const clear = document.getElementById('clear-search');
-        search.addEventListener('input', () => {
-            state.search = search.value.trim().toLowerCase();
-            clear.classList.toggle('hidden', !state.search);
-            applySearchFilter();
-        });
-        clear.addEventListener('click', () => {
-            search.value = '';
-            state.search = '';
-            clear.classList.add('hidden');
-            applySearchFilter();
-        });
+        if (search) {
+            search.addEventListener('input', () => {
+                state.search = search.value.trim().toLowerCase();
+                if (clear) clear.classList.toggle('hidden', !state.search);
+                applySearchFilter();
+            });
+        }
+        if (clear && search) {
+            clear.addEventListener('click', () => {
+                search.value = '';
+                state.search = '';
+                clear.classList.add('hidden');
+                applySearchFilter();
+            });
+        }
 
-        document.getElementById('save-btn').addEventListener('click', () => onSave());
-        document.getElementById('discard-btn').addEventListener('click', onDiscard);
+        const saveBtn = document.getElementById('save-btn');
+        if (saveBtn) saveBtn.addEventListener('click', () => onSave());
+        const discardBtn = document.getElementById('discard-btn');
+        if (discardBtn) discardBtn.addEventListener('click', onDiscard);
         // Let the shared nav switcher consult us before leaving with unsaved edits.
         window.navBeforeLeave = guardUnsavedNavigation;
 
@@ -1180,7 +1220,7 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === '/' && document.activeElement !== search) {
                 e.preventDefault();
-                search.focus();
+                if (search) search.focus();
             } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
                 e.preventDefault();
                 onSave();
@@ -1188,12 +1228,21 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    function onDomReady() {
+        domReady = true;
         bindUI();
         // Dropdown nav: wire from the shared switcher once the channel resolves
         // so it has the live NavBridge. See ankimon_items_web/nav-switcher.js.
         initChannel(() => {
             if (window.wireNavSwitcher) window.wireNavSwitcher(nav);
         });
-    });
+        applyPendingInitialize();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', onDomReady);
+    } else {
+        onDomReady();
+    }
 })();
+                             
