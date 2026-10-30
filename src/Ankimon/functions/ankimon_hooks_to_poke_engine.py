@@ -1203,3 +1203,17 @@ def diff_states(state_before, state_after, path="", changes=None):
             diff_states(before_val, after_val, new_path, changes)
 
     return changes
+
+# Inject victorystar to poke_engine
+
+from ..poke_engine.special_effects.abilities.modify_attack_being_used import ability_lookup
+from ..poke_engine import constants
+
+def victorystar(attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather):
+    accuracy = attacking_move.get(constants.ACCURACY)
+    if isinstance(accuracy, (int, float)) and not isinstance(accuracy, bool):
+        attacking_move = attacking_move.copy()
+        attacking_move[constants.ACCURACY] = int(accuracy * 1.1)
+    return attacking_move
+
+ability_lookup['victorystar'] = victorystar
