@@ -151,7 +151,6 @@ MODULES_TO_CHECK = [
     "Ankimon.functions.drawing_utils",
     "Ankimon.functions.encounter_data",
     "Ankimon.functions.encounter_functions",
-    "Ankimon.functions.ev_items",
     "Ankimon.functions.friendship_evolution",
     "Ankimon.functions.gui_functions",
     "Ankimon.functions.learnset_retrieval",
