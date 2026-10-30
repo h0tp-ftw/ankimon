@@ -21,6 +21,7 @@
 
     "gui.animate_time": true,
     "gui.gif_in_collection": true,
+    "gui.gif_in_ankimon_window": false,
     "gui.show_sprites_across_ankimon": true,
     "gui.hud_styling": true,
     "gui.pop_up_dialog_message_on_defeat": false,

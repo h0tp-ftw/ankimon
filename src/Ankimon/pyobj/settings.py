@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
     "controls.allow_to_choose_moves": False,
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
+    "gui.gif_in_ankimon_window": False,
     "gui.show_sprites_across_ankimon": True,
     "gui.hud_styling": True,
     "gui.pop_up_dialog_message_on_defeat": False,
@@ -314,17 +315,13 @@ class Settings:
 
         return changed_keys
 
-    def save_config(
-        self, config, explicit_overrides=None, apply_hud_autosync=True
-    ):
+    def save_config(self, config, explicit_overrides=None, apply_hud_autosync=True):
         previous_value = None
         if hasattr(self, "config") and self.config is not None:
             previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
 
         if apply_hud_autosync:
-            self._apply_hud_toggle_autosync(
-                config, previous_value, explicit_overrides
-            )
+            self._apply_hud_toggle_autosync(config, previous_value, explicit_overrides)
 
         # 1. Always save to database if available
         if services.db is not None:
