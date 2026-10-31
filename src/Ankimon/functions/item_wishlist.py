@@ -6,6 +6,8 @@ from ..services import services
 
 
 _HOOK_RECORD = "_item_wishlist_main_window_hook"
+_PROFILE_HOOK_RECORD = "_item_wishlist_profile_hook"
+_TIMER_RECORD = "_item_wishlist_rollover_timer"
 _DATE_KEY = "date_today"
 
 
@@ -72,8 +74,70 @@ def on_main_window_did_init(_main_window=None):
         logger.log("error", f"Failed to check Item Wishlist shop items: {exc}")
 
 
+def _run_wishlist_check_safe():
+    """Wrapper so a QTimer timeout can call on_main_window_did_init without
+    leaking exceptions into Qt's event loop."""
+    try:
+        on_main_window_did_init()
+    except Exception as exc:
+        logger = services.logger
+        if logger is not None:
+            logger.log("error", f"Item Wishlist daily check failed: {exc}")
+
+
+def _install_daily_rollover_timer():
+    """Fire the wishlist check shortly after local midnight, then daily.
+
+    Reload-safe: tears down any previously installed timer stored on
+    ``services`` before installing a new one.
+    """
+    try:
+        from PyQt6.QtCore import QTimer
+    except Exception:
+        return
+
+    previous = getattr(services, _TIMER_RECORD, None)
+    if previous is not None:
+        try:
+            previous.stop()
+            previous.deleteLater()
+        except Exception:
+            pass
+        setattr(services, _TIMER_RECORD, None)
+
+    now = datetime.now()
+    next_midnight = now.replace(hour=0, minute=1, second=0, microsecond=0)
+    if next_midnight <= now:
+        from datetime import timedelta
+
+        next_midnight += timedelta(days=1)
+    delay_ms = max(1000, int((next_midnight - now).total_seconds() * 1000))
+
+    timer = QTimer()
+    timer.setSingleShot(True)
+
+    def _on_fire():
+        try:
+            _run_wishlist_check_safe()
+        finally:
+            _install_daily_rollover_timer()
+
+    timer.timeout.connect(_on_fire)
+    timer.start(delay_ms)
+    setattr(services, _TIMER_RECORD, timer)
+
+
 def register_item_wishlist_hook():
-    """Register one reload-safe check after Anki's main window is initialized."""
+    """Register reload-safe wishlist checks.
+
+    - ``main_window_did_init`` covers app startup / fresh window.
+    - ``profile_did_open`` covers profile switches.
+    - A once-per-day ``QTimer`` covers the case where Anki stays open across
+      midnight: the daily shop rolls over by date, but neither of the hooks
+      above fires, so without the timer a matching item could go unnotified
+      until the next restart. The persisted ``date_today`` guard makes the
+      extra invocations no-ops on the same day.
+    """
     from aqt import gui_hooks
 
     previous = getattr(services, _HOOK_RECORD, None)
@@ -83,5 +147,20 @@ def register_item_wishlist_hook():
         except ValueError:
             pass
 
+    previous_profile = getattr(services, _PROFILE_HOOK_RECORD, None)
+    if previous_profile is not None:
+        try:
+            gui_hooks.profile_did_open.remove(previous_profile)
+        except (ValueError, AttributeError):
+            pass
+
     gui_hooks.main_window_did_init.append(on_main_window_did_init)
     setattr(services, _HOOK_RECORD, on_main_window_did_init)
+
+    try:
+        gui_hooks.profile_did_open.append(on_main_window_did_init)
+        setattr(services, _PROFILE_HOOK_RECORD, on_main_window_did_init)
+    except AttributeError:
+        pass
+
+    _install_daily_rollover_timer()
