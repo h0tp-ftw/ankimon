@@ -1057,7 +1057,8 @@ class AnkimonDB:
                 name TEXT GENERATED ALWAYS AS (json_extract(data, '$.name')) VIRTUAL,
                 pokedex_id INTEGER GENERATED ALWAYS AS (json_extract(data, '$.id')) VIRTUAL,
                 shiny BOOLEAN GENERATED ALWAYS AS (json_extract(data, '$.shiny')) VIRTUAL,
-                level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL
+                level INTEGER GENERATED ALWAYS AS (json_extract(data, '$.level')) VIRTUAL,
+                special_form TEXT GENERATED ALWAYS AS (json_extract(data, '$.special_form')) VIRTUAL
             )
         """)
         cursor.execute(
@@ -1328,7 +1329,7 @@ class AnkimonDB:
         pokemon_id = pokemon_data.get("id")
         if pokemon_id:
             try:
-                self.mark_as_caught(int(pokemon_id))
+                self.mark_as_caught(int(pokemon_id), special_form=pokemon_data.get("special_form"))
             except Exception as e:
                 self._log("error", f"Failed to mark saved pokemon as caught: {e}")
 
@@ -1621,7 +1622,7 @@ class AnkimonDB:
         # reconciliation sweep (or lose it if this Pokemon is traded again).
         if replaced and pokemon_data.get("id"):
             try:
-                self.mark_as_caught(int(pokemon_data["id"]))
+                self.mark_as_caught(int(pokemon_data["id"]), special_form=pokemon_data.get("special_form"))
             except Exception as e:
                 self._log("error", f"Failed to mark traded pokemon as caught: {e}")
         return replaced
@@ -1708,7 +1709,7 @@ class AnkimonDB:
         pokemon_id = pokemon_data.get("id")
         if pokemon_id:
             try:
-                self.mark_as_caught(int(pokemon_id))
+                self.mark_as_caught(int(pokemon_id), special_form=pokemon_data.get("special_form"))
             except Exception as e:
                 self._log("error", f"Failed to mark saved main pokemon as caught: {e}")
 
@@ -2457,20 +2458,43 @@ class AnkimonDB:
             # once we have a reason to rewrite it.
             known: set = set()
             stored: List[int] = []
-            for pokemon_id in self._coerce_pokedex_id_list(self.get_user_data(key, [])):
-                if pokemon_id not in known:
-                    known.add(pokemon_id)
-                    stored.append(pokemon_id)
+
+            raw_data = self.get_user_data(key, [])
+            if not isinstance(raw_data, list):
+                raw_data = [raw_data] if raw_data is not None else []
+
+            for pokemon_id in raw_data:
+                if key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_"):
+                    if not isinstance(pokemon_id, str):
+                        continue
+                else:
+                    try:
+                        pokemon_id = int(pokemon_id)
+                    except (TypeError, ValueError):
+                        continue
+
+                try:
+                    if pokemon_id not in known:
+                        known.add(pokemon_id)
+                        stored.append(pokemon_id)
+                except TypeError:
+                    pass
 
             new_ids: List[int] = []
             for raw_id in ids:
-                try:
-                    pokemon_id = int(raw_id)
-                except (TypeError, ValueError):
-                    continue
-                if pokemon_id not in known:
-                    known.add(pokemon_id)
-                    new_ids.append(pokemon_id)
+                if key.startswith("pokedex_caught_form_") or key.startswith("pokedex_seen_form_"):
+                    # allow strings for forms
+                    if raw_id not in known:
+                        known.add(raw_id)
+                        new_ids.append(raw_id)
+                else:
+                    try:
+                        pokemon_id = int(raw_id)
+                    except (TypeError, ValueError):
+                        continue
+                    if pokemon_id not in known:
+                        known.add(pokemon_id)
+                        new_ids.append(pokemon_id)
 
             added[key] = len(new_ids)
             if new_ids:
@@ -2485,7 +2509,7 @@ class AnkimonDB:
             conn.commit()
         return added
 
-    def mark_as_caught(self, pokemon_id: int):
+    def mark_as_caught(self, pokemon_id: int, special_form: str = None):
         """Marks a pokemon as caught (and seen) in the pokedex history.
 
         Raises if the write fails — callers on a save path swallow and log that,
@@ -2500,11 +2524,17 @@ class AnkimonDB:
         # Both lists are rewritten wholesale, so hold the lock across the whole
         # read-modify-write (save_pokemon also runs on the mobile-sync thread).
         # Catching implies seeing, so both are recorded in the same transaction.
+
+        additions = {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
+        if special_form:
+            form_key_caught = f"pokedex_caught_form_{pokemon_id}"
+            form_key_seen = f"pokedex_seen_form_{pokemon_id}"
+            additions[form_key_caught] = (special_form,)
+            additions[form_key_seen] = (special_form,)
+
         with self._pokedex_lock:
-            added = self._append_pokedex_ids(
-                {"pokedex_caught": (pokemon_id,), "pokedex_seen": (pokemon_id,)}
-            )
-        if added.get("pokedex_caught"):
+            added = self._append_pokedex_ids(additions)
+        if added.get("pokedex_caught") or (special_form and added.get(form_key_caught)):
             self._clear_reviewer_ownership_cache()
 
     def _reconcile_pokedex_history_safely(self):
@@ -2531,15 +2561,33 @@ class AnkimonDB:
         Pokemon saved after the upgrade.
         """
         ids: set = set()
+        forms = {}
 
         try:
-            cursor = self.execute(
-                "SELECT DISTINCT pokedex_id FROM captured_pokemon "
-                "WHERE pokedex_id IS NOT NULL"
-            )
-            ids.update(
-                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
-            )
+            cursor = self.execute("PRAGMA table_info(captured_pokemon)")
+            has_form = any(row[1] == "special_form" for row in cursor.fetchall())
+
+            if has_form:
+                cursor = self.execute(
+                    "SELECT DISTINCT pokedex_id, special_form FROM captured_pokemon "
+                    "WHERE pokedex_id IS NOT NULL"
+                )
+            else:
+                cursor = self.execute(
+                    "SELECT DISTINCT pokedex_id, json_extract(data, '$.special_form') as special_form FROM captured_pokemon "
+                    "WHERE pokedex_id IS NOT NULL"
+                )
+
+            for row in cursor.fetchall():
+                pid = row[0]
+                form = row[1]
+                if pid is not None and pid != 0:
+                    ids.add(pid)
+                    if form:
+                        if pid not in forms:
+                            forms[pid] = set()
+                        forms[pid].add(form)
+
         except Exception as e:
             self._log(
                 "warning", f"Pokedex reconcile: could not read captured_pokemon: {e}"
@@ -2549,11 +2597,20 @@ class AnkimonDB:
         # so an older DB without pokemon_history still reconciles the owned rows.
         try:
             cursor = self.execute(
-                "SELECT DISTINCT json_extract(data, '$.id') FROM pokemon_history"
+                "SELECT DISTINCT json_extract(data, '$.id') as pid, json_extract(data, '$.special_form') as form FROM pokemon_history"
             )
-            ids.update(
-                self._coerce_pokedex_id_list([row[0] for row in cursor.fetchall()])
-            )
+            for row in cursor.fetchall():
+                try:
+                    pid = int(row[0])
+                    form = row[1]
+                    if pid != 0:
+                        ids.add(pid)
+                        if form:
+                            if pid not in forms:
+                                forms[pid] = set()
+                            forms[pid].add(form)
+                except (ValueError, TypeError):
+                    pass
         except Exception as e:
             self._log(
                 "warning", f"Pokedex reconcile: could not read pokemon_history: {e}"
@@ -2562,11 +2619,17 @@ class AnkimonDB:
         if not ids:
             return
 
-        sorted_ids = sorted(ids)
+        sorted_ids = sorted([i for i in ids if isinstance(i, int)])
+
+        additions = {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
+        for pid, form_set in forms.items():
+            if form_set:
+                sorted_forms = sorted(list(form_set))
+                additions[f"pokedex_caught_form_{pid}"] = sorted_forms
+                additions[f"pokedex_seen_form_{pid}"] = sorted_forms
+
         with self._pokedex_lock:
-            added = self._append_pokedex_ids(
-                {"pokedex_caught": sorted_ids, "pokedex_seen": sorted_ids}
-            )
+            added = self._append_pokedex_ids(additions)
         if any(added.values()):
             self._log(
                 "info",
@@ -2581,9 +2644,23 @@ class AnkimonDB:
             self._coerce_pokedex_id_list(self.get_user_data("pokedex_caught", []))
         )
 
+    def get_caught_forms(self, pokemon_id: int) -> set[str]:
+        """Returns a set of all special forms marked as caught for the pokemon."""
+        raw_forms = self.get_user_data(f"pokedex_caught_form_{pokemon_id}", [])
+        if isinstance(raw_forms, list):
+            return set(f for f in raw_forms if isinstance(f, str))
+        return set()
+
     def get_seen_ids(self) -> set[int]:
         """Returns a set of all pokemon IDs marked as seen."""
         return set(self._coerce_pokedex_id_list(self.get_user_data("pokedex_seen", [])))
+
+    def get_seen_forms(self, pokemon_id: int) -> set[str]:
+        """Returns a set of all special forms marked as seen for the pokemon."""
+        raw_forms = self.get_user_data(f"pokedex_seen_form_{pokemon_id}", [])
+        if isinstance(raw_forms, list):
+            return set(f for f in raw_forms if isinstance(f, str))
+        return set()
 
     def get_all_user_data(self) -> Dict[str, Any]:
         """Retrieves all user data as a dictionary."""
