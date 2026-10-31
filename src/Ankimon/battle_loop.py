@@ -232,15 +232,31 @@ def on_review_card(*args):
             show_item_popup = settings_obj.get(
                 "gui.pop_up_dialog_message_on_item", True
             )
+            item_name = None
+            wishlist = settings_obj.get("gui.item_wishlist", [])
+            wishlist_override = settings_obj.get("gui.pop_up_dialog_message_wishlist_override", True)
+
+            if not show_item_popup and wishlist_override:
+                # Need to determine the item first to see if it overrides
+                try:
+                    item_name = random_item()
+                    if item_name in wishlist:
+                        show_item_popup = True
+                except Exception:
+                    pass
+
+            # Prevent double-grants on popup UI failure or skip by always pre-rolling
+            try:
+                if item_name is None:
+                    item_name = random_item()
+            except Exception:
+                pass
+
             if show_item_popup and is_alive(item_window):
                 try:
-                    item_window.display_item()
+                    # By this point item_name is determined, display_item simply displays it.
+                    item_window.display_item(item_name)
                 except RuntimeError:
-                    pass
-            else:
-                try:
-                    random_item()
-                except Exception:
                     pass
             if not check_for_badge(achievements, 6):
                 receive_badge(6, achievements)

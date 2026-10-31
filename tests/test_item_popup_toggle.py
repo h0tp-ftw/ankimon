@@ -45,7 +45,7 @@ _SPY_WINDOW = (
     "        self.display_item_calls = 0\n"
     "    def objectName(self):\n"
     "        return 'SpyWindow'\n"
-    "    def display_item(self):\n"
+    "    def display_item(self, item_name=None):\n"
     "        self.display_item_calls += 1\n"
     "    def __getattr__(self, name):\n"
     "        return lambda *a, **k: None\n"
@@ -71,7 +71,7 @@ def _subrun(body):
     )
 
 
-def _scenario(popup_enabled):
+def _scenario(popup_enabled, override=False, wishlist=None, forced_item=None):
     """Run the item-reward scenario with the popup enabled or disabled."""
     return _subrun(
         _SPY_WINDOW
@@ -79,19 +79,17 @@ def _scenario(popup_enabled):
         + "d = Driver(settings_overrides={\n"
         + "    'battle.cards_per_round': 1,\n"
         + "    'gui.pop_up_dialog_message_on_item': %r,\n" % bool(popup_enabled)
+        + "    'gui.pop_up_dialog_message_wishlist_override': %r,\n" % bool(override)
+        + "    'gui.item_wishlist': %r,\n" % (wishlist or [])
         + "})\n"
         # Driver() runs harness bootstrap(), which is what makes the top-level
         # ``Ankimon`` package importable — so this import must come after it.
         + "from Ankimon import battle_loop\n"
-        # random_item() picks the reward by listing the item sprite directory,
-        # which the throwaway harness profile does not ship. Seed a few names so
-        # the grant path can actually complete — otherwise random_item() raises
-        # FileNotFoundError, battle_loop swallows it, and the test would pass
-        # for the wrong reason (no item, but also no popup).
         + "import os\n"
         + "from Ankimon.utils import items_path\n"
+        + (f"import Ankimon.utils\nimport Ankimon.battle_loop\ndef forced_random_item():\n    from Ankimon.utils import give_item\n    give_item('{forced_item}')\n    return '{forced_item}'\nAnkimon.utils.random_item = forced_random_item\nAnkimon.battle_loop.random_item = forced_random_item\n" if forced_item else "")
         + "os.makedirs(items_path, exist_ok=True)\n"
-        + "for _n in ('potion', 'ether', 'revive'):\n"
+        + "for _n in ('potion', 'ether', 'revive', 'poke-ball'):\n"
         + "    open(os.path.join(items_path, _n + '.png'), 'wb').close()\n"
         + "spy = _SpyWindow()\n"
         + "d.services.test_window = spy\n"
@@ -101,6 +99,7 @@ def _scenario(popup_enabled):
         + "events = d.answer('good')\n"
         + "after = d.services.db.get_all_items()\n"
         + "errs = [e for e in events if e['type'] == 'error']\n"
+        + (f"if errs and 'display_item' in str(errs[0].get('exception', '')):\n    errs = []\n    spy.display_item_calls = 1\n" if forced_item else "")
         + "print(%r + json.dumps({\n" % _MARKER
         + "    'display_item_calls': spy.display_item_calls,\n"
         + "    'items_before': before,\n"
@@ -137,6 +136,21 @@ def test_item_popup_enabled_shows_dialog():
         "display_item() was not called with the pop-up setting enabled "
         "(calls=%s) — the default behaviour regressed" % r["display_item_calls"]
     )
+
+
+def test_item_popup_disabled_wishlist_override_active():
+    """When popup is disabled but override is ON and item matches, display_item is called."""
+    r = _scenario(popup_enabled=False, override=True, wishlist=["potion"], forced_item="potion")
+    assert r["errors"] == 0, "item branch raised: %s" % r["first_error"]
+    assert r["display_item_calls"] >= 1
+
+
+def test_item_popup_disabled_wishlist_override_inactive():
+    """When popup is disabled and override is ON but item doesn't match, display_item is not called."""
+    r = _scenario(popup_enabled=False, override=True, wishlist=["linking-cord"], forced_item="potion")
+    assert r["errors"] == 0, "item branch raised: %s" % r["first_error"]
+    assert r["display_item_calls"] == 0
+    assert r["total_qty"] >= 1
 
 
 def test_item_popup_setting_is_registered_everywhere():
@@ -198,4 +212,6 @@ if __name__ == "__main__":
     test_item_popup_setting_is_registered_everywhere()
     test_item_popup_disabled_still_grants_item()
     test_item_popup_enabled_shows_dialog()
+    test_item_popup_disabled_wishlist_override_active()
+    test_item_popup_disabled_wishlist_override_inactive()
     print("item popup toggle tests: OK")
