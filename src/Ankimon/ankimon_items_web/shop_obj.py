@@ -48,12 +48,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QIcon
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWidgets import QStackedWidget
 import csv
-from ..utils import (
-    get_item_sprite_path,
-    get_item_wishlist_pool,
-    give_item,
-    is_alive,
-)
+from ..utils import get_item_sprite_path, give_item, is_alive
 from ..pyobj.settings import DEFAULT_CONFIG, HUD_TOGGLE_AUTO_SYNC_KEYS
 
 try:
@@ -3307,24 +3302,6 @@ class AnkimonItemsWeb(QDialog):
             entry["names"] = names_dict
             return entry
 
-        if key == "gui.item_wishlist":
-            entry["type"] = "wishlist"
-            from ..localized_text import (
-                item_name as _item_name,
-                move_name as _move_name,
-            )
-
-            item_options = []
-            for item_name in get_item_wishlist_pool():
-                english_ui_name = item_name.replace("-", " ").title()
-                if find_details_move(item_name):
-                    display_name = _move_name(item_name, english_ui_name)
-                else:
-                    display_name = _item_name(item_name, english_ui_name)
-                item_options.append({"id": item_name, "name": display_name})
-            entry["item_options"] = item_options
-            return entry
-
         if key == "leaderboard.api_key":
             entry.update(settings_schema.serialize_secret_setting(value))
             return entry
@@ -3405,7 +3382,7 @@ class AnkimonItemsWeb(QDialog):
                 ):
                     continue
                 working_config[key] = self._coerce_incoming(
-                    key, working_config[key], raw_val
+                    working_config[key], raw_val
                 )
         except ValueError as e:
             return {"ok": False, "message": f"Validation error: {e}"}
@@ -3532,26 +3509,13 @@ class AnkimonItemsWeb(QDialog):
         except Exception:
             pass
 
-    def _coerce_incoming(self, key, existing, incoming):
+    def _coerce_incoming(self, existing, incoming):
         """Match the new value's type to the existing config entry so a
         text-input UI doesn't accidentally rewrite an int field as a str.
         Raises ValueError for non-coercible numeric input — caller surfaces
         the failure rather than silently writing garbage to config."""
         if isinstance(existing, list):
             if isinstance(incoming, list):
-                if key == "gui.item_wishlist":
-                    available_items = set(get_item_wishlist_pool())
-                    previously_saved = set()
-                    if isinstance(existing, list):
-                        previously_saved = {item for item in existing if isinstance(item, str)}
-                    return list(
-                        dict.fromkeys(
-                            item
-                            for item in incoming
-                            if isinstance(item, str)
-                            and (item in available_items or item in previously_saved)
-                        )
-                    )
                 # Accept only integer IDs; silently drop anything non-numeric.
                 return [int(x) for x in incoming if str(x).lstrip("-").isdigit()]
             return existing  # reject non-list payloads silently

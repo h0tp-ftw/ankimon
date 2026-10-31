@@ -415,7 +415,6 @@
 /* Chip rows are wider than form inputs — let them spill across the control column. */
 .setting-row:has(.setting-chips) {
     grid-template-columns: 1fr 360px;
-    border-bottom: none;
 }
 
 /* --- Section jump highlight --- */

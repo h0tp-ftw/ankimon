@@ -45,15 +45,6 @@ _main_faint_deferred = False
 _main_faint_context = None
 
 
-def _wishlist_item_received_message(item_name):
-    greeting = random.choice(
-        ("Congratulations", "Your hard work paid off", "Keep going")
-    )
-    quality = random.choice(("cool", "great"))
-    item_display_name = item_name.replace("-", " ").title()
-    return f"{greeting}, you received a {quality} {item_display_name}!"
-
-
 def _cancel_main_faint_deferral():
     """Discard a pending faint when its companion or encounter is abandoned."""
     global _main_faint_deferred, _main_faint_context
@@ -228,37 +219,45 @@ def on_review_card(*args):
         s.item_receive_value -= 1
         if s.item_receive_value <= 0:
             s.item_receive_value = random.randint(3, 385)
+            # Reward the item every time this trigger fires (main granted it
+            # unconditionally). display_item() both rolls+grants the reward (via
+            # random_item -> give_item) AND paints the popup; the grant is the
+            # actual reward, the QDialog is only the visual. Two reasons we may
+            # skip the popup: the user turned it off (it interrupts reviews), or
+            # the liveness guard (F24) found the seam window dead — it may have
+            # been closed (its C++ object deleted) since boot. In both cases we
+            # still roll+grant the reward directly via random_item() so it is
+            # never silently dropped; only the popup is skipped.
             item_window = services.test_window
             show_item_popup = settings_obj.get(
                 "gui.pop_up_dialog_message_on_item", True
             )
-            item_name = random_item()
+            item_name = None
             wishlist = settings_obj.get("gui.item_wishlist", [])
-            wishlist_notification = settings_obj.get(
-                "gui.pop_up_dialog_message_wishlist_override", True
-            )
-            item_is_wishlisted = (
-                item_name is not None
-                and isinstance(wishlist, (list, tuple, set))
-                and item_name in wishlist
-            )
+            wishlist_override = settings_obj.get("gui.pop_up_dialog_message_wishlist_override", True)
 
-            if show_item_popup and item_name is not None and is_alive(item_window):
+            if not show_item_popup and wishlist_override:
+                # Need to determine the item first to see if it overrides
                 try:
+                    item_name = random_item()
+                    if item_name in wishlist:
+                        show_item_popup = True
+                except Exception:
+                    pass
+
+            # Prevent double-grants on popup UI failure or skip by always pre-rolling
+            try:
+                if item_name is None:
+                    item_name = random_item()
+            except Exception:
+                pass
+
+            if show_item_popup and is_alive(item_window):
+                try:
+                    # By this point item_name is determined, display_item simply displays it.
                     item_window.display_item(item_name)
-                except RuntimeError as exc:
-                    if services.logger is not None:
-                        services.logger.log(
-                            "error", f"Failed to display item reward popup: {exc}"
-                        )
-            elif (
-                not show_item_popup
-                and wishlist_notification
-                and item_is_wishlisted
-            ):
-                services.ui.show_wishlist_popup(
-                    _wishlist_item_received_message(item_name)
-                )
+                except RuntimeError:
+                    pass
             if not check_for_badge(achievements, 6):
                 receive_badge(6, achievements)
 

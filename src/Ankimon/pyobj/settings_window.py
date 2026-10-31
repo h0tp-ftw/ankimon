@@ -367,36 +367,25 @@ class SettingsWindow(QMainWindow):
                 },
             },
             "Battle": {
-                "settings": [],
+                "settings": [
+                    "Automatic Battle",
+                    "Always Catch Wishlist",
+                    "Item Wishlist",
+                    "Always Catch: Legendary",
+                    "Always Catch: Mythical",
+                    "Always Catch: Ultra Beast",
+                    "Always Catch: Starter",
+                    "Always Catch: Mega Evolution",
+                    "Always Catch: Gigantamax",
+                    "Always Catch: Regional Form",
+                    "Cards per Round",
+                    "Review Based Damage",
+                    "Ignore Learning Cards",
+                    "Friendship & Time Evolution",
+                    "Auto-detect Time Zone",
+                    "Time Zone UTC Offset",
+                ],
                 "subgroups": {
-                    "Auto-Battle Rules": {
-                        "settings": [
-                            "Automatic Battle",
-                            "Always Catch Wishlist",
-                            "Always Catch: Legendary",
-                            "Always Catch: Mythical",
-                            "Always Catch: Ultra Beast",
-                            "Always Catch: Starter",
-                            "Always Catch: Mega Evolution",
-                            "Always Catch: Gigantamax",
-                            "Always Catch: Regional Form",
-                        ]
-                    },
-                    "Item Settings": {
-                        "settings": [
-                            "Item Wishlist",
-                        ]
-                    },
-                    "Gameplay & Mechanics": {
-                        "settings": [
-                            "Cards per Round",
-                            "Review Based Damage",
-                            "Ignore Learning Cards",
-                            "Friendship & Time Evolution",
-                            "Auto-detect Time Zone",
-                            "Time Zone UTC Offset",
-                        ]
-                    },
                     "Fight Hotkeys": {
                         "settings": [
                             "Key for Defeat",
@@ -431,16 +420,12 @@ class SettingsWindow(QMainWindow):
                     "Reviewer Image as GIF",
                     "View Main Pokémon Front",
                     "XP Bar Location",
+                    "Pop-Up on Defeat",
+                    "Pop-Up on Special Encounter",
+                    "Pop-Up on Item Receive",
+                    "Wishlist Item Received Override",
                 ],
                 "subgroups": {
-                    "Pop-Up Notifs": {
-                        "settings": [
-                            "Pop-Up on Defeat",
-                            "Pop-Up on Special Encounter",
-                            "Pop-Up on Item Receive",
-                            "Wishlist Item Received",
-                        ]
-                    },
                     "HUD Element Toggles": {
                         "settings": [
                             "Show Player Sprite",

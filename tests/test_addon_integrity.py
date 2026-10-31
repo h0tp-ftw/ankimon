@@ -153,7 +153,6 @@ MODULES_TO_CHECK = [
     "Ankimon.functions.encounter_functions",
     "Ankimon.functions.friendship_evolution",
     "Ankimon.functions.gui_functions",
-    "Ankimon.functions.item_wishlist",
     "Ankimon.functions.learnset_retrieval",
     "Ankimon.functions.migration",
     "Ankimon.functions.pokedex_functions",

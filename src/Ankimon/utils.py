@@ -376,12 +376,12 @@ def clear_utils_caches():
     _random_item_cache = None
 
 
-def get_review_item_pool() -> list[str]:
-    """Return item identifiers eligible to be granted as review rewards.
+def random_item() -> Optional[str]:
+    """Grant and return a random item with an available sprite.
 
     A fresh/partial asset installation may have no item sprite directory, or all
     present files may be filtered out. In that case there is no renderable reward,
-    so return an empty list instead of raising from ``os.listdir``.
+    so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
     """
     global _random_item_cache
     if _random_item_cache is None:
@@ -390,12 +390,15 @@ def get_review_item_pool() -> list[str]:
         try:
             files = os.listdir(items_path)
         except OSError:
-            return []
+            return None
 
+        # Iterate over each file in the directory
         for file in files:
+            # Check if the file is a .png file
             if not file.endswith(".png"):
                 continue
 
+            # File name without the .png extension to the list
             name = file[:-4]
 
             if name in USELESS_ITEMS:
@@ -417,13 +420,8 @@ def get_review_item_pool() -> list[str]:
 
             item_names.append(name)
         _random_item_cache = item_names
-
-    return list(_random_item_cache)
-
-
-def random_item() -> Optional[str]:
-    """Grant and return a random item with an available sprite."""
-    item_names = get_review_item_pool()
+    else:
+        item_names = _random_item_cache
 
     if not item_names:
         return None
@@ -507,51 +505,6 @@ def daily_item_list():
         )
 
     return item_names
-
-
-def get_item_wishlist_pool() -> list[str]:
-    """Return obtainable review and daily-shop items, including bundled sprites.
-
-    Shop TMs are included as identifiers as well: the daily notification
-    already checks TM names, and a wishlisted TM whose move name has no
-    matching item PNG must still be selectable and saveable. TM identifiers
-    are validated as strings at this ingestion boundary, matching the
-    item-name validation used above.
-    """
-    item_names = set(get_review_item_pool())
-    if Path(items_path).is_dir():
-        item_names.update(item["name"] for item in daily_item_list())
-    bundled_items_path = addon_dir / "addon_sprites" / "items"
-    excluded_shop_suffixes = ("dust", "-piece", "-nugget", "-berry")
-    try:
-        bundled_files = os.listdir(bundled_items_path)
-    except OSError:
-        bundled_files = []
-    for filename in bundled_files:
-        if not filename.endswith(".png"):
-            continue
-        item_name = filename[:-4]
-        if (
-            get_item_price(item_name) > 0
-            and item_name not in USELESS_ITEMS
-            and not any(item_name.endswith(suffix) for suffix in excluded_shop_suffixes)
-        ):
-            item_names.add(item_name)
-
-    try:
-        from .singletons import shop_manager
-
-        for tm in shop_manager.get_tm_pool() or []:
-            if isinstance(tm, str) and tm:
-                item_names.add(tm)
-            elif isinstance(tm, dict):
-                tm_name = tm.get("name")
-                if isinstance(tm_name, str) and tm_name:
-                    item_names.add(tm_name)
-    except Exception:
-        pass
-
-    return sorted(item_names)
 
 
 # Function to give an item to the player
