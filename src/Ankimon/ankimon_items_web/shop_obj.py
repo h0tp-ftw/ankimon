@@ -3307,23 +3307,23 @@ class AnkimonItemsWeb(QDialog):
             entry["names"] = names_dict
             return entry
 
-                if key == "gui.item_wishlist":
-                    entry["type"] = "wishlist"
-                    from ..localized_text import (
-                        item_name as _item_name,
-                        move_name as _move_name,
-                    )
-        
-                    item_options = []
-                    for item_name in get_item_wishlist_pool():
-                        english_ui_name = item_name.replace("-", " ").title()
-                        if find_details_move(item_name):
-                            display_name = _move_name(item_name, english_ui_name)
-                        else:
-                            display_name = _item_name(item_name, english_ui_name)
-                        item_options.append({"id": item_name, "name": display_name})
-                    entry["item_options"] = item_options
-                    return entry
+        if key == "gui.item_wishlist":
+            entry["type"] = "wishlist"
+            from ..localized_text import (
+                item_name as _item_name,
+                move_name as _move_name,
+            )
+
+            item_options = []
+            for item_name in get_item_wishlist_pool():
+                english_ui_name = item_name.replace("-", " ").title()
+                if find_details_move(item_name):
+                    display_name = _move_name(item_name, english_ui_name)
+                else:
+                    display_name = _item_name(item_name, english_ui_name)
+                item_options.append({"id": item_name, "name": display_name})
+            entry["item_options"] = item_options
+            return entry
 
         if key == "leaderboard.api_key":
             entry.update(settings_schema.serialize_secret_setting(value))
