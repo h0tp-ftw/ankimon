@@ -87,6 +87,7 @@ class BackupManager:
         self._profile_work_lock = threading.RLock()
         self._context_lock = threading.RLock()
         self._profile_epoch = 0
+        self._scheduled_profile_epoch = None
         self._migrated_paths = {}
         self._startup_backup_pending = not getattr(services, "_is_reloading", False)
         self.refresh_profile_path()
@@ -397,6 +398,8 @@ class BackupManager:
             )
             return
 
+        started = time.monotonic()
+        self.logger.log("info", "Migrating legacy backup archives.")
         new_path.mkdir(parents=True, exist_ok=True)
         for original in list(self._migrated_paths):
             if original.parent == legacy_path:
@@ -410,6 +413,10 @@ class BackupManager:
         )
         legacy_path.rmdir()
         (new_path / self.MIGRATION_RECORD).unlink(missing_ok=True)
+        self.logger.log(
+            "info",
+            f"Legacy backup migration completed in {time.monotonic() - started:.2f}s.",
+        )
 
     def refresh_profile_path(self) -> None:
         profile_folder = self._active_profile_folder()
@@ -484,8 +491,18 @@ class BackupManager:
                     self._startup_backup_pending = False
 
     def schedule_profile_backup_tasks(self) -> None:
-        """Called on the GUI thread after resolving the profile path."""
-        from aqt import mw
+        """Queue archive maintenance once per profile opening, outside readiness."""
+        from ..background_ops import run_in_background
+
+        # Startup completion and profile_did_open can both request this work.
+        # Avoid submitting a second long-running archive migration, including
+        # when the first one has failed. Closing/reopening the profile advances
+        # the epoch and permits a fresh attempt.
+        with self._context_lock:
+            epoch = self._profile_epoch
+            if self._scheduled_profile_epoch == epoch:
+                return
+            self._scheduled_profile_epoch = epoch
 
         def completed(future):
             try:
@@ -494,16 +511,12 @@ class BackupManager:
                 self.logger.log("error", f"Background backup work failed: {error}")
 
         try:
-            mw.taskman.run_in_background(
-                self.run_profile_backup_tasks,
-                completed,
-                uses_collection=False,
-            )
-        except TypeError as error:
-            if "unexpected keyword argument 'uses_collection'" not in str(error):
-                raise
-            # Anki 2.1.66 predates collection-specific workers and this keyword.
-            mw.taskman.run_in_background(self.run_profile_backup_tasks, completed)
+            run_in_background(self.run_profile_backup_tasks, completed)
+        except Exception:
+            with self._context_lock:
+                if self._scheduled_profile_epoch == epoch:
+                    self._scheduled_profile_epoch = None
+            raise
 
     def _backup_directories(self, required_file=None, supported_files=None):
         """Keep originals discoverable until their complete copies are published."""

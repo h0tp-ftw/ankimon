@@ -29,6 +29,7 @@ from aqt.utils import askUser, showInfo, showWarning
 from PyQt6.QtWidgets import QFileDialog
 
 from ..resources import user_path
+from ..background_ops import run_in_background, run_query
 from ..utils import close_anki
 
 # Keep normal/developer partitions separate and name each distinct save by
@@ -55,8 +56,10 @@ def _recovery_store(media_dir: Path, *, create: bool = False) -> Path:
     elif _is_link(recovery):
         # Reading through it would rank, and offer to install, whatever save sits
         # wherever it points.
-        raise OSError(f"{recovery} is a link to another folder, so Ankimon will not "
-                      "read recovery saves through it")
+        raise OSError(
+            f"{recovery} is a link to another folder, so Ankimon will not "
+            "read recovery saves through it"
+        )
     return recovery
 
 
@@ -95,6 +98,7 @@ _MIGRATION_HOOK_RECORD = "_ankimon_media_migration_handlers"
 # ---------------------------------------------------------------------------
 # Reading a save without opening it read-write
 # ---------------------------------------------------------------------------
+
 
 def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any]]:
     """Summarise an Ankimon save for side-by-side display.
@@ -171,7 +175,10 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
             except Exception as e:
                 if time.monotonic() > _deadline:
                     raise
-                if isinstance(e, sqlite3.OperationalError) and "interrupt" in str(e).lower():
+                if (
+                    isinstance(e, sqlite3.OperationalError)
+                    and "interrupt" in str(e).lower()
+                ):
                     raise
                 return default
 
@@ -195,8 +202,7 @@ def get_db_stats(db_path: Path, timeout: float = 30.0) -> Optional[Dict[str, Any
             # rather than only the integer form, or a healthy save reads as
             # zero badges.
             stats["badges"] = _scalar(
-                "SELECT COUNT(*) FROM badges "
-                "WHERE achieved IN (1, 'true', 'True')"
+                "SELECT COUNT(*) FROM badges WHERE achieved IN (1, 'true', 'True')"
             )
         if "config" in tables:
             cfg = "SELECT value FROM config WHERE key = ?"
@@ -256,6 +262,7 @@ def _dominates(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> bool
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
+
 
 def _active_db_path() -> Optional[Path]:
     try:
@@ -383,7 +390,10 @@ def _strip_local_secrets(db_path: Path) -> None:
 def export_save(parent=None) -> bool:
     """Write the ACTIVE Ankimon save to a file the user chooses."""
     from .ankimon_sync import (
-        SYNC_LOCK_MESSAGE, _is_lock_error, _retry_on_lock, _verify_sqlite_integrity,
+        SYNC_LOCK_MESSAGE,
+        _is_lock_error,
+        _retry_on_lock,
+        _verify_sqlite_integrity,
     )
 
     parent = parent or mw
@@ -394,7 +404,9 @@ def export_save(parent=None) -> bool:
 
     stats = get_db_stats(source)
     trainer = (stats or {}).get("trainer_name") or "trainer"
-    safe_trainer = "".join(c for c in str(trainer) if c.isalnum() or c in "-_") or "trainer"
+    safe_trainer = (
+        "".join(c for c in str(trainer) if c.isalnum() or c in "-_") or "trainer"
+    )
     suggested = str(Path.home() / f"ankimon-save-{safe_trainer}.db")
 
     dest_str, _ = QFileDialog.getSaveFileName(
@@ -424,11 +436,15 @@ def export_save(parent=None) -> bool:
     # The picker confirmed dest_str, which can differ from the normalized
     # filename. Never silently overwrite an existing archive.db when the user
     # selected a nonexistent archive.txt (or archive with no extension).
-    if dest != Path(dest_str) and dest.exists() and not askUser(
-        f"The export will be saved as:\n{dest}\n\n"
-        "That file already exists. Replace it?",
-        parent=parent,
-        defaultno=True,
+    if (
+        dest != Path(dest_str)
+        and dest.exists()
+        and not askUser(
+            f"The export will be saved as:\n{dest}\n\n"
+            "That file already exists. Replace it?",
+            parent=parent,
+            defaultno=True,
+        )
     ):
         return False
 
@@ -448,7 +464,9 @@ def export_save(parent=None) -> bool:
             return False
 
         stats = get_db_stats(private)
-        fd, tmp_name = tempfile.mkstemp(prefix="ankimon-export-", suffix=".db", dir=str(dest.parent))
+        fd, tmp_name = tempfile.mkstemp(
+            prefix="ankimon-export-", suffix=".db", dir=str(dest.parent)
+        )
         os.close(fd)
         tmp = Path(tmp_name)
         shutil.copyfile(private, tmp)
@@ -463,8 +481,10 @@ def export_save(parent=None) -> bool:
             # a writer may have opened the archive while the snapshot was built.
             # Sidecars can also survive a crash with no open handles. They
             # belong to the destination, so never delete or recover them here.
-            if any(Path(str(dest) + suffix).exists()
-                   for suffix in ("-wal", "-shm", "-journal")):
+            if any(
+                Path(str(dest) + suffix).exists()
+                for suffix in ("-wal", "-shm", "-journal")
+            ):
                 raise RuntimeError(
                     "The destination is in use or has an unfinished database "
                     "transaction. Choose a different file name for the export."
@@ -495,6 +515,7 @@ def export_save(parent=None) -> bool:
 # Import
 # ---------------------------------------------------------------------------
 
+
 def import_save(parent=None) -> bool:
     """Replace the ACTIVE Ankimon save with a file the user chooses."""
     from ..save_import import SaveOperationBusyError, reserve_save_operation
@@ -515,7 +536,9 @@ def _import_save(parent, operation) -> bool:
     target = _active_db_path()
     collection = _active_collection()
     if target is None:
-        showWarning("The Ankimon database is not ready yet; try again once Anki has finished loading.")
+        showWarning(
+            "The Ankimon database is not ready yet; try again once Anki has finished loading."
+        )
         return False
 
     src_str, _ = QFileDialog.getOpenFileName(
@@ -526,7 +549,9 @@ def _import_save(parent, operation) -> bool:
     source = Path(src_str)
 
     if _is_same_file(source, target):
-        showWarning("That file is the save Ankimon is already using. Nothing was changed.")
+        showWarning(
+            "That file is the save Ankimon is already using. Nothing was changed."
+        )
         return False
 
     snapshot = None
@@ -580,7 +605,9 @@ def _rebase_import_watermark(snapshot: Path, col) -> None:
     conn = sqlite3.connect(str(snapshot), timeout=30)
     try:
         with conn:
-            conn.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)"
+            )
             conn.execute(
                 "INSERT OR REPLACE INTO metadata (key, value) VALUES ('mobile_revlog_watermark', ?)",
                 (str(watermark),),
@@ -669,15 +696,21 @@ def _stage_active_save(
     rather than aborted and must not lead a caller to offer another save.
     """
     from ..save_import import (
-        ImportAlreadyPendingError, ImportStagedError, damaged_save_question,
-        describe_recovery_destination, pending_import_is_installed,
-        should_confirm_unverified_copy, stage_import,
+        ImportAlreadyPendingError,
+        ImportStagedError,
+        damaged_save_question,
+        describe_recovery_destination,
+        pending_import_is_installed,
+        should_confirm_unverified_copy,
+        stage_import,
     )
     from .ankimon_sync import get_ankimon_sync
 
     try:
         if _active_db_path() != Path(target) or _active_collection() is not collection:
-            raise RuntimeError("The active profile or save changed; please try the import again")
+            raise RuntimeError(
+                "The active profile or save changed; please try the import again"
+            )
         _rebase_import_watermark(source, collection)
         # Asked before the revision and digest checks, so the save they compare is
         # the one left after the user has answered.
@@ -687,7 +720,10 @@ def _stage_active_save(
             damaged_save_question(target, replacement), defaultno=True
         ):
             return False
-        if local_revision is not None and _local_save_revision(target) != local_revision:
+        if (
+            local_revision is not None
+            and _local_save_revision(target) != local_revision
+        ):
             return False
         if local_digest is not None:
             with get_ankimon_sync()._quiesce_live_db_connection(target) as closed:
@@ -804,10 +840,16 @@ def _stage_active_save(
             "Leaderboard credentials are not imported. Sign in again after restart."
         )
     except Exception as error:
-        _log_transfer_failure(f"{what} was prepared but its notice could not be shown", error)
+        _log_transfer_failure(
+            f"{what} was prepared but its notice could not be shown", error
+        )
     from ..events import events
 
-    events.emit("save_import_prepared", target=str(target), recovery_path=str(pending["recovery_path"]))
+    events.emit(
+        "save_import_prepared",
+        target=str(target),
+        recovery_path=str(pending["recovery_path"]),
+    )
     try:
         close_anki(raise_on_error=True)
     except Exception as error:
@@ -831,8 +873,11 @@ def _import_targets() -> list:
     looking at a warning about the other one, on every start, forever.
     """
     targets = []
-    for candidate in (_active_db_path(), user_path / "ankimon.db",
-                      user_path / "ankimonDEV.db"):
+    for candidate in (
+        _active_db_path(),
+        user_path / "ankimon.db",
+        user_path / "ankimonDEV.db",
+    ):
         if candidate is None:
             continue
         try:
@@ -846,9 +891,11 @@ def _import_targets() -> list:
 
 # Journals left beside a missing save go into its import's recovery folder, moved
 # by the install or by Cancel, under names that start with this.
-_KEPT_JOURNALS = (" SQLite journals left beside the missing save are kept in its recovery "
-                  "folder; find them under "
-                  "Ankimon → Game → Browse Pre-import Recovery Saves…")
+_KEPT_JOURNALS = (
+    " SQLite journals left beside the missing save are kept in its recovery "
+    "folder; find them under "
+    "Ankimon → Game → Browse Pre-import Recovery Saves…"
+)
 
 
 def _import_recovery_folder(target: Path) -> Optional[Path]:
@@ -864,8 +911,12 @@ def _import_recovery_folder(target: Path) -> Optional[Path]:
 
 def _holds_kept_journals(folder: Optional[Path]) -> bool:
     try:
-        return (folder is not None and folder.is_dir() and not folder.is_symlink()
-                and any(folder.glob("orphaned-*")))
+        return (
+            folder is not None
+            and folder.is_dir()
+            and not folder.is_symlink()
+            and any(folder.glob("orphaned-*"))
+        )
     except OSError:
         return False
 
@@ -873,7 +924,9 @@ def _holds_kept_journals(folder: Optional[Path]) -> bool:
 def _collect_import_cancellation(targets, validate=None):
     """Return disk outcomes only; callers hold the staging transaction lock."""
     from ..save_import import (
-        cancel_pending_import, pending_import_is_installed, pending_import_recovery_copy,
+        cancel_pending_import,
+        pending_import_is_installed,
+        pending_import_recovery_copy,
     )
 
     cancelled, already_installed, undetermined, failures = [], [], [], []
@@ -921,35 +974,45 @@ def _collect_import_cancellation(targets, validate=None):
         moved = _KEPT_JOURNALS if target in journals_kept else ""
         if target in already_installed:
             if target in without_copy:
-                kept = (" No pre-import recovery copy exists for it; one is kept only "
-                        "when an install replaces an existing save.")
+                kept = (
+                    " No pre-import recovery copy exists for it; one is kept only "
+                    "when an install replaces an existing save."
+                )
             else:
-                kept = (" The save it replaced was retained first; find it under "
-                        "Ankimon → Game → Browse Pre-import Recovery Saves…")
+                kept = (
+                    " The save it replaced was retained first; find it under "
+                    "Ankimon → Game → Browse Pre-import Recovery Saves…"
+                )
             outcomes.append(
                 f"{target.name}: that import had ALREADY installed, so this save IS "
                 "the imported one. Only its leftover record was cleared, and nothing "
-                f"will be installed again.{kept}")
+                f"will be installed again.{kept}"
+            )
         elif target in undetermined:
             outcomes.append(
                 f"{target.name}: the import record was cleared, so nothing will be "
                 "installed from it. Ankimon could not tell whether that import had "
                 "already installed; if it replaced a save, that save was retained "
                 "first. Look under "
-                f"Ankimon → Game → Browse Pre-import Recovery Saves…{moved}")
+                f"Ankimon → Game → Browse Pre-import Recovery Saves…{moved}"
+            )
         else:
-            outcomes.append(f"{target.name}: the pending import was cancelled."
-                            + (moved or " This save is unchanged."))
+            outcomes.append(
+                f"{target.name}: the pending import was cancelled."
+                + (moved or " This save is unchanged.")
+            )
 
     if failures:
-        message = ("The pending save import could not be cancelled:\n\n"
-                   + "\n".join(failures))
+        message = "The pending save import could not be cancelled:\n\n" + "\n".join(
+            failures
+        )
         if outcomes:
             # Another save may already be settled, its event emitted. Naming only
             # the failure would tell the user that did not happen.
             message += "\n\nMeanwhile:\n\n" + "\n\n".join(outcomes)
         return {
-            "message": message + "\n\nClose anything using the Ankimon folder and try again.",
+            "message": message
+            + "\n\nClose anything using the Ankimon folder and try again.",
             "is_error": True,
             "events": emitted,
         }
@@ -1024,7 +1087,6 @@ def cancel_pending_save_import(notify=None) -> None:
 
 def cancel_pending_save_import_async(context, notify=None) -> None:
     """Cancel captured saves on a worker without blocking Anki's menu or timers."""
-    from aqt.operations import QueryOp
     from ..save_import import SaveOperationBusyError, reserve_save_operation
 
     # Reserve before dispatch: a queued cancellation must exclude a replacement
@@ -1063,7 +1125,7 @@ def cancel_pending_save_import_async(context, notify=None) -> None:
         operation.release()
         current_notice(f"The pending save import could not be cancelled: {error}", True)
 
-    def run_cancellation(_col):
+    def run_cancellation():
         try:
             return _cancel_import_targets(targets, context.validate, operation)
         finally:
@@ -1072,11 +1134,7 @@ def cancel_pending_save_import_async(context, notify=None) -> None:
             operation.release()
 
     try:
-        QueryOp(
-            parent=mw,
-            op=run_cancellation,
-            success=done,
-        ).failure(failed).without_collection().run_in_background()
+        run_query(run_cancellation, done, failed)
     except Exception as error:
         failed(error)
 
@@ -1084,16 +1142,22 @@ def cancel_pending_save_import_async(context, notify=None) -> None:
 def browse_recovered_saves() -> None:
     """Open the separately retained pre-import recovery folder."""
     target = _active_db_path()
-    recovery = Path(target).parent / "ankimon_recovery" if target else user_path / "ankimon_recovery"
+    recovery = (
+        Path(target).parent / "ankimon_recovery"
+        if target
+        else user_path / "ankimon_recovery"
+    )
     from aqt.utils import openFolder
 
     from ..save_import import _is_link, _private_directory
 
     if _is_link(recovery):
         # mkdir, chmod and the file manager would all act on wherever it points.
-        showWarning(f"{recovery} is a link to another folder, so Ankimon will not open "
-                    "or change it, and will not write recovery copies through it. "
-                    "Replace it with an ordinary folder.")
+        showWarning(
+            f"{recovery} is a link to another folder, so Ankimon will not open "
+            "or change it, and will not write recovery copies through it. "
+            "Replace it with an ordinary folder."
+        )
         return
     try:
         # _private_directory creates only the last folder.
@@ -1104,13 +1168,16 @@ def browse_recovered_saves() -> None:
         _private_directory(recovery)
         openFolder(str(recovery))
     except OSError as error:
-        showWarning(f"The recovery folder could not be opened: {error}. "
-                    "Check access to the Ankimon folder and try again.")
+        showWarning(
+            f"The recovery folder could not be opened: {error}. "
+            "Check access to the Ankimon folder and try again."
+        )
 
 
 # ---------------------------------------------------------------------------
 # One-shot migration off the removed feature
 # ---------------------------------------------------------------------------
+
 
 def _media_dir() -> Optional[Path]:
     try:
@@ -1181,7 +1248,9 @@ def _current_fingerprint_entries() -> Dict[str, str]:
     if media_dir is None:
         return {}
     target = _active_db_path()
-    return _media_fingerprint_entries(media_dir, Path(target).name if target else "ankimon.db")
+    return _media_fingerprint_entries(
+        media_dir, Path(target).name if target else "ankimon.db"
+    )
 
 
 def _media_fingerprint_entries(media_dir: Path, target_db: str) -> Dict[str, str]:
@@ -1289,8 +1358,15 @@ def _local_save_revision(path: Path) -> Optional[tuple]:
     for suffix in ("", "-wal", "-journal"):
         try:
             stat = Path(str(path) + suffix).stat()
-            entries.append((stat.st_dev, stat.st_ino, stat.st_size,
-                            stat.st_mtime_ns, stat.st_ctime_ns))
+            entries.append(
+                (
+                    stat.st_dev,
+                    stat.st_ino,
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    stat.st_ctime_ns,
+                )
+            )
         except FileNotFoundError:
             if not suffix:
                 return None
@@ -1380,10 +1456,9 @@ def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
     unreadable = []
     seen = set()
 
-    for path in (
-        _media_candidate_paths(media_dir, target_db)
-        + _recovery_candidate_paths(media_dir, target_db)
-    ):
+    for path in _media_candidate_paths(
+        media_dir, target_db
+    ) + _recovery_candidate_paths(media_dir, target_db):
         try:
             resolved = path.resolve()
         except Exception:
@@ -1401,8 +1476,14 @@ def _find_media_saves(media_dir: Path, target_db: str) -> tuple:
     return candidates, unreadable
 
 
-def _offer_rescue_later(snapshot: Path, target: Path, collection,
-                        local_revision: tuple, local_digest: str, logger) -> None:
+def _offer_rescue_later(
+    snapshot: Path,
+    target: Path,
+    collection,
+    local_revision: tuple,
+    local_digest: str,
+    logger,
+) -> None:
     """Defer shutdown until profile-open returns; revalidate the approved save.
 
     Startup sync and modal dialogs can advance local progress before this
@@ -1412,15 +1493,22 @@ def _offer_rescue_later(snapshot: Path, target: Path, collection,
 
     def _go():
         try:
-            if (_media_dir() != media_dir or _active_db_path() != target
-                    or _active_collection() is not collection):
+            if (
+                _media_dir() != media_dir
+                or _active_db_path() != target
+                or _active_collection() is not collection
+            ):
                 return
             if _local_save_revision(target) != local_revision:
                 _rescan_local_save(logger)
                 return
             replaced = _replace_active_save(
-                snapshot, target, "Rescue", collection=collection,
-                local_revision=local_revision, local_digest=local_digest,
+                snapshot,
+                target,
+                "Rescue",
+                collection=collection,
+                local_revision=local_revision,
+                local_digest=local_digest,
             )
             if not replaced and _local_save_revision(target) != local_revision:
                 _rescan_local_save(logger)
@@ -1492,8 +1580,9 @@ def _notify_affected_user(logger) -> None:
             pass
 
 
-def _migration_scan(media_dir: Path, target: Optional[Path],
-                    entries: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def _migration_scan(
+    media_dir: Path, target: Optional[Path], entries: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
     """Discover and protect media saves, then prepare a rescue comparison.
 
     Runs on a worker and returns plain data. Preserve the bare media save
@@ -1541,8 +1630,11 @@ def _migration_scan(media_dir: Path, target: Optional[Path],
     stable_capture = before_protection == captured_signature
 
     unreadable.extend(protection["unprotected"])
-    written.extend(path for path in protection["protected"].values()
-                   if _target_db_for(path) == target_db)
+    written.extend(
+        path
+        for path in protection["protected"].values()
+        if _target_db_for(path) == target_db
+    )
 
     saves, integrity_failures = _find_media_saves(media_dir, target_db)
     unreadable.extend(integrity_failures)
@@ -1606,11 +1698,13 @@ def _migration_scan(media_dir: Path, target: Optional[Path],
             stats[path] = summary
 
     if not stats:
-        notes.append((
-            "info",
-            "Ankimon: no save in the media folder could be read this pass; "
-            "rescanning later.",
-        ))
+        notes.append(
+            (
+                "info",
+                "Ankimon: no save in the media folder could be read this pass; "
+                "rescanning later.",
+            )
+        )
         return _result("armed")
 
     at_risk = media_dir / target_db
@@ -1625,12 +1719,18 @@ def _migration_scan(media_dir: Path, target: Optional[Path],
     # a divergent save with more captures can hide an eligible copy and settle
     # the folder without ever offering it. With no eligible copy, keep the
     # highest-ranked candidate for the existing divergence/equality handling.
-    best = max(stats, key=lambda p: (
-        _dominates(stats[p], local_stats), _progress_key(stats[p]),
-    ))
+    best = max(
+        stats,
+        key=lambda p: (
+            _dominates(stats[p], local_stats),
+            _progress_key(stats[p]),
+        ),
+    )
     media_path, media_stats = best, stats[best]
-    if best == at_risk and preserved is not None and (
-        preserved in written or preserved in stats
+    if (
+        best == at_risk
+        and preserved is not None
+        and (preserved in written or preserved in stats)
     ):
         # Prefer the protected path only if this scan read or verified it.
         media_path = preserved
@@ -1652,11 +1752,13 @@ def _migration_scan(media_dir: Path, target: Optional[Path],
     if target is not None and (
         local_stats is None or local_revision is None or local_digest is None
     ):
-        notes.append((
-            "info",
-            f"Ankimon: {Path(target).name} could not be read this pass; "
-            "not comparing saves, rescanning later.",
-        ))
+        notes.append(
+            (
+                "info",
+                f"Ankimon: {Path(target).name} could not be read this pass; "
+                "not comparing saves, rescanning later.",
+            )
+        )
         return _result("armed", media_path=media_path, media_stats=media_stats)
 
     # Freeze the chosen file on this worker, then read the displayed statistics
@@ -1677,7 +1779,9 @@ def _migration_scan(media_dir: Path, target: Optional[Path],
             raise ValueError("Could not identify the rescue snapshot")
     except Exception as e:
         _discard_snapshot(snapshot)
-        notes.append(("info", f"Could not snapshot {media_path.name}: {e}; rescanning later."))
+        notes.append(
+            ("info", f"Could not snapshot {media_path.name}: {e}; rescanning later.")
+        )
         return _result("armed")
 
     return _result(
@@ -1692,8 +1796,14 @@ def _migration_scan(media_dir: Path, target: Optional[Path],
     )
 
 
-def _preserve(at_risk: Path, media_dir: Path, target_db: str,
-              notes: list, unreadable: list, written: list) -> Optional[Path]:
+def _preserve(
+    at_risk: Path,
+    media_dir: Path,
+    target_db: str,
+    notes: list,
+    unreadable: list,
+    written: list,
+) -> Optional[Path]:
     """Keep a verified protected copy without changing any existing media file.
 
     Reuse a digest-named copy only when its bytes still match. If that name is
@@ -1735,12 +1845,14 @@ def _preserve(at_risk: Path, media_dir: Path, target_db: str,
             return dest
         _atomic_write_over(tmp, dest)
         written.append(dest)
-        notes.append((
-            "info",
-            f"Ankimon: preserved {at_risk.name} as {dest} "
-            "outside collection.media so Anki media sync cannot upload it. "
-            "Nothing was deleted or overwritten.",
-        ))
+        notes.append(
+            (
+                "info",
+                f"Ankimon: preserved {at_risk.name} as {dest} "
+                "outside collection.media so Anki media sync cannot upload it. "
+                "Nothing was deleted or overwritten.",
+            )
+        )
         return dest
     except Exception as e:
         notes.append(("error", f"Could not preserve {at_risk.name} in media: {e}"))
@@ -1759,8 +1871,14 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
     gets a labelled raw archive including sidecars, never a claimed valid save.
     Validation, ranking and recovery decisions remain eligible for retry.
     """
-    result = {"protected": {}, "unprotected": [], "archives": [], "archived_sources": [],
-              "log": [], "store_error": None}
+    result = {
+        "protected": {},
+        "unprotected": [],
+        "archives": [],
+        "archived_sources": [],
+        "log": [],
+        "store_error": None,
+    }
     store_checked = False
     for name in _SAVE_PREFIX:
         source = media_dir / name
@@ -1780,7 +1898,9 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
                 # retry, and closing programs cannot clear it, so the notice has to
                 # name the folder instead.
                 result["store_error"] = str(error)
-                result["log"].append(("error", f"Could not use the media recovery folder: {error}"))
+                result["log"].append(
+                    ("error", f"Could not use the media recovery folder: {error}")
+                )
         if result["store_error"] is not None:
             result["unprotected"].append(source)
             continue
@@ -1791,10 +1911,14 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
         result["unprotected"].append(source)
         archive = None
         try:
-            fd, temporary = tempfile.mkstemp(prefix="ankimon-unverified-", suffix=".zip")
+            fd, temporary = tempfile.mkstemp(
+                prefix="ankimon-unverified-", suffix=".zip"
+            )
             os.close(fd)
             archive = Path(temporary)
-            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as bundle:
+            with zipfile.ZipFile(
+                archive, "w", compression=zipfile.ZIP_STORED
+            ) as bundle:
                 bundle.write(source, source.name)
                 # Not -shm: it is a rebuildable index rather than save content,
                 # and every read-only open restamps it. Archiving it gave an
@@ -1812,11 +1936,15 @@ def _protect_bare_saves(media_dir: Path) -> Dict[str, Any]:
             base, suffix = destination, 0
             while destination.exists() or destination.is_symlink():
                 # As in _preserve: a link holds the name but is never the archive.
-                if not destination.is_symlink() and _content_digest(destination) == digest:
+                if (
+                    not destination.is_symlink()
+                    and _content_digest(destination) == digest
+                ):
                     break
                 suffix += 1
                 destination = base.with_name(f"{base.stem}-{suffix}.zip")
             from .ankimon_sync import _atomic_write_over
+
             if not destination.exists():
                 _atomic_write_over(archive, destination)
             result["archives"].append(destination)
@@ -1968,22 +2096,34 @@ def _report_protection(result: Dict[str, Any], logger) -> None:
     global _LAST_PROTECTION_NOTICE
     for level, message in result["log"]:
         logger.log(level, message)
-    identity = (tuple(map(str, result["protected"].values())),
-                tuple(map(str, result["unprotected"])), tuple(map(str, result["archives"])))
+    identity = (
+        tuple(map(str, result["protected"].values())),
+        tuple(map(str, result["unprotected"])),
+        tuple(map(str, result["archives"])),
+    )
     if identity == _LAST_PROTECTION_NOTICE or not any(identity):
         return
     _LAST_PROTECTION_NOTICE = identity
     lines = []
     if result["protected"]:
-        lines.append("Verified recovery copies:\n" + "\n".join(map(str, result["protected"].values())))
+        lines.append(
+            "Verified recovery copies:\n"
+            + "\n".join(map(str, result["protected"].values()))
+        )
     if result["unprotected"]:
-        lines.append("Could not create a verified recovery save for:\n" +
-                     "\n".join(map(str, result["unprotected"])))
+        lines.append(
+            "Could not create a verified recovery save for:\n"
+            + "\n".join(map(str, result["unprotected"]))
+        )
         if result["archives"]:
-            lines.append("Raw files were archived with their SQLite sidecars. These archives "
-                         "are unverified and may require recovery:\n" +
-                         "\n".join(map(str, result["archives"])))
-        lines.append("Ankimon will retry. Keep these files until you have verified your progress.")
+            lines.append(
+                "Raw files were archived with their SQLite sidecars. These archives "
+                "are unverified and may require recovery:\n"
+                + "\n".join(map(str, result["archives"]))
+            )
+        lines.append(
+            "Ankimon will retry. Keep these files until you have verified your progress."
+        )
         if set(result["unprotected"]) - set(result["archived_sources"]):
             # Promise the automatic retry only while a timer is armed. A scan that
             # failed, or could not be dispatched, schedules none: those paths show
@@ -1991,22 +2131,30 @@ def _report_protection(result: Dict[str, Any], logger) -> None:
             # seconds for as long as the failure lasted.
             if result.get("store_error"):
                 # Closing programs cannot clear a refused recovery folder.
-                again = ("Ankimon retries about every 30 seconds while Anki is open, and "
-                         "at the next sync or restart"
-                         if _MIGRATION_SCAN_STATE.get("retry_scheduled")
-                         else "restart Anki to retry")
-                retry = (f"Ankimon could not use its recovery folder: {result['store_error']}. "
-                         "It has to be an ordinary folder that belongs to you, not a link; "
-                         f"once it is, {again}.")
+                again = (
+                    "Ankimon retries about every 30 seconds while Anki is open, and "
+                    "at the next sync or restart"
+                    if _MIGRATION_SCAN_STATE.get("retry_scheduled")
+                    else "restart Anki to retry"
+                )
+                retry = (
+                    f"Ankimon could not use its recovery folder: {result['store_error']}. "
+                    "It has to be an ordinary folder that belongs to you, not a link; "
+                    f"once it is, {again}."
+                )
             elif _MIGRATION_SCAN_STATE.get("retry_scheduled"):
-                retry = ("Close anything locking those files: Ankimon retries about "
-                         "every 30 seconds while Anki is open, and at the next sync or "
-                         "restart.")
+                retry = (
+                    "Close anything locking those files: Ankimon retries about "
+                    "every 30 seconds while Anki is open, and at the next sync or "
+                    "restart."
+                )
             else:
                 retry = "Close anything locking those files and restart Anki to retry."
-            lines.append("Media sync is paused for this profile because some original files "
-                         f"could not be copied at all. {retry} Your Anki sync preferences "
-                         "have not changed.")
+            lines.append(
+                "Media sync is paused for this profile because some original files "
+                f"could not be copied at all. {retry} Your Anki sync preferences "
+                "have not changed."
+            )
         showWarning("\n\n".join(lines))
     else:
         # Paths remain available in the Ankimon log without a popup every boot.
@@ -2057,8 +2205,11 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
     if target is not None:
         if _active_db_path() != Path(target):
             return
-        if (local_revision is None or local_digest is None
-                or _local_save_revision(target) != local_revision):
+        if (
+            local_revision is None
+            or local_digest is None
+            or _local_save_revision(target) != local_revision
+        ):
             _rescan_local_save(logger)
             return
     media_stats = result.get("media_stats")
@@ -2072,9 +2223,13 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
     candidate_digest = result.get("candidate_digest")
     answer_identity = (
         f"v2:{candidate_digest}:{fingerprint}"
-        if fingerprint and candidate_digest else ""
+        if fingerprint and candidate_digest
+        else ""
     )
-    answered = bool(answer_identity) and _profile_flag(_MIGRATION_ANSWERED_FLAG) == answer_identity
+    answered = (
+        bool(answer_identity)
+        and _profile_flag(_MIGRATION_ANSWERED_FLAG) == answer_identity
+    )
 
     if target is not None and _dominates(media_stats, local_stats) and not answered:
         if askUser(
@@ -2105,8 +2260,12 @@ def _apply_migration_decision(result: Dict[str, Any], logger) -> None:
             # unset, so the user is offered the rescue again next launch instead
             # of silently losing their only route back to that data.
             _offer_rescue_later(
-                result.pop("snapshot_path"), Path(target), collection,
-                local_revision, local_digest, logger,
+                result.pop("snapshot_path"),
+                Path(target),
+                collection,
+                local_revision,
+                local_digest,
+                logger,
             )
             return
         if _active_collection() is not collection or _active_db_path() != Path(target):
@@ -2186,7 +2345,7 @@ def run_media_migration(settings_obj, logger) -> None:
             return
         media_dir = _media_dir()
         if media_dir is None or not media_dir.is_dir():
-            return          # no profile / no media folder — retry later
+            return  # no profile / no media folder — retry later
         _apply_migration_result(_migration_scan(media_dir, _active_db_path()), logger)
     except Exception as e:
         try:
@@ -2203,7 +2362,9 @@ _MIGRATION_SCAN_STATE = {"running": False, "rerun": False}
 _MIGRATION_RETRY_DELAY = 30.0
 
 
-def _schedule_migration_retry(settings_obj, logger, delay: Optional[float] = None) -> None:
+def _schedule_migration_retry(
+    settings_obj, logger, delay: Optional[float] = None
+) -> None:
     """Ask for another pass later, without going through a media-sync hook.
 
     The add-on's only recurring rescan trigger is
@@ -2264,8 +2425,13 @@ def _stat_bare_saves(media_dir: Path):
     ``stable`` would never be true, so the media-sync guard would never release
     and ``_done`` would re-dispatch the scan forever.
     """
-    protection = {"protected": {}, "unprotected": [], "archives": [],
-                  "archived_sources": [], "log": []}
+    protection = {
+        "protected": {},
+        "unprotected": [],
+        "archives": [],
+        "archived_sources": [],
+        "log": [],
+    }
     signature = []
     for name in _SAVE_PREFIX:
         source = media_dir / name
@@ -2278,15 +2444,24 @@ def _stat_bare_saves(media_dir: Path):
             except OSError:
                 signature.append((path.name, "unknown"))
             else:
-                signature.append((path.name, stat.st_size, stat.st_mtime_ns,
-                                  stat.st_ctime_ns, stat.st_ino, stat.st_mode))
+                signature.append(
+                    (
+                        path.name,
+                        stat.st_size,
+                        stat.st_mtime_ns,
+                        stat.st_ctime_ns,
+                        stat.st_ino,
+                        stat.st_mode,
+                    )
+                )
             if not suffix:
                 protection["unprotected"].append(source)
     return protection, signature
 
 
-def _pending_media_protection(media_dir: Path, target: Optional[Path],
-                              entries: Optional[Dict[str, str]] = None):
+def _pending_media_protection(
+    media_dir: Path, target: Optional[Path], entries: Optional[Dict[str, str]] = None
+):
     """``_stat_bare_saves`` plus the fingerprint of every sync-visible candidate.
 
     That fingerprint lists the whole of collection.media, so this belongs on the
@@ -2296,7 +2471,9 @@ def _pending_media_protection(media_dir: Path, target: Optional[Path],
     protection, signature = _stat_bare_saves(media_dir)
     # A candidate that lands mid-capture makes the before/after pair disagree.
     if entries is None:
-        entries = _media_fingerprint_entries(media_dir, target.name if target else "ankimon.db")
+        entries = _media_fingerprint_entries(
+            media_dir, target.name if target else "ankimon.db"
+        )
     return protection, (tuple(signature), tuple(sorted(entries.items())))
 
 
@@ -2385,8 +2562,11 @@ def start_media_migration(settings_obj, logger) -> None:
         # A bare save this session has not captured is captured whatever the
         # stored fingerprint says. Otherwise the worker first compares the folder
         # with that fingerprint, and scans only if it no longer matches.
-        settled = (None if protection["unprotected"] and earlier is None
-                   else _profile_flag(_MIGRATION_FLAG))
+        settled = (
+            None
+            if protection["unprotected"] and earlier is None
+            else _profile_flag(_MIGRATION_FLAG)
+        )
 
         # Anki checks this gate before startup/periodic media sync. Pause it
         # before dispatch so neither SQLite backups nor raw ZIP writes block
@@ -2396,7 +2576,9 @@ def start_media_migration(settings_obj, logger) -> None:
         # stands while the worker looks at the rest of the folder. Holding media
         # sync for the check paused it on every sync stop, and this is also what
         # lifts the stat-only guard a profile reopen arms.
-        _guard_uncaptured_media(media_dir, earlier if earlier is not None else protection)
+        _guard_uncaptured_media(
+            media_dir, earlier if earlier is not None else protection
+        )
 
         if _MIGRATION_SCAN_STATE["running"]:
             _MIGRATION_SCAN_STATE["rerun"] = True
@@ -2417,8 +2599,11 @@ def start_media_migration(settings_obj, logger) -> None:
                 # A profile switch during the scan would leave us applying one
                 # profile's media folder to another's flag and another's save.
                 # mw.pm has already moved on by the time this runs, so compare.
-                if (result is not None and _media_dir() == media_dir
-                        and _active_collection() is collection):
+                if (
+                    result is not None
+                    and _media_dir() == media_dir
+                    and _active_collection() is collection
+                ):
                     # The fixed names only, for the reason the worker's result
                     # gives. A candidate that lands after the worker looked makes
                     # the stored fingerprint stale, and the next pass -- the
@@ -2426,7 +2611,9 @@ def start_media_migration(settings_obj, logger) -> None:
                     # scans it.
                     _, current_signature = _stat_bare_saves(media_dir)
                     baseline = result.get("signature", signature)
-                    if tuple(current_signature) != baseline or not result.get("stable", True):
+                    if tuple(current_signature) != baseline or not result.get(
+                        "stable", True
+                    ):
                         # A download or external writer changed the source
                         # during or after the capture. Keep sync paused until
                         # the next pass and drop this result whole: its
@@ -2442,12 +2629,15 @@ def start_media_migration(settings_obj, logger) -> None:
                         pass
                     else:
                         if result.get("protection"):
-                            completed[key] = {"signature": baseline,
-                                              "protection": result["protection"],
-                                              "retry_at": time.monotonic() + _MIGRATION_RETRY_DELAY}
+                            completed[key] = {
+                                "signature": baseline,
+                                "protection": result["protection"],
+                                "retry_at": time.monotonic() + _MIGRATION_RETRY_DELAY,
+                            }
                             _guard_uncaptured_media(media_dir, result["protection"])
-                            if (set(result["protection"]["unprotected"])
-                                    - set(result["protection"]["archived_sources"])):
+                            if set(result["protection"]["unprotected"]) - set(
+                                result["protection"]["archived_sources"]
+                            ):
                                 # The guard stays up, so Anki's media-sync hook
                                 # -- this scan's only other trigger -- is the
                                 # one thing that cannot bring the retry around.
@@ -2462,8 +2652,10 @@ def start_media_migration(settings_obj, logger) -> None:
                             # capture covers the saves as they stat, and media
                             # sync was never paused for them.
                             _report_protection(protection, logger)
-                        showWarning("Ankimon's media recovery comparison failed and will be retried "
-                                    "after the next sync or restart. See the Ankimon log for details.")
+                        showWarning(
+                            "Ankimon's media recovery comparison failed and will be retried "
+                            "after the next sync or restart. See the Ankimon log for details."
+                        )
                 except Exception:
                     pass
             finally:
@@ -2481,7 +2673,7 @@ def start_media_migration(settings_obj, logger) -> None:
 
         _MIGRATION_SCAN_STATE["running"] = True
         try:
-            mw.taskman.run_in_background(_scan, _done, uses_collection=False)
+            run_in_background(_scan, _done, taskman=mw.taskman)
         except Exception as error:
             _MIGRATION_SCAN_STATE["running"] = False
             logger.log("error", f"Could not schedule media recovery scan: {error}")
@@ -2496,9 +2688,11 @@ def start_media_migration(settings_obj, logger) -> None:
                 # Otherwise this session's capture already covers the saves as
                 # they stat, and reporting them as uncaptured would be wrong.
                 _report_protection(protection, logger)
-            showWarning("Ankimon could not start its media recovery scan. "
-                        "It will be retried after the next sync or restart. "
-                        "Media sync stays paused while original save files remain uncaptured.")
+            showWarning(
+                "Ankimon could not start its media recovery scan. "
+                "It will be retried after the next sync or restart. "
+                "Media sync stays paused while original save files remain uncaptured."
+            )
     except Exception as e:
         try:
             logger.log("error", f"AnkiWeb sync-removal migration failed: {e}")

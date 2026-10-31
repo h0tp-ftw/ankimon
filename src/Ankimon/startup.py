@@ -6,16 +6,16 @@ boot work no longer blocks Anki's GUI thread:
 * :func:`run_startup_background_checks` — the aqt-free half. Backup, DB
   migration status, collected-ID load, config migration, sprite-folder
   checks and first-enemy generation are all disk/DB/CPU work and run on a
-  ``QueryOp`` background thread. It must never touch Qt: everything it
+  collection-free background thread. It must never touch Qt: everything it
   learns is returned in a plain results dict.
 * :func:`run_startup_ui_callbacks` — the main-thread half. Consumes that
   results dict and performs every Qt interaction (migration dialog, sprite
   download dialog, enemy stat application for GUI bindings, starter window,
   rate prompt).
 
-``__init__.py`` drives the pair through ``aqt.operations.QueryOp`` (a genuine
-Anki API); the harness's synchronous QueryOp fake drives it deterministically
-in tests.
+``__init__.py`` schedules a collection-free background operation, then
+delivers its results to the GUI thread. Profile backup migration is
+scheduled separately so copying old backup archives cannot delay readiness.
 """
 
 from aqt import mw
@@ -67,7 +67,7 @@ _AUTO_CATCH_KEYS = (
 
 
 def run_startup_background_checks(backup_manager=None):
-    """Aqt-free half of the boot; runs on the QueryOp background thread.
+    """Aqt-free half of the boot; runs on a collection-free background thread.
 
     Only disk, DB and CPU work happens here — no Qt calls. Everything the
     main-thread half needs is returned in the results dict. The DB layer is
@@ -91,15 +91,12 @@ def run_startup_background_checks(backup_manager=None):
         except Exception as e:
             backup_error = e
 
-        # Dev-mode auto-backup (disk copy — background work). __init__ passes its
-        # module-level BackupManager so profile hooks and the menu share the same
-        # instance; constructing one here keeps this function standalone-callable.
+        # Keep the rolling safety copy before the save-migration dialog. Legacy
+        # backup archive migration and the developer snapshot run separately after
+        # startup/profile open: waiting for their work lock here can leave the
+        # add-on unavailable for minutes while an old archive is copied.
         if backup_manager is None:
             backup_manager = BackupManager(logger, settings_obj)
-        try:
-            backup_manager.run_profile_backup_tasks()
-        except Exception as e:
-            logger.log("error", f"Error in background backup creation: {e}")
     else:
         logger.log("info", "Skipping background backups during hot-reload.")
 

@@ -335,30 +335,48 @@ def _is_supported_version(name: str) -> bool:
 
 
 def _version_key(name: str) -> tuple:
-    """Total-ordering key for this project's *decimal-minor* tag scheme, where the
-    part after the major is a fraction — so 1.43 < 1.5, and 2.03 < 2.1. The "-E"
-    channel suffix is stripped first (it selects a channel, not an order). Unlike
-    ``_parse_version`` (a coarse threshold gate), this IS safe for max()/sorting.
-    Non-version names sort lowest.
+    """Normalize compact major.minorpatch and dotted major.minor.patch tags.
 
-    NOTE: assumes single-dot decimal versions (2.03, 1.52, 1.3962). A multi-part
-    semver like "2.0.1" won't match and sorts lowest — revisit if the scheme changes.
+    For example, 2.33 means 2.3.3, 2.330 means 2.3.30, and both 2.330 and
+    2.3.30 produce the same key. Components after the minor are compared as
+    integers. Dotted tags keep the whole minor component, so 2.10.0 follows
+    2.9.0. Single-dot tags retain the legacy compact interpretation (2.10
+    means 2.1.0); use a patch component for an unambiguous two-digit minor.
+    Either experimental suffix, "-E" or "E", is ignored.
     """
-    t = name.strip().lstrip("v")
-    if t.endswith("-E"):
-        t = t[:-2]
-    m = re.match(r"(\d+)(?:\.(\d+))?$", t)
+    m = re.fullmatch(
+        r"v?(\d+)(?:\.(\d+(?:\.\d+)*))?(?:-?E)?",
+        name.strip(),
+        re.IGNORECASE,
+    )
     if not m:
-        return (-1, 0.0)
+        return (-1, -1, ())
     major = int(m.group(1))
-    frac = float("0." + m.group(2)) if m.group(2) else 0.0
-    return (major, frac)
+    version_tail = m.group(2) or ""
+    if not version_tail:
+        return (major, 0, ())
+
+    components = version_tail.split(".")
+    if len(components) > 1:
+        minor = int(components[0])
+        patches = [int(component) for component in components[1:]]
+    else:
+        minor_digits = components[0]
+        minor = int(minor_digits[0])
+        patches = [int(minor_digits[1:])] if len(minor_digits) > 1 else []
+    while patches and patches[-1] == 0:
+        patches.pop()
+    return (major, minor, tuple(patches))
 
 
 def channel_of_tag(tag: str) -> str:
-    """Which release channel a tag belongs to: experimental if it ends in "-E",
-    otherwise stable. (Main is a branch, never a tag, so it's not returned here.)"""
-    return CHANNEL_EXPERIMENTAL if tag.strip().endswith("-E") else CHANNEL_STABLE
+    """Which release channel a tag belongs to: experimental if it ends in E,
+    optionally preceded by a hyphen. Main is a branch, never a tag."""
+    return (
+        CHANNEL_EXPERIMENTAL
+        if re.search(r"-?E$", tag.strip(), re.IGNORECASE)
+        else CHANNEL_STABLE
+    )
 
 
 def is_newer_version(candidate: str, installed: str) -> bool:

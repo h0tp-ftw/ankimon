@@ -85,6 +85,7 @@ class Services:
         # UI port. Defaults to a GUI-less presenter so core logic can always
         # call ``services.ui.*`` safely; the production root swaps in a Qt one.
         from .ui_port import HeadlessPresenter
+
         self.ui = HeadlessPresenter()
 
         # GUI window objects, injected by the composition root: real Qt windows
@@ -101,6 +102,7 @@ class Services:
         # Developer hot-reload lifecycle. The registry survives module purges,
         # so these flags coordinate the old startup worker with the new import.
         self._startup_in_progress = False
+        self._startup_ui_pending = False
         self._is_reloading = False
         # Re-entrancy guard for restart_ankimon itself: its wait loop pumps the
         # Qt event queue, which can re-trigger the reload shortcut mid-teardown.
@@ -173,6 +175,7 @@ class Services:
         self.trainer_card = None
         self.achievements = None
         from .ui_port import HeadlessPresenter
+
         self.ui = HeadlessPresenter()
         self.test_window = None
         self.evo_window = None
@@ -180,6 +183,7 @@ class Services:
         self.reviewer = None
         self.col = None
         self._startup_in_progress = False
+        self._startup_ui_pending = False
         self._is_reloading = False
         self._reload_in_progress = False
 

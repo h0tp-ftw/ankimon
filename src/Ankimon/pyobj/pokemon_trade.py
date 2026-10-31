@@ -2,7 +2,18 @@ import json
 import hashlib
 from html import escape
 import requests
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QFrame, QCheckBox, QTextBrowser, QSizePolicy
+from PyQt6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QHBoxLayout,
+    QFrame,
+    QCheckBox,
+    QTextBrowser,
+    QSizePolicy,
+)
 from PyQt6.QtGui import QPixmap, QFont, QIcon, QColor
 from PyQt6.QtCore import QSize, Qt
 from aqt.utils import showWarning, showInfo
@@ -33,13 +44,17 @@ def _local_species_name(internal_name, pokedex_id):
     except Exception:
         pass
     return fallback
+
+
 from ..services import services
 from ..events import events
+from ..background_ops import call_when_anki_idle, run_in_background
 import os
 
 
 class MonthlyChallengeDialog(QDialog):
     """Dialog that ignores Escape key to prevent accidental rejection."""
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             event.accept()  # Ignore Escape
@@ -50,6 +65,7 @@ class MonthlyChallengeDialog(QDialog):
 def _challenge_palette():
     """Return the theme-specific colour palette for challenge dialogs."""
     from aqt.theme import theme_manager
+
     is_dark = theme_manager.night_mode
     if is_dark:
         return {
@@ -65,7 +81,7 @@ def _challenge_palette():
             "btn_hover": "rgba(88, 166, 255, 0.18)",
             "btn_primary_bg": "#3fb950",
             "btn_primary_hover": "#2ea043",
-            "update_btn_text": "#0d1117"
+            "update_btn_text": "#0d1117",
         }
     else:
         return {
@@ -81,7 +97,7 @@ def _challenge_palette():
             "btn_hover": "rgba(9, 105, 218, 0.18)",
             "btn_primary_bg": "#2da44e",
             "btn_primary_hover": "#2ea043",
-            "update_btn_text": "#e6ffea"
+            "update_btn_text": "#e6ffea",
         }
 
 
@@ -89,7 +105,7 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
     """Build a sprite box QFrame with the given dimensions and Pokémon data."""
     from PyQt6.QtWidgets import QSizePolicy
     from PyQt6.QtGui import QMovie, QImageReader
-    
+
     sprite_box = QFrame()
     sprite_box.setObjectName("spriteBox")
     sprite_box.setFixedSize(container_size, container_size)
@@ -102,24 +118,25 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
     sprite_label.setFixedSize(sprite_size, sprite_size)
     sprite_label.setScaledContents(False)
     sprite_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    
+
     if show_sprites and challenge_pokemon is not None:
         pokemon_id = challenge_pokemon.get("id", 25)
         pokemon_name = challenge_pokemon.get("name", "Pikachu")
         shiny = challenge_pokemon.get("shiny", False)
         gender = challenge_pokemon.get("gender", "N")
-        
+
         try:
             from ..functions.sprite_functions import get_sprite_path
+
             sprite_path = get_sprite_path(
-                side="front", 
-                sprite_type="gif", 
-                id=pokemon_id, 
-                shiny=shiny, 
-                gender=gender, 
-                pokemon_name=pokemon_name
+                side="front",
+                sprite_type="gif",
+                id=pokemon_id,
+                shiny=shiny,
+                gender=gender,
+                pokemon_name=pokemon_name,
             )
-            
+
             if os.path.exists(sprite_path):
                 movie = QMovie(sprite_path)
                 movie.setParent(sprite_label)  # Keep movie alive with the label
@@ -127,18 +144,22 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
                 # first frame before setting the scale leaves that frame full-size.
                 frame_size = QImageReader(sprite_path).size()
                 if frame_size.isValid():
-                    movie.setScaledSize(frame_size.scaled(
-                        sprite_label.size(), Qt.AspectRatioMode.KeepAspectRatio
-                    ))
+                    movie.setScaledSize(
+                        frame_size.scaled(
+                            sprite_label.size(), Qt.AspectRatioMode.KeepAspectRatio
+                        )
+                    )
                 sprite_label.setMovie(movie)
                 movie.start()
         except Exception:
             pass
-    
+
     sprite_box_layout.addWidget(sprite_label)
     return sprite_box
 
+
 # --- Module-level functions for Monthly Challenges ---
+
 
 def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
     """Creates a Pokémon dictionary from monthly challenge data."""
@@ -151,8 +172,12 @@ def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
         "ability": pokemon_data.get("ability", "No Ability"),
         "type": pokemon_data.get("type", ["Normal"]),
         "stats": base_stats,
-        "ev": pokemon_data.get("ev", {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}),
-        "iv": pokemon_data.get("iv", {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}),
+        "ev": pokemon_data.get(
+            "ev", {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        ),
+        "iv": pokemon_data.get(
+            "iv", {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
+        ),
         "attacks": pokemon_data.get("attacks", ["Tackle"]),
         "growth_rate": pokemon_data.get("growth_rate", "medium"),
         "base_experience": pokemon_data.get("base_experience", 64),
@@ -169,8 +194,9 @@ def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
         "captured_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "individual_id": pokemon_data["individual_id"],
         "is_favorite": pokemon_data.get("is_favorite", False),
-        "held_item": pokemon_data.get("held_item", None)
+        "held_item": pokemon_data.get("held_item", None),
     }
+
 
 def _refresh_collection(refresh_callback=None, parent_window=None):
     """Refresh presentation independently of the already committed award."""
@@ -178,11 +204,14 @@ def _refresh_collection(refresh_callback=None, parent_window=None):
         if refresh_callback:
             refresh_callback()
         from ..utils import is_alive
+
         if is_alive(services.pokemon_pc):
             services.pokemon_pc.refresh_pokemon_grid()
     except Exception as e:
         show_warning_with_traceback(
-            parent=parent_window, exception=e, message="Error refreshing Pokemon collection"
+            parent=parent_window,
+            exception=e,
+            message="Error refreshing Pokemon collection",
         )
 
 
@@ -203,19 +232,26 @@ def add_pokemon_to_collection(
     """
     try:
         db = db_manager if db_manager is not None else services.db
-        if not db.save_pokemon(new_pokemon, accept_monthly_challenge=accept_monthly_challenge):
+        if not db.save_pokemon(
+            new_pokemon, accept_monthly_challenge=accept_monthly_challenge
+        ):
             return False
     except Exception as e:
-        show_warning_with_traceback(parent=parent_window, exception=e, message="Error adding Pokemon to collection")
+        show_warning_with_traceback(
+            parent=parent_window,
+            exception=e,
+            message="Error adding Pokemon to collection",
+        )
         return False
     if refresh:
         _refresh_collection(refresh_callback, parent_window)
     return True
 
+
 def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=None):
     """
     Display the main monthly challenge dialog asking the user to accept or reject the Pokémon.
-    
+
     This function creates and shows a modal dialog that presents the monthly challenge
     Pokémon to the user with options to accept or reject it. The dialog includes:
     - A title showing the Pokémon's name with a "(Shiny!!)" indicator if applicable
@@ -224,10 +260,10 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
     - A description of the challenge on the right
     - A Discord link for more information
     - "Accept Pokémon" and "Reject" buttons
-    
+
     This is the primary user interface for the monthly challenge feature and is
     called when a new monthly challenge Pokémon is available to claim.
-    
+
     Side Effects:
         - Displays a modal QDialog with:
             - A fixed-size sprite container (160x160) with a blue background
@@ -239,7 +275,7 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
         - Sprites are conditionally displayed based on user settings
         - The dialog is modal and blocks interaction with parent windows
         - No application state or database is modified by this function
-    
+
     Notes:
         - The dialog window is set to be application modal, preventing interaction
           with other windows until the user makes a choice
@@ -256,7 +292,7 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
     from PyQt6.QtWidgets import QSizePolicy
     from PyQt6.QtGui import QMovie, QPixmap
     from PyQt6.QtCore import QSize
-    
+
     parent = parent_window if parent_window is not None else mw
     window = MonthlyChallengeDialog(parent)
     window.setWindowTitle("Monthly Challenge Begins!")
@@ -270,6 +306,7 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
     show_sprites = True
     try:
         from ..services import services
+
         settings_obj = services.settings
         if settings_obj is not None:
             show_sprites = settings_obj.get("gui.show_sprites_across_ankimon", True)
@@ -387,22 +424,28 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
         desc_label.setObjectName("descLabel")
         desc_label.setWordWrap(True)
         desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        desc_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        desc_text = escape(description).replace(chr(10), '<br>')
-        desc_label.setText(f"<div style='margin: 0; padding: 0;'><b>{desc_text}</b></div>")
+        desc_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
+        desc_text = escape(description).replace(chr(10), "<br>")
+        desc_label.setText(
+            f"<div style='margin: 0; padding: 0;'><b>{desc_text}</b></div>"
+        )
         desc_box_layout.addWidget(desc_label)
     else:
         placeholder = QLabel("A special Pokémon awaits you!")
         placeholder.setObjectName("descLabel")
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        placeholder.setStyleSheet("color: #ffffff; font-size: 0.95rem; font-weight: 700; padding: 0; margin: 0;")
+        placeholder.setStyleSheet(
+            "color: #ffffff; font-size: 0.95rem; font-weight: 700; padding: 0; margin: 0;"
+        )
         desc_box_layout.addWidget(placeholder)
 
     content_layout.addWidget(desc_box)
     layout.addLayout(content_layout)
 
     discord_label = QLabel(
-        f'For more information, please check the '
+        f"For more information, please check the "
         f'<a href="https://discord.gg/hcq53X5mcu" style="color: {accent_blue}; text-decoration: none;">Ankimon Discord</a>!'
     )
     discord_label.setWordWrap(True)
@@ -431,17 +474,18 @@ def show_monthly_challenge_dialog(challenge_pokemon, description, parent_window=
 
     return window.exec() == QDialog.DialogCode.Accepted
 
+
 def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
     """
     Display a confirmation dialog when a user successfully claims a monthly challenge Pokémon.
-    
+
     This function creates and shows a modal dialog that congratulates the user
     on receiving their monthly challenge Pokémon. The dialog includes:
     - A sprite of the claimed Pokémon (if available)
     - The Pokémon's name and level displayed in bold
     - A tip about checking progress in the Ankimon menu
     - A "Let's go!" button to close the dialog
-    
+
     This is intended to be called after the Pokémon has been successfully
     added to the user's collection and the database has been updated.
 
@@ -455,7 +499,7 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
         - Sprites are conditionally displayed based on user settings
         - The dialog is modal and blocks interaction with parent windows
         - No application state or database is modified by this function
-    
+
     Notes:
         - The dialog is purely informational and provides no user input options
           other than closing the dialog
@@ -471,7 +515,7 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
     from PyQt6.QtGui import QMovie
     from PyQt6.QtCore import QSize
     import os
-    
+
     parent = parent_window if parent_window is not None else mw
     window = QDialog(parent)
     window.setWindowTitle("Monthly Challenge Accepted!")
@@ -484,6 +528,7 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
     show_sprites = True
     try:
         from ..services import services
+
         settings_obj = services.settings
         if settings_obj is not None:
             show_sprites = settings_obj.get("gui.show_sprites_across_ankimon", True)
@@ -547,17 +592,21 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
     sprite_box = _build_sprite_box(80, 64, challenge_pokemon, show_sprites)
     message_layout.addWidget(sprite_box)
 
-    pokemon_name = challenge_pokemon.get("name", "Pokémon") if challenge_pokemon else "Pokémon"
+    pokemon_name = (
+        challenge_pokemon.get("name", "Pokémon") if challenge_pokemon else "Pokémon"
+    )
     pokemon_level = challenge_pokemon.get("level", 1) if challenge_pokemon else 1
-    
+
     message_text = (
         f"Congrats, you've successfully received <b>{escape(str(pokemon_name))}</b> <b>Lvl. {escape(str(pokemon_level))}</b>!<br><br>"
         f"Tip: Check your progress at <b>Ankimon → Profile → Monthly Challenge</b> to see your dedication in action!"
     )
-    
+
     message = QLabel(message_text)
     message.setWordWrap(True)
-    message.setStyleSheet(f"color: {text}; font-size: 0.95rem; line-height: 1.6; padding: 4px 0;")
+    message.setStyleSheet(
+        f"color: {text}; font-size: 0.95rem; line-height: 1.6; padding: 4px 0;"
+    )
     message_layout.addWidget(message)
     layout.addLayout(message_layout)
 
@@ -573,16 +622,17 @@ def show_monthly_acceptance_dialog(parent_window=None, challenge_pokemon=None):
 
     window.exec()
 
+
 def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
     """
     Display a confirmation dialog when a user rejects a monthly challenge Pokémon.
-    
+
     This function creates and shows a modal dialog that informs the user their
     rejection was recorded and explains how they can reclaim the Pokémon later.
     The dialog includes a sprite of the rejected Pokémon (if available) and
     provides instructions for accessing the monthly challenge feature through
     the Ankimon menu.
-    
+
     Notes:
         - The dialog's message informs users they can reclaim the Pokémon later
           via Ankimon → Profile → Monthly Challenge
@@ -596,7 +646,7 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
     from PyQt6.QtGui import QMovie
     from PyQt6.QtCore import QSize
     import os
-    
+
     parent = parent_window if parent_window is not None else mw
     window = QDialog(parent)
     window.setWindowTitle("Monthly Challenge Rejected!")
@@ -609,6 +659,7 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
     show_sprites = True
     try:
         from ..services import services
+
         settings_obj = services.settings
         if settings_obj is not None:
             show_sprites = settings_obj.get("gui.show_sprites_across_ankimon", True)
@@ -677,7 +728,9 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
         "the horns, head to <b>Ankimon → Profile → Monthly Challenge</b> to reclaim this month's Pokémon. Happy Ankimoning!"
     )
     message.setWordWrap(True)
-    message.setStyleSheet(f"color: {text}; font-size: 0.95rem; line-height: 1.6; padding: 4px 0;")
+    message.setStyleSheet(
+        f"color: {text}; font-size: 0.95rem; line-height: 1.6; padding: 4px 0;"
+    )
     message_layout.addWidget(message)
     layout.addLayout(message_layout)
 
@@ -694,14 +747,17 @@ def show_monthly_rejection_dialog(parent_window=None, challenge_pokemon=None):
 
     window.exec()
 
+
 # --- Manual Monthly Challenge window (Profile menu) ------------------------
 # Distinct from show_monthly_challenge_dialog (the pop-up window): the
 # manual window is the explicit "check my monthly challenge" surface opened by
 # Ankimon > Profile > Monthly Challenge.
 
+
 def _monthly_challenge_tip_html(species_name, individual_id):
     """Return one of two tips at 50/50. The Discord variant is a clickable link."""
     import random
+
     if random.random() < 0.5:
         short_id = str(individual_id)[:5]
         return (
@@ -710,9 +766,9 @@ def _monthly_challenge_tip_html(species_name, individual_id):
             f"towards your Monthly Challenge progress!</b>"
         )
     return (
-        f'<b>Tip: For more information, please check the '
+        f"<b>Tip: For more information, please check the "
         f'<a href="https://discord.gg/hcq53X5mcu" style="text-decoration: none;">'
-        f'Ankimon Discord</a>!</b>'
+        f"Ankimon Discord</a>!</b>"
     )
 
 
@@ -848,7 +904,9 @@ def _confirm_monthly_reject(species_name, parent_window=None):
     return window.exec() == QDialog.DialogCode.Accepted
 
 
-def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon=None, parent_window=None):
+def _monthly_challenge_info_window(
+    challenge_pokemon, description, owned_pokemon=None, parent_window=None
+):
     """Manual Monthly Challenge window (Ankimon > Profile > Monthly Challenge).
 
     Returns "accept", "reject", or None (Close / cancelled). The auto-pop-up
@@ -925,8 +983,20 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
     layout.setSpacing(16)
 
     now = datetime.now()
-    month_names = ["January", "February", "March", "April", "May", "June",
-                   "July", "August", "September", "October", "November", "December"]
+    month_names = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ]
     current_month_str = f"{month_names[now.month - 1]} {now.year}"
     species_name = challenge_pokemon.get("name", "Pokémon")
     pokedex_id = challenge_pokemon.get("id")
@@ -958,7 +1028,9 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
         owned_name = owned_pokemon.get("name", species_name)
         owned_level = owned_pokemon.get("level", 1)
         owned_defeated = owned_pokemon.get("pokemon_defeated", 5)
-        owned_id = owned_pokemon.get("individual_id", challenge_pokemon.get("individual_id"))
+        owned_id = owned_pokemon.get(
+            "individual_id", challenge_pokemon.get("individual_id")
+        )
         shiny_suffix = " (Shiny)!" if owned_pokemon.get("shiny", False) else "!"
         owned_text = (
             f"You already have this month's <b>{escape(str(owned_name))}</b>{shiny_suffix}<br><br>"
@@ -969,25 +1041,35 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
         owned_label = QLabel(f"<div style='margin:0;padding:0;'>{owned_text}</div>")
         owned_label.setObjectName("descLabel")
         owned_label.setWordWrap(True)
-        owned_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        owned_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         body_layout.addWidget(owned_label)
     else:
         if description:
             desc_label = QLabel()
             desc_label.setObjectName("descLabel")
             desc_label.setWordWrap(True)
-            desc_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            desc_text = escape(description).replace(chr(10), '<br>')
-            desc_label.setText(f"<div style='margin:0;padding:0;'><b>{desc_text}</b></div>")
+            desc_label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            desc_text = escape(description).replace(chr(10), "<br>")
+            desc_label.setText(
+                f"<div style='margin:0;padding:0;'><b>{desc_text}</b></div>"
+            )
             body_layout.addWidget(desc_label)
         else:
             placeholder = QLabel("A special Pokémon awaits you!")
             placeholder.setObjectName("descLabel")
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            placeholder.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
             body_layout.addWidget(placeholder)
 
     tip_label = QLabel(
-        _monthly_challenge_tip_html(species_name, challenge_pokemon.get("individual_id"))
+        _monthly_challenge_tip_html(
+            species_name, challenge_pokemon.get("individual_id")
+        )
     )
     tip_label.setWordWrap(True)
     tip_label.setOpenExternalLinks(True)
@@ -996,7 +1078,7 @@ def _monthly_challenge_info_window(challenge_pokemon, description, owned_pokemon
         f"font-size: 0.85rem; background: transparent; padding-top: 6px;"
     )
     body_layout.addWidget(tip_label)
-    
+
     content_layout.addWidget(body_box)
     layout.addLayout(content_layout)
 
@@ -1105,6 +1187,8 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
           interrupting the user's Anki session
     """
 
+    generation = getattr(services, "_background_generation", 0)
+
     def _fetch_monthly_data(current_month_str):
         """Fetch and validate this month's challenge. Returns dict or None.
 
@@ -1119,22 +1203,37 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                 response.raise_for_status()
                 monthly_challenges = response.json()
             except requests.exceptions.RequestException as e:
-                logger.log("error", f"Could not fetch monthly challenges; likely no internet connection. Details: {e}")
+                logger.log(
+                    "error",
+                    f"Could not fetch monthly challenges; likely no internet connection. Details: {e}",
+                )
                 return None
 
             if not isinstance(monthly_challenges, list):
                 logger.log("warning", "Monthly challenge data is not a list.")
                 return None
 
-            current_challenge = next((c for c in monthly_challenges if isinstance(c, dict) and c.get("month") == current_month_str), None)
+            current_challenge = next(
+                (
+                    c
+                    for c in monthly_challenges
+                    if isinstance(c, dict) and c.get("month") == current_month_str
+                ),
+                None,
+            )
 
             if not current_challenge:
-                logger.log("info", f"No monthly challenge found for {current_month_str}.")
+                logger.log(
+                    "info", f"No monthly challenge found for {current_month_str}."
+                )
                 return None
 
             challenge_pokemon_data = current_challenge.get("pokemon")
             if not isinstance(challenge_pokemon_data, dict):
-                logger.log("warning", f"Monthly challenge for {current_month_str} is missing 'pokemon' data.")
+                logger.log(
+                    "warning",
+                    f"Monthly challenge for {current_month_str} is missing 'pokemon' data.",
+                )
                 return None
 
             raw_pokemon_id = challenge_pokemon_data.get("id")
@@ -1145,12 +1244,18 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             except (TypeError, ValueError):
                 pokemon_id = 0
             if pokemon_id <= 0:
-                logger.log("warning", f"Monthly challenge for {current_month_str} has an invalid Pokémon id.")
+                logger.log(
+                    "warning",
+                    f"Monthly challenge for {current_month_str} has an invalid Pokémon id.",
+                )
                 return None
 
             pokemon_name = challenge_pokemon_data.get("name")
             if not isinstance(pokemon_name, str) or not pokemon_name.strip():
-                logger.log("warning", f"Monthly challenge for {current_month_str} has an invalid Pokémon name.")
+                logger.log(
+                    "warning",
+                    f"Monthly challenge for {current_month_str} has an invalid Pokémon name.",
+                )
                 return None
 
             challenge_pokemon_data = dict(challenge_pokemon_data)
@@ -1158,34 +1263,53 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
 
             challenge_individual_id = challenge_pokemon_data.get("individual_id")
             if not challenge_individual_id:
-                logger.log("warning", f"Monthly challenge for {current_month_str} is missing 'individual_id' in 'pokemon' data.")
+                logger.log(
+                    "warning",
+                    f"Monthly challenge for {current_month_str} is missing 'individual_id' in 'pokemon' data.",
+                )
                 return None
 
             return {
                 "current_challenge": current_challenge,
-                "challenge_pokemon_data": challenge_pokemon_data
+                "challenge_pokemon_data": challenge_pokemon_data,
             }
 
         except Exception as e:
-            logger.log("error", f"An unexpected error occurred while fetching monthly data: {e}")
+            logger.log(
+                "error",
+                f"An unexpected error occurred while fetching monthly data: {e}",
+            )
             return None
 
     def _session_unchanged(db, db_token, col):
         """Return True while the database and Anki profile are the ones seen at dispatch."""
         try:
-            return services.db is db and mw.col is col and db.identity_token() == db_token
+            return (
+                services.db is db
+                and mw.col is col
+                and db.identity_token() == db_token
+                and generation == getattr(services, "_background_generation", 0)
+            )
         except Exception:
             return False
 
-    def _process_on_main_thread(result_data, db, db_token, col, current_month_str, reclaim):
+    def _process_on_main_thread(
+        result_data, db, db_token, col, current_month_str, reclaim
+    ):
         """Apply the fetched challenge to the database on the main thread."""
         if not _session_unchanged(db, db_token, col):
-            logger.log("info", "Discarded the monthly challenge result: the Ankimon database or Anki profile changed while it was being fetched.")
+            logger.log(
+                "info",
+                "Discarded the monthly challenge result: the Ankimon database or Anki profile changed while it was being fetched.",
+            )
             return
 
         if result_data is None:
             if reclaim:
-                services.ui.notify("warning", "No monthly challenge could be loaded. Please try again later.")
+                services.ui.notify(
+                    "warning",
+                    "No monthly challenge could be loaded. Please try again later.",
+                )
             return
 
         current_challenge = result_data["current_challenge"]
@@ -1211,10 +1335,16 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                 parent_window=mw,
             )
             if not _session_unchanged(db, db_token, col):
-                logger.log("warning", "Discarded the manual monthly challenge decision: the Ankimon database or Anki profile changed while the window was open.")
+                logger.log(
+                    "warning",
+                    "Discarded the manual monthly challenge decision: the Ankimon database or Anki profile changed while the window was open.",
+                )
                 return
             if choice is None:
-                logger.log("info", "User closed the manual monthly challenge window without deciding.")
+                logger.log(
+                    "info",
+                    "User closed the manual monthly challenge window without deciding.",
+                )
                 return
             if choice == "reject":
                 if not _session_unchanged(db, db_token, col):
@@ -1224,7 +1354,8 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                     getattr(live_main, "individual_id", None)
                 ) == str(challenge_individual_id):
                     services.ui.notify(
-                        "warning", "Choose another main Pokémon before rejecting this Pokémon."
+                        "warning",
+                        "Choose another main Pokémon before rejecting this Pokémon.",
                     )
                     return
                 try:
@@ -1244,8 +1375,13 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                     settings_obj.get("trainer.xp_share")
                 ) == str(challenge_individual_id):
                     settings_obj.set("trainer.xp_share", None)
-                events.emit("monthly_challenge", decision="rejected", individual_id=challenge_individual_id)
+                events.emit(
+                    "monthly_challenge",
+                    decision="rejected",
+                    individual_id=challenge_individual_id,
+                )
                 from ..utils import is_alive
+
                 pc = services.pokemon_pc
                 if is_alive(pc):
                     try:
@@ -1256,52 +1392,78 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                             exception=exc,
                             message="Error refreshing Pokemon collection",
                         )
-                logger.log("info", f"User rejected the owned monthly challenge Pokémon {challenge_pokemon_data.get('name')} and it was removed from the collection.")
+                logger.log(
+                    "info",
+                    f"User rejected the owned monthly challenge Pokémon {challenge_pokemon_data.get('name')} and it was removed from the collection.",
+                )
                 return
             return
 
         # RECONCILE FIRST: If Pokémon exists in collection, sync tracking before any reset
         if pokemon_in_collection:
             needs_reconciliation = (
-                last_challenge_id is None or
-                str(last_challenge_id) != str(challenge_individual_id) or
-                monthly_status == 0
+                last_challenge_id is None
+                or str(last_challenge_id) != str(challenge_individual_id)
+                or monthly_status == 0
             )
             if needs_reconciliation:
                 db.set_monthly_challenge_state(challenge_individual_id, 1)
-                logger.log("info", f"Reconciled monthly challenge tracking: Pokémon {challenge_pokemon_data.get('name')} exists in collection, set monthly_challenge_id={challenge_individual_id}, monthly_challenge=1")
+                logger.log(
+                    "info",
+                    f"Reconciled monthly challenge tracking: Pokémon {challenge_pokemon_data.get('name')} exists in collection, set monthly_challenge_id={challenge_individual_id}, monthly_challenge=1",
+                )
                 return
 
-        if last_challenge_id is None or str(last_challenge_id) != str(challenge_individual_id):
+        if last_challenge_id is None or str(last_challenge_id) != str(
+            challenge_individual_id
+        ):
             db.set_monthly_challenge_state(challenge_individual_id, 0)
             monthly_status = 0
 
         if monthly_status == 2 and not reclaim:
-            logger.log("info", f"Monthly challenge for {current_month_str} was rejected.")
+            logger.log(
+                "info", f"Monthly challenge for {current_month_str} was rejected."
+            )
             return
 
         if monthly_status == 1 and pokemon_in_collection:
-            logger.log("info", f"User already has the Pokémon for {current_month_str} (ID: {challenge_individual_id}).")
+            logger.log(
+                "info",
+                f"User already has the Pokémon for {current_month_str} (ID: {challenge_individual_id}).",
+            )
             return
 
-        logger.log("info", f"Awarding Pokémon for {current_month_str}: {challenge_pokemon_data.get('name')}")
+        logger.log(
+            "info",
+            f"Awarding Pokémon for {current_month_str}: {challenge_pokemon_data.get('name')}",
+        )
         make_shiny = False
         prev_id = current_challenge.get("previous_challenge_individual_id")
         threshold = current_challenge.get("defeat_threshold")
 
         if prev_id and threshold:
-            logger.log("info", f"Checking for shiny eligibility: prev_id={prev_id}, threshold={threshold}")
+            logger.log(
+                "info",
+                f"Checking for shiny eligibility: prev_id={prev_id}, threshold={threshold}",
+            )
             previous_challenge_pokemon = db.get_pokemon(prev_id)
             if previous_challenge_pokemon:
                 try:
-                    meets_threshold = int(previous_challenge_pokemon.get("pokemon_defeated", 0)) >= int(threshold)
+                    meets_threshold = int(
+                        previous_challenge_pokemon.get("pokemon_defeated", 0)
+                    ) >= int(threshold)
                 except (ValueError, TypeError):
                     meets_threshold = False
                 if meets_threshold:
-                    logger.log("info", f"Shiny criteria met for {challenge_pokemon_data.get('name')}.")
+                    logger.log(
+                        "info",
+                        f"Shiny criteria met for {challenge_pokemon_data.get('name')}.",
+                    )
                     make_shiny = True
 
-        new_pokemon = create_monthly_challenge_pokemon(challenge_pokemon_data, make_shiny=make_shiny)
+        new_pokemon = create_monthly_challenge_pokemon(
+            challenge_pokemon_data, make_shiny=make_shiny
+        )
         shiny_text = " (Shiny)" if new_pokemon["shiny"] else ""
 
         def award(show_congrats=True):
@@ -1318,13 +1480,25 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             if not _session_unchanged(db, db_token, col):
                 return
             if not success:
-                logger.log("error", f"Failed to award {new_pokemon['name']}; keeping the previous challenge decision for a retry.")
+                logger.log(
+                    "error",
+                    f"Failed to award {new_pokemon['name']}; keeping the previous challenge decision for a retry.",
+                )
                 return
-            events.emit("monthly_challenge", decision="accepted", individual_id=challenge_individual_id, restored=monthly_status == 1)
-            logger.log("info", f"Successfully awarded {new_pokemon['name']}{shiny_text}.")
+            events.emit(
+                "monthly_challenge",
+                decision="accepted",
+                individual_id=challenge_individual_id,
+                restored=monthly_status == 1,
+            )
+            logger.log(
+                "info", f"Successfully awarded {new_pokemon['name']}{shiny_text}."
+            )
             _refresh_collection(parent_window=mw)
             if show_congrats and _session_unchanged(db, db_token, col):
-                show_monthly_acceptance_dialog(parent_window=mw, challenge_pokemon=new_pokemon)
+                show_monthly_acceptance_dialog(
+                    parent_window=mw, challenge_pokemon=new_pokemon
+                )
 
         if monthly_status == 1:
             award()
@@ -1338,16 +1512,25 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                 parent_window=mw,
             )
             if not _session_unchanged(db, db_token, col):
-                logger.log("warning", "Discarded the manual monthly challenge decision: the Ankimon database or Anki profile changed while the window was open.")
+                logger.log(
+                    "warning",
+                    "Discarded the manual monthly challenge decision: the Ankimon database or Anki profile changed while the window was open.",
+                )
                 return
             if choice is None:
-                logger.log("info", "User closed the manual monthly challenge window without deciding.")
+                logger.log(
+                    "info",
+                    "User closed the manual monthly challenge window without deciding.",
+                )
                 return
             if choice == "accept":
                 if not _session_unchanged(db, db_token, col):
                     return
                 if db.get_pokemon(challenge_individual_id) is not None:
-                    logger.log("info", "Discarded a stale manual monthly challenge decision: the collection changed while the dialog was open.")
+                    logger.log(
+                        "info",
+                        "Discarded a stale manual monthly challenge decision: the collection changed while the dialog was open.",
+                    )
                     return
                 award(show_congrats=False)
             return
@@ -1355,34 +1538,65 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
         # Other UI (or sync) may change the decision/collection while exec()
         # runs. Keep the exact offered state so a stale prompt cannot overwrite
         # another decision or replace an owned Pokemon's progress.
-        offered_state = (db.get_user_data("monthly_challenge_id"), db.get_user_data("monthly_challenge", 0))
+        offered_state = (
+            db.get_user_data("monthly_challenge_id"),
+            db.get_user_data("monthly_challenge", 0),
+        )
         description = current_challenge.get("description", "")
-        accepted = show_monthly_challenge_dialog(new_pokemon, description, parent_window=mw)
+        accepted = show_monthly_challenge_dialog(
+            new_pokemon, description, parent_window=mw
+        )
         if not _session_unchanged(db, db_token, col):
-            logger.log("warning", "Discarded the monthly challenge decision: the Ankimon database or Anki profile changed while the dialog was open.")
+            logger.log(
+                "warning",
+                "Discarded the monthly challenge decision: the Ankimon database or Anki profile changed while the dialog was open.",
+            )
             return
         if db.get_user_data("rate_this") not in (True, "true"):
-            logger.log("info", "Discarded the monthly challenge decision: rating eligibility changed while the dialog was open.")
+            logger.log(
+                "info",
+                "Discarded the monthly challenge decision: rating eligibility changed while the dialog was open.",
+            )
             return
-        current_state = (db.get_user_data("monthly_challenge_id"), db.get_user_data("monthly_challenge", 0))
-        if current_state != offered_state or db.get_pokemon(challenge_individual_id) is not None:
-            logger.log("info", "Discarded a stale monthly challenge decision: the decision or collection changed while the dialog was open.")
+        current_state = (
+            db.get_user_data("monthly_challenge_id"),
+            db.get_user_data("monthly_challenge", 0),
+        )
+        if (
+            current_state != offered_state
+            or db.get_pokemon(challenge_individual_id) is not None
+        ):
+            logger.log(
+                "info",
+                "Discarded a stale monthly challenge decision: the decision or collection changed while the dialog was open.",
+            )
             return
 
         if accepted:
             award()
         else:
             db.set_monthly_challenge_state(challenge_individual_id, 2)
-            events.emit("monthly_challenge", decision="rejected", individual_id=challenge_individual_id)
-            show_monthly_rejection_dialog(parent_window=mw, challenge_pokemon=new_pokemon)
+            events.emit(
+                "monthly_challenge",
+                decision="rejected",
+                individual_id=challenge_individual_id,
+            )
+            show_monthly_rejection_dialog(
+                parent_window=mw, challenge_pokemon=new_pokemon
+            )
             logger.log("info", f"User rejected {new_pokemon['name']}{shiny_text}.")
 
     try:
         db = services.db
         if db.get_user_data("rate_this") not in (True, "true"):
-            logger.log("info", "Monthly Pokemon check skipped: user has not rated the addon.")
+            logger.log(
+                "info", "Monthly Pokemon check skipped: user has not rated the addon."
+            )
             if reclaim:
-                services.ui.notify("info", "Please rate the addon before claiming a monthly challenge Pokémon.")
+                services.ui.notify(
+                    "info",
+                    "Please rate the addon before claiming a monthly challenge Pokémon.",
+                )
             return
         # Captured on the main thread before the worker starts, so the
         # callback can tell whether the database was switched or the profile
@@ -1393,11 +1607,19 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
         if col is None:
             return
     except Exception as e:
-        logger.log("error", f"An unexpected error occurred while starting the monthly check: {e}")
+        logger.log(
+            "error",
+            f"An unexpected error occurred while starting the monthly check: {e}",
+        )
         return
 
     pending = getattr(services, "_monthly_challenge_request", None)
-    if pending is not None and pending["db"] is db and pending["token"] == db_token and pending["col"] is col:
+    if (
+        pending is not None
+        and pending["db"] is db
+        and pending["token"] == db_token
+        and pending["col"] is col
+    ):
         # A menu click during the fetch upgrades the automatic check. Once
         # processing starts, nested requests share its existing dialog.
         if pending["fetching"] and reclaim:
@@ -1405,7 +1627,13 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
         return
     # Registry storage survives module reloads. Identity-based cleanup keeps
     # an old completion from releasing a newer session's pending request.
-    request = {"db": db, "token": db_token, "col": col, "reclaim": reclaim, "fetching": True}
+    request = {
+        "db": db,
+        "token": db_token,
+        "col": col,
+        "reclaim": reclaim,
+        "fetching": True,
+    }
     services._monthly_challenge_request = request
 
     def release():
@@ -1415,7 +1643,9 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
     def _complete(result_data):
         try:
             request["fetching"] = False
-            _process_on_main_thread(result_data, db, db_token, col, current_month_str, request["reclaim"])
+            _process_on_main_thread(
+                result_data, db, db_token, col, current_month_str, request["reclaim"]
+            )
         except Exception as e:
             logger.log("error", f"Error completing monthly check: {e}")
         finally:
@@ -1424,9 +1654,23 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
     try:
         logger.log("info", "Checking for monthly challenge Pokemon award.")
         now = datetime.now()
-        month_names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        month_names = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ]
         current_month_str = f"{month_names[now.month - 1]} {now.year}"
         if defer:
+
             def on_done(future):
                 try:
                     result_data = future.result()
@@ -1434,9 +1678,23 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                     release()
                     logger.log("error", f"Error completing monthly check: {e}")
                     return
-                _complete(result_data)
+                if not _session_unchanged(db, db_token, col):
+                    release()
+                    return
+                if request["reclaim"]:
+                    _complete(result_data)
+                else:
+                    call_when_anki_idle(
+                        lambda: _complete(result_data),
+                        reason="monthly challenge notification",
+                        on_cancel=release,
+                    )
 
-            mw.taskman.run_in_background(lambda: _fetch_monthly_data(current_month_str), on_done)
+            run_in_background(
+                lambda: _fetch_monthly_data(current_month_str),
+                on_done,
+                taskman=mw.taskman,
+            )
         else:
             _complete(_fetch_monthly_data(current_month_str))
     except Exception as e:
@@ -1447,7 +1705,7 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
 def parse_to_canonical(code_str):
     if not code_str:
         return None
-    parts = [p.strip() for p in code_str.strip().split(',') if p.strip()]
+    parts = [p.strip() for p in code_str.strip().split(",") if p.strip()]
     if not parts:
         return None
     try:
@@ -1473,11 +1731,11 @@ def parse_to_canonical(code_str):
             ivs = [int(x) for x in parts[10:16]]
             nature = 12  # Default to Serious
             attacks = [int(x) for x in parts[16:]]
-            
+
         while len(attacks) < 4:
             attacks.append(33)
         attacks = attacks[:4]
-        
+
         canonical = [species_id, level, gender, shiny] + evs + ivs + [nature] + attacks
         return ",".join(map(str, canonical))
     except Exception:
@@ -1487,7 +1745,23 @@ def parse_to_canonical(code_str):
 class PokemonTrade:
     TRADE_VERSION = "02"
 
-    def __init__(self, name, id, level, ability, iv, ev, gender, attacks, individual_id, shiny, logger, refresh_callback, parent_window=None, nature="serious"):
+    def __init__(
+        self,
+        name,
+        id,
+        level,
+        ability,
+        iv,
+        ev,
+        gender,
+        attacks,
+        individual_id,
+        shiny,
+        logger,
+        refresh_callback,
+        parent_window=None,
+        nature="serious",
+    ):
         self.name = name
         self.display_name = _local_species_name(name, id)
         self.id = id
@@ -1525,22 +1799,35 @@ class PokemonTrade:
             main_pokemon = db.get_main_pokemon()
             return [main_pokemon] if main_pokemon else []
         except Exception as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message="Error loading main Pokémon!")
+            show_warning_with_traceback(
+                parent=self.parent_window,
+                exception=e,
+                message="Error loading main Pokémon!",
+            )
             return []
 
     def check_and_trade(self):
         pokemon_data = self.load_pokemon_data()
         for pokemon in pokemon_data:
             if self._match_main_pokemon(pokemon):
-                self.logger.log_and_showinfo("warning", "You can't trade your Main Pokémon!\nPlease pick a different Main Pokémon.")
+                self.logger.log_and_showinfo(
+                    "warning",
+                    "You can't trade your Main Pokémon!\nPlease pick a different Main Pokémon.",
+                )
                 return
         self.open_trade_window()
 
     def _match_main_pokemon(self, pokemon):
         return (
-            pokemon["name"] == self.name and pokemon["id"] == self.id and pokemon["level"] == self.level and
-            pokemon["ability"] == self.ability and pokemon["iv"] == self.iv and pokemon["ev"] == self.ev and
-            pokemon["gender"] == self.gender and pokemon["attacks"] == self.attacks and pokemon["shiny"] == self.shiny
+            pokemon["name"] == self.name
+            and pokemon["id"] == self.id
+            and pokemon["level"] == self.level
+            and pokemon["ability"] == self.ability
+            and pokemon["iv"] == self.iv
+            and pokemon["ev"] == self.ev
+            and pokemon["gender"] == self.gender
+            and pokemon["attacks"] == self.attacks
+            and pokemon["shiny"] == self.shiny
         )
 
     def open_trade_window(self):
@@ -1565,19 +1852,30 @@ class PokemonTrade:
         your_pokemon_layout = QVBoxLayout()
         your_pokemon_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         from PyQt6.QtGui import QMovie, QImage, QPixmap
+
         your_pokemon_sprite_label = QLabel()
         sprite_size = QSize(64, 64)
         your_pokemon_sprite_label.setMaximumSize(sprite_size)
         your_pokemon_sprite_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         your_pokemon_sprite_label.setScaledContents(False)
-        your_pokemon_sprite_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        
+        your_pokemon_sprite_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+
         # Only load and display sprite if setting allows
         show_sprites = self._should_show_sprites()
         if show_sprites:
-            your_pokemon_gif_path = get_sprite_path(side="front", sprite_type="gif", id=self.id, shiny=getattr(self, "shiny", False), gender=self.gender, pokemon_name=self.name)
-            
+            your_pokemon_gif_path = get_sprite_path(
+                side="front",
+                sprite_type="gif",
+                id=self.id,
+                shiny=getattr(self, "shiny", False),
+                gender=self.gender,
+                pokemon_name=self.name,
+            )
+
             your_pokemon_movie = QMovie(your_pokemon_gif_path)
+
             def set_bw_frame():
                 frame = your_pokemon_movie.currentImage()
                 if not frame.isNull():
@@ -1586,10 +1884,21 @@ class PokemonTrade:
                         for x in range(frame.width()):
                             color = frame.pixelColor(x, y)
                             alpha = color.alpha()
-                            gray_value = int(0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue())
-                            gray.setPixelColor(x, y, QColor(gray_value, gray_value, gray_value, alpha))
-                    scaled = QPixmap.fromImage(gray).scaled(sprite_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                            gray_value = int(
+                                0.299 * color.red()
+                                + 0.587 * color.green()
+                                + 0.114 * color.blue()
+                            )
+                            gray.setPixelColor(
+                                x, y, QColor(gray_value, gray_value, gray_value, alpha)
+                            )
+                    scaled = QPixmap.fromImage(gray).scaled(
+                        sprite_size,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
                     your_pokemon_sprite_label.setPixmap(scaled)
+
             your_pokemon_movie.frameChanged.connect(lambda _: set_bw_frame())
             your_pokemon_sprite_label.setMovie(your_pokemon_movie)
             your_pokemon_movie.start()
@@ -1599,7 +1908,7 @@ class PokemonTrade:
             transparent_pixmap = QPixmap(64, 64)
             transparent_pixmap.fill(Qt.GlobalColor.transparent)
             your_pokemon_sprite_label.setPixmap(transparent_pixmap)
-        
+
         your_pokemon_name_label = QLabel(f"{self.display_name}")
         your_pokemon_name_label.setFont(QFont("Arial", 12))
         your_pokemon_layout.addWidget(your_pokemon_sprite_label)
@@ -1616,16 +1925,24 @@ class PokemonTrade:
         self.other_pokemon_sprite_label.setMaximumSize(sprite_size)
         self.other_pokemon_sprite_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.other_pokemon_sprite_label.setScaledContents(False)
-        self.other_pokemon_sprite_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        
+        self.other_pokemon_sprite_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+        )
+
         if show_sprites:
-            self.other_pokemon_sprite_label.setPixmap(QPixmap(":/icons/pokeball.png").scaled(sprite_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.other_pokemon_sprite_label.setPixmap(
+                QPixmap(":/icons/pokeball.png").scaled(
+                    sprite_size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
         else:
             # Use transparent 64x64 placeholder to preserve layout geometry
             transparent_pixmap = QPixmap(64, 64)
             transparent_pixmap.fill(Qt.GlobalColor.transparent)
             self.other_pokemon_sprite_label.setPixmap(transparent_pixmap)
-            
+
         self.other_pokemon_name_label = QLabel("")
         self.other_pokemon_name_label.setFont(QFont("Arial", 12))
         other_pokemon_layout.addWidget(self.other_pokemon_sprite_label)
@@ -1642,7 +1959,9 @@ class PokemonTrade:
         self.trade_code_layout = QVBoxLayout()
         self.trade_code_layout.setSpacing(5)
 
-        self.legacy_checkbox = QCheckBox("Legacy Mode (Trade with older Ankimon versions)")
+        self.legacy_checkbox = QCheckBox(
+            "Legacy Mode (Trade with older Ankimon versions)"
+        )
         self.legacy_checkbox.setFont(QFont("Arial", 10))
         self.trade_code_layout.addWidget(self.legacy_checkbox)
 
@@ -1661,7 +1980,9 @@ class PokemonTrade:
         # Connect once and read the live display text at click time, rather than
         # disconnecting/reconnecting a fresh lambda on every checkbox toggle
         # (which is fragile and can raise TypeError/RuntimeError in PyQt).
-        self.copy_button.clicked.connect(lambda: self.copy_to_clipboard(self.trade_code_display.text()))
+        self.copy_button.clicked.connect(
+            lambda: self.copy_to_clipboard(self.trade_code_display.text())
+        )
         self.code_display_layout.addWidget(self.copy_button)
         self.trade_code_layout.addLayout(self.code_display_layout)
 
@@ -1689,7 +2010,9 @@ class PokemonTrade:
         self.trade_button = QPushButton("Generate Trade Password")
         self.trade_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         self.trade_button.setStyleSheet("padding: 10px;")
-        self.trade_button.clicked.connect(lambda: self.generate_and_show_passwords(window))
+        self.trade_button.clicked.connect(
+            lambda: self.generate_and_show_passwords(window)
+        )
         main_layout.addWidget(self.trade_button)
 
         window.exec()
@@ -1709,10 +2032,12 @@ class PokemonTrade:
             return
 
         # Same species check using canonical species IDs
-        id1 = int(canonical1.split(',')[0])
-        id2 = int(canonical2.split(',')[0])
+        id1 = int(canonical1.split(",")[0])
+        id2 = int(canonical2.split(",")[0])
         if id1 == id2:
-            showWarning("You cannot trade with a Pokémon of the same species (ID) as the one you're trading away!")
+            showWarning(
+                "You cannot trade with a Pokémon of the same species (ID) as the one you're trading away!"
+            )
             return
 
         self.your_code_label.hide()
@@ -1723,14 +2048,18 @@ class PokemonTrade:
         self.trade_button.hide()
 
         # Check if we should use legacy hashing (checkbox checked OR either code is unversioned)
-        is_legacy = self.legacy_checkbox.isChecked() or (not code1.startswith("-200")) or (not code2.startswith("-200"))
+        is_legacy = (
+            self.legacy_checkbox.isChecked()
+            or (not code1.startswith("-200"))
+            or (not code2.startswith("-200"))
+        )
 
         if is_legacy:
             codes = sorted([code1, code2])
             combo = codes[0] + "|" + codes[1]
             hash_digest = hashlib.sha256(combo.encode()).hexdigest()
-            part1 = hash_digest[:len(hash_digest) // 2]
-            part2 = hash_digest[len(hash_digest) // 2:]
+            part1 = hash_digest[: len(hash_digest) // 2]
+            part2 = hash_digest[len(hash_digest) // 2 :]
 
             if code1 < code2:
                 my_part = part1
@@ -1742,8 +2071,8 @@ class PokemonTrade:
             codes = sorted([canonical1, canonical2])
             combo = codes[0] + "|" + codes[1]
             hash_digest = hashlib.sha256(combo.encode()).hexdigest()
-            part1 = hash_digest[:len(hash_digest) // 2]
-            part2 = hash_digest[len(hash_digest) // 2:]
+            part1 = hash_digest[: len(hash_digest) // 2]
+            part2 = hash_digest[len(hash_digest) // 2 :]
 
             if canonical1 < canonical2:
                 my_part = part1
@@ -1780,13 +2109,17 @@ class PokemonTrade:
         self.password_layout.addWidget(their_password_label)
 
         self.other_password_input = QLineEdit()
-        self.other_password_input.setPlaceholderText("Enter the other person's password part")
+        self.other_password_input.setPlaceholderText(
+            "Enter the other person's password part"
+        )
         self.password_layout.addWidget(self.other_password_input)
 
         self.password_button = QPushButton("Perform Trade")
         self.password_button.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         self.password_button.setStyleSheet("padding: 10px;")
-        self.password_button.clicked.connect(lambda: self.handle_trade_with_password(window))
+        self.password_button.clicked.connect(
+            lambda: self.handle_trade_with_password(window)
+        )
         self.password_layout.addWidget(self.password_button)
 
         window.layout().addWidget(self.password_interface)
@@ -1803,16 +2136,20 @@ class PokemonTrade:
 
         their_version = their_part_entered[-2:]
         if their_version != self.TRADE_VERSION:
-            showWarning(f"Trade incompatible due to Ankimon trade versions. \n\nYour version: {self.TRADE_VERSION}, partner's version: {their_version}.\n\nPlease get the latest version of Ankimon for both users!")
+            showWarning(
+                f"Trade incompatible due to Ankimon trade versions. \n\nYour version: {self.TRADE_VERSION}, partner's version: {their_version}.\n\nPlease get the latest version of Ankimon for both users!"
+            )
             return
 
         if their_part_entered == self._their_password_part:
             code = self.trade_code_input.text().strip()
             canonical = parse_to_canonical(code)
             if canonical:
-                incoming_id = int(canonical.split(',')[0])
+                incoming_id = int(canonical.split(",")[0])
                 if incoming_id == self.id:
-                    showWarning("You cannot trade with a Pokémon of the same species (ID) as the one you're trading away!")
+                    showWarning(
+                        "You cannot trade with a Pokémon of the same species (ID) as the one you're trading away!"
+                    )
                     return
             self.confirm_trade(parent_window)
         else:
@@ -1825,10 +2162,11 @@ class PokemonTrade:
 
     def update_other_pokemon_sprite(self, code):
         from PyQt6.QtGui import QMovie, QPixmap
+
         try:
             sprite_size = QSize(64, 64)
             self.other_pokemon_sprite_label.clear()
-            
+
             # Only show sprites if the setting allows
             show_sprites = self._should_show_sprites()
             if not show_sprites:
@@ -1840,52 +2178,83 @@ class PokemonTrade:
                 # Still attempt to parse and display the Pokémon name even without sprites
                 canonical = parse_to_canonical(code)
                 if canonical:
-                    parts = canonical.split(',')
+                    parts = canonical.split(",")
                     pokemon_id = int(parts[0])
                     other_name = self.get_pokemon_name_by_id(pokemon_id)
-                    self.other_pokemon_name_label.setText(_local_species_name(other_name, pokemon_id))
+                    self.other_pokemon_name_label.setText(
+                        _local_species_name(other_name, pokemon_id)
+                    )
                 return
-            
+
             self.other_pokemon_sprite_label.setPixmap(QPixmap())
             self.other_pokemon_name_label.setText("")
-            
+
             canonical = parse_to_canonical(code)
             if canonical:
-                parts = canonical.split(',')
+                parts = canonical.split(",")
                 pokemon_id = int(parts[0])
                 gender_id = parts[2]
                 shiny_val = int(parts[3])
-                
+
                 gender_map = {"0": "M", "1": "F", "2": "N"}
                 other_gender = gender_map.get(gender_id, "M")
-                other_shiny = (shiny_val == 1)
-                
+                other_shiny = shiny_val == 1
+
                 other_name = self.get_pokemon_name_by_id(pokemon_id)
-                self.other_pokemon_name_label.setText(_local_species_name(other_name, pokemon_id))
-                sprite_path = get_sprite_path(side="front", sprite_type="gif", id=pokemon_id, shiny=other_shiny, gender=other_gender, pokemon_name=other_name)
-                
-                if hasattr(self, '_other_pokemon_movie') and self._other_pokemon_movie is not None:
+                self.other_pokemon_name_label.setText(
+                    _local_species_name(other_name, pokemon_id)
+                )
+                sprite_path = get_sprite_path(
+                    side="front",
+                    sprite_type="gif",
+                    id=pokemon_id,
+                    shiny=other_shiny,
+                    gender=other_gender,
+                    pokemon_name=other_name,
+                )
+
+                if (
+                    hasattr(self, "_other_pokemon_movie")
+                    and self._other_pokemon_movie is not None
+                ):
                     self._other_pokemon_movie.stop()
                     self._other_pokemon_movie.deleteLater()
                     self._other_pokemon_movie = None
                 other_pokemon_movie = QMovie(sprite_path)
                 self._other_pokemon_movie = other_pokemon_movie
-                
+
                 def set_other_frame():
                     frame = other_pokemon_movie.currentImage()
                     if not frame.isNull():
-                        scaled = QPixmap.fromImage(frame).scaled(sprite_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        scaled = QPixmap.fromImage(frame).scaled(
+                            sprite_size,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
                         self.other_pokemon_sprite_label.setPixmap(scaled)
+
                 other_pokemon_movie.frameChanged.connect(lambda _: set_other_frame())
                 self.other_pokemon_sprite_label.setMovie(other_pokemon_movie)
                 other_pokemon_movie.start()
                 set_other_frame()
             else:
-                self.other_pokemon_sprite_label.setPixmap(QPixmap(":/icons/pokeball.png").scaled(QSize(64, 64), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                self.other_pokemon_sprite_label.setPixmap(
+                    QPixmap(":/icons/pokeball.png").scaled(
+                        QSize(64, 64),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
                 self.other_pokemon_name_label.setText("")
         except Exception:
             if self._should_show_sprites():
-                self.other_pokemon_sprite_label.setPixmap(QPixmap(":/icons/pokeball.png").scaled(QSize(64, 64), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                self.other_pokemon_sprite_label.setPixmap(
+                    QPixmap(":/icons/pokeball.png").scaled(
+                        QSize(64, 64),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
             else:
                 # Use transparent 64x64 placeholder
                 transparent_pixmap = QPixmap(64, 64)
@@ -1896,40 +2265,54 @@ class PokemonTrade:
     def get_pokemon_name_by_id(self, pokemon_id):
         try:
             from ..functions.pokedex_functions import _load_pokedex_cache
+
             # Use the in-memory pokedex cache: update_other_pokemon_sprite calls
             # this on every keystroke in the trade-code input, so re-reading and
             # re-parsing pokedex.json from disk each time stalls the GUI thread.
             pokedex = _load_pokedex_cache()
             # First pass: check actual_id for precise form match (e.g. Mega Diancie)
             for details in pokedex.values():
-                if details.get('actual_id') == pokemon_id:
-                    return details.get('name', str(pokemon_id))
+                if details.get("actual_id") == pokemon_id:
+                    return details.get("name", str(pokemon_id))
             # Second pass fallback: check species_id
             for details in pokedex.values():
-                if details.get('species_id') == pokemon_id:
-                    return details.get('name', str(pokemon_id))
+                if details.get("species_id") == pokemon_id:
+                    return details.get("name", str(pokemon_id))
         except Exception as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message=f"An error occurred while getting the Pokémon name for ID {pokemon_id}.")
+            show_warning_with_traceback(
+                parent=self.parent_window,
+                exception=e,
+                message=f"An error occurred while getting the Pokémon name for ID {pokemon_id}.",
+            )
         return str(pokemon_id)
 
     def confirm_trade(self, parent_window):
         from PyQt6.QtWidgets import QMessageBox
+
         code = self.trade_code_input.text()
         name = "the other Pokémon"
-        parts = [p.strip() for p in code.split(',')]
+        parts = [p.strip() for p in code.split(",")]
         if len(parts) > 0:
             if parts[0] == "-200":
                 if len(parts) > 1 and parts[1].isdigit():
                     pokemon_id = int(parts[1])
-                    name = _local_species_name(self.get_pokemon_name_by_id(pokemon_id), pokemon_id)
+                    name = _local_species_name(
+                        self.get_pokemon_name_by_id(pokemon_id), pokemon_id
+                    )
             elif parts[0].isdigit():
                 pokemon_id = int(parts[0])
-                name = _local_species_name(self.get_pokemon_name_by_id(pokemon_id), pokemon_id)
+                name = _local_species_name(
+                    self.get_pokemon_name_by_id(pokemon_id), pokemon_id
+                )
         msg = QMessageBox(parent_window)
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setWindowTitle("Confirm Trade")
-        msg.setText(f"Are you sure you want to trade your {self.display_name} for {name}?")
-        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setText(
+            f"Are you sure you want to trade your {self.display_name} for {name}?"
+        )
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
         result = msg.exec()
         if result == QMessageBox.StandardButton.Yes:
             self.trade_pokemon_in(code)
@@ -1937,7 +2320,7 @@ class PokemonTrade:
     def trade_pokemon_in(self, number_code):
         code = number_code.strip()
         try:
-            numbers = [int(num) for num in code.split(',')]
+            numbers = [int(num) for num in code.split(",")]
             if len(numbers) < 16:
                 showWarning("Code is incomplete.")
                 return
@@ -1948,7 +2331,9 @@ class PokemonTrade:
                     return
                 incoming_id = numbers[1]
             if incoming_id == self.id:
-                showWarning("You cannot trade with a Pokémon of the same species (ID) as the one you're trading away!")
+                showWarning(
+                    "You cannot trade with a Pokémon of the same species (ID) as the one you're trading away!"
+                )
                 return
             self.process_trade(numbers)
         except ValueError:
@@ -1957,20 +2342,45 @@ class PokemonTrade:
     def process_trade(self, numbers):
         from ..functions.pokedex_functions import search_pokedex, get_all_pokemon_moves
         import random
+
         try:
             if len(numbers) > 0 and numbers[0] == -200:
-                pokemon_id, level, gender_id, shiny = numbers[1], numbers[2], numbers[3], numbers[4]
-                ev_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[5:11]))
-                iv_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[11:17]))
+                pokemon_id, level, gender_id, shiny = (
+                    numbers[1],
+                    numbers[2],
+                    numbers[3],
+                    numbers[4],
+                )
+                ev_stats = dict(
+                    zip(["hp", "atk", "def", "spa", "spd", "spe"], numbers[5:11])
+                )
+                iv_stats = dict(
+                    zip(["hp", "atk", "def", "spa", "spd", "spe"], numbers[11:17])
+                )
                 nature_id = numbers[17]
                 nature = self.nature_from_id(nature_id)
-                attacks = [self.find_move_by_num(attack_id)['name'] for attack_id in numbers[18:]]
+                attacks = [
+                    self.find_move_by_num(attack_id)["name"]
+                    for attack_id in numbers[18:]
+                ]
             else:
-                pokemon_id, level, gender_id, shiny = numbers[0], numbers[1], numbers[2], numbers[3]
-                ev_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[4:10]))
-                iv_stats = dict(zip(['hp', 'atk', 'def', 'spa', 'spd', 'spe'], numbers[10:16]))
+                pokemon_id, level, gender_id, shiny = (
+                    numbers[0],
+                    numbers[1],
+                    numbers[2],
+                    numbers[3],
+                )
+                ev_stats = dict(
+                    zip(["hp", "atk", "def", "spa", "spd", "spe"], numbers[4:10])
+                )
+                iv_stats = dict(
+                    zip(["hp", "atk", "def", "spa", "spd", "spe"], numbers[10:16])
+                )
                 nature = "serious"
-                attacks = [self.find_move_by_num(attack_id)['name'] for attack_id in numbers[16:]]
+                attacks = [
+                    self.find_move_by_num(attack_id)["name"]
+                    for attack_id in numbers[16:]
+                ]
 
             details = self.find_pokemon_by_id(pokemon_id)
             if not details:
@@ -1981,7 +2391,9 @@ class PokemonTrade:
             ability = "No Ability"
             possible_abilities = search_pokedex(details["name"], "abilities")
             if possible_abilities:
-                numeric_abilities = {k: v for k, v in possible_abilities.items() if k.isdigit()}
+                numeric_abilities = {
+                    k: v for k, v in possible_abilities.items() if k.isdigit()
+                }
                 if numeric_abilities:
                     ability = random.choice(list(numeric_abilities.values()))
 
@@ -2006,7 +2418,9 @@ class PokemonTrade:
                 "iv": iv_stats,
                 "attacks": attacks,
                 "growth_rate": get_growth_rate(details["species_id"]),
-                "current_hp": self.calculate_max_hp(details["baseStats"]["hp"], level, ev_stats, iv_stats),
+                "current_hp": self.calculate_max_hp(
+                    details["baseStats"]["hp"], level, ev_stats, iv_stats
+                ),
                 "base_experience": base_experience,
                 "friendship": 0,
                 "pokemon_defeated": 0,
@@ -2016,12 +2430,16 @@ class PokemonTrade:
                 "mega": False,
                 "special_form": None,
                 "capture_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "individual_id": str(uuid.uuid4())
+                "individual_id": str(uuid.uuid4()),
             }
             new_pokemon["xp"] = 0
             self.replace_pokemon(new_pokemon)
         except Exception as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message="An error occurred while processing the trade.")
+            show_warning_with_traceback(
+                parent=self.parent_window,
+                exception=e,
+                message="An error occurred while processing the trade.",
+            )
 
     def calculate_max_hp(self, base_hp, level, ev, iv):
         ev_value = ev["hp"] / 4
@@ -2029,21 +2447,32 @@ class PokemonTrade:
         return int((((2 * base_hp + iv_value + ev_value) * level) / 100) + level + 10)
 
     def find_move_by_num(self, move_num):
-        with open(self.moves_file_path, 'r', encoding='utf-8') as file:
+        with open(self.moves_file_path, "r", encoding="utf-8") as file:
             moves_data = json.load(file)
-            return next((move for move in moves_data.values() if move.get('num') == move_num), {"name": "Unknown Move"})
+            return next(
+                (move for move in moves_data.values() if move.get("num") == move_num),
+                {"name": "Unknown Move"},
+            )
 
     def find_move_by_name(self, move_name):
-        with open(self.moves_file_path, 'r', encoding='utf-8') as file:
+        with open(self.moves_file_path, "r", encoding="utf-8") as file:
             moves_data = json.load(file)
-            move = next((move for move in moves_data.values() if move.get('name').lower() == move_name.lower()), None)
+            move = next(
+                (
+                    move
+                    for move in moves_data.values()
+                    if move.get("name").lower() == move_name.lower()
+                ),
+                None,
+            )
             if move:
-                return move['num']
+                return move["num"]
             else:
                 return 33
 
     def find_pokemon_by_id(self, pokemon_id):
         from ..functions.pokedex_functions import _load_pokedex_cache
+
         # Use the in-memory pokedex cache instead of re-reading/parsing
         # pokedex.json from disk on the GUI thread for every trade lookup.
         # _load_pokedex_cache() swallows a missing/corrupt pokedex.json and
@@ -2051,17 +2480,21 @@ class PokemonTrade:
         # (a bare `except FileNotFoundError` around this call was unreachable).
         pokedex = _load_pokedex_cache()
         if not pokedex:
-            self.logger.log_and_showinfo("warning", "Pokedex file not found or failed to load.")
+            self.logger.log_and_showinfo(
+                "warning", "Pokedex file not found or failed to load."
+            )
             return None
         # First pass: check actual_id for precise form match (e.g. Mega Diancie)
         for details in pokedex.values():
-            if details.get('actual_id') == pokemon_id:
+            if details.get("actual_id") == pokemon_id:
                 return details
         # Second pass fallback: check species_id
         for details in pokedex.values():
-            if details.get('species_id') == pokemon_id:
+            if details.get("species_id") == pokemon_id:
                 return details
-        self.logger.log_and_showinfo("warning",f"No Pokémon found with ID: {pokemon_id}")
+        self.logger.log_and_showinfo(
+            "warning", f"No Pokémon found with ID: {pokemon_id}"
+        )
         return None
 
     def gender_from_id(self, gender_id):
@@ -2071,7 +2504,7 @@ class PokemonTrade:
         """Replace the traded pokemon with the new one in the database."""
         try:
             db = services.db
-            
+
             try:
                 db.replace_pokemon(new_pokemon, self.individual_id)
                 # The traded-away Pokémon's individual_id is now gone from the DB
@@ -2080,32 +2513,64 @@ class PokemonTrade:
                 # later look up a missing Pokémon and crash. str() guards against
                 # any id type mismatch in the compare.
                 settings_obj = services.settings
-                if settings_obj is not None and str(settings_obj.get("trainer.xp_share")) == str(self.individual_id):
+                if settings_obj is not None and str(
+                    settings_obj.get("trainer.xp_share")
+                ) == str(self.individual_id):
                     settings_obj.set("trainer.xp_share", None)
             except Exception as e:
-                show_warning_with_traceback(parent=self.parent_window, exception=e, message=f"An error occurred during trade: {e}")
+                show_warning_with_traceback(
+                    parent=self.parent_window,
+                    exception=e,
+                    message=f"An error occurred during trade: {e}",
+                )
 
-            self.logger.log_and_showinfo("warning",f"Successfully traded for {new_pokemon['name']}!")
+            self.logger.log_and_showinfo(
+                "warning", f"Successfully traded for {new_pokemon['name']}!"
+            )
             self.refresh_callback()
 
         except Exception as e:
-            show_warning_with_traceback(parent=self.parent_window, exception=e, message="Error updating Pokémon data.")
-    
+            show_warning_with_traceback(
+                parent=self.parent_window,
+                exception=e,
+                message="Error updating Pokémon data.",
+            )
+
     def format_gender(self):
         gender_map = {"M": 0, "F": 1, "N": 2}
         return gender_map.get(self.gender, 3)
-    
+
     def format_shiny(self):
         return 1 if self.shiny else 0
 
     def format_nature(self):
-        nature_name = getattr(self, 'nature', 'serious').lower()
+        nature_name = getattr(self, "nature", "serious").lower()
         natures = [
-            "hardy", "lonely", "brave", "adamant", "naughty",
-            "bold", "docile", "relaxed", "impish", "lax",
-            "timid", "hasty", "serious", "jolly", "naive",
-            "modest", "mild", "quiet", "bashful", "rash",
-            "calm", "gentle", "sassy", "careful", "quirky"
+            "hardy",
+            "lonely",
+            "brave",
+            "adamant",
+            "naughty",
+            "bold",
+            "docile",
+            "relaxed",
+            "impish",
+            "lax",
+            "timid",
+            "hasty",
+            "serious",
+            "jolly",
+            "naive",
+            "modest",
+            "mild",
+            "quiet",
+            "bashful",
+            "rash",
+            "calm",
+            "gentle",
+            "sassy",
+            "careful",
+            "quirky",
         ]
         try:
             return natures.index(nature_name)
@@ -2114,21 +2579,43 @@ class PokemonTrade:
 
     def nature_from_id(self, nature_id):
         natures = [
-            "hardy", "lonely", "brave", "adamant", "naughty",
-            "bold", "docile", "relaxed", "impish", "lax",
-            "timid", "hasty", "serious", "jolly", "naive",
-            "modest", "mild", "quiet", "bashful", "rash",
-            "calm", "gentle", "sassy", "careful", "quirky"
+            "hardy",
+            "lonely",
+            "brave",
+            "adamant",
+            "naughty",
+            "bold",
+            "docile",
+            "relaxed",
+            "impish",
+            "lax",
+            "timid",
+            "hasty",
+            "serious",
+            "jolly",
+            "naive",
+            "modest",
+            "mild",
+            "quiet",
+            "bashful",
+            "rash",
+            "calm",
+            "gentle",
+            "sassy",
+            "careful",
+            "quirky",
         ]
         if 0 <= nature_id < len(natures):
             return natures[nature_id]
         return "serious"
 
     def ev_string(self):
-        return ','.join(str(value) for value in self.ev.values())
+        return ",".join(str(value) for value in self.ev.values())
 
     def iv_string(self):
-        return ','.join(str(value) for value in self.iv.values())
+        return ",".join(str(value) for value in self.iv.values())
 
     def attack_ids(self):
-        return ','.join([str(self.find_move_by_name(attack)) for attack in self.attacks])
+        return ",".join(
+            [str(self.find_move_by_name(attack)) for attack in self.attacks]
+        )

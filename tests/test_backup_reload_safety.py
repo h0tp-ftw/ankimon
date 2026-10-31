@@ -172,6 +172,8 @@ def test_teardown_retires_manager_before_any_event_pump_or_widget_delete(monkeyp
     )
     services_module = ModuleType("reload_test_addon.services")
     services_module.services = SimpleNamespace()
+    background_module = ModuleType("reload_test_addon.background_ops")
+    background_module.cancel_pending_callbacks = lambda: calls.append("cancel_idle")
     database_module = ModuleType("reload_test_addon.pyobj.database_manager")
     database_module.reset_db = lambda: calls.append("reset_db")
     aqt = ModuleType("aqt")
@@ -186,6 +188,7 @@ def test_teardown_retires_manager_before_any_event_pump_or_widget_delete(monkeyp
     for name, module in (
         (addon.__name__, addon),
         (services_module.__name__, services_module),
+        (background_module.__name__, background_module),
         (database_module.__name__, database_module),
         ("aqt", aqt),
         ("PyQt6.QtCore", qtcore),
@@ -211,4 +214,10 @@ def test_teardown_retires_manager_before_any_event_pump_or_widget_delete(monkeyp
     for _ in range(2):
         calls.clear()
         reloader.teardown_ankimon(addon.__name__)
-        assert calls == ["invalidate", *steps[:-1], "reset_db", steps[-1]]
+        assert calls == [
+            "cancel_idle",
+            "invalidate",
+            *steps[:-1],
+            "reset_db",
+            steps[-1],
+        ]

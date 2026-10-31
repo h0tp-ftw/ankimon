@@ -13,6 +13,8 @@ onto this game's base/``-l``/``-xl`` item names.
 deliberately not covered here.
 """
 
+from __future__ import annotations
+
 VITAMINS = {
     "hp-up": "hp",
     "protein": "atk",

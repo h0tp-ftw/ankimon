@@ -235,6 +235,17 @@ def start_real_session(
 
     from Ankimon.services import services
 
+    # Production startup now defers its UI until Anki's startup/sync callbacks
+    # have returned. Deliver real Qt timers before exposing a ready session.
+    import time
+
+    deadline = time.monotonic() + 10
+    while not getattr(services, "startup_finished", False):
+        app.processEvents()
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Ankimon startup did not finish within 10 seconds")
+        time.sleep(0.001)
+
     if settings_overrides:
         for k, v in settings_overrides.items():
             services.settings.set(k, v)

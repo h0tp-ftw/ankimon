@@ -7,6 +7,7 @@ except ImportError:
 from aqt import gui_hooks, mw
 
 from .services import services
+from .background_ops import run_in_background
 from .singletons import settings_obj, logger
 from .utils import test_online_connectivity
 from .pyobj.ankimon_sync import setup_ankimon_sync_hooks
@@ -17,7 +18,7 @@ from .pyobj.save_transfer import (
 from .pyobj.tip_of_the_day import show_tip_of_the_day
 from .pyobj.pokemon_trade import check_and_award_monthly_pokemon
 from .pyobj.error_handler import show_warning_with_traceback
-from .functions.pokedex_functions import clear_pokedex_caches, warm_evolution_caches
+from .functions.pokedex_functions import clear_pokedex_caches
 from .functions.learnset_retrieval import clear_learnset_cache
 from .functions.encounter_functions import (
     clear_encounter_cache,
@@ -48,9 +49,9 @@ _PROFILE_LOADED_HANDLER_RECORD = "_profile_loaded_handler"
 
 
 def _on_profile_close():
-    """Clear all performance caches when the Anki session/profile ends."""
+    """Clear profile caches while retaining the bundled evolution table."""
     try:
-        clear_pokedex_caches()
+        clear_pokedex_caches(preserve_evolution=True)
         clear_learnset_cache()
         clear_encounter_cache()
         clear_auto_battle_override()
@@ -62,6 +63,7 @@ def _on_profile_close():
 def _on_profile_did_open(online_connectivity, backup_manager=None):
     def handler():
         profile_col = getattr(mw, "col", None)
+        generation = getattr(services, "_background_generation", 0)
         if backup_manager is not None:
             try:
                 backup_manager.refresh_profile_path()
@@ -76,70 +78,83 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
         # where nothing runs after it to deliver its callback re-entrantly.
         guard_media_saves_now(logger)
 
-        # Re-warm the static evolution table _on_profile_close just dropped.
-        # The boot warm (startup.run_startup_background_checks) runs once per
-        # Anki PROCESS, so a profile SWITCH leaves pokemon_evolution.csv
-        # unparsed with the review gate already open — the next level-up would
-        # then parse it inside on_review_card, the synchronous review-path I/O
-        # the boot warm exists to prevent. Cheap enough for the main thread
-        # (one ~500-row CSV) and guarded like everything else here: the warm is
-        # an optimization and runs first, so a raise would take the sync-hook
-        # registration and the tip of the day down with it.
+        # Establish the first-run baseline before Anki starts automatic sync.
+        # A paused mobile replay must not block this GUI hook; if it owns the
+        # lock, capture the collection boundary and finish initialization before
+        # the deferred sync detector queues anything.
+        mobile_initialized = False
+        deferred_mobile_initialization = False
+        initial_watermark = None
+        mobile_db = services.db
+        mobile_col = services.col if services.col is not None else profile_col
+
+        def initialize_mobile_reviews(*, detect_existing=False):
+            nonlocal mobile_initialized
+            if mobile_initialized:
+                return True
+            current_col = (
+                services.col if services.col is not None else getattr(mw, "col", None)
+            )
+            if (
+                services.db is not mobile_db
+                or current_col is not mobile_col
+                or generation != getattr(services, "_background_generation", 0)
+            ):
+                return False
+            from .functions.mobile_sync import mobile_sync_guard
+
+            with mobile_sync_guard():
+                try:
+                    db, col = mobile_db, mobile_col
+                    if db is not None and col is not None:
+                        from .menu_buttons import update_mobile_badge
+                        from .save_import import rebase_after_import
+
+                        rebase_after_import(
+                            db, col, collection_watermark=initial_watermark
+                        )
+                        if db.get_mobile_watermark() == 0:
+                            baseline = initial_watermark
+                            if baseline is None:
+                                baseline = (
+                                    col.db.scalar("SELECT MAX(id) FROM revlog") or 0
+                                )
+                            db.set_mobile_watermark(baseline)
+                        mobile_initialized = True
+
+                        if detect_existing and settings_obj.get("mobile.enabled", True):
+                            from .functions.mobile_sync import (
+                                process_mobile_reviews_after_sync,
+                            )
+
+                            process_mobile_reviews_after_sync(
+                                col=col,
+                                ankimon_db=db,
+                                settings_obj=settings_obj,
+                                logger=logger,
+                            )
+                        update_mobile_badge(db.get_pending_mobile_count())
+                    return True
+                except Exception as e:
+                    logger.log("error", f"Failed to initialize mobile watermark: {e}")
+                    return False
+
         try:
-            warm_evolution_caches()
+            from .functions.mobile_sync import MobileSyncBusy, clear_desktop_session
+
+            # Clear the old session now, before a lock retry can yield to new
+            # desktop answers. The deferred initializer must preserve those IDs.
+            clear_desktop_session()
+            try:
+                initialize_mobile_reviews(detect_existing=True)
+            except MobileSyncBusy:
+                if mobile_col is not None:
+                    initial_watermark = (
+                        mobile_col.db.scalar("SELECT MAX(id) FROM revlog") or 0
+                    )
+                deferred_mobile_initialization = True
         except Exception as e:
-            logger.log("error", f"Error warming evolution caches on profile open: {e}")
-
-        # Mobile-review sync bootstrap (F20 deferred half): initialise the revlog
-        # watermark on first run, clear the desktop session set for a fresh
-        # inter-sync interval, run a startup detection pass to catch reviews pulled
-        # in by the startup sync, and restore the pending-count badge. Guarded so a
-        # missing DB / collection is a benign no-op.
-        try:
-            db = services.db
-            col = services.col if services.col is not None else mw.col
-            if db is not None and col is not None:
-                from .functions.mobile_sync import clear_desktop_session
-                from .menu_buttons import update_mobile_badge
-                from .save_import import rebase_after_import
-
-                # Addon construction precedes opening the Anki collection.
-                # Rebase an installed import now, including shutdown-sync reviews,
-                # before any old reviews can be queued as mobile battles.
-                rebase_after_import(db, col)
-
-                watermark = db.get_mobile_watermark()
-                if watermark == 0:
-                    # First-ever run — set watermark to NOW so no retroactive battles
-                    initial_watermark = col.db.scalar("SELECT MAX(id) FROM revlog") or 0
-                    db.set_mobile_watermark(initial_watermark or 0)
-                # Always clear session set on profile open (fresh inter-sync interval)
-                clear_desktop_session()
-
-                # Run detection immediately to catch reviews pulled in by startup sync
-                if settings_obj.get("mobile.enabled", True):
-                    try:
-                        from .functions.mobile_sync import (
-                            process_mobile_reviews_after_sync,
-                        )
-
-                        process_mobile_reviews_after_sync(
-                            col=col,
-                            ankimon_db=db,
-                            settings_obj=settings_obj,
-                            logger=logger,
-                        )
-                    except Exception as sync_err:
-                        logger.log(
-                            "error",
-                            f"Failed to run startup mobile reviews sync: {sync_err}",
-                        )
-
-                # Restore badge — show pending count from previous session
-                pending = db.get_pending_mobile_count()
-                update_mobile_badge(pending)
-        except Exception as e:
-            logger.log("error", f"Failed to initialize mobile watermark: {e}")
+            logger.log("error", f"Could not initialize mobile detection: {e}")
 
         # Delivery goes through QtPresenter.warn -> showWarning in production, so
         # it can raise. Report each list in its own guarded block and clear it
@@ -188,7 +203,15 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
         # detection must not depend on the legacy misc.ankiweb_sync file-sync
         # toggle — the hook self-gates internally.
         try:
-            setup_ankimon_sync_hooks(settings_obj, logger)
+            sync_handler = setup_ankimon_sync_hooks(
+                settings_obj,
+                logger,
+                before_detection=initialize_mobile_reviews,
+            )
+            if deferred_mobile_initialization:
+                # Use the normal detector after the deferred initialization so
+                # newly synced reviews still receive auto-resolution/notifications.
+                sync_handler()
         except Exception as e:
             logger.log("error", f"Failed to register Ankimon sync hooks: {e}")
 
@@ -220,11 +243,16 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
             return online_connectivity
 
         def on_done(future) -> None:
-            if profile_col is None or mw.col is not profile_col:
+            if (
+                profile_col is None
+                or mw.col is not profile_col
+                or generation != getattr(services, "_background_generation", 0)
+            ):
                 return
-            is_online = future.result()
-            # We want to use the result of the background check
+            # Future failures must stay in this callback, after profile identity
+            # validation, so background connectivity cannot interrupt Anki.
             try:
+                is_online = future.result()
                 if is_online:
                     check_and_award_monthly_pokemon(logger)
                 else:
@@ -241,7 +269,7 @@ def _on_profile_did_open(online_connectivity, backup_manager=None):
         # armed at the top: a task manager that refuses this dispatch must not
         # end the handler before it runs.
         try:
-            mw.taskman.run_in_background(check_connectivity_bg, on_done)
+            run_in_background(check_connectivity_bg, on_done, taskman=mw.taskman)
         except Exception as e:
             logger.log("error", f"Could not schedule connectivity check: {e}")
 

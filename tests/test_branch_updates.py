@@ -76,6 +76,7 @@ def test_update_state_migration_from_experimental(tmp_path):
 
     with patch.object(update_manager, "get_update_state_path", return_value=state_file):
         import json
+
         legacy_state = {
             "source_type": "branch",
             "source_name": "BRRRR_Experimental",
@@ -117,19 +118,21 @@ def test_fetch_commit_date(mock_api_get):
     assert update_manager.fetch_commit_date("not-a-sha") is None
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
 @patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=False)
-def test_check_branch_update_no_state(mock_is_git_clone, mock_read_state, mock_query_op):
+def test_check_branch_update_no_state(
+    mock_is_git_clone, mock_read_state, mock_run_query
+):
     """Test check_branch_update initializes tracking silently if no update state exists."""
     mock_read_state.return_value = None
     changelog.check_branch_update(True, True)
-    mock_query_op.assert_called_once()
+    mock_run_query.assert_called_once()
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
-def test_check_branch_update_not_branch_type(mock_read_state, mock_query_op):
+def test_check_branch_update_not_branch_type(mock_read_state, mock_run_query):
     """Test check_branch_update does nothing if source_type is not branch."""
     mock_read_state.return_value = {
         "source_type": "release",
@@ -138,13 +141,13 @@ def test_check_branch_update_not_branch_type(mock_read_state, mock_query_op):
         "addon_version": changelog.addon_ver,
     }
     changelog.check_branch_update(True, True)
-    mock_query_op.assert_not_called()
+    mock_run_query.assert_not_called()
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
-def test_check_branch_update_on_experimental_branch(mock_read_state, mock_query_op):
-    """Test check_branch_update starts QueryOp if tracking a branch."""
+def test_check_branch_update_on_experimental_branch(mock_read_state, mock_run_query):
+    """Test check_branch_update starts background work if tracking a branch."""
     mock_read_state.return_value = {
         "source_type": "branch",
         "source_name": "BRRRR_Experimental",
@@ -152,7 +155,7 @@ def test_check_branch_update_on_experimental_branch(mock_read_state, mock_query_
         "addon_version": changelog.addon_ver,
     }
     changelog.check_branch_update(True, True)
-    mock_query_op.assert_called_once()
+    mock_run_query.assert_called_once()
 
 
 @patch("Ankimon.pyobj.update_manager._api_get")
@@ -203,12 +206,12 @@ def test_fetch_branch_commits_fallback(mock_api_get):
     mock_api_get.assert_called_with("commits?sha=BRRRR_Experimental&per_page=5")
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
 @patch("Ankimon.pyobj.update_manager.fetch_branch_sha")
 @patch("Ankimon.pyobj.update_manager.fetch_branch_commits")
 def test_check_branch_update_bg_op(
-    mock_fetch_commits, mock_fetch_sha, mock_read_state, mock_query_op
+    mock_fetch_commits, mock_fetch_sha, mock_read_state, mock_run_query
 ):
     """Test that the background operation in check_branch_update fetches SHA and commits."""
     mock_read_state.return_value = {
@@ -222,13 +225,12 @@ def test_check_branch_update_bg_op(
 
     changelog.check_branch_update(True, True)
 
-    # Get the background operation function passed to QueryOp
-    mock_query_op.assert_called_once()
-    kwargs = mock_query_op.call_args[1]
-    bg_func = kwargs.get("op") or mock_query_op.call_args[0][1]
+    # Get the background operation function passed to run_query
+    mock_run_query.assert_called_once()
+    bg_func = mock_run_query.call_args[0][0]
 
     # Run the background function
-    res_sha, res_commits = bg_func(None)
+    res_sha, res_commits = bg_func()
 
     assert res_sha == "remote_sha_456"
     assert res_commits == [{"sha": "7890123", "message": "Commit message"}]
@@ -236,9 +238,9 @@ def test_check_branch_update_bg_op(
     mock_fetch_commits.assert_called_once_with("BRRRR_Experimental", "local_sha_123")
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
-def test_check_branch_update_skipped(mock_read_state, mock_query_op):
+def test_check_branch_update_skipped(mock_read_state, mock_run_query):
     """Test check_branch_update does nothing if skip_until is in the future."""
     mock_read_state.return_value = {
         "source_type": "branch",
@@ -248,7 +250,7 @@ def test_check_branch_update_skipped(mock_read_state, mock_query_op):
         "addon_version": changelog.addon_ver,
     }
     changelog.check_branch_update(True, True)
-    mock_query_op.assert_not_called()
+    mock_run_query.assert_not_called()
 
 
 def test_read_update_state_rejects_non_dict_json(tmp_path):
@@ -267,13 +269,13 @@ def test_read_update_state_rejects_non_dict_json(tmp_path):
         assert update_manager.read_update_state() is None
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
-def test_check_branch_update_tolerates_bad_skip_until(mock_read_state, mock_query_op):
+def test_check_branch_update_tolerates_bad_skip_until(mock_read_state, mock_run_query):
     """A null or non-numeric skip_until in the user-editable state file must not
     raise a TypeError against time.time(); the poll simply proceeds."""
     for bad_skip in (None, "not-a-number"):
-        mock_query_op.reset_mock()
+        mock_run_query.reset_mock()
         mock_read_state.return_value = {
             "source_type": "branch",
             "source_name": "BRRRR_Experimental",
@@ -282,15 +284,15 @@ def test_check_branch_update_tolerates_bad_skip_until(mock_read_state, mock_quer
             "addon_version": changelog.addon_ver,
         }
         changelog.check_branch_update(True, True)
-        mock_query_op.assert_called_once()
+        mock_run_query.assert_called_once()
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
 @patch("Ankimon.pyobj.update_manager.fetch_branch_sha")
 @patch("Ankimon.pyobj.update_manager.fetch_branch_commits")
 def test_check_branch_update_null_commit_sha(
-    mock_fetch_commits, mock_fetch_sha, mock_read_state, mock_query_op
+    mock_fetch_commits, mock_fetch_sha, mock_read_state, mock_run_query
 ):
     """A null commit_sha in the state file still polls; the background op passes
     None through to fetch_branch_commits (which then uses the fallback API)."""
@@ -305,9 +307,9 @@ def test_check_branch_update_null_commit_sha(
 
     changelog.check_branch_update(True, True)
 
-    mock_query_op.assert_called_once()
-    bg_func = mock_query_op.call_args[1].get("op") or mock_query_op.call_args[0][1]
-    res_sha, res_commits = bg_func(None)
+    mock_run_query.assert_called_once()
+    bg_func = mock_run_query.call_args[0][0]
+    res_sha, res_commits = bg_func()
 
     assert res_sha == "remote_sha_456"
     assert res_commits == []
@@ -423,28 +425,94 @@ def test_check_for_update_exits_when_no_ssh(mock_branch, mock_release):
     mock_release.assert_not_called()
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state", return_value={})
 @patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=False)
-def test_poll_release_channel_starts_query_op(mock_clone, mock_state, mock_query_op):
+def test_poll_release_channel_starts_query_op(mock_clone, mock_state, mock_run_query):
     """With no clone and no snooze, the release poll kicks off its GitHub fetch."""
     changelog._poll_release_channel("stable")
-    mock_query_op.assert_called_once()
+    mock_run_query.assert_called_once()
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=True)
-def test_poll_release_channel_skips_git_clone(mock_clone, mock_query_op):
+def test_poll_release_channel_skips_git_clone(mock_clone, mock_run_query):
     """Dev clones update via git pull, so the release poll never prompts them."""
     changelog._poll_release_channel("stable")
-    mock_query_op.assert_not_called()
+    mock_run_query.assert_not_called()
 
 
-@patch("Ankimon.changelog.QueryOp")
+@patch("Ankimon.changelog.run_query")
 @patch("Ankimon.pyobj.update_manager.read_update_state")
 @patch("Ankimon.pyobj.update_manager.is_git_clone", return_value=False)
-def test_poll_release_channel_respects_snooze(mock_clone, mock_state, mock_query_op):
+def test_poll_release_channel_respects_snooze(mock_clone, mock_state, mock_run_query):
     """A future skip_until suppresses the release poll (weekly snooze)."""
     mock_state.return_value = {"skip_until": time.time() + 604800}
     changelog._poll_release_channel("stable")
-    mock_query_op.assert_not_called()
+    mock_run_query.assert_not_called()
+
+
+def test_automatic_branch_prompt_waits_for_idle_and_discards_old_profile_results(
+    monkeypatch,
+):
+    window = types.SimpleNamespace(col=object())
+    monkeypatch.setattr(changelog, "mw", window)
+    monkeypatch.setattr(
+        update_manager,
+        "read_update_state",
+        lambda: {
+            "source_type": "branch",
+            "source_name": "main",
+            "commit_sha": "old",
+            "addon_version": changelog.addon_ver,
+        },
+    )
+    prompts = types.ModuleType("Ankimon.pyobj.update_dialog")
+    prompts.show_branch_update_prompt = MagicMock()
+    monkeypatch.setitem(sys.modules, prompts.__name__, prompts)
+    queued, idle = [], []
+    monkeypatch.setattr(
+        changelog, "run_query", lambda task, done, failed: queued.append(done)
+    )
+    monkeypatch.setattr(
+        changelog,
+        "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append(callback),
+    )
+
+    changelog.check_branch_update(True, True)
+    queued[0](("new", []))
+    prompts.show_branch_update_prompt.assert_not_called()
+    assert len(idle) == 1
+    idle.pop()()
+    prompts.show_branch_update_prompt.assert_called_once_with("main", "new", [])
+
+    changelog.check_branch_update(True, True)
+    window.col = object()
+    queued[-1](("next", []))
+    assert not idle
+    prompts.show_branch_update_prompt.assert_called_once()
+
+
+def test_changelog_started_before_profile_open_waits_for_first_idle_window(monkeypatch):
+    window = types.SimpleNamespace(col=None)
+    monkeypatch.setattr(changelog, "mw", window)
+    queued, idle = [], []
+    monkeypatch.setattr(
+        changelog, "run_query", lambda task, done, failed: queued.append(done)
+    )
+    monkeypatch.setattr(
+        changelog,
+        "call_when_anki_idle",
+        lambda callback, **kwargs: idle.append(callback),
+    )
+    warning = MagicMock()
+    monkeypatch.setattr(changelog, "showWarning", warning)
+
+    changelog.check_and_show_changelog(True, True, False)
+    queued[0](None)
+    warning.assert_not_called()
+    assert len(idle) == 1
+    window.col = object()
+    idle.pop()()
+    warning.assert_called_once()

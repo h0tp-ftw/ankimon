@@ -568,7 +568,7 @@ def test_migration_dialog_shown_only_when_not_migrated(startup_env):
     assert len(_called(env, "show_migration_dialog_if_needed")) == 1
 
 
-def test_dev_mode_auto_backup_uses_passed_manager(startup_env):
+def test_developer_archive_backup_is_deferred_until_after_readiness(startup_env):
     env = startup_env
     env.settings.config["misc.developer_mode"] = True
 
@@ -576,9 +576,50 @@ def test_dev_mode_auto_backup_uses_passed_manager(startup_env):
     results = env.mod.run_startup_background_checks(manager)
 
     assert results["backup_manager"] is manager
-    assert manager.create_calls == [False]
+    assert manager.create_calls == []
     # No second manager was constructed inside the background half.
     assert FakeBackupManager.instances == [manager]
+
+
+def test_legacy_archive_migration_does_not_hold_up_startup(startup_env):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event, Lock
+
+    env = startup_env
+    migration_started = Event()
+    release_migration = Event()
+    work_lock = Lock()
+
+    def migrate_archives():
+        # The profile-open worker owns this same lock while copying archives.
+        with work_lock:
+            migration_started.set()
+            assert release_migration.wait(5)
+
+    manager = SimpleNamespace(run_profile_backup_tasks=migrate_archives)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        migration = pool.submit(manager.run_profile_backup_tasks)
+        try:
+            assert migration_started.wait(2)
+            startup = pool.submit(env.mod.run_startup_background_checks, manager)
+            results = startup.result(timeout=2)
+            assert results["database_complete"] is True
+            assert results["backup_manager"] is manager
+            assert not migration.done()
+        finally:
+            release_migration.set()
+            migration.result(timeout=2)
+
+
+def test_rolling_safety_backup_still_precedes_save_migration(startup_env):
+    env = startup_env
+    env.db.migrated = False
+
+    results = env.mod.run_startup_background_checks()
+    env.mod.run_startup_ui_callbacks(results)
+
+    names = [call[0] for call in env.calls]
+    assert names.index("run_backup") < names.index("show_migration_dialog_if_needed")
 
 
 def test_hot_reload_skips_both_background_backups(startup_env, monkeypatch):
@@ -715,6 +756,7 @@ def boot_env(monkeypatch):
     """Stub every __init__.py collaborator; exec_init() runs the real boot."""
     SyncQueryOp.instances = []
     calls = []
+    timers = []
 
     def rec(name, result=None):
         def _f(*args, **kwargs):
@@ -742,10 +784,12 @@ def boot_env(monkeypatch):
 
     hooks = SimpleNamespace(reviewer_did_answer_card=[])
     mw = SimpleNamespace(
+        col=object(),
+        progress=SimpleNamespace(busy=lambda: False),
         addonManager=SimpleNamespace(
             setWebExports=rec("setWebExports"),
             addonFromModule=lambda name: "ankimon",
-        )
+        ),
     )
     aqt_stub = _stub_module(
         "aqt",
@@ -754,6 +798,21 @@ def boot_env(monkeypatch):
         reviewer=SimpleNamespace(Reviewer=type("Reviewer", (), {})),
     )
     monkeypatch.setitem(sys.modules, "aqt", aqt_stub)
+    monkeypatch.setitem(
+        sys.modules,
+        "aqt.qt",
+        _stub_module(
+            "aqt.qt",
+            QApplication=SimpleNamespace(activeModalWidget=lambda: None),
+            QTimer=SimpleNamespace(singleShot=lambda ms, cb: timers.append(cb)),
+        ),
+    )
+    monkeypatch.setattr(
+        FakeBackupManager,
+        "schedule_profile_backup_tasks",
+        lambda self: calls.append(("schedule_profile_backup_tasks", (), {})),
+        raising=False,
+    )
 
     webview_hook = []
     monkeypatch.setitem(
@@ -929,7 +988,7 @@ def boot_env(monkeypatch):
     gui_classes_pkg.overview_team = stubs["Ankimon.gui_classes.overview_team"]
     monkeypatch.setitem(sys.modules, "Ankimon.gui_classes", gui_classes_pkg)
 
-    def exec_init():
+    def exec_init(drain=True):
         sys.modules.pop("Ankimon", None)
         spec = importlib.util.spec_from_file_location(
             "Ankimon",
@@ -939,6 +998,9 @@ def boot_env(monkeypatch):
         mod = importlib.util.module_from_spec(spec)
         sys.modules["Ankimon"] = mod
         spec.loader.exec_module(mod)
+        if drain:
+            while timers:
+                timers.pop(0)()
         return mod
 
     return SimpleNamespace(
@@ -948,6 +1010,8 @@ def boot_env(monkeypatch):
         hooks=hooks,
         singletons=singletons,
         exec_init=exec_init,
+        mw=mw,
+        timers=timers,
     )
 
 
@@ -1004,6 +1068,67 @@ def test_startup_failure_clears_reload_lifecycle_flags(boot_env):
     assert observed_startup_flags == [True]
     assert boot_env.services._startup_in_progress is False
     assert boot_env.services._is_reloading is False
+
+
+def test_startup_ui_waits_for_anki_sync_without_opening_review_gate(boot_env):
+    boot_env.mw.progress.busy = lambda: True
+    boot_env.exec_init(drain=False)
+    boot_env.timers.pop(0)()
+    assert "run_startup_background_checks" in _names(boot_env)
+    assert "run_startup_ui_callbacks" not in _names(boot_env)
+    assert boot_env.services.startup_finished is False
+    assert boot_env.services._startup_ui_pending is True
+    boot_env.mw.progress.busy = lambda: False
+    boot_env.timers.pop(0)()
+    assert _names(boot_env).count("run_startup_ui_callbacks") == 1
+    assert boot_env.services.startup_finished is True
+    assert boot_env.services._startup_in_progress is False
+    assert boot_env.services._startup_ui_pending is False
+
+
+def test_teardown_drops_pending_startup_ui_and_clears_flags(boot_env):
+    boot_env.exec_init(drain=False)
+    from Ankimon.background_ops import cancel_pending_callbacks
+
+    cancel_pending_callbacks()
+    boot_env.timers.pop(0)()
+    assert "run_startup_ui_callbacks" not in _names(boot_env)
+    assert boot_env.services._startup_in_progress is False
+    assert boot_env.services._startup_ui_pending is False
+    assert boot_env.services.startup_finished is False
+
+
+def test_addon_startup_survives_profile_close_while_waiting_for_idle(boot_env):
+    boot_env.exec_init(drain=False)
+    boot_env.mw.col = None
+    boot_env.timers.pop(0)()
+    assert boot_env.services.startup_finished is False
+    assert boot_env.services._startup_ui_pending is True
+    boot_env.mw.col = object()
+    boot_env.timers.pop(0)()
+    assert boot_env.services.startup_finished is True
+    assert boot_env.services._startup_in_progress is False
+
+
+def test_startup_on_anki_2166_submits_once_and_finishes(boot_env, monkeypatch):
+    from concurrent.futures import Future
+
+    submissions = []
+
+    class LegacyTaskman:
+        def run_in_background(self, task, on_done=None, args=None):
+            submissions.append(task)
+            future = Future()
+            future.set_result(task())
+            on_done(future)
+
+    monkeypatch.setattr(
+        sys.modules["aqt.operations"], "QueryOp", type("QueryOp", (), {})
+    )
+    boot_env.mw.taskman = LegacyTaskman()
+    boot_env.exec_init()
+    assert len(submissions) == 1
+    assert boot_env.services.startup_finished is True
 
 
 def test_success_callback_failure_clears_reload_lifecycle_flags(boot_env):

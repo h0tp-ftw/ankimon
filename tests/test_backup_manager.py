@@ -1836,6 +1836,49 @@ def test_developer_startup_backup_waits_for_profile_and_runs_once(
     backup.assert_called_once_with(manual=False)
 
 
+def test_startup_and_profile_open_share_one_archive_migration(mock_env, monkeypatch):
+    from concurrent.futures import Future
+
+    bm, root, _ = _legacy_migration_save(mock_env)
+    tasks = []
+
+    def enqueue(task, on_done=None, **kwargs):
+        tasks.append((task, on_done))
+
+    monkeypatch.setattr("aqt.mw.taskman.run_in_background", enqueue)
+    bm.schedule_profile_backup_tasks()
+    bm.schedule_profile_backup_tasks()
+    assert len(tasks) == 1
+
+    task, on_done = tasks[0]
+    result = Future()
+    result.set_result(task())
+    on_done(result)
+    assert not root.exists()
+    bm.schedule_profile_backup_tasks()
+    assert len(tasks) == 1
+
+    # Opening the same profile again still allows maintenance and failed
+    # migrations to retry; the developer startup snapshot remains one-shot.
+    bm.invalidate_context()
+    bm.refresh_profile_path()
+    bm.schedule_profile_backup_tasks()
+    assert len(tasks) == 2
+
+
+def test_archive_scheduling_failure_allows_retry(mock_env, monkeypatch):
+    bm, _, _, _ = mock_env
+    enqueue = MagicMock(side_effect=RuntimeError("executor unavailable"))
+    monkeypatch.setattr("aqt.mw.taskman.run_in_background", enqueue)
+
+    with pytest.raises(RuntimeError, match="executor unavailable"):
+        bm.schedule_profile_backup_tasks()
+
+    enqueue.side_effect = None
+    bm.schedule_profile_backup_tasks()
+    assert enqueue.call_count == 2
+
+
 def test_hot_reload_never_arms_deferred_startup_backup(mock_env, monkeypatch):
     bm, _, _, _ = mock_env
     bm.settings_obj.get.side_effect = lambda key, default=None: (

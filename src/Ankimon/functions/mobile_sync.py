@@ -7,8 +7,34 @@ import json
 import time
 from datetime import datetime
 import threading
+from contextlib import contextmanager
 
 _mobile_sync_lock = threading.Lock()
+
+
+class MobileSyncBusy(RuntimeError):
+    """The GUI must yield so an existing mobile operation can finish."""
+
+
+@contextmanager
+def mobile_sync_guard():
+    """Serialize mobile work without making the GUI wait for a worker.
+
+    Bulk replay can pause until the user resumes it. Waiting for its lock on
+    the GUI thread prevents that resume event from ever being delivered.
+    Workers may wait normally; GUI callers must retry or display a busy result.
+    """
+    on_gui_thread = threading.current_thread() is threading.main_thread()
+    if not _mobile_sync_lock.acquire(blocking=not on_gui_thread):
+        raise MobileSyncBusy(
+            "Mobile battles are already running. Resume or stop the current "
+            "replay, then try again."
+        )
+    try:
+        yield
+    finally:
+        _mobile_sync_lock.release()
+
 
 _desktop_session_revlog_ids: set[int] = set()
 _desktop_session_card_ids: set[int] = set()
@@ -867,12 +893,12 @@ def run_mobile_battles(
     main_pokemon=None,
     companion_override_id=None,
     logger=None,
-    day_cutoff=0,
+    day_cutoff=None,
     limit=None,
     mode="all",
     progress_callback=None,
 ) -> dict:
-    with _mobile_sync_lock:
+    with mobile_sync_guard():
         return _run_mobile_battles_impl(
             reviews=reviews,
             commit=commit,
@@ -901,7 +927,7 @@ def _run_mobile_battles_impl(
     main_pokemon=None,
     companion_override_id=None,
     logger=None,
-    day_cutoff=0,
+    day_cutoff=None,
     limit=None,
     mode="all",
     progress_callback=None,
@@ -914,8 +940,13 @@ def _run_mobile_battles_impl(
     """
     from aqt import mw
 
-    if day_cutoff == 0:
-        day_cutoff = mw.col.sched.day_cutoff if (mw and mw.col) else 0
+    if day_cutoff is None:
+        # Collection-free workers must never fall back to Anki's scheduler.
+        # Capture it on the GUI before dispatch; zero is a valid captured value.
+        if threading.current_thread() is threading.main_thread():
+            day_cutoff = mw.col.sched.day_cutoff if (mw and mw.col) else 0
+        else:
+            day_cutoff = 0
 
     # Load all reviews from DB to construct a stable sequence for deterministic seeding
     all_reviews = []
@@ -2344,6 +2375,7 @@ def estimate_pending_battles(
     trainer_card,
     ankimon_tracker_obj,
     ankimon_db=None,
+    day_cutoff=None,
 ) -> dict:
     return run_mobile_battles(
         reviews=pending_reviews,
@@ -2353,6 +2385,7 @@ def estimate_pending_battles(
         tracker=ankimon_tracker_obj,
         trainer_card=trainer_card,
         main_pokemon=main_pokemon,
+        day_cutoff=day_cutoff,
     )
 
 
@@ -2367,7 +2400,7 @@ def resolve_all(
     trainer_card,
     main_pokemon,
     logger=None,
-    day_cutoff=0,
+    day_cutoff=None,
     limit=None,
     progress_callback=None,
 ) -> dict:
@@ -2394,7 +2427,7 @@ def resolve_next(
     trainer_card,
     main_pokemon,
     logger=None,
-    day_cutoff=0,
+    day_cutoff=None,
 ) -> dict:
     return _resolve_internal(
         mode="next",
@@ -2501,14 +2534,15 @@ def commit_replay_outcome(
             # Set in_bulk_resolve to avoid tooltips/dialogs in background thread
             from .. import utils
 
-            orig_in_bulk = getattr(utils, "in_bulk_resolve", False)
-            utils.in_bulk_resolve = True
-
             # Serialize against run_mobile_battles (auto-resolve): both mutate the
             # pending_mobile_battles queue and companion rows, and this body runs
             # in a QueryOp background thread. Sharing _mobile_sync_lock guarantees
             # a concurrent auto-resolve can't double-resolve reviews or race writes.
             _mobile_sync_lock.acquire()
+            # Snapshot the flag only once we own the lock; another operation
+            # may still have it set while this worker waits.
+            orig_in_bulk = getattr(utils, "in_bulk_resolve", False)
+            utils.in_bulk_resolve = True
             try:
                 # 1. Catch logic
                 if choice == "catch":
@@ -2776,26 +2810,49 @@ def _resolve_internal(
     trainer_card=None,
     main_pokemon=None,
     logger=None,
-    day_cutoff=0,
+    day_cutoff=None,
     progress_callback=None,
 ) -> dict:
-    conn = db._get_connection()
+    # Take the mobile lock before leasing a connection/transaction. Otherwise
+    # a database switch can hold this lock while waiting for a transaction whose
+    # worker is itself waiting to enter the mobile operation.
+    with mobile_sync_guard():
+        conn = db._get_connection()
 
-    use_transaction = mode == "all"
-    if use_transaction:
-        conn._disable_commit = True
-        # Defer per-battle mirror-DB syncs: sync_resolutions_to_other_db commits on
-        # a separate connection, so firing it inside the outer transaction would
-        # leave the mirror DB resolved=1 even if this transaction later rolls back.
-        db.begin_deferred_mirror_sync()
-        from .. import utils
-
-        utils.in_bulk_resolve = True
-
-    try:
+        use_transaction = mode == "all"
         if use_transaction:
-            with conn:
-                result = run_mobile_battles(
+            conn._disable_commit = True
+            # Defer per-battle mirror-DB syncs: sync_resolutions_to_other_db commits on
+            # a separate connection, so firing it inside the outer transaction would
+            # leave the mirror DB resolved=1 even if this transaction later rolls back.
+            db.begin_deferred_mirror_sync()
+            from .. import utils
+
+            utils.in_bulk_resolve = True
+
+        try:
+            if use_transaction:
+                with conn:
+                    result = _run_mobile_battles_impl(
+                        reviews=None,
+                        commit=True,
+                        db=db,
+                        settings_obj=settings_obj,
+                        tracker=tracker,
+                        trainer_card=trainer_card,
+                        main_pokemon=main_pokemon,
+                        companion_override_id=companion_id,
+                        logger=logger,
+                        day_cutoff=day_cutoff,
+                        limit=limit,
+                        mode=mode,
+                        progress_callback=progress_callback,
+                    )
+                # Outer transaction committed successfully — now safe to propagate the
+                # resolutions to the mirror DB.
+                db.flush_deferred_mirror_sync()
+            else:
+                result = _run_mobile_battles_impl(
                     reviews=None,
                     commit=True,
                     db=db,
@@ -2810,40 +2867,21 @@ def _resolve_internal(
                     mode=mode,
                     progress_callback=progress_callback,
                 )
-            # Outer transaction committed successfully — now safe to propagate the
-            # resolutions to the mirror DB.
-            db.flush_deferred_mirror_sync()
-        else:
-            result = run_mobile_battles(
-                reviews=None,
-                commit=True,
-                db=db,
-                settings_obj=settings_obj,
-                tracker=tracker,
-                trainer_card=trainer_card,
-                main_pokemon=main_pokemon,
-                companion_override_id=companion_id,
-                logger=logger,
-                day_cutoff=day_cutoff,
-                limit=limit,
-                mode=mode,
-                progress_callback=progress_callback,
-            )
-        return result
-    finally:
-        if use_transaction:
-            conn._disable_commit = False
-            # Drop any mirror resolutions that were not flushed (transaction rolled
-            # back / raised). No-op after a successful flush above.
-            db.discard_deferred_mirror_sync()
-            # Reset the bulk-resolve flag. If this is dropped, in_bulk_resolve
-            # stays True for the rest of the session and silently suppresses
-            # level-up tooltips, evolution prompts and learn-move dialogs in
-            # normal desktop play (encounter_functions / pokedex_functions gate
-            # those on `not in_bulk_resolve`).
-            from .. import utils
+            return result
+        finally:
+            if use_transaction:
+                conn._disable_commit = False
+                # Drop any mirror resolutions that were not flushed (transaction rolled
+                # back / raised). No-op after a successful flush above.
+                db.discard_deferred_mirror_sync()
+                # Reset the bulk-resolve flag. If this is dropped, in_bulk_resolve
+                # stays True for the rest of the session and silently suppresses
+                # level-up tooltips, evolution prompts and learn-move dialogs in
+                # normal desktop play (encounter_functions / pokedex_functions gate
+                # those on `not in_bulk_resolve`).
+                from .. import utils
 
-            utils.in_bulk_resolve = False
+                utils.in_bulk_resolve = False
 
 
 def _attribute_xp_and_evs_to_companion(

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 from ..resources import (
     pokedex_path,
@@ -312,11 +314,10 @@ def warm_evolution_caches():
     and parsed the CSV mid-review, which is the synchronous disk I/O the repo
     rule forbids ("static data is parsed once at startup").
 
-    Two callers make that rule true. ``startup.run_startup_background_checks``
-    warms on the boot thread, before ``services.startup_finished`` opens the
-    review gate; ``profile_hooks``' did-open handler warms again, because a
-    profile switch runs :func:`clear_pokedex_caches` while the once-per-process
-    boot does not run a second time.
+    ``startup.run_startup_background_checks`` warms on the boot thread,
+    before ``services.startup_finished`` opens the review gate. Profile close
+    preserves this bundled, profile-independent table, so switching profiles
+    does not need a second disk read on the GUI or review thread.
 
     Purely an optimization, so it must not add a failure mode. Moving the first
     read earlier means a file that is momentarily unreadable at boot (an add-on
@@ -459,8 +460,14 @@ def _load_pokemon_descriptions_csv():
     return _pokemon_descriptions_cache
 
 
-def clear_pokedex_caches():
-    """Call this when pokedex data is updated or session ends"""
+def clear_pokedex_caches(*, preserve_evolution=False):
+    """Invalidate cached data; profile switches may retain bundled evolution rows.
+
+    The evolution CSV is identical across profiles. Keeping its warmed rows
+    avoids GUI-thread disk reads on the next profile open, or racing a fresh
+    worker against the first review. Data updates and reloads use the default
+    full invalidation.
+    """
     global \
         _pokedex_cache, \
         _poke_species_cache, \
@@ -476,11 +483,10 @@ def clear_pokedex_caches():
     _poke_species_cache = None
     _pokemon_csv_cache = None
     _stats_csv_cache = None
-    _poke_evo_cache = None
-    # Reset with its source cache: the index holds references into the rows
-    # _load_poke_evo_cache built, so leaving it warm past a clear would keep
-    # the pre-clear rows alive (parity with _pokedex_id_index above).
-    _poke_evo_index = None
+    if not preserve_evolution:
+        # The index holds references into the rows, so invalidate them together.
+        _poke_evo_cache = None
+        _poke_evo_index = None
     # ...and so does the memo built ON TOP of that index. _evolution_row_gender_id_cached
     # answers from _poke_evo_index (and, for form ids >= 10000, from
     # _pokedex_cache via search_pokedex_by_id), so a clear that leaves it warm
@@ -869,48 +875,103 @@ def get_pokemon_descriptions(species_id, language):
 # · 8 it.
 _FORM_NAME_LOCALIZATION = {
     "-Alola": {
-        1: ("アローラ", ""), 3: ("알로라 ", ""), 4: ("阿羅拉", ""),
-        5: ("", " d'Alola"), 6: ("Alola-", ""), 7: ("", " de Alola"), 8: ("", " di Alola"),
+        1: ("アローラ", ""),
+        3: ("알로라 ", ""),
+        4: ("阿羅拉", ""),
+        5: ("", " d'Alola"),
+        6: ("Alola-", ""),
+        7: ("", " de Alola"),
+        8: ("", " di Alola"),
     },
     "-Galar": {
-        1: ("ガラル", ""), 3: ("가라르 ", ""), 4: ("伽勒爾", ""),
-        5: ("", " de Galar"), 6: ("Galar-", ""), 7: ("", " de Galar"), 8: ("", " di Galar"),
+        1: ("ガラル", ""),
+        3: ("가라르 ", ""),
+        4: ("伽勒爾", ""),
+        5: ("", " de Galar"),
+        6: ("Galar-", ""),
+        7: ("", " de Galar"),
+        8: ("", " di Galar"),
     },
     "-Hisui": {
-        1: ("ヒスイ", ""), 3: ("히스이 ", ""), 4: ("洗翠", ""),
-        5: ("", " de Hisui"), 6: ("Hisui-", ""), 7: ("", " de Hisui"), 8: ("", " di Hisui"),
+        1: ("ヒスイ", ""),
+        3: ("히스이 ", ""),
+        4: ("洗翠", ""),
+        5: ("", " de Hisui"),
+        6: ("Hisui-", ""),
+        7: ("", " de Hisui"),
+        8: ("", " di Hisui"),
     },
     "-Paldea": {
-        1: ("パルデア", ""), 3: ("팔데아 ", ""), 4: ("帕底亞", ""),
-        5: ("", " de Paldea"), 6: ("Paldea-", ""), 7: ("", " de Paldea"), 8: ("", " di Paldea"),
+        1: ("パルデア", ""),
+        3: ("팔데아 ", ""),
+        4: ("帕底亞", ""),
+        5: ("", " de Paldea"),
+        6: ("Paldea-", ""),
+        7: ("", " de Paldea"),
+        8: ("", " di Paldea"),
     },
     "-Mega": {
-        1: ("メガ", ""), 3: ("메가 ", ""), 4: ("超級", ""),
-        5: ("Méga-", ""), 6: ("Mega-", ""), 7: ("Mega-", ""), 8: ("Mega", ""),
+        1: ("メガ", ""),
+        3: ("메가 ", ""),
+        4: ("超級", ""),
+        5: ("Méga-", ""),
+        6: ("Mega-", ""),
+        7: ("Mega-", ""),
+        8: ("Mega", ""),
     },
     "-Mega-X": {
-        1: ("メガ", "Ｘ"), 3: ("메가 ", " X"), 4: ("超級", "Ｘ"),
-        5: ("Méga-", " X"), 6: ("Mega-", " X"), 7: ("Mega-", " X"), 8: ("Mega", " X"),
+        1: ("メガ", "Ｘ"),
+        3: ("메가 ", " X"),
+        4: ("超級", "Ｘ"),
+        5: ("Méga-", " X"),
+        6: ("Mega-", " X"),
+        7: ("Mega-", " X"),
+        8: ("Mega", " X"),
     },
     "-Mega-Y": {
-        1: ("メガ", "Ｙ"), 3: ("메가 ", " Y"), 4: ("超級", "Ｙ"),
-        5: ("Méga-", " Y"), 6: ("Mega-", " Y"), 7: ("Mega-", " Y"), 8: ("Mega", " Y"),
+        1: ("メガ", "Ｙ"),
+        3: ("메가 ", " Y"),
+        4: ("超級", "Ｙ"),
+        5: ("Méga-", " Y"),
+        6: ("Mega-", " Y"),
+        7: ("Mega-", " Y"),
+        8: ("Mega", " Y"),
     },
     "-Primal": {
-        1: ("ゲンシ", ""), 3: ("원시 ", ""), 4: ("原始", ""),
-        5: ("Primo-", ""), 6: ("Proto-", ""), 7: ("", " primigenio"), 8: ("", " Primevo"),
+        1: ("ゲンシ", ""),
+        3: ("원시 ", ""),
+        4: ("原始", ""),
+        5: ("Primo-", ""),
+        6: ("Proto-", ""),
+        7: ("", " primigenio"),
+        8: ("", " Primevo"),
     },
     # Ash-Greninja — a distinct localized name in the games.
     "-Ash": {
-        1: ("サトシ", ""), 3: ("지우 ", ""), 4: ("小智", ""),
-        5: ("", " Sacha"), 6: ("", "-Ash"), 7: ("", " Ash"), 8: ("", " Ash"),
+        1: ("サトシ", ""),
+        3: ("지우 ", ""),
+        4: ("小智", ""),
+        5: ("", " Sacha"),
+        6: ("", "-Ash"),
+        7: ("", " Ash"),
+        8: ("", " Ash"),
     },
 }
 
 # Battle-only / cosmetic forms with no distinct name in any language — show the
 # plain species name.
-_FORM_BASE_ONLY = {"-Bond", "-Totem", "-Meteor", "-Zen", "-Gulping", "-Gorging",
-                   "-Busted", "-Noice", "-Hangry", "-Ash-Gmax"}
+_FORM_BASE_ONLY = {
+    "-Bond",
+    "-Totem",
+    "-Meteor",
+    "-Zen",
+    "-Gulping",
+    "-Gorging",
+    "-Busted",
+    "-Noice",
+    "-Hangry",
+    "-Ash-Gmax",
+}
 
 
 def _localize_form_name(base_lang_name: str, suffix: str, language: int):
@@ -960,7 +1021,9 @@ def get_pokemon_diff_lang_name(pokemon_id: int, language: int):
     return "No Translation in this language"
 
 
-def resolve_display_name(pokemon_id: int, internal_name: str, nickname: str, language: int) -> str:
+def resolve_display_name(
+    pokemon_id: int, internal_name: str, nickname: str, language: int
+) -> str:
     """The name a player should see for one Pokémon: nickname if meaningfully
     custom, else the current-language pretty name.
 
@@ -980,6 +1043,7 @@ def resolve_display_name(pokemon_id: int, internal_name: str, nickname: str, lan
     english_name = get_pretty_name_for_name(internal_name)
 
     if nickname:
+
         def _normalize(s):
             return (
                 str(s)
