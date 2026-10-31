@@ -78,6 +78,8 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 Check the [**Releases**](https://github.com/h0tp-ftw/ankimon/releases) tab here! Make sure to **BACKUP** before updating! 
 
+**Legacy Anki startup fix:** PR #1023 fixes the startup error `TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'` on Anki versions using Python 3.9, including Anki 24.06 on Windows. If you encounter this error, update to an Ankimon build that includes this fix. Startup with the fix was manually verified on Anki 24.06.
+
 Releases will be published every time a major pull request or a large number of pull requests are merged into `main`; in simple words, after a major change is added. 
 
 You can also download the source code directly, but this is NOT RECOMMENDED. If there is a specific fix or change you are looking for, you can download the individual files that are changed and replace those files.
