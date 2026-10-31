@@ -2904,6 +2904,8 @@ class GiveItemWindow(QDialog):
         "power-herb",
         "throat-spray",
         "weakness-policy",
+        "ability-capsule",
+        "ability-patch",
     }
 
     def __init__(self, item_list: list[str], give_item_func: Callable, logger):
