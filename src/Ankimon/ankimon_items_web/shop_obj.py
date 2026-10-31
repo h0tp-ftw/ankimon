@@ -2611,7 +2611,14 @@ class AnkimonItemsWeb(QDialog):
                 return "fossil"
             if name in getattr(bag, "pokeball_chances", {}):
                 return "pokeball"
-            if name in getattr(bag, "evolution_items", set()):
+            # evolution_items holds lowercase items.csv identifiers, but items
+            # granted from the sprite list keep their file-name casing
+            # ("Black-Augurite", "Peat-Block"). Fold the case so those still
+            # land in the evolution bucket instead of "other" (#1005).
+            evolution_items = getattr(bag, "evolution_items", set())
+            if name in evolution_items or (
+                isinstance(name, str) and name.lower() in evolution_items
+            ):
                 return "evolution"
             if name in getattr(bag, "ev_items", set()):
                 return "ev"
@@ -2986,6 +2993,41 @@ class AnkimonItemsWeb(QDialog):
                                             and active_region.lower()
                                             == target_region.lower()
                                         ):
+                                            entry["e"] = 1
+                                            break
+                                        # Same rule as check_evolution_by_item: a
+                                        # regional route with no plain sibling for
+                                        # the same item (Scyther -> Kleavor via
+                                        # Black Augurite) works in any region, so
+                                        # the picker must not hide it (#1005).
+                                        has_plain_sibling = False
+                                        for sibling_name in evo_list:
+                                            sib_norm = (
+                                                sibling_name.lower()
+                                                .replace(" ", "")
+                                                .replace("-", "")
+                                                .replace("'", "")
+                                                .replace(".", "")
+                                                .replace(":", "")
+                                            )
+                                            sib_data = pokedex_data.get(
+                                                sib_norm
+                                            ) or pokedex_data.get(sibling_name.lower())
+                                            if (
+                                                sib_data
+                                                and not sib_data.get("evoRegion")
+                                                and sib_data.get("evoType")
+                                                == target_data.get("evoType")
+                                                and (
+                                                    sib_data.get("evoItem") or ""
+                                                ).lower()
+                                                == (
+                                                    target_data.get("evoItem") or ""
+                                                ).lower()
+                                            ):
+                                                has_plain_sibling = True
+                                                break
+                                        if not has_plain_sibling:
                                             entry["e"] = 1
                                             break
                                     else:
