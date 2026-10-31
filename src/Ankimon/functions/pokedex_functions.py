@@ -1581,6 +1581,9 @@ def get_time_of_day():
             settings_obj.get("evolution.night_start_hour", 18), 18
         )
 
+        dusk_start = night_start - 1 if night_start > 0 else 23
+        if hour == dusk_start:
+            return "dusk"
         return "day" if day_start <= hour < night_start else "night"
     except Exception:
         # Fallback to local system time in case of any exception/import error
@@ -1588,6 +1591,9 @@ def get_time_of_day():
             from datetime import datetime
 
             hour = datetime.now().hour
+            dusk_start = 17
+            if hour == dusk_start:
+                return "dusk"
             return "day" if 6 <= hour < 18 else "night"
         except Exception:
             return "day"

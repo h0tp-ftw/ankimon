@@ -197,6 +197,9 @@ def get_time_of_day(now: Optional[datetime] = None) -> str:
     hour = moment.hour
     day_start = _coerce_hour(settings_obj.get("evolution.day_start_hour", 6), 6)
     night_start = _coerce_hour(settings_obj.get("evolution.night_start_hour", 18), 18)
+    dusk_start = night_start - 1 if night_start > 0 else 23
+    if hour == dusk_start:
+        return "dusk"
     return "day" if day_start <= hour < night_start else "night"
 
 
@@ -633,6 +636,19 @@ def _known_move_types(pokemon: Any) -> frozenset:
         attacks = pokemon.get("attacks") or []
     else:
         attacks = getattr(pokemon, "attacks", None) or []
+
+    if isinstance(attacks, str):
+        try:
+            import ast
+            parsed = ast.literal_eval(attacks)
+            if isinstance(parsed, list):
+                attacks = parsed
+            else:
+                attacks = []
+        except Exception:
+            cleaned = attacks.strip("[]")
+            attacks = [a.strip() for a in cleaned.split(",") if a.strip()]
+
     types: set = set()
     for attack in attacks:
         move_type = _move_type_of(attack)
