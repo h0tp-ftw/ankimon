@@ -178,6 +178,9 @@ def MainPokemon(
 
     # Update existing reference
     _cancel_main_faint_deferral()
+    keys_to_remove = set(main_pokemon.__dict__.keys()) - set(new_main_pokemon.__dict__.keys())
+    for key in keys_to_remove:
+        del main_pokemon.__dict__[key]
     main_pokemon.__dict__.update(new_main_pokemon.__dict__)
 
     # Save to database
