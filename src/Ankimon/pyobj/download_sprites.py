@@ -533,8 +533,11 @@ class DownloadDialog(QDialog):
         if success:
             from ..pyobj.ankimon_shop import invalidate_daily_items_pool
             from ..functions.item_wishlist import on_main_window_did_init
+            from ..utils import clear_utils_caches
 
             invalidate_daily_items_pool()
+            clear_utils_caches()
+            
             from PyQt6.QtCore import QTimer
 
             try:
