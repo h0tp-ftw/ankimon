@@ -46,4 +46,3 @@ def test_factories_do_not_share_nested_state(tmp_path):
     first.mw.taskman.run_in_background("task")
     assert second.mw.pm.profile == {}
     second.mw.taskman.run_in_background.assert_not_called()
-
