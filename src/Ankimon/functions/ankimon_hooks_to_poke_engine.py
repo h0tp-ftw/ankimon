@@ -1203,3 +1203,56 @@ def diff_states(state_before, state_after, path="", changes=None):
             diff_states(before_val, after_val, new_path, changes)
 
     return changes
+def _install_ohko_reversal_flail_logic():
+    from ..poke_engine import damage_calculator, constants
+    from ..poke_engine.special_effects.moves import modify_move
+    from ..poke_engine import find_state_instructions
+
+    if hasattr(find_state_instructions, 'calculate_damage'):
+        orig_calc = find_state_instructions.calculate_damage
+    else:
+        orig_calc = getattr(find_state_instructions, '_calculate_damage', None)
+    def new_calc(attacker, defender, move, conditions=None, calc_type='average'):
+        attacking_move_dict = damage_calculator.get_move(move)
+
+        ohko_val = attacking_move_dict.get('ohko')
+        if ohko_val is not None and ohko_val is not False:
+            if attacker.level < defender.level:
+                return [0]
+            # OHKO bypasses normal damage formulas, but keeps its original accuracy (e.g. 30%)
+            # unless affected by No Guard or Lock-On.
+            return [defender.hp]
+
+        if orig_calc is not None:
+            return orig_calc(attacker, defender, move, conditions, calc_type)
+        return [0]
+    if hasattr(find_state_instructions, 'calculate_damage'):
+        find_state_instructions.calculate_damage = new_calc
+    if hasattr(find_state_instructions, '_calculate_damage'):
+        find_state_instructions._calculate_damage = new_calc
+    if hasattr(damage_calculator, 'calculate_damage'):
+        damage_calculator.calculate_damage = new_calc
+    if hasattr(damage_calculator, '_calculate_damage'):
+        damage_calculator._calculate_damage = new_calc
+
+    def reversal(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+        p = 48 * attacking_pokemon.hp / attacking_pokemon.maxhp
+        if p < 2:
+            bp = 200
+        elif p < 5:
+            bp = 150
+        elif p < 10:
+            bp = 100
+        elif p < 17:
+            bp = 80
+        elif p < 33:
+            bp = 40
+        else:
+            bp = 20
+        attacking_move = attacking_move.copy()
+        attacking_move['basePower'] = bp
+        return attacking_move
+    modify_move.move_lookup['reversal'] = reversal
+    modify_move.move_lookup['flail'] = reversal
+
+_install_ohko_reversal_flail_logic()
