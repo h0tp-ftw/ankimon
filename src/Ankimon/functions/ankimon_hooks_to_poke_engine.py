@@ -1208,7 +1208,10 @@ def _install_ohko_reversal_flail_logic():
     from ..poke_engine.special_effects.moves import modify_move
     from ..poke_engine import find_state_instructions
 
-    orig_calc = find_state_instructions._calculate_damage
+    if hasattr(find_state_instructions, 'calculate_damage'):
+        orig_calc = find_state_instructions.calculate_damage
+    else:
+        orig_calc = getattr(find_state_instructions, '_calculate_damage', None)
     def new_calc(attacker, defender, move, conditions=None, calc_type='average'):
         attacking_move_dict = damage_calculator.get_move(move)
 
@@ -1220,9 +1223,17 @@ def _install_ohko_reversal_flail_logic():
             # unless affected by No Guard or Lock-On.
             return [defender.hp]
 
-        return orig_calc(attacker, defender, move, conditions, calc_type)
-    find_state_instructions._calculate_damage = new_calc
-    damage_calculator._calculate_damage = new_calc
+        if orig_calc is not None:
+            return orig_calc(attacker, defender, move, conditions, calc_type)
+        return [0]
+    if hasattr(find_state_instructions, 'calculate_damage'):
+        find_state_instructions.calculate_damage = new_calc
+    if hasattr(find_state_instructions, '_calculate_damage'):
+        find_state_instructions._calculate_damage = new_calc
+    if hasattr(damage_calculator, 'calculate_damage'):
+        damage_calculator.calculate_damage = new_calc
+    if hasattr(damage_calculator, '_calculate_damage'):
+        damage_calculator._calculate_damage = new_calc
 
     def reversal(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
         p = 48 * attacking_pokemon.hp / attacking_pokemon.maxhp
