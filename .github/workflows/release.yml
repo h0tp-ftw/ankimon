@@ -11,6 +11,11 @@ on:
         description: "Highlights/What's new summary (optional)"
         required: false
         type: string
+      draft:
+        description: "Create the GitHub release as a draft (publish it by hand later)"
+        required: false
+        type: boolean
+        default: false
 
 # This workflow runs the whole release end to end — prepare -> integrity test ->
 # commit + tag -> build -> publish — without any long-lived stored credential.
@@ -423,7 +428,10 @@ jobs:
           # one keeps holding if the glob above ever drifts from the one the
           # verification step checks.
           fail_on_unmatched_files: true
-          draft: false
+          # A draft stays hidden from the in-app updater (the releases API omits
+          # drafts for anonymous callers) until someone publishes it by hand. The
+          # version bump and tag are already pushed by then; only the release page waits.
+          draft: ${{ inputs.draft }}
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -474,7 +482,10 @@ jobs:
           body_path: patched_changelog.md
           files: build/*.ankiaddon
           fail_on_unmatched_files: true
-          draft: false
+          # A draft stays hidden from the in-app updater (the releases API omits
+          # drafts for anonymous callers) until someone publishes it by hand. The
+          # version bump and tag are already pushed by then; only the release page waits.
+          draft: ${{ inputs.draft }}
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
