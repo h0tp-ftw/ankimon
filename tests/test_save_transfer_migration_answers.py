@@ -8,13 +8,15 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 from test_save_transfer import _Logger, _make_save, _protected, st
 from Ankimon.pyobj import ankimon_sync
 from Ankimon.services import services
 
 
 @pytest.fixture
-def migration(tmp_path, monkeypatch):
+def migration(tmp_path, monkeypatch, save_transfer_host):
     registry = ModuleType("Ankimon.services")
     registry.services = services
     monkeypatch.setitem(sys.modules, "Ankimon.services", registry)

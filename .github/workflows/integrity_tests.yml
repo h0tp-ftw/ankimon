@@ -9,6 +9,29 @@ permissions:
   contents: read
 
 jobs:
+  fixture_compatibility:
+    name: Fixture compatibility — Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.9', '3.12']
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        submodules: recursive
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: ${{ matrix.python }}
+    - name: Install latest compatible test dependencies
+      run: python -m pip install --upgrade pytest requests markdown
+    - name: Check isolated Anki fixtures
+      env:
+        ANKIMON_USER_PATH: ${{ runner.temp }}/ankimon-fixture-tests
+      run: python -m pytest -q tests/test_anki_fakes.py tests/test_is_dev_mode.py
+
   run_integrity_tests:
     runs-on: ubuntu-latest
     steps:
@@ -65,7 +88,7 @@ jobs:
       with:
         enable-cache: true
     - name: Install test dependencies
-      run: uv pip install --system pytest==9.1.0 requests
+      run: uv pip install --system pytest requests
     - name: Exercise damaged-save recovery and file publication
       run: >
         python -m pytest -q tests/test_save_import.py tests/test_backup_manager.py

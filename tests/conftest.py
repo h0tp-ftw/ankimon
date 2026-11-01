@@ -27,6 +27,32 @@ for _pkg in (
 import pytest
 
 
+@pytest.fixture
+def anki_host(tmp_path, monkeypatch):
+    """Install a fresh Anki host without mutating shared MagicMock modules."""
+    from anki_fakes import make_anki_host
+
+    host = make_anki_host(tmp_path)
+    # Keep already installed child-module stubs available through the parent
+    # as well as sys.modules (e.g. dotted monkeypatch/import paths).
+    for name, module in list(sys.modules.items()):
+        if name.startswith("aqt.") and name.count(".") == 1:
+            setattr(host, name.split(".")[1], module)
+    monkeypatch.setitem(sys.modules, "aqt", host)
+    return host
+
+
+@pytest.fixture
+def save_transfer_host(anki_host, monkeypatch):
+    """Bind both lazy Anki imports and save_transfer's captured UI references."""
+    from anki_fakes import make_file_dialog
+    from test_save_transfer import st
+
+    monkeypatch.setattr(st, "mw", anki_host.mw)
+    monkeypatch.setattr(st, "QFileDialog", make_file_dialog())
+    return anki_host
+
+
 def pytest_configure(config):
     # The Tier-2 wrapper boots the whole add-on under real Qt, which the
     # harness.yml tier2 job also does. Registering the marker lets a fast run
