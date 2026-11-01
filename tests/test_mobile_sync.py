@@ -646,6 +646,7 @@ def test_base_stats_validator_rejects_impossible_values():
 
 
 def test_diagnostics_uses_shared_base_stats_validator(mobile_db, monkeypatch):
+    import sys, types; host = types.ModuleType("aqt"); host.mw = None; sys.modules["aqt"] = host
     db, _ = mobile_db
     malformed = {
         "individual_id": "BAD-STATS",

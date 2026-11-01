@@ -343,7 +343,7 @@ def run_deferred_inline(monkeypatch):
     which would swallow the callback, so run it inline instead."""
     monkeypatch.setattr(
         st.mw.progress, "single_shot",
-        lambda ms, fn, requires_collection=True: fn(),
+        lambda ms, fn, requires_collection=True: fn(), raising=False
     )
 
 

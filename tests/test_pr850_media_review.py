@@ -589,7 +589,7 @@ def test_a_guard_that_stays_up_schedules_its_own_rescan(
     monkeypatch.setattr(st, "_protect_bare_saves", captures_nothing)
     timers = []
     monkeypatch.setattr(st.mw.progress, "single_shot",
-                        lambda ms, func, *args: timers.append((ms, func)))
+                        lambda ms, func, *args: timers.append((ms, func)), raising=False)
     now = [100.0]
     monkeypatch.setattr(st.time, "monotonic", lambda: now[0])
 
@@ -779,7 +779,7 @@ def test_a_retry_that_fires_before_the_throttle_ends_arms_another(
     monkeypatch.setattr(st, "_protect_bare_saves", captures_nothing)
     timers = []
     monkeypatch.setattr(st.mw.progress, "single_shot",
-                        lambda ms, func, *args: timers.append((ms, func)))
+                        lambda ms, func, *args: timers.append((ms, func)), raising=False)
     now = [100.0]
     monkeypatch.setattr(st.time, "monotonic", lambda: now[0])
 
@@ -868,7 +868,7 @@ def test_the_pause_notice_promises_a_timed_retry_when_one_is_armed(
 
     monkeypatch.setattr(st, "_protect_bare_saves", captures_nothing)
     monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)
-    monkeypatch.setattr(st.mw.progress, "single_shot", lambda *args: None)
+    monkeypatch.setattr(st.mw.progress, "single_shot", lambda *args: None, raising=False)
     st.start_media_migration(None, _Logger())
     media_host.finish()
 

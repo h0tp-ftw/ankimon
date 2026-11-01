@@ -33,7 +33,8 @@ def dev(monkeypatch):
         aqt_mock.mw = mock_mw
         monkeypatch.setitem(sys.modules, "aqt", aqt_mock)
     else:
-        monkeypatch.setattr(sys.modules["aqt"], "mw", mock_mw)
+        sys.modules["aqt"].mw = mock_mw
+    monkeypatch.setattr(sys.modules["aqt"], "mw", mock_mw, raising=False)
 
     return is_dev_mode, store, mock_mw
 
