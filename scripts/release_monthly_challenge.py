@@ -178,6 +178,10 @@ def validate_challenge_structure(entry: object, index: int | None = None) -> lis
             errors.append(
                 prefix + f"pokemon '{key}' must be a nonempty single-line string."
             )
+    if pokemon.get("held_item") is not None and not isinstance(
+        pokemon["held_item"], str
+    ):
+        errors.append(prefix + "pokemon 'held_item' must be a string or null.")
     if "type" in pokemon and (
         not isinstance(pokemon["type"], list)
         or not 1 <= len(pokemon["type"]) <= 2

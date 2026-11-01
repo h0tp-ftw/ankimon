@@ -230,6 +230,10 @@ def test_invalid_top_level_types_are_errors(field, value):
         ("shiny", "false"),
         ("type", "Electric"),
         ("growth_rate", []),
+        ("held_item", {"name": "leftovers"}),
+        ("held_item", ["leftovers"]),
+        ("held_item", 42),
+        ("held_item", True),
     ],
 )
 def test_invalid_pokemon_fields_are_errors(field, value):
@@ -247,6 +251,15 @@ def test_invalid_json_shapes(payload):
     """Reject empty, ambiguous, nonstandard, and non-object inputs cleanly."""
     valid, errors, _ = release.validate_challenges_payload(payload)
     assert not valid and errors
+
+
+@pytest.mark.parametrize("held_item", [None, "", "leftovers"])
+def test_supported_held_item_values(held_item):
+    """Accept both absent-item representations and a normal battle item name."""
+    candidate = sample_challenge()
+    candidate["pokemon"]["held_item"] = held_item
+    valid, errors, _ = release.validate_challenges_payload(json.dumps(candidate))
+    assert valid, errors
 
 
 @pytest.mark.parametrize("field", ["month", "code", "individual_id"])
