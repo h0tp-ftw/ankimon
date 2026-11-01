@@ -85,9 +85,9 @@ def test_both_bare_saves_are_guarded_until_worker_captures_them(transfer, tmp_pa
     monkeypatch.setattr(st, "_migration_done", lambda: False)
     monkeypatch.setattr(st, "_MIGRATION_SCAN_STATE", {"running": False, "rerun": False})
     pm = SimpleNamespace(profileFolder=lambda: str(tmp_path), media_syncing_enabled=lambda: True)
-    monkeypatch.setattr(st.mw, "pm", pm)
+    monkeypatch.setattr(st.mw, "pm", pm, raising=False)
     work = []
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", lambda scan, done, **kw: work.append((scan, done)))
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", lambda scan, done, **kw: work.append((scan, done)), raising=False)
     st.start_media_migration(None, _Logger())
     assert pm.media_syncing_enabled() is False
     assert _protected(media) == []
@@ -230,7 +230,7 @@ def test_uncaptured_original_pauses_only_its_profile_and_successful_retry_restor
         profileFolder=lambda: str(active_profile[0]),
         media_syncing_enabled=lambda: preferences["syncMedia"],
     )
-    monkeypatch.setattr(st.mw, "pm", pm)
+    monkeypatch.setattr(st.mw, "pm", pm, raising=False)
     monkeypatch.setattr(st, "_migration_done", lambda: False)
     monkeypatch.setattr(st, "_LAST_PROTECTION_NOTICE", None)
     monkeypatch.setattr(st, "_MIGRATION_SCAN_STATE", {"running": False, "rerun": False})
@@ -285,7 +285,7 @@ def test_dispatch_failure_guards_files_without_running_scan(transfer, tmp_path, 
     def forbidden(*args, **kwargs):
         pytest.fail("comparison ran on GUI thread")
 
-    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused)
+    monkeypatch.setattr(st.mw.taskman, "run_in_background", refused, raising=False)
     monkeypatch.setattr(st, "_migration_scan", forbidden)
     st.start_media_migration(None, _Logger())
     assert st.get_db_stats(media / "ankimon.db")["pokemon"] == 17

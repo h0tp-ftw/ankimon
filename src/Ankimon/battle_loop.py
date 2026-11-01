@@ -259,8 +259,8 @@ def on_review_card(*args):
         if getattr(main_pokemon, "held_item", None) in ("amulet-coin", "luck-incense"):
             cash_amount *= 2
         if cash_interval > 0 and total_reviews % cash_interval == 0:
-            from datetime import date
-            today_str = str(date.today())
+            from .utils import get_current_anki_date_str
+            today_str = get_current_anki_date_str()
             last_reward_date = settings_obj.get("trainer.last_cash_reward_date", "")
             cash_earned_today = settings_obj.get("trainer.cash_earned_today", 0)
             

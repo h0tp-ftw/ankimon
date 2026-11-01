@@ -261,7 +261,7 @@ def test_rescue_display_matches_a_download_that_lands_during_scan(
     monkeypatch.setattr(
         st, "askUser", lambda prompt, **kwargs: prompts.append(prompt) or True
     )
-    monkeypatch.setattr(st.mw.progress, "single_shot", lambda ms, fn, *args: fn())
+    monkeypatch.setattr(st.mw.progress, "single_shot", lambda ms, fn, *args: fn(), raising=False)
     st._apply_migration_result(result, _Logger())
     # If the scan offers the original 42-Pokemon save, it must install that
     # snapshot. If it sees the new 1-Pokemon save, no rescue is warranted.
@@ -281,12 +281,12 @@ def rescue(transfer, tmp_path, monkeypatch):
     monkeypatch.setattr(st.mw.pm, "profile", profile, raising=False)
     monkeypatch.setattr(st.mw.pm, "save", lambda: None, raising=False)
     monkeypatch.setattr(
-        st.mw.progress, "single_shot", lambda ms, fn, *a: callbacks.append(fn)
+        st.mw.progress, "single_shot", lambda ms, fn, *a: callbacks.append(fn), raising=False
     )
     monkeypatch.setattr(
         st.mw.taskman,
         "run_in_background",
-        lambda work, done, **kw: workers.append((work, done)),
+        lambda work, done, **kw: workers.append((work, done)), raising=False
     )
     monkeypatch.setattr(
         st, "askUser", lambda prompt, **kw: prompts.append(prompt) or True
@@ -556,7 +556,7 @@ def test_deferred_rescue_keeps_its_snapshot_when_media_changes(
     )
     callbacks = []
     monkeypatch.setattr(
-        st.mw.progress, "single_shot", lambda ms, fn, *args: callbacks.append(fn)
+        st.mw.progress, "single_shot", lambda ms, fn, *args: callbacks.append(fn), raising=False
     )
     result = st._migration_scan(media, transfer.active)
     st._apply_migration_result(result, _Logger())
@@ -735,7 +735,7 @@ def test_confirmation_cannot_follow_a_profile_switch(
     before = transfer.active.read_bytes()
     callbacks = []
     monkeypatch.setattr(
-        st.mw.progress, "single_shot", lambda ms, fn, *args: callbacks.append(fn)
+        st.mw.progress, "single_shot", lambda ms, fn, *args: callbacks.append(fn), raising=False
     )
 
     def change_profile(prompt, **kwargs):
