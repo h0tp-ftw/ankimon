@@ -203,6 +203,13 @@ jobs:
             echo "Pushed tag ${VERSION}."
           fi
 
+      # The step above skips when the tag already exists, and the commit step skips
+      # when there's nothing to commit — so a tag pushed by hand beforehand would
+      # sail through pointing at an un-bumped tree. The in-app updater installs the
+      # tag's source zip, so its manifest must match. (2.4.3-E shipped like this.)
+      - name: Verify the tag's manifest matches the version
+        run: python3 scripts/check_release_version.py --tag "$VERSION" --require-changelog
+
       # ---------------------------------------------------------------------------
       # Build & publish (folded in from the old main.yml). Installed here, AFTER the
       # integrity test, so PyQt5 (for aab) and PyQt6 (for the test) never share an
@@ -255,6 +262,9 @@ jobs:
           ADDON_FILE=$(ls build/*.ankiaddon)
           cp "$ADDON_FILE" build/Ankimon.ankiaddon
           echo "Copied $ADDON_FILE to build/Ankimon.ankiaddon"
+
+      - name: Verify the package's manifest matches the version
+        run: python3 scripts/check_release_version.py --tag "$VERSION" --addon build/*.ankiaddon
 
       - name: Declare variables
         id: vars
