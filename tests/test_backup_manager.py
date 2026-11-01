@@ -115,7 +115,7 @@ class MockLogger:
 
 
 @pytest.fixture
-def mock_env(tmp_path):
+def mock_env(tmp_path, anki_host):
     # Create temp user path and backup path structure
     user_files_dir = tmp_path / "user_files"
     user_files_dir.mkdir()

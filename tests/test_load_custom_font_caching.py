@@ -13,15 +13,18 @@ file exactly once.
 
 import pytest
 
+from conftest import isolated_modules
 
-@pytest.fixture(scope="session")
+
+@pytest.fixture
 def qapp():
-    from PyQt6.QtWidgets import QApplication
+    # Other suites install Qt MagicMocks during collection. These tests must
+    # register real fonts, and leave those suites' module stubs intact.
+    with isolated_modules("PyQt6"):
+        from PyQt6.QtWidgets import QApplication
 
-    app = QApplication.instance()
-    if not app:
-        app = QApplication([])
-    return app
+        app = QApplication.instance() or QApplication([])
+        yield app
 
 
 def test_repeated_calls_register_the_font_file_only_once(qapp, monkeypatch):

@@ -30,6 +30,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 _SRC = Path(__file__).resolve().parent.parent / "src"
 
 for _name in (
@@ -130,7 +132,7 @@ def logger():
 
 
 @pytest.fixture
-def live_db(tmp_path, monkeypatch):
+def live_db(tmp_path, monkeypatch, save_transfer_host):
     """Point the module's notion of the ACTIVE save at a real file."""
     from Ankimon.services import services
 
@@ -337,10 +339,10 @@ def test_import_refuses_the_file_it_is_already_using(tmp_path, live_db, monkeypa
 # One-shot migration off the removed feature
 # --------------------------------------------------------------------------
 @pytest.fixture(autouse=True)
-def run_deferred_inline(monkeypatch):
+def run_deferred_inline(monkeypatch, save_transfer_host):
     """The rescue is deferred by one event-loop turn via mw.progress.single_shot
-    so it never runs on the profile_did_open stack. ``mw`` is a MagicMock here,
-    which would swallow the callback, so run it inline instead."""
+    so it never runs on the profile_did_open stack. Run the fake host's
+    queued callback inline in these synchronous migration tests."""
     monkeypatch.setattr(
         st.mw.progress, "single_shot",
         lambda ms, fn, requires_collection=True: fn(),
@@ -348,7 +350,7 @@ def run_deferred_inline(monkeypatch):
 
 
 @pytest.fixture
-def media(tmp_path, monkeypatch):
+def media(tmp_path, monkeypatch, save_transfer_host):
     d = tmp_path / "collection.media"
     d.mkdir()
     monkeypatch.setattr(st, "_media_dir", lambda: d)
@@ -364,7 +366,7 @@ def media(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def real_flag_media(tmp_path, monkeypatch):
+def real_flag_media(tmp_path, monkeypatch, save_transfer_host):
     """A media folder plus the REAL per-profile one-shot.
 
     ``media`` stubs ``_migration_done``/``_mark_migration_done`` down to a
