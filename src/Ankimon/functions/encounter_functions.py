@@ -1251,7 +1251,6 @@ def new_pokemon(
     # None` immediately above, so it can never cover this.
     if main_pokemon is not None and hasattr(main_pokemon, "volatile_status"):
         main_pokemon.volatile_status = set()
-        main_pokemon.status = ''
 
     # Force HUD update on next card/refresh via the HUD leaf's public
     # invalidation method, so this call site never has to track the leaf's

@@ -289,10 +289,13 @@
 </head>
 <body>
   <div class="pokedex-container">
+
     <div class="header">
       <span id="obtained-count">Pokémon Obtained: 0</span>
+      <span id="defeated-count-label">Total Defeated: 0</span>
       <div>
         <button id="shiny-toggle" class="theme-toggle">Normal</button>
+
         <button id="gif-toggle" class="theme-toggle">GIF Off</button>
         <button id="theme-toggle" class="theme-toggle">Dark</button>
       </div>
@@ -414,7 +417,13 @@
       
       const shinyCount = shinyNumbers.length;
 
+
       function updateCounts() {
+        const defeatedCountLabel = document.getElementById("defeated-count-label");
+        if (defeatedCountLabel) {
+            defeatedCountLabel.textContent = `Total Defeated: ${defeatedCount}`;
+        }
+
         if (useShiny) {
           obtainedCount.textContent = `Shiny Obtained: ${shinyCount}`;
           // For shiny, "Seen" = "Obtained" since we don't track defeated shiny separately
