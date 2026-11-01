@@ -2,36 +2,31 @@
 
 ## Supported Versions
 
-Only the latest release on AnkiWeb and the `main` branch receive security fixes.
+We provide security fixes for the latest version of Ankimon on AnkiWeb and the `main` branch.
 
 ## Reporting a Vulnerability
 
-Please **do not** open a public issue, discussion, or pull request for security problems.
+If you discover a security vulnerability in Ankimon, please report it privately rather than opening a public issue, discussion, or pull request.
 
-Report privately through GitHub's private vulnerability reporting:
-https://github.com/h0tp-ftw/ankimon/security/advisories/new
+You can submit a report through [GitHub's private vulnerability reporting](https://github.com/h0tp-ftw/ankimon/security/advisories/new).
 
-Reports are handled by the maintainers:
-
+Security reports are handled by:
 - [@h0tp-ftw](https://github.com/h0tp-ftw)
 - [@scotej](https://github.com/scotej)
 
-If you cannot use the advisory form, contact either maintainer directly on GitHub
-and ask for a private channel. Do not include vulnerability details in public messages.
+If you're unable to use GitHub's reporting form, you can reach out to either maintainer on GitHub to arrange another way to report the issue privately. Please avoid sharing any vulnerability details publicly.
 
-Please include:
+To help us investigate, please include:
+- Your Ankimon and Anki versions, along with your operating system
+- Steps to reproduce the issue, or a proof of concept
+- The potential impact, such as data loss, code execution, or exposure of sensitive information
 
-- Ankimon and Anki versions, and your operating system
-- Steps to reproduce, or a proof of concept
-- The impact you expect (for example data loss, code execution, or leaked data)
+We aim to acknowledge reports within **7 days** and provide a fix or a plan for addressing the issue within **30 days**.
 
-We aim to acknowledge reports within 7 days and to share a fix or plan within 30 days.
-Reporters are credited in the published advisory unless they ask otherwise.
+We're grateful to anyone who helps keep Ankimon secure. Reporters will be credited in the published security advisory unless they prefer to remain anonymous.
 
 ## Scope
 
-In scope: code in `src/Ankimon` (the shipped add-on), including the self-updater,
-mobile/media sync, and the web views.
+This policy covers the code in `src/Ankimon` that ships with the add-on, including the self-updater, mobile/media sync, and web views.
 
-Out of scope: the `harness/` and `tests/` dev tooling, Anki itself, and the upstream
-poke-engine. Please report issues in those to their own projects.
+Development tooling in `harness/` and `tests/`, Anki itself, and the upstream `poke-engine` are outside the scope of this policy. If you find an issue in one of those components, please report it to the relevant project instead.
