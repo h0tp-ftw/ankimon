@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 from test_save_transfer import _Logger, _make_save, st
 from test_save_transfer_safety import transfer
 
@@ -18,6 +20,8 @@ from test_save_transfer_safety import transfer
 @pytest.fixture
 def media_host(transfer, tmp_path, monkeypatch):
     """Queue workers explicitly while retaining the real profile sync guard."""
+    # Retry callbacks are valid only while this profile has an open collection.
+    monkeypatch.setattr(st.mw, "col", transfer.col)
     media = tmp_path / "collection.media"
     media.mkdir()
     queued = []
@@ -314,11 +318,10 @@ def test_an_untouched_capture_still_settles_in_one_pass(transfer, media_host, mo
 
 
 @pytest.fixture
-def media_syncer(monkeypatch):
+def media_syncer(monkeypatch, save_transfer_host):
     """Record what Ankimon asks Anki's media syncer to do.
 
-    ``mw`` is a MagicMock, so every unset attribute reads as truthy. Pin the
-    host state the resume actually consults instead of letting the mock decide.
+    Set the host state the resume actually consults and record sync requests.
     """
     started = []
     monkeypatch.setattr(st.mw, "media_syncer",
