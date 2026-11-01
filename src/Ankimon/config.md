@@ -84,7 +84,7 @@ Ankimon also supports the following granular HUD element toggles (set to `true` 
 - `gui.hud_pokemon_lvl` [True/False] — Show/hide level.
 - `gui.hud_pokemon_name` [True/False] — Show/hide Pokémon names.
 - `gui.hud_status_badge` [True/False] — Show/hide the opponent status indicator (plain text without Styling, badge with Styling).
-- `gui.hud_owned_indicator` [True/False] (default: True) — Show/hide the captured-state indicator for an encountered Pokémon. With Styling enabled it uses the Pokéball icon; without Styling it displays `[CAPTURED]` beside the opponent's status when that Pokémon is in your collection.
+- `gui.hud_owned_indicator` [True/False] (default: True) — Show/hide the captured indicator for an encountered Pokémon whose exact species or form has been caught before. With Styling enabled it uses the Pokéball icon; without Styling it displays `[CAPTURED]` next to the opponent's name or status. It remains shown after that Pokémon is released, evolved, or traded away. New caught records, including incoming trades, update the indicator without restarting Anki.
 - `gui.hud_enemy_shiny_indicator` [True/False] — Show/hide the enemy shiny star.
 - `gui.hud_player_shiny_indicator` [True/False] — Show/hide the player companion shiny star.
 
