@@ -372,8 +372,16 @@ def test_ambiguous_catalogue_keys_are_rejected(catalogue):
     assert catalogue.read_text() == ambiguous
 
 
-def test_out_of_range_target_is_a_cli_error(catalogue, capsys):
+def test_out_of_range_target_is_a_cli_error(catalogue, monkeypatch, capsys):
     """Calendar arithmetic at the minimum supported date must not traceback."""
+    raw = json.dumps(sample_challenge("January 0001"))
+    monkeypatch.setenv("UPCOMING_MONTHLY_CHALLENGES", raw)
+    # Prove valid input reaches the calendar calculation, rather than returning
+    # early because the required secret is absent or malformed.
+    with pytest.raises(OverflowError):
+        release.process_monthly_release(
+            catalogue, force=True, override_month="January 0001"
+        )
     assert (
         release.main(
             [
@@ -386,7 +394,9 @@ def test_out_of_range_target_is_a_cli_error(catalogue, capsys):
         )
         == 1
     )
-    assert "Traceback" not in capsys.readouterr().err
+    stderr = capsys.readouterr().err
+    assert "Release failed:" in stderr
+    assert "Traceback" not in stderr
 
 
 def test_actions_output_rejects_newlines(tmp_path, monkeypatch):
