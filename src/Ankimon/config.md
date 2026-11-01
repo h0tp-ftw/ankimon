@@ -65,14 +65,15 @@ Set `gif_in_collection` to `true` to view GIF images instead of sprites of your 
 `gui.show_sprites_across_ankimon` also controls sprites in the evolution prompt and completion screen. When enabled, shiny Pokémon use shiny sprites on both screens; if either shiny sprite is missing, that image uses the ordinary sprite. Set it to `false` to hide sprites on both evolution screens.
 - `gui.show_sprites_across_ankimon` [True/False] (default: True)
 
-Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface.
+Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface. HP and XP bar controls are unavailable while HUD Styling is disabled, and neither bar is shown in the reviewer without Styling.
 - `gui.hud_hp_bars` [True/False]
 
 Setting `xp_bar_location` to 1 places the XP bar at the top of your screen in the reviewer. If set to 2, the XP bar will appear at the bottom of your screen.
 - `xp_bar_location` [1/2]
 
-Setting `gui.hud_xp_bar` to `true` will display the XP bar in the reviewer. It will show your main Pokémon's current XP and the amount needed for the next level.
+Setting `gui.hud_xp_bar` to `true` will display the XP bar in the reviewer. Enable `gui.hud_xp_values` to show the current XP and the amount needed for the next level.
 - `gui.hud_xp_bar` [True/False]
+- `gui.hud_xp_values` [True/False] (default: False) — Show current XP / XP needed for the next level on the reviewer HUD.
 
 Ankimon also supports the following granular HUD element toggles (set to `true` to show, `false` to hide):
 - `gui.hud_player_sprite` [True/False] — Show/hide player companion sprite.
@@ -82,8 +83,8 @@ Ankimon also supports the following granular HUD element toggles (set to `true` 
 - `gui.hud_pokemon_gen` [True/False] — Show/hide generation.
 - `gui.hud_pokemon_lvl` [True/False] — Show/hide level.
 - `gui.hud_pokemon_name` [True/False] — Show/hide Pokémon names.
-- `gui.hud_status_badge` [True/False] — Show/hide status/type badge.
-- `gui.hud_owned_indicator` [True/False] (default: True) — Show/hide the Pokéball indicating that the encountered Pokémon's exact species or form has been caught before. It remains shown after that Pokémon is released, evolved, or traded away. New caught records, including incoming trades, update the indicator without restarting Anki.
+- `gui.hud_status_badge` [True/False] — Show/hide the opponent status indicator (plain text without Styling, badge with Styling).
+- `gui.hud_owned_indicator` [True/False] (default: True) — Show/hide the captured indicator for an encountered Pokémon whose exact species or form has been caught before. With Styling enabled it uses the Pokéball icon; without Styling it displays `[CAPTURED]` next to the opponent's name or status. It remains shown after that Pokémon is released, evolved, or traded away. New caught records, including incoming trades, update the indicator without restarting Anki.
 - `gui.hud_enemy_shiny_indicator` [True/False] — Show/hide the enemy shiny star.
 - `gui.hud_player_shiny_indicator` [True/False] — Show/hide the player companion shiny star.
 

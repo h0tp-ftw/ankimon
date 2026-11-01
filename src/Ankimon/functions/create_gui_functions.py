@@ -29,7 +29,9 @@ def create_status_label(status_name):
 
     return label
 
-def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_package=""):
+def create_status_html(
+    status_name, settings_obj, is_pokemon_owned=False, addon_package="", plain_text=False
+):
     xp_bar_spacer = settings_obj.compute_special_variable('xp_bar_spacer')
     hp_bar_thickness = settings_obj.get("gui.review_hp_bar_thickness") * 4
     show_mainpkmn_in_reviewer = int(settings_obj.get("gui.show_mainpkmn_in_reviewer"))
@@ -39,12 +41,28 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
     # If the status name is valid, create the HTML with inline CSS
     if colors:
         badge_html = ''
-        if is_pokemon_owned and settings_obj.get("gui.hud_owned_indicator"):
+        captured_label = (
+            '<span id="captured-state">&nbsp;[CAPTURED]</span>'
+            if plain_text
+            and is_pokemon_owned
+            and settings_obj.get("gui.hud_owned_indicator")
+            else ""
+        )
+        if (
+            not plain_text
+            and is_pokemon_owned
+            and settings_obj.get("gui.hud_owned_indicator")
+        ):
             pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
             badge_html = f'<img id="owned-indicator-badge" src="{pokeball_url}" style="margin-right: 8px; width: 22px; height: 22px; background-color: var(--ankimon-outline); border-radius: 50%; padding: 2px; box-sizing: border-box; flex-shrink: 0;">'
 
         status_html = ""
-        if settings_obj.get("gui.hud_status_badge"):
+        if plain_text and settings_obj.get("gui.hud_status_badge"):
+            status_html = (
+                f'<span id="pokestatus" style="color: {colors.get("text_color", "#000000")};">'
+                f'— {colors["name"].upper()}</span>{captured_label}'
+            )
+        elif settings_obj.get("gui.hud_status_badge"):
             status_html = f"""
             <div id=pokestatus class="Ankimon" style="
                 background-color: {colors['background']};
@@ -62,7 +80,9 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
             ">{colors['name']}</div>
             """
 
-        if badge_html or status_html:
+        if plain_text and (status_html or captured_label):
+            html = f'<div id="pokestatus-container" class="Ankimon">{status_html}{captured_label if not status_html else ""}</div>'
+        elif badge_html or status_html:
             if show_mainpkmn_in_reviewer == 2:
                 html = f"""
                 <div id=pokestatus-container class="Ankimon" style="display: flex; align-items: center; position: fixed; bottom: {140 + xp_bar_spacer + hp_bar_thickness}px; right: 1%; z-index: 9999;">
@@ -82,6 +102,13 @@ def create_status_html(status_name, settings_obj, is_pokemon_owned=False, addon_
         else:
             html = ""
     else:
-        html = "<div>Unknown Status</div>"
+        html = (
+            '<div id="pokestatus-container" class="Ankimon">'
+            '<span id="captured-state">[CAPTURED]</span></div>'
+            if plain_text
+            and is_pokemon_owned
+            and settings_obj.get("gui.hud_owned_indicator")
+            else "<div>Unknown Status</div>"
+        )
 
     return html

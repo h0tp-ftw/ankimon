@@ -79,9 +79,16 @@ def main():
     calls = []
     session.aqt.mw.reviewer.web.eval = lambda script, *a, **kw: calls.append(script)
 
-    # The report's missing bars/plain black text is also the intentional
-    # Styling-off mode: empty divs lose their height and text uses normal flow.
-    # Re-enable Styling before the first normal render below to verify recovery.
+    main_pokemon = session.services.reviewer.main_pokemon
+    experience = find_experience_for_level(
+        main_pokemon.growth_rate,
+        main_pokemon.level,
+        session.services.settings.get("misc.remove_level_cap"),
+    )
+    assert experience > 0, experience
+
+    # XP Values remains independently visible when Styling and the XP bar are off.
+    session.services.settings.set("gui.hud_xp_values", True)
     session.services.settings.set("gui.hud_styling", False)
     session.services.reviewer.refresh_hud()
     for script in calls:
@@ -91,33 +98,29 @@ def main():
         """
         (() => {
             const root = window.testHudRoot;
-            const style = id => getComputedStyle(root.querySelector('#' + id));
+            const values = root.querySelector('#xp-values');
             return {
                 css: window.__ankimonHudData.css,
-                xpColor: style('xp_text').color,
-                xpPosition: style('xp_text').position,
-                hpHeight: style('life-bar').height,
-                xpHeight: style('xp-bar').height,
+                xpValues: values && values.textContent,
+                xpColor: values && getComputedStyle(values).color,
+                xpPosition: values && getComputedStyle(values).position,
+                hpBar: Boolean(root.querySelector('#life-bar')),
+                xpBar: Boolean(root.querySelector('#xp-bar')),
             };
         })()
         """,
     )
     assert unstyled == {
         "css": "",
+        "xpValues": f"XP: {int(main_pokemon.xp or 0)}/{experience}",
         "xpColor": "rgb(0, 0, 0)",
         "xpPosition": "static",
-        "hpHeight": "0px",
-        "xpHeight": "0px",
+        "hpBar": False,
+        "xpBar": False,
     }, unstyled
+    session.services.settings.set("gui.hud_xp_values", False)
     session.services.settings.set("gui.hud_styling", True)
 
-    main_pokemon = session.services.reviewer.main_pokemon
-    experience = find_experience_for_level(
-        main_pokemon.growth_rate,
-        main_pokemon.level,
-        session.services.settings.get("misc.remove_level_cap"),
-    )
-    assert experience > 0, experience
     xp_values = (-1, 0, experience // 2, experience - 1, experience, experience * 2)
     cases = 0
     for width, mode, dark, location, xp_value in itertools.product(
@@ -208,7 +211,7 @@ def main():
         expected_percent = min(100, max(0, int(xp_value / experience * 100)))
         expected_width = result["xpInnerWidth"] * expected_percent / 100
         assert abs(fill["width"] - expected_width) < 0.1, (case, result)
-        assert result["xpOverflow"] == "hidden", (case, result)
+        assert result["xpOverflow"] == "visible", (case, result)
         assert result["hpColor"] == (
             "rgb(255, 255, 255)" if dark else "rgb(109, 109, 110)"
         ), (case, result)

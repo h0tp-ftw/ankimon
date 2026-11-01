@@ -5,6 +5,7 @@ from html import escape as html_escape
 from aqt import gui_hooks, mw, utils
 from aqt.utils import showInfo
 
+from ..const import status_colors_html
 from ..functions.create_css_for_reviewer import create_css_for_reviewer
 from ..functions.create_gui_functions import create_status_html
 from ..functions.pokemon_functions import find_experience_for_level
@@ -314,6 +315,7 @@ class Reviewer_Manager:
             self.main_pokemon.id,
             main_hp,
             main_max_hp,
+            self.main_pokemon.battle_status,
             self.main_pokemon.xp,
             self.settings.get("gui.show_mainpkmn_in_reviewer"),
             self.settings.get("gui.reviewer_image_gif"),
@@ -324,6 +326,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_player_sprite"),
             self.settings.get("gui.hud_enemy_sprite"),
             self.settings.get("gui.hud_xp_bar"),
+            self.settings.get("gui.hud_xp_values"),
             self.settings.get("gui.hud_hp_bars"),
             self.settings.get("gui.hud_hp_text"),
             self.settings.get("gui.hud_pokemon_id"),
@@ -332,6 +335,7 @@ class Reviewer_Manager:
             self.settings.get("gui.hud_pokemon_name"),
             self.settings.get("gui.hud_status_badge"),
             self.settings.get("gui.hud_owned_indicator"),
+            self.settings.get("battle.automatic_battle", 0),
             self.settings.get("gui.hud_enemy_shiny_indicator"),
             self.settings.get("gui.hud_player_shiny_indicator"),
             self.settings.get("gui.reviewer_text_message_box"),
@@ -385,6 +389,16 @@ class Reviewer_Manager:
 
         enemy_hp_true_percent = (enemy_hp / enemy_max_hp) * 100
         main_hp_true_percent = (main_hp / main_max_hp) * 100
+        xp_values_enabled = bool(self.settings.get("gui.hud_xp_values", False))
+        hud_styling_enabled = bool(self.settings.get("gui.hud_styling", True))
+        xp_current = int(self.main_pokemon.xp or 0)
+        experience_for_next_lvl = int(
+            find_experience_for_level(
+                self.main_pokemon.growth_rate,
+                self.main_pokemon.level,
+                self.settings.get("misc.remove_level_cap"),
+            )
+        )
 
         # Build hud_html. The HUD carries Anki's theme as its own class: its
         # stylesheet lives in a closed shadow root, so it cannot see the
@@ -395,13 +409,29 @@ class Reviewer_Manager:
             if _anki_night_mode()
             else '<div id="ankimon-hud">'
         )
-        if self.settings.get("gui.hud_hp_bars"):
+        if hud_styling_enabled and self.settings.get("gui.hud_hp_bars"):
             hud_html += '<div id="life-bar" class="Ankimon"></div>'
-        if self.settings.get("gui.hud_xp_bar"):
-            hud_html += (
-                '<div id="xp-bar" class="Ankimon"><div id="xp-bar-fill"></div></div>'
+        xp_bar_enabled = bool(self.settings.get("gui.hud_xp_bar"))
+        if hud_styling_enabled and xp_bar_enabled:
+            xp_value_markup = (
+                f'<span id="xp-values" class="Ankimon">XP: {xp_current}/{experience_for_next_lvl}</span>'
+                if xp_values_enabled
+                else ""
             )
-            hud_html += '<div id="xp_text" class="Ankimon">XP</div>'
+            hud_html += (
+                '<div id="xp-bar" class="Ankimon"><div id="xp-bar-fill"></div>'
+                f"{xp_value_markup}</div>"
+            )
+            if not xp_values_enabled:
+                hud_html += '<div id="xp_text" class="Ankimon">XP:</div>'
+        if not hud_styling_enabled and xp_values_enabled:
+            hud_html += (
+                f'<div id="xp-values" class="Ankimon">XP: {xp_current}/{experience_for_next_lvl}</div>'
+            )
+        elif hud_styling_enabled and not xp_bar_enabled and xp_values_enabled:
+            hud_html += (
+                f'<div id="xp-values" class="Ankimon">XP: {xp_current}/{experience_for_next_lvl}</div>'
+            )
 
         # display_name handles translations, regional forms, megas and gmax.
         # Every value in these lists is rendered into an HTML text-node context.
@@ -425,35 +455,126 @@ class Reviewer_Manager:
         if self.settings.get("gui.hud_pokemon_lvl"):
             enemy_parts.append(f"LvL: {html_escape(str(self.enemy_pokemon.level))}")
 
+        enemy_hud_html = ""
+        main_hud_html = ""
+        automatic_battle_enabled = int(
+            self.settings.get("battle.automatic_battle", 0) or 0
+        ) in (1, 2, 3)
+        plain_automatic_battle = (
+            not hud_styling_enabled and automatic_battle_enabled
+        )
+        show_plain_conditions = (
+            not hud_styling_enabled
+            and bool(self.settings.get("gui.hud_status_badge"))
+        )
+
+        def plain_condition_suffix(pokemon, hp):
+            if not show_plain_conditions or hp <= 0:
+                return ""
+            status = str(getattr(pokemon, "battle_status", "") or "").lower()
+            if status in ("", "fighting", "fainted"):
+                return ""
+            status_info = status_colors_html.get(status)
+            if not status_info:
+                return ""
+            return f" | *{status_info['name'].upper()}"
+
+        show_stat_boosts = hud_styling_enabled or bool(
+            self.settings.get("gui.hud_status_badge")
+        )
+        enemy_condition = plain_condition_suffix(self.enemy_pokemon, enemy_hp)
+        enemy_name_html = ""
         if enemy_parts:
             name_display_text = " ".join(enemy_parts)
-            name_display_text += self.get_boost_values_string(
-                self.enemy_pokemon, display_neutral_boost=False
-            )
-            hud_html += (
+            if (
+                show_plain_conditions
+                and enemy_condition
+                and is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+            ):
+                name_display_text += ' <span id="captured-state">[CAPTURED]</span>'
+            elif (
+                plain_automatic_battle
+                and is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+            ):
+                name_display_text += ' <span id="captured-state">[CAPTURED]</span>'
+            if show_stat_boosts:
+                name_display_text += self.get_boost_values_string(
+                    self.enemy_pokemon, display_neutral_boost=False
+                )
+            name_display_text += enemy_condition
+            enemy_name_html = (
                 f'<div id="name-display" class="Ankimon">{name_display_text}</div>'
             )
+        elif enemy_condition or (
+            plain_automatic_battle
+            and is_pokemon_owned
+            and self.settings.get("gui.hud_owned_indicator")
+        ):
+            captured_label = (
+                ' <span id="captured-state">[CAPTURED]</span>'
+                if is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+                and (enemy_condition or plain_automatic_battle)
+                else ""
+            )
+            enemy_name_html = (
+                f'<div id="name-display" class="Ankimon">{captured_label}{enemy_condition}</div>'
+            )
 
-        if enemy_hp > 0:
-            hud_html += create_status_html(
-                f"{self.enemy_pokemon.battle_status}",
-                self.settings,
-                is_pokemon_owned,
-                addon_package,
+        enemy_status_html = ""
+        if not plain_automatic_battle and not (
+            show_plain_conditions and enemy_hp > 0 and enemy_condition
+        ):
+            if enemy_hp > 0:
+                enemy_status_html = create_status_html(
+                    f"{self.enemy_pokemon.battle_status}",
+                    self.settings,
+                    is_pokemon_owned and not hud_styling_enabled,
+                    addon_package,
+                    plain_text=not hud_styling_enabled,
+                )
+            else:
+                enemy_status_html = create_status_html(
+                    "fainted",
+                    self.settings,
+                    is_pokemon_owned and not hud_styling_enabled,
+                    addon_package,
+                    plain_text=not hud_styling_enabled,
+                )
+
+        if hud_styling_enabled:
+            captured_icon = ""
+            if (
+                is_pokemon_owned
+                and self.settings.get("gui.hud_owned_indicator")
+            ):
+                pokeball_url = f"/_addons/{addon_package}/web/images/pokeball.png"
+                captured_icon = (
+                    f'<img id="owned-indicator-badge" src="{pokeball_url}" '
+                    'alt="Captured" class="Ankimon">'
+                )
+            status_row_class = " has-captured-icon" if captured_icon else ""
+            enemy_hud_html += (
+                '<div id="enemy-details" class="Ankimon">'
+                f'<div id="enemy-status-row" class="Ankimon{status_row_class}">'
+                f'{enemy_status_html}</div>'
+                '<div id="enemy-name-row" class="Ankimon">'
+                f'{captured_icon}{enemy_name_html}'
+                '</div></div>'
             )
         else:
-            hud_html += create_status_html(
-                "fainted", self.settings, is_pokemon_owned, addon_package
-            )
+            enemy_hud_html += enemy_name_html + enemy_status_html
 
         if self.settings.get("gui.hud_hp_text"):
-            hud_html += f'<div id="hp-display" class="Ankimon">HP: {enemy_hp}/{enemy_max_hp}</div>'
+            enemy_hud_html += f'<div id="hp-display" class="Ankimon">HP: {enemy_hp}/{enemy_max_hp}</div>'
 
         if self.settings.get("gui.hud_enemy_sprite"):
             enemy_poke_animation_style = (
                 f"animation: ankimon-shake-normal {self.seconds}s ease;"
             )
-            hud_html += f'<div id="PokeImage" class="Ankimon"><img src="{enemy_sprite_url}" alt="PokeImage" style="{enemy_poke_animation_style}"></div>'
+            enemy_hud_html += f'<div id="PokeImage" class="Ankimon"><img src="{enemy_sprite_url}" alt="PokeImage" style="{enemy_poke_animation_style}"></div>'
 
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) > 0:
             if self.settings.get("gui.hud_player_sprite"):
@@ -469,7 +590,7 @@ class Reviewer_Manager:
                     )
                     my_poke_html_attributes = f'style="{animation_style}"'
 
-                hud_html += (
+                main_hud_html += (
                     f'<div id="MyPokeImage" class="Ankimon">'
                     f'<img src="{main_pkmn_sprite_url}" alt="MyPokeImage" {my_poke_html_attributes}>'
                     f"</div>"
@@ -497,24 +618,58 @@ class Reviewer_Manager:
 
             if main_parts:
                 main_name_display_text = " ".join(main_parts)
-                main_name_display_text += self.get_boost_values_string(
-                    self.main_pokemon, display_neutral_boost=False
+                main_condition = plain_condition_suffix(
+                    self.main_pokemon, main_hp
                 )
-                hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
+                if show_stat_boosts:
+                    main_name_display_text += self.get_boost_values_string(
+                        self.main_pokemon, display_neutral_boost=False
+                    )
+                main_name_display_text += main_condition
+                main_hud_html += f'<div id="myname-display" class="Ankimon">{main_name_display_text}</div>'
             if self.settings.get("gui.hud_hp_text"):
-                hud_html += f'<div id="myhp-display" class="Ankimon">HP: {main_hp}/{main_max_hp}</div>'
-            if self.settings.get("gui.hud_hp_bars"):
-                hud_html += '<div id="mylife-bar" class="Ankimon"></div>'
+                main_hud_html += f'<div id="myhp-display" class="Ankimon">HP: {main_hp}/{main_max_hp}</div>'
+            if hud_styling_enabled and self.settings.get("gui.hud_hp_bars"):
+                main_hud_html += '<div id="mylife-bar" class="Ankimon"></div>'
 
+        # Styled HUD elements use fixed CSS positions, so DOM order does not
+        # affect their layout. Plain mode keeps the wild Pokémon above the
+        # player's Pokémon, after the XP display.
+        if hud_styling_enabled:
+            hud_html += main_hud_html + enemy_hud_html
+        else:
+            hud_html += enemy_hud_html + main_hud_html
         hud_html += "</div>"
 
         # Build hud_css
-        if self.settings.get("gui.hud_styling", True):
+        if hud_styling_enabled:
+            xp_bar_enabled = bool(self.settings.get("gui.hud_xp_bar"))
+            xp_bar_location = self.settings.compute_special_variable(
+                "xp_bar_location"
+            ) or (
+                "top"
+                if int(self.settings.get("gui.xp_bar_location", 2)) == 1
+                else "bottom"
+            )
+            xp_bar_spacer = int(
+                self.settings.compute_special_variable("xp_bar_spacer")
+            )
+            if xp_bar_enabled:
+                xp_bar_spacer += 10 if xp_values_enabled else 5
+            if (
+                xp_values_enabled
+                and not xp_bar_enabled
+                and xp_bar_location == "bottom"
+            ):
+                # The standalone XP pill is centred 21px from the bottom and
+                # is ~26px tall; 30px keeps the HP bars clear of it, the same
+                # clearance the XP bar + values layout gets (20 + 10).
+                xp_bar_spacer = 30
             hud_css = create_css_for_reviewer(
                 int(self.settings.get("gui.show_mainpkmn_in_reviewer")),
                 pokemon_hp_percent,
                 self.settings.get("gui.review_hp_bar_thickness") * 4,
-                int(self.settings.compute_special_variable("xp_bar_spacer")),
+                xp_bar_spacer,
                 -1
                 if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 1
                 else self.settings.compute_special_variable("view_main_front"),
@@ -523,17 +678,66 @@ class Reviewer_Manager:
                 int(self.settings.compute_special_variable("wild_hp_spacer")),
                 self.settings.get("gui.hud_xp_bar"),
                 self.main_pokemon,
-                int(
-                    find_experience_for_level(
-                        self.main_pokemon.growth_rate,
-                        self.main_pokemon.level,
-                        self.settings.get("misc.remove_level_cap"),
-                    )
-                ),
-                self.settings.compute_special_variable("xp_bar_location"),
+                experience_for_next_lvl,
+                xp_bar_location,
                 enemy_hp_true_percent,
                 main_hp_true_percent,
+                xp_values_enabled,
             )
+            enemy_details_bottom = (
+                20 + xp_bar_spacer
+                if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 2
+                else 15
+                + xp_bar_spacer
+                + self.settings.get("gui.review_hp_bar_thickness") * 4
+            )
+            hud_css += f"""
+            #ankimon-hud #enemy-details {{
+                position: fixed;
+                right: 10px;
+                bottom: {enemy_details_bottom}px;
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+                width: max-content;
+            }}
+            #ankimon-hud #enemy-status-row.has-captured-icon {{
+                margin-left: 30px;
+            }}
+            #ankimon-hud #enemy-status-row #pokestatus-container {{
+                position: static !important;
+                right: auto !important;
+                bottom: auto !important;
+                margin: 0 !important;
+            }}
+            #ankimon-hud #enemy-status-row #pokestatus {{
+                margin: 0 !important;
+            }}
+            #ankimon-hud #enemy-name-row {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            #ankimon-hud #owned-indicator-badge {{
+                display: block;
+                flex: 0 0 22px;
+                width: 22px;
+                height: 22px;
+                background-color: var(--ankimon-outline);
+                border-radius: 50%;
+                padding: 2px;
+                box-sizing: border-box;
+            }}
+            #ankimon-hud #enemy-details #name-display {{
+                position: static !important;
+                right: auto !important;
+                bottom: auto !important;
+                flex: 0 0 auto;
+                text-align: left;
+            }}
+            """
             # Theme selectors are anchored on #ankimon-hud itself (see the
             # ``night_mode`` class added in hud_html above), never on an
             # ancestor such as ``.night_mode``/``html.dark``. The HUD lives in
@@ -541,11 +745,10 @@ class Reviewer_Manager:
             # Anki sets on <body> is neither reachable across the shadow
             # boundary nor an ancestor of the host — those rules never matched.
             #
-            # #xp_text is deliberately absent here: create_css_for_reviewer
-            # gives it its own cyan-on-black pill matching the XP bar, and
-            # listing it in these groups overrode that with a plain pill.
+            # XP values share the HP value pill styling; only their position
+            # differs so they can sit centered over the XP track.
             hud_css += """
-            #ankimon-hud #name-display, #ankimon-hud #myname-display, #ankimon-hud #hp-display, #ankimon-hud #myhp-display {
+            #ankimon-hud #name-display, #ankimon-hud #myname-display, #ankimon-hud #hp-display, #ankimon-hud #myhp-display, #ankimon-hud #xp-values {
                 font-family: Arial, sans-serif;
                 background: white !important;
                 color: var(--text-fg, #6D6D6E);
@@ -561,7 +764,8 @@ class Reviewer_Manager:
                user on a dark OS who deliberately runs Anki in light mode got
                dark HUD pills. */
             #ankimon-hud.night_mode #name-display, #ankimon-hud.night_mode #myname-display,
-            #ankimon-hud.night_mode #hp-display, #ankimon-hud.night_mode #myhp-display {
+            #ankimon-hud.night_mode #hp-display, #ankimon-hud.night_mode #myhp-display,
+            #ankimon-hud.night_mode #xp-values {
                 font-family: Arial, sans-serif;
                 background: #1f1f1f !important;
                 color: white !important;
