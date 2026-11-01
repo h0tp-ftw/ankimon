@@ -1,147 +1,122 @@
-These settings do not sync and require a restart to apply.
+# Ankimon settings
 
-- `Cards per Round` [number]: Number of Cards until next Attackround
+Use these settings to customize battles, shortcuts, and the reviewer display. For toggle settings, `true` enables the option and `false` disables it. Some changes, such as background checks, require an Anki restart.
 
-Possible Generation are:
-If you want to play with Pokemon from a certain generation, set them as True
-- `Generation1` [True/False]
-- `Generation2` [True/False]
-- `Generation3` [True/False]
-- `Generation4` [True/False]
-- `Generation5` [True/False]
-- `Generation6` [True/False]
-- `Generation7` [True/False]
-- `Generation8` [True/False]
-- `Generation9` [True/False]
+## Battles
 
-Pokemon Gif Animations:
-You can decide if you want the Gif Animations in the anki reviewer
-- `reviewer_image_gif` [True/False]
+- `battle.cards_per_round` [number or range]: Cards to review between battle rounds. Use a number such as `2`, or a range such as `"2-4"` for a random interval.
+- `battle.automatic_battle` [0/1/2/3] (default: 0): Choose what happens when a wild Pokémon reaches 0 HP:
+    - `0`: Choose whether to catch or defeat it in the Ankimon window. Pokémon on your auto-catch wishlist are still caught automatically.
+    - `1`: Catch it automatically.
+    - `2`: Defeat it automatically so your main Pokémon gains XP.
+    - `3` (Catch if uncollected): Catch it if it is missing from your permanent Pokédex caught history; otherwise, defeat it. Releasing, evolving, or trading away a Pokémon does not make it uncollected. Each form is checked by its exact ID, and seeing a Pokémon does not count as catching it. History refreshes after each completed encounter, including changes from evolution, trades, and imports.
 
-Ankimon Window Key:
-You can decide which letter key should be pressed additionally to controll / command (like M etc) to open and close the ankimon window from the anki reviewer
-- `key_for_opening_closing_ankimon` [A - Z]
+In modes `2` and `3`, shiny Pokémon, Pokémon on `battle.auto_catch_wishlist`, and Pokémon covered by enabled always-auto-catch settings are caught instead.
 
-Main Pokemon in Reviewer:
-If `show_mainpkmn_in_reviewer` is set to 0, you will only see the wild Pokémon when reviewing cards. Setting it to 1 will display both your main Pokémon and the wild Pokémon in the reviewer, with the HP bar on the same height. If set to 2, you'll have a more "battle" look between your main Pokémon and the wild Pokémon.
-- `show_mainpkmn_in_reviewer` [0/1/2]
+### Generations
 
-Reviewer Text Message Box:
-Decide if you would like to see the colorful popup messages in the anki reviewer
-- `reviewer_text_message_box` [True/False]
+Enable each generation you want to encounter:
 
-`reviewer_text_message_box_time` allows you to set the duration, in seconds, for which the pop-up message will be displayed in the reviewer.
-- `reviewer_text_message_box_time` [1,2,3,4,5] (time in seconds)
+- `misc.gen1` [true/false]
+- `misc.gen2` [true/false]
+- `misc.gen3` [true/false]
+- `misc.gen4` [true/false]
+- `misc.gen5` [true/false]
+- `misc.gen6` [true/false]
+- `misc.gen7` [true/false]
+- `misc.gen8` [true/false]
+- `misc.gen9` [true/false]
 
-Reviewer Pop Up Messages:
-Decide if you would like to see the anki popup messages in the anki reviewer when your pokemon levels up or when a wild pokemon is defeated
-- `pop_up_dialog_message_on_defeat` [True/False]
+### Level cap
 
-Sounds:
-You can decide if you want Pokemon Battle Cries in the anki reviewer once a pokemon appears.
-- `sounds` [True/False]
+`misc.remove_level_cap` [true/false] (default: false): Allow Pokémon to level beyond 100.
 
-In Game Battle Sounds:
-You can decide if you want Pokemon Battle Cries to be replayed every 10 cards.
-- `battle_sounds` [True/False]
+When disabled, your main Pokémon, Pokémon receiving shared XP, and wild encounters are capped at level 100. Below main level 100, wild levels roll from three below to three above your main Pokémon's level, then results above 100 are reduced to 100. For example, a level 98 main Pokémon gives a roll of 95–101 before the cap. At main level 100 or higher, all wild encounters are level 100.
 
-To enable sound effects such as healing your main Pokémon, hurting your Pokémon, or affecting enemy Pokémon, set `sound_effects` to `true`. If set to `false`, no sound effects will be activated.
-- `sound_effects` [True/False]
+When enabled, wild levels use the same ±3 range without the upper cap. Wild Pokémon are always at least level 1.
 
-Set `view_main_front` to `true` to view your main Pokémon from the front in the reviewer when `reviewer_image_gif` is also set to `true`. If `view_main_front` is set to `false`, you will see your main Pokémon's GIF from the back in the reviewer.
-- `view_main_front` [True/False]
+## Keyboard shortcuts
 
-Allow Background Checks (formerly SSH Access) controls automatic checks for Ankimon updates and changelog downloads at startup. Set `misc.ssh` to `true` to allow these checks, or `false` to skip them if they cause connection errors, such as on restricted networks.
+- `controls.key_for_opening_closing_ankimon` [shortcut] (default: `Ctrl+Shift+P`): Open or close the Ankimon window while reviewing.
+- `controls.catch_key` [key or shortcut] (default: `6`): Catch the wild Pokémon when it reaches 0 HP.
+- `controls.defeat_key` [key or shortcut] (default: `5`): Defeat the wild Pokémon when it reaches 0 HP.
 
-Sprite update checks run independently and are not disabled by this setting. Restart Anki after changing this setting.
-- `misc.ssh` [True/False] (default: True)
+Use the catch and defeat shortcuts as configured; the defaults do not need Ctrl. With automatic battle enabled, pressing either shortcut before the wild Pokémon faints toggles that action as an override for the encounter.
 
-Set `animate_time` to `true` to enable a small animation in the reviewer. This animation is displayed when you or the wild Pokémon is taking damage. `false` disables this.
-- `animate_time` [True/False]
+## Reviewer display
 
-Set `gif_in_collection` to `true` to view GIF images instead of sprites of your caught Pokémon in your collection.
-- `gif_in_collection` [True/False]
+The reviewer is the screen where you study cards. Its HUD shows your Pokémon and battle information.
 
-`gui.show_sprites_across_ankimon` also controls sprites in the evolution prompt and completion screen. When enabled, shiny Pokémon use shiny sprites on both screens; if either shiny sprite is missing, that image uses the ordinary sprite. Set it to `false` to hide sprites on both evolution screens.
-- `gui.show_sprites_across_ankimon` [True/False] (default: True)
+### Pokémon and animations
 
-The **HUD Element Toggles** include **Styling** (`gui.hud_styling`, default: True). Disable it for a plain-text HUD. In the web settings, attempting to select an unavailable bar control shows a notice to enable Styling.
+- `gui.show_mainpkmn_in_reviewer` [0/1/2]: Choose the Pokémon layout: `0` shows only the wild Pokémon, `1` shows both Pokémon with their HP bars at the same height, and `2` uses a battle-style layout.
+- `gui.reviewer_image_gif` [true/false]: Use animated Pokémon GIFs in the reviewer.
+- `gui.view_main_front` [true/false]: Show your main Pokémon from the front when reviewer GIFs are enabled. Disable it to show the back view.
+- `gui.animate_time` [true/false]: Play a brief animation when either Pokémon takes damage.
+- `gui.gif_in_collection` [true/false]: Use animated GIFs instead of static sprites in your collection.
+- `gui.show_sprites_across_ankimon` [true/false] (default: true): Show Pokémon sprites across Ankimon, including the evolution prompt and completion screen. These two screens use shiny sprites for shiny Pokémon, falling back to an ordinary sprite if a shiny image is missing. Disable this setting to hide sprites on both evolution screens.
 
-Setting `gui.hud_hp_bars` to `false` removes the HP bars in the reviewer interface. HP and XP bar controls are unavailable while HUD Styling is disabled, and neither bar is shown in the reviewer without Styling.
-- `gui.hud_hp_bars` [True/False]
+### Messages
 
-Setting `xp_bar_location` to 1 places the XP bar at the top of your screen in the reviewer. If set to 2, the XP bar will appear at the bottom of your screen.
-- `xp_bar_location` [1/2]
+- `gui.reviewer_text_message_box` [true/false]: Show colorful battle messages in the reviewer.
+- `gui.reviewer_text_message_box_time` [1–5 seconds]: How long each battle message stays visible.
+- `gui.pop_up_dialog_message_on_defeat` [true/false]: Show Anki popups when a wild Pokémon is defeated or your Pokémon levels up.
 
-Setting `gui.hud_xp_bar` to `true` will display the XP bar in the reviewer. Enable `gui.hud_xp_values` to show the current XP and the amount needed for the next level.
-- `gui.hud_xp_bar` [True/False]
-- `gui.hud_xp_values` [True/False] (default: False) — Show `XP: current/required` for your main Pokémon, independently of the XP Progress Bar and Battle Log. With Styling enabled, values are centred on the XP bar, or displayed as a standalone pill when the bar is off. Without Styling, they appear as plain text.
+### HUD styling and bars
 
-Ankimon also supports the following granular HUD element toggles (set to `true` to show, `false` to hide):
-- `gui.hud_player_sprite` [True/False] — Show/hide player companion sprite.
-- `gui.hud_enemy_sprite` [True/False] — Show/hide wild/enemy Pokémon sprite.
-- `gui.hud_hp_text` [True/False] — Show/hide current/max HP values text.
-- `gui.hud_pokemon_id` [True/False] — Show/hide Pokédex ID.
-- `gui.hud_pokemon_gen` [True/False] — Show/hide generation.
-- `gui.hud_pokemon_lvl` [True/False] — Show/hide level.
-- `gui.hud_pokemon_name` [True/False] — Show/hide Pokémon names.
-- `gui.hud_status_badge` [True/False] — Show/hide the opponent status indicator (plain text without Styling, badge with Styling). Without Styling, this also controls stat-boost multipliers and supported status conditions beside Pokémon details, such as `*ASLEEP` or `*BADLY POISONED`. Player conditions require at least one Pokémon detail (ID, generation, level, or name) to be visible. Automatic battle hides the plain BATTLING/FAINTED status readout; condition suffixes can still appear.
-- `gui.hud_owned_indicator` [True/False] (default: True) — Show/hide the captured indicator for an encountered Pokémon whose exact species or form has been caught before. The toggle is labelled **Pokéball Icon** with Styling enabled and **Captured State** without Styling. With Styling enabled it uses the Pokéball icon; without Styling it displays `[CAPTURED]` next to the opponent's name or status. It remains shown after that Pokémon is released, evolved, or traded away. New caught records, including incoming trades, update the indicator without restarting Anki.
-- `gui.hud_enemy_shiny_indicator` [True/False] — Show/hide the enemy shiny star.
-- `gui.hud_player_shiny_indicator` [True/False] — Show/hide the player companion shiny star.
+- `gui.hud_styling` [true/false] (default: true): Style the HUD. Disable it for plain text. HP and XP bars require Styling; their controls are unavailable when Styling is off. Selecting an unavailable bar control in web settings shows a reminder to enable Styling.
+- `gui.hud_hp_bars` [true/false]: Show HP bars.
+- `gui.review_hp_bar_thickness` [number]: Set HP bar thickness in units of 4 pixels: `2` = 8 px, `3` = 12 px, `4` = 16 px, and `5` = 20 px.
+- `gui.hud_xp_bar` [true/false]: Show your main Pokémon's XP progress bar.
+- `gui.xp_bar_location` [1/2]: Place the XP bar at the top (`1`) or bottom (`2`) of the reviewer.
+- `gui.hud_xp_values` [true/false] (default: false): Show `XP: current/required`, independently of the XP bar and Battle Log. With Styling on, the values appear on the XP bar, or in a separate pill if the bar is hidden. With Styling off, they appear as plain text.
 
-Setting `YouShallNotPass_Ankimon_News` to `true` deactivates the update patch notes pop-up on Anki startup.
-- `YouShallNotPass_Ankimon_News` [True/False]
+### HUD elements
 
-Setting `battle.automatic_battle` to `0` leaves the catch or defeat decision to you in the Ankimon Window when the wild Pokémon reaches 0 HP, unless the Pokémon is in `battle.auto_catch_wishlist`.
-- `battle.automatic_battle` [0/1/2/3] (default: 0)
-    - If set to `1`, the wild Pokémon will be automatically caught when it reaches 0 HP.
-    - If set to `2`, the wild Pokémon will be defeated when it reaches 0 HP, and your main Pokémon will gain experience. Shiny encounters, wishlist Pokémon, and Pokémon covered by enabled always-auto-catch settings are caught instead.
-    - If set to `3` (“Catch if uncollected”), Pokémon not in your permanent Pokédex caught history will be caught; previously caught Pokémon will be defeated. Releasing, evolving, or trading away a Pokémon does not make it uncollected. History is refreshed for each completed encounter, including evolution, trade, and import changes. Forms are checked by their exact IDs, and seeing a Pokémon alone does not count as collecting it. Shiny encounters, Pokémon in `battle.auto_catch_wishlist`, and Pokémon covered by enabled always-auto-catch settings are still caught.
+Enable an element to show it; disable it to hide it.
 
-Wild encounter level cap:
-- `misc.remove_level_cap` [True/False] (default: False) — When `false`, your main Pokémon and other Pokémon receiving shared XP cannot level past 100, and wild encounters are capped at level 100. Below main level 100, wild levels roll across the full range from three below to three above, then any result above 100 is reduced to 100 (for example, levels 95–101 at main level 98 and 96–102 at 99 before the cap). At main level 100 or higher, wild encounters are always level 100. When `true`, Pokémon can level beyond 100 and wild levels use the usual uncapped roll from three levels below to three levels above your main Pokémon (minimum level 1).
+- `gui.hud_player_sprite` [true/false]: Your main Pokémon's sprite.
+- `gui.hud_enemy_sprite` [true/false]: The wild Pokémon's sprite.
+- `gui.hud_hp_text` [true/false]: Current and maximum HP.
+- `gui.hud_pokemon_id` [true/false]: Pokédex number.
+- `gui.hud_pokemon_gen` [true/false]: Generation.
+- `gui.hud_pokemon_lvl` [true/false]: Level.
+- `gui.hud_pokemon_name` [true/false]: Pokémon names.
+- `gui.hud_enemy_shiny_indicator` [true/false]: A star for shiny wild Pokémon.
+- `gui.hud_player_shiny_indicator` [true/false]: A star for your shiny main Pokémon.
 
-Setting `catch_key` to a letter allows you to catch pokemons inside of the reviewer when their hp reaches 0 by pressing control and your letter - default is D.
-- `catch_key` [A - Z]
+`gui.hud_status_badge` [true/false]: Show the opponent's status as a badge with Styling on, or plain text with Styling off. In plain text, this also shows stat multipliers and supported conditions such as `*ASLEEP` or `*BADLY POISONED` beside Pokémon details. Your Pokémon's conditions need at least one visible detail: ID, generation, level, or name. Automatic battle hides the plain BATTLING/FAINTED readout, but condition suffixes can still appear.
 
-Setting `defeat_key` to a letter allows you to defeat pokemons inside of the reviewer when their hp reaches 0 by pressing control and your letter - default is F.
-- `defeat_key` [A - Z]
+`gui.hud_owned_indicator` [true/false] (default: true): Mark wild Pokémon whose exact species or form you have caught before. With Styling on, this setting is called **Pokéball Icon** and shows a Pokéball. With Styling off, it is called **Captured State** and shows `[CAPTURED]` beside the opponent's name or status. The marker remains after you release, evolve, or trade away that Pokémon. New catches and incoming trades update it without a restart.
 
-`review_hp_bar_thickness` sets the pixel thickness of the HP bar in the reviewer. 
-- Setting it to `2` will result in an 8px thickness.
-- Setting it to `3` will result in a 12px thickness.
-- Setting it to `4` will result in a 16px thickness.
-- Setting it to `5` will result in a 20px thickness.
+## Sound
 
-Language Options (Select a Number from the ones below to the corresponding language you would like to read your pokemon names and descriptions):
+- `audio.sounds` [true/false]: Play a Pokémon's cry when it appears.
+- `audio.battle_sounds` [true/false]: Replay Pokémon cries during battle, including every 10 cards. Requires `audio.sounds`.
+- `audio.sound_effects` [true/false]: Play sound effects for actions such as healing and dealing damage.
 
-    | ID  | Language               | Official |
+## Updates and background checks
 
-    | 1   | Japanese (Hir & Kata ) | Yes      |
+- `misc.YouShallNotPass_Ankimon_News` [true/false]: Hide the update patch notes popup at startup when set to `true`.
+- `misc.ssh` [true/false] (default: true): Allow automatic update checks and changelog downloads at startup. This setting is labelled **Allow Background Checks** (formerly **SSH Access**). Disable it if these checks cause connection errors, such as on restricted networks. Restart Anki after changing it. Sprite update checks run independently and remain enabled.
 
-    | 2   | Japanese (Roomaji)     | Yes      |
+## Language
 
-    | 3   | Korean                 | Yes      |
+Set `misc.language` to the ID for your preferred Pokémon names and descriptions.
 
-    | 4   | Chinese (Traditional)  | Yes      |
-
-    | 5   | French                 | Yes      |
-
-    | 6   | German                 | Yes      |
-
-    | 7   | Spanish                | Yes      |
-
-    | 8   | Italian                | Yes      |
-
-    | 9   | English                | Yes      |
-
-    | 10  | Czech                  | No       |
-
-    | 11  | Japanese               | Yes      |
-
-    | 12  | Chinese (Simplified)   | Yes      |
-
-    | 13  | Portuguese (Brazil)    | No       |
-
-    | 14  | Spanish (Latin America)| No       |
+| ID | Language | Official |
+| --- | --- | --- |
+| 1 | Japanese (Hiragana and Katakana) | Yes |
+| 2 | Japanese (Romaji) | Yes |
+| 3 | Korean | Yes |
+| 4 | Chinese (Traditional) | Yes |
+| 5 | French | Yes |
+| 6 | German | Yes |
+| 7 | Spanish | Yes |
+| 8 | Italian | Yes |
+| 9 | English | Yes |
+| 10 | Czech | No |
+| 11 | Japanese | Yes |
+| 12 | Chinese (Simplified) | Yes |
+| 13 | Portuguese (Brazil) | No |
+| 14 | Spanish (Latin America) | No |
