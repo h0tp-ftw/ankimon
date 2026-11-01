@@ -3282,6 +3282,34 @@ class AnkimonItemsWeb(QDialog):
         return out
 
     @staticmethod
+    def _wishlist_bag_items(pool_ids):
+        """Owned item identifiers that can be added to the Item Wishlist.
+
+        Backs the "Choose from Bag…" picker (the item counterpart of the
+        Always-Catch "Choose from Caught…" grid). Restricted to ``pool_ids``
+        because the save path drops identifiers outside the wishlist pool.
+        Bag names are normalised (lowercase, hyphenated) to match pool keys.
+        """
+        try:
+            rows = services.db.get_all_items() or []
+        except Exception:
+            return []
+        owned = []
+        for row in rows:
+            name = row.get("item_name") if isinstance(row, dict) else None
+            if not isinstance(name, str):
+                continue
+            try:
+                if int(row.get("quantity") or 0) <= 0:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            item_id = name.strip().lower().replace(" ", "-")
+            if item_id in pool_ids:
+                owned.append(item_id)
+        return sorted(dict.fromkeys(owned))
+
+    @staticmethod
     def _serialize_setting(key, friendly, name_map, desc_map, value):
         from . import settings_schema
 
@@ -3323,6 +3351,9 @@ class AnkimonItemsWeb(QDialog):
                     display_name = _item_name(item_name, english_ui_name)
                 item_options.append({"id": item_name, "name": display_name})
             entry["item_options"] = item_options
+            entry["bag_items"] = AnkimonItemsWeb._wishlist_bag_items(
+                {option["id"] for option in item_options}
+            )
             return entry
 
         if key == "leaderboard.api_key":

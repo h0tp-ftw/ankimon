@@ -261,6 +261,12 @@
             name: item.name || String(item.id).replace(/-/g, ' '),
         }));
         const itemNames = new Map(itemOptions.map((item) => [item.id, item.name]));
+        // "Choose from Bag…" mirrors the Always-Catch "Choose from Caught…":
+        // the grid lists only items the player owns; search covers the full pool.
+        const bagItems = (setting.bag_items || [])
+            .map(String)
+            .filter((id) => itemNames.has(id))
+            .map((id) => ({ id, name: itemNames.get(id) }));
 
         if (!isItemWishlist && setting.names) {
             state._wishlistNames = state._wishlistNames || {};
@@ -290,9 +296,9 @@
         const chooseBtn = document.createElement('button');
         chooseBtn.type = 'button';
         chooseBtn.className = 'wishlist-choose-btn';
-        chooseBtn.textContent = isItemWishlist ? 'Choose from Items…' : 'Choose from Caught…';
+        chooseBtn.textContent = isItemWishlist ? 'Choose from Bag…' : 'Choose from Caught…';
         chooseBtn.title = isItemWishlist
-            ? 'Open dialog to select from obtainable items'
+            ? 'Open dialog to select from items in your bag'
             : 'Open dialog to select from caught Pokémon';
 
         const dropdown = document.createElement('div');
@@ -501,7 +507,7 @@
             grid.innerHTML = '';
             activeCardById = new Map();
             const entries = isItemWishlist
-                ? itemOptions
+                ? bagItems
                 : caughtPokemon.map((pokemon) => ({
                     id: Number(pokemon.id),
                     name: pokemon.name,
@@ -510,7 +516,7 @@
                 const empty = document.createElement('div');
                 empty.className = 'wishlist-suggestions-empty';
                 empty.textContent = isItemWishlist
-                    ? 'No obtainable items found.'
+                    ? 'No wishlist-eligible items in your bag. Use the search box to add any item.'
                     : 'No caught Pokémon found.';
                 grid.appendChild(empty);
                 return;
@@ -579,7 +585,7 @@
 
             const title = document.createElement('h3');
             title.className = 'wishlist-modal-title';
-            title.textContent = isItemWishlist ? 'Select Items' : 'Select from Caught Pokémon';
+            title.textContent = isItemWishlist ? 'Select from Bag' : 'Select from Caught Pokémon';
 
             const closeBtn = document.createElement('button');
             closeBtn.type = 'button';
