@@ -661,7 +661,10 @@ class Reviewer_Manager:
                 and not xp_bar_enabled
                 and xp_bar_location == "bottom"
             ):
-                xp_bar_spacer = 20
+                # The standalone XP pill is centred 21px from the bottom and
+                # is ~26px tall; 30px keeps the HP bars clear of it, the same
+                # clearance the XP bar + values layout gets (20 + 10).
+                xp_bar_spacer = 30
             hud_css = create_css_for_reviewer(
                 int(self.settings.get("gui.show_mainpkmn_in_reviewer")),
                 pokemon_hp_percent,
