@@ -1,68 +1,101 @@
-name: Publish Next Month's Pokémon Challenge
+name: Publish Monthly Pokémon Challenge
 
 on:
   schedule:
-    # Run only at the end of every month (28th-31st) at 00:00 UTC
-    # Releases the upcoming month ~24h before the 1st
-    - cron: '0 0 28-31 * *'
+    # 00:17 UTC avoids the busiest scheduled-action minute. Run daily so a
+    # delayed/failed month-end run can recover once the new month starts.
+    - cron: '17 0 * * *'
   workflow_dispatch:
     inputs:
       force:
-        description: 'Force release regardless of the calendar day'
+        description: 'Allow an early public reveal (defaults to next month)'
         type: boolean
         default: false
       target_month:
-        description: "Specific month to release (e.g., 'November 2026') or leave blank for next month"
-        required: false
+        description: "Exact English month (e.g. 'November 2026'); blank selects the due month"
         type: string
         default: ''
+      dry_run:
+        description: 'Validate the selected release without publishing'
+        type: boolean
+        default: false
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
+
+concurrency:
+  group: publish-monthly-challenge
+  cancel-in-progress: false
 
 jobs:
   check-and-publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
-      - name: Resolve GitHub App token (ruleset bypass)
+      - name: Checkout main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Prepare challenge
+        id: update
+        env:
+          UPCOMING_MONTHLY_CHALLENGES: ${{ secrets.UPCOMING_MONTHLY_CHALLENGES }}
+          FORCE_RELEASE: ${{ inputs.force }}
+          TARGET_MONTH: ${{ inputs.target_month }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python scripts/release_monthly_challenge.py
+
+      # Direct catalogue updates are an approved exception to the PR rule.
+      # Require the configured bypass App: GITHUB_TOKEN cannot bypass main's
+      # ruleset. Mint write credentials only after validation produced a change.
+      - name: Generate release App token
+        if: steps.update.outputs.updated == 'true'
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-        continue-on-error: true
+          permission-contents: write
 
-      - name: Checkout main
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          token: ${{ steps.app-token.outputs.token || github.token }}
-          fetch-depth: 1
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Check and Update Challenge JSON
-        id: update_step
-        env:
-          UPCOMING_MONTHLY_CHALLENGES: ${{ secrets.UPCOMING_MONTHLY_CHALLENGES }}
-          FORCE_RELEASE: ${{ github.event.inputs.force }}
-          TARGET_MONTH: ${{ github.event.inputs.target_month }}
-          DAYS_AHEAD: 1
-        run: |
-          python scripts/release_monthly_challenge.py
-
-      - name: Commit and Push if updated
-        if: steps.update_step.outputs.updated == 'true'
+      - name: Publish challenge
+        if: steps.update.outputs.updated == 'true'
         shell: bash
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_MONTH: ${{ steps.update.outputs.month }}
+          UPCOMING_MONTHLY_CHALLENGES: ${{ secrets.UPCOMING_MONTHLY_CHALLENGES }}
+          FORCE_RELEASE: ${{ inputs.force }}
         run: |
+          set -euo pipefail
           git config user.name "ankimon-release-bot[bot]"
           git config user.email "ankimon-release-bot[bot]@users.noreply.github.com"
-          git add assets/challenges/monthly_challenges.json
-          git commit -m "feat(monthly): reveal ${{ steps.update_step.outputs.month }} challenge (${{ steps.update_step.outputs.pokemon }})"
-          
-          # Push directly to main using the token configured in checkout
-          git push origin main
+          remote="https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for attempt in 1 2 3; do
+            git add assets/challenges/monthly_challenges.json
+            if git diff --cached --quiet; then
+              echo "Challenge already published; no changes."
+              exit 0
+            fi
+            git commit -m "feat(monthly): reveal ${RELEASE_MONTH} challenge (#983)"
+            if git push "$remote" HEAD:main; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Unable to push the monthly challenge after three attempts."
+              exit 1
+            fi
+            # Work only in this disposable runner checkout. Regenerate against
+            # current main so concurrent commits or catalogue edits are preserved.
+            git fetch "$remote" main
+            git reset --hard FETCH_HEAD
+            python scripts/release_monthly_challenge.py --target-month "$RELEASE_MONTH"
+          done
