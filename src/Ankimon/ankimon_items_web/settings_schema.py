@@ -42,7 +42,6 @@ GROUPS = [
                 "settings": [
                     "Automatic Battle",
                     "Always Catch Wishlist",
-                    "Item Wishlist",
                 ],
                 "chip_group": {
                     "label": "Always Catch Tiers",
@@ -61,6 +60,12 @@ GROUPS = [
                         ("battle.auto_catch_regional",  "Regional Form"),
                     ],
                 },
+            },
+            {
+                "label": "Item Settings",
+                "settings": [
+                    "Item Wishlist",
+                ],
             },
             {
                 "label": "Gameplay & Mechanics",
@@ -128,10 +133,17 @@ GROUPS = [
             "Reviewer Image as GIF",
             "View Main Pokémon Front",
             "XP Bar Location",
-            "Pop-Up on Defeat",
-            "Pop-Up on Special Encounter",
-            "Pop-Up on Item Receive",
-            "Wishlist Item Received Override",
+        ],
+        "subgroups": [
+            {
+                "label": "Pop-Up Notifs",
+                "settings": [
+                    "Pop-Up on Defeat",
+                    "Pop-Up on Special Encounter",
+                    "Pop-Up on Item Receive",
+                    "Wishlist Item Received",
+                ],
+            },
         ],
         "chip_group": {
             "label": "HUD Element Toggles",

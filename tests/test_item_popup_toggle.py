@@ -93,15 +93,17 @@ def _scenario(popup_enabled, override=False, wishlist=None, forced_item=None):
         + "    open(os.path.join(items_path, _n + '.png'), 'wb').close()\n"
         + "spy = _SpyWindow()\n"
         + "d.services.test_window = spy\n"
+        + "wishlist_popup_messages = []\n"
+        + "d.services.ui.show_wishlist_popup = wishlist_popup_messages.append\n"
         + "before = len(d.services.db.get_all_items())\n"
         # Arm the trigger so the very next answered card fires the item branch.
         + "battle_loop._state.item_receive_value = 1\n"
         + "events = d.answer('good')\n"
         + "after = d.services.db.get_all_items()\n"
         + "errs = [e for e in events if e['type'] == 'error']\n"
-        + (f"if errs and 'display_item' in str(errs[0].get('exception', '')):\n    errs = []\n    spy.display_item_calls = 1\n" if forced_item else "")
         + "print(%r + json.dumps({\n" % _MARKER
         + "    'display_item_calls': spy.display_item_calls,\n"
+        + "    'wishlist_popup_messages': wishlist_popup_messages,\n"
         + "    'items_before': before,\n"
         + "    'items_after': len(after),\n"
         + "    'total_qty': sum(i.get('quantity', 0) for i in after),\n"
@@ -139,17 +141,21 @@ def test_item_popup_enabled_shows_dialog():
 
 
 def test_item_popup_disabled_wishlist_override_active():
-    """When popup is disabled but override is ON and item matches, display_item is called."""
+    """A matching wishlisted item uses the dedicated received-item notification."""
     r = _scenario(popup_enabled=False, override=True, wishlist=["potion"], forced_item="potion")
     assert r["errors"] == 0, "item branch raised: %s" % r["first_error"]
-    assert r["display_item_calls"] >= 1
+    assert r["display_item_calls"] == 0
+    assert len(r["wishlist_popup_messages"]) == 1
+    assert "Potion" in r["wishlist_popup_messages"][0]
+    assert r["total_qty"] >= 1
 
 
 def test_item_popup_disabled_wishlist_override_inactive():
-    """When popup is disabled and override is ON but item doesn't match, display_item is not called."""
+    """A non-wishlisted item does not trigger the received-item notification."""
     r = _scenario(popup_enabled=False, override=True, wishlist=["linking-cord"], forced_item="potion")
     assert r["errors"] == 0, "item branch raised: %s" % r["first_error"]
     assert r["display_item_calls"] == 0
+    assert r["wishlist_popup_messages"] == []
     assert r["total_qty"] >= 1
 
 
