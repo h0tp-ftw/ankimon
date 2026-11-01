@@ -19,7 +19,11 @@ def test_random_item_returns_none_when_sprite_directory_is_missing(monkeypatch, 
     monkeypatch.setattr(utils, "items_path", missing)
     monkeypatch.setattr(utils, "give_item", granted.append)
 
+
+    # We mock _BUNDLED_ITEM_SPRITES to empty so that it tests purely on items_path
+    monkeypatch.setattr(utils, "_BUNDLED_ITEM_SPRITES", {})
     assert utils.random_item() is None
+
     assert granted == []
 
 
@@ -32,7 +36,11 @@ def test_random_item_returns_none_when_no_eligible_sprites_exist(monkeypatch, tm
     monkeypatch.setattr(utils, "items_path", tmp_path)
     monkeypatch.setattr(utils, "give_item", granted.append)
 
+
+    # We mock _BUNDLED_ITEM_SPRITES to empty so that it tests purely on items_path
+    monkeypatch.setattr(utils, "_BUNDLED_ITEM_SPRITES", {})
     assert utils.random_item() is None
+
     assert granted == []
 
 
@@ -44,5 +52,8 @@ def test_random_item_grants_an_eligible_item(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, "items_path", tmp_path)
     monkeypatch.setattr(utils, "give_item", granted.append)
 
+
+    monkeypatch.setattr(utils, "_BUNDLED_ITEM_SPRITES", {})
     assert utils.random_item() == "potion"
+
     assert granted == ["potion"]

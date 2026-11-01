@@ -392,6 +392,13 @@ def random_item() -> Optional[str]:
         try:
             files = os.listdir(items_path)
         except OSError:
+            files = []
+
+        files.extend(
+            f"{name}.png" for name in _BUNDLED_ITEM_SPRITES if f"{name}.png" not in files
+        )
+
+        if not files:
             return None
 
         # Iterate over each file in the directory
