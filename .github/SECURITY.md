@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We provide security fixes for the latest version of Ankimon on AnkiWeb and the `main` branch.
+We provide security fixes for the latest version of Ankimon (Experimental and Stable) on AnkiWeb and the `main` branch.
 
 ## Reporting a Vulnerability
 
