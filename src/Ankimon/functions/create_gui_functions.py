@@ -29,6 +29,28 @@ def create_status_label(status_name):
 
     return label
 
+def _get_plain_status_text_color(colors):
+    """Return an explicit, theme-aware colour for plain-mode status text.
+
+    Plain mode emits no CSS colour, and the portal resets ``#hud-root`` with
+    ``all: initial !important``, so ``color`` does not reliably inherit Anki's
+    active card colour. Fall back to a contrasting colour based on whether the
+    status palette is designed for a light or dark background so the text
+    stays readable in both Anki light and dark themes.
+    """
+    explicit = colors.get("plain_text_color")
+    if explicit:
+        return explicit
+    background = colors.get("background", "").lstrip("#")
+    try:
+        r = int(background[0:2], 16)
+        g = int(background[2:4], 16)
+        b = int(background[4:6], 16)
+    except (ValueError, IndexError):
+        return "#000000"
+    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    return "#000000" if luminance > 0.5 else "#FFFFFF"
+
 def create_status_html(
     status_name, settings_obj, is_pokemon_owned=False, addon_package="", plain_text=False
 ):
@@ -58,10 +80,9 @@ def create_status_html(
 
         status_html = ""
         if plain_text and settings_obj.get("gui.hud_status_badge"):
-            # No inline colour: text_color (e.g. fainted's #FFFFFF) is chosen
-            # for the styled badge's background, which plain mode doesn't draw.
+            plain_text_color = _get_plain_status_text_color(colors)
             status_html = (
-                f'<span id="pokestatus">'
+                f'<span id="pokestatus" style="color: {plain_text_color};">'
                 f'— {colors["name"].upper()}</span>{captured_label}'
             )
         elif settings_obj.get("gui.hud_status_badge"):
