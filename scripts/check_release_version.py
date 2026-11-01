@@ -46,6 +46,7 @@ def _git_show(ref: str, path: str):
     """Return the file's text at ``ref``, or None if it doesn't exist there."""
     result = subprocess.run(
         ["git", "show", f"{ref}:{path}"],
+        check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -56,7 +57,9 @@ def _git_show(ref: str, path: str):
 def _git_has(ref: str, path: str) -> bool:
     return (
         subprocess.run(
-            ["git", "cat-file", "-e", f"{ref}:{path}"], capture_output=True
+            ["git", "cat-file", "-e", f"{ref}:{path}"],
+            check=False,
+            capture_output=True,
         ).returncode
         == 0
     )
