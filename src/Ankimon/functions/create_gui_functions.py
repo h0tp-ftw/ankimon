@@ -58,8 +58,10 @@ def create_status_html(
 
         status_html = ""
         if plain_text and settings_obj.get("gui.hud_status_badge"):
+            # No inline colour: text_color (e.g. fainted's #FFFFFF) is chosen
+            # for the styled badge's background, which plain mode doesn't draw.
             status_html = (
-                f'<span id="pokestatus" style="color: {colors.get("text_color", "#000000")};">'
+                f'<span id="pokestatus">'
                 f'— {colors["name"].upper()}</span>{captured_label}'
             )
         elif settings_obj.get("gui.hud_status_badge"):
