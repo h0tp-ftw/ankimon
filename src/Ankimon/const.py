@@ -35,7 +35,13 @@ status_colors_html = {
     "slp": {"background": "#FFC0CB", "outline": "#D895A1", "name": "Asleep"},
     "confusion": {"background": "#FFA500", "outline": "#CC8400", "name": "Confusion"},
     "flinching": {"background": "#808080", "outline": "#666666", "name": "Flinching"},
-    "fainted": {"background": "#000000", "outline": "#000000", "text_color": "#FFFFFF", "name": "Fainted"},
+    "fainted": {
+        "background": "#000000",
+        "outline": "#000000",
+        "text_color": "#FFFFFF",
+        "plain_text_color": "#B00020",
+        "name": "Fainted",
+    },
     "fighting": {"background": "#C03028", "outline": "#7D1F1A", "name": "Battling"},  # Example colors for Fighting
 }
 
