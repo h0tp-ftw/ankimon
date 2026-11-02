@@ -155,3 +155,19 @@ def test_workflow_routes_only_explicit_channels_and_gates_stable():
         assert "          fail_on_unmatched_files: true\n" in job
     assert "    environment:\n      name: ankiweb\n" in stable
     assert "    environment:" not in experimental
+
+
+def test_workflow_draft_input_drives_both_publish_jobs():
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github/workflows/release.yml"
+    ).read_text(encoding="utf-8")
+    inputs, rest = workflow.split("\njobs:\n", 1)
+    _, stable = rest.split("\n  publish-stable:\n", 1)
+    stable, experimental = stable.split("\n  publish-experimental:\n", 1)
+
+    assert "      draft:\n" in inputs
+    assert "        type: boolean\n        default: false\n" in inputs
+    for job in (stable, experimental):
+        assert "          draft: ${{ inputs.draft }}\n" in job
+        assert "          draft: false\n" not in job
+

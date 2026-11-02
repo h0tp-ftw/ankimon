@@ -13,6 +13,7 @@ def create_css_for_reviewer(
     xp_bar_location,
     enemy_hp_true_percent,
     main_hp_true_percent,
+    xp_values_config=False,
 ):
     css = ""
 
@@ -425,17 +426,20 @@ def create_css_for_reviewer(
         xp_text_alignment = (
             "translateY(-50%)" if xp_bar_location == "top" else "translateY(50%)"
         )
+        xp_bar_offset = 7 if xp_bar_location == "top" else 16
+        xp_label_offset = xp_bar_offset + 5
+        xp_bar_side_margin = 25 if xp_values_config else 50
         css += f"""
 /* XP track and fill - matte, outlined, no glow */
 #ankimon-hud #xp-bar {{
   position: fixed;
-  {xp_bar_location}: 7px;
-  left: 50px;
+  {xp_bar_location}: {xp_bar_offset}px;
+  left: {xp_bar_side_margin}px;
   right: 25px;
   z-index: 9999;
   height: 10px;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   border: 1.5px solid var(--ankimon-outline);
   border-radius: 5px;
   background: rgba(0, 191, 255, 0.2);
@@ -444,15 +448,33 @@ def create_css_for_reviewer(
 }}
 
 #ankimon-hud #xp-bar-fill {{
+  position: relative;
+  z-index: 0;
   width: {xp_bar_percent}%;
   height: 100%;
   border-radius: inherit;
   background: rgba(0, 191, 255, 0.85);
 }}
 
+#ankimon-hud #xp-values {{
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}}
+
 #ankimon-hud #xp_text {{
   position: fixed;
-  {xp_bar_location}: 12px;
+  {xp_bar_location}: {xp_label_offset}px;
   transform: {xp_text_alignment};
   left: 15px;
   z-index: 9999;
@@ -469,6 +491,28 @@ def create_css_for_reviewer(
   outline: 1.5px solid var(--ankimon-outline);
   border-radius: 5px;
   padding: 2px 4px;
+}}
+"""
+
+    elif xp_values_config:
+        # Keep the values visible when the track is hidden, aligned where its
+        # XP label normally sits.
+        xp_values_offset = 12 if xp_bar_location == "top" else 21
+        css += f"""
+#ankimon-hud #xp-values {{
+  position: fixed;
+  {xp_bar_location}: {xp_values_offset}px;
+  left: 50%;
+  transform: {("translate(-50%, -50%)" if xp_bar_location == "top" else "translate(-50%, 50%)")};
+  z-index: 9999;
+  color: #FFFFFF;
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: center;
+  background-color: rgba(0, 0, 0, 0.85);
+  border-radius: 5px;
+  padding: 2px 6px;
 }}
 """
 

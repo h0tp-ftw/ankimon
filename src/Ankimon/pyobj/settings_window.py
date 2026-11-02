@@ -71,6 +71,9 @@ class SettingsWindow(QMainWindow):
         self.searchable_settings = []
         self.title_buttons = {}  # To store references to title buttons
         self.input_widgets = {}  # To store references to input widgets
+        self.setting_label_widgets = {}
+        self.setting_description_widgets = {}
+        self.setting_control_widgets = {}
 
         self.setup_ui()
 
@@ -229,6 +232,8 @@ class SettingsWindow(QMainWindow):
         description_label.setMaximumWidth(self.width() - 50)
         layout.addWidget(label)
         layout.addWidget(description_label)
+        self.setting_label_widgets[key] = label
+        self.setting_description_widgets[key] = description_label
         created_widgets.extend([label, description_label])
 
         if key == "misc.active_region":
@@ -280,11 +285,16 @@ class SettingsWindow(QMainWindow):
                 button_group.buttonClicked.connect(
                     lambda _, hud_key=key: self._on_hud_toggle_clicked(hud_key)
                 )
+            if key == "gui.hud_styling":
+                button_group.buttonClicked.connect(
+                    lambda *_args: self._update_hud_styling_dependent_settings()
+                )
             h_layout.addWidget(true_radio)
             h_layout.addWidget(false_radio)
             layout.addWidget(radio_container)
             created_widgets.append(radio_container)
             self.input_widgets[key] = button_group
+            self.setting_control_widgets[key] = radio_container
         elif isinstance(value, (int, str, float)):
             line_edit = QLineEdit(str(value))
             # Mask the API Key field if it's ever rendered in the legacy window
@@ -446,6 +456,7 @@ class SettingsWindow(QMainWindow):
                             "Show Player Sprite",
                             "Show Enemy Sprite",
                             "Show XP Progress Bar",
+                            "Show XP Values",
                             "Show HP Bars",
                             "Show HP Text",
                             "Show Pokémon ID",
@@ -453,7 +464,7 @@ class SettingsWindow(QMainWindow):
                             "Show Pokémon Level",
                             "Show Pokémon Name",
                             "Show Status Badge",
-                            "Show Pokeball Icon",
+                            "Show Pokéball Icon",
                             "Show Enemy Shiny Star",
                             "Show Player Shiny Star",
                             "Show Text Message Box in Reviewer",
@@ -561,6 +572,7 @@ class SettingsWindow(QMainWindow):
         save_button.setToolTip("Click to save your settings.")
         save_button.clicked.connect(self.on_save)
         layout.addWidget(save_button)
+        self._update_hud_styling_dependent_settings()
 
     def show_window(self):
         self._apply_stylesheet()
@@ -593,6 +605,7 @@ class SettingsWindow(QMainWindow):
         region_combo = self.input_widgets.get("misc.active_region")
         if region_combo is not None:
             self._refresh_region_dropdown(region_combo)
+        self._update_hud_styling_dependent_settings()
 
     def _refresh_live_windows(self):
         """Refresh native Ankimon windows that depend on sprite visibility."""
@@ -677,6 +690,39 @@ class SettingsWindow(QMainWindow):
         # Track explicit HUD toggle changes so the autosync rule does not
         # override a user choice made in the same save transaction.
         self.explicit_hud_toggle_overrides.add(key)
+
+    def _update_hud_styling_dependent_settings(self):
+        styling_group = self.input_widgets.get("gui.hud_styling")
+        styling_enabled = (
+            styling_group.checkedId() == 1
+            if isinstance(styling_group, QButtonGroup)
+            else bool(self.config.get("gui.hud_styling", True))
+        )
+
+        for key in ("gui.hud_xp_bar", "gui.hud_hp_bars"):
+            for button in getattr(self.input_widgets.get(key), "buttons", lambda: [])():
+                button.setEnabled(styling_enabled)
+            for widgets in (
+                self.setting_label_widgets.get(key),
+                self.setting_description_widgets.get(key),
+                self.setting_control_widgets.get(key),
+            ):
+                if widgets is not None:
+                    widgets.setEnabled(styling_enabled)
+
+        captured_label = (
+            "Show Pokéball Icon" if styling_enabled else "Show Captured State"
+        )
+        label = self.setting_label_widgets.get("gui.hud_owned_indicator")
+        if label is not None:
+            label.setText(captured_label)
+        for setting in self.searchable_settings:
+            if label in setting["widgets"]:
+                setting["friendly_name"] = captured_label
+
+        search_bar = getattr(self, "search_bar", None)
+        if search_bar is not None and search_bar.text():
+            self._on_search_changed(search_bar.text())
 
     def _refresh_region_dropdown(self, combo):
         region_to_gen = {
