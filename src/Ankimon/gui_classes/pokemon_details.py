@@ -109,6 +109,7 @@ def PokemonCollectionDetailsSplit(
     remove_levelcap: bool,
     logger: ShowInfoLogger,
     refresh_callback,
+    monthly_month: str = None,
     initial_tab_index: int = 0,
     tab_changed_callback=None,
     nature: str = "serious",
@@ -357,6 +358,15 @@ def PokemonCollectionDetailsSplit(
         )
         name_label = QLabel(display_full_name)
         name_label.setFont(namefont)
+
+        monthly_label = None
+        if monthly_month:
+            monthly_label = QLabel(f"Monthly Challenge: {monthly_month}")
+            monthly_font = load_custom_font(12, language)
+            monthly_label.setFont(monthly_font)
+            monthly_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            monthly_label.setStyleSheet("color: #fbbf24; font-weight: bold; letter-spacing: 0.5px;")
+
         description_label = QLabel(description_txt)
         level_label = QLabel(lvl)
         cp_label = QLabel(cp_txt)
@@ -674,6 +684,8 @@ def PokemonCollectionDetailsSplit(
         header_widget = QWidget()
         header_layout = QVBoxLayout(header_widget)
         header_layout.addWidget(name_label)
+        if monthly_label:
+            header_layout.addWidget(monthly_label)
         header_layout.addLayout(first_layout)
         header_layout.addWidget(description_label)
 
@@ -793,6 +805,7 @@ def PokemonCollectionDetails(
     remove_levelcap: bool,
     logger: ShowInfoLogger,
     refresh_callback,
+    monthly_month: str = None,
     initial_tab_index: int = 0,
     tab_changed_callback=None,
     nature: str = "serious",
@@ -836,6 +849,7 @@ def PokemonCollectionDetails(
             remove_levelcap=remove_levelcap,
             logger=logger,
             refresh_callback=refresh_callback,
+            monthly_month=monthly_month,
             initial_tab_index=initial_tab_index,
             tab_changed_callback=tab_changed_callback,
             nature=nature,
