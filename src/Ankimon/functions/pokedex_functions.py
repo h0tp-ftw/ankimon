@@ -1416,7 +1416,7 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
     Check if a Pokémon evolves using a specific item.
 
     Region-aware and driven exclusively by pokedex.json form data: a candidate
-    evolution qualifies when its ``evoType`` is ``"useItem"`` **or** ``"trade"``
+    evolution qualifies when its ``evoType`` is ``"useItem"``, ``"trade"``, or ``"levelHold"``
     and its ``evoItem`` matches the supplied item. ``trade`` is accepted because
     Ankimon has no trading, so the 16 trade-with-held-item species (Onix->Steelix
     via Metal Coat, Poliwhirl->Politoed via King's Rock, Seadra->Kingdra via
@@ -1468,6 +1468,7 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
                         if target_data and target_data.get("evoType") in (
                             "useItem",
                             "trade",
+                            "levelHold",
                         ):
                             # Gender gate from the bundled CSV (veekun ids:
                             # 1 = female, 2 = male). Gallade (475) requires a
@@ -1715,7 +1716,7 @@ def check_evolution_for_pokemon(
                             min_level > 0
                             and level >= min_level
                             and target_data.get("evoType")
-                            not in ("useItem", "trade", "levelFriendship")
+                            not in ("useItem", "trade", "levelFriendship", "levelHold")
                         )
 
                         # Move-based level-up evolution (e.g. Wyrdeer, Mr. Mime-Galar).
