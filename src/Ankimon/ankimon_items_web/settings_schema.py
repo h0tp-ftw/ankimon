@@ -62,6 +62,12 @@ GROUPS = [
                 },
             },
             {
+                "label": "Item Settings",
+                "settings": [
+                    "Item Wishlist",
+                ],
+            },
+            {
                 "label": "Gameplay & Mechanics",
                 "settings": [
                     "Cards per Round",
@@ -127,9 +133,17 @@ GROUPS = [
             "Reviewer Image as GIF",
             "View Main Pokémon Front",
             "XP Bar Location",
-            "Pop-Up on Defeat",
-            "Pop-Up on Special Encounter",
-            "Pop-Up on Item Receive",
+        ],
+        "subgroups": [
+            {
+                "label": "Pop-Up Notifs",
+                "settings": [
+                    "Pop-Up on Defeat",
+                    "Pop-Up on Special Encounter",
+                    "Pop-Up on Item Receive",
+                    "Wishlist Item Received",
+                ],
+            },
         ],
         "chip_group": {
             "label": "HUD Element Toggles",

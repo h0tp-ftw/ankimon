@@ -782,7 +782,10 @@ def boot_env(monkeypatch):
     logger = FakeLogger(calls)
     tracker = FakeTracker(calls)
 
-    hooks = SimpleNamespace(reviewer_did_answer_card=[])
+    hooks = SimpleNamespace(
+        reviewer_did_answer_card=[],
+        main_window_did_init=[],
+    )
     mw = SimpleNamespace(
         col=object(),
         progress=SimpleNamespace(busy=lambda: False),
@@ -840,6 +843,7 @@ def boot_env(monkeypatch):
         "enemy_info": ENEMY_INFO,
         "needs_starter": False,
         "needs_rating": False,
+        "wishlist_items_found": [],
     }
 
     def run_startup_background_checks(backup_manager=None):
@@ -1287,6 +1291,8 @@ def test_double_boot_does_not_stack_review_handlers(boot_env):
     boot_env.exec_init()
     assert len(boot_env.hooks.reviewer_did_answer_card) == 1
     first_handler = boot_env.hooks.reviewer_did_answer_card[0]
+    assert len(boot_env.hooks.main_window_did_init) == 1
+    first_wishlist_handler = boot_env.hooks.main_window_did_init[0]
 
     mod2 = boot_env.exec_init()
 
@@ -1294,3 +1300,7 @@ def test_double_boot_does_not_stack_review_handlers(boot_env):
     assert len(handlers) == 1, "reload must not stack review handlers"
     assert handlers[0] is not first_handler
     assert handlers[0] is mod2._on_review_card_gated
+
+    wishlist_handlers = boot_env.hooks.main_window_did_init
+    assert len(wishlist_handlers) == 1, "reload must not stack wishlist handlers"
+    assert wishlist_handlers[0] is first_wishlist_handler

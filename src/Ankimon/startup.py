@@ -82,8 +82,8 @@ def run_startup_background_checks(backup_manager=None):
 
     # 1. Run backups unless this startup was triggered by a developer hot-reload.
     backup_error = None
-    from .services import services
 
+    from .services import services
     is_reloading = getattr(services, "_is_reloading", False)
     if not is_reloading:
         try:
