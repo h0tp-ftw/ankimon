@@ -367,6 +367,7 @@ def PokemonCollectionDetailsSplit(
         nature_label = QLabel(nature_txt)
         attacks_label = QLabel(attacks_txt)
         pokemon_defeated_label = QLabel(f"Pokémon Defeated: {pokemon_defeated}")
+        short_id_label = QLabel(f" Short ID: {str(individual_id)[:5]}")
         if captured_date is not None:
             captured_date_label = QLabel(f"Captured: {captured_date.split()[0]}")
         else:
@@ -383,6 +384,7 @@ def PokemonCollectionDetailsSplit(
             load_custom_font(15 if language != 1 else 20, language)
         )
         pokemon_defeated_label.setFont(custom_font)
+        short_id_label.setFont(custom_font)
         captured_date_label.setFont(custom_font)
 
         if gif_in_collection is False:
@@ -400,6 +402,7 @@ def PokemonCollectionDetailsSplit(
         attacks_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         description_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         pokemon_defeated_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        short_id_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         captured_date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         attacks_label.setFixedWidth(230)
@@ -510,6 +513,7 @@ def PokemonCollectionDetailsSplit(
         TopL_layout_Box.addWidget(nature_label)
         TopL_layout_Box.addWidget(captured_date_label)
         TopL_layout_Box.addWidget(pokemon_defeated_label)
+        TopL_layout_Box.addWidget(short_id_label)
         if evolution_req_widget is not None:
             TopL_layout_Box.addWidget(evolution_req_widget)
         if evolution_note_widget is not None:
