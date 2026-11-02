@@ -29,6 +29,18 @@ def create_status_label(status_name):
 
     return label
 
+def _get_plain_status_text_color(colors):
+    """Return an explicit colour for plain-mode status text, or ``None``.
+
+    Plain mode draws no badge background, so ``text_color`` (chosen against
+    that background) is not safe: a white-on-black badge colour is invisible
+    on Anki's light card. Palettes may supply ``plain_text_color`` that reads
+    on both themes; when absent we emit no inline colour and let the value
+    inherit. Palettes whose ``text_color`` is theme-specific MUST set
+    ``plain_text_color`` (see ``const.py``).
+    """
+    return colors.get("plain_text_color")
+
 def create_status_html(
     status_name, settings_obj, is_pokemon_owned=False, addon_package="", plain_text=False
 ):
@@ -58,8 +70,12 @@ def create_status_html(
 
         status_html = ""
         if plain_text and settings_obj.get("gui.hud_status_badge"):
+            plain_text_color = _get_plain_status_text_color(colors)
+            color_attr = (
+                f' style="color: {plain_text_color};"' if plain_text_color else ""
+            )
             status_html = (
-                f'<span id="pokestatus" style="color: {colors.get("text_color", "#000000")};">'
+                f'<span id="pokestatus"{color_attr}>'
                 f'— {colors["name"].upper()}</span>{captured_label}'
             )
         elif settings_obj.get("gui.hud_status_badge"):

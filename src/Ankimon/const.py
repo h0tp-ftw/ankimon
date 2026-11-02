@@ -27,16 +27,16 @@ status_colors_label = {
 }
 
 status_colors_html = {
-    "brn": {"background": "#FF4500", "outline": "#C13500", "name": "Burned"},
-    "frz": {"background": "#ADD8E6", "outline": "#91B0C0", "name": "Frozen"},
-    "par": {"background": "#FFFF00", "outline": "#CCCC00", "name": "Paralysis"},
-    "psn": {"background": "#A020F0", "outline": "#8000C0", "name": "Poisoned"},
-    "tox": {"background": "#A545FF", "outline": "#842BFF", "name": "Badly Poisoned"},
-    "slp": {"background": "#FFC0CB", "outline": "#D895A1", "name": "Asleep"},
-    "confusion": {"background": "#FFA500", "outline": "#CC8400", "name": "Confusion"},
-    "flinching": {"background": "#808080", "outline": "#666666", "name": "Flinching"},
-    "fainted": {"background": "#000000", "outline": "#000000", "text_color": "#FFFFFF", "name": "Fainted"},
-    "fighting": {"background": "#C03028", "outline": "#7D1F1A", "name": "Battling"},  # Example colors for Fighting
+    "brn": {"background": "#FF4500", "outline": "#C13500", "plain_text_color": "#000000", "name": "Burned"},
+    "frz": {"background": "#ADD8E6", "outline": "#91B0C0", "plain_text_color": "#000000", "name": "Frozen"},
+    "par": {"background": "#FFFF00", "outline": "#CCCC00", "plain_text_color": "#000000", "name": "Paralysis"},
+    "psn": {"background": "#A020F0", "outline": "#8000C0", "plain_text_color": "#000000", "name": "Poisoned"},
+    "tox": {"background": "#A545FF", "outline": "#842BFF", "plain_text_color": "#000000", "name": "Badly Poisoned"},
+    "slp": {"background": "#FFC0CB", "outline": "#D895A1", "plain_text_color": "#000000", "name": "Asleep"},
+    "confusion": {"background": "#FFA500", "outline": "#CC8400", "plain_text_color": "#000000", "name": "Confusion"},
+    "flinching": {"background": "#808080", "outline": "#666666", "plain_text_color": "#000000", "name": "Flinching"},
+    "fainted": {"background": "#000000", "outline": "#000000", "text_color": "#FFFFFF", "plain_text_color": "#000000", "name": "Fainted"},
+    "fighting": {"background": "#C03028", "outline": "#7D1F1A", "plain_text_color": "#000000", "name": "Battling"},
 }
 
 # Get the profile folder. Guarded so const imports headless (no Anki): the
