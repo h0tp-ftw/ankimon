@@ -1073,9 +1073,6 @@ class AnkimonDB:
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_pokemon_level ON captured_pokemon(level)"
         )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_pokemon_is_monthly ON captured_pokemon(is_monthly)"
-        )
 
         # Check if is_main column exists (for migration from old schema)
         cursor.execute("PRAGMA table_info(captured_pokemon)")
@@ -1095,6 +1092,8 @@ class AnkimonDB:
             except Exception as e:
                 if "duplicate column name" not in str(e).lower():
                     raise e
+
+        if "is_monthly" not in columns or True:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pokemon_is_monthly ON captured_pokemon(is_monthly)"
             )
