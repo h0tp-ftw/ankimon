@@ -388,46 +388,42 @@ def random_item() -> Optional[str]:
     global _random_item_cache
     if _random_item_cache is None:
         item_names: list[str] = []
+        seen_names = set()
+        sprite_dirs = (items_path, addon_dir / "addon_sprites" / "items")
 
-        try:
-            files = os.listdir(items_path)
-        except OSError:
-            files = []
-
-        files.extend(
-            f"{name}.png" for name in _BUNDLED_ITEM_SPRITES if f"{name}.png" not in files
-        )
-
-        if not files:
-            return None
-
-        # Iterate over each file in the directory
-        for file in files:
-            # Check if the file is a .png file
-            if not file.endswith(".png"):
+        for sprite_dir in sprite_dirs:
+            try:
+                files = os.listdir(sprite_dir)
+            except OSError:
                 continue
 
-            # File name without the .png extension to the list
-            name = file[:-4]
+            for file in files:
+                if not file.endswith(".png"):
+                    continue
 
-            if name in USELESS_ITEMS:
-                continue
-            if name.endswith("-ball"):
-                continue
-            if name.endswith("-repel"):
-                continue
-            if name.endswith("-incense"):
-                continue
-            if name.endswith("-fang"):
-                continue
-            if name.endswith("dust"):
-                continue
-            if name.endswith("-piece"):
-                continue
-            if name.endswith("-nugget"):
-                continue
+                name = file[:-4]
+                if name in seen_names:
+                    continue
+                seen_names.add(name)
 
-            item_names.append(name)
+                if name in USELESS_ITEMS:
+                    continue
+                if name.endswith("-ball"):
+                    continue
+                if name.endswith("-repel"):
+                    continue
+                if name.endswith("-incense"):
+                    continue
+                if name.endswith("-fang"):
+                    continue
+                if name.endswith("dust"):
+                    continue
+                if name.endswith("-piece"):
+                    continue
+                if name.endswith("-nugget"):
+                    continue
+
+                item_names.append(name)
         _random_item_cache = item_names
     else:
         item_names = _random_item_cache
@@ -441,10 +437,8 @@ def random_item() -> Optional[str]:
     return item_name
 
 
-# Supply missing icons for older downloaded packs, and for items this add-on
-# implements that were never part of the downloaded sprite pack at all (the
-# effort candies and mochi: placeholder icons, since no official art exists
-# in that pack to fall back to).
+# Keep the bundled item names available to the daily shop when downloaded
+# sprites are missing; review rewards discover all bundled sprites directly.
 _BUNDLED_ITEM_SPRITES = {
     "linking-cord": addon_dir / "addon_sprites" / "items" / "linking-cord.png",
 }
@@ -461,10 +455,13 @@ del _prefix, _suffix
 
 
 def get_item_sprite_path(item_name):
-    """Resolve an item icon, falling back to a bundled addition when needed."""
+    """Resolve an item icon from downloaded or bundled item sprites."""
     downloaded = items_path / f"{item_name}.png"
-    bundled = _BUNDLED_ITEM_SPRITES.get(item_name)
-    if bundled is not None and not downloaded.is_file():
+    if downloaded.is_file():
+        return downloaded
+
+    bundled = addon_dir / "addon_sprites" / "items" / f"{item_name}.png"
+    if bundled.is_file():
         return bundled
     return downloaded
 
