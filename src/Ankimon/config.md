@@ -53,7 +53,7 @@ The reviewer is the screen where you study cards. Its HUD shows your Pokémon an
 - `gui.reviewer_image_gif` [true/false]: Use animated Pokémon GIFs in the reviewer.
 - `gui.view_main_front` [true/false]: Show your main Pokémon from the front when reviewer GIFs are enabled. Disable it to show the back view.
 - `gui.animate_time` [true/false]: Play a brief animation when either Pokémon takes damage.
-- `gui.gif_in_collection` [true/false]: Use animated GIFs instead of static sprites in your collection.
+- `gui.gif_in_collection` [true/false]: Use animated GIFs instead of static sprites in your collection and other menus.
 - `gui.show_sprites_across_ankimon` [true/false] (default: true): Show Pokémon sprites across Ankimon, including the evolution prompt and completion screen. These two screens use shiny sprites for shiny Pokémon, falling back to an ordinary sprite if a shiny image is missing. Disable this setting to hide sprites on both evolution screens.
 
 ### Messages

@@ -27,6 +27,16 @@ from ..utils import get_tier_by_id
 from .error_handler import show_warning_with_traceback
 
 
+def _should_use_gif() -> bool:
+    try:
+        from ..services import services
+        if services.settings:
+            return services.settings.get("gui.gif_in_collection", True)
+    except Exception:
+        pass
+    return True
+
+
 def _local_species_name(internal_name, pokedex_id):
     """Localized species name for the current language, English fallback."""
     from ..functions.pokedex_functions import format_lore_name
@@ -127,15 +137,10 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
 
         try:
             from ..functions.sprite_functions import get_sprite_path
-            from ..services import services
-
-            use_gif = True
-            if services.settings:
-                use_gif = services.settings.get("gui.gif_in_collection", True)
 
             sprite_path = get_sprite_path(
                 side="front",
-                sprite_type="gif" if use_gif else "default",
+                sprite_type="gif" if _should_use_gif() else "png",
                 id=pokemon_id,
                 shiny=shiny,
                 gender=gender,
@@ -1870,17 +1875,9 @@ class PokemonTrade:
         # Only load and display sprite if setting allows
         show_sprites = self._should_show_sprites()
         if show_sprites:
-            use_gif = True
-            try:
-                from ..services import services
-                if services.settings:
-                    use_gif = services.settings.get("gui.gif_in_collection", True)
-            except Exception:
-                pass
-
             your_pokemon_gif_path = get_sprite_path(
                 side="front",
-                sprite_type="gif" if use_gif else "default",
+                sprite_type="gif" if _should_use_gif() else "png",
                 id=self.id,
                 shiny=getattr(self, "shiny", False),
                 gender=self.gender,
@@ -2218,17 +2215,9 @@ class PokemonTrade:
                     _local_species_name(other_name, pokemon_id)
                 )
 
-                use_gif = True
-                try:
-                    from ..services import services
-                    if services.settings:
-                        use_gif = services.settings.get("gui.gif_in_collection", True)
-                except Exception:
-                    pass
-
                 sprite_path = get_sprite_path(
                     side="front",
-                    sprite_type="gif" if use_gif else "default",
+                    sprite_type="gif" if _should_use_gif() else "png",
                     id=pokemon_id,
                     shiny=other_shiny,
                     gender=other_gender,
