@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 from aqt import mw
@@ -17,8 +18,8 @@ from aqt.qt import (
 
 from aqt.utils import showWarning
 
-from PyQt6.QtGui import QIcon, QColor, QFontMetrics, QPainterPath
-from PyQt6.QtCore import QTimer, QRect
+from PyQt6.QtGui import QIcon, QColor, QFontMetrics, QPainterPath, QMovie
+from PyQt6.QtCore import QTimer, QRect, QSize
 
 from PyQt6.QtWidgets import (
     QDialog,
@@ -146,6 +147,31 @@ class TestWindow(QWidget):
         self.main_label = QLabel()
         self.main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.main_label)
+
+        # Animated-sprite overlays (gui.gif_in_ankimon_window, default off).
+        # The battle scene is a single QPainter-composited pixmap and can't
+        # animate; when the setting is on and a .gif sprite exists for a
+        # battler, one of these QMovie-backed labels is positioned over that
+        # battler's slot instead and the composite skips drawing that sprite.
+        # Children of main_label so their geometry is in the composite's own
+        # pixel coordinates (offset by _gif_pixmap_origin() when the label is
+        # larger than the scene).
+        self._enemy_gif_label = QLabel(self.main_label)
+        self._main_gif_label = QLabel(self.main_label)
+        for _gl in (self._enemy_gif_label, self._main_gif_label):
+            _gl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            # Without this the label inherits the window's
+            # background-color: rgb(44,44,44) stylesheet and paints a solid
+            # dark box around the (transparent) sprite.
+            _gl.setStyleSheet("background: transparent;")
+            _gl.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            _gl.hide()
+        self._enemy_gif_movie = None
+        self._main_gif_movie = None
+        self._gif_native = {"enemy": None, "main": None}
+        self._gif_sprite_key = {"enemy": None, "main": None}
+        self._gif_geom = {"enemy": None, "main": None}
+        self._gif_path_exists = {}
 
         # Optional buttons for death screen (hidden by default)
         self.button_widget = QWidget()
@@ -538,6 +564,147 @@ class TestWindow(QWidget):
         painter.drawPixmap(int(-w / 2), int(-h / 2), pixmap)
         painter.restore()
 
+    # --- Animated-sprite overlays (gui.gif_in_ankimon_window) ---------------
+
+    def _gif_in_window_enabled(self):
+        try:
+            return bool(self.settings_obj.get("gui.gif_in_ankimon_window", False))
+        except Exception:
+            return False
+
+    def _gif_sprite_path(self, pokemon, sprite_side):
+        """Resolved .gif sprite path for ``pokemon`` on ``sprite_side``
+        ("front"/"back"), or None when the file is not on disk. The
+        existence check is memoized — it runs on every battle repaint."""
+        try:
+            path = str(pokemon.get_sprite_path(sprite_side, "gif"))
+        except Exception:
+            return None
+        # get_sprite_path silently substitutes a static .png when the .gif is
+        # not downloaded — only treat a real .gif as animatable.
+        if not path.lower().endswith(".gif"):
+            return None
+        exists = self._gif_path_exists.get(path)
+        if exists is None:
+            exists = os.path.exists(path)
+            self._gif_path_exists[path] = exists
+        return path if exists else None
+
+    def _use_gif_for(self, pokemon, sprite_side, fainted):
+        """Whether the composite should leave this battler's slot empty for
+        an animated overlay this frame."""
+        if fainted or not self._gif_in_window_enabled():
+            return False
+        return self._gif_sprite_path(pokemon, sprite_side) is not None
+
+    def _stash_gif_geom(self, side, pokemon, sprite_side, x, y, w, h, fainted):
+        """Record where this frame's composite left a hole for an animated
+        overlay (or clear it). Consumed by _sync_gif_overlays() after the
+        pixmap is on screen."""
+        if self._use_gif_for(pokemon, sprite_side, fainted):
+            path = self._gif_sprite_path(pokemon, sprite_side)
+            self._gif_geom[side] = (path, x, y, w, h)
+        else:
+            self._gif_geom[side] = None
+
+    def _gif_pixmap_origin(self):
+        """Top-left of the composited scene inside main_label — non-zero only
+        if the label was stretched larger than the scene art."""
+        pm = self.main_label.pixmap()
+        if pm is None or pm.isNull():
+            return 0, 0
+        ox = max(0, (self.main_label.width() - pm.width()) // 2)
+        oy = max(0, (self.main_label.height() - pm.height()) // 2)
+        return ox, oy
+
+    def _clear_gif_overlay(self, side):
+        movie_attr = "_enemy_gif_movie" if side == "enemy" else "_main_gif_movie"
+        label = self._enemy_gif_label if side == "enemy" else self._main_gif_label
+        # Detach from the label BEFORE dropping the Python reference — QLabel
+        # does not own its QMovie, so a freed movie would leave a dangling
+        # pointer for the next paint.
+        try:
+            label.clear()
+            label.hide()
+        except RuntimeError:
+            pass
+        movie = getattr(self, movie_attr, None)
+        if movie is not None:
+            try:
+                movie.stop()
+            except RuntimeError:
+                pass
+            setattr(self, movie_attr, None)
+        self._gif_sprite_key[side] = None
+        self._gif_native[side] = None
+
+    def hide_gif_overlays(self):
+        """Retire both overlays — call whenever main_label stops showing the
+        battle scene (death screen, logo, item/badge takeovers)."""
+        self._gif_geom = {"enemy": None, "main": None}
+        self._clear_gif_overlay("enemy")
+        self._clear_gif_overlay("main")
+
+    def _sync_gif_overlays(self):
+        """Place/animate the overlays from the geometry the last composite
+        stashed in ``self._gif_geom``. Safe to call every repaint; a no-op
+        when the feature is off or neither side has a usable .gif."""
+        ox, oy = self._gif_pixmap_origin()
+        for side in ("enemy", "main"):
+            geom = self._gif_geom.get(side)
+            movie_attr = "_enemy_gif_movie" if side == "enemy" else "_main_gif_movie"
+            label = self._enemy_gif_label if side == "enemy" else self._main_gif_label
+            if geom is None:
+                self._clear_gif_overlay(side)
+                continue
+            path, x, y, w, h = geom
+            if w <= 0 or h <= 0:
+                self._clear_gif_overlay(side)
+                continue
+            if self._gif_sprite_key[side] != path:
+                self._clear_gif_overlay(side)
+                movie = QMovie(path)
+                if not movie.isValid():
+                    self._gif_path_exists[path] = False
+                    continue
+                movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                movie.jumpToFrame(0)
+                native = movie.currentPixmap().size()
+                self._gif_native[side] = (
+                    (native.width(), native.height())
+                    if native.width() > 0 and native.height() > 0
+                    else (w, h)
+                )
+                label.setMovie(movie)
+                setattr(self, movie_attr, movie)
+                self._gif_sprite_key[side] = path
+            else:
+                movie = getattr(self, movie_attr, None)
+                if movie is None:
+                    continue
+            # Fit the GIF's own frame into the slot the composite left,
+            # aspect preserved (GIF sheets are framed tighter than the PNGs,
+            # so forcing them to the PNG box stretched them). Centre it
+            # horizontally and sit it on the slot's baseline so it stands
+            # where the static sprite stood.
+            nw_src, nh_src = self._gif_native.get(side) or (w, h)
+            scale = min(w / nw_src, h / nh_src)
+            fw = max(1, int(nw_src * scale))
+            fh = max(1, int(nh_src * scale))
+            fx = x + (w - fw) // 2
+            fy = y + (h - fh)
+            movie.setScaledSize(QSize(fw, fh))
+            label.setGeometry(int(fx + ox), int(fy + oy), int(fw), int(fh))
+            label.raise_()
+            label.show()
+            movie = getattr(self, movie_attr, None)
+            if movie is not None and self.isVisible():
+                try:
+                    if movie.state() != QMovie.MovieState.Running:
+                        movie.start()
+                except RuntimeError:
+                    pass
+
     def window_show(self, bckgimage_path, lang_name):
         """Composite the first-encounter frame (background, sprites, HP bars,
         CP/BP, message box) into a pixmap for the Ankimon Window."""
@@ -601,9 +768,18 @@ class TestWindow(QWidget):
         mpkmn_width = new_width2 // 2
         mpkmn_height = new_height2
 
-        # draw pokemon image to a specific pixel
-        painter.drawPixmap((410 - wpkmn_width) + self._enemy_shake_offset[0], (170 - wpkmn_height) + self._enemy_shake_offset[1], pixmap)
-        painter.drawPixmap((144 - mpkmn_width) + self._main_shake_offset[0], (275 - mpkmn_height) + self._main_shake_offset[1], pixmap2)
+        # draw pokemon image to a specific pixel — or leave the slot empty
+        # and hand its geometry to an animated overlay (see _sync_gif_overlays)
+        enemy_x = (410 - wpkmn_width) + self._enemy_shake_offset[0]
+        enemy_y = (170 - wpkmn_height) + self._enemy_shake_offset[1]
+        main_x = (144 - mpkmn_width) + self._main_shake_offset[0]
+        main_y = (275 - mpkmn_height) + self._main_shake_offset[1]
+        self._stash_gif_geom("enemy", self.enemy_pokemon, "front", enemy_x, enemy_y, new_width, new_height, False)
+        self._stash_gif_geom("main", self.main_pokemon, "back", main_x, main_y, new_width2, new_height2, False)
+        if self._gif_geom["enemy"] is None:
+            painter.drawPixmap(enemy_x, enemy_y, pixmap)
+        if self._gif_geom["main"] is None:
+            painter.drawPixmap(main_x, main_y, pixmap2)
 
         experience = int(
             find_experience_for_level(
@@ -807,17 +983,25 @@ class TestWindow(QWidget):
         # draw pokemon image to a specific pixel — same spot as the intro
         # frame, since the dialog box (and thus the available space) no
         # longer changes turn to turn. Tipped on its side when fainted (hp
-        # <= 0) rather than just standing there under an empty HP bar.
-        self._draw_pokemon_sprite(
-            painter, pixmap,
-            (410 - wpkmn_width) + self._enemy_shake_offset[0], (170 - wpkmn_height) + self._enemy_shake_offset[1],
-            new_width, new_height, enemy_hp <= 0, tip_direction=1,
-        )
-        self._draw_pokemon_sprite(
-            painter, pixmap2,
-            (144 - mpkmn_width) + self._main_shake_offset[0], (275 - mpkmn_height) + self._main_shake_offset[1],
-            new_width2, new_height2, main_hp <= 0, tip_direction=-1,
-        )
+        # <= 0) rather than just standing there under an empty HP bar. A
+        # non-fainted side with an animated sprite leaves its slot empty for
+        # the QMovie overlay instead (see _sync_gif_overlays).
+        enemy_x = (410 - wpkmn_width) + self._enemy_shake_offset[0]
+        enemy_y = (170 - wpkmn_height) + self._enemy_shake_offset[1]
+        main_x = (144 - mpkmn_width) + self._main_shake_offset[0]
+        main_y = (275 - mpkmn_height) + self._main_shake_offset[1]
+        self._stash_gif_geom("enemy", self.enemy_pokemon, "front", enemy_x, enemy_y, new_width, new_height, enemy_hp <= 0)
+        self._stash_gif_geom("main", self.main_pokemon, "back", main_x, main_y, new_width2, new_height2, main_hp <= 0)
+        if self._gif_geom["enemy"] is None:
+            self._draw_pokemon_sprite(
+                painter, pixmap, enemy_x, enemy_y,
+                new_width, new_height, enemy_hp <= 0, tip_direction=1,
+            )
+        if self._gif_geom["main"] is None:
+            self._draw_pokemon_sprite(
+                painter, pixmap2, main_x, main_y,
+                new_width2, new_height2, main_hp <= 0, tip_direction=-1,
+            )
 
         experience = int(
             find_experience_for_level(
@@ -1193,6 +1377,7 @@ class TestWindow(QWidget):
         self._last_display_time = 0
         new_label = self.pokemon_display_first_encounter()
         self.main_label.setPixmap(new_label.pixmap())
+        self._sync_gif_overlays()
         self.button_widget.hide()
         self.setStyleSheet("background-color: rgb(44,44,44);")
         self.current_view = "battle"
@@ -1228,6 +1413,7 @@ class TestWindow(QWidget):
         # Update the existing label without clearing the layout
         new_label = self.pokemon_display_battle()
         self.main_label.setPixmap(new_label.pixmap())
+        self._sync_gif_overlays()
         self.button_widget.hide()
         self.current_view = "battle"
 
@@ -1399,6 +1585,7 @@ class TestWindow(QWidget):
 
         # Update the image
         self.main_label.setPixmap(img_label.pixmap())
+        self.hide_gif_overlays()
 
         # Sync the persistent buttons (update text/placeholder)
         self.kill_button.setText(kill_btn.text())
@@ -1437,7 +1624,29 @@ class TestWindow(QWidget):
         # keeps calling force_display_battle() on a window the player just shut
         # — and leaves the offsets frozen for the next time it is reopened.
         self._cancel_shakes()
+        self.hide_gif_overlays()
         self.pkmn_window = False
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Resume any animated sprite overlays paused while the window was hidden.
+        for attr in ("_enemy_gif_movie", "_main_gif_movie"):
+            movie = getattr(self, attr, None)
+            if movie is not None:
+                try:
+                    movie.start()
+                except RuntimeError:
+                    pass
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        for attr in ("_enemy_gif_movie", "_main_gif_movie"):
+            movie = getattr(self, attr, None)
+            if movie is not None:
+                try:
+                    movie.stop()
+                except RuntimeError:
+                    pass
 
     def _reset_window_title(self, callback_func=None):
         self.setWindowTitle("Ankimon Window")
