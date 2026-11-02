@@ -2520,7 +2520,8 @@ class AnkimonItemsWeb(QDialog):
             return False
         if not isinstance(data, dict):
             return False
-        if data.get("date") != datetime.now().strftime("%Y-%m-%d"):
+        from ..utils import get_current_anki_date_str
+        if data.get("date") != get_current_anki_date_str():
             return False
         return bool(data.get("skip"))
 
@@ -2528,7 +2529,7 @@ class AnkimonItemsWeb(QDialog):
         try:
             services.db.set_user_data(
                 "shop_skip_reroll_confirm",
-                {"date": datetime.now().strftime("%Y-%m-%d"), "skip": bool(skip)},
+                {"date": get_current_anki_date_str(), "skip": bool(skip)},
             )
         except Exception as e:
             return {"ok": False, "message": str(e)}
@@ -2745,7 +2746,7 @@ class AnkimonItemsWeb(QDialog):
                 {
                     "items": new_items,
                     "technical_machines": new_tms,
-                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "date": get_current_anki_date_str(),
                 },
             )
             sm.todays_daily_items = new_items

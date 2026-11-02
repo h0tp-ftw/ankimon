@@ -59,13 +59,16 @@ class PokemonShopManager:
         """Generate daily items based on the current date."""
         db = services.db
         shop_data = db.get_user_data("todays_shop")
+        from ..utils import get_current_anki_date_str
+        current_date_str = get_current_anki_date_str()
+
         if shop_data:
             if shop_data.get("items") and shop_data.get(
                 "date"
-            ) == datetime.now().strftime("%Y-%m-%d"):
+            ) == current_date_str:
                 return shop_data.get("items")
 
-        seed = datetime.now().strftime("%Y-%m-%d")
+        seed = current_date_str
         rng = random.Random(seed)
         pool = get_daily_items_pool()
         num_items = min(self.number_of_daily_items, len(pool))
@@ -75,14 +78,17 @@ class PokemonShopManager:
         """Works like get_daily_items, but for TMs"""
         db = services.db
         shop_data = db.get_user_data("todays_shop")
+        from ..utils import get_current_anki_date_str
+        current_date_str = get_current_anki_date_str()
+
         if shop_data:
             if shop_data.get("technical_machines") and shop_data.get(
                 "date"
-            ) == datetime.now().strftime("%Y-%m-%d"):
+            ) == current_date_str:
                 return shop_data.get("technical_machines")
 
         tm_pool = self.get_tm_pool()
-        seed = datetime.now().strftime("%Y-%m-%d")
+        seed = current_date_str
         rng = random.Random(seed)
         num_tms = min(self.number_of_daily_items, len(tm_pool))
         return rng.sample(tm_pool, num_tms)
