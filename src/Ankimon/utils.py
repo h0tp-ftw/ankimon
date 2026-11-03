@@ -369,32 +369,13 @@ USELESS_ITEMS = {
 }
 
 
+_random_item_cache = None
+
+
 def clear_utils_caches():
-    """Clear performance caches in utils.py when profile closes.
-
-    Kept for callers that invoke it on profile close / reload. ``random_item``
-    no longer keeps a module-level item-name cache (see its docstring), so
-    there is nothing to clear here today; the hook stays so external call
-    sites don't have to change.
-    """
-    return None
-
-
-_REWARD_ITEM_EXCLUDED_SUFFIXES = (
-    "-ball",
-    "-repel",
-    "-incense",
-    "-fang",
-    "dust",
-    "-piece",
-    "-nugget",
-)
-
-
-def _is_reward_eligible(name: str) -> bool:
-    if name in USELESS_ITEMS:
-        return False
-    return not any(name.endswith(suffix) for suffix in _REWARD_ITEM_EXCLUDED_SUFFIXES)
+    """Clear performance caches in utils.py when profile closes."""
+    global _random_item_cache
+    _random_item_cache = None
 
 
 def random_item() -> Optional[str]:
@@ -403,41 +384,49 @@ def random_item() -> Optional[str]:
     A fresh/partial asset installation may have no item sprite directory, or all
     present files may be filtered out. In that case there is no renderable reward,
     so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
-
-    Two sprite sources are consulted, in order:
-
-    1. ``items_path`` — the downloaded sprite directory. Resolved through the
-       module global so a caller (or a test) can point it elsewhere.
-    2. ``_BUNDLED_ITEM_SPRITES`` — the curated fallback shipped with the addon.
-       Read from the dict itself rather than a hard-coded path so that
-       monkeypatching the dict to ``{}`` actually suppresses the fallback.
-
-    No result is cached across calls: the eligible set is derived from whatever
-    ``items_path`` and ``_BUNDLED_ITEM_SPRITES`` currently point at, so a
-    partial/empty installation cannot poison later calls with a stale list.
     """
-    item_names: list[str] = []
-    seen_names: set[str] = set()
+    global _random_item_cache
+    if _random_item_cache is None:
+        item_names: list[str] = []
+        seen_names = set()
+        sprite_dirs = (items_path, addon_dir / "addon_sprites" / "items")
 
-    def _add(name: str) -> None:
-        if name in seen_names:
-            return
-        seen_names.add(name)
-        if _is_reward_eligible(name):
-            item_names.append(name)
+        for sprite_dir in sprite_dirs:
+            try:
+                files = os.listdir(sprite_dir)
+            except OSError:
+                continue
 
-    try:
-        files = os.listdir(items_path)
-    except (OSError, TypeError):
-        files = []
+            for file in files:
+                if not file.endswith(".png"):
+                    continue
 
-    for file in files:
-        if not file.endswith(".png"):
-            continue
-        _add(file[:-4])
+                name = file[:-4]
+                if name in seen_names:
+                    continue
+                seen_names.add(name)
 
-    for name in _BUNDLED_ITEM_SPRITES:
-        _add(name)
+                if name in USELESS_ITEMS:
+                    continue
+                if name.endswith("-ball"):
+                    continue
+                if name.endswith("-repel"):
+                    continue
+                if name.endswith("-incense"):
+                    continue
+                if name.endswith("-fang"):
+                    continue
+                if name.endswith("dust"):
+                    continue
+                if name.endswith("-piece"):
+                    continue
+                if name.endswith("-nugget"):
+                    continue
+
+                item_names.append(name)
+        _random_item_cache = item_names
+    else:
+        item_names = _random_item_cache
 
     if not item_names:
         return None
