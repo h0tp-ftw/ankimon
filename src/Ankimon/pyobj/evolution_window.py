@@ -102,6 +102,8 @@ class EvoWindow(QWidget):
         super().__init__()
         self._display_request = None
         self._evolution_movies = []
+        self._evolution_canvas = None
+        self._evolution_base_pixmap = None
         self.init_ui()
 
         # To avoid circular imports, instead of importing those things, we
@@ -139,11 +141,9 @@ class EvoWindow(QWidget):
         except Exception:
             return True
 
-    def _add_evolution_sprite(
-        self, parent, sprite, x, y, max_width, max_height
-    ):
+    def _add_evolution_sprite(self, parent, sprite, x, y, max_width, max_height):
         sprite_data, animated = sprite
-        if not sprite_data:
+        if not sprite_data or self._evolution_base_pixmap is None:
             return
 
         if animated:
@@ -166,10 +166,12 @@ class EvoWindow(QWidget):
                         max(1, round(frame.height() * scale)),
                     )
                     movie.setScaledSize(size)
-                    sprite_label = QLabel(parent)
-                    sprite_label.setGeometry(x, y, size.width(), size.height())
-                    sprite_label.setMovie(movie)
-                    self._evolution_movies.append((buffer, movie, sprite_label))
+                    self._evolution_movies.append((buffer, movie, x, y))
+                    self._evolution_canvas = parent
+                    movie.frameChanged.connect(
+                        lambda _frame: self._refresh_evolution_canvas()
+                    )
+                    self._refresh_evolution_canvas()
                     movie.start()
                     return
 
@@ -185,14 +187,33 @@ class EvoWindow(QWidget):
             max(1, round(pixmap.width() * scale)),
             max(1, round(pixmap.height() * scale)),
         )
-        sprite_label = QLabel(parent)
-        sprite_label.setPixmap(pixmap)
-        sprite_label.move(x, y)
+        painter = QPainter(self._evolution_base_pixmap)
+        painter.drawPixmap(x, y, pixmap)
+        painter.end()
+        parent.setPixmap(self._evolution_base_pixmap)
+
+    def _refresh_evolution_canvas(self):
+        if (
+            self._evolution_canvas is None
+            or self._evolution_base_pixmap is None
+            or not is_alive(self._evolution_canvas)
+        ):
+            return
+        pixmap = self._evolution_base_pixmap.copy()
+        painter = QPainter(pixmap)
+        for _buffer, movie, x, y in self._evolution_movies:
+            frame = movie.currentPixmap()
+            if not frame.isNull():
+                painter.drawPixmap(x, y, frame)
+        painter.end()
+        self._evolution_canvas.setPixmap(pixmap)
 
     def _stop_evolution_movies(self):
-        for _buffer, movie, _label in self._evolution_movies:
+        for _buffer, movie, _x, _y in self._evolution_movies:
             movie.stop()
         self._evolution_movies.clear()
+        self._evolution_canvas = None
+        self._evolution_base_pixmap = None
 
     def closeEvent(self, event):
         self._display_request = None
@@ -235,13 +256,16 @@ class EvoWindow(QWidget):
         self.setMaximumWidth(width)
         self.setMaximumHeight(height)
         self.clear_layout(self.layout())
-        self.layout().addWidget(QLabel("Loading evolution…"))
+        loading_label = QLabel("Loading evolution…")
+        self.layout().addWidget(loading_label)
         close_button = QPushButton("Close")
         qconnect(
             close_button.clicked,
             lambda: self._run_display_action(request, self.close),
         )
         self.layout().addWidget(close_button)
+        loading_label.show()
+        close_button.show()
         self.show()
 
         def failure(exc):
@@ -249,7 +273,8 @@ class EvoWindow(QWidget):
                 return
             self.logger.log("error", f"Could not load evolution screen: {exc}")
             self.clear_layout(self.layout())
-            self.layout().addWidget(QLabel("Could not load this evolution screen."))
+            error_label = QLabel("Could not load this evolution screen.")
+            self.layout().addWidget(error_label)
             retry_button = QPushButton("Retry")
             qconnect(
                 retry_button.clicked,
@@ -264,6 +289,9 @@ class EvoWindow(QWidget):
                 lambda: self._run_display_action(request, self.close),
             )
             self.layout().addWidget(close_button)
+            error_label.show()
+            retry_button.show()
+            close_button.show()
 
         def success(result):
             if not self._request_is_current(request):
@@ -382,6 +410,7 @@ class EvoWindow(QWidget):
         pkmn_label = QLabel()
         pkmn_label.setPixmap(merged_pixmap)
         pkmn_label.setFixedSize(merged_pixmap.size())
+        self._evolution_base_pixmap = merged_pixmap.copy()
         if show_sprites and sprite:
             self._add_evolution_sprite(pkmn_label, sprite, 125, 10, 250, 250)
         return pkmn_label
@@ -502,16 +531,14 @@ class EvoWindow(QWidget):
         font = QFont()
         font.setPointSize(12)  # Adjust the font size as needed
         painter.setFont(font)
-        # fontlvl = QFont()
-        # fontlvl.setPointSize(12)
-        # Create a QPen object for the font color
-        pen = QPen()
-        pen.setColor(QColor(255, 255, 255))
-        painter.setPen(pen)
-        # Capitalize the first letter of the Pokémon's name
-        # name_label = QLabel(capitalized_name)
+        painter.setPen(QPen(QColor(255, 255, 255)))
+        painter.drawText(
+            150, 35, f"{prevo_name.capitalize()} is evolving to {evo_name.capitalize()}"
+        )
+        painter.drawText(
+            95, 430, "Choose to evolve your Pokémon, or cancel to keep it as is"
+        )
         painter.end()
-        # Capitalize the first letter of the Pokémon's name
 
         # Create buttons for catching and killing the Pokémon
         evolve_button = QPushButton("Evolve Pokémon")
@@ -543,6 +570,7 @@ class EvoWindow(QWidget):
         evo_image_label = QLabel()
         evo_image_label.setPixmap(merged_pixmap)
         evo_image_label.setFixedSize(merged_pixmap.size())
+        self._evolution_base_pixmap = merged_pixmap.copy()
         if show_sprites and sprites:
             self._add_evolution_sprite(
                 evo_image_label, sprites[0], 255, 70, 200, 200
@@ -550,29 +578,17 @@ class EvoWindow(QWidget):
             self._add_evolution_sprite(
                 evo_image_label, sprites[1], 255, 285, 200, 200
             )
-        text_style = "color: white; background: transparent;"
-        title_label = QLabel(
-            f"{prevo_name.capitalize()} is evolving to {evo_name.capitalize()}",
-            evo_image_label,
-        )
-        title_label.setFont(font)
-        title_label.setStyleSheet(text_style)
-        title_label.setGeometry(150, 20, 400, 30)
-        instruction_label = QLabel(
-            "Choose to evolve your Pokémon, or cancel to keep it as is",
-            evo_image_label,
-        )
-        instruction_label.setFont(font)
-        instruction_label.setStyleSheet(text_style)
-        instruction_label.setGeometry(95, 415, 410, 30)
 
         return evo_image_label, evolve_button, dont_evolve_button
 
     def clear_layout(self, layout):
+        self._stop_evolution_movies()
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
             if widget:
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
 
     def evolve_pokemon(

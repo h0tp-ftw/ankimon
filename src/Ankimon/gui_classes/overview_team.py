@@ -323,7 +323,7 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
     bg_style = _bg_style_from_types(types)
     style_attr = f' style="{bg_style}"' if bg_style else ""
     sprite_markup = ""
-    if sprite_src:
+    if show_sprites:
         pokeball_style = _build_pokeball_style()
         sprite_markup = (
             f'  <div class="poke-sprite-wrap"{pokeball_style}>'
