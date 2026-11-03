@@ -33,6 +33,7 @@ Runs Qt-free (Tier-1 / venv_t1): ``Settings`` imports only ``json``/``os``/
 """
 
 import importlib.util
+import json
 import re
 import sys
 import types
@@ -373,6 +374,52 @@ def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_
             assert config[key] is False
 
 
+def test_gif_visibility_autosync_and_explicit_reviewer_override(isolated_env):
+    settings_mod = isolated_env["settings_mod"]
+    settings = object.__new__(settings_mod.Settings)
+    config = {
+        "gui.gif_in_collection": False,
+        "gui.reviewer_image_gif": True,
+        "ankidex.spriteMode": "animated",
+    }
+
+    changed = settings._apply_gif_toggle_autosync(config, previous_value=True)
+
+    assert changed == ["gui.reviewer_image_gif", "ankidex.spriteMode"]
+    assert config["gui.reviewer_image_gif"] is False
+    assert config["ankidex.spriteMode"] == "static"
+
+    config["gui.gif_in_collection"] = True
+    config["gui.reviewer_image_gif"] = False
+    config["ankidex.spriteMode"] = "animated"
+    changed = settings._apply_gif_toggle_autosync(
+        config,
+        previous_value=False,
+        explicit_overrides={"gui.reviewer_image_gif"},
+    )
+
+    assert config["gui.reviewer_image_gif"] is False
+    assert config["ankidex.spriteMode"] == "animated"
+    assert changed == []
+
+
+def test_gif_visibility_preserves_an_explicit_web_mode_override(isolated_env):
+    settings_mod = isolated_env["settings_mod"]
+    settings = object.__new__(settings_mod.Settings)
+    config = {
+        "gui.gif_in_collection": False,
+        "gui.gif_mode_override": True,
+        "gui.reviewer_image_gif": True,
+        "ankidex.spriteMode": "animated",
+    }
+
+    changed = settings._apply_gif_toggle_autosync(config, previous_value=True)
+
+    assert config["gui.reviewer_image_gif"] is False
+    assert config["ankidex.spriteMode"] == "animated"
+    assert changed == ["gui.reviewer_image_gif"]
+
+
 def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
     settings_js = (
         _src / "Ankimon" / "ankimon_items_web" / "settings.js"
@@ -395,8 +442,37 @@ def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
     assert "SCREEN_ANKIDEX" in allowlist
     assert "SCREEN_PROFILE" in allowlist
     assert "SCREEN_TEAM" in allowlist
-    assert "SCREEN_MOBILE" not in allowlist
-    assert "SCREEN_HISTORY" not in allowlist
+    assert "SCREEN_MOBILE" in allowlist
+    assert "SCREEN_HISTORY" in allowlist
+
+
+def test_gif_visibility_ui_and_setting_copy_are_wired():
+    settings_js = (
+        _src / "Ankimon" / "ankimon_items_web" / "settings.js"
+    ).read_text(encoding="utf-8")
+    names = json.loads(
+        (_src / "Ankimon" / "lang" / "setting_name.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    descriptions = json.loads(
+        (_src / "Ankimon" / "lang" / "setting_description.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert names["gui.gif_in_collection"] == "Show GIFs Across Ankimon"
+    assert descriptions["gui.gif_in_collection"] == (
+        "Show animated sprites (GIFs) instead of static sprites in the PC box, "
+        "during reviews, and other windows."
+    )
+    assert descriptions["gui.show_sprites_across_ankimon"] == (
+        "Disable this setting for a text-based presentation. This hides all "
+        "sprites, GIFs, and HP/XP bars, except those in the Ankimon Window "
+        "(Ctrl+Shift +P)."
+    )
+    assert "syncGifTogglesForGifVisibility()" in settings_js
+    assert "explicit_gif_overrides" in settings_js
 
 
 def _load_settings_schema():

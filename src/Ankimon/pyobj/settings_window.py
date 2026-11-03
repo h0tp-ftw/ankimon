@@ -27,7 +27,10 @@ from aqt import mw
 from aqt.theme import theme_manager
 from ..services import services
 from ..utils import is_alive
-from .settings import HUD_TOGGLE_AUTO_SYNC_KEYS
+from .settings import (
+    GIF_TOGGLE_AUTO_SYNC_KEYS,
+    HUD_TOGGLE_AUTO_SYNC_KEYS,
+)
 
 
 # create_rounded_pixmap function remains the same
@@ -61,6 +64,7 @@ class SettingsWindow(QMainWindow):
         self.setMaximumHeight(900)
         self.parent = mw
         self.explicit_hud_toggle_overrides = set()
+        self.explicit_gif_toggle_overrides = set()
 
         self.descriptions = self.load_descriptions()
         self.friendly_names = self.load_friendly_names()
@@ -285,6 +289,14 @@ class SettingsWindow(QMainWindow):
                 button_group.buttonClicked.connect(
                     lambda _, hud_key=key: self._on_hud_toggle_clicked(hud_key)
                 )
+            if key in GIF_TOGGLE_AUTO_SYNC_KEYS:
+                button_group.buttonClicked.connect(
+                    lambda _, gif_key=key: self._on_gif_toggle_clicked(gif_key)
+                )
+            if key == "gui.gif_in_collection":
+                button_group.buttonClicked.connect(
+                    lambda *_args: self._on_gif_master_toggle_clicked()
+                )
             if key == "gui.hud_styling":
                 button_group.buttonClicked.connect(
                     lambda *_args: self._update_hud_styling_dependent_settings()
@@ -415,7 +427,7 @@ class SettingsWindow(QMainWindow):
                 "settings": [
                     "Team Overview in Deck Overview",
                     "Animate Time",
-                    "Show GIFs in Menus",
+                    "Show GIFs Across Ankimon",
                     "Show Sprites Across Ankimon",
                 ]
             },
@@ -674,6 +686,21 @@ class SettingsWindow(QMainWindow):
         # override a user choice made in the same save transaction.
         self.explicit_hud_toggle_overrides.add(key)
 
+    def _on_gif_toggle_clicked(self, key):
+        self.explicit_gif_toggle_overrides.add(key)
+
+    def _on_gif_master_toggle_clicked(self):
+        self.explicit_gif_toggle_overrides.clear()
+        master = self.input_widgets.get("gui.gif_in_collection")
+        dependent = self.input_widgets.get("gui.reviewer_image_gif")
+        if not isinstance(master, QButtonGroup) or not isinstance(
+            dependent, QButtonGroup
+        ):
+            return
+        selected = dependent.button(1 if master.checkedId() == 1 else 0)
+        if selected is not None:
+            selected.setChecked(True)
+
     def _update_hud_styling_dependent_settings(self):
         styling_group = self.input_widgets.get("gui.hud_styling")
         styling_enabled = (
@@ -913,6 +940,7 @@ class SettingsWindow(QMainWindow):
         # This avoids overwriting manual overrides when the Show Sprites setting
         # also triggers automatic sync behavior.
         explicit_overrides = set(self.explicit_hud_toggle_overrides)
+        explicit_overrides.update(self.explicit_gif_toggle_overrides)
 
         # Only persist if there are actual changes
         changed = any(
@@ -923,6 +951,7 @@ class SettingsWindow(QMainWindow):
         if changed:
             self.save_config_callback(working_config, explicit_overrides)
             self.explicit_hud_toggle_overrides.clear()
+            self.explicit_gif_toggle_overrides.clear()
             # Reload the final config state from the live settings object
             self.config = self.load_config()
             self._refresh_widgets()
@@ -1005,4 +1034,5 @@ class SettingsWindow(QMainWindow):
         else:
             # Clear stale HUD override keys when the user restores a toggle before saving
             self.explicit_hud_toggle_overrides.clear()
+            self.explicit_gif_toggle_overrides.clear()
             QMessageBox.information(self, "No Changes", "No settings were changed.")

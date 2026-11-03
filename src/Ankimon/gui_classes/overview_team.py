@@ -28,6 +28,7 @@ Note:
 
 from __future__ import annotations
 
+import base64
 import html
 import json
 import os
@@ -91,7 +92,12 @@ def _cached_sprite_base64(path: str) -> str:
     cached = _SPRITE_URI_CACHE.get(path)
     if cached is not None and cached[0] == mtime:
         return cached[1]
-    uri = png_to_base64(path)
+    if path.lower().endswith(".gif"):
+        with open(path, "rb") as sprite_file:
+            encoded = base64.b64encode(sprite_file.read()).decode("ascii")
+        uri = f"data:image/gif;base64,{encoded}"
+    else:
+        uri = png_to_base64(path)
     _SPRITE_URI_CACHE[path] = (mtime, uri)
     return uri
 
@@ -291,19 +297,39 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
 
     safe_id = f"{id_prefix}-{name.lower().replace(' ', '-')}"
 
-    sprite_path = get_sprite_path(
-        "front",
-        "png",
-        pokemon.get("id", 132),
-        pokemon.get("shiny", False),
-        gender,
-        pokemon.get("name"),
+    settings = services.settings
+    show_sprites = (
+        settings.get("gui.show_sprites_across_ankimon", True)
+        if settings is not None
+        else True
     )
-    sprite_src = _cached_sprite_base64(sprite_path)
+    gif_in_collection = (
+        settings.get("gui.gif_in_collection", True)
+        if settings is not None
+        else True
+    )
+    sprite_src = ""
+    if show_sprites:
+        sprite_path = get_sprite_path(
+            "front",
+            "gif" if gif_in_collection else "png",
+            pokemon.get("id", 132),
+            pokemon.get("shiny", False),
+            gender,
+            pokemon.get("name"),
+        )
+        sprite_src = _cached_sprite_base64(sprite_path)
 
     bg_style = _bg_style_from_types(types)
     style_attr = f' style="{bg_style}"' if bg_style else ""
-    pokeball_style = _build_pokeball_style()
+    sprite_markup = ""
+    if sprite_src:
+        pokeball_style = _build_pokeball_style()
+        sprite_markup = (
+            f'  <div class="poke-sprite-wrap"{pokeball_style}>'
+            f'    <img src="{sprite_src}" class="poke-sprite" alt="{display_name}"/>'
+            f"  </div>"
+        )
 
     cp_value = pokemon.get("cp") or calculate_cp_from_dict(pokemon)
     try:
@@ -313,9 +339,7 @@ def _build_card_html(pokemon: dict[str, Any], id_prefix: str) -> str:
 
     return (
         f'<div id="{safe_id}" class="poke-item"{style_attr}>'
-        f'  <div class="poke-sprite-wrap"{pokeball_style}>'
-        f'    <img src="{sprite_src}" class="poke-sprite" alt="{display_name}"/>'
-        f"  </div>"
+        f"{sprite_markup}"
         f'  <div class="poke-desc">'
         f"    <h3>{display_name}</h3>"
         f'    <p class="poke-level">Level {level}</p>'

@@ -16,7 +16,8 @@ from aqt.qt import (
     QTimer,
     qconnect,
 )
-from PyQt6.QtGui import QColor, QPen
+from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QSize
+from PyQt6.QtGui import QColor, QMovie, QPen
 from PyQt6.QtWidgets import (
     QPushButton,
 )
@@ -51,24 +52,30 @@ from ..pyobj.translator import Translator
 from ..pyobj.test_window import TestWindow
 from ..pyobj.reviewer_obj import Reviewer_Manager
 from ..pyobj.error_handler import show_warning_with_traceback
-from ..business import calculate_cp_from_dict, resize_pixmap_img
+from ..business import calculate_cp_from_dict
 from ..resources import (
     addon_dir,
     evolve_image_path,
 )
 
 
-def _load_evolution_sprite(pokemon_id: int, is_shiny: bool) -> bytes:
-    """Resolve and read a sprite on a worker, preserving the ordinary fallback."""
-    path = get_sprite_path("front", "png", pokemon_id, is_shiny, "N")
+def _load_evolution_sprite(
+    pokemon_id: int, is_shiny: bool, show_gifs: bool = False
+) -> tuple[bytes, bool]:
+    """Resolve and read an evolution sprite on a worker."""
+    sprite_type = "gif" if show_gifs else "png"
+    path = get_sprite_path("front", sprite_type, pokemon_id, is_shiny, "N")
     if is_shiny and path == SUBSTITUTE_PATH:
-        path = get_sprite_path("front", "png", pokemon_id, False, "N")
+        path = get_sprite_path("front", sprite_type, pokemon_id, False, "N")
     try:
-        return Path(path).read_bytes()
+        sprite = Path(path).read_bytes()
     except FileNotFoundError:
+        if show_gifs:
+            return _load_evolution_sprite(pokemon_id, is_shiny)
         # A partial sprite pack may lack even the substitute. Qt can still draw
         # the background/text, and a concurrent download may supply it later.
-        return b""
+        return b"", False
+    return sprite, Path(path).suffix.lower() == ".gif"
 
 
 def _moves_gained_on_evolution(species_name, level):
@@ -94,6 +101,7 @@ class EvoWindow(QWidget):
     ):
         super().__init__()
         self._display_request = None
+        self._evolution_movies = []
         self.init_ui()
 
         # To avoid circular imports, instead of importing those things, we
@@ -123,8 +131,72 @@ class EvoWindow(QWidget):
         except Exception:
             return True
 
+    def _should_show_gifs(self) -> bool:
+        if self.settings_obj is None:
+            return True
+        try:
+            return self.settings_obj.get("gui.gif_in_collection", True)
+        except Exception:
+            return True
+
+    def _add_evolution_sprite(
+        self, parent, sprite, x, y, max_width, max_height
+    ):
+        sprite_data, animated = sprite
+        if not sprite_data:
+            return
+
+        if animated:
+            buffer = QBuffer(parent)
+            buffer.setData(QByteArray(sprite_data))
+            if buffer.open(QIODevice.OpenModeFlag.ReadOnly):
+                movie = QMovie(parent)
+                movie.setDevice(buffer)
+                movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                movie.jumpToFrame(0)
+                frame = movie.currentPixmap()
+                if not frame.isNull():
+                    scale = min(
+                        1,
+                        max_width / frame.width(),
+                        max_height / frame.height(),
+                    )
+                    size = QSize(
+                        max(1, round(frame.width() * scale)),
+                        max(1, round(frame.height() * scale)),
+                    )
+                    movie.setScaledSize(size)
+                    sprite_label = QLabel(parent)
+                    sprite_label.setGeometry(x, y, size.width(), size.height())
+                    sprite_label.setMovie(movie)
+                    self._evolution_movies.append((buffer, movie, sprite_label))
+                    movie.start()
+                    return
+
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(sprite_data):
+            return
+        scale = min(
+            1,
+            max_width / pixmap.width(),
+            max_height / pixmap.height(),
+        )
+        pixmap = pixmap.scaled(
+            max(1, round(pixmap.width() * scale)),
+            max(1, round(pixmap.height() * scale)),
+        )
+        sprite_label = QLabel(parent)
+        sprite_label.setPixmap(pixmap)
+        sprite_label.move(x, y)
+
+    def _stop_evolution_movies(self):
+        for _buffer, movie, _label in self._evolution_movies:
+            movie.stop()
+        self._evolution_movies.clear()
+
     def closeEvent(self, event):
         self._display_request = None
+        self._stop_evolution_movies()
         super().closeEvent(event)
 
     def hideEvent(self, event):
@@ -133,6 +205,7 @@ class EvoWindow(QWidget):
         # hide() while already minimized (isMinimized() alone misses that).
         if not event.spontaneous() and self.isHidden():
             self._display_request = None
+            self._stop_evolution_movies()
         super().hideEvent(event)
 
     def _request_is_current(self, request) -> bool:
@@ -155,6 +228,7 @@ class EvoWindow(QWidget):
 
     def _start_display(self, load, render, width, height):
         """Prepare plain image data off-thread and keep all widget work on Qt."""
+        self._stop_evolution_movies()
         db = services.db
         request = (db, getattr(db, "db_path", None), mw.col)
         self._display_request = request
@@ -226,7 +300,9 @@ class EvoWindow(QWidget):
         """
         load = None
         if self._should_show_sprites():
-            load = lambda _col: _load_evolution_sprite(evo_id, is_shiny)
+            load = lambda _col: _load_evolution_sprite(
+                evo_id, is_shiny, self._should_show_gifs()
+            )
         self._start_display(
             load,
             lambda sprite: self._show_evo_complete(prevo_id, evo_id, sprite),
@@ -288,13 +364,6 @@ class EvoWindow(QWidget):
 
         # Only load and draw the Pokémon sprite if sprites are enabled
         show_sprites = self._should_show_sprites()
-        if show_sprites and sprite:
-            # Display the Pokémon image
-            image_pixmap = QPixmap()
-            image_pixmap.loadFromData(sprite)
-            image_pixmap = resize_pixmap_img(image_pixmap, 250)
-            painter.drawPixmap(125, 10, image_pixmap)
-
         # custom font
         custom_font = load_custom_font(20, int(self.settings_obj.get("misc.language")))
         message_box_text = (
@@ -312,6 +381,9 @@ class EvoWindow(QWidget):
 
         pkmn_label = QLabel()
         pkmn_label.setPixmap(merged_pixmap)
+        pkmn_label.setFixedSize(merged_pixmap.size())
+        if show_sprites and sprite:
+            self._add_evolution_sprite(pkmn_label, sprite, 125, 10, 250, 250)
         return pkmn_label
 
     def ask_pokemon_evo(
@@ -349,8 +421,12 @@ class EvoWindow(QWidget):
                     )
                 is_shiny = bool(pokemon.get("shiny", False))
                 return (
-                    _load_evolution_sprite(prevo_id, is_shiny),
-                    _load_evolution_sprite(evo_id, is_shiny),
+                    _load_evolution_sprite(
+                        prevo_id, is_shiny, self._should_show_gifs()
+                    ),
+                    _load_evolution_sprite(
+                        evo_id, is_shiny, self._should_show_gifs()
+                    ),
                 )
 
         self._start_display(
@@ -422,37 +498,6 @@ class EvoWindow(QWidget):
         painter.drawPixmap(0, 0, pixmap_bckg)
 
         # Only load, resize, and draw Pokémon sprites if sprites are enabled
-        if show_sprites and sprites:
-            # Display the Pokémon image
-            pkmnpixmap = QPixmap()
-            pkmnpixmap.loadFromData(sprites[0])
-
-            pkmnpixmap2 = QPixmap()
-            pkmnpixmap2.loadFromData(sprites[1])
-
-            # Calculate the new dimensions to maintain the aspect ratio
-            max_width = 200
-            original_width = pkmnpixmap.width()
-            original_height = pkmnpixmap.height()
-
-            if original_width > max_width:
-                new_width = max_width
-                new_height = (original_height * max_width) // original_width
-                pkmnpixmap = pkmnpixmap.scaled(new_width, new_height)
-
-            # Calculate the new dimensions to maintain the aspect ratio
-            max_width = 200
-            original_width = pkmnpixmap2.width()
-            original_height = pkmnpixmap2.height()
-
-            if original_width > max_width:
-                new_width = max_width
-                new_height = (original_height * max_width) // original_width
-                pkmnpixmap2 = pkmnpixmap2.scaled(new_width, new_height)
-
-            painter.drawPixmap(255, 70, pkmnpixmap)
-            painter.drawPixmap(255, 285, pkmnpixmap2)
-
         # Draw the text on top of the image
         font = QFont()
         font.setPointSize(12)  # Adjust the font size as needed
@@ -463,12 +508,6 @@ class EvoWindow(QWidget):
         pen = QPen()
         pen.setColor(QColor(255, 255, 255))
         painter.setPen(pen)
-        painter.drawText(
-            150, 35, f"{prevo_name.capitalize()} is evolving to {evo_name.capitalize()}"
-        )
-        painter.drawText(
-            95, 430, "Choose to evolve your Pokémon, or cancel to keep it as is"
-        )
         # Capitalize the first letter of the Pokémon's name
         # name_label = QLabel(capitalized_name)
         painter.end()
@@ -503,6 +542,29 @@ class EvoWindow(QWidget):
         # Set the merged image as the pixmap for the QLabel
         evo_image_label = QLabel()
         evo_image_label.setPixmap(merged_pixmap)
+        evo_image_label.setFixedSize(merged_pixmap.size())
+        if show_sprites and sprites:
+            self._add_evolution_sprite(
+                evo_image_label, sprites[0], 255, 70, 200, 200
+            )
+            self._add_evolution_sprite(
+                evo_image_label, sprites[1], 255, 285, 200, 200
+            )
+        text_style = "color: white; background: transparent;"
+        title_label = QLabel(
+            f"{prevo_name.capitalize()} is evolving to {evo_name.capitalize()}",
+            evo_image_label,
+        )
+        title_label.setFont(font)
+        title_label.setStyleSheet(text_style)
+        title_label.setGeometry(150, 20, 400, 30)
+        instruction_label = QLabel(
+            "Choose to evolve your Pokémon, or cancel to keep it as is",
+            evo_image_label,
+        )
+        instruction_label.setFont(font)
+        instruction_label.setStyleSheet(text_style)
+        instruction_label.setGeometry(95, 415, 410, 30)
 
         return evo_image_label, evolve_button, dont_evolve_button
 
