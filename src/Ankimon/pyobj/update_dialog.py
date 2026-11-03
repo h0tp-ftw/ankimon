@@ -1217,10 +1217,8 @@ class UpdateDialog(QDialog):
         def thread_stopped():
             # The worker may have changed files even on cancellation or failure.
             from ..functions.sprite_functions import _clear_sprite_cache
-            from ..utils import clear_utils_caches
 
             _clear_sprite_cache()
-            clear_utils_caches()
             closing = self._closing
             try:
                 if not closing and self.sprites_thread is thread:
