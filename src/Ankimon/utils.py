@@ -369,76 +369,9 @@ USELESS_ITEMS = {
 }
 
 
-_random_item_cache = None
-
-
-def clear_utils_caches():
-    """Clear performance caches in utils.py when profile closes."""
-    global _random_item_cache
-    _random_item_cache = None
-
-
-def random_item() -> Optional[str]:
-    """Grant and return a random item with an available sprite.
-
-    A fresh/partial asset installation may have no item sprite directory, or all
-    present files may be filtered out. In that case there is no renderable reward,
-    so return ``None`` instead of raising from ``os.listdir``/``random.choice``.
-    """
-    global _random_item_cache
-    if _random_item_cache is None:
-        item_names: list[str] = []
-        seen_names = set()
-        sprite_dirs = (items_path, addon_dir / "addon_sprites" / "items")
-
-        for sprite_dir in sprite_dirs:
-            try:
-                files = os.listdir(sprite_dir)
-            except OSError:
-                continue
-
-            for file in files:
-                if not file.endswith(".png"):
-                    continue
-
-                name = file[:-4]
-                if name in seen_names:
-                    continue
-                seen_names.add(name)
-
-                if name in USELESS_ITEMS:
-                    continue
-                if name.endswith("-ball"):
-                    continue
-                if name.endswith("-repel"):
-                    continue
-                if name.endswith("-incense"):
-                    continue
-                if name.endswith("-fang"):
-                    continue
-                if name.endswith("dust"):
-                    continue
-                if name.endswith("-piece"):
-                    continue
-                if name.endswith("-nugget"):
-                    continue
-
-                item_names.append(name)
-        _random_item_cache = item_names
-    else:
-        item_names = _random_item_cache
-
-    if not item_names:
-        return None
-
-    item_name = random.choice(item_names)
-    # add item to item list
-    give_item(item_name)
-    return item_name
-
-
 # Keep the bundled item names available to the daily shop when downloaded
-# sprites are missing; review rewards discover all bundled sprites directly.
+# sprites are missing. Review rewards use this same registry and are limited to
+# these available bundled items when the downloaded item sprites are absent.
 _BUNDLED_ITEM_SPRITES = {
     "linking-cord": addon_dir / "addon_sprites" / "items" / "linking-cord.png",
 }
@@ -454,14 +387,83 @@ for _prefix in ("health", "mighty", "tough", "smart", "courage", "quick"):
 del _prefix, _suffix
 
 
+_random_item_cache: Optional[list[str]] = None
+
+
+def clear_utils_caches():
+    """Clear performance caches in utils.py when profile closes or assets change."""
+    global _random_item_cache
+    _random_item_cache = None
+
+
+def random_item() -> Optional[str]:
+    """Grant and return a random item with an available sprite.
+
+    Downloaded item sprites are scanned once and cached. When downloaded sprites
+    are absent, only available entries from _BUNDLED_ITEM_SPRITES can be rewards.
+    """
+    global _random_item_cache
+    if _random_item_cache is None:
+        item_names: list[str] = []
+        seen_names = set()
+
+        def add_item(name):
+            if name in seen_names:
+                return
+            seen_names.add(name)
+
+            if name in USELESS_ITEMS:
+                return
+            if name.endswith("-ball"):
+                return
+            if name.endswith("-repel"):
+                return
+            if name.endswith("-incense"):
+                return
+            if name.endswith("-fang"):
+                return
+            if name.endswith("dust"):
+                return
+            if name.endswith("-piece"):
+                return
+            if name.endswith("-nugget"):
+                return
+
+            item_names.append(name)
+
+        try:
+            files = os.listdir(items_path)
+        except OSError:
+            files = []
+        for file in files:
+            if file.endswith(".png"):
+                add_item(file[:-4])
+
+        for name, sprite_path in _BUNDLED_ITEM_SPRITES.items():
+            if sprite_path.is_file():
+                add_item(name)
+
+        _random_item_cache = item_names
+    else:
+        item_names = _random_item_cache
+
+    if not item_names:
+        return None
+
+    item_name = random.choice(item_names)
+    # add item to item list
+    give_item(item_name)
+    return item_name
+
+
 def get_item_sprite_path(item_name):
     """Resolve an item icon from downloaded or bundled item sprites."""
     downloaded = items_path / f"{item_name}.png"
     if downloaded.is_file():
         return downloaded
 
-    bundled = addon_dir / "addon_sprites" / "items" / f"{item_name}.png"
-    if bundled.is_file():
+    bundled = _BUNDLED_ITEM_SPRITES.get(item_name)
+    if bundled is not None and bundled.is_file():
         return bundled
     return downloaded
 
