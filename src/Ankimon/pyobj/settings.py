@@ -221,6 +221,13 @@ class Settings:
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
+        legacy_sprite_mode_migrated = (
+            "ankidex.spriteMode" not in config
+            and "pokedex_v2.spriteMode" in config
+        )
+        if legacy_sprite_mode_migrated:
+            config["ankidex.spriteMode"] = config["pokedex_v2.spriteMode"]
+
         gif_mode_override_migrated = (
             "gui.gif_mode_override" not in config
             and "ankidex.spriteMode" in config
@@ -228,7 +235,11 @@ class Settings:
         if gif_mode_override_migrated:
             config["gui.gif_mode_override"] = True
 
-        modified = styling_migrated or gif_mode_override_migrated
+        modified = (
+            styling_migrated
+            or legacy_sprite_mode_migrated
+            or gif_mode_override_migrated
+        )
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None
@@ -431,9 +442,10 @@ class Settings:
     def set(self, key, value, explicit_overrides=None):
         previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
         previous_gif_value = self.config.get("gui.gif_in_collection", True)
+        previous_sprite_mode = self.config.get("ankidex.spriteMode")
         self.config[key] = value
         changed_keys = []
-        if key == "ankidex.spriteMode":
+        if key == "ankidex.spriteMode" and value != previous_sprite_mode:
             expected_mode = "animated" if previous_gif_value else "static"
             mode_override = value != expected_mode
             if self.config.get("gui.gif_mode_override", False) != mode_override:

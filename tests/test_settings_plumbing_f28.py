@@ -420,6 +420,57 @@ def test_gif_visibility_preserves_an_explicit_web_mode_override(isolated_env):
     assert changed == ["gui.reviewer_image_gif"]
 
 
+@pytest.mark.parametrize("legacy_mode", ["static", "animated"])
+def test_legacy_pokedex_sprite_mode_migrates_before_gif_autosync(
+    isolated_env, legacy_mode
+):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    db.save_all_config(
+        {
+            "pokedex_v2.spriteMode": legacy_mode,
+            "gui.gif_in_collection": False,
+        }
+    )
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["ankidex.spriteMode"] == legacy_mode
+    assert settings.config["gui.gif_mode_override"] is True
+    settings.set("gui.gif_in_collection", True)
+    assert settings.config["ankidex.spriteMode"] == legacy_mode
+
+
+def test_current_ankidex_sprite_mode_wins_over_legacy_value(isolated_env):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    db.save_all_config(
+        {
+            "pokedex_v2.spriteMode": "static",
+            "ankidex.spriteMode": "animated",
+        }
+    )
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["ankidex.spriteMode"] == "animated"
+    assert settings.config["gui.gif_mode_override"] is True
+
+
+def test_unchanged_ankidex_mode_save_preserves_override(isolated_env):
+    settings, _ = _settings_with_real_db(isolated_env)
+    settings.set("ankidex.spriteMode", "static")
+    assert settings.config["gui.gif_mode_override"] is True
+
+    settings.set("ankidex.spriteMode", "static")
+    assert settings.config["gui.gif_mode_override"] is True
+
+    settings.set("ankidex.spriteMode", "animated")
+    assert settings.config["gui.gif_mode_override"] is False
+
+
 def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
     settings_js = (
         _src / "Ankimon" / "ankimon_items_web" / "settings.js"

@@ -104,6 +104,7 @@ class EvoWindow(QWidget):
         self._evolution_movies = []
         self._evolution_canvas = None
         self._evolution_base_pixmap = None
+        self._evolution_instruction = None
         self.init_ui()
 
         # To avoid circular imports, instead of importing those things, we
@@ -189,6 +190,7 @@ class EvoWindow(QWidget):
         )
         painter = QPainter(self._evolution_base_pixmap)
         painter.drawPixmap(x, y, pixmap)
+        self._draw_evolution_instruction(painter)
         painter.end()
         parent.setPixmap(self._evolution_base_pixmap)
 
@@ -205,15 +207,31 @@ class EvoWindow(QWidget):
             frame = movie.currentPixmap()
             if not frame.isNull():
                 painter.drawPixmap(x, y, frame)
+        self._draw_evolution_instruction(painter)
         painter.end()
         self._evolution_canvas.setPixmap(pixmap)
 
+    def _draw_evolution_instruction(self, painter):
+        if self._evolution_instruction is None:
+            return
+        x, y, text = self._evolution_instruction
+        font = QFont()
+        font.setPointSize(12)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(255, 255, 255)))
+        painter.drawText(x, y, text)
+
     def _stop_evolution_movies(self):
-        for _buffer, movie, _x, _y in self._evolution_movies:
+        for buffer, movie, _x, _y in self._evolution_movies:
             movie.stop()
+            movie.setDevice(None)
+            buffer.close()
+            movie.deleteLater()
+            buffer.deleteLater()
         self._evolution_movies.clear()
         self._evolution_canvas = None
         self._evolution_base_pixmap = None
+        self._evolution_instruction = None
 
     def closeEvent(self, event):
         self._display_request = None
@@ -538,6 +556,11 @@ class EvoWindow(QWidget):
             95, 430, "Choose to evolve your Pokémon, or cancel to keep it as is"
         )
         painter.end()
+        self._evolution_instruction = (
+            95,
+            430,
+            "Choose to evolve your Pokémon, or cancel to keep it as is",
+        )
 
         # Create buttons for catching and killing the Pokémon
         evolve_button = QPushButton("Evolve Pokémon")
