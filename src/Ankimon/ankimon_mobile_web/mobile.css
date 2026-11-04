@@ -158,6 +158,7 @@ body {
 }
 
 body.ankimon-sprites-hidden.mobile-reviews-page .top-bar-titles > h2,
+body.ankimon-sprites-hidden.mobile-reviews-page #state-empty .pokeball-icon-container,
 body.ankimon-sprites-hidden.mobile-reviews-page #state-empty .empty-content > h2,
 body.ankimon-sprites-hidden.mobile-history-page .top-bar-titles > h2 {
   display: none !important;
