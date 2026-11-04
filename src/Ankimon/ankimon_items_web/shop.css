@@ -3597,6 +3597,13 @@ body {
     box-shadow: 0 4px 14px rgba(63, 185, 80, 0.28);
 }
 
+.det-action-btn.use.standard-label {
+    font-size: 0.92rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 .det-action-btn.use:hover:not(:disabled) {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(63, 185, 80, 0.45);
@@ -3708,4 +3715,3 @@ body {
     color: white;
     border-color: var(--accent-red);
 }
-

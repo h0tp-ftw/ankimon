@@ -532,3 +532,37 @@ def test_sprite_visibility_sync_repaints_the_chip_controls():
     assert ".setting-chip[data-key=" in helper.split("\n    }", 1)[0], (
         "the repaint helper must target chip buttons, not setting rows alone"
     )
+
+
+def test_sprite_visibility_updates_mobile_svg_and_shell_navigation():
+    shop_obj = (
+        _src / "Ankimon" / "ankimon_items_web" / "shop_obj.py"
+    ).read_text(encoding="utf-8")
+    nav_css = (
+        _src / "Ankimon" / "ankimon_items_web" / "nav-switcher.css"
+    ).read_text(encoding="utf-8")
+    mobile_html = (
+        _src / "Ankimon" / "ankimon_mobile_web" / "mobile.html"
+    ).read_text(encoding="utf-8")
+
+    assert "classList.toggle('ankimon-sprites-hidden', !show)" in shop_obj
+    assert ".pokeball-icon" in shop_obj
+    assert "visibility: hidden !important;" in shop_obj
+    assert "body.ankimon-sprites-hidden .nav-trigger .app-logo" in nav_css
+    assert "font-size: 0.92rem;" in nav_css
+    assert "text-align: left;" in nav_css
+    assert '<svg class="pokeball-icon"' in mobile_html
+
+
+def test_shop_give_to_pokemon_action_uses_standard_font():
+    shop_js = (_src / "Ankimon" / "ankimon_items_web" / "shop.js").read_text(
+        encoding="utf-8"
+    )
+    shop_css = (_src / "Ankimon" / "ankimon_items_web" / "shop.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert "use.classList.add('standard-label')" in shop_js
+    assert ".det-action-btn.use.standard-label" in shop_css
+    assert "font-size: 0.92rem;" in shop_css
+    assert "font-weight: 400;" in shop_css

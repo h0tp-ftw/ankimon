@@ -346,12 +346,45 @@ class EvolutionSpriteTests(unittest.TestCase):
                 self.canvas().pixelColor(260, 75).name(),
                 (self.NORMAL[1], self.SHINY[1]),
             )
+            source_background = QImage(str(self.module.evolve_image_path))
+            yellow_title_pixel = source_background.pixelColor(250, 220).name()
+            self.assertNotEqual(
+                self.canvas().pixelColor(250, 220).name(), yellow_title_pixel
+            )
             self.window.display_evo_complete(1, 2, True)
             self.flush()
             self.assertEqual(set(self.buttons()), {"Close"})
             self.assertEqual(DeferredQueryOp.pending, [])
             get.assert_not_called()
             resolve.assert_not_called()
+
+    def test_fossil_revival_hides_pokemon_sprite_when_disabled(self):
+        from Ankimon.pyobj.starter_window import StarterWindow
+
+        starter = StarterWindow(
+            SimpleNamespace(),
+            self.driver.services.settings,
+        )
+        sprite = QPixmap(32, 32)
+        sprite.fill(QColor("#fa00ff"))
+        starter._load_sprite = lambda _path: sprite
+
+        self.driver.set_setting("gui.show_sprites_across_ankimon", False)
+        try:
+            hidden = starter.pokemon_display_fossil_pokemon(138, "Omanyte")
+            self.assertNotEqual(
+                hidden.pixmap().toImage().pixelColor(130, 15).name(), "#fa00ff"
+            )
+
+            self.driver.set_setting("gui.show_sprites_across_ankimon", True)
+            visible = starter.pokemon_display_fossil_pokemon(138, "Omanyte")
+            self.assertEqual(
+                visible.pixmap().toImage().pixelColor(130, 15).name(), "#fa00ff"
+            )
+        finally:
+            self.driver.set_setting("gui.show_sprites_across_ankimon", True)
+            starter.close()
+            starter.deleteLater()
 
     def test_lookup_error_is_logged_and_retry_recovers_without_false_ordinary_sprite(
         self,

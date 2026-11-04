@@ -380,9 +380,7 @@ class EvoWindow(QWidget):
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
-        merged_pixmap.fill(
-            QColor(0, 0, 0, 0)
-        )  # RGBA where A (alpha) is 0 for full transparency
+        merged_pixmap.fill(QColor(0, 0, 0, 0))
 
         # merge both images together
         painter = QPainter(merged_pixmap)
@@ -519,12 +517,13 @@ class EvoWindow(QWidget):
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
         merged_pixmap.fill(
-            QColor(0, 0, 0, 0)
-        )  # RGBA where A (alpha) is 0 for full transparency
+            QColor(0, 0, 0, 0) if show_sprites else QColor(44, 44, 44)
+        )
         # merged_pixmap.fill(Qt.transparent)
         # merge both images together
         painter = QPainter(merged_pixmap)
-        painter.drawPixmap(0, 0, pixmap_bckg)
+        if show_sprites:
+            painter.drawPixmap(0, 0, pixmap_bckg)
 
         # Only load, resize, and draw Pokémon sprites if sprites are enabled
         # Draw the text on top of the image

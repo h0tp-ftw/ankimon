@@ -2089,6 +2089,7 @@ class AnkimonItemsWeb(QDialog):
         script = f"""
             (() => {{
                 const show = {enabled};
+                document.body.classList.toggle('ankimon-sprites-hidden', !show);
                 let style = document.getElementById('ankimon-sprite-visibility');
                 if (!style) {{
                     style = document.createElement('style');
@@ -2105,6 +2106,7 @@ class AnkimonItemsWeb(QDialog):
                     img[src*=".png"], img[src*=".gif"] {{ visibility: hidden !important; }}
                     [style*=".png"], [style*=".gif"] {{ background-image: none !important; }}
                     .ankimon-raster-background {{ background-image: none !important; }}
+                    .pokeball-icon {{ visibility: hidden !important; }}
                 `;
             }})()
         """

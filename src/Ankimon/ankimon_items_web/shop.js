@@ -620,6 +620,9 @@
         if (ownedQty > 0 && !item.is_tm) {
             const use = document.createElement('button');
             use.className = 'det-action-btn use';
+            if (item.category === 'other') {
+                use.classList.add('standard-label');
+            }
             const label = useLabelFor(item);
             use.innerHTML = '<span>' + label + '</span><span class="det-action-meta">x' + ownedQty + '</span>';
             use.onclick = () => onUse(item);

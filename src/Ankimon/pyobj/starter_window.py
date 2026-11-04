@@ -396,7 +396,8 @@ class StarterWindow(QWidget):
         painter = QPainter(merged_pixmap)
         # draw background to a specific pixel
         painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(125,10,image_pixmap)
+        if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+            painter.drawPixmap(125,10,image_pixmap)
 
         # custom font
         custom_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))
