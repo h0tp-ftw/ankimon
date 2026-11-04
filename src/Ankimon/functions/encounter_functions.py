@@ -1242,6 +1242,11 @@ def new_pokemon(
     except Exception as e:
         print(f"[Ankimon] Error resetting battle state in new_pokemon: {e}")
 
+    settings = getattr(pokemon, "_settings_obj", None) or getattr(main_pokemon, "_settings_obj", None) or settings_obj
+    if settings:
+        current = int(settings.get("trainer.total_encounters", 0))
+        settings.set("trainer.total_encounters", current + 1)
+
     # Clear the PLAYER's volatile statuses as well. The enemy object is rebuilt
     # from `pokemon_data` below, which carries a fresh `volatile_status`, but
     # `main_pokemon` persists across encounters — so a confusion/taunt/leechseed
@@ -1837,6 +1842,11 @@ def kill_pokemon(
         level=enemy_pokemon.level,
         tier=enemy_pokemon.tier,
     )
+
+    settings = getattr(main_pokemon, "_settings_obj", None) or settings_obj
+    if settings:
+        current_defeated = int(settings.get("trainer.total_pokemon_defeated", 0))
+        settings.set("trainer.total_pokemon_defeated", current_defeated + 1)
     if trainer_card is not None:
         trainer_card.gain_xp(
             enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves")
