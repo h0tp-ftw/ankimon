@@ -554,7 +554,7 @@ def test_sprite_visibility_updates_mobile_svg_and_shell_navigation():
     assert '<svg class="pokeball-icon"' in mobile_html
 
 
-def test_shop_give_to_pokemon_action_uses_standard_font():
+def test_shop_action_and_purchase_buttons_use_standard_font():
     shop_js = (_src / "Ankimon" / "ankimon_items_web" / "shop.js").read_text(
         encoding="utf-8"
     )
@@ -562,7 +562,39 @@ def test_shop_give_to_pokemon_action_uses_standard_font():
         encoding="utf-8"
     )
 
-    assert "use.classList.add('standard-label')" in shop_js
-    assert ".det-action-btn.use.standard-label" in shop_css
-    assert "font-size: 0.92rem;" in shop_css
-    assert "font-weight: 400;" in shop_css
+    assert "use.className = 'det-action-btn use'" in shop_js
+    assert ".det-action-btn.use.standard-label" not in shop_css
+    assert shop_css.count("font-size: 0.92rem;") >= 2
+    assert shop_css.count("font-weight: 400;") >= 2
+    assert "font-size: inherit;" in shop_css
+    assert "font-weight: inherit;" in shop_css
+
+
+def test_sprite_visibility_hides_web_placeholders_and_mobile_headings():
+    shop_css = (_src / "Ankimon" / "ankimon_items_web" / "shop.css").read_text(
+        encoding="utf-8"
+    )
+    ankidex_css = (_src / "Ankimon" / "ankidex" / "ankidex.css").read_text(
+        encoding="utf-8"
+    )
+    mobile_css = (_src / "Ankimon" / "ankimon_mobile_web" / "mobile.css").read_text(
+        encoding="utf-8"
+    )
+    mobile_html = (
+        _src / "Ankimon" / "ankimon_mobile_web" / "mobile.html"
+    ).read_text(encoding="utf-8")
+    history_html = (
+        _src / "Ankimon" / "ankimon_mobile_web" / "history.html"
+    ).read_text(encoding="utf-8")
+    profile_css = (
+        _src / "Ankimon" / "ankimon_profile_web" / "profile.css"
+    ).read_text(encoding="utf-8")
+
+    assert "body.ankimon-sprites-hidden #detail-placeholder" in shop_css
+    assert "body.ankimon-sprites-hidden #briefing-placeholder" in ankidex_css
+    assert "mobile-reviews-page" in mobile_html
+    assert "mobile-history-page" in history_html
+    assert "#state-empty .empty-content > h2" in mobile_css
+    assert ".mobile-history-page .top-bar-titles > h2" in mobile_css
+    assert "body.ankimon-sprites-hidden .rail-avatar img" in profile_css
+    assert "body.ankimon-sprites-hidden .rail-avatar .change-hint { margin-top: 0; }" in profile_css

@@ -714,6 +714,10 @@ body {
     text-align: center;
 }
 
+body.ankimon-sprites-hidden #detail-placeholder {
+    display: none !important;
+}
+
 .detail-placeholder h3 {
     font-size: 1.2rem;
     color: var(--text-main);
@@ -2876,10 +2880,10 @@ body {
     padding: 12px 28px;
     border-radius: 10px;
     font-family: 'Outfit', sans-serif;
-    font-size: 0.95rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 0.92rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
     cursor: pointer;
     transition: var(--transition-fast);
     box-shadow: 0 4px 14px rgba(88, 166, 255, 0.3);
@@ -3557,10 +3561,10 @@ body {
     padding: 12px 18px;
     border-radius: 10px;
     font-family: 'Outfit', sans-serif;
-    font-size: 0.9rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
+    font-size: 0.92rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
     cursor: pointer;
     transition: var(--transition-fast);
     border: none;
@@ -3572,8 +3576,8 @@ body {
 
 .det-action-btn .det-action-meta {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
+    font-size: inherit;
+    font-weight: inherit;
     opacity: 0.85;
     letter-spacing: 0;
     text-transform: none;
@@ -3595,13 +3599,6 @@ body {
     background: linear-gradient(135deg, var(--accent-green), #2c8c3c);
     color: #0a1f0e;
     box-shadow: 0 4px 14px rgba(63, 185, 80, 0.28);
-}
-
-.det-action-btn.use.standard-label {
-    font-size: 0.92rem;
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: normal;
 }
 
 .det-action-btn.use:hover:not(:disabled) {
