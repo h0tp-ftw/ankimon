@@ -1,5 +1,5 @@
 """Unified shell window — Items (Mart + Bag), Ankidex, Profile, Team, Settings,
-and Mobile all live in one QDialog.
+Mobile, Backup Manager, and Update Manager all live in one QDialog.
 
 The same QWebEngineView swaps between screens by changing its URL. No
 window close/open flicker; the dropdown switcher in either screen calls back
@@ -147,6 +147,7 @@ SCREEN_TEAM = "team"
 SCREEN_MOBILE = "mobile"
 SCREEN_HISTORY = "history"
 SCREEN_BACKUP = "backup_manager"
+SCREEN_UPDATE = "update_manager"
 
 SPRITE_VISIBILITY_SCREENS = (
     SCREEN_ITEMS,
@@ -155,6 +156,7 @@ SPRITE_VISIBILITY_SCREENS = (
     SCREEN_PROFILE,
     SCREEN_TEAM,
     SCREEN_BACKUP,
+    SCREEN_UPDATE,
 )
 
 
@@ -204,6 +206,10 @@ class NavBridge(QObject):
     @pyqtSlot()
     def openBackupManager(self):
         self._w.load_screen(SCREEN_BACKUP)
+
+    @pyqtSlot()
+    def openUpdateManager(self):
+        self._w.load_screen(SCREEN_UPDATE)
 
     @pyqtSlot()
     def closeWindow(self):
@@ -1886,6 +1892,10 @@ class AnkimonItemsWeb(QDialog):
         self.webview_backup.setPage(
             SafeWebEnginePage(self.profile, SCREEN_BACKUP, logger, self.webview_backup)
         )
+        self.webview_update = QWebEngineView()
+        self.webview_update.setPage(
+            SafeWebEnginePage(self.profile, SCREEN_UPDATE, logger, self.webview_update)
+        )
         self._views = {
             SCREEN_ITEMS: self.webview_items,
             SCREEN_ANKIDEX: self.webview_ankidex,
@@ -1895,6 +1905,7 @@ class AnkimonItemsWeb(QDialog):
             SCREEN_MOBILE: self.webview_mobile,
             SCREEN_HISTORY: self.webview_history,
             SCREEN_BACKUP: self.webview_backup,
+            SCREEN_UPDATE: self.webview_update,
         }
 
         self.bridge = ItemsBridge(self)
@@ -1904,6 +1915,9 @@ class AnkimonItemsWeb(QDialog):
         self.team_bridge = TeamBridge(self)
         self._mobile_bridge = MobileBridge(self)
         self.backup_bridge = BackupBridge(self)
+        from ..pyobj.update_manager_web import UpdateManagerBridge
+
+        self.update_bridge = UpdateManagerBridge(self, logger)
 
         bridges_by_name = {
             "bridge": self.bridge,
@@ -1913,6 +1927,7 @@ class AnkimonItemsWeb(QDialog):
             "team": self.team_bridge,
             "mobile": self._mobile_bridge,
             "backup": self.backup_bridge,
+            "update": self.update_bridge,
         }
 
         # Each page gets a separate channel containing only its native bridge
@@ -1993,6 +2008,15 @@ class AnkimonItemsWeb(QDialog):
                     / "backup_manager"
                     / "backup_manager.html"
                 )
+            elif screen == SCREEN_UPDATE:
+                title = "Ankimon — Update Manager"
+                target_view = self.webview_update
+                path = (
+                    self.addon_dir
+                    / "ankimon_manager_web"
+                    / "update_manager"
+                    / "update_manager.html"
+                )
             else:
                 return
 
@@ -2002,6 +2026,10 @@ class AnkimonItemsWeb(QDialog):
             if screen not in self.loaded_screens:
                 self.loaded_screens.add(screen)
                 target_view.setUrl(QUrl.fromLocalFile(path.as_posix()))
+            elif screen == SCREEN_UPDATE:
+                target_view.page().runJavaScript(
+                    "if (window.refreshUpdateManager) window.refreshUpdateManager();"
+                )
             else:
                 self.push_screen_data()
 
@@ -2310,6 +2338,9 @@ class AnkimonItemsWeb(QDialog):
         )
 
     def closeEvent(self, event):
+        if self.update_bridge.defer_close_for_sprite_update():
+            event.ignore()
+            return
         self._retire_backup_confirmation()
         if self.current_screen == SCREEN_ANKIDEX:
             self._save_ankidex_prefs()
@@ -2327,7 +2358,12 @@ class AnkimonItemsWeb(QDialog):
         # during load is what caused the flash. On later re-shows, refresh in
         # case buy/use changed data while the window was hidden.
         if self._shown_once:
-            self.push_screen_data()
+            if self.current_screen == SCREEN_UPDATE:
+                self.webview_update.page().runJavaScript(
+                    "if (window.refreshUpdateManager) window.refreshUpdateManager();"
+                )
+            else:
+                self.push_screen_data()
         else:
             self._shown_once = True
         super().showEvent(event)

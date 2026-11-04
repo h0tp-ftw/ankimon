@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Update Manager</title>
+	<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="../../ankimon_items_web/shop.css?v=20260634">
+	<link rel="stylesheet" href="../../ankimon_items_web/nav-switcher.css?v=20260634">
+	<link rel="stylesheet" href="update_manager.css?v=20261104.1">
+	<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body class="dark-mode">
+	<div class="app-container">
+		<aside class="sidebar">
+			<div class="sidebar-header">
+				<div id="nav-switcher" class="nav-switcher">
+					<button id="nav-trigger" class="nav-trigger" type="button" aria-haspopup="true" aria-expanded="false">
+						<img src="../../user_files/sprites/items/exp-share.png" class="app-logo icon-item-sprite" alt="">
+						<h1>UPDATE MANAGER</h1>
+						<span class="nav-chevron">▾</span>
+					</button>
+					<div id="nav-menu" class="nav-menu hidden" role="menu">
+						<button class="nav-menu-item" role="menuitem" data-screen="items"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/max-potion.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Items</span><span class="nav-menu-desc">Your inventory and today's Mart</span></div></button>
+						<button class="nav-menu-item" role="menuitem" data-screen="ankidex"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/poke-ball.png" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Ankidex</span><span class="nav-menu-desc">Browse caught Pokémon</span></div></button>
+						<button class="nav-menu-item" role="menuitem" data-screen="team"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/great-ball.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Team</span><span class="nav-menu-desc">Your active 6 Pokémon</span></div></button>
+						<button class="nav-menu-item" role="menuitem" data-screen="profile"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/water-gem.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Profile</span><span class="nav-menu-desc">Card, badges &amp; avatar</span></div></button>
+						<button class="nav-menu-item" role="menuitem" data-screen="settings"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/x-speed.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Settings</span><span class="nav-menu-desc">Configure Ankimon</span></div></button>
+						<button class="nav-menu-item" role="menuitem" data-screen="mobile"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/elixir.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Mobile &amp; Web Reviews</span><span class="nav-menu-desc">Pending mobile/web battles</span></div></button>
+						<button class="nav-menu-item" role="menuitem" data-screen="backup_manager"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/skull-fossil.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Backup Manager</span><span class="nav-menu-desc">Create and restore backups</span></div></button>
+						<button class="nav-menu-item active" role="menuitem" data-screen="update_manager"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/exp-share.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Update Manager</span><span class="nav-menu-desc">Check and install Ankimon updates</span></div></button>
+					</div>
+				</div>
+			</div>
+			<nav class="sidebar-nav">
+				<div class="nav-group">
+					<label>Update options</label>
+					<button class="nav-item update-tab-link active" type="button" data-tab="branch">Branch</button>
+					<button class="nav-item update-tab-link" type="button" data-tab="releases">Releases</button>
+					<button class="nav-item update-tab-link" type="button" data-tab="developer">Developer</button>
+					<button class="nav-item update-tab-link" type="button" data-tab="sprites">Sprites</button>
+				</div>
+			</nav>
+		</aside>
+		<main class="main-content">
+			<header class="top-bar">
+				<div class="top-bar-titles"><h2>Update Ankimon</h2><p id="installed-version">Installed: Loading...</p></div>
+				<div class="top-actions"><button id="close-btn" class="btn btn-secondary">Close</button></div>
+			</header>
+			<div class="content-scroll">
+				<section class="update-content">
+					<div class="channel-row">
+						<label for="update-channel">Auto-update channel:</label>
+						<select id="update-channel">
+							<option value="stable">Stable</option>
+							<option value="experimental">Experimental (-E)</option>
+							<option value="main">Main (bleeding edge)</option>
+						</select>
+					</div>
+					<section id="git-notice" class="update-card git-notice hidden">
+						<div><h3>Git Workspace Mode</h3><p id="git-info"></p><p>Selected sources are checked out from the official Ankimon repository. The working tree must be clean; restart Anki after an update.</p></div>
+						<button id="git-pull-btn" class="btn btn-primary" type="button">Fast-forward Current Branch</button>
+					</section>
+					<nav class="update-tabs" aria-label="Update options">
+						<button class="update-tab active" type="button" data-tab="branch">Branch</button>
+						<button class="update-tab" type="button" data-tab="releases">Releases</button>
+						<button class="update-tab" type="button" data-tab="developer">Developer</button>
+						<button class="update-tab" type="button" data-tab="sprites">Sprites</button>
+					</nav>
+					<section id="panel-branch" class="tab-panel active">
+						<div class="update-card">
+							<h3 id="active-branch-title">Active Branch: Loading...</h3>
+							<dl class="branch-details">
+								<div><dt>Installed Commit</dt><dd id="installed-commit">Loading...</dd></div>
+								<div><dt>Commit Date</dt><dd id="commit-date">Loading...</dd></div>
+								<div><dt>Last Update Installed</dt><dd id="last-update-installed">Loading...</dd></div>
+							</dl>
+							<p id="branch-status" class="status-text" role="status" aria-live="polite">Status: Checking branch...</p>
+						</div>
+						<div class="update-card">
+							<h3>Recent Branch Updates</h3>
+							<ul id="recent-commits" class="commit-list"><li>Checking for changes...</li></ul>
+						</div>
+						<div class="branch-actions">
+							<label class="check-row"><input id="branch-snooze" type="checkbox"> Snooze notifications for 1 week</label>
+							<button id="branch-update-btn" class="btn btn-primary" type="button" disabled>Update Branch Now</button>
+						</div>
+					</section>
+					<section id="panel-releases" class="tab-panel">
+						<div class="update-card">
+							<h3>Quick Update</h3>
+							<p class="muted">One click to get the latest experimental release.</p>
+							<p id="latest-release-label" class="release-highlight">Checking...</p>
+							<button id="latest-release-btn" class="btn btn-primary" type="button" disabled>Update to Latest Release</button>
+						</div>
+						<div class="update-card">
+							<h3>Specific Release</h3>
+							<label for="release-select">Choose a version:</label>
+							<select id="release-select"></select>
+							<button id="release-install-btn" class="btn btn-primary" type="button" disabled>Install Selected Release</button>
+						</div>
+					</section>
+					<section id="panel-developer" class="tab-panel">
+						<p class="muted">Install code directly from branches, pull requests, or tags.</p>
+						<p id="developer-warning" class="warning-text">Pull requests and development branches may contain unreviewed code. Only install sources you trust. Your Pokémon data and sprites are preserved during archive-based updates.</p>
+						<div class="update-card">
+							<h3>Install from Source</h3>
+							<label for="source-type">Source type:</label>
+							<select id="source-type">
+								<option value="main">Latest Main Branch</option>
+								<option value="pr">Pull Request</option>
+								<option value="branch">Branch</option>
+								<option value="tag">Tag</option>
+							</select>
+							<div id="target-fields" class="target-fields hidden">
+								<label id="target-label" for="source-target">Source:</label>
+								<input id="pr-search" class="hidden" type="search" placeholder="Search PR number or title" aria-label="Search pull requests by number or title">
+								<select id="source-target"></select>
+							</div>
+							<button id="developer-install-btn" class="btn btn-primary" type="button" disabled>Install</button>
+						</div>
+						<p id="developer-status" class="muted" role="status" aria-live="polite"></p>
+					</section>
+					<section id="panel-sprites" class="tab-panel">
+						<div class="update-card">
+							<h3>Sprites</h3>
+							<p class="muted">Check and download updates for the Ankimon sprites repository.</p>
+							<p id="sprites-status" class="status-text" role="status" aria-live="polite">Ready to check for updates.</p>
+							<progress id="sprites-progress" max="100" value="0" class="hidden"></progress>
+							<label class="check-row"><input id="sprites-snooze" type="checkbox"> Snooze these updates for 7 days</label>
+							<div class="button-row">
+								<button id="sprites-check-btn" class="btn btn-secondary" type="button" disabled>Check for Updates</button>
+								<button id="sprites-install-btn" class="btn btn-primary hidden" type="button">Install Update</button>
+							</div>
+						</div>
+					</section>
+					<div id="operation-status" class="operation-status hidden" role="status" aria-live="polite"></div>
+					<progress id="operation-progress" max="100" value="0" class="hidden"></progress>
+					<section id="code-error" class="code-error hidden" role="alert">
+						<h3>Status: Code error [Traceback]</h3>
+						<pre id="code-error-traceback"></pre>
+					</section>
+				</section>
+			</div>
+		</main>
+	</div>
+	<div id="update-modal" class="update-modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message">
+		<div class="update-modal-card">
+			<h2 id="modal-title">Confirm Update</h2>
+			<p id="modal-message"></p>
+			<div class="modal-actions">
+				<button id="modal-cancel" class="btn btn-secondary" type="button">Cancel</button>
+				<button id="modal-confirm" class="btn btn-primary" type="button">Confirm</button>
+			</div>
+		</div>
+	</div>
+	<div id="toast" class="shop-toast"></div>
+	<script src="../../ankimon_items_web/nav-switcher.js?v=20260634"></script>
+	<script src="update_manager.js?v=20261104.1"></script>
+</body>
+</html>
