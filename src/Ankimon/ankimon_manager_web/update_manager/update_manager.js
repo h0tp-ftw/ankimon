@@ -6,6 +6,10 @@
 	let updateData = null;
 	let developerData = null;
 	let developerLoading = false;
+	let developerLoadFailed = false;
+	let selectedSourceType = 'main';
+	let selectedTarget = '';
+	let selectedRelease = '';
 	let latestRelease = null;
 	let branchCanUpdate = false;
 	let gitPullAllowed = false;
@@ -63,10 +67,78 @@
 		setVisible(byId('operation-status'), visible && Boolean(message));
 	}
 
-	function setOperationProgress(value, visible = true) {
+	function setOperationProgress(value, visible = true, indeterminate = false) {
 		const progress = byId('operation-progress');
-		progress.value = Math.max(0, Math.min(100, Number(value) || 0));
+		if (indeterminate) {
+			progress.removeAttribute('value');
+		} else {
+			progress.value = Math.max(0, Math.min(100, Number(value) || 0));
+		}
 		setVisible(progress, visible);
+	}
+
+	function setDeveloperStatus(message) {
+		setText('developer-status', message || '');
+		setVisible(byId('developer-status'), Boolean(message));
+	}
+
+	function closeDropdown(dropdown) {
+		dropdown.classList.remove('open');
+		dropdown.querySelector('.custom-select-menu').classList.add('hidden');
+		dropdown.querySelector('.custom-select-trigger').setAttribute('aria-expanded', 'false');
+	}
+
+	function closeDropdowns(except = null) {
+		document.querySelectorAll('.custom-select.open').forEach((dropdown) => {
+			if (dropdown !== except) closeDropdown(dropdown);
+		});
+	}
+
+	function wireDropdown(dropdown, onOpen = null) {
+		const trigger = dropdown.querySelector('.custom-select-trigger');
+		const menu = dropdown.querySelector('.custom-select-menu');
+		trigger.addEventListener('click', (event) => {
+			event.stopPropagation();
+			if (dropdown.classList.contains('open')) {
+				closeDropdown(dropdown);
+				return;
+			}
+			closeDropdowns(dropdown);
+			dropdown.classList.add('open');
+			menu.classList.remove('hidden');
+			trigger.setAttribute('aria-expanded', 'true');
+			if (onOpen) onOpen();
+			const search = menu.querySelector('input[type="search"]');
+			if (search && !search.classList.contains('hidden')) search.focus();
+		});
+		menu.addEventListener('click', (event) => event.stopPropagation());
+	}
+
+	function setDropdownLabel(dropdownId, label) {
+		byId(dropdownId).querySelector('.custom-select-value').textContent =
+			label || 'Select an option';
+	}
+
+	function renderOptions(dropdownId, entries, selectedValue, emptyMessage, onSelect) {
+		const options = byId(dropdownId).querySelector('.custom-select-options');
+		options.replaceChildren();
+		if (!entries.length) {
+			const empty = document.createElement('div');
+			empty.className = 'custom-select-empty';
+			empty.textContent = emptyMessage;
+			options.appendChild(empty);
+			return;
+		}
+		entries.forEach((entry) => {
+			const option = document.createElement('button');
+			option.type = 'button';
+			option.className = 'custom-select-option';
+			option.setAttribute('role', 'option');
+			option.setAttribute('aria-selected', String(entry.value === selectedValue));
+			option.textContent = entry.label;
+			option.addEventListener('click', () => onSelect(entry));
+			options.appendChild(option);
+		});
 	}
 
 	function currentBusy() {
@@ -79,9 +151,9 @@
 		byId('git-pull-btn').disabled = busy || !gitPullAllowed;
 		byId('latest-release-btn').disabled = busy || !latestRelease ||
 			latestRelease.name === (updateData && updateData.version);
-		byId('release-install-btn').disabled = busy || !byId('release-select').value;
+		byId('release-install-btn').disabled = busy || !selectedRelease;
 		byId('developer-install-btn').disabled = busy ||
-			(byId('source-type').value !== 'main' && !byId('source-target').value);
+			(selectedSourceType !== 'main' && !selectedTarget);
 		byId('sprites-check-btn').disabled = busy;
 		byId('sprites-install-btn').disabled = busy || !spriteUpdateAvailable;
 	}
@@ -201,20 +273,35 @@
 			setText('latest-release-btn', 'Update to Latest Release');
 		}
 
-		const select = byId('release-select');
-		select.replaceChildren();
-		list.forEach((release) => {
-			const option = document.createElement('option');
-			option.value = release.name;
-			option.textContent = release.name;
-			select.appendChild(option);
-		});
-		if (!list.length) {
-			const option = document.createElement('option');
-			option.value = '';
-			option.textContent = 'No releases found';
-			select.appendChild(option);
+		if (!list.some((release) => release.name === selectedRelease)) {
+			selectedRelease = list[0] ? list[0].name : '';
 		}
+		renderReleaseOptions();
+	}
+
+	function renderReleaseOptions() {
+		const list = updateData && Array.isArray(updateData.releases)
+			? updateData.releases
+			: [];
+		const query = byId('release-select').querySelector('.custom-select-search')
+			.value.trim().toLocaleLowerCase();
+		const entries = list
+			.filter((release) => String(release.name).toLocaleLowerCase().includes(query))
+			.map((release) => ({ value: release.name, label: release.name }));
+		const selected = list.find((release) => release.name === selectedRelease);
+		setDropdownLabel('release-select', selected ? selected.name : 'No releases found');
+		renderOptions(
+			'release-select',
+			entries,
+			selectedRelease,
+			'No matching releases',
+			(entry) => {
+				selectedRelease = entry.value;
+				setDropdownLabel('release-select', entry.label);
+				closeDropdown(byId('release-select'));
+				updateButtonStates();
+			},
+		);
 	}
 
 	function renderVersion(data) {
@@ -240,12 +327,40 @@
 		setText('installed-version', version);
 	}
 
+	function renderSourceTypes() {
+		const types = [
+			{ value: 'main', label: 'Latest Main Branch' },
+			{ value: 'pr', label: 'Pull Request' },
+			{ value: 'branch', label: 'Branch' },
+			{ value: 'tag', label: 'Tag' },
+		];
+		const selected = types.find((entry) => entry.value === selectedSourceType) || types[0];
+		setDropdownLabel('source-type-select', selected.label);
+		renderOptions(
+			'source-type-select',
+			types,
+			selectedSourceType,
+			'No source types found',
+			(entry) => {
+				selectedSourceType = entry.value;
+				selectedTarget = '';
+				byId('pr-search').value = '';
+				setDropdownLabel('source-type-select', entry.label);
+				closeDropdown(byId('source-type-select'));
+				renderDeveloperTargets(true);
+			},
+		);
+	}
+
+	function normalizeTagSearch(value) {
+		return value.toLocaleLowerCase().replace(/[.-]/g, '');
+	}
+
 	function renderDeveloperTargets(resetSelection = false) {
 		if (!developerData) return;
-		const type = byId('source-type').value;
+		const type = selectedSourceType;
 		const fields = byId('target-fields');
 		const search = byId('pr-search');
-		const select = byId('source-target');
 		const label = byId('target-label');
 		const options = {
 			pr: { label: 'Pull request:', entries: developerData.prs || [] },
@@ -254,43 +369,54 @@
 		};
 		if (type === 'main') {
 			fields.classList.add('hidden');
-			select.replaceChildren();
+			selectedTarget = '';
 			updateButtonStates();
 			return;
 		}
 		fields.classList.remove('hidden');
 		label.textContent = options[type].label;
-		search.classList.toggle('hidden', type !== 'pr');
-		const query = type === 'pr' ? search.value.trim().toLocaleLowerCase() : '';
+		search.placeholder = type === 'pr'
+			? 'Search pull requests by number or title'
+			: `Search ${type === 'branch' ? 'branches' : 'tags'}`;
+		search.setAttribute('aria-label', `Search ${type === 'pr' ? 'pull requests' : `${type}s`}`);
+		const query = search.value.trim().toLocaleLowerCase();
 		const numberQuery = query.startsWith('#') ? query.slice(1) : query;
 		const entries = options[type].entries.filter((entry) => {
-			if (type !== 'pr' || !query) return true;
-			return String(entry.number).toLocaleLowerCase().includes(numberQuery) ||
-				String(entry.title || '').toLocaleLowerCase().includes(query);
+			if (!query) return true;
+			if (type === 'pr') {
+				return String(entry.number).toLocaleLowerCase().includes(numberQuery) ||
+					String(entry.title || '').toLocaleLowerCase().includes(query);
+			}
+			if (type === 'tag') {
+				return normalizeTagSearch(entry.name).includes(normalizeTagSearch(query));
+			}
+			return String(entry.name).toLocaleLowerCase().includes(query);
 		});
-		const selected = resetSelection ? '' : select.value;
-		select.replaceChildren();
-		entries.forEach((entry) => {
-			const option = document.createElement('option');
-			option.value = type === 'pr' ? String(entry.number) : entry.name;
-			option.textContent = type === 'pr'
-				? `#${entry.number} — ${entry.title}`
-				: entry.name;
-			select.appendChild(option);
-		});
-		if (!entries.length) {
-			const option = document.createElement('option');
-			option.value = '';
-			option.textContent = type === 'pr' ? 'No matching open PRs' :
-				(type === 'branch' ? 'No branches found' : 'No tags found');
-			select.appendChild(option);
-		} else if (entries.some((entry) =>
-			(type === 'pr' ? String(entry.number) : entry.name) === selected
-		)) {
-			select.value = selected;
-		} else if (type === 'branch' && entries.some((entry) => entry.name === 'main')) {
-			select.value = 'main';
+		const valueFor = (entry) => type === 'pr' ? String(entry.number) : entry.name;
+		const labelFor = (entry) => type === 'pr'
+			? `#${entry.number} — ${entry.title}`
+			: entry.name;
+		if (resetSelection || !options[type].entries.some((entry) => valueFor(entry) === selectedTarget)) {
+			selectedTarget = type === 'branch' &&
+				options[type].entries.some((entry) => entry.name === 'main')
+				? 'main'
+				: (options[type].entries[0] ? valueFor(options[type].entries[0]) : '');
 		}
+		const selectedEntry = options[type].entries.find((entry) => valueFor(entry) === selectedTarget);
+		setDropdownLabel('source-target', selectedEntry ? labelFor(selectedEntry) : 'No sources found');
+		renderOptions(
+			'source-target',
+			entries.map((entry) => ({ value: valueFor(entry), label: labelFor(entry) })),
+			selectedTarget,
+			type === 'pr' ? 'No matching open pull requests' :
+				(type === 'branch' ? 'No matching branches' : 'No matching tags'),
+			(entry) => {
+				selectedTarget = entry.value;
+				setDropdownLabel('source-target', entry.label);
+				closeDropdown(byId('source-target'));
+				updateButtonStates();
+			},
+		);
 		updateButtonStates();
 	}
 
@@ -303,7 +429,8 @@
 		});
 		if (tab === 'developer' && !developerData && !developerLoading && bridge) {
 			developerLoading = true;
-			setText('developer-status', 'Loading developer options...');
+			developerLoadFailed = false;
+			setDeveloperStatus('Loading developer options...');
 			bridge.loadDeveloperData();
 		}
 	}
@@ -340,7 +467,6 @@
 		renderVersion(data);
 		renderBranch(data);
 		renderReleases(data.releases);
-		byId('update-channel').value = data.channel || 'stable';
 		byId('branch-snooze').checked = Number(data.skip_until) > Date.now() / 1000;
 		byId('sprites-snooze').checked = Boolean(data.sprite_snoozed);
 		updateButtonStates();
@@ -349,19 +475,15 @@
 	window.onDeveloperData = (data) => {
 		developerData = data;
 		developerLoading = false;
-		setText('developer-status', '');
-		if (updateData && updateData.git_clone) {
-			setText(
-				'developer-warning',
-				'Git workspace mode is active. Sources are fetched from the official Ankimon repository and checked out with Git; local changes must be committed, stashed, or discarded first.',
-			);
-		}
+		developerLoadFailed = false;
+		setDeveloperStatus('');
 		renderDeveloperTargets();
 	};
 
 	window.onDeveloperLoadFailed = (data) => {
 		developerLoading = false;
-		setText('developer-status', `Could not load developer options: ${data.message}`);
+		developerLoadFailed = true;
+		setDeveloperStatus(`Could not load developer options: ${data.message}`);
 	};
 
 	window.onUpdateLoadFailed = (data) => {
@@ -376,8 +498,20 @@
 		if (data.busy) busyOperations.add(data.kind);
 		else busyOperations.delete(data.kind);
 		if (data.busy && data.kind === 'load') setOperationStatus('Checking for updates...');
-		if (data.busy && data.kind === 'developer') setText('developer-status', 'Loading developer options...');
+		if (data.busy && data.kind === 'developer') {
+			developerLoading = true;
+			developerLoadFailed = false;
+			setDeveloperStatus('Loading developer options...');
+		}
+		if (!data.busy && data.kind === 'developer' && !developerData && !developerLoadFailed) {
+			developerLoading = false;
+			setDeveloperStatus('');
+		}
 		if (data.busy && data.kind === 'sprites-check') setText('sprites-status', 'Checking for sprite updates...');
+		if (data.busy && data.kind === 'sprites-check') {
+			byId('sprites-check-progress').value = 0;
+			byId('sprites-check-progress').classList.remove('hidden');
+		}
 		if (data.busy && data.kind === 'sprites-install') {
 			byId('sprites-progress').classList.remove('hidden');
 			byId('sprites-progress').value = 0;
@@ -387,12 +521,18 @@
 	};
 
 	window.onUpdateInstallStarted = (data) => {
-		setOperationStatus(`Downloading ${data.label}...`);
-		setOperationProgress(0);
+		setOperationStatus(updateData && updateData.git_clone
+			? `Preparing Git checkout for ${data.label}...`
+			: `Downloading ${data.label}...`);
+		setOperationProgress(0, true, true);
 	};
 
 	window.onUpdateProgress = (data) => setOperationProgress(data.percent);
 	window.onUpdateStatus = (data) => setOperationStatus(data.message);
+	window.onSpritesCheckProgress = (data) => {
+		byId('sprites-check-progress').value = Math.max(0, Math.min(100, Number(data.percent) || 0));
+		setText('sprites-status', data.message || 'Checking for sprite updates...');
+	};
 
 	window.onUpdateFinished = (data) => {
 		setOperationProgress(data.success ? 100 : 0, Boolean(data.success));
@@ -413,13 +553,13 @@
 	window.onSpritesChecked = (result) => {
 		const status = byId('sprites-status');
 		status.classList.remove('success', 'warning', 'error');
+		byId('sprites-check-progress').value = 100;
 		byId('sprites-install-btn').classList.add('hidden');
 		spriteUpdateAvailable = result.status === 'update_available';
 		if (result.status === 'up_to_date') {
 			status.textContent = 'Sprites are already up to date!';
 			status.classList.add('success');
-			byId('sprites-progress').value = 100;
-			byId('sprites-progress').classList.remove('hidden');
+			byId('sprites-check-progress').value = 100;
 		} else if (result.status === 'error') {
 			status.textContent = `Error checking updates: ${result.error}`;
 			status.classList.add('error');
@@ -437,6 +577,7 @@
 		setText('sprites-status', `Error checking sprite updates: ${data.message}`);
 		byId('sprites-status').classList.remove('success', 'warning');
 		byId('sprites-status').classList.add('error');
+		byId('sprites-check-progress').value = 100;
 	};
 
 	window.onSpriteProgress = (data) => {
@@ -448,7 +589,7 @@
 	window.onSpritesFinished = (data) => {
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
-		byId('sprites-progress').value = data.success ? 100 : 0;
+		if (data.success) byId('sprites-progress').value = 100;
 		setText('sprites-status', data.success
 			? `Update complete! ${data.message}`
 			: `Update failed: ${data.message}`);
@@ -469,10 +610,19 @@
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
 
-	byId('update-channel').addEventListener('change', (event) => {
+	document.querySelectorAll('.custom-select').forEach((dropdown) => wireDropdown(dropdown));
+	document.addEventListener('click', () => closeDropdowns());
+	document.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape') closeDropdowns();
+	});
+	renderSourceTypes();
+	byId('release-select').querySelector('.custom-select-search')
+		.addEventListener('input', renderReleaseOptions);
+	byId('pr-search').addEventListener('input', () => renderDeveloperTargets(false));
+	byId('github-link').addEventListener('click', () => {
 		if (bridge) {
-			bridge.setChannel(event.target.value, (saved) => {
-				if (!saved) showToast('Could not save update channel.', true);
+			bridge.openGitHub((opened) => {
+				if (!opened) showToast('Could not open Ankimon on GitHub.', true);
 			});
 		}
 	});
@@ -498,24 +648,20 @@
 	byId('latest-release-btn').addEventListener('click', () => {
 		if (latestRelease) install('release', latestRelease.name, `latest release (${latestRelease.name})`);
 	});
-	byId('release-select').addEventListener('change', updateButtonStates);
 	byId('release-install-btn').addEventListener('click', () => {
 		const release = updateData && (updateData.releases || []).find(
-			(item) => item.name === byId('release-select').value,
+			(item) => item.name === selectedRelease,
 		);
 		if (release) install('release', release.name, `release ${release.name}`);
 	});
 
-	byId('source-type').addEventListener('change', () => renderDeveloperTargets(true));
-	byId('source-target').addEventListener('change', updateButtonStates);
-	byId('pr-search').addEventListener('input', () => renderDeveloperTargets(false));
 	byId('developer-install-btn').addEventListener('click', () => {
-		const source = byId('source-type').value;
+		const source = selectedSourceType;
 		if (source === 'main') {
 			install('branch', 'main', 'latest main');
 			return;
 		}
-		const value = byId('source-target').value;
+		const value = selectedTarget;
 		if (!value || !developerData) return;
 		const entry = source === 'pr'
 			? (developerData.prs || []).find((pr) => String(pr.number) === value)
@@ -538,6 +684,9 @@
 		if (!bridge) return;
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
+		byId('sprites-progress').classList.add('hidden');
+		byId('sprites-check-progress').value = 0;
+		byId('sprites-check-progress').classList.remove('hidden');
 		bridge.checkSprites();
 	});
 

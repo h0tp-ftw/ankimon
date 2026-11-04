@@ -5,8 +5,8 @@ from pathlib import Path
 
 from aqt import mw
 from aqt.operations import QueryOp
-
-from PyQt6.QtCore import QObject, Qt, pyqtSlot
+from PyQt6.QtCore import QObject, QUrl, Qt, pyqtSlot
+from PyQt6.QtGui import QDesktopServices
 
 from ..resources import IS_EXPERIMENTAL_BUILD, addon_ver, user_path_sprites
 from . import update_manager as updater
@@ -66,6 +66,13 @@ class UpdateManagerBridge(QObject):
             "onUpdateCodeError",
             {"message": str(error), "traceback": details},
         )
+
+    @pyqtSlot(result=bool)
+    def openGitHub(self):
+        opened = QDesktopServices.openUrl(QUrl("https://github.com/h0tp-ftw/ankimon"))
+        if not opened:
+            self._log_error("Could not open Ankimon's GitHub page in the default browser.")
+        return opened
 
     def _start_query(self, operation, worker, success, failure=None):
         if operation in self._active_operations:
@@ -384,6 +391,15 @@ class UpdateManagerBridge(QObject):
                 def status(message):
                     messages.append(message)
                     self._send_from_worker("onUpdateStatus", {"message": message})
+                    if message.startswith("Fetching "):
+                        percent = 12
+                    elif message.startswith(("Fast-forwarding ", "Checking out ")):
+                        percent = 60
+                    elif message == "Updating submodules...":
+                        percent = 85
+                    else:
+                        return
+                    self._send_from_worker("onUpdateProgress", {"percent": percent})
 
                 success, message = updater.git_checkout_source(
                     source_type,
@@ -458,7 +474,7 @@ class UpdateManagerBridge(QObject):
                 {"success": False, "unexpected": True, "message": str(error)},
             )
 
-        if not self._start_query("install", worker, done, failed):
+        if "install" in self._active_operations:
             return {
                 "success": False,
                 "message": "An update is already in progress.",
@@ -467,6 +483,11 @@ class UpdateManagerBridge(QObject):
             "onUpdateInstallStarted",
             {"label": source["label"], "warning": warning},
         )
+        if not self._start_query("install", worker, done, failed):
+            return {
+                "success": False,
+                "message": "An update is already in progress.",
+            }
         return {"pending": True}
 
     @pyqtSlot()
@@ -481,7 +502,13 @@ class UpdateManagerBridge(QObject):
 
         def worker(_col):
             return calculate_sprite_diff(
-                dest_dir, silent=False, ignore_snooze=True
+                dest_dir,
+                silent=False,
+                ignore_snooze=True,
+                progress_callback=lambda percent, message: self._send_from_worker(
+                    "onSpritesCheckProgress",
+                    {"percent": percent, "message": message},
+                ),
             )
 
         def done(result):

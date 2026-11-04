@@ -2105,6 +2105,8 @@ class AnkimonItemsWeb(QDialog):
                     img[src*=".png"], img[src*=".gif"] {{ visibility: hidden !important; }}
                     [style*=".png"], [style*=".gif"] {{ background-image: none !important; }}
                     .ankimon-raster-background {{ background-image: none !important; }}
+                    .update-manager-logo {{ display: none !important; }}
+                    .update-manager-heading {{ display: none !important; }}
                 `;
             }})()
         """
