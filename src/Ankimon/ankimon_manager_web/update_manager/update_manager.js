@@ -508,7 +508,7 @@
 
 	byId('source-type').addEventListener('change', () => renderDeveloperTargets(true));
 	byId('source-target').addEventListener('change', updateButtonStates);
-	byId('pr-search').addEventListener('input', renderDeveloperTargets);
+	byId('pr-search').addEventListener('input', () => renderDeveloperTargets(false));
 	byId('developer-install-btn').addEventListener('click', () => {
 		const source = byId('source-type').value;
 		if (source === 'main') {
