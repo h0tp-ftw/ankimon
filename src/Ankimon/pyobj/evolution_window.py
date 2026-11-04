@@ -395,6 +395,7 @@ class EvoWindow(QWidget):
         # Load the background image
         pixmap_bckg = QPixmap()
         pixmap_bckg.load(str(bckgimage_path))
+        show_sprites = self._should_show_sprites()
 
         # Merge the background image and the Pokémon image
         merged_pixmap = QPixmap(pixmap_bckg.size())
@@ -403,11 +404,10 @@ class EvoWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
 
-        # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
+        if show_sprites:
+            painter.drawPixmap(0, 0, pixmap_bckg)
 
         # Only load and draw the Pokémon sprite if sprites are enabled
-        show_sprites = self._should_show_sprites()
         # custom font
         custom_font = load_custom_font(20, int(self.settings_obj.get("misc.language")))
         message_box_text = (
