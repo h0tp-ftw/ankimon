@@ -60,7 +60,7 @@ jobs:
   # main claiming a version that was never released — recoverable by approving
   # the held run (it waits 30 days), or by reverting the bump and deleting the tag.
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       pull-requests: read
@@ -374,7 +374,7 @@ jobs:
     name: Publish Stable (AnkiWeb Gate)
     if: ${{ needs.build.outputs.channel == 'stable' }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     environment:
@@ -444,7 +444,7 @@ jobs:
     name: Publish Experimental (Direct)
     if: ${{ needs.build.outputs.channel == 'experimental' }}
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

@@ -10,7 +10,7 @@ on:
 
 jobs:
   check-profile:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Only reads the checked-out .all-contributorsrc; declare least privilege so the
     # job doesn't inherit a broader default token scope.
     permissions:
