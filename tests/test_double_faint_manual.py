@@ -254,7 +254,7 @@ def test_new_encounter_cancels_abandoned_faint(game, monkeypatch):
         lambda *args: (
             "caterpie", 10, 5, None, ["Bug"], {"hp": 45}, ["tackle"],
             39, "medium", {}, {}, "M", "fighting", {}, "Normal", {},
-            False, "Hardy",
+            False, "Hardy", None,
         ),
     )
 

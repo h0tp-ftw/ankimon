@@ -207,6 +207,31 @@ def get_ankidex_data(db, settings, tracker=None):
     )
     caught_ids = {row[0] for row in cursor.fetchall()}
 
+    # 2.b forms
+    caught_forms = {}
+    try:
+        cursor = db.execute(
+            "SELECT pokedex_id, special_form FROM captured_pokemon WHERE pokedex_id IS NOT NULL AND special_form IS NOT NULL"
+        )
+        for row in cursor.fetchall():
+            pid = row[0]
+            if pid not in caught_forms:
+                caught_forms[pid] = set()
+            caught_forms[pid].add(row[1])
+    except Exception as e:
+        # DB may not have special_form column yet
+        try:
+            cursor = db.execute(
+                "SELECT pokedex_id, json_extract(data, '$.special_form') as special_form FROM captured_pokemon WHERE pokedex_id IS NOT NULL AND json_extract(data, '$.special_form') IS NOT NULL"
+            )
+            for row in cursor.fetchall():
+                pid = row[0]
+                if pid not in caught_forms:
+                    caught_forms[pid] = set()
+                caught_forms[pid].add(row[1])
+        except Exception:
+            pass
+
     # Released Pokemon (from history). Wrapped so an older/unmigrated DB file
     # (e.g. a restored backup predating the pokemon_history table) degrades to
     # "no released entries" instead of failing the whole payload.
@@ -227,6 +252,17 @@ def get_ankidex_data(db, settings, tracker=None):
     if hasattr(db, "get_caught_ids"):
         try:
             caught_ids.update(db.get_caught_ids())
+        except Exception:
+            pass
+
+    if hasattr(db, "get_caught_forms"):
+        try:
+            for pid in caught_ids:
+                forms = db.get_caught_forms(pid)
+                if forms:
+                    if pid not in caught_forms:
+                        caught_forms[pid] = set()
+                    caught_forms[pid].update(forms)
         except Exception:
             pass
 
@@ -255,8 +291,10 @@ def get_ankidex_data(db, settings, tracker=None):
         else:
             prereqs[str(k)] = v
 
+    caught_forms_list = {pid: list(forms) for pid, forms in caught_forms.items() if forms}
     return {
         "owned": list(caught_ids),
+        "caught_forms": caught_forms_list,
         "shinies": shiny_owned_ids,
         "seen": list(seen_ids),
         "encounterable": list(encounterable_ids),
