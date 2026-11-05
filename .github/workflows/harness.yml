@@ -19,7 +19,7 @@ permissions:
 jobs:
   tier1:
     name: Tier 1 — logic gate + functionality sweep (no Qt)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,7 +40,7 @@ jobs:
 
   tier2:
     name: Tier 2 — real add-on, offscreen Qt
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -77,7 +77,7 @@ jobs:
 
   tier2_webengine:
     name: Tier 2 WebEngine — Settings, backups + reviewer HUD
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:

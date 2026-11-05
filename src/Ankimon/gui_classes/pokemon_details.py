@@ -1626,7 +1626,7 @@ def tm_attack_details_window(
     owned_tm_moves = [
         item["item_name"]
         for item in all_items
-        if (item.get("extra_data") or {}).get("type") == "TM"
+        if (item.get("extra_data") or {}).get("type") == "TM" and item.get("quantity", 0) > 0
     ]
 
     # 5. Filter valid TMs by ownership

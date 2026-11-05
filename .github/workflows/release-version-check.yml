@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Bound once and read as "$TAG" (never ${{ }} inside run:), so a crafted
       # tag name can't inject shell.
