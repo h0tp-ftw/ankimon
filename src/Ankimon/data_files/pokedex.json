@@ -33745,7 +33745,8 @@
     "color": "Brown",
     "evos": [
       "Lycanroc",
-      "Lycanroc-Midnight"
+      "Lycanroc-Midnight",
+      "Lycanroc-Dusk"
     ],
     "eggGroups": [
       "Field"
@@ -33761,7 +33762,7 @@
   },
   "rockruffdusk": {
     "species_id": 744,
-    "actual_id": 744,
+    "actual_id": 10151,
     "name": "Rockruff-Dusk",
     "baseSpecies": "Rockruff",
     "forme": "Dusk",

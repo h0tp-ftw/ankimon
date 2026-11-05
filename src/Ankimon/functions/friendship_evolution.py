@@ -197,7 +197,10 @@ def get_time_of_day(now: Optional[datetime] = None) -> str:
     hour = moment.hour
     day_start = _coerce_hour(settings_obj.get("evolution.day_start_hour", 6), 6)
     night_start = _coerce_hour(settings_obj.get("evolution.night_start_hour", 18), 18)
-    return "day" if day_start <= hour < night_start else "night"
+    dusk_start = (night_start - 1) % 24
+    if dusk_start <= hour < night_start:
+        return "dusk"
+    return "day" if day_start <= hour < dusk_start else "night"
 
 
 def current_time_label(now: Optional[datetime] = None) -> str:
@@ -219,7 +222,7 @@ def current_time_label(now: Optional[datetime] = None) -> str:
 
     moment = now if now is not None else _now_in_configured_tz()
     time_of_day = get_time_of_day(moment)
-    icon = "☀️ Day" if time_of_day == "day" else "🌙 Night"
+    icon = "☀️ Day" if time_of_day == "day" else "🌆 Dusk" if time_of_day == "dusk" else "🌙 Night"
     label = f"{icon} · {moment.strftime('%H:%M')}"
     if not settings_obj.get("evolution.timezone_auto", True):
         try:
@@ -519,6 +522,8 @@ def get_level_evolutions_for_species(
                         time_of_day = "day"
                     elif "night" in condition:
                         time_of_day = "night"
+                    elif "evening" in condition or "dusk" in condition:
+                        time_of_day = "dusk"
 
                     evolutions.append(
                         LevelEvolution(
