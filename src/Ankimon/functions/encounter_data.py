@@ -1203,7 +1203,19 @@ MEGA_AND_SPECIAL = [
     10276,  # terapagosterastal      (species=1024)
     10277,  # terapagosstellar       (species=1024)
     # Other Mythical/Legendary Special Forms
+    10277,  # terapagosstellar       (species=1024)
+    # Other Mythical/Legendary Special Forms
     10086,  # hoopaunbound           (species=720)
+    # Rare Alt Forms
+    10126,  # lycanrocmidnight       (species=745)
+    10152,  # lycanrocdusk           (species=745)
+    10136,  # minior red
+    10137,  # minior orange
+    10138,  # minior yellow
+    10139,  # minior green
+    10140,  # minior blue
+    10141,  # minior indigo
+    10142,  # minior violet
 ]
 
 MEGA = MEGA_AND_SPECIAL
@@ -1325,18 +1337,10 @@ UNAVAILABLE = [
     10123,
     10124,
     10125,  # oricoriopompom, oricoriopau, oricoriosensu
-    10126,
     10127,
-    10136,  # lycanrocmidnight, wishiwashischool, minior
-    10137,
-    10138,
-    10139,  # miniororange, minioryellow, miniorgreen
-    10140,
-    10141,
-    10142,  # miniorblue, miniorindigo, miniorviolet
+    # wishiwashischool is 10127 above
     10143,
     10148,  # mimikyubusted, pikachupartner
-    10152,  # lycanrocdusk
     10158,
     10159,
     10160,  # pikachustarter, eeveestarter, pikachuworld
