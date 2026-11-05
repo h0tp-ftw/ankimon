@@ -32,6 +32,9 @@ class MoveSelectionDialog(QDialog):
         exec() blocks the calling turn on a dialog nobody can see."""
         super().__init__(parent)
         self.setWindowTitle("Select a Move")
+        # Contanki's get_state() checks objectName() against a hardcoded list of strings
+        # to activate its "dialog" profile. If unmatched, it drops inputs ("NoFocus").
+        self.setObjectName("Preferences")
         self.resize(300, 200)
         self.selected_move = None
         self.mainpokemon_attacks = list(mainpokemon_attacks)
