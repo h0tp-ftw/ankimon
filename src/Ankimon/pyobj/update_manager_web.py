@@ -12,6 +12,9 @@ from ..resources import IS_EXPERIMENTAL_BUILD, addon_ver, user_path_sprites
 from . import update_manager as updater
 
 
+_sprite_check_up_to_date = False
+
+
 class UpdateManagerBridge(QObject):
     """Web UI adapter for the existing updater operations."""
 
@@ -29,6 +32,7 @@ class UpdateManagerBridge(QObject):
         self._sprite_diff = None
         self._sprite_thread = None
         self._close_after_sprite_update = False
+        self._sprite_check_up_to_date = _sprite_check_up_to_date
 
     def _log_error(self, message):
         if self._logger:
@@ -72,6 +76,29 @@ class UpdateManagerBridge(QObject):
         opened = QDesktopServices.openUrl(QUrl("https://github.com/h0tp-ftw/ankimon"))
         if not opened:
             self._log_error("Could not open Ankimon's GitHub page in the default browser.")
+        return opened
+
+    @pyqtSlot(str, result=bool)
+    def openGitHubTarget(self, target):
+        url = QUrl(target)
+        path = url.path()
+        if (
+            not url.isValid()
+            or url.scheme().lower() != "https"
+            or url.host().lower() != "github.com"
+            or url.userName()
+            or url.password()
+            or url.port(-1) not in (-1, 443)
+            or not (
+                path == "/h0tp-ftw/ankimon"
+                or path.startswith("/h0tp-ftw/ankimon/")
+            )
+        ):
+            self._log_error(f"Rejected invalid Update Manager GitHub URL: {target}")
+            return False
+        opened = QDesktopServices.openUrl(url)
+        if not opened:
+            self._log_error(f"Could not open GitHub source URL: {target}")
         return opened
 
     def _start_query(self, operation, worker, success, failure=None):
@@ -215,6 +242,7 @@ class UpdateManagerBridge(QObject):
                     "experimental_build": IS_EXPERIMENTAL_BUILD,
                     "channel": updater.get_update_channel(),
                     "skip_until": (data["state"] or {}).get("skip_until"),
+                    "sprite_check_up_to_date": self._sprite_check_up_to_date,
                 },
             )
 
@@ -512,12 +540,20 @@ class UpdateManagerBridge(QObject):
             )
 
         def done(result):
+            global _sprite_check_up_to_date
             self._sprite_diff = (
                 result if result.get("status") == "update_available" else None
             )
+            self._sprite_check_up_to_date = (
+                result.get("status") == "up_to_date"
+            )
+            _sprite_check_up_to_date = self._sprite_check_up_to_date
             self._send("onSpritesChecked", result)
 
         def failed(error):
+            global _sprite_check_up_to_date
+            self._sprite_check_up_to_date = False
+            _sprite_check_up_to_date = False
             self._send("onSpritesCheckFailed", {"message": str(error)})
 
         self._start_query("sprites-check", worker, done, failed)

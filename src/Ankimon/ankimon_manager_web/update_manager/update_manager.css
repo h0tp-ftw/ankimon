@@ -21,6 +21,9 @@
 }
 
 .channel-row {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
 	min-height: 42px;
 }
 
@@ -39,6 +42,7 @@
 	width: 36px;
 	height: 36px;
 	margin-left: auto;
+	flex: 0 0 36px;
 	padding: 6px;
 	color: #58a6ff;
 	background: transparent;
@@ -61,8 +65,13 @@
 	fill: currentColor;
 }
 
+.installed-source-detail {
+	color: var(--text-main);
+	font: .82rem 'JetBrains Mono', monospace;
+}
+
 .top-bar-titles h2 {
-	margin-bottom: 5px;
+	margin-bottom: 8px;
 }
 
 .top-bar-titles p {
@@ -283,20 +292,24 @@
 
 .status-text {
 	margin: 0;
-	font-weight: 700;
+	color: var(--text-muted);
+	font-weight: 400;
 	line-height: 1.5;
 }
 
 .status-text.success {
 	color: var(--update-success);
+	font-weight: 700;
 }
 
 .status-text.warning {
 	color: var(--update-warning);
+	font-weight: 700;
 }
 
 .status-text.error {
 	color: var(--update-error);
+	font-weight: 700;
 }
 
 .commit-list {
@@ -325,6 +338,34 @@
 
 .branch-actions {
 	justify-content: space-between;
+}
+
+.operation-progress,
+.sprite-progress {
+	display: grid;
+	gap: 5px;
+	width: 100%;
+}
+
+.progress-label {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	color: var(--text-muted);
+	font-size: .78rem;
+	line-height: 1.35;
+}
+
+.progress-label span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.progress-label output {
+	flex: 0 0 auto;
+	color: var(--text-main);
+	font: 600 .78rem 'JetBrains Mono', monospace;
 }
 
 .check-row {
@@ -422,27 +463,46 @@
 }
 
 progress {
+	display: block;
 	width: 100%;
-	height: 12px;
+	height: 24px;
+	overflow: hidden;
+	border: 1px solid var(--border-main);
+	border-radius: 6px;
+	background: var(--bg-darker);
 	accent-color: var(--accent-blue);
 }
 
-.btn-primary,
-.btn-secondary {
+progress::-webkit-progress-bar {
+	border-radius: 5px;
+	background: var(--bg-darker);
+}
+
+progress::-webkit-progress-value {
+	border-radius: 5px;
+	background: var(--accent-blue);
+	transition: width .18s ease;
+}
+
+progress::-moz-progress-bar {
+	border-radius: 5px;
+	background: var(--accent-blue);
+	transition: width .18s ease;
+}
+
+.btn-primary {
 	color: #fff;
 	background: #2383e2;
 	border: 1px solid #2383e2;
 }
 
-.btn-primary:hover:not(:disabled),
-.btn-secondary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled) {
 	color: #fff;
 	background: #4a9cf0;
 	border-color: #4a9cf0;
 }
 
-.btn-primary:disabled,
-.btn-secondary:disabled {
+.btn-primary:disabled {
 	color: rgba(255, 255, 255, .72);
 	background: #2367a8;
 	border-color: #2367a8;
@@ -451,6 +511,15 @@ progress {
 
 .sprites-snooze-row {
 	padding: 5px 2px 0;
+}
+
+.sprites-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.sprites-actions .button-row {
+	justify-content: flex-end;
 }
 
 .code-error {
@@ -507,6 +576,16 @@ progress {
 	color: var(--text-main);
 	line-height: 1.55;
 	white-space: pre-line;
+}
+
+.source-link {
+	color: var(--accent-blue);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.source-link:hover {
+	color: #8bc4ff;
 }
 
 .modal-actions {
