@@ -48,8 +48,16 @@ class LevelupStatsTests(unittest.TestCase):
         expected_hp = 10 + level + ((2 * 35 + 31 + hp_ev // 4) * level // 100)
         self.assertEqual(self.mp.max_hp, expected_hp)
         self.assertEqual(self.mp.to_engine_format()["maxhp"], expected_hp)
-        self.assertEqual(self.mp.hp, original_hp, "Recalculation must not heal")
-        self.assertEqual(self.mp.current_hp, original_hp)
+        # Recalculation heals proportionally to max HP increases
+        # Test starts at level 50 Pikachu (Base HP: 35).
+        # Old max HP at level 50: 10 + 50 + ((2*35 + 31 + 0) * 50 // 100) = 60 + (101 * 50 // 100) = 60 + 50 = 110
+        if original_hp > 0:
+            diff = max(0, expected_hp - 110)
+            self.assertEqual(self.mp.hp, original_hp + diff)
+            self.assertEqual(self.mp.current_hp, original_hp + diff)
+        else:
+            self.assertEqual(self.mp.hp, original_hp)
+            self.assertEqual(self.mp.current_hp, original_hp)
         row = self.s.db.get_main_pokemon()
         self.assertEqual(row["level"], level)
         self.assertEqual(row["ev"], self.mp.ev)

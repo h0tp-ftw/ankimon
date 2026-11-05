@@ -915,6 +915,14 @@ class ItemWindow(QWidget):
         # ._normalize_loaded_hp reads ``current_hp`` first, so bumping ``hp``
         # alone makes the heal disappear the next time this record is loaded.
         self.main_pokemon.current_hp = self.main_pokemon.hp
+        # Keep engine state in sync if a battle is ongoing
+        try:
+            from ..battle_loop import _state
+            from ..functions.ankimon_hooks_to_poke_engine import sync_active_pokemon_stats
+            sync_active_pokemon_stats(_state.new_state, self.main_pokemon, sync_hp=True)
+        except Exception as exc:
+            self.logger.log("warning", f"Could not sync healed HP to battle state: {exc}")
+
         # Everything below is bookkeeping and presentation, and runs only once
         # the HP is safely granted. Badge 20 is "used a healing item", so it is
         # awarded here rather than before the heal: an item was really spent.
