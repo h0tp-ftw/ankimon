@@ -189,3 +189,49 @@ def test_normalize_name_fix_matters_for_reset_trigger():
 
     for name in ["Mr. Mime", "Farfetch'd", "Type: Null", "Ho-Oh"]:
         assert normalize_name(name) != name.lower()
+
+
+@pytest.mark.parametrize(
+    ("multiplier", "substitute", "healing"),
+    [(0.5, False, 1), (2, False, 4), (0.5, True, 1), (2, True, 3)],
+)
+def test_native_shell_bell_uses_review_scaled_damage(
+    monkeypatch, multiplier, substitute, healing
+):
+    """The native item sees scaled, capped damage through the existing bridge."""
+    from Ankimon.poke_engine.battle import Pokemon as BattlePokemon
+    from Ankimon.poke_engine.config import ShowdownConfig
+
+    monkeypatch.setattr(ShowdownConfig, "damage_calc_type", "average")
+
+    def pokemon(hp, item):
+        result = hook.Pokemon.from_state_pokemon_dict(
+            BattlePokemon("mew", 50).to_dict()
+        )
+        result.types = [value.lower() for value in result.types]
+        result.hp, result.maxhp, result.item, result.ability = hp, 100, item, None
+        return result
+
+    holder, target = pokemon(50, "shellbell"), pokemon(100, None)
+    holder.speed, target.speed = 200, 100
+    if substitute:
+        target.volatile_status.add(constants.SUBSTITUTE)
+    mutator = hook.StateMutator(
+        hook.State(hook.reset_side(holder), hook.reset_side(target), None, None, False)
+    )
+    mutator.review_based_damage_multiplier = multiplier
+    (outcome,) = hook.get_all_state_instructions(mutator, "tackle", "splash")
+    assert mutator.review_based_damage_multiplier_applied
+    assert [
+        instruction[2]
+        for instruction in outcome.instructions
+        if instruction[:2] == (constants.MUTATOR_HEAL, constants.USER)
+    ] == [healing]
+    assert (holder.hp, target.hp) == (50, 100)
+    mutator.apply(outcome.instructions)
+    try:
+        assert holder.hp == 50 + healing
+        assert target.hp == (100 if substitute else 100 - int(17 * multiplier))
+    finally:
+        mutator.reverse(outcome.instructions)
+    assert (holder.hp, target.hp) == (50, 100)
