@@ -505,3 +505,38 @@ def test_hud_refresh_and_grid_refresh_are_triggered(collection_dialog):
 
     reviewer_obj.refresh_hud.assert_called_once_with()
     collection_dialog._singletons.pokemon_pc.refresh_pokemon_grid.assert_called_once_with()
+
+
+def test_switch_preserves_new_pokemon_hp(collection_dialog):
+    """Test that switching pokemon correctly sets the HP of the incoming pokemon.
+
+    If the incoming pokemon does not have some keys, it should not leak from the outgoing pokemon.
+    """
+    from unittest.mock import MagicMock
+    PokemonObject = collection_dialog._PokemonObject
+
+    outgoing = PokemonObject(
+        name="pikachu", id=25, shiny=False, level=5, ability="Static",
+        type=["Electric"], gender="M", growth_rate="medium", captured_date=None,
+        tier="Normal", individual_id="outgoing-uuid", base_stats={"hp": 100},
+    )
+    # say charizard faints and recovers full hp
+    outgoing.max_hp = 100
+    outgoing.hp = 100
+    outgoing.current_hp = 100
+
+    glalie_data = {
+        "id": 362,
+        "name": "glalie",
+        "hp": 20,
+        "current_hp": 20,
+        "level": 100,
+        "base_stats": {"hp": 100},
+        "individual_id": "glalie-uuid",
+    }
+
+    main, db = _call(collection_dialog, glalie_data, db=_FakeDB(existing_main=outgoing.to_dict()))
+
+    assert main.hp == 20
+    assert main.current_hp == 20
+    assert db.saved_main[-1]["hp"] == 20
