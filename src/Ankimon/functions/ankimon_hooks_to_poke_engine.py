@@ -304,6 +304,12 @@ class _FormTolerantPokedex:
         return self._base.items()
 
 
+
+def _patch_engine_powertrip():
+    from ..poke_engine.special_effects.moves.modify_move import move_lookup, storedpower
+    move_lookup['powertrip'] = storedpower
+
+
 def _patch_engine_constants():
     # 'allies' is the doubles target for Howl, Life Dew, Jungle Healing and Lunar
     # Blessing, but the engine never listed it as self-targeting, so anything keyed
@@ -621,6 +627,7 @@ def _apply_engine_patch(patch):
             pass
 
 
+_apply_engine_patch(_patch_engine_powertrip)
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
 _apply_engine_patch(_install_stancechange_compat)
