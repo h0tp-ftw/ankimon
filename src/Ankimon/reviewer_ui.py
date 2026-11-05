@@ -105,6 +105,10 @@ def cycle_team_pokemon():
         _team_cycle_index = (_team_cycle_index + 1) % len(team_ids)
         next_id = team_ids[_team_cycle_index]
 
+        # Save the current active pokemon before switching so its HP isn't lost
+        if main_pokemon and getattr(main_pokemon, "individual_id", None):
+            save_main_pokemon(main_pokemon)
+
         pokemon_data = get_pokemon_from_collection(next_id)
         if not pokemon_data or not pokemon_data.get("id"):
             tooltip("Invalid pokemon data")
