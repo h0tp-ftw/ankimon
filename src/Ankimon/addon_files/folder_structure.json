@@ -52230,6 +52230,10 @@
                                     "type": "file"
                                 },
                                 {
+                                    "name": "metal-alloy.png",
+                                    "type": "file"
+                                },
+                                {
                                     "name": "metal-coat.png",
                                     "type": "file"
                                 },
