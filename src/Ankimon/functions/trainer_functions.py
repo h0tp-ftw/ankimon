@@ -476,6 +476,10 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         evo_id = None  # Initialize variable
 
         levels_gained = 0
+
+        if not remove_level_cap and current_level >= 100:
+            exp = 0
+
         logger.log("info", "Running XP share function")
         if experience_needed > exp + current_xp:
             pokemon["xp"] = current_xp + exp
@@ -503,6 +507,10 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
                 else:
                     break
             pokemon["level"] = current_level
+
+            if not remove_level_cap and current_level == 100:
+                exp = 0
+
             pokemon["xp"] = 0 if exp < 0 else exp
 
         # Passive XP Share earns less friendship than battling; neither is capped.

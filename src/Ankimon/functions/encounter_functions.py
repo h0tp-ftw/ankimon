@@ -1402,6 +1402,7 @@ def save_main_pokemon_progress(
         main_pokemon.xp += exp
         level_cap = 100
     else:
+        main_pokemon.xp = 0
         # Cap is on AND the main is already level 100: no XP is granted, but
         # level_cap must still be defined or the while-loop condition below
         # raises NameError and crashes every post-cap defeat (upstream #402).
