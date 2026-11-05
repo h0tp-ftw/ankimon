@@ -2507,21 +2507,29 @@ class PokemonPC(QDialog):
 
                     # Add new Move Manager
                     def _save_pokemon(data):
-                        current = new_move_manager._current_pokemon()
-                        if current is None or not data:
+                        # Always fetch the absolutely freshest state from the database
+                        # right before saving, to ensure we don't accidentally overwrite
+                        # background changes like item evolutions with a stale species dictionary.
+                        individual_id = data.get("individual_id")
+                        if not individual_id:
                             return
-                        # A move editor must not restore cached progress or a
-                        # deleted individual after a nested modal interaction.
-                        current["attacks"] = list(data.get("attacks", []))
-                        services.db.save_pokemon(current)
+
+                        fresh_db_state = services.db.get_pokemon(individual_id)
+                        if not fresh_db_state:
+                            return
+
+                        fresh_db_state["attacks"] = list(data.get("attacks", []))
+                        services.db.save_pokemon(fresh_db_state)
+
                         # Keep the live main-pokemon singleton in step with a
                         # moveset edit, mirroring give_held_item/remove_held_item.
                         main_pkmn = services.main_pokemon
                         if main_pkmn is not None and getattr(
                             main_pkmn, "individual_id", None
-                        ) == data.get("individual_id"):
+                        ) == individual_id:
                             main_pkmn.attacks = data.get("attacks", main_pkmn.attacks)
-                        self.show_pokemon_details(pokemon)
+
+                        self.show_pokemon_details(fresh_db_state)
 
                     # Retire the previous manager before building a new one.
                     # It is parented to the persistent details_widget (not the
