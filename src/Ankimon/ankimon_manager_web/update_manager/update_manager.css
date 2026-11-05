@@ -53,17 +53,11 @@
 	border: 0;
 	border-radius: 999px;
 	cursor: pointer;
-	overflow: hidden;
-	white-space: nowrap;
-	transition: width .24s ease, flex-basis .24s ease, padding .24s ease,
-		background-color .2s ease, box-shadow .2s ease;
+	transition: background-color .2s ease, box-shadow .2s ease;
 }
 
 .github-link:hover,
 .github-link:focus-visible {
-	width: 260px;
-	flex-basis: 260px;
-	padding: 6px 12px;
 	background: #1f6feb;
 	box-shadow: 0 4px 16px rgba(31, 111, 235, .28);
 }
@@ -73,22 +67,6 @@
 	width: 24px;
 	height: 24px;
 	flex: 0 0 24px;
-	transition: transform .24s ease;
-}
-
-.github-link-text {
-	max-width: 0;
-	overflow: hidden;
-	opacity: 0;
-	font-size: .86rem;
-	font-weight: 700;
-	transition: max-width .24s ease, opacity .16s ease;
-}
-
-.github-link:hover .github-link-text,
-.github-link:focus-visible .github-link-text {
-	max-width: 205px;
-	opacity: 1;
 }
 
 .installed-source-detail {
@@ -375,28 +353,6 @@
 	width: 100%;
 }
 
-.sprite-check-block {
-	display: grid;
-	gap: 5px;
-}
-
-.sprite-check-progress {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.sprite-check-progress progress {
-	min-width: 0;
-	flex: 1 1 auto;
-}
-
-.sprite-check-progress output {
-	flex: 0 0 auto;
-	color: var(--text-main);
-	font: 600 .78rem 'JetBrains Mono', monospace;
-}
-
 .progress-label {
 	display: flex;
 	align-items: baseline;
@@ -404,12 +360,27 @@
 	gap: 12px;
 	color: var(--text-muted);
 	font-size: .78rem;
+	font-weight: 400;
 	line-height: 1.35;
 }
 
 .progress-label span {
 	min-width: 0;
 	overflow-wrap: anywhere;
+	font-weight: 400;
+}
+
+.progress-label .progress-message-complete {
+	color: var(--update-success);
+}
+
+.progress-label .progress-message-failure {
+	color: var(--update-warning);
+	font-weight: 700;
+}
+
+.progress-message-complete strong {
+	font-weight: 700;
 }
 
 .progress-label output {
@@ -561,6 +532,26 @@ progress::-moz-progress-bar {
 
 .sprites-snooze-row {
 	padding: 0 2px;
+}
+
+.sprite-progress {
+	box-sizing: border-box;
+	margin-top: 12px;
+	padding: 12px 12px 0;
+	border-top: 1px dashed var(--border-main);
+}
+
+.sprite-progress .progress-label {
+	padding: 0 4px;
+}
+
+.sprite-progress progress {
+	width: calc(100% - 8px);
+	margin: 0 4px;
+}
+
+.sprite-progress.hidden {
+	display: none;
 }
 
 .sprites-actions {
