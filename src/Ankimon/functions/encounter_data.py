@@ -576,6 +576,13 @@ NORMAL = [
     477,
     478,
     479,  # dusknoir, froslass, rotom
+    10004,
+    10005,  # wormadam forms
+    10008,
+    10009,
+    10010,
+    10011,
+    10012,  # rotom forms
     # Generation 5
     504,
     505,
@@ -1290,13 +1297,6 @@ UNAVAILABLE = [
     10154,  # ribombeetotem, araquanidtotem, togedemarutotem
     10256,  # palafinhero
     # Alternate Species Forms
-    10004,
-    10005,  # wormadamsandy, wormadamtrash
-    10008,
-    10009,  # rotomheat, rotomwash
-    10010,
-    10011,
-    10012,  # rotomfrost, rotomfan, rotommow
     10013,
     10014,
     10015,  # castform sunny, castformrainy, castformsnowy
@@ -1488,6 +1488,15 @@ PREREQUISITES = {
     493: {487},  # Arceus requires Lake Trio + Dialga + Palkia + Giratina
     490: {489},  # Phione requires Manaphy
     486: {894, 895, 377, 378, 379},  # Regigigas requires Eleki + Drago + Regi Trio
+
+
+    10004: {413},  # Wormadam-Sandy requires Wormadam-Plant
+    10005: {413},  # Wormadam-Trash requires Wormadam-Plant
+    10008: {479},  # Rotom-Heat requires Rotom
+    10009: {479},  # Rotom-Wash requires Rotom
+    10010: {479},  # Rotom-Frost requires Rotom
+    10011: {479},  # Rotom-Fan requires Rotom
+    10012: {479},  # Rotom-Mow requires Rotom
     # Generation 5
     647: {638, 639, 640},  # Keldeo requires Swords of Justice
     10024: {647},  # Keldeo Resolute requires Keldeo

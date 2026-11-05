@@ -232,6 +232,7 @@ POKEMON_TIERS = {
     402, 403, 404,	# kricketune, shinx, luxio
     405, 407, 412,	# luxray, roserade, burmy
     413, 414, 415,	# wormadam-plant, mothim, combee
+    10004, 10005,  # wormadam forms
     416, 417, 418,	# vespiquen, pachirisu, buizel
     419, 420, 421,	# floatzel, cherubi, cherrim
     422, 423, 424,	# shellos, gastrodon, ambipom
@@ -251,6 +252,7 @@ POKEMON_TIERS = {
     471, 472, 473,	# glaceon, gliscor, mamoswine
     474, 475, 476,	# porygon-z, gallade, probopass
     477, 478, 479,	# dusknoir, froslass, rotom
+    10008, 10009, 10010, 10011, 10012,  # rotom forms
     # Generation 5
     504, 505, 506,	# patrat, watchog, lillipup
     507, 508, 509,	# herdier, stoutland, purrloin
