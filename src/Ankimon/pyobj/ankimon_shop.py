@@ -58,34 +58,86 @@ class PokemonShopManager:
     def get_daily_items(self):
         """Generate daily items based on the current date."""
         db = services.db
-        shop_data = db.get_user_data("todays_shop")
-        if shop_data:
-            if shop_data.get("items") and shop_data.get(
-                "date"
-            ) == datetime.now().strftime("%Y-%m-%d"):
-                return shop_data.get("items")
+        shop_data = None
+        if db:
+            shop_data = db.get_user_data("todays_shop")
 
-        seed = datetime.now().strftime("%Y-%m-%d")
-        rng = random.Random(seed)
+        target_slots = self.number_of_daily_items
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        items = []
+        if shop_data and shop_data.get("date") == today:
+            items = shop_data.get("items", [])
+
         pool = get_daily_items_pool()
-        num_items = min(self.number_of_daily_items, len(pool))
-        return rng.sample(pool, num_items)
+        num_items = min(target_slots, len(pool))
+
+        if len(items) >= num_items:
+            return items
+
+        seed = today
+        rng = random.Random(seed)
+
+        if items:
+            existing_names = {i["name"] for i in items}
+            remaining_pool = [item for item in pool if item["name"] not in existing_names]
+            needed = num_items - len(items)
+            new_items = rng.sample(remaining_pool, needed)
+            generated_items = items + new_items
+        else:
+            generated_items = rng.sample(pool, num_items)
+
+        if not shop_data or shop_data.get("date") != today:
+            shop_data = {"items": generated_items, "technical_machines": [], "date": today}
+        else:
+            shop_data["items"] = generated_items
+
+        if db:
+            db.set_user_data("todays_shop", shop_data)
+
+        return generated_items
 
     def get_daily_tms(self):
         """Works like get_daily_items, but for TMs"""
         db = services.db
-        shop_data = db.get_user_data("todays_shop")
-        if shop_data:
-            if shop_data.get("technical_machines") and shop_data.get(
-                "date"
-            ) == datetime.now().strftime("%Y-%m-%d"):
-                return shop_data.get("technical_machines")
+        shop_data = None
+        if db:
+            shop_data = db.get_user_data("todays_shop")
+
+        target_slots = self.number_of_daily_items
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        tms = []
+        if shop_data and shop_data.get("date") == today:
+            tms = shop_data.get("technical_machines", [])
 
         tm_pool = self.get_tm_pool()
-        seed = datetime.now().strftime("%Y-%m-%d")
+        num_tms = min(target_slots, len(tm_pool))
+
+        if len(tms) >= num_tms:
+            return tms
+
+        seed = today
         rng = random.Random(seed)
-        num_tms = min(self.number_of_daily_items, len(tm_pool))
-        return rng.sample(tm_pool, num_tms)
+
+        if tms:
+            existing_names = {t["name"] for t in tms}
+            remaining_pool = [tm for tm in tm_pool if tm["name"] not in existing_names]
+            needed = num_tms - len(tms)
+            new_tms = rng.sample(remaining_pool, needed)
+            generated_tms = tms + new_tms
+        else:
+            generated_tms = rng.sample(tm_pool, num_tms)
+
+        if not shop_data or shop_data.get("date") != today:
+            shop_data = {"items": [], "technical_machines": generated_tms, "date": today}
+        else:
+            shop_data["technical_machines"] = generated_tms
+
+        if db:
+            db.set_user_data("todays_shop", shop_data)
+
+        return generated_tms
 
     def get_tm_pool(self) -> list[dict]:
         # Cached: pokemon_tm_learnset.json is immutable at runtime, and this
