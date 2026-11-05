@@ -275,9 +275,10 @@ class TeamBridge(QObject):
                 raise ValueError("team payload must be a list")
         except (TypeError, ValueError) as e:
             return {"ok": False, "message": f"Invalid team payload: {e}"}
-        return self._w.profile_data.handle_save_team(
+        res = self._w.profile_data.handle_save_team(
             team_ids, xp_share_id or None, companion_id or None
         )
+        return res
 
 
 class SettingsBridge(QObject):
@@ -1943,6 +1944,10 @@ class AnkimonItemsWeb(QDialog):
         # The first show() is fed by the open path; later re-shows refresh data.
         self._shown_once = False
 
+        from ..events import subscribe
+        subscribe("settings_changed", self._on_settings_changed)
+        subscribe("team_changed", self._on_team_changed)
+
         # Boot with Items by default; menu entries can call load_screen()
         # before show() to pick a different initial screen.
         self.load_screen(SCREEN_ITEMS)
@@ -3479,6 +3484,12 @@ class AnkimonItemsWeb(QDialog):
             self._apply_sprite_visibility(
                 config.get("gui.show_sprites_across_ankimon", True)
             )
+
+    def _on_team_changed(self, *args, **kwargs):
+        # Refresh mobile and team screens if they're currently active
+        self._invalidate_pokemon_cache()
+        if self.current_screen in (SCREEN_MOBILE, SCREEN_TEAM):
+            self.push_screen_data()
 
     def _refresh_native_windows(self):
         from ..utils import is_alive
