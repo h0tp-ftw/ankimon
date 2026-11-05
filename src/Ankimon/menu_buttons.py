@@ -107,7 +107,7 @@ def create_menu_actions(
     logger: ShowInfoLogger,
     settings_window: SettingsWindow,
     shop_manager: PokemonShopManager,
-    pokedex_window: Pokedex,
+    get_ankidex_window: Callable,
     ankimon_key,
     join_discord_url: Callable,
     open_leaderboard_url: Callable,
