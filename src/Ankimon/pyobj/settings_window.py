@@ -446,6 +446,7 @@ class SettingsWindow(QMainWindow):
                             "Show Pokémon Generation",
                             "Show Pokémon Level",
                             "Show Pokémon Name",
+                            "Show Quick Heal Button",
                             "Show Status Badge",
                             "Show Pokéball Icon",
                             "Show Enemy Shiny Star",
