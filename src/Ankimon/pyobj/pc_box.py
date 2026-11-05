@@ -1544,13 +1544,22 @@ class PokemonPC(QDialog):
 
                 if show_sprites:
                     # SPRITE MODE: Show the Pokémon sprite
+
+                    # Ensure special forms and Megas get the correct name for sprite lookup
+                    # The get_sprite_path uses pokemon_name to find Mega/Gmax sprite IDs
+                    poke_name = pokemon.get("name")
+                    if pokemon.get("mega") and not str(poke_name).lower().endswith("-mega"):
+                        poke_name = f"{poke_name}-Mega"
+                    elif pokemon.get("special_form") and not (str(pokemon.get("special_form")).lower() in str(poke_name).lower()):
+                        poke_name = f"{poke_name}-{pokemon.get('special_form')}"
+
                     pkmn_image_path = get_sprite_path(
                         "front",
                         "gif" if self.gif_in_collection else "png",
                         pokemon["id"],
                         is_shiny,
                         pokemon["gender"],
-                        pokemon.get("name"),
+                        poke_name,
                     )
                 else:
                     # TEXT MODE: Show species name and level
@@ -2046,7 +2055,8 @@ class PokemonPC(QDialog):
             "json_extract(data, '$.iv') as iv_json, json_extract(data, '$.ev') as ev_json, "
             "json_extract(data, '$.base_stats') as base_stats_json, json_extract(data, '$.stats') as stats_json, json_extract(data, '$.nature') as nature, "
             "json_extract(data, '$.attacks') as attacks_json, "
-            "json_extract(data, '$.pokemon_defeated') as pokemon_defeated "
+            "json_extract(data, '$.pokemon_defeated') as pokemon_defeated, "
+            "json_extract(data, '$.mega') as mega, json_extract(data, '$.special_form') as special_form "
             "FROM captured_pokemon WHERE 1=1"
         ]
         params = []
@@ -2168,6 +2178,8 @@ class PokemonPC(QDialog):
                     "shiny": bool(row["shiny"]),
                     "level": row["level"],
                     "gender": row["gender"],
+                    "mega": bool(row["mega"]),
+                    "special_form": row["special_form"],
                     "is_favorite": bool(row["is_favorite"]),
                     "held_item": row["held_item"],
                     "friendship": int(row["friendship"] or 0),

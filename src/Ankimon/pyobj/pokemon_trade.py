@@ -128,13 +128,19 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
         try:
             from ..functions.sprite_functions import get_sprite_path
 
+            poke_name = pokemon_name
+            if challenge_pokemon.get("mega") and not str(poke_name).lower().endswith("-mega"):
+                poke_name = f"{poke_name}-Mega"
+            elif challenge_pokemon.get("special_form") and not (str(challenge_pokemon.get("special_form")).lower() in str(poke_name).lower()):
+                poke_name = f"{poke_name}-{challenge_pokemon.get('special_form')}"
+
             sprite_path = get_sprite_path(
                 side="front",
                 sprite_type="gif",
                 id=pokemon_id,
                 shiny=shiny,
                 gender=gender,
-                pokemon_name=pokemon_name,
+                pokemon_name=poke_name,
             )
 
             if os.path.exists(sprite_path):
@@ -1865,13 +1871,19 @@ class PokemonTrade:
         # Only load and display sprite if setting allows
         show_sprites = self._should_show_sprites()
         if show_sprites:
+            poke_name = self.name
+            if getattr(self, "mega", False) and not str(poke_name).lower().endswith("-mega"):
+                poke_name = f"{poke_name}-Mega"
+            elif getattr(self, "special_form", None) and not (str(getattr(self, "special_form")).lower() in str(poke_name).lower()):
+                poke_name = f"{poke_name}-{getattr(self, 'special_form')}"
+
             your_pokemon_gif_path = get_sprite_path(
                 side="front",
                 sprite_type="gif",
                 id=self.id,
                 shiny=getattr(self, "shiny", False),
                 gender=self.gender,
-                pokemon_name=self.name,
+                pokemon_name=poke_name,
             )
 
             your_pokemon_movie = QMovie(your_pokemon_gif_path)
