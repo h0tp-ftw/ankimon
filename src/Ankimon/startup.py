@@ -334,6 +334,7 @@ def _apply_first_enemy(enemy_info):
         ev_yield,
         shiny,
         nature,
+        special_form,
     ) = enemy_info
 
     enemy_pokemon.update_stats(
@@ -355,6 +356,7 @@ def _apply_first_enemy(enemy_info):
         tier=tier,
         ev_yield=ev_yield,
         shiny=shiny,
+        special_form=special_form,
     )
     max_hp = enemy_pokemon.calculate_max_hp()
     enemy_pokemon.current_hp = max_hp
