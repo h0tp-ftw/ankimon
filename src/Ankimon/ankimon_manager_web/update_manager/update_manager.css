@@ -43,26 +43,52 @@
 	height: 36px;
 	margin-left: auto;
 	flex: 0 0 36px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 8px;
 	padding: 6px;
-	color: #58a6ff;
+	color: #fff;
 	background: transparent;
 	border: 0;
-	border-radius: 8px;
+	border-radius: 999px;
 	cursor: pointer;
-	transition: color .15s ease, background .15s ease;
+	overflow: hidden;
+	white-space: nowrap;
+	transition: width .24s ease, flex-basis .24s ease, padding .24s ease,
+		background-color .2s ease, box-shadow .2s ease;
 }
 
 .github-link:hover,
 .github-link:focus-visible {
-	color: #8bc4ff;
-	background: rgba(88, 166, 255, .12);
+	width: 260px;
+	flex-basis: 260px;
+	padding: 6px 12px;
+	background: #1f6feb;
+	box-shadow: 0 4px 16px rgba(31, 111, 235, .28);
 }
 
 .github-link svg {
 	display: block;
-	width: 100%;
-	height: 100%;
-	fill: currentColor;
+	width: 24px;
+	height: 24px;
+	flex: 0 0 24px;
+	transition: transform .24s ease;
+}
+
+.github-link-text {
+	max-width: 0;
+	overflow: hidden;
+	opacity: 0;
+	font-size: .86rem;
+	font-weight: 700;
+	transition: max-width .24s ease, opacity .16s ease;
+}
+
+.github-link:hover .github-link-text,
+.github-link:focus-visible .github-link-text {
+	max-width: 205px;
+	opacity: 1;
 }
 
 .installed-source-detail {
@@ -157,6 +183,7 @@
 	border: 1px solid var(--border-main);
 	border-radius: 12px;
 	box-shadow: 0 14px 36px rgba(0, 0, 0, .45);
+	overscroll-behavior: contain;
 }
 
 .custom-select-menu .custom-select-search {
@@ -169,6 +196,7 @@
 	gap: 3px;
 	max-height: 230px;
 	overflow-y: auto;
+	overscroll-behavior-y: contain;
 }
 
 .custom-select-option {
@@ -347,6 +375,28 @@
 	width: 100%;
 }
 
+.sprite-check-block {
+	display: grid;
+	gap: 5px;
+}
+
+.sprite-check-progress {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.sprite-check-progress progress {
+	min-width: 0;
+	flex: 1 1 auto;
+}
+
+.sprite-check-progress output {
+	flex: 0 0 auto;
+	color: var(--text-main);
+	font: 600 .78rem 'JetBrains Mono', monospace;
+}
+
 .progress-label {
 	display: flex;
 	align-items: baseline;
@@ -510,16 +560,27 @@ progress::-moz-progress-bar {
 }
 
 .sprites-snooze-row {
-	padding: 5px 2px 0;
+	padding: 0 2px;
 }
 
 .sprites-actions {
 	display: flex;
-	justify-content: flex-end;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 }
 
 .sprites-actions .button-row {
 	justify-content: flex-end;
+	flex: 0 0 auto;
+}
+
+.sprites-actions .check-row {
+	flex: 0 1 auto;
+}
+
+.update-content.has-open-dropdown {
+	padding-bottom: 360px;
 }
 
 .code-error {

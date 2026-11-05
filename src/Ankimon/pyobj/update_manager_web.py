@@ -254,9 +254,22 @@ class UpdateManagerBridge(QObject):
 
     @pyqtSlot(result="QVariant")
     def loadDeveloperData(self):
+        release_order = list(self._releases)
+
         def worker(_col):
+            tags = updater.fetch_tags()
+            ordered_releases = release_order
+            if not ordered_releases:
+                try:
+                    ordered_releases = updater.fetch_releases()
+                except Exception as error:
+                    self._log_error(
+                        f"Could not load release order for Update Manager tags: {error}"
+                    )
             return {
-                "tags": updater.fetch_tags(),
+                "tags": updater.order_tags_by_release_order(
+                    tags, ordered_releases
+                ),
                 "branches": updater.fetch_branches(),
                 "prs": updater.fetch_open_prs(),
             }

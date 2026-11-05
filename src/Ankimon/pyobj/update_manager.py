@@ -545,6 +545,21 @@ def fetch_releases() -> list[dict]:
     ]
 
 
+def order_tags_by_release_order(
+    tags: list[dict], releases: list[dict]
+) -> list[dict]:
+    """Keep tag picker entries in the same newest-first order as the releases."""
+    release_order = {
+        release["name"]: index
+        for index, release in enumerate(releases)
+        if isinstance(release, dict) and isinstance(release.get("name"), str)
+    }
+    return sorted(
+        tags,
+        key=lambda tag: release_order.get(tag.get("name"), len(release_order)),
+    )
+
+
 def fetch_branches() -> list[dict]:
     data = _api_get("branches")
     if not data:
