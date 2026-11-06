@@ -134,7 +134,8 @@ def run_proof():
         assert saved["xp"] == main.xp == 47
         assert saved["friendship"] == main.friendship == 9
         assert saved["custom_metadata"] == {"preserved": [1, 2]}
-        assert saved["hp"] == saved["current_hp"] == main.hp == 20
+        assert saved["current_hp"] == main.hp == 20
+        assert "hp" not in saved
         assert main.battle_status == "par" and main.stat_stages["atk"] == 2
         assert "substitute" in main.volatile_status
         assert db.get_item("protein") is None
@@ -147,7 +148,7 @@ def run_proof():
             stock(item="health-candy-xl")
             assert use("health-candy-xl") == (True, 252)
             assert main.max_hp > old_maximum
-            assert main.hp == main.current_hp == _disk_main(db)["hp"] == hp
+            assert main.hp == main.current_hp == _disk_main(db)["current_hp"] == hp
 
         # A database selection change cannot charge or reselect an old window.
         before_main = copy.deepcopy(main.to_dict())

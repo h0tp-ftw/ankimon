@@ -5,6 +5,7 @@ import os
 from typing import Optional
 
 from ..services import services
+from .database_manager import canonicalize_pokemon_record
 
 # NOTE: give_item is imported lazily inside give_back_held_item() (below) rather
 # than here. utils imports pokedex_functions which imports this module, so a
@@ -134,15 +135,27 @@ class PokemonObject:
             },
         )
         self.volatile_status = set(kwargs.get("volatile_status", []))
-        self.nature = kwargs.get("nature", "serious")
+        self.nature = kwargs.get("nature") or "serious"
+        self.mega = bool(kwargs.get("mega", False))
+        self.special_form = kwargs.get("special_form")
         self.held_item = held_item
 
-        # HP calculation. ``hp`` is an explicit parameter, so looking for it in
-        # ``kwargs`` silently ignored persisted values.  Keep both HP fields
-        # numeric and preserve 0, which represents a fainted Pokemon.
         self.max_hp = self.calculate_max_hp()
-        self.hp = self._normalize_hp(hp, self.max_hp, self.max_hp)
-        self.current_hp = self._normalize_hp(current_hp, self.hp, self.max_hp)
+        hp_source: dict = {
+            "level": self.level,
+            "base_stats": self.base_stats,
+            "iv": self.iv,
+            "ev": self.ev,
+        }
+        if current_hp is not None:
+            hp_source["current_hp"] = current_hp
+        if hp is not None:
+            hp_source["hp"] = hp
+        resolved_hp = canonicalize_pokemon_record(
+            hp_source, allow_legacy_hp=True
+        ).get("current_hp")
+        self.hp = self._normalize_hp(resolved_hp, self.max_hp, self.max_hp)
+        self.current_hp = self.hp
 
         self.is_favorite = is_favorite
         self.captured_date = captured_date
@@ -441,7 +454,6 @@ class PokemonObject:
             "mega": getattr(self, "mega", False),
             "special_form": getattr(self, "special_form", None),
             "xp": self.xp,
-            "hp": self.hp,  # Current HP
             "friendship": self.friendship,
             "pokemon_defeated": self.pokemon_defeated,
             "tier": self.tier,  # Added tier
@@ -509,6 +521,20 @@ class PokemonObject:
 
     def update_stats(self, **kwargs):
         """Update the attributes of the Pokémon object with keyword arguments."""
+        has_hp_kwarg = "hp" in kwargs
+        has_current_hp_kwarg = "current_hp" in kwargs
+        if has_hp_kwarg or has_current_hp_kwarg:
+            hp_source: dict = {}
+            if has_current_hp_kwarg:
+                hp_source["current_hp"] = kwargs["current_hp"]
+            if has_hp_kwarg:
+                hp_source["hp"] = kwargs["hp"]
+            resolved = canonicalize_pokemon_record(
+                hp_source, allow_legacy_hp=True
+            ).get("current_hp")
+            kwargs = dict(kwargs)
+            kwargs.pop("hp", None)
+            kwargs["current_hp"] = resolved
         for key, value in kwargs.items():
             if key not in self._WRITABLE_ATTRS:
                 continue
@@ -516,19 +542,20 @@ class PokemonObject:
         # Derived caches — recompute from the (possibly updated)
         # base_stats/level/iv/ev so they don't go stale.
         self.max_hp = self.calculate_max_hp()
-        raw_hp = getattr(self, "hp", None)
         raw_current_hp = getattr(self, "current_hp", None)
-        hp_fallback = raw_current_hp if raw_current_hp is not None else self.max_hp
-        self.hp = self._normalize_hp(raw_hp, hp_fallback, self.max_hp)
-        self.current_hp = self._normalize_hp(raw_current_hp, self.hp, self.max_hp)
+        if "current_hp" in kwargs:
+            current_hp = kwargs["current_hp"]
+        else:
+            current_hp = raw_current_hp
+        self.hp = self._normalize_hp(current_hp, self.max_hp, self.max_hp)
+        self.current_hp = self.hp
         self.battle_status = self._normalize_battle_status(
             getattr(self, "battle_status", None)
         )
         self._update_battle_stats()  # Update battle stats
 
     def reset_stats(self):
-        """Reset the stats of the Pokémon to default values."""
-        self.hp = self.max_hp
+        """Reset temporary battle state without restoring lost HP."""
         self.battle_status = "fighting"
         self._update_battle_stats()
 
@@ -541,11 +568,15 @@ class PokemonObject:
                 self._battle_stats[key] = value
 
     def calculate_max_hp(self):
-        ev, iv = self.ev["hp"], self.iv["hp"]
+        ev, iv = self.ev.get("hp", 0), self.iv.get("hp", 15)
         hp = (
             10
             + self.level
-            + int((2 * self.base_stats["hp"] + iv + int(ev / 4)) * self.level / 100)
+            + int(
+                (2 * self.base_stats.get("hp", 1) + iv + int(ev / 4))
+                * self.level
+                / 100
+            )
         )
         hp = int(hp)
         return hp
@@ -571,7 +602,7 @@ class PokemonObject:
                 self.ev.get("spe", 0),
             ),
             "types": [normalize_name(t) for t in self.type],
-            "hp": self.hp,
+            "hp": self.current_hp,
             "maxhp": self.max_hp,
             "ability": normalize_name(self.ability) if self.ability else "none",
             "item": normalize_name(self.held_item) if self.held_item else None,

@@ -203,6 +203,29 @@ def run_proof(screenshots=None):
         species_id = 25
         assert species_id not in db.get_caught_ids(), "temporary profile is not empty"
         set_enemy(services, driver.events, {"id": species_id, "level": 12})
+
+        active_pokemon = build_pokemon({"id": 1, "level": 12}).to_dict()
+        if active_pokemon.get("max_hp"):
+            active_pokemon["current_hp"] = int(active_pokemon["max_hp"])
+        else:
+            active_pokemon["current_hp"] = int(
+                services.db._pokemon_max_hp(active_pokemon) or 1
+            )
+        assert db.save_pokemon(active_pokemon), "active Pokémon seed failed"
+        main_pokemon = services.main_pokemon
+        main_pokemon.individual_id = active_pokemon["individual_id"]
+        main_pokemon.max_hp = int(
+            active_pokemon.get("max_hp")
+            or services.db._pokemon_max_hp(active_pokemon)
+            or 1
+        )
+        main_pokemon.hp = active_pokemon["current_hp"]
+        main_pokemon.current_hp = active_pokemon["current_hp"]
+        seeded = db.get_pokemon(active_pokemon["individual_id"])
+        assert seeded is not None and seeded.get("current_hp") is not None, (
+            "probe fixture: seeded active Pokémon row missing current_hp"
+        )
+
         check_icon(False, "uncaught encounter")
 
         pokemon = build_pokemon({"id": species_id, "level": 12}).to_dict()

@@ -238,7 +238,7 @@ def run_proof():
                 assert main.hp == main.current_hp == active.hp == 0
                 assert main.battle_status == "fainted"
                 assert db.get_item("hp-up") is None
-                assert db.get_main_pokemon()["hp"] == 0
+                assert db.get_main_pokemon()["current_hp"] == 0
 
                 assert not [
                     event for event in captured_events if event["type"] == "error"

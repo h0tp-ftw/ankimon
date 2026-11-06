@@ -820,9 +820,30 @@ class ProfileData:
             self.settings_obj.set("trainer.xp_share", xp_share_id)
             services.db.save_team(team_data)
             if companion_id:
-                services.db.set_main_pokemon(companion_id)
+                active = services.main_pokemon
+                if (
+                    active is not None
+                    and getattr(active, "individual_id", None)
+                    and services.db.get_main_pokemon()
+                ):
+                    if not services.db.update_pokemon_current_hp(
+                        str(active.individual_id), active.current_hp
+                    ):
+                        raise RuntimeError(
+                            "Could not save the active Pokémon before switching"
+                        )
+                if not services.db.set_main_pokemon(companion_id):
+                    raise RuntimeError("The selected companion was not found")
                 from ..functions.update_main_pokemon import update_main_pokemon
-                update_main_pokemon(services.main_pokemon)
+                new_main, mainpokemon_empty = update_main_pokemon(
+                    services.main_pokemon
+                )
+                if new_main is not None and new_main is not services.main_pokemon:
+                    services.main_pokemon.update_stats(**new_main.to_dict())
+                if mainpokemon_empty:
+                    raise RuntimeError("The selected companion could not be loaded")
+                if services.reviewer is not None:
+                    services.reviewer.refresh_hud()
         except Exception as e:
             return {"ok": False, "message": f"Failed to save team: {e}"}
 

@@ -5,6 +5,7 @@ from typing import Optional
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..resources import mainpokemon_path
 from ..pyobj.pokemon_obj import PokemonObject
+from ..pyobj.database_manager import canonicalize_pokemon_record
 from ..services import services
 
 # default values to fall back in case of load error
@@ -21,7 +22,6 @@ MAIN_POKEMON_DEFAULT = {
     "iv": {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
     "attacks": ["Transform", "Tackle"],
     "base_experience": 101,
-    "hp": 100,
     "growth_rate": "medium-fast",
     "individual_id": "00000000-0000-0000-0000-000000000"
     + str(uuid.uuid4())[-3:],  # Last 3 digits random
@@ -32,26 +32,13 @@ MAIN_POKEMON_DEFAULT = {
 
 
 def _normalize_loaded_hp(pokemon_data, max_hp):
-    """Return a safe current HP from persisted data.
-
-    New records store the live value in both ``current_hp`` and ``hp``. Older
-    or partially migrated records may have either field missing, null, or
-    malformed, so try both before restoring the Pokemon to full health.
-    """
-    for candidate in (
-        pokemon_data.get("current_hp"),
-        pokemon_data.get("hp"),
-        max_hp,
-    ):
-        if candidate is None:
-            continue
-        try:
-            current_hp = int(candidate)
-        except (TypeError, ValueError, OverflowError):
-            continue
-        return max(0, min(current_hp, max_hp))
-
-    return max_hp
+    """Resolve current HP, fall back to legacy HP, and clamp it to max HP."""
+    normalized = canonicalize_pokemon_record(
+        pokemon_data, allow_legacy_hp=True
+    ).get("current_hp")
+    if normalized is None:
+        return max_hp
+    return max(0, min(normalized, max_hp))
 
 
 def _apply_loaded_hp(main_pokemon, pokemon_data):
@@ -62,7 +49,7 @@ def _apply_loaded_hp(main_pokemon, pokemon_data):
     main_pokemon.max_hp = max_hp
     main_pokemon.hp = current_hp
     main_pokemon.current_hp = current_hp
-    pokemon_data["hp"] = current_hp
+    pokemon_data.pop("hp", None)
     pokemon_data["current_hp"] = current_hp
     return current_hp
 
@@ -98,12 +85,12 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
             main_pokemon_data["base_stats"] = search_pokedex(pokemon_name, "baseStats")
             if "stats" in main_pokemon_data:
                 del main_pokemon_data["stats"]
-            original_hp = main_pokemon_data.get("hp")
+            had_legacy_hp = "hp" in main_pokemon_data
             original_current_hp = main_pokemon_data.get("current_hp")
             main_pokemon.update_stats(**main_pokemon_data)
 
             current_hp = _apply_loaded_hp(main_pokemon, main_pokemon_data)
-            if original_hp != current_hp or original_current_hp != current_hp:
+            if had_legacy_hp or original_current_hp != current_hp:
                 save_main_pokemon(main_pokemon)
             return main_pokemon, mainpokemon_empty
         else:
@@ -152,3 +139,39 @@ def save_main_pokemon(main_pokemon: PokemonObject):
         data = main_pokemon.__dict__
 
     db.save_main_pokemon(data)
+
+
+def sync_main_pokemon_hp_from_database(main_pokemon, battle_state=None):
+    """Make the persisted current HP authoritative before a wild attack."""
+    individual_id = getattr(main_pokemon, "individual_id", None)
+    if not individual_id:
+        raise RuntimeError("The active Pokémon has no individual_id")
+    data = services.db.get_pokemon(str(individual_id))
+    if not data:
+        raise RuntimeError(f"Active Pokémon {individual_id!r} is missing from the database")
+    value = data.get("current_hp")
+    if value is None or isinstance(value, bool):
+        raise RuntimeError(f"Active Pokémon {individual_id!r} has no valid current_hp")
+    try:
+        current_hp = int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError(
+            f"Active Pokémon {individual_id!r} has invalid current_hp"
+        ) from exc
+
+    max_hp = int(services.db._pokemon_max_hp(data))
+    current_hp = max(0, min(current_hp, max_hp))
+    main_pokemon.max_hp = max_hp
+    main_pokemon.hp = current_hp
+    main_pokemon.current_hp = current_hp
+
+    state_id = getattr(battle_state, "_ankimon_main_individual_id", None)
+    if (
+        battle_state is not None
+        and state_id is not None
+        and str(state_id) == str(individual_id)
+    ):
+        active = battle_state.user.active
+        active.maxhp = max_hp
+        active.hp = min(current_hp, max_hp)
+    return current_hp

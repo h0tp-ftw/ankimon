@@ -23,6 +23,7 @@ the real aqt-free registry so ``services.db`` can be pointed at a fake.
 """
 
 import importlib.util
+import sqlite3
 import sys
 import types
 from pathlib import Path
@@ -52,6 +53,7 @@ class _FakeItemDB:
         self.inventory = dict(inventory or {})
         self.quantity_calls = []
         self.history = []
+        self.main_pokemon = None
 
     def get_item(self, item_name):
         if item_name not in self.inventory:
@@ -104,10 +106,37 @@ class _FakeItemDB:
         self.history.append(entry)
         return True
 
+    def save_main_pokemon(self, data):
+        self.main_pokemon = dict(data)
+        return True
+
+    def get_main_pokemon(self):
+        return dict(self.main_pokemon) if self.main_pokemon else None
+
+    def update_pokemon_current_hp(self, individual_id, hp):
+        if not self.main_pokemon or self.main_pokemon["individual_id"] != individual_id:
+            return False
+        self.main_pokemon["current_hp"] = hp
+        return True
+
+    def _pokemon_max_hp(self, data):
+        return data["stats"]["hp"]
+
+    def consume_item_and_save_main_pokemon(
+        self, item_name, pokemon_data, *, expected_pokemon_data=None
+    ):
+        if self.main_pokemon != expected_pokemon_data:
+            return False
+        if not self.consume_item(item_name):
+            return False
+        self.main_pokemon = dict(pokemon_data)
+        return True
+
 
 class _FakePokemon:
     def __init__(self, name="mewtwo", hp=10, max_hp=100):
         self.name = name
+        self.individual_id = "main-pokemon"
         self.hp = hp
         self.max_hp = max_hp
         self.current_hp = hp
@@ -189,11 +218,25 @@ def _make_window(mod, db, main_pokemon=None):
     win.main_pokemon = main_pokemon
     win.achievements = {}
     win.renewWidgets = MagicMock()
-    win.hp_heal_items = {"potion": 20, "fullrestore": 0}
+    win.hp_heal_items = {"potion": 20, "full-restore": 0}
     win.fossil_pokemon = {}
     win.pokeball_chances = {}
     win._item_action_in_progress = False
     mod.services.db = db
+    if (
+        main_pokemon is not None
+        and hasattr(main_pokemon, "max_hp")
+        and hasattr(main_pokemon, "current_hp")
+    ):
+        db.save_main_pokemon(
+            {
+                "individual_id": main_pokemon.individual_id,
+                "name": main_pokemon.name,
+                "level": 5,
+                "stats": {"hp": main_pokemon.max_hp},
+                "current_hp": main_pokemon.current_hp,
+            }
+        )
     # Badge bookkeeping is imported by name into the module namespace.
     mod.check_for_badge = MagicMock(return_value=True)
     mod.receive_badge = MagicMock()
@@ -282,12 +325,7 @@ def test_heal_consumes_exactly_one_item(item_window_mod):
 
 
 def test_heal_is_refused_when_the_bag_is_empty(item_window_mod):
-    """No potion, no heal -- and no write attempt either.
-
-    ``update_item_quantity`` would have logged a warning and returned without
-    decrementing anything, which the old code discarded, handing out the HP
-    regardless.
-    """
+    """The atomic consume refuses an empty bag without granting HP."""
     db = _FakeItemDB({})
     pokemon = _FakePokemon(hp=10, max_hp=100)
     win = _make_window(item_window_mod, db, pokemon)
@@ -297,7 +335,8 @@ def test_heal_is_refused_when_the_bag_is_empty(item_window_mod):
     assert result is False
     assert pokemon.hp == 10, "HP was granted for an item the player does not own"
     assert pokemon.current_hp == 10
-    assert db.quantity_calls == []
+    assert db.quantity_calls == [("potion", -1)]
+    assert db.inventory == {}
     shown = [
         call.args[1]
         for call in win.logger.log_and_showinfo.call_args_list
@@ -317,7 +356,8 @@ def test_heal_is_refused_when_the_row_says_zero(item_window_mod):
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is False
     assert pokemon.hp == 10
-    assert db.quantity_calls == []
+    assert db.quantity_calls == [("potion", -1)]
+    assert db.inventory == {"potion": 0}
 
 
 def test_second_use_of_the_last_potion_heals_nothing(item_window_mod):
@@ -329,7 +369,8 @@ def test_second_use_of_the_last_potion_heals_nothing(item_window_mod):
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is False
     assert pokemon.hp == 30, "the second click healed for free"
-    assert db.quantity_calls == [("potion", -1)]
+    assert db.quantity_calls == [("potion", -1), ("potion", -1)]
+    assert db.inventory == {}
 
 
 def test_no_main_pokemon_does_not_burn_an_item(item_window_mod):
@@ -356,11 +397,11 @@ def test_badge_is_not_awarded_for_a_refused_heal(item_window_mod):
 
 def test_fullrestore_still_heals_to_max_and_clamps(item_window_mod):
     """Existing behaviour is untouched on the successful path."""
-    db = _FakeItemDB({"fullrestore": 1})
+    db = _FakeItemDB({"full-restore": 1})
     pokemon = _FakePokemon(hp=10, max_hp=100)
     win = _make_window(item_window_mod, db, pokemon)
 
-    assert win.Check_Heal_Item("mewtwo", 0, "fullrestore", {}) is True
+    assert win.Check_Heal_Item("mewtwo", 0, "full-restore", {}) is True
     assert pokemon.hp == 100
     assert pokemon.current_hp == 100
 
@@ -518,7 +559,17 @@ def real_db(item_window_mod, tmp_path):
         "Ankimon.pyobj.database_manager",
         _SRC / "Ankimon" / "pyobj" / "database_manager.py",
     )
-    return db_mod.AnkimonDB(MagicMock(), db_path=tmp_path / "ankimon.db")
+    db = db_mod.AnkimonDB(MagicMock(), db_path=tmp_path / "ankimon.db")
+    db.save_main_pokemon(
+        {
+            "individual_id": "main-pokemon",
+            "name": "mewtwo",
+            "level": 5,
+            "stats": {"hp": 100},
+            "current_hp": 10,
+        }
+    )
+    return db
 
 
 def test_the_heal_path_spends_one_real_row_per_heal(item_window_mod, real_db):
@@ -537,6 +588,41 @@ def test_the_heal_path_spends_one_real_row_per_heal(item_window_mod, real_db):
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is False
     assert pokemon.hp == 50, "the third click healed out of an empty bag"
+
+
+def test_potion_retries_unsaved_battle_hp_without_spending_while_busy(
+    item_window_mod, real_db
+):
+    real_db.save_item(17, "potion", 1)
+    pokemon = _FakePokemon(hp=90, max_hp=100)
+    win = _make_window(item_window_mod, real_db, pokemon)
+    pokemon.hp = pokemon.current_hp = 40
+    blocker = sqlite3.connect(str(real_db.db_path))
+    try:
+        blocker.execute("BEGIN IMMEDIATE")
+        assert not real_db.update_pokemon_current_hp(pokemon.individual_id, 40)
+        assert not win.Check_Heal_Item("mewtwo", 20, "potion", {})
+        assert pokemon.hp == 40
+        assert real_db.get_item("potion")["quantity"] == 1
+        blocker.rollback()
+        assert win.Check_Heal_Item("mewtwo", 20, "potion", {})
+        assert pokemon.hp == pokemon.current_hp == 60
+        assert real_db.get_main_pokemon()["current_hp"] == 60
+        assert real_db.get_item("potion") is None
+    finally:
+        blocker.close()
+
+
+def test_potion_cannot_revive_live_faint_with_stale_saved_hp(item_window_mod, real_db):
+    real_db.save_item(17, "potion", 1)
+    pokemon = _FakePokemon(hp=30, max_hp=100)
+    win = _make_window(item_window_mod, real_db, pokemon)
+    pokemon.hp = pokemon.current_hp = 0
+
+    assert not win.Check_Heal_Item("mewtwo", 20, "potion", {})
+    assert pokemon.hp == pokemon.current_hp == 0
+    assert real_db.get_main_pokemon()["current_hp"] == 0
+    assert real_db.get_item("potion")["quantity"] == 1
 
 
 @pytest.mark.parametrize("quantity", [1, 3])
