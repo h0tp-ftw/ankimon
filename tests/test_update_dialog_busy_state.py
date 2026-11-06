@@ -735,7 +735,7 @@ def test_updates_dialog_refreshes_sprite_cache(monkeypatch, tmp_path, outcome):
         thread.running = False
         thread.finished.emit()
 
-        assert sf.get_sprite_path("front", "png", 25, False, "F") == str(preferred)
+        assert Path(sf.get_sprite_path("front", "png", 25, False, "F")) == preferred
     finally:
         sf._clear_sprite_cache()
 

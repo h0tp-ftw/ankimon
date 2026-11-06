@@ -383,7 +383,11 @@ def test_a_locked_local_save_is_not_ranked_or_settled_against(
 
         ask.assert_not_called()  # never offered against an unreadable local
         marked.assert_not_called()  # and never settled on it
-        assert elapsed < 1.0, f"blocked {elapsed:.1f}s on a locked local save"
+        # On Windows, SQLite itself waits about twice its busy timeout before
+        # reporting a lock (~1.1s for the 0.5s probe). This pins that the short
+        # probe budget is used rather than the 30s default.
+        bound = 2.0 if os.name == "nt" else 1.0
+        assert elapsed < bound, f"blocked {elapsed:.1f}s on a locked local save"
     finally:
         holder.close()
 

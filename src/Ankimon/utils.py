@@ -432,7 +432,9 @@ def random_item() -> Optional[str]:
                 continue
 
             item_names.append(name)
-        _random_item_cache = item_names
+        # An empty scan isn't remembered: the sprites may still be downloading.
+        if item_names:
+            _random_item_cache = item_names
     else:
         item_names = _random_item_cache
 

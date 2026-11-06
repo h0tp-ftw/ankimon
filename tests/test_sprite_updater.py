@@ -116,7 +116,7 @@ def test_download_completion_refreshes_sprite_fallbacks(
         )
         dialog_type.on_download_finished(dialog, success, "Download finished")
 
-        assert sf.get_sprite_path("front", "png", 25, False, "F") == str(preferred)
+        assert Path(sf.get_sprite_path("front", "png", 25, False, "F")) == preferred
     finally:
         sf._clear_sprite_cache()
 

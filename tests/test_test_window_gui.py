@@ -237,9 +237,10 @@ def test_init_ui_builds_persistent_scaffolding(make_window):
     assert layout.itemAt(1).widget() is win.button_widget
     assert win.button_widget.isHidden()
 
-    # Width is pinned to the battle scenes' own width; the height is the
-    # layout's to decide, so a taller view can never be cut off.
-    assert win.minimumWidth() == win.maximumWidth() == 556
+    # The width is no longer pinned: the window is user-resizable above a floor,
+    # and the height is the layout's to decide.
+    assert win.minimumWidth() == 278
+    assert win.maximumWidth() > win.minimumWidth()
     assert win.maximumHeight() > win.minimumHeight()
 
     # No contents margins: the 556px-wide scene has to reach both edges of a

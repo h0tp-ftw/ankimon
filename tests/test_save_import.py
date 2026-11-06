@@ -444,6 +444,7 @@ def test_failed_replace_keeps_backup_and_retry_backs_up_latest_progress(tmp_path
     assert names(staged["recovery_path"]) == ["local"]
     with sqlite3.connect(target) as conn:
         conn.execute("INSERT INTO captured_pokemon VALUES ('after-failure', '{}')")
+    conn.close()
     child("assert module.commit_pending_import(target) is True\n", target)
     assert names(target) == ["incoming"]
     backups = list(staged["recovery_path"].parent.glob("*.db"))
@@ -1778,6 +1779,7 @@ def test_a_save_too_damaged_to_name_its_import_is_replaced_only_when_allowed(tmp
     with sqlite3.connect(target) as conn:
         conn.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute("INSERT INTO metadata VALUES ('import_token', 'an-earlier-import')")
+    conn.close()
     damage_a_table(target, "metadata")
     source = make_save(tmp_path / "source.db", "incoming")
     importer.stage_import(source, target)
@@ -1815,6 +1817,7 @@ def test_each_failed_attempt_keeps_the_newest_unverified_copy_and_one_before_it(
         assert importer.pending_import_recovery_copy(target) == kept
         with sqlite3.connect(target) as conn:
             conn.execute("INSERT INTO captured_pokemon VALUES (?, '{}')", (f"run-{attempt}",))
+        conn.close()
 
     folder = kept.parent.parent
     superseded = sorted(folder.glob("unverified-superseded-*"))

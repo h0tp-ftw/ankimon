@@ -33,3 +33,22 @@ def test_random_item_grants_an_eligible_item(monkeypatch, tmp_path):
 
     assert utils.random_item() == "potion"
     assert granted == ["potion"]
+
+
+def test_random_item_finds_sprites_that_arrive_after_an_empty_scan(monkeypatch, tmp_path):
+    import Ankimon.utils as utils
+
+    utils.clear_utils_caches()
+    granted = []
+    monkeypatch.setattr(utils, "items_path", tmp_path)
+    monkeypatch.setattr(utils, "give_item", granted.append)
+
+    assert utils.random_item() is None
+
+    (tmp_path / "potion.png").write_bytes(b"")
+
+    try:
+        assert utils.random_item() == "potion"
+        assert granted == ["potion"]
+    finally:
+        utils.clear_utils_caches()
