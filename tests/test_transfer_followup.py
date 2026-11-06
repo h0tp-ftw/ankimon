@@ -10,6 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 from test_save_transfer import _make_save, _Logger, st, _protected
 from test_save_transfer_safety import transfer
 

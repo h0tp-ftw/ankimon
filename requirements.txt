@@ -1,5 +1,7 @@
 aqt
-pytest
+# 9.2 monkeypatch.undo deletes dynamic MagicMock attributes shared by the suite.
+# Keep the working behavior until those fixtures explicitly own their attributes.
+pytest<9.2
 pytest-qt
 requests
 PyQt6

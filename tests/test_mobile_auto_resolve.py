@@ -441,7 +441,7 @@ def test_deferred_mobile_detection_drops_changed_profile(wired, monkeypatch):
 
 
 @pytest.mark.parametrize("day_cutoff", [None, 0, 123456])
-def test_mobile_worker_never_reads_anki_collection(wired, monkeypatch, day_cutoff):
+def test_mobile_worker_never_reads_anki_collection(wired, monkeypatch, day_cutoff, anki_host):
     from concurrent.futures import ThreadPoolExecutor
     from Ankimon.functions import mobile_sync as ms
 

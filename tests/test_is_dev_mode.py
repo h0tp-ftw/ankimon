@@ -6,13 +6,12 @@ determine developer mode dynamically by checking if the active Anki Profile name
 or the Trainer name contains the substring "dev_" or "_dev" at runtime.
 """
 
-import sys
 import pytest
 from unittest.mock import MagicMock
 
 
 @pytest.fixture
-def dev(monkeypatch):
+def dev(monkeypatch, anki_host):
     import Ankimon.utils as utils_mod
     from Ankimon.utils import is_dev_mode
 
@@ -24,16 +23,8 @@ def dev(monkeypatch):
 
     monkeypatch.setattr(utils_mod.services, "settings", _Settings())
 
-    # Setup aqt.mw mock
-    mock_mw = MagicMock()
+    mock_mw = anki_host.mw
     mock_mw.pm = None
-
-    if "aqt" not in sys.modules:
-        aqt_mock = MagicMock()
-        aqt_mock.mw = mock_mw
-        monkeypatch.setitem(sys.modules, "aqt", aqt_mock)
-    else:
-        monkeypatch.setattr(sys.modules["aqt"], "mw", mock_mw)
 
     return is_dev_mode, store, mock_mw
 
@@ -72,7 +63,7 @@ def test_dev_mode_false_when_normal(dev):
     assert is_dev_mode() is False
 
 
-def test_dev_mode_false_and_no_raise_when_settings_broken(monkeypatch):
+def test_dev_mode_false_and_no_raise_when_settings_broken(monkeypatch, anki_host):
     import Ankimon.utils as utils_mod
     from Ankimon.utils import is_dev_mode
 

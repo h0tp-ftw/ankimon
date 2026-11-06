@@ -356,12 +356,22 @@ def main():
     )
     before = js("document.getElementById('backup-status').textContent")
     cards = js("document.querySelectorAll('.backup-card').length")
-    with patch.object(shop_obj.QDesktopServices, "openUrl", return_value=False):
+
+    def assert_folder_open_failure():
         js("document.getElementById('open-folder-btn').click()")
         wait(
             lambda: js("document.getElementById('toast').classList.contains('error')"),
             "Folder failure not shown",
         )
+
+    if hasattr(os, "startfile"):
+        with patch.object(
+            os, "startfile", side_effect=OSError("Simulated folder-open failure")
+        ):
+            assert_folder_open_failure()
+    else:
+        with patch.object(shop_obj.QDesktopServices, "openUrl", return_value=False):
+            assert_folder_open_failure()
     assert js("document.querySelectorAll('.backup-card').length") == cards
     assert js("document.getElementById('backup-status').textContent") == before
     assert "Cancel Pending Save Import" in before

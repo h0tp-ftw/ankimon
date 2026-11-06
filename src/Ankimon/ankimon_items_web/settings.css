@@ -412,6 +412,23 @@
     border-color: #79c0ff;
 }
 
+.setting-chip.unavailable,
+.setting-chip.unavailable:hover,
+.setting-chip.unavailable.active,
+.setting-chip.unavailable.active:hover {
+    background: var(--bg-darker);
+    border-color: var(--border-main);
+    color: var(--text-muted);
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.shop-toast.hud-bars-notice {
+    border-color: #ff9d32;
+    box-shadow: 0 10px 30px rgba(255, 157, 50, 0.25);
+}
+
 /* Chip rows are wider than form inputs — let them spill across the control column. */
 .setting-row:has(.setting-chips) {
     grid-template-columns: 1fr 360px;

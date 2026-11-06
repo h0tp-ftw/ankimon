@@ -20,6 +20,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 from test_save_transfer import _Logger, _make_save, st
 from test_save_import import commit_in_new_process
 from Ankimon.functions import mobile_sync
@@ -30,7 +32,7 @@ from Ankimon.services import services
 
 
 @pytest.fixture
-def transfer(tmp_path, monkeypatch):
+def transfer(tmp_path, monkeypatch, save_transfer_host):
     # Other suites swap these modules. Pin the real primitives and this
     # fixture's registry for the production functions' lazy imports as well.
     registry = ModuleType("Ankimon.services")

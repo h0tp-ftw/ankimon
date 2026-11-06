@@ -44,6 +44,7 @@
     "gui.hud_player_sprite": "Show Player Sprite",
     "gui.hud_enemy_sprite": "Show Enemy Sprite",
     "gui.hud_xp_bar": "Show XP Progress Bar",
+    "gui.hud_xp_values": "Show XP Values",
     "gui.hud_hp_bars": "Show HP Bars",
     "gui.hud_hp_text": "Show HP Text",
     "gui.hud_pokemon_id": "Show Pokémon ID",
@@ -51,7 +52,7 @@
     "gui.hud_pokemon_lvl": "Show Pokémon Level",
     "gui.hud_pokemon_name": "Show Pokémon Name",
     "gui.hud_status_badge": "Show Status Badge",
-    "gui.hud_owned_indicator": "Show Pokeball Icon",
+    "gui.hud_owned_indicator": "Show Pokéball Icon",
     "gui.hud_enemy_shiny_indicator": "Show Enemy Shiny Star",
     "gui.hud_player_shiny_indicator": "Show Player Shiny Star",
     

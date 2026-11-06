@@ -18,4 +18,4 @@ py-spy            # sampling profiler that attaches to a running PID — no code
 line_profiler     # per-line timing for @profile-decorated hot functions
 objgraph          # object reference graphs — "what is keeping this alive?"
 debugpy           # DAP debug server for VS Code / PyCharm — see harness/debug.py
-pytest            # run tests/ ; add pytest-benchmark for microbenchmarks
+pytest<9.2        # match requirements.txt: 9.2 deletes dynamic mock attrs on undo

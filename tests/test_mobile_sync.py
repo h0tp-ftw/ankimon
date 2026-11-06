@@ -394,7 +394,16 @@ def test_xp_share_split_oras_needs_db():
     assert ms._xp_share_split(100, "A", settings, db=None) == (100, {})
 
 
-def test_commit_replay_defeat_applies_xp_share(monkeypatch):
+@pytest.fixture
+def fixed_cp(monkeypatch):
+    """Provide this test's CP seam without patching a shared module mock."""
+    business = types.ModuleType("Ankimon.business")
+    business.calculate_cp_from_dict = lambda data: 10
+    monkeypatch.setitem(sys.modules, "Ankimon.business", business)
+    monkeypatch.setattr(sys.modules["Ankimon"], "business", business, raising=False)
+
+
+def test_commit_replay_defeat_applies_xp_share(monkeypatch, fixed_cp):
     """XP-Share parity on the MANUAL replay-resolve path: commit_replay_outcome
     ('defeat', ...) must split the battling companion's XP with the configured
     trainer.xp_share target, exactly like the bulk-resolve commit block. Without
@@ -413,10 +422,6 @@ def test_commit_replay_defeat_applies_xp_share(monkeypatch):
         lambda cid, xp, evs, settings_obj, battles_fought=1, db=None, logger=None,
         *, xp_share=False: calls.append((str(cid), xp, xp_share)),
     )
-    # Patch on the imported module object (not a dotted string path, which is
-    # import-order fragile across the full suite).
-    import Ankimon.business as _biz
-    monkeypatch.setattr(_biz, "calculate_cp_from_dict", lambda d: 10)
 
     settings = _S({"trainer.xp_share": "TARGET"})
     db = MagicMock()
@@ -442,7 +447,7 @@ def test_commit_replay_defeat_applies_xp_share(monkeypatch):
     assert calls == [("COMP", 50, False), ("TARGET", 50, True)]
 
 
-def test_commit_replay_defeat_no_share_when_unset(monkeypatch):
+def test_commit_replay_defeat_no_share_when_unset(monkeypatch, fixed_cp):
     """With XP-Share unset the manual replay-defeat path grants the companion the
     full battle XP and makes no second attribution call."""
     class _S:
@@ -456,8 +461,6 @@ def test_commit_replay_defeat_no_share_when_unset(monkeypatch):
         lambda cid, xp, evs, settings_obj, battles_fought=1, db=None, logger=None,
         *, xp_share=False: calls.append((str(cid), xp, xp_share)),
     )
-    import Ankimon.business as _biz
-    monkeypatch.setattr(_biz, "calculate_cp_from_dict", lambda d: 10)
 
     settings = _S({})  # no trainer.xp_share
     db = MagicMock()
@@ -519,15 +522,13 @@ def test_answercard_after_records_desktop_review(monkeypatch):
         ms.clear_desktop_session()
 
 
-def test_commit_replay_mobile_cash_cap(monkeypatch):
+def test_commit_replay_mobile_cash_cap(monkeypatch, fixed_cp):
     """Verifies that commit_replay_outcome caps cash at 400 per day."""
     class _S:
         def __init__(self, d): self._d = dict(d)
         def get(self, k, default=None): return self._d.get(k, default)
         def set(self, k, v): self._d[k] = v
 
-    import Ankimon.business as _biz
-    monkeypatch.setattr(_biz, "calculate_cp_from_dict", lambda d: 10)
 
     from datetime import date
     today_str = str(date.today())
@@ -564,6 +565,13 @@ def test_commit_replay_mobile_cash_cap(monkeypatch):
 def test_run_mobile_battles_no_companions_or_main_pokemon(mobile_db, monkeypatch):
     """Verify that run_mobile_battles returns failure rather than crashing when no companion or main Pokémon is available."""
     db, _ = mobile_db
+
+    # The empty-team path imports this UI port but must never open a window.
+    # Supply it here instead of relying on integrity-test collection to stub
+    # the production composition root for us.
+    singletons = types.ModuleType("Ankimon.singletons")
+    singletons.get_evo_window = MagicMock(side_effect=AssertionError("unexpected UI"))
+    monkeypatch.setitem(sys.modules, "Ankimon.singletons", singletons)
     
     # Mock services.db.get_all_pokemon_ids inside load_collected_pokemon_ids
     monkeypatch.setattr(db, "get_all_pokemon_ids", lambda: [])

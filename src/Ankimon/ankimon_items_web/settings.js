@@ -20,6 +20,7 @@
         'gui.hud_player_sprite',
         'gui.hud_enemy_sprite',
         'gui.hud_xp_bar',
+        'gui.hud_xp_values',
         'gui.hud_hp_bars',
         'gui.hud_status_badge',
         'gui.hud_owned_indicator',
@@ -53,6 +54,7 @@
     function renderAll() {
         renderGroupJumps();
         renderContent();
+        updateHudStylingDependentUi();
         applySearchFilter();
         updateDirtyUI();
         // Re-run the spy after render so the active button reflects the
@@ -550,6 +552,13 @@
             if (current) btn.classList.add('active');
             btn.textContent = chip.label;
             btn.addEventListener('click', () => {
+                if (
+                    ['gui.hud_xp_bar', 'gui.hud_hp_bars'].includes(chip.key)
+                    && !getSettingValue('gui.hud_styling')
+                ) {
+                    showToast('Please enable Styling for bars to show', false, true);
+                    return;
+                }
                 const now = !btn.classList.contains('active');
                 // Manually track edits since chips don't go through setEdit's
                 // findSetting() lookup (each chip's "setting" is a sub-entry).
@@ -559,6 +568,9 @@
                     state.edits[chip.key] = now;
                 }
                 btn.classList.toggle('active', now);
+                if (chip.key === 'gui.hud_styling') {
+                    updateHudStylingDependentUi();
+                }
                 updateDirtyUI();
                 markChipRowDirty(setting.key);
             });
@@ -602,6 +614,9 @@
                     setEdit(setting.key, nextValue);
                 }
                 updateToggleButtons(wrap, setting.key);
+                if (setting.key === 'gui.hud_styling') {
+                    updateHudStylingDependentUi();
+                }
                 updateDirtyUI();
                 markRowDirty(setting.key);
             });
@@ -754,6 +769,39 @@
         }
         const setting = findSetting(key);
         return setting ? setting.value : undefined;
+    }
+
+    function updateHudStylingDependentUi() {
+        const stylingEnabled = !!getSettingValue('gui.hud_styling');
+        const xpBarToggle = document.querySelector(
+            '.setting-chip[data-key="gui.hud_xp_bar"]'
+        );
+        const hpBarsToggle = document.querySelector(
+            '.setting-chip[data-key="gui.hud_hp_bars"]'
+        );
+        [xpBarToggle, hpBarsToggle].forEach((toggle) => {
+            if (!toggle) return;
+            toggle.classList.toggle('unavailable', !stylingEnabled);
+            toggle.setAttribute('aria-disabled', String(!stylingEnabled));
+            toggle.title = stylingEnabled
+                ? ''
+                : 'Enable Styling to use HUD bars';
+        });
+
+        const capturedStateToggle = document.querySelector(
+            '.setting-chip[data-key="gui.hud_owned_indicator"]'
+        );
+        if (capturedStateToggle) {
+            capturedStateToggle.textContent = stylingEnabled
+                ? 'Pokéball Icon'
+                : 'Captured State';
+            const row = capturedStateToggle.closest('.setting-row');
+            if (row) {
+                row.dataset.label = Array.from(
+                    row.querySelectorAll('.setting-chip')
+                ).map((chip) => chip.textContent.toLowerCase()).join(' ');
+            }
+        }
     }
 
     function deepEqual(a, b) {
@@ -957,11 +1005,12 @@
         showToast('Changes discarded');
     }
 
-    function showToast(message, isError) {
+    function showToast(message, isError, isHudBarsNotice) {
         if (!message) return;
         const toast = document.getElementById('toast');
         toast.textContent = message;
         toast.classList.toggle('error', !!isError);
+        toast.classList.toggle('hud-bars-notice', !!isHudBarsNotice);
         toast.classList.add('visible');
         clearTimeout(toast._timer);
         toast._timer = setTimeout(() => toast.classList.remove('visible'), 2800);

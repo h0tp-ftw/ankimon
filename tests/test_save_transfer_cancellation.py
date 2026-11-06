@@ -9,6 +9,8 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 from test_save_transfer import _make_save, st
 from test_save_transfer_safety import transfer  # noqa: F401
 from Ankimon import save_import

@@ -872,5 +872,82 @@
             "held_item": null,
             "evos": []
         }
+    },
+    {
+        "code": "MONTHLY-2026-11-PUMPKABOO",
+        "month": "November 2026",
+        "description": "Another spooky challenge for November 2026, featuring Pumpkaboo!",
+        "previous_challenge_individual_id": "7b581fa6-0e56-4f4e-bd4e-a5eabf2634a7",
+        "defeat_threshold": 250,
+        "pokemon": {
+            "name": "Pumpkaboo",
+            "nickname": "",
+            "id": 710,
+            "level": 5,
+            "ability": "Pickup",
+            "type": [
+                "Ghost",
+                "Grass"
+            ],
+            "stats": {
+                "hp": 49,
+                "atk": 66,
+                "def": 70,
+                "spa": 44,
+                "spd": 55,
+                "spe": 51,
+                "xp": 0
+            },
+            "base_stats": {
+                "hp": 49,
+                "atk": 66,
+                "def": 70,
+                "spa": 44,
+                "spd": 55,
+                "spe": 51
+            },
+            "ev": {
+                "hp": 0,
+                "atk": 0,
+                "def": 0,
+                "spa": 0,
+                "spd": 0,
+                "spe": 0
+            },
+            "iv": {
+                "hp": 3,
+                "atk": 11,
+                "def": 3,
+                "spa": 21,
+                "spd": 26,
+                "spe": 4
+            },
+            "attacks": [
+                "Scary face",
+                "Shadow sneak",
+                "Astonish",
+                "Confuse ray"
+            ],
+            "growth_rate": "medium",
+            "base_experience": 67,
+            "gender": "M",
+            "shiny": false,
+            "nature": "serious",
+            "xp": 0,
+            "current_hp": 49,
+            "friendship": 70,
+            "pokemon_defeated": 0,
+            "everstone": false,
+            "mega": false,
+            "special_form": null,
+            "special-form": null,
+            "tier": "Normal",
+            "captured_date": "2026-10-29 21:59:31",
+            "capture_date": "2026-10-29 21:59:31",
+            "individual_id": "5b1d354f-e0f2-4b1b-9aaf-9970c93f4b0d",
+            "is_favorite": false,
+            "held_item": null,
+            "evos": []
+        }
     }
 ]

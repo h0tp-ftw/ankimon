@@ -33,6 +33,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("save_transfer_host")
+
 from test_save_transfer import _make_save, _protected, _Logger, st  # noqa: F401
 from test_save_transfer import logger, media, live_db, real_flag_media  # noqa: F401
 
