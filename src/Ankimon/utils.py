@@ -462,11 +462,17 @@ _ITEM_SPRITE_FILENAMES = {
 
 def get_item_sprite_path(item_name):
     """Resolve display names and identifiers to downloaded or bundled icons."""
+    raw_name = str(item_name)
+    identifier = normalize_item_identifier(item_name)
+    # NFKD also folds fullwidth path punctuation. Check both forms before any
+    # file lookup; item sprites are always single filenames within items_path.
+    if any(char in raw_name or char in identifier for char in ("/", "\\", ":", "\0")):
+        return items_path / "unknown-item.png"
+
     downloaded = items_path / f"{item_name}.png"
     if downloaded.is_file():
         return downloaded
 
-    identifier = normalize_item_identifier(item_name)
     normalized = items_path / f"{identifier}.png"
     if normalized != downloaded and normalized.is_file():
         return normalized

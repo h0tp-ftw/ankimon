@@ -16,8 +16,62 @@ def _sprite_pack(monkeypatch, tmp_path, filenames=()):
     monkeypatch.setattr(utils, "items_path", items)
     # macOS normally ignores filename case. Emulate the pack on Linux so a
     # lowercase lookup cannot accidentally pass for Black-Augurite.png.
-    monkeypatch.setattr(Path, "is_file", lambda path: str(path) in available)
+    real_is_file = Path.is_file
+
+    def pack_is_file(path):
+        if items in path.parents:
+            return str(path) in available
+        return real_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", pack_is_file)
     return utils, items
+
+
+def test_sprite_pack_stub_preserves_unrelated_file_checks(monkeypatch, tmp_path):
+    outside = tmp_path / "unrelated.png"
+    outside.write_bytes(b"outside the mocked pack")
+    _sprite_pack(monkeypatch, tmp_path)
+
+    assert outside.is_file()
+    assert not (tmp_path / "missing.png").is_file()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("../outside", id="parent-posix"),
+        pytest.param("..\\outside", id="parent-windows"),
+        pytest.param("sub/../../outside", id="nested-traversal"),
+        pytest.param("/tmp/outside", id="absolute-posix"),
+        pytest.param("C:/outside", id="absolute-windows-forward-slash"),
+        pytest.param("C:\\outside", id="absolute-windows-backslash"),
+        pytest.param("C:outside", id="windows-drive-relative"),
+        pytest.param("\\\\server\\share\\outside", id="windows-unc"),
+        pytest.param("outside:stream", id="windows-alternate-data-stream"),
+        pytest.param("outside\0name", id="nul"),
+        pytest.param("．．/outside", id="fullwidth-parent-dots"),
+        pytest.param("．．／outside", id="fullwidth-parent-and-slash"),
+        pytest.param("．．＼outside", id="fullwidth-parent-and-backslash"),
+        pytest.param("／outside", id="fullwidth-absolute-posix"),
+        pytest.param("health／mochi", id="fullwidth-slash"),
+        pytest.param("health＼mochi", id="fullwidth-backslash"),
+        pytest.param("health：mochi", id="fullwidth-colon"),
+        pytest.param("Ｃ：outside", id="fullwidth-windows-drive-relative"),
+    ],
+)
+def test_unsafe_sprite_names_are_rejected_before_file_checks(monkeypatch, tmp_path, name):
+    utils, items = _sprite_pack(monkeypatch, tmp_path)
+    checked = []
+    original_is_file = Path.is_file
+
+    def record_file_check(path):
+        checked.append(path)
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", record_file_check)
+
+    assert utils.get_item_sprite_path(name) == items / "unknown-item.png"
+    assert checked == []
 
 
 @pytest.mark.parametrize(
