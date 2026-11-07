@@ -39,7 +39,7 @@ from ..functions.pokedex_functions import (
     item_evolution_time_requirement,
 )
 
-from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_path
+from ..resources import icon_path, csv_file_items_cost, poke_evo_path
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
 from ..functions.update_main_pokemon import save_main_pokemon
@@ -388,7 +388,7 @@ class ItemWindow(QWidget):
             else:
                 tm_type = details["type"].lower()
 
-            item_file_path = items_path / f"Bag_TM_{tm_type}_SV_Sprite.png"
+            item_file_path = get_item_sprite_path(f"Bag_TM_{tm_type}_SV_Sprite")
         else:
             item_file_path = get_item_sprite_path(item_name)
         item_picture_pixmap = QPixmap(str(item_file_path))
