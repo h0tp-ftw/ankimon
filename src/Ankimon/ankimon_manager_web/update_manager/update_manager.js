@@ -15,6 +15,7 @@
 	let gitPullAllowed = false;
 	let spriteUpdateAvailable = false;
 	let spriteCheckUpToDate = false;
+	let selectedBranchView = 'main';
 	let activeProgressPanel = '';
 	const busyOperations = new Set();
 	let toastTimer = null;
@@ -247,15 +248,60 @@
 		const gitInfo = data.git_info || {};
 		const active = data.active_branch || 'main';
 		const localSha = typeof data.local_sha === 'string' ? data.local_sha : '';
-		const remoteSha = typeof data.remote_sha === 'string' ? data.remote_sha : '';
+		const hasBranchViews = Boolean(data.show_branch_views);
+		const branchView = hasBranchViews ? selectedBranchView : 'current';
+		const viewData = branchView === 'main'
+			? {
+				localSha: data.main_commit_sha || '',
+				remoteSha: data.main_remote_sha || '',
+				error: data.main_error,
+				commits: data.main_commits || [],
+				targetName: 'main',
+			}
+			: {
+				localSha,
+				remoteSha: data.remote_sha || '',
+				error: data.branch_error,
+				commits: data.current_commits || [],
+				targetName: data.query_branch || active,
+			};
+		const remoteSha = viewData.remoteSha;
+		const compareSha = viewData.localSha;
 		const relation = data.relation || state.git_relation || null;
-		setText('active-branch-title', `Active Branch: ${active}`);
-		setText('installed-commit', localSha ? localSha.slice(0, 7) : 'unknown');
+		const branchSubtabs = byId('branch-subtabs');
+		setVisible(branchSubtabs, hasBranchViews);
+		branchSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
+			button.classList.toggle('active', button.dataset.branchView === branchView);
+		});
+		setText(
+			'active-branch-title',
+			data.source_type === 'branch'
+				? `Active Branch: ${active}`
+				: `Installed Source: ${active}`,
+		);
+		const mainCommitSha = data.main_commit_sha || (data.source_type === 'branch' &&
+			data.source_name === 'main' ? localSha : '');
+		setText(
+			'installed-commit',
+			[
+				localSha ? localSha.slice(0, 7) : 'unknown',
+				...(hasBranchViews
+					? [mainCommitSha ? mainCommitSha.slice(0, 7) : 'unknown (not recorded)']
+					: []),
+			].join('\n'),
+		);
 		setText(
 			'commit-date',
-			typeof data.commit_date === 'string' && data.commit_date
+			[
+				typeof data.commit_date === 'string' && data.commit_date
 				? `${data.commit_date.replace('T', ' ').replace('Z', '')} UTC`
 				: 'Unknown (first update will fetch this)',
+				...(hasBranchViews
+					? [typeof data.main_commit_date === 'string' && data.main_commit_date
+						? `${data.main_commit_date.replace('T', ' ').replace('Z', '')} UTC`
+						: 'Unknown (main baseline not recorded)']
+					: []),
+			].join('\n'),
 		);
 		setText(
 			'last-update-installed',
@@ -267,53 +313,84 @@
 		const status = byId('branch-status');
 		status.classList.remove('success', 'warning', 'error', 'rate-limit');
 		branchCanUpdate = false;
-		if (data.git_clone && active === 'detached') {
-			status.textContent = 'Status: Detached checkout. Pick a branch, release, tag, or PR from the other tabs.';
+		if (branchView === 'main' && hasBranchViews && !mainCommitSha) {
+			if (remoteSha) {
+				status.textContent = 'Main comparison point not recorded. Update Main to establish one.';
+				status.classList.add('warning');
+			} else if (data.main_error === 'rate_limited') {
+				status.textContent = RATE_LIMIT_MESSAGE;
+				status.classList.add('rate-limit');
+			} else if (data.main_error === 'connection') {
+				status.textContent = 'Could not reach GitHub. Check your connection and try again.';
+				status.classList.add('error');
+			} else if (data.main_error === 'not_found') {
+				status.textContent = "Could not find branch 'main' on GitHub.";
+				status.classList.add('warning');
+			} else {
+				status.textContent = 'GitHub could not verify the Main branch. Please try again later.';
+				status.classList.add('warning');
+			}
+			setText('branch-update-btn', 'Update Main Now');
+			branchCanUpdate = Boolean(remoteSha);
+		} else if (data.git_clone && active === 'detached') {
+			status.textContent = 'Detached checkout. Pick a branch, release, tag, or PR from the other tabs.';
 			status.classList.add('warning');
 			setText('branch-update-btn', 'No Branch Checked Out');
 		} else if (data.git_clone && gitInfo.dirty) {
-			status.textContent = 'Status: Local changes present. Commit, stash, or discard them before updating.';
+			status.textContent = 'Local changes present. Commit, stash, or discard them before updating.';
 			status.classList.add('warning');
 			setText('branch-update-btn', 'Checkout Has Local Changes');
 		} else if (!remoteSha) {
-			if (data.branch_error === 'rate_limited') {
+			if (viewData.error === 'rate_limited') {
 				status.textContent = RATE_LIMIT_MESSAGE;
 				status.classList.add('rate-limit');
-			} else if (data.branch_error === 'not_found') {
-				status.textContent = `Status: Could not find branch '${data.query_branch || active}' on GitHub.`;
+			} else if (viewData.error === 'not_found') {
+				if (branchView === 'main') {
+					status.textContent = `Could not find branch '${viewData.targetName}' on GitHub.`;
+				} else if (data.source_type === 'pr') {
+					status.textContent = `Could not find pull request #${data.source_name} on GitHub.`;
+				} else if (data.source_type === 'tag' || data.source_type === 'release') {
+					status.textContent = `Could not find ${data.source_type} '${viewData.targetName}' on GitHub.`;
+				} else {
+					status.textContent = `Could not find branch '${viewData.targetName}' on GitHub.`;
+				}
 				status.classList.add('warning');
-			} else if (data.branch_error === 'connection') {
-				status.textContent = 'Status: Could not reach GitHub. Check your connection and try again.';
+			} else if (viewData.error === 'connection') {
+				status.textContent = 'Could not reach GitHub. Check your connection and try again.';
 				status.classList.add('error');
-			} else if (data.branch_error === 'api_error') {
-				status.textContent = 'Status: GitHub could not verify this branch. Please try again later.';
+			} else if (viewData.error === 'api_error') {
+				status.textContent = 'GitHub could not verify this source. Please try again later.';
 				status.classList.add('warning');
 			} else {
-				status.textContent = 'Status: Could not check connection.';
+				status.textContent = 'Could not check connection.';
 				status.classList.add('error');
 			}
-			setText('branch-update-btn', data.git_clone ? 'Branch Not on Ankimon Repository' : 'Update Branch Now');
-		} else if (data.git_clone && localSha !== remoteSha && ['behind', 'diverged'].includes(relation)) {
+			setText('branch-update-btn', data.git_clone
+				? 'Branch Not on Ankimon Repository'
+				: branchView === 'main' ? 'Update Main Now' : 'Update Installed Source');
+		} else if (data.git_clone && compareSha !== remoteSha && ['behind', 'diverged'].includes(relation)) {
 			status.textContent = relation === 'behind'
-				? `Status: Your checkout is ahead of '${active}' on the Ankimon repository.`
-				: `Status: Your checkout has diverged from '${active}' on the Ankimon repository.`;
+				? `Your checkout is ahead of '${active}' on the Ankimon repository.`
+				: `Your checkout has diverged from '${active}' on the Ankimon repository.`;
 			status.classList.add('warning');
 			setText('branch-update-btn', 'Cannot Fast-forward');
-		} else if (localSha !== remoteSha) {
-			status.textContent = `Status: New Update Available! (Latest: ${remoteSha.slice(0, 7)})`;
+		} else if (compareSha !== remoteSha) {
+			status.textContent = `New update available! (Latest: ${remoteSha.slice(0, 7)})`;
 			status.classList.add('warning');
-			setText('branch-update-btn', 'Update Branch Now');
+			setText('branch-update-btn', branchView === 'main'
+				? 'Update Main Now'
+				: 'Update Installed Source');
 			branchCanUpdate = true;
 		} else {
-			status.textContent = 'Status: Up to date!';
+			status.textContent = 'Up to date!';
 			status.classList.add('success');
 			setText('branch-update-btn', 'Already Up to Date');
 		}
 
 		const commits = byId('recent-commits');
 		commits.replaceChildren();
-		if (data.commits && data.commits.length) {
-			data.commits.forEach((commit) => {
+		if (viewData.commits.length) {
+			viewData.commits.forEach((commit) => {
 				const item = document.createElement('li');
 				const sha = document.createElement('code');
 				sha.textContent = commit.sha || '';
@@ -337,6 +414,13 @@
 			remoteSha &&
 			!['behind', 'diverged'].includes(relation),
 		);
+	}
+
+	function switchBranchView(view) {
+		if (!updateData || !updateData.show_branch_views) return;
+		selectedBranchView = view === 'current' ? 'current' : 'main';
+		renderBranch(updateData);
+		updateButtonStates();
 
 		if (data.git_clone) {
 			const branch = gitInfo.branch || 'unknown';
@@ -607,11 +691,19 @@
 
 	function installActiveBranch() {
 		if (!updateData) return;
+		if (updateData.show_branch_views && selectedBranchView === 'main') {
+			install('branch', 'main', 'latest main', '', 'branch');
+			return;
+		}
+		if (updateData.show_branch_views) {
+			install('installed', 'current', `latest installed source (${updateData.active_branch})`, '', 'branch');
+			return;
+		}
 		const name = updateData.active_branch || 'main';
 		if (updateData.git_clone) {
 			install('current', 'current', name, '', 'branch');
 		} else {
-			install('branch', name, `latest ${name}`, '', 'branch');
+			install('branch', updateData.source_name || 'main', `latest ${name}`, '', 'branch');
 		}
 	}
 
@@ -791,6 +883,17 @@
 	document.querySelectorAll('.update-tab-link').forEach((button) => {
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
+
+	const branchSubtabs = byId('branch-subtabs');
+	branchSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
+		button.addEventListener('click', () => switchBranchView(button.dataset.branchView));
+	});
+	branchSubtabs.addEventListener('wheel', (event) => {
+		if (!updateData || !updateData.show_branch_views || !event.deltaY) return;
+		event.preventDefault();
+		event.stopPropagation();
+		switchBranchView(event.deltaY > 0 ? 'current' : 'main');
+	}, { passive: false });
 
 	document.querySelectorAll('.custom-select').forEach((dropdown) => wireDropdown(dropdown));
 	document.addEventListener('click', () => closeDropdowns());

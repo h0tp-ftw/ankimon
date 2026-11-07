@@ -6,10 +6,16 @@
 
 .update-content {
 	width: min(100%, 1050px);
+	min-width: 0;
 	margin: 0 auto;
 	padding: 24px 32px 48px;
 	display: grid;
 	gap: 16px;
+}
+
+.content-scroll {
+	min-width: 0;
+	overflow-x: hidden;
 }
 
 .channel-row,
@@ -177,6 +183,9 @@
 	right: 0;
 	z-index: 40;
 	display: grid;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
 	gap: 8px;
 	padding: 9px;
 	background: var(--bg-card);
@@ -188,11 +197,15 @@
 
 .custom-select-menu .custom-select-search {
 	width: 100%;
+	min-width: 0;
+	max-width: 100%;
 	min-height: 36px;
 }
 
 .custom-select-options {
 	display: grid;
+	min-width: 0;
+	max-width: 100%;
 	gap: 3px;
 	max-height: 230px;
 	overflow-y: auto;
@@ -201,6 +214,8 @@
 
 .custom-select-option {
 	width: 100%;
+	min-width: 0;
+	max-width: 100%;
 	padding: 9px 10px;
 	color: var(--text-main);
 	background: transparent;
@@ -209,7 +224,14 @@
 	font: 500 .88rem 'Outfit', sans-serif;
 	text-align: left;
 	overflow-wrap: anywhere;
+	white-space: normal;
 	cursor: pointer;
+}
+
+.custom-select-empty {
+	min-width: 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
 }
 
 .custom-select-option:hover,
@@ -291,6 +313,34 @@
 	font-family: 'JetBrains Mono', monospace;
 	font-size: .82rem;
 	overflow-wrap: anywhere;
+	white-space: pre-line;
+	line-height: 1.65;
+}
+
+.branch-subtabs {
+	display: flex;
+	width: fit-content;
+	max-width: 100%;
+	gap: 6px;
+	padding: 4px;
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 10px;
+}
+
+.branch-subtab {
+	padding: 8px 14px;
+	color: var(--text-muted);
+	background: transparent;
+	border: 0;
+	border-radius: 7px;
+	font: 600 .88rem 'Outfit', sans-serif;
+	cursor: pointer;
+}
+
+.branch-subtab.active {
+	color: var(--text-bright);
+	background: var(--bg-card-hover);
 }
 
 .status-text {
@@ -598,7 +648,7 @@ progress::-moz-progress-bar {
 }
 
 .update-content.has-open-dropdown {
-	padding-bottom: 360px;
+	padding-bottom: 180px;
 }
 
 .code-error {

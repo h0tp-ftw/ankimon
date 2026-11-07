@@ -2,6 +2,7 @@ import json
 import time
 import traceback
 from pathlib import Path
+from urllib.parse import quote
 
 from aqt import mw
 from aqt.operations import QueryOp
@@ -27,6 +28,7 @@ class UpdateManagerBridge(QObject):
         self._tags = []
         self._branches = []
         self._prs = []
+        self._installed_pr = None
         self._active_branch = "main"
         self._git_clone = False
         self._sprite_diff = None
@@ -151,30 +153,77 @@ class UpdateManagerBridge(QObject):
             git_clone = updater.is_git_clone()
             git_info = updater.get_git_checkout_info() if git_clone else {}
             state = updater.read_update_state() or {}
+            source_type = state.get("source_type") or "branch"
+            source_name = str(state.get("source_name") or "main")
             if git_clone:
                 local_sha = git_info.get("full_sha") or None
-                branch = git_info.get("branch") or "main"
-                if branch == "HEAD":
-                    branch = "main"
+                source_type = "branch"
+                source_name = git_info.get("branch") or "main"
+                if source_name == "HEAD":
+                    source_name = "main"
                 state = dict(state, commit_sha=local_sha)
             else:
                 local_sha = state.get("commit_sha")
-                branch = state.get("source_name") or "main"
 
             try:
-                remote_sha = updater.fetch_branch_sha(branch)
+                main_remote_sha = updater.fetch_branch_sha("main")
             except Exception:
-                remote_sha = None
-                branch_error = "api_error"
+                main_remote_sha = None
+                main_error = "api_error"
             else:
-                branch_error = updater.consume_api_error()
-                if remote_sha is None and branch_error is None:
-                    branch_error = "not_found"
+                main_error = updater.consume_api_error()
+                if main_remote_sha is None and main_error is None:
+                    main_error = "not_found"
+
+            is_main_source = source_type == "branch" and source_name == "main"
+            if (git_clone and source_name == "main") or is_main_source:
+                main_commit_sha = local_sha
+            else:
+                main_commit_sha = state.get("main_commit_sha")
+            if not isinstance(main_commit_sha, str):
+                main_commit_sha = None
+            installed_pr = None
+            current_error = None
+            if is_main_source:
+                current_remote_sha = main_remote_sha
+                current_error = main_error
+            elif source_type == "pr":
+                try:
+                    installed_pr = updater.fetch_pull_request(source_name)
+                except Exception:
+                    installed_pr = None
+                    current_remote_sha = None
+                    current_error = "api_error"
+                else:
+                    current_error = updater.consume_api_error()
+                    current_remote_sha = (
+                        installed_pr.get("head_sha") if installed_pr else None
+                    )
+                    if current_remote_sha is None and current_error is None:
+                        current_error = "not_found"
+            else:
+                try:
+                    current_remote_sha = updater.fetch_source_sha(
+                        source_type, source_name
+                    )
+                except Exception:
+                    current_remote_sha = None
+                    current_error = "api_error"
+                else:
+                    current_error = updater.consume_api_error()
+                    if current_remote_sha is None and current_error is None:
+                        current_error = "not_found"
+            if (
+                source_type in {"tag", "release"}
+                and local_sha == source_name
+                and current_remote_sha
+            ):
+                local_sha = current_remote_sha
 
             relation = None
-            if git_clone and local_sha and remote_sha and remote_sha != local_sha:
+            if git_clone and local_sha and current_remote_sha and current_remote_sha != local_sha:
                 try:
-                    relation = updater.fetch_branch_relation(local_sha, branch)
+                    relation = updater.fetch_branch_relation(local_sha, source_name)
                 except Exception:
                     relation = None
                 state["git_relation"] = relation
@@ -186,9 +235,31 @@ class UpdateManagerBridge(QObject):
             except Exception:
                 commit_date = None
             try:
-                commits = updater.fetch_branch_commits(branch, local_sha)
+                main_commit_date = (
+                    updater.fetch_commit_date(main_commit_sha)
+                    if main_commit_sha else None
+                )
             except Exception:
-                commits = []
+                main_commit_date = None
+            try:
+                main_commits = (
+                    updater.fetch_commits_between(main_commit_sha, main_remote_sha)
+                    if main_commit_sha and main_remote_sha
+                    and main_commit_sha != main_remote_sha
+                    else updater.fetch_branch_commits("main")
+                    if main_remote_sha and not main_commit_sha
+                    else []
+                )
+            except Exception:
+                main_commits = []
+            try:
+                current_commits = (
+                    updater.fetch_commits_between(local_sha, current_remote_sha)
+                    if local_sha and current_remote_sha and local_sha != current_remote_sha
+                    else []
+                )
+            except Exception:
+                current_commits = []
 
             installed_at = state.get("installed_at")
             if not isinstance(installed_at, (int, float)) or not installed_at:
@@ -218,9 +289,18 @@ class UpdateManagerBridge(QObject):
             active_branch = (
                 "detached"
                 if git_clone and git_info.get("branch") == "HEAD"
-                else (git_info.get("branch") or "main")
-                if git_clone
-                else branch
+                else source_name
+            )
+            if source_type == "pr":
+                active_branch = (
+                    f"PR #{source_name} — {installed_pr.get('head_ref')}"
+                    if installed_pr and installed_pr.get("head_ref")
+                    else f"PR #{source_name}"
+                )
+            elif source_type in {"tag", "release"}:
+                active_branch = f"{source_type.capitalize()}: {source_name}"
+            show_branch_views = bool(
+                not git_clone and not is_main_source and state.get("source_type")
             )
             return {
                 "releases": releases,
@@ -229,13 +309,22 @@ class UpdateManagerBridge(QObject):
                 "git_clone": git_clone,
                 "git_info": git_info,
                 "active_branch": active_branch,
-                "query_branch": branch,
+                "query_branch": source_name,
                 "local_sha": local_sha,
-                "remote_sha": remote_sha,
-                "branch_error": branch_error,
+                "remote_sha": current_remote_sha,
+                "branch_error": current_error,
+                "main_remote_sha": main_remote_sha,
+                "main_commit_sha": main_commit_sha,
+                "main_error": main_error,
+                "main_commits": main_commits,
+                "current_commits": current_commits,
+                "show_branch_views": show_branch_views,
+                "installed_pr": installed_pr,
+                "source_type": source_type,
+                "source_name": source_name,
                 "relation": relation,
                 "commit_date": commit_date,
-                "commits": commits,
+                "main_commit_date": main_commit_date,
                 "installed_at": installed_at,
                 "sprite_snoozed": sprite_snoozed,
             }
@@ -244,6 +333,7 @@ class UpdateManagerBridge(QObject):
             self._releases = data["releases"]
             self._git_clone = data["git_clone"]
             self._active_branch = data["active_branch"]
+            self._installed_pr = data.get("installed_pr")
             self._send(
                 "onUpdateData",
                 {
@@ -348,6 +438,50 @@ class UpdateManagerBridge(QObject):
 
     def _resolve_source(self, source_type, source_name):
         source_name = str(source_name or "")
+        if source_type == "installed":
+            state = updater.read_update_state() or {}
+            installed_type = state.get("source_type")
+            installed_name = str(state.get("source_name") or "")
+            if installed_type == "branch" and installed_name and installed_name != "main":
+                return {
+                    "source_type": "branch",
+                    "source_name": installed_name,
+                    "label": f"latest {installed_name}",
+                }
+            if installed_type == "pr" and installed_name.isdigit():
+                entry = self._installed_pr or next(
+                    (
+                        item for item in self._prs
+                        if str(item.get("number")) == installed_name
+                    ),
+                    None,
+                )
+                if entry:
+                    return {
+                        "source_type": "pr",
+                        "source_name": installed_name,
+                        "label": f"PR #{installed_name} ({entry.get('title', '')})",
+                        "entry": entry,
+                    }
+            if installed_type in {"tag", "release"} and installed_name:
+                choices = self._releases if installed_type == "release" else self._tags
+                entry = next(
+                    (item for item in choices if item.get("name") == installed_name),
+                    None,
+                ) or {
+                    "name": installed_name,
+                    "zipball_url": (
+                        f"https://github.com/h0tp-ftw/ankimon/archive/"
+                        f"refs/tags/{quote(installed_name, safe='')}.zip"
+                    ),
+                }
+                return {
+                    "source_type": installed_type,
+                    "source_name": installed_name,
+                    "label": f"latest {installed_type} {installed_name}",
+                    "entry": entry,
+                }
+            raise ValueError("The installed source is not available to update.")
         if source_type == "current" and self._git_clone:
             return {
                 "source_type": "current",
@@ -428,7 +562,9 @@ class UpdateManagerBridge(QObject):
                 )
             elif source_type in ("release", "tag"):
                 entry = source["entry"]
-                commit_sha = source_name
+                commit_sha = updater.fetch_source_sha(source_type, source_name)
+                if not commit_sha:
+                    commit_sha = source_name
                 published_at = (
                     entry.get("published_at")
                     if source_type == "release"

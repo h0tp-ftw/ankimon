@@ -60,6 +60,10 @@
 						<button id="git-pull-btn" class="btn btn-primary" type="button">Fast-forward Current Branch</button>
 					</section>
 					<section id="panel-branch" class="tab-panel active">
+						<nav id="branch-subtabs" class="branch-subtabs hidden" aria-label="Branch update view">
+							<button class="branch-subtab active" type="button" data-branch-view="main">Main</button>
+							<button class="branch-subtab" type="button" data-branch-view="current">Current Installed</button>
+						</nav>
 						<div class="update-card">
 							<h3 id="active-branch-title">Active Branch: Loading...</h3>
 							<dl class="branch-details">
@@ -67,7 +71,7 @@
 								<div><dt>Commit Date</dt><dd id="commit-date">Loading...</dd></div>
 								<div><dt>Last Update Installed</dt><dd id="last-update-installed">Loading...</dd></div>
 							</dl>
-							<p id="branch-status" class="status-text" role="status" aria-live="polite">Status: Checking branch...</p>
+							<p id="branch-status" class="status-text" role="status" aria-live="polite">Checking branch...</p>
 						</div>
 						<div class="update-card">
 							<h3>Recent Branch Updates</h3>
@@ -155,7 +159,7 @@
 					</section>
 					<div id="operation-status" class="operation-status hidden" role="status" aria-live="polite"></div>
 					<section id="code-error" class="code-error hidden" role="alert">
-						<h3>Status: Code error [Traceback]</h3>
+						<h3>Code error [Traceback]</h3>
 						<pre id="code-error-traceback"></pre>
 					</section>
 				</section>

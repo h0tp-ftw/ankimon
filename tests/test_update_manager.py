@@ -564,6 +564,82 @@ def test_fetch_ref_date_resolves_a_tag_name(monkeypatch):
     assert seen == ["commits/2.3-E"]
 
 
+def test_fetch_source_sha_resolves_a_pull_request_head(monkeypatch):
+    seen = []
+
+    def api_get(endpoint):
+        seen.append(endpoint)
+        return {
+            "number": 42,
+            "title": "test PR",
+            "state": "closed",
+            "head": {"ref": "feature/test", "sha": "abc123456789"},
+        }
+
+    monkeypatch.setattr(um, "_api_get", api_get)
+    assert um.fetch_source_sha("pr", "42") == "abc123456789"
+    assert seen == ["pulls/42"]
+
+
+def test_fetch_source_sha_resolves_tag_and_quotes_branch_name(monkeypatch):
+    seen = []
+
+    def api_get(endpoint):
+        seen.append(endpoint)
+        if endpoint == "commits/2.31-E":
+            return {"sha": "tag123456789"}
+        return {"commit": {"sha": "branch123456789"}}
+
+    monkeypatch.setattr(um, "_api_get", api_get)
+    assert um.fetch_source_sha("tag", "2.31-E") == "tag123456789"
+    assert um.fetch_source_sha("branch", "feature/test") == "branch123456789"
+    assert seen == ["commits/2.31-E", "branches/feature%2Ftest"]
+
+
+def test_fetch_commits_between_uses_commit_shas(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        um,
+        "_api_get",
+        lambda endpoint: seen.append(endpoint) or {
+            "commits": [
+                {"sha": "newcommit123", "commit": {"message": "new update\nbody"}},
+                {"sha": "oldcommit123", "commit": {"message": "older update"}},
+            ]
+        },
+    )
+    assert um.fetch_commits_between("ba5e1234567", "cafe12345678") == [
+        {"sha": "oldcomm", "message": "older update"},
+        {"sha": "newcomm", "message": "new update"},
+    ]
+    assert seen == ["compare/ba5e1234567...cafe12345678"]
+
+
+def test_save_update_state_preserves_and_advances_main_commit(tmp_path, monkeypatch):
+    state_path = tmp_path / "update_state.json"
+    monkeypatch.setattr(um, "get_update_state_path", lambda: state_path)
+    state_path.write_text(
+        json.dumps({
+            "source_type": "branch",
+            "source_name": "main",
+            "commit_sha": "main123456",
+            "skip_until": 1234567890,
+        }),
+        encoding="utf-8",
+    )
+
+    um.save_update_state("pr", "42", "pr123456")
+    installed_pr = json.loads(state_path.read_text(encoding="utf-8"))
+    assert installed_pr["commit_sha"] == "pr123456"
+    assert installed_pr["main_commit_sha"] == "main123456"
+    assert installed_pr["skip_until"] == 1234567890
+
+    um.save_update_state("branch", "main", "main987654")
+    installed_main = json.loads(state_path.read_text(encoding="utf-8"))
+    assert installed_main["commit_sha"] == "main987654"
+    assert installed_main["main_commit_sha"] == "main987654"
+
+
 def test_fetch_ref_date_falls_back_to_author_date(monkeypatch):
     monkeypatch.setattr(
         um, "_api_get",
