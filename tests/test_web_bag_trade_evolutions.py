@@ -579,3 +579,80 @@ def test_the_web_bag_hands_the_loaded_record_to_check_evo_item(shop_obj):
     assert bag.calls == [("kirlia-1", 281, _DAWN_STONE, record)]
     # Exactly one read: the gender arrives with the id, not from a second query.
     assert reads == ["kirlia-1"]
+
+
+# --------------------------------------------------------------------------- #
+# #1005: items granted from the sprite list keep their file-name casing
+# ("Black-Augurite", "Peat-Block"), while ``evolution_items`` holds the
+# lowercase items.csv identifiers. ``_categorize`` compared them verbatim, so
+# Black Augurite fell into "other" and the bag offered "Give to Pokemon"
+# instead of the evolution picker.
+# --------------------------------------------------------------------------- #
+class _BagStub:
+    hp_heal_items = {}
+    fossil_pokemon = {}
+    pokeball_chances = {}
+    evolution_items = {"black-augurite", "peat-block", "leaf-stone"}
+    ev_items = set()
+
+
+class _CategorizeHost:
+    item_window = _BagStub()
+
+
+@pytest.mark.parametrize(
+    "item_name", ["Black-Augurite", "black-augurite", "Peat-Block", "leaf-stone"]
+)
+def test_sprite_cased_evolution_items_are_categorized_as_evolution(shop_obj, item_name):
+    category = shop_obj.AnkimonItemsWeb._categorize(_CategorizeHost(), item_name, False)
+
+    assert category == "evolution"
+
+
+def test_non_evolution_items_stay_other(shop_obj):
+    category = shop_obj.AnkimonItemsWeb._categorize(
+        _CategorizeHost(), "Metal-Alloy", False
+    )
+
+    assert category == "other"
+
+
+def test_scyther_is_offered_the_sprite_cased_black_augurite(shop_obj):
+    scyther = _pokemon("Scyther", 123)
+    assert (
+        shop_obj.check_evolution_by_item(
+            123, shop_obj.return_id_for_item_name("Black-Augurite")
+        )
+        == 900
+    )
+
+    choices = _choices(shop_obj, [scyther], "Black-Augurite")
+
+    assert choices[scyther["individual_id"]].get("e") == 1
+
+
+@pytest.mark.parametrize("region", [None, "Kanto", "Hisui"])
+def test_scyther_is_offered_black_augurite_in_any_region(shop_obj, region):
+    """Kleavor is a Hisui-tagged form with no plain sibling for Black Augurite.
+
+    ``check_evolution_by_item`` resolves it in every region, so the picker must
+    flag Scyther too; before the fix it was only offered with Hisui active.
+    """
+    scyther = _pokemon("Scyther", 123)
+    stub_services = _stub_services([scyther])
+    stub_services.settings = types.SimpleNamespace(
+        get=lambda key, default=None: region if key == "misc.active_region" else default
+    )
+    with patch.object(shop_obj, "services", stub_services):
+        result = shop_obj.AnkimonItemsWeb.get_pokemon_choices(
+            _StubHost(), "black-augurite"
+        )
+
+    assert result["choices"][0].get("e") == 1
+
+
+def test_pikachu_keeps_its_plain_thunder_stone_route_outside_alola(shop_obj):
+    pikachu = _pokemon("Pikachu", 25)
+    choices = _choices(shop_obj, [pikachu], "thunder-stone")
+
+    assert choices[pikachu["individual_id"]].get("e") == 1
