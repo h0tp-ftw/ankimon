@@ -103,6 +103,14 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert " (Last Main)" in javascript
     assert "Installed Source: " in javascript
     assert "sourceUrl(data.source_type, data.source_name)" in javascript
+    assert "sourceLinkTarget(sourceType, sourceName)" in javascript
+    assert "sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName)" in javascript
+    assert "sourceLinkLabel(data.source_type, data.source_name)" in javascript
+    assert "if (sourceType === 'installed' && updateData)" in javascript
+    assert "if (sourceType === 'pr') return `PR #${sourceName}`" in javascript
+    assert "target.sourceType === 'pr'" in javascript
+    assert "target.sourceType === 'release'" in javascript
+    assert "target.sourceType === 'tag'" in javascript
     assert "/commit/${encodeURIComponent(sha)}" in javascript
     assert "event.target.closest('.update-tab-link')" in javascript
     assert "passive: false" in javascript

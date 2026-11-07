@@ -297,7 +297,7 @@
 			const sourceLink = document.createElement('a');
 			sourceLink.href = '#';
 			sourceLink.className = 'source-link';
-			sourceLink.textContent = active;
+			sourceLink.textContent = sourceLinkLabel(data.source_type, data.source_name);
 			sourceLink.addEventListener('click', (event) => {
 				event.preventDefault();
 				openGitHubTarget(
@@ -678,10 +678,11 @@
 		}
 	}
 
-	function install(sourceType, sourceName, label, warning = '', progressPanel = 'developer') {
+	function install(sourceType, sourceName, _label, warning = '', progressPanel = 'developer') {
 		const prompt = updateData && updateData.git_clone
 			? `Switch this Git checkout to `
 			: `Update Ankimon to `;
+		const linkTarget = sourceLinkTarget(sourceType, sourceName);
 		const fragment = document.createDocumentFragment();
 		if (warning) {
 			fragment.appendChild(document.createTextNode(`${warning}\n\n`));
@@ -690,13 +691,18 @@
 		const link = document.createElement('a');
 		link.href = '#';
 		link.className = 'source-link';
-		link.textContent = label;
+		link.textContent = sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName);
 		link.addEventListener('click', (event) => {
 			event.preventDefault();
 			if (bridge) {
-				bridge.openGitHubTarget(sourceUrl(sourceType, sourceName), (opened) => {
-					if (!opened) showToast('Could not open the selected source in your browser.', true);
-				});
+				bridge.openGitHubTarget(
+					sourceUrl(linkTarget.sourceType, linkTarget.sourceName),
+					(opened) => {
+						if (!opened) {
+							showToast('Could not open the selected source in your browser.', true);
+						}
+					},
+				);
 			}
 		});
 		fragment.appendChild(link);
@@ -736,14 +742,34 @@
 		});
 	}
 
+	function sourceLinkTarget(sourceType, sourceName) {
+		if (sourceType === 'installed' && updateData) {
+			return {
+				sourceType: updateData.source_type || 'branch',
+				sourceName: updateData.source_name || 'main',
+			};
+		}
+		if (sourceType === 'current' && updateData && updateData.git_info) {
+			return {
+				sourceType: 'branch',
+				sourceName: updateData.git_info.branch || 'main',
+			};
+		}
+		return { sourceType, sourceName };
+	}
+
+	function sourceLinkLabel(sourceType, sourceName) {
+		if (sourceType === 'pr') return `PR #${sourceName}`;
+		return sourceName || 'main';
+	}
+
 	function sourceUrl(sourceType, sourceName) {
-		const name = sourceType === 'current' && updateData && updateData.git_info
-			? updateData.git_info.branch
-			: sourceName;
+		const target = sourceLinkTarget(sourceType, sourceName);
+		const name = target.sourceName;
 		const ref = (name || 'main').split('/').map(encodeURIComponent).join('/');
-		if (sourceType === 'pr') return `https://github.com/h0tp-ftw/ankimon/pull/${ref}`;
-		if (sourceType === 'release') return `https://github.com/h0tp-ftw/ankimon/releases/tag/${ref}`;
-		if (sourceType === 'tag') return `https://github.com/h0tp-ftw/ankimon/tree/${ref}`;
+		if (target.sourceType === 'pr') return `https://github.com/h0tp-ftw/ankimon/pull/${ref}`;
+		if (target.sourceType === 'release') return `https://github.com/h0tp-ftw/ankimon/releases/tag/${ref}`;
+		if (target.sourceType === 'tag') return `https://github.com/h0tp-ftw/ankimon/tree/${ref}`;
 		return `https://github.com/h0tp-ftw/ankimon/tree/${ref}`;
 	}
 
