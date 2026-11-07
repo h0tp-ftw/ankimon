@@ -18,6 +18,7 @@
 	let activeProgressPanel = '';
 	const busyOperations = new Set();
 	let toastTimer = null;
+	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
 
 	const byId = (id) => document.getElementById(id);
 	const setText = (id, value) => { byId(id).textContent = value; };
@@ -77,7 +78,15 @@
 		element.classList.remove(
 			'progress-message-complete',
 			'progress-message-failure',
+			'progress-message-rate-limit',
+			'progress-message-sprite-success',
+			'progress-message-sprite-warning',
 		);
+		if (result === 'rate-limit') {
+			element.classList.add('progress-message-rate-limit');
+			element.textContent = message;
+			return;
+		}
 		if (result === 'failure') {
 			element.classList.add('progress-message-failure');
 			element.textContent = message;
@@ -92,6 +101,11 @@
 				element.append(heading, document.createTextNode(match[2]));
 				return;
 			}
+		}
+		if (result === 'sprite-success') {
+			element.classList.add('progress-message-sprite-success');
+		} else if (result === 'sprite-warning') {
+			element.classList.add('progress-message-sprite-warning');
 		}
 		element.textContent = message || '';
 	}
@@ -251,7 +265,7 @@
 		);
 
 		const status = byId('branch-status');
-		status.classList.remove('success', 'warning', 'error');
+		status.classList.remove('success', 'warning', 'error', 'rate-limit');
 		branchCanUpdate = false;
 		if (data.git_clone && active === 'detached') {
 			status.textContent = 'Status: Detached checkout. Pick a branch, release, tag, or PR from the other tabs.';
@@ -262,10 +276,22 @@
 			status.classList.add('warning');
 			setText('branch-update-btn', 'Checkout Has Local Changes');
 		} else if (!remoteSha) {
-			status.textContent = data.git_clone
-				? `Status: Branch '${data.query_branch || active}' was not found on the Ankimon repository (or it could not be reached).`
-				: 'Status: Could not check connection.';
-			status.classList.add('error');
+			if (data.branch_error === 'rate_limited') {
+				status.textContent = RATE_LIMIT_MESSAGE;
+				status.classList.add('rate-limit');
+			} else if (data.branch_error === 'not_found') {
+				status.textContent = `Status: Could not find branch '${data.query_branch || active}' on GitHub.`;
+				status.classList.add('warning');
+			} else if (data.branch_error === 'connection') {
+				status.textContent = 'Status: Could not reach GitHub. Check your connection and try again.';
+				status.classList.add('error');
+			} else if (data.branch_error === 'api_error') {
+				status.textContent = 'Status: GitHub could not verify this branch. Please try again later.';
+				status.classList.add('warning');
+			} else {
+				status.textContent = 'Status: Could not check connection.';
+				status.classList.add('error');
+			}
 			setText('branch-update-btn', data.git_clone ? 'Branch Not on Ankimon Repository' : 'Update Branch Now');
 		} else if (data.git_clone && localSha !== remoteSha && ['behind', 'diverged'].includes(relation)) {
 			status.textContent = relation === 'behind'
@@ -325,14 +351,17 @@
 		}
 	}
 
-	function renderReleases(releases) {
+	function renderReleases(releases, error = null) {
 		const list = Array.isArray(releases) ? releases : [];
 		latestRelease = list[0] || null;
 		const latestLabel = byId('latest-release-label');
 		latestLabel.classList.remove('success', 'warning', 'error');
-		if (!latestRelease) {
-			latestLabel.textContent = 'Could not check for updates.';
+		if (error === 'rate_limited') {
+			latestLabel.textContent = RATE_LIMIT_MESSAGE;
 			latestLabel.classList.add('error');
+		} else if (!latestRelease) {
+			latestLabel.textContent = 'Could not check for updates.';
+			latestLabel.classList.add('warning');
 		} else if (latestRelease.name === updateData.version) {
 			latestLabel.textContent = `You're up to date (${latestRelease.name})`;
 			latestLabel.classList.add('success');
@@ -365,7 +394,9 @@
 			'release-select',
 			entries,
 			selectedRelease,
-			'No matching releases',
+			updateData && updateData.releases_error === 'rate_limited'
+				? RATE_LIMIT_MESSAGE
+				: 'No matching releases',
 			(entry) => {
 				selectedRelease = entry.value;
 				setDropdownLabel('release-select', entry.label);
@@ -486,8 +517,10 @@
 			'source-target',
 			entries.map((entry) => ({ value: valueFor(entry), label: labelFor(entry) })),
 			selectedTarget,
-			type === 'pr' ? 'No matching open pull requests' :
-				(type === 'branch' ? 'No matching branches' : 'No matching tags'),
+			developerData.errors && developerData.errors[type] === 'rate_limited'
+				? RATE_LIMIT_MESSAGE
+				: type === 'pr' ? 'No matching open pull requests' :
+					(type === 'branch' ? 'No matching branches' : 'No matching tags'),
 			(entry) => {
 				selectedTarget = entry.value;
 				setDropdownLabel('source-target', entry.label);
@@ -499,7 +532,7 @@
 	}
 
 	function switchTab(tab) {
-		document.querySelectorAll('.update-tab, .update-tab-link').forEach((button) => {
+		document.querySelectorAll('.update-tab-link').forEach((button) => {
 			button.classList.toggle('active', button.dataset.tab === tab);
 		});
 		document.querySelectorAll('.tab-panel').forEach((panel) => {
@@ -587,7 +620,7 @@
 		spriteCheckUpToDate = Boolean(data.sprite_check_up_to_date);
 		renderVersion(data);
 		renderBranch(data);
-		renderReleases(data.releases);
+		renderReleases(data.releases, data.releases_error);
 		byId('branch-snooze').checked = Number(data.skip_until) > Date.now() / 1000;
 		byId('sprites-snooze').checked = Boolean(data.sprite_snoozed);
 		updateButtonStates();
@@ -704,12 +737,16 @@
 		spriteCheckUpToDate = result.status === 'up_to_date';
 		if (result.status === 'up_to_date') {
 			message = 'Sprites are already up to date!';
+			outcome = 'sprite-success';
 		} else if (result.status === 'error') {
-			message = `Error checking updates: ${result.error}`;
-			outcome = 'failure';
+			message = result.rate_limited
+				? RATE_LIMIT_MESSAGE
+				: `Error checking updates: ${result.error}`;
+			outcome = result.rate_limited ? 'rate-limit' : 'failure';
 		} else if (spriteUpdateAvailable) {
 			message = `A sprites update is available!\n\n  • New sprites: ${(result.added || []).length}\n  • Modified sprites: ${(result.modified || []).length}`;
 			if ((result.deleted || []).length) message += `\n  • Obsolete to remove: ${result.deleted.length}`;
+			outcome = 'sprite-warning';
 			byId('sprites-install-btn').classList.remove('hidden');
 		}
 		setSpriteProgress(100, message, outcome);
@@ -717,7 +754,11 @@
 	};
 
 	window.onSpritesCheckFailed = (data) => {
-		setSpriteProgress(100, `Error checking sprite updates: ${data.message}`, 'failure');
+		const rateLimited = data.rate_limited;
+		setSpriteProgress(100, rateLimited
+			? RATE_LIMIT_MESSAGE
+			: `Error checking sprite updates: ${data.message}`,
+		rateLimited ? 'rate-limit' : 'failure');
 		spriteCheckUpToDate = false;
 	};
 
@@ -747,27 +788,9 @@
 		if (bridge) bridge.loadData();
 	};
 
-	byId('close-btn').addEventListener('click', () => {
-		if (navBridge) navBridge.closeWindow();
-	});
-
-	document.querySelectorAll('.update-tab, .update-tab-link').forEach((button) => {
+	document.querySelectorAll('.update-tab-link').forEach((button) => {
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
-	byId('update-tabs').addEventListener('wheel', (event) => {
-		if (!(event.target instanceof Element) || !event.target.closest('.update-tab')) return;
-		if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-		const tabs = ['branch', 'releases', 'developer', 'sprites'];
-		const active = tabs.indexOf(
-			document.querySelector('.update-tab.active').dataset.tab,
-		);
-		const next = event.deltaY < 0 ? Math.min(active + 1, tabs.length - 1) :
-			Math.max(active - 1, 0);
-		if (next !== active) {
-			event.preventDefault();
-			switchTab(tabs[next]);
-		}
-	}, { passive: false });
 
 	document.querySelectorAll('.custom-select').forEach((dropdown) => wireDropdown(dropdown));
 	document.addEventListener('click', () => closeDropdowns());

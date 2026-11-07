@@ -11,12 +11,15 @@ what the services-registry refactor targets.)
 """
 
 import importlib.util
+import io
 import json
 import os
 import sys
 import time
 import types
+import urllib.error
 import zipfile
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -425,6 +428,27 @@ def test_fetch_releases_filters_pre_2_0(monkeypatch):
         {"tag_name": "1.52-E", "zipball_url": "z", "body": ""},
     ])
     assert [r["name"] for r in um.fetch_releases()] == ["2.01-E"]
+
+
+def test_api_rate_limit_error_is_available_to_the_calling_operation(monkeypatch):
+    headers = Message()
+    headers["X-RateLimit-Remaining"] = "0"
+    error = urllib.error.HTTPError(
+        "https://api.github.com/repos/h0tp-ftw/ankimon/branches/main",
+        403,
+        "rate limited",
+        headers,
+        io.BytesIO(b'{"message":"API rate limit exceeded"}'),
+    )
+
+    def rate_limited_request(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(um.urllib.request, "urlopen", rate_limited_request)
+
+    assert um._api_get("branches/main") is None
+    assert um.consume_api_error() == "rate_limited"
+    assert um.consume_api_error() is None
 
 
 def test_order_tags_by_release_order_matches_release_picker():

@@ -474,6 +474,27 @@ def calculate_sprite_diff(
         if progress_callback:
             progress_callback(percent, message)
 
+    def is_rate_limited(error):
+        response = getattr(error, "response", None)
+        if response is None:
+            return False
+        status = getattr(response, "status_code", None)
+        headers = getattr(response, "headers", {})
+        body = ""
+        try:
+            body = response.text.lower()
+        except Exception:
+            pass
+        return (
+            status == 429
+            or (
+                status == 403
+                and headers.get("X-RateLimit-Remaining") == "0"
+            )
+            or "rate limit" in body
+            or "secondary rate" in body
+        )
+
     try:
         # Read local state first to check for active snooze.
         local_sha = None
@@ -568,7 +589,11 @@ def calculate_sprite_diff(
         }
     except Exception as e:
         report_progress(100, "Sprite update check failed.")
-        return {"status": "error", "error": str(e)}
+        return {
+            "status": "error",
+            "error": str(e),
+            "rate_limited": is_rate_limited(e),
+        }
 
 
 def trigger_sprites_update_check(parent=None, silent=False):

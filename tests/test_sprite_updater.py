@@ -236,6 +236,24 @@ def test_sprite_diff_logic(tmp_path, monkeypatch):
     )
 
 
+def test_sprite_rate_limit_is_reported_as_a_distinct_error(tmp_path, monkeypatch):
+    dest_dir = tmp_path / "sprites"
+    response = mock.Mock(
+        status_code=403,
+        headers={"X-RateLimit-Remaining": "0"},
+        text='{"message":"API rate limit exceeded"}',
+    )
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "403 Client Error", response=response
+    )
+    monkeypatch.setattr(requests, "get", mock.Mock(return_value=response))
+
+    result = su.calculate_sprite_diff(dest_dir)
+
+    assert result["status"] == "error"
+    assert result["rate_limited"] is True
+
+
 def test_sprite_updater_snooze(tmp_path, monkeypatch):
     dest_dir = tmp_path / "sprites"
     dest_dir.mkdir()

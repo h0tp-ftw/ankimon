@@ -45,7 +45,6 @@
 		<main class="main-content">
 			<header class="top-bar">
 				<div class="top-bar-titles"><h2 class="update-manager-heading">Update Ankimon</h2><p id="installed-version">Installed: Loading...</p></div>
-				<div class="top-actions"><button id="close-btn" class="btn btn-secondary">Close</button></div>
 			</header>
 			<div class="content-scroll">
 				<section class="update-content">
@@ -60,12 +59,6 @@
 						<div><h3>Git Workspace Mode</h3><p id="git-info"></p><p>Selected sources are checked out from the official Ankimon repository. The working tree must be clean; restart Anki after an update.</p></div>
 						<button id="git-pull-btn" class="btn btn-primary" type="button">Fast-forward Current Branch</button>
 					</section>
-					<nav id="update-tabs" class="update-tabs" aria-label="Update options">
-						<button class="update-tab active" type="button" data-tab="branch">Branch</button>
-						<button class="update-tab" type="button" data-tab="releases">Releases</button>
-						<button class="update-tab" type="button" data-tab="developer">Developer</button>
-						<button class="update-tab" type="button" data-tab="sprites">Sprites</button>
-					</nav>
 					<section id="panel-branch" class="tab-panel active">
 						<div class="update-card">
 							<h3 id="active-branch-title">Active Branch: Loading...</h3>
@@ -115,7 +108,7 @@
 					</section>
 					<section id="panel-developer" class="tab-panel">
 						<p class="developer-intro">Install code directly from branches, pull requests, or tags.</p>
-						<p id="developer-warning" class="warning-text">Pull requests and development branches may contain unreviewed code. Only install sources you trust. Your Ankimon collection, progress and sprites are preserved during archive-based updates (which download and install a ZIP of the selected source).</p>
+						<blockquote id="developer-warning" class="warning-text">Pull requests and branches may contain unreviewed code. Only install sources you trust. Your Ankimon collection and progress will not be lost.</blockquote>
 						<div class="update-card">
 							<h3>Install from Source</h3>
 							<label>Source type:</label>

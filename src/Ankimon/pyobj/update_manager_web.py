@@ -144,6 +144,9 @@ class UpdateManagerBridge(QObject):
                 releases = updater.fetch_releases()
             except Exception:
                 releases = []
+                releases_error = "api_error"
+            else:
+                releases_error = updater.consume_api_error()
 
             git_clone = updater.is_git_clone()
             git_info = updater.get_git_checkout_info() if git_clone else {}
@@ -162,6 +165,11 @@ class UpdateManagerBridge(QObject):
                 remote_sha = updater.fetch_branch_sha(branch)
             except Exception:
                 remote_sha = None
+                branch_error = "api_error"
+            else:
+                branch_error = updater.consume_api_error()
+                if remote_sha is None and branch_error is None:
+                    branch_error = "not_found"
 
             relation = None
             if git_clone and local_sha and remote_sha and remote_sha != local_sha:
@@ -216,6 +224,7 @@ class UpdateManagerBridge(QObject):
             )
             return {
                 "releases": releases,
+                "releases_error": releases_error,
                 "state": state,
                 "git_clone": git_clone,
                 "git_info": git_info,
@@ -223,6 +232,7 @@ class UpdateManagerBridge(QObject):
                 "query_branch": branch,
                 "local_sha": local_sha,
                 "remote_sha": remote_sha,
+                "branch_error": branch_error,
                 "relation": relation,
                 "commit_date": commit_date,
                 "commits": commits,
@@ -258,20 +268,31 @@ class UpdateManagerBridge(QObject):
 
         def worker(_col):
             tags = updater.fetch_tags()
+            tag_error = updater.consume_api_error()
             ordered_releases = release_order
             if not ordered_releases:
                 try:
                     ordered_releases = updater.fetch_releases()
+                    updater.consume_api_error()
                 except Exception as error:
                     self._log_error(
                         f"Could not load release order for Update Manager tags: {error}"
                     )
+            branches = updater.fetch_branches()
+            branch_error = updater.consume_api_error()
+            prs = updater.fetch_open_prs()
+            pr_error = updater.consume_api_error()
             return {
                 "tags": updater.order_tags_by_release_order(
                     tags, ordered_releases
                 ),
-                "branches": updater.fetch_branches(),
-                "prs": updater.fetch_open_prs(),
+                "branches": branches,
+                "prs": prs,
+                "errors": {
+                    "tag": tag_error,
+                    "branch": branch_error,
+                    "pr": pr_error,
+                },
             }
 
         def done(data):
