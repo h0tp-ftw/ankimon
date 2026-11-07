@@ -19,6 +19,7 @@ POKEMON_TIERS = {
     "ultra": 30,
     "legendary": 120,
     "mythical": 160,
+    "paradox": 30,
 }
 
 # Leaderboard pushes are rate limited. TrainerCard.sync_leaderboard() is wired to

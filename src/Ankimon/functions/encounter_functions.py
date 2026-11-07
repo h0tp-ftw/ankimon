@@ -233,6 +233,7 @@ OVERHAUL_TIER_PARAMS = {
     "Mega": (0.05, 1.50),
     "Legendary": (0.05, 1.50),
     "Mythical": (0.02, 0.50),
+    "Paradox": (0.35, 4.50),
 }
 
 # Main Pokémon level thresholds for unlocking tiers
@@ -243,6 +244,7 @@ OVERHAUL_LEVEL_THRESHOLDS = {
     "Gmax": 65,
     "Mythical": 75,
     "Starter": 80,
+    "Paradox": 40,
 }
 
 # Dry spell thresholds for independent pity (Pi reviews)
@@ -253,6 +255,7 @@ OVERHAUL_PITY_THRESHOLDS = {
     "Mega": 200,
     "Legendary": 200,
     "Mythical": 400,
+    "Paradox": 100,
 }
 
 # Pity divisor/scaling factor (the quadratic denominator)
@@ -560,6 +563,7 @@ def _modify_percentages_legacy(
         "Ultra": 1.5,
         "Mega": 0.5,
         "Gmax": 0.5,
+        "Paradox": 1.5,
     }
 
     # Adjust percentages based on total reviews relative to the daily average
@@ -575,21 +579,24 @@ def _modify_percentages_legacy(
             + percentages.pop("Mega", 0)
             + percentages.pop("Gmax", 0)
             + percentages.pop("Starter", 0)
+            + percentages.pop("Paradox", 0)
         )
     elif review_ratio < 0.6:
         percentages["Baby"] += 1.5
         percentages["Normal"] -= 1.5
     elif review_ratio < 0.8:
         percentages["Ultra"] += 1.5
-        percentages["Normal"] -= 1.5
+        percentages["Paradox"] += 1.5
+        percentages["Normal"] -= 3.0
     else:
         percentages["Legendary"] += 0.5
         percentages["Ultra"] += 1.5
         percentages["Mega"] += 0.5
         percentages["Gmax"] += 0.5
         percentages["Starter"] += 0.5
+        percentages["Paradox"] += 1.5
         percentages["Mythical"] += 0.2
-        percentages["Normal"] -= 3.7
+        percentages["Normal"] -= 5.2
 
     # Restrict access to certain tiers based on main Pokémon level
     if main_pokemon_level:
@@ -601,6 +608,7 @@ def _modify_percentages_legacy(
             "Gmax": 65,
             "Mythical": 75,
             "Starter": 80,
+            "Paradox": 40,
         }
 
         # Trainer-level boost. Guarded per tier so the tiers popped into
@@ -616,6 +624,7 @@ def _modify_percentages_legacy(
                     ("Gmax", 0.5),
                     ("Starter", 0.5),
                     ("Mythical", 0.2),
+                    ("Paradox", 1.5),
                 ]:
                     if tier in percentages:
                         percentages[tier] += boost
@@ -757,6 +766,7 @@ def check_min_generate_level(name):
     )
     is_mega = (species_id in encounter_data.MEGA) or (actual_id in encounter_data.MEGA)
     is_gmax = (species_id in encounter_data.GMAX) or (actual_id in encounter_data.GMAX)
+    is_paradox = (species_id in getattr(encounter_data, "PARADOX", [])) or (actual_id in getattr(encounter_data, "PARADOX", []))
 
     if is_mythical:
         min_level = max(min_level, 75)
@@ -768,6 +778,8 @@ def check_min_generate_level(name):
         min_level = max(min_level, 50)
     elif is_ultra:
         min_level = max(min_level, 30)
+    elif is_paradox:
+        min_level = max(min_level, 40)
     elif is_starter:
         min_level = max(min_level, 30)
 
@@ -878,6 +890,8 @@ def get_all_pokemon_in_tier(tier: str) -> list[int]:
         return encounter_data.MEGA
     if tier == "Gmax":
         return encounter_data.GMAX
+    if tier == "Paradox":
+        return getattr(encounter_data, "PARADOX", [])
     # if tier == "Starter": return encounter_data.STARTERS #Uncomment to activate starters
     if tier == "Starter":
         return []
@@ -961,6 +975,7 @@ def generate_random_pokemon(
         "Legendary",
         "Gmax",
         "Ultra",
+        "Paradox",
         "Starter",
         "Baby",
         "Normal",
@@ -2065,6 +2080,7 @@ def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
     is_mythical = enemy_pokemon.tier == "Mythical"
     is_ultra = enemy_pokemon.tier == "Ultra"
     is_starter = enemy_pokemon.tier == "Starter"
+    is_paradox = enemy_pokemon.tier == "Paradox"
 
     return (
         (is_legendary and settings_obj.get("battle.auto_catch_legendary", True))
@@ -2074,6 +2090,7 @@ def _enemy_protected_by_auto_catch(enemy_pokemon: PokemonObject) -> bool:
         or (is_mega and settings_obj.get("battle.auto_catch_mega", True))
         or (is_gmax and settings_obj.get("battle.auto_catch_gmax", True))
         or (is_regional and settings_obj.get("battle.auto_catch_regional", True))
+        or (is_paradox and settings_obj.get("battle.auto_catch_paradox", True))
     )
 
 

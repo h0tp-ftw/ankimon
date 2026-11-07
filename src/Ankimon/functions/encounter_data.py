@@ -139,6 +139,25 @@ MYTHICAL = [
     1025,  # pecharunt
 ]
 
+
+PARADOX = [
+    # Generation 9
+    984,
+    985,
+    986,  # great-tusk, scream-tail, brute-bonnet
+    987,
+    988,
+    989,  # flutter-mane, slither-wing, sandy-shocks
+    990,
+    991,
+    992,  # iron-treads, iron-bundle, iron-hands
+    993,
+    994,
+    995,  # iron-jugulis, iron-moth, iron-thorns
+    1005,
+    1006,  # roaring-moon, iron-valiant
+]
+
 BABY = [
     # Generation 2
     172,
@@ -955,27 +974,13 @@ NORMAL = [
     981,
     982,
     983,  # farigiraf, dudunsparce, kingambit
-    984,
-    985,
-    986,  # great-tusk, scream-tail, brute-bonnet
-    987,
-    988,
-    989,  # flutter-mane, slither-wing, sandy-shocks
-    990,
-    991,
-    992,  # iron-treads, iron-bundle, iron-hands
-    993,
-    994,
-    995,  # iron-jugulis, iron-moth, iron-thorns
     996,
     997,
     998,  # frigibax, arctibax, baxcalibur
     999,
-    1000,
-    1005,  # gimmighoul, gholdengo, roaring-moon
-    1006,
+    1000,  # gimmighoul, gholdengo
     1011,
-    1012,  # iron-valiant, dipplin, poltchageist
+    1012,  # dipplin, poltchageist
     1013,
     1018,
     1019,  # sinistcha, archaludon, hydrapple
@@ -1518,6 +1523,27 @@ PREREQUISITES = {
     10194: {898, 897},  # Calyrex-Shadow requires Calyrex + Spectrier
     10191: {892},  # Urshifu Rapid Strike requires Urshifu Single Strike
     # Generation 9
+    # Generation 9
+    984: {232},  # Great Tusk requires Donphan
+    985: {39},  # Scream Tail requires Jigglypuff
+    986: {591},  # Brute Bonnet requires Amoonguss
+    987: {200},  # Flutter Mane requires Misdreavus
+    988: {637},  # Slither Wing requires Volcarona
+    989: {82},  # Sandy Shocks requires Magneton
+    990: {232},  # Iron Treads requires Donphan
+    991: {225},  # Iron Bundle requires Delibird
+    992: {297},  # Iron Hands requires Hariyama
+    993: {635},  # Iron Jugulis requires Hydreigon
+    994: {637},  # Iron Moth requires Volcarona
+    995: {248},  # Iron Thorns requires Tyranitar
+    1005: {373},  # Roaring Moon requires Salamence
+    1006: {282, 475},  # Iron Valiant requires Gardevoir and Gallade
+    1009: {245},  # Walking Wake requires Suicune
+    1010: {640},  # Iron Leaves requires Virizion
+    1020: {244},  # Gouging Fire requires Entei
+    1021: {243},  # Raging Bolt requires Raikou
+    1022: {639},  # Iron Boulder requires Terrakion
+    1023: {638},  # Iron Crown requires Cobalion
     1025: {1014, 1015, 1016},  # Pecharunt requires Loyal Three
     # ("OR", {...}) = any one collected suffices (_meets_prerequisites);
     # a plain set would demand BOTH, but encounter.txt specifies "need either".

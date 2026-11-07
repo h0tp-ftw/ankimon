@@ -58,6 +58,7 @@ GROUPS = [
                         ("battle.auto_catch_mega",      "Mega"),
                         ("battle.auto_catch_gmax",      "Gigantamax"),
                         ("battle.auto_catch_regional",  "Regional Form"),
+                        ("battle.auto_catch_paradox",   "Paradox"),
                     ],
                 },
             },

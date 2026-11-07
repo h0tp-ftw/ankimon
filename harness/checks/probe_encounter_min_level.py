@@ -19,7 +19,7 @@ from harness.bootstrap import bootstrap
 # second copy of the algorithm; any species/form minimum change needs review.
 BASELINE_SPECIES_COUNT = 1384
 BASELINE_MINIMUMS_SHA256 = (
-    "75a96b00b937d83534b58b4463d0dfba52370d348a533ce8db629793fb807c10"
+    "f64a6dba1ab908cef586e8163c75957abd4a2b3d803743229f2460ca76932949"
 )
 
 

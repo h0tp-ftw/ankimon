@@ -8,6 +8,7 @@
     "battle.auto_catch_mega": "Always catch Mega Evolution Pokémon when encountered.",
     "battle.auto_catch_gmax": "Always catch Gigantamax Pokémon when encountered.",
     "battle.auto_catch_regional": "Always catch Regional Form Pokémon when encountered.",
+    "battle.auto_catch_paradox": "Always catch Paradox Pokémon when encountered.",
     "battle.cards_per_round": "Number of cards to review per round until the next battle action. (For dynamic values use a-b [e.g. 1-3])",
     "battle.daily_average": "Set the amount of Cards you want to review per day.",
     "battle.card_max_time": "Goal of maximum amount of time needed to answer a card in seconds",
