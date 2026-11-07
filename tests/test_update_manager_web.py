@@ -90,6 +90,22 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'id="branch-subtabs"' in html
     assert 'data-branch-view="main"' in html
     assert 'data-branch-view="current"' in html
+    branch_panel = html[html.index('id="panel-branch"'):html.index('id="panel-releases"')]
+    assert branch_panel.index('id="active-branch-title"') < branch_panel.index(
+        'id="branch-subtabs"'
+    ) < branch_panel.index("Recent Branch Updates")
+    assert branch_panel.index("Recent Branch Updates") < branch_panel.index(
+        'id="branch-status"'
+    ) < branch_panel.index('id="recent-commits"')
+    assert "padding-bottom: 180px;" in css[css.index("#panel-developer"):]
+    assert "border-bottom-color: var(--accent-blue);" in css
+    assert " (Current)" in javascript
+    assert " (Last Main)" in javascript
+    assert "Installed Source: " in javascript
+    assert "sourceUrl(data.source_type, data.source_name)" in javascript
+    assert "/commit/${encodeURIComponent(sha)}" in javascript
+    assert "event.target.closest('.update-tab-link')" in javascript
+    assert "passive: false" in javascript
     assert 'id="releases-progress"' in html
     assert 'id="developer-progress"' in html
     assert 'id="sprites-progress"' in html
