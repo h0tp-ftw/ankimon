@@ -952,6 +952,9 @@ def save_update_state(
     source_name: str,
     commit_sha: str,
     skip_until: Optional[float] = None,
+    commit_date: Optional[str] = None,
+    main_commit_sha: Optional[str] = None,
+    main_commit_date: Optional[str] = None,
 ):
     try:
         import time
@@ -969,22 +972,42 @@ def save_update_state(
             except Exception:
                 pass
 
+        if not commit_date:
+            if old_state.get("commit_sha") == commit_sha:
+                commit_date = old_state.get("commit_date")
+            if not commit_date and commit_sha:
+                try:
+                    commit_date = fetch_commit_date(commit_sha)
+                except Exception:
+                    commit_date = None
+            if not commit_date and source_name:
+                try:
+                    commit_date = fetch_ref_date(source_name)
+                except Exception:
+                    commit_date = None
+
         if source_type == "branch" and source_name == "main":
             main_commit_sha = commit_sha
+            main_commit_date = commit_date
         else:
-            main_commit_sha = old_state.get("main_commit_sha")
-            if (
-                not main_commit_sha
-                and old_state.get("source_type") == "branch"
+            if not main_commit_sha:
+                main_commit_sha = old_state.get("main_commit_sha")
+            if not main_commit_date:
+                main_commit_date = old_state.get("main_commit_date")
+            if not main_commit_sha and (
+                old_state.get("source_type") == "branch"
                 and old_state.get("source_name") == "main"
             ):
                 main_commit_sha = old_state.get("commit_sha")
+                main_commit_date = main_commit_date or old_state.get("commit_date")
 
         state = {
             "source_type": source_type,
             "source_name": source_name,
             "commit_sha": commit_sha,
+            "commit_date": commit_date or "",
             "main_commit_sha": main_commit_sha or "",
+            "main_commit_date": main_commit_date or "",
             "installed_at": time.time(),
             "addon_version": addon_ver,
         }
@@ -993,7 +1016,7 @@ def save_update_state(
         elif old_state.get("skip_until") is not None:
             state["skip_until"] = old_state["skip_until"]
 
-        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        _write_json_atomic(path, state)
     except Exception as e:
         print(f"Ankimon Updater: Failed to save update state: {e}")
 
@@ -1021,6 +1044,34 @@ def read_update_state() -> Optional[dict]:
     except Exception:
         pass
     return None
+
+
+def persist_update_state_commit_metadata(
+    commit_sha: Optional[str] = None,
+    commit_date: Optional[str] = None,
+    main_commit_sha: Optional[str] = None,
+    main_commit_date: Optional[str] = None,
+) -> None:
+    """Persist resolved commit metadata without changing the install timestamp."""
+    path = get_update_state_path()
+    state = read_update_state()
+    if not state:
+        return
+    changed = False
+    for key, value in (
+        ("commit_sha", commit_sha),
+        ("commit_date", commit_date),
+        ("main_commit_sha", main_commit_sha),
+        ("main_commit_date", main_commit_date),
+    ):
+        if value and state.get(key) != value:
+            state[key] = value
+            changed = True
+    if changed:
+        try:
+            _write_json_atomic(path, state)
+        except OSError as error:
+            print(f"Ankimon Updater: Failed to persist commit metadata: {error}")
 
 
 def _download_zip_to_temp(url: str, progress_cb=None) -> Optional[str]:
@@ -1206,6 +1257,8 @@ def apply_update(
     commit_sha: Optional[str] = None,
     published_at: Optional[str] = None,
     status_cb=None,
+    main_commit_sha: Optional[str] = None,
+    main_commit_date: Optional[str] = None,
 ) -> tuple[bool, str, Optional[int]]:
     """Install the downloaded build. Runs in the updater's ``QueryOp`` worker.
 
@@ -1399,7 +1452,24 @@ def apply_update(
 
             # --- Save update state if provided ---
             if source_type and source_name:
-                save_update_state(source_type, source_name, commit_sha or "")
+                commit_date = None
+                try:
+                    commit_date = fetch_commit_date(commit_sha or "")
+                except Exception:
+                    pass
+                if not commit_date:
+                    try:
+                        commit_date = fetch_ref_date(source_name)
+                    except Exception:
+                        pass
+                save_update_state(
+                    source_type,
+                    source_name,
+                    commit_sha or "",
+                    commit_date=commit_date,
+                    main_commit_sha=main_commit_sha,
+                    main_commit_date=main_commit_date,
+                )
 
             cleanup()
             log(f"Update complete. Installed {installed} files.")

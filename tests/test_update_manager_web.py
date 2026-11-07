@@ -101,6 +101,18 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "border-bottom-color: var(--accent-blue);" in css
     assert " (Current)" in javascript
     assert " (Last Main)" in javascript
+    assert '"commit_date": commit_date' in (
+        ADDON / "pyobj" / "update_manager.py"
+    ).read_text(encoding="utf-8")
+    assert '"main_commit_date": main_commit_date' in (
+        ADDON / "pyobj" / "update_manager.py"
+    ).read_text(encoding="utf-8")
+    assert 'commit_date = state.get("commit_date")' in (
+        ADDON / "pyobj" / "update_manager_web.py"
+    ).read_text(encoding="utf-8")
+    assert 'main_commit_date = state.get("main_commit_date")' in (
+        ADDON / "pyobj" / "update_manager_web.py"
+    ).read_text(encoding="utf-8")
     assert "Installed Source: " in javascript
     assert "sourceUrl(data.source_type, data.source_name)" in javascript
     assert "sourceLinkTarget(sourceType, sourceName)" in javascript
