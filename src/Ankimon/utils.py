@@ -40,6 +40,8 @@ from .resources import (
     addon_dir,
     POKEMON_TIERS,
     pokedex_path,
+    pokemon_tm_learnset_path,
+    pokemon_tm_learnset_path,
 )
 from .move_names import format_move_name
 
@@ -388,6 +390,7 @@ def random_item() -> Optional[str]:
     global _random_item_cache
     if _random_item_cache is None:
         item_names: list[str] = []
+        tms: set[str] = set()
 
         try:
             files = os.listdir(items_path)
@@ -421,16 +424,25 @@ def random_item() -> Optional[str]:
                 continue
 
             item_names.append(name)
-        _random_item_cache = item_names
+
+        try:
+            with open(pokemon_tm_learnset_path, "r", encoding="utf-8") as f:
+                pokemon_tm_learnset = json.load(f)
+            tms = {x for xs in pokemon_tm_learnset.values() for x in xs}
+            item_names.extend(list(tms))
+        except Exception:
+            pass
+
+        _random_item_cache = (item_names, tms)
     else:
-        item_names = _random_item_cache
+        item_names, tms = _random_item_cache
 
     if not item_names:
         return None
 
     item_name = random.choice(item_names)
     # add item to item list
-    give_item(item_name)
+    give_item(item_name, item_type="TM" if item_name in tms else None)
     return item_name
 
 
