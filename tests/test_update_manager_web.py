@@ -106,6 +106,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "/commit/${encodeURIComponent(sha)}" in javascript
     assert "event.target.closest('.update-tab-link')" in javascript
     assert "passive: false" in javascript
+    assert "activeProgressBranchView" in javascript
+    assert "syncBranchProgressVisibility()" in javascript
+    assert "selectedBranchView === activeProgressBranchView" in javascript
     assert 'id="releases-progress"' in html
     assert 'id="developer-progress"' in html
     assert 'id="sprites-progress"' in html

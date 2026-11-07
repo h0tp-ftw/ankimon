@@ -17,6 +17,8 @@
 	let spriteCheckUpToDate = false;
 	let selectedBranchView = 'main';
 	let activeProgressPanel = '';
+	let activeProgressBranchView = '';
+	let activeProgressVisible = false;
 	const busyOperations = new Set();
 	let toastTimer = null;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
@@ -123,7 +125,18 @@
 			progress.value = percent;
 			container.querySelector('output').textContent = `${percent}%`;
 		}
-		setVisible(container, visible);
+		activeProgressVisible = visible;
+		if (activeProgressPanel === 'branch') {
+			syncBranchProgressVisibility();
+		} else {
+			setVisible(container, visible);
+		}
+	}
+
+	function syncBranchProgressVisibility() {
+		const matchesView = !updateData || !updateData.show_branch_views ||
+			selectedBranchView === activeProgressBranchView;
+		setVisible(byId('branch-progress'), activeProgressVisible && matchesView);
 	}
 
 	function setSpriteProgress(value, message = null, result = '') {
@@ -453,6 +466,7 @@
 		if (!updateData || !updateData.show_branch_views) return;
 		selectedBranchView = view === 'current' ? 'current' : 'main';
 		renderBranch(updateData);
+		syncBranchProgressVisibility();
 		updateButtonStates();
 
 		if (data.git_clone) {
@@ -693,6 +707,10 @@
 		}
 		showModal('Confirm Update', fragment, 'Install', () => {
 			activeProgressPanel = progressPanel;
+			activeProgressBranchView = progressPanel === 'branch' &&
+				updateData && updateData.show_branch_views
+				? selectedBranchView
+				: 'current';
 			setOperationProgress(0, true, true);
 			setOperationStatus('', false);
 			bridge.installUpdate(sourceType, sourceName, (result) => {
