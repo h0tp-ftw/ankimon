@@ -52,12 +52,12 @@ GROUPS = [
                     ),
                     "keys": [
                         ("battle.auto_catch_legendary", "Legendary"),
-                        ("battle.auto_catch_mythical",  "Mythical"),
-                        ("battle.auto_catch_ultra",     "Ultra Beast"),
-                        ("battle.auto_catch_starter",   "Starter"),
-                        ("battle.auto_catch_mega",      "Mega"),
-                        ("battle.auto_catch_gmax",      "Gigantamax"),
-                        ("battle.auto_catch_regional",  "Regional Form"),
+                        ("battle.auto_catch_mythical", "Mythical"),
+                        ("battle.auto_catch_ultra", "Ultra Beast"),
+                        ("battle.auto_catch_starter", "Starter"),
+                        ("battle.auto_catch_mega", "Mega"),
+                        ("battle.auto_catch_gmax", "Gigantamax"),
+                        ("battle.auto_catch_regional", "Regional Form"),
                     ],
                 },
             },
@@ -83,8 +83,14 @@ GROUPS = [
                         ),
                         "type": "select",
                         "options": [
-                            {"value": "classic", "label": "Classic (50/50 split, choose a holder)"},
-                            {"value": "oras", "label": "ORAS-Style (whole team, full XP)"},
+                            {
+                                "value": "classic",
+                                "label": "Classic (50/50 split, choose a holder)",
+                            },
+                            {
+                                "value": "oras",
+                                "label": "ORAS-Style (whole team, full XP)",
+                            },
                         ],
                     },
                 ],
@@ -113,6 +119,7 @@ GROUPS = [
             "Team Overview in Deck Overview",
             "Animate Time",
             "Show GIFs in Collection",
+            "Show GIFs in Ankimon Window",
             "Show Sprites Across Ankimon",
         ],
     },
@@ -219,19 +226,15 @@ GROUPS = [
                 "type": "select",
                 "options": [
                     {"value": "manual", "label": "Manual"},
-                    {"value": "auto", "label": "Auto-Resolve"}
-                ]
-            }
-        ]
+                    {"value": "auto", "label": "Auto-Resolve"},
+                ],
+            },
+        ],
     },
     {
         "label": "Leaderboard",
-        "settings": [
-            "Enable Leaderboard Sync",
-            "Username",
-            "API Key"
-        ]
-    }
+        "settings": ["Enable Leaderboard Sync", "Username", "API Key"],
+    },
 ]
 
 

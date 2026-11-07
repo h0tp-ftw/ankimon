@@ -69,6 +69,12 @@ jobs:
     - name: Run tests with xvfb
       run: |
         xvfb-run -a env QT_QPA_PLATFORM=offscreen pytest tests/
+    # The full run skips this file: other test files stub PyQt6 at import time,
+    # so it only exercises real Qt in a process of its own.
+    - name: Run battle window GUI tests with real Qt
+      if: ${{ !cancelled() }}
+      run: |
+        xvfb-run -a env QT_QPA_PLATFORM=offscreen pytest tests/test_test_window_gui.py -rs
 
   save_recovery_windows:
     name: Save recovery — native Windows locks

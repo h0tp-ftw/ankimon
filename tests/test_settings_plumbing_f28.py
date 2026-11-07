@@ -348,7 +348,9 @@ def test_sprite_visibility_default_migration_preserves_existing_hud_preferences(
 
     assert settings.config["gui.show_sprites_across_ankimon"] is True
     assert settings.config["gui.hud_player_sprite"] is False
-    assert db.saved["gui.hud_player_sprite"] is False
+    # Seeding writes only the keys it added; the stored preference is left alone.
+    assert db.saved["gui.show_sprites_across_ankimon"] is True
+    assert "gui.hud_player_sprite" not in db.saved
 
 
 def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_env):

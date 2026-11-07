@@ -2647,49 +2647,45 @@ class AnkimonDB:
 
     # --- Config Operations (replaces config.obf) ---
 
+    @staticmethod
+    def _decode_config_value(key: str, val: Any) -> Any:
+        """Decodes a stored config value according to its setting's type.
+
+        Settings whose default is a string are stored as plain text, never as
+        JSON, so they are returned untouched: a trainer named ``null`` or ``1e5``
+        must not come back as ``None`` or ``100000.0``.
+        """
+        from .settings import DEFAULT_CONFIG
+
+        default = DEFAULT_CONFIG.get(key)
+        if isinstance(default, str):
+            return val
+        try:
+            return json.loads(val)
+        except (json.JSONDecodeError, TypeError):
+            # Legacy Python boolean spellings only apply to boolean settings.
+            if isinstance(default, bool) and isinstance(val, str):
+                if val.lower() == "true":
+                    return True
+                if val.lower() == "false":
+                    return False
+            return val
+
     def get_config_value(self, key: str, default: Any = None) -> Any:
         """Retrieves a config value by key."""
         cursor = self.execute("SELECT value FROM config WHERE key = ?", (key,))
         row = cursor.fetchone()
         if row:
-            val = row["value"]
-            # Try to parse as JSON, fallback to string
-            try:
-                return json.loads(val)
-            except (json.JSONDecodeError, TypeError):
-                from .settings import DEFAULT_CONFIG
-
-                # Legacy Python boolean spellings only apply to boolean settings.
-                if isinstance(DEFAULT_CONFIG.get(key), bool) and isinstance(val, str):
-                    if val.lower() == "true":
-                        return True
-                    elif val.lower() == "false":
-                        return False
-                return val
+            return self._decode_config_value(key, row["value"])
         return default
 
     def get_all_config(self) -> Dict[str, Any]:
         """Retrieves all config settings as a dictionary."""
         cursor = self.execute("SELECT key, value FROM config")
-        result = {}
-        for row in cursor.fetchall():
-            key = row["key"]
-            val = row["value"]
-            try:
-                result[key] = json.loads(val)
-            except (json.JSONDecodeError, TypeError):
-                from .settings import DEFAULT_CONFIG
-
-                if isinstance(DEFAULT_CONFIG.get(key), bool) and isinstance(val, str):
-                    if val.lower() == "true":
-                        result[key] = True
-                    elif val.lower() == "false":
-                        result[key] = False
-                    else:
-                        result[key] = val
-                else:
-                    result[key] = val
-        return result
+        return {
+            row["key"]: self._decode_config_value(row["key"], row["value"])
+            for row in cursor.fetchall()
+        }
 
     def save_all_config(self, config_dict: Dict[str, Any]):
         """Saves all config settings from a dictionary."""
