@@ -318,6 +318,8 @@ class Reviewer_Manager:
             self.main_pokemon.battle_status,
             self.main_pokemon.xp,
             self.settings.get("gui.show_mainpkmn_in_reviewer"),
+            self.settings.get("gui.gif_in_collection"),
+            self.settings.get("gui.show_sprites_across_ankimon"),
             self.settings.get("gui.reviewer_image_gif"),
             self.settings.get("misc.language"),
             _boost_snapshot(self.enemy_pokemon),

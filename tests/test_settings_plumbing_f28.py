@@ -33,6 +33,7 @@ Runs Qt-free (Tier-1 / venv_t1): ``Settings`` imports only ``json``/``os``/
 """
 
 import importlib.util
+import json
 import re
 import sys
 import types
@@ -357,6 +358,7 @@ def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_
     player_key = "gui.hud_player_sprite"
     config = {
         "gui.show_sprites_across_ankimon": False,
+        "gui.hud_xp_values": True,
         **{key: True for key in settings_mod.HUD_TOGGLE_AUTO_SYNC_KEYS},
     }
 
@@ -368,9 +370,108 @@ def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_
 
     assert config[player_key] is True
     assert player_key not in changed
+    assert config["gui.hud_xp_values"] is True
+    assert "gui.hud_xp_values" not in changed
     for key in settings_mod.HUD_TOGGLE_AUTO_SYNC_KEYS:
         if key != player_key:
             assert config[key] is False
+
+
+def test_gif_visibility_autosync_and_explicit_reviewer_override(isolated_env):
+    settings_mod = isolated_env["settings_mod"]
+    settings = object.__new__(settings_mod.Settings)
+    config = {
+        "gui.gif_in_collection": False,
+        "gui.reviewer_image_gif": True,
+        "ankidex.spriteMode": "animated",
+    }
+
+    changed = settings._apply_gif_toggle_autosync(config, previous_value=True)
+
+    assert changed == ["gui.reviewer_image_gif", "ankidex.spriteMode"]
+    assert config["gui.reviewer_image_gif"] is False
+    assert config["ankidex.spriteMode"] == "static"
+
+    config["gui.gif_in_collection"] = True
+    config["gui.reviewer_image_gif"] = False
+    config["ankidex.spriteMode"] = "animated"
+    changed = settings._apply_gif_toggle_autosync(
+        config,
+        previous_value=False,
+        explicit_overrides={"gui.reviewer_image_gif"},
+    )
+
+    assert config["gui.reviewer_image_gif"] is False
+    assert config["ankidex.spriteMode"] == "animated"
+    assert changed == []
+
+
+def test_gif_visibility_preserves_an_explicit_web_mode_override(isolated_env):
+    settings_mod = isolated_env["settings_mod"]
+    settings = object.__new__(settings_mod.Settings)
+    config = {
+        "gui.gif_in_collection": False,
+        "gui.gif_mode_override": True,
+        "gui.reviewer_image_gif": True,
+        "ankidex.spriteMode": "animated",
+    }
+
+    changed = settings._apply_gif_toggle_autosync(config, previous_value=True)
+
+    assert config["gui.reviewer_image_gif"] is False
+    assert config["ankidex.spriteMode"] == "animated"
+    assert changed == ["gui.reviewer_image_gif"]
+
+
+@pytest.mark.parametrize("legacy_mode", ["static", "animated"])
+def test_legacy_pokedex_sprite_mode_migrates_before_gif_autosync(
+    isolated_env, legacy_mode
+):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    db.save_all_config(
+        {
+            "pokedex_v2.spriteMode": legacy_mode,
+            "gui.gif_in_collection": False,
+        }
+    )
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["ankidex.spriteMode"] == legacy_mode
+    assert settings.config["gui.gif_mode_override"] is True
+    settings.set("gui.gif_in_collection", True)
+    assert settings.config["ankidex.spriteMode"] == legacy_mode
+
+
+def test_current_ankidex_sprite_mode_wins_over_legacy_value(isolated_env):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    db.save_all_config(
+        {
+            "pokedex_v2.spriteMode": "static",
+            "ankidex.spriteMode": "animated",
+        }
+    )
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["ankidex.spriteMode"] == "animated"
+    assert settings.config["gui.gif_mode_override"] is True
+
+
+def test_unchanged_ankidex_mode_save_preserves_override(isolated_env):
+    settings, _ = _settings_with_real_db(isolated_env)
+    settings.set("ankidex.spriteMode", "static")
+    assert settings.config["gui.gif_mode_override"] is True
+
+    settings.set("ankidex.spriteMode", "static")
+    assert settings.config["gui.gif_mode_override"] is True
+
+    settings.set("ankidex.spriteMode", "animated")
+    assert settings.config["gui.gif_mode_override"] is False
 
 
 def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
@@ -395,8 +496,37 @@ def test_sprite_visibility_web_override_metadata_and_scope_are_wired():
     assert "SCREEN_ANKIDEX" in allowlist
     assert "SCREEN_PROFILE" in allowlist
     assert "SCREEN_TEAM" in allowlist
-    assert "SCREEN_MOBILE" not in allowlist
-    assert "SCREEN_HISTORY" not in allowlist
+    assert "SCREEN_MOBILE" in allowlist
+    assert "SCREEN_HISTORY" in allowlist
+
+
+def test_gif_visibility_ui_and_setting_copy_are_wired():
+    settings_js = (
+        _src / "Ankimon" / "ankimon_items_web" / "settings.js"
+    ).read_text(encoding="utf-8")
+    names = json.loads(
+        (_src / "Ankimon" / "lang" / "setting_name.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    descriptions = json.loads(
+        (_src / "Ankimon" / "lang" / "setting_description.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert names["gui.gif_in_collection"] == "Show GIFs Across Ankimon"
+    assert descriptions["gui.gif_in_collection"] == (
+        "Show animated sprites (GIFs) instead of static sprites in the PC box, "
+        "during reviews, and other windows."
+    )
+    assert descriptions["gui.show_sprites_across_ankimon"] == (
+        "Disable this setting for a text-based presentation. This hides all "
+        "sprites, GIFs, and HP/XP bars, except those in the Ankimon Window "
+        "(Ctrl+Shift +P)."
+    )
+    assert "syncGifTogglesForGifVisibility()" in settings_js
+    assert "explicit_gif_overrides" in settings_js
 
 
 def _load_settings_schema():
@@ -456,3 +586,72 @@ def test_sprite_visibility_sync_repaints_the_chip_controls():
     assert ".setting-chip[data-key=" in helper.split("\n    }", 1)[0], (
         "the repaint helper must target chip buttons, not setting rows alone"
     )
+
+
+def test_sprite_visibility_updates_mobile_svg_and_shell_navigation():
+    shop_obj = (
+        _src / "Ankimon" / "ankimon_items_web" / "shop_obj.py"
+    ).read_text(encoding="utf-8")
+    nav_css = (
+        _src / "Ankimon" / "ankimon_items_web" / "nav-switcher.css"
+    ).read_text(encoding="utf-8")
+    mobile_html = (
+        _src / "Ankimon" / "ankimon_mobile_web" / "mobile.html"
+    ).read_text(encoding="utf-8")
+
+    assert "classList.toggle('ankimon-sprites-hidden', !show)" in shop_obj
+    assert ".pokeball-icon" in shop_obj
+    assert "visibility: hidden !important;" in shop_obj
+    assert "body.ankimon-sprites-hidden .nav-trigger .app-logo" in nav_css
+    hidden_title_style = nav_css.split(
+        "body.ankimon-sprites-hidden .nav-trigger h1 {", 1
+    )[1].split("}", 1)[0]
+    assert "text-align: left;" in hidden_title_style
+    assert "font-size:" not in hidden_title_style
+    assert '<svg class="pokeball-icon"' in mobile_html
+
+
+def test_shop_action_and_purchase_buttons_use_standard_font():
+    shop_js = (_src / "Ankimon" / "ankimon_items_web" / "shop.js").read_text(
+        encoding="utf-8"
+    )
+    shop_css = (_src / "Ankimon" / "ankimon_items_web" / "shop.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert "use.className = 'det-action-btn use'" in shop_js
+    assert ".det-action-btn.use.standard-label" not in shop_css
+    assert shop_css.count("font-size: 0.92rem;") >= 2
+    assert shop_css.count("font-weight: 400;") >= 2
+    assert "font-size: inherit;" in shop_css
+    assert "font-weight: inherit;" in shop_css
+
+
+def test_sprite_visibility_hides_web_placeholders_and_mobile_headings():
+    shop_css = (_src / "Ankimon" / "ankimon_items_web" / "shop.css").read_text(
+        encoding="utf-8"
+    )
+    ankidex_css = (_src / "Ankimon" / "ankidex" / "ankidex.css").read_text(
+        encoding="utf-8"
+    )
+    mobile_css = (_src / "Ankimon" / "ankimon_mobile_web" / "mobile.css").read_text(
+        encoding="utf-8"
+    )
+    mobile_html = (
+        _src / "Ankimon" / "ankimon_mobile_web" / "mobile.html"
+    ).read_text(encoding="utf-8")
+    history_html = (
+        _src / "Ankimon" / "ankimon_mobile_web" / "history.html"
+    ).read_text(encoding="utf-8")
+    profile_css = (
+        _src / "Ankimon" / "ankimon_profile_web" / "profile.css"
+    ).read_text(encoding="utf-8")
+
+    assert "body.ankimon-sprites-hidden #detail-placeholder" in shop_css
+    assert "body.ankimon-sprites-hidden #briefing-placeholder" in ankidex_css
+    assert "mobile-reviews-page" in mobile_html
+    assert "mobile-history-page" in history_html
+    assert "#state-empty .empty-content > h2" in mobile_css
+    assert ".mobile-history-page .top-bar-titles > h2" in mobile_css
+    assert "body.ankimon-sprites-hidden .rail-avatar img" in profile_css
+    assert "body.ankimon-sprites-hidden .rail-avatar .change-hint { margin-top: 0; }" in profile_css

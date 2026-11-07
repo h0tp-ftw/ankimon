@@ -1269,6 +1269,21 @@ def _run_mobile_battles_impl(
 
         from .sprite_functions import get_relative_sprite_path
 
+        sprite_mode = (
+            settings_obj.get(
+                "ankidex.spriteMode",
+                settings_obj.get(
+                    "pokedex_v2.spriteMode",
+                    "animated"
+                    if settings_obj.get("gui.gif_in_collection", True)
+                    else "static",
+                ),
+            )
+            if settings_obj
+            else "static"
+        )
+        sprite_format = "gif" if sprite_mode == "animated" else "png"
+
         last_result_data = {
             "done": False,
             "enemy_name": current_enemy_pokemon.display_name,
@@ -1281,7 +1296,7 @@ def _run_mobile_battles_impl(
                 current_enemy_pokemon.shiny,
                 getattr(current_enemy_pokemon, "gender", "N") or "N",
                 current_enemy_pokemon.name,
-                "gif",
+                sprite_format,
             ),
             "ease": first_review.get("ease", 3),
             "companion_name": main_pokemon_clone.display_name
@@ -1293,7 +1308,7 @@ def _run_mobile_battles_impl(
                 main_pokemon_clone.shiny,
                 (getattr(main_pokemon_clone, "gender", "N") or "N"),
                 main_pokemon_clone.name,
-                "gif",
+                sprite_format,
             )
             if main_pokemon_clone
             else "",

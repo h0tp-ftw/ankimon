@@ -1934,6 +1934,11 @@ body {
     margin: 0 auto;
 }
 
+body.ankimon-sprites-hidden #detail-placeholder,
+body.ankimon-sprites-hidden #briefing-placeholder {
+    display: none !important;
+}
+
 .inspector-content {
     padding: 24px;
     display: flex;

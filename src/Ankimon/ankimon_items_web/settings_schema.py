@@ -112,7 +112,7 @@ GROUPS = [
         "settings": [
             "Team Overview in Deck Overview",
             "Animate Time",
-            "Show GIFs in Collection",
+            "Show GIFs Across Ankimon",
             "Show Sprites Across Ankimon",
         ],
     },

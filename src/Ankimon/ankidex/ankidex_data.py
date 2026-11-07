@@ -162,7 +162,13 @@ def _prefs(settings):
             "ankidex.sortMode", settings.get("pokedex_v2.sortMode", "id-asc")
         ),
         "spriteMode": settings.get(
-            "ankidex.spriteMode", settings.get("pokedex_v2.spriteMode", "static")
+            "ankidex.spriteMode",
+            settings.get(
+                "pokedex_v2.spriteMode",
+                "animated"
+                if settings.get("gui.gif_in_collection", True)
+                else "static",
+            ),
         ),
     }
 
