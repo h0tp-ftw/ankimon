@@ -161,7 +161,7 @@ def _build_sprite_box(container_size, sprite_size, challenge_pokemon, show_sprit
 # --- Module-level functions for Monthly Challenges ---
 
 
-def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
+def create_monthly_challenge_pokemon(pokemon_data, month_name=None, make_shiny=False):
     """Creates a Pokémon dictionary from monthly challenge data."""
     base_stats = pokemon_data.get("stats", {})
     return {
@@ -195,6 +195,8 @@ def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
         "individual_id": pokemon_data["individual_id"],
         "is_favorite": pokemon_data.get("is_favorite", False),
         "held_item": pokemon_data.get("held_item", None),
+        "is_monthly": True,
+        "monthly_month": month_name,
     }
 
 
@@ -1272,6 +1274,7 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             return {
                 "current_challenge": current_challenge,
                 "challenge_pokemon_data": challenge_pokemon_data,
+                "all_challenges": monthly_challenges,
             }
 
         except Exception as e:
@@ -1304,7 +1307,23 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
             )
             return
 
-        if result_data is None:
+        # Reconcile all challenges first
+        if result_data and "all_challenges" in result_data:
+            try:
+                challenge_ids = []
+                month_names = {}
+                for c in result_data["all_challenges"]:
+                    ind_id = c.get("pokemon", {}).get("individual_id")
+                    month = c.get("month")
+                    if ind_id and month:
+                        challenge_ids.append(ind_id)
+                        month_names[ind_id] = month
+                if challenge_ids:
+                    db.reconcile_monthly_pokemon(challenge_ids, month_names)
+            except Exception as e:
+                logger.log("error", f"Reconciliation error: {e}")
+
+        if not result_data or not result_data.get("current_challenge"):
             if reclaim:
                 services.ui.notify(
                     "warning",
@@ -1462,7 +1481,7 @@ def check_and_award_monthly_pokemon(logger, defer=True, *, reclaim=False):
                     make_shiny = True
 
         new_pokemon = create_monthly_challenge_pokemon(
-            challenge_pokemon_data, make_shiny=make_shiny
+            challenge_pokemon_data, month_name=current_challenge.get("month"), make_shiny=make_shiny
         )
         shiny_text = " (Shiny)" if new_pokemon["shiny"] else ""
 
