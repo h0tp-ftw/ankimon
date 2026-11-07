@@ -60,7 +60,6 @@ except ImportError:  # dev helper not landed yet (thread-reload-and-misc-utils u
 
 
 from ..resources import (
-    items_path,
     csv_file_items_cost,
     csv_file_descriptions,
     icon_path,
@@ -2573,7 +2572,7 @@ class AnkimonItemsWeb(QDialog):
             move = find_details_move(name) or {}
             move_type = move.get("type") or "Normal"
             entry["image_url"] = QUrl.fromLocalFile(
-                str(items_path / f"Bag_TM_{move_type}_SV_Sprite.png")
+                str(get_item_sprite_path(f"Bag_TM_{move_type.lower()}_SV_Sprite"))
             ).toString()
             short_desc = _move_desc(name, move.get("shortDesc") or "")
             entry["description"] = (

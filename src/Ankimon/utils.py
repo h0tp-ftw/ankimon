@@ -453,11 +453,32 @@ for _prefix in ("health", "mighty", "tough", "smart", "courage", "quick"):
 del _prefix, _suffix
 
 
+# These filenames in the downloaded pack predate the lowercase item identifiers.
+_ITEM_SPRITE_FILENAMES = {
+    "black-augurite": "Black-Augurite.png",
+    "peat-block": "Peat-Block.png",
+}
+
+
 def get_item_sprite_path(item_name):
-    """Resolve an item icon, falling back to a bundled addition when needed."""
+    """Resolve display names and identifiers to downloaded or bundled icons."""
     downloaded = items_path / f"{item_name}.png"
-    bundled = _BUNDLED_ITEM_SPRITES.get(item_name)
-    if bundled is not None and not downloaded.is_file():
+    if downloaded.is_file():
+        return downloaded
+
+    identifier = normalize_item_identifier(item_name)
+    normalized = items_path / f"{identifier}.png"
+    if normalized != downloaded and normalized.is_file():
+        return normalized
+
+    filename = _ITEM_SPRITE_FILENAMES.get(identifier)
+    if filename is not None:
+        legacy = items_path / filename
+        if legacy.is_file():
+            return legacy
+
+    bundled = _BUNDLED_ITEM_SPRITES.get(identifier)
+    if bundled is not None:
         return bundled
     return downloaded
 
