@@ -236,48 +236,56 @@ reviews:
           tags, build inputs, artifact paths, and release/prerelease intent agree.
           PRs unrelated to releases pass.
 
+  # Post-merge actions default to doing nothing. Each one acts only on a clear,
+  # specific trigger and stays silent otherwise (no "nothing to report" output).
   post_merge_actions:
     - name: Synchronise user documentation
       enabled: true
       prompt: |
-        Apply only when the merged PR changes user-visible behaviour, a setting or
-        default, installation/update steps, or supported Anki/PyQt compatibility.
-        Update only the relevant existing documentation in README.md, CONFIG.md, or
-        src/Ankimon/config.md so it exactly matches the merged implementation. Open a
-        focused follow-up PR. Do not invent behaviour, rewrite unrelated prose, or
-        act on internal-only refactors, tests, generated data, or CI-only changes.
+        Default to taking no action. Act only when the merged PR adds, removes, or
+        renames a setting, changes a setting's default or accepted values, or changes
+        installation/update steps or supported Anki/PyQt versions, AND the current
+        README.md, CONFIG.md, or src/Ankimon/config.md (as of the merge commit)
+        states something that is now false. Do not act for bug fixes that restore
+        intended behaviour, visual/styling tweaks, refactors, tests, generated data,
+        CI, or release chores. Do not act when the merged PR already updated the docs.
+        When acting, edit the current file in place: change only the sentences that
+        became false, keep every other line byte-for-byte, keep existing setting key
+        names, headings, and structure, and never reintroduce text removed by an
+        earlier documentation commit. If the fix needs more than about 15 changed
+        lines in total, do not open a PR; post a short text report instead. Never
+        regenerate or restructure a whole file.
     - name: Recheck release metadata
       enabled: true
       prompt: |
-        Apply only to PRs labelled release or major, or PRs changing version metadata,
-        release notes, packaging, tags, artifact paths, or release workflows. Compare
-        addon.json, meta/manifest files, release notes, and workflow inputs. If a
-        deterministic inconsistency remains, open a minimal follow-up PR correcting
-        only that inconsistency; otherwise return a concise text report confirming the
-        checked values. Never choose or increment a version without repository evidence.
+        Default to taking no action. Act only on PRs labelled release, or PRs that
+        change version metadata (addon.json, manifest/meta files), release workflows,
+        or tags. Compare those values; if a deterministic mismatch remains, open a
+        minimal follow-up PR correcting only that mismatch. If everything agrees,
+        produce no output. Never choose or increment a version.
     - name: Report residual risks and follow-ups
       enabled: true
       prompt: |
-        Apply only when the merged PR, review, or checks explicitly leave unresolved
-        non-blocking work, TODOs, missing validation, compatibility uncertainty, or a
-        user-data migration risk. Produce a text report in the action results with
-        actionable follow-ups, affected paths, evidence, impact, and suggested priority.
-        Do not modify files or create tickets, and do not manufacture speculative work.
+        Default to taking no action. Act only when the merged PR's description or
+        review threads explicitly record unresolved work (a TODO, deferred fix, or
+        known user-data migration risk) that was not addressed before merge. List
+        only those items with paths and evidence. Do not infer or speculate about
+        risks, do not modify files or create tickets, and produce no output when
+        nothing explicit remains.
     - name: Audit upstream divergence
       enabled: true
       prompt: |
-        Apply only when the merged change touches behaviour also present in the linked
-        Unlucky-Life/ankimon upstream repository or claims to port/cherry-pick upstream
-        work. Produce a text report identifying the relevant upstream implementation,
-        intentional differences, likely accidental omissions, and future sync risk.
-        Do not modify files solely to make the fork match upstream.
+        Default to taking no action. Act only when the merged PR explicitly says it
+        ports, cherry-picks, or reverts work from Unlucky-Life/ankimon. Report
+        accidental omissions relative to that upstream change only; do not audit
+        general fork divergence and do not modify files.
     - name: Check translation coverage
       enabled: true
       prompt: |
-        Apply only when user-visible strings or files under src/Ankimon/lang change.
-        Compare locale keys and placeholders, then produce a text report listing
-        missing, stale, malformed, or inconsistent translations by locale and key.
-        Do not auto-translate text or modify licence/attribution material.
+        Default to taking no action. Act only when files under src/Ankimon/lang
+        change or the PR adds/renames translation keys. Report only missing keys
+        and mismatched placeholders by locale. Produce no output when coverage is
+        unchanged. Do not auto-translate text or modify licence/attribution material.
 
   tools:
     "github-checks":
