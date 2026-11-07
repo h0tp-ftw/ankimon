@@ -116,7 +116,6 @@ HUD_TOGGLE_AUTO_SYNC_KEYS = (
     "gui.hud_player_sprite",
     "gui.hud_enemy_sprite",
     "gui.hud_xp_bar",
-    "gui.hud_xp_values",
     "gui.hud_hp_bars",
     "gui.hud_status_badge",
     "gui.hud_owned_indicator",

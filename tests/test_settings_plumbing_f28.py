@@ -358,6 +358,7 @@ def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_
     player_key = "gui.hud_player_sprite"
     config = {
         "gui.show_sprites_across_ankimon": False,
+        "gui.hud_xp_values": True,
         **{key: True for key in settings_mod.HUD_TOGGLE_AUTO_SYNC_KEYS},
     }
 
@@ -369,6 +370,8 @@ def test_sprite_visibility_autosync_honors_explicit_same_save_override(isolated_
 
     assert config[player_key] is True
     assert player_key not in changed
+    assert config["gui.hud_xp_values"] is True
+    assert "gui.hud_xp_values" not in changed
     for key in settings_mod.HUD_TOGGLE_AUTO_SYNC_KEYS:
         if key != player_key:
             assert config[key] is False
