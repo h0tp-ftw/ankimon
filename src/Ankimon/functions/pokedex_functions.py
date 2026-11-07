@@ -1468,6 +1468,7 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
                         if target_data and target_data.get("evoType") in (
                             "useItem",
                             "trade",
+                            "other",
                         ):
                             # Gender gate from the bundled CSV (veekun ids:
                             # 1 = female, 2 = male). Gallade (475) requires a
@@ -1491,13 +1492,17 @@ def check_evolution_by_item(pokemon_id, item_id, gender=None, ignore_time=False)
                             # apostrophes so pokedex.json display names (e.g.
                             # "King's Rock") match items.csv identifiers (e.g.
                             # "kings-rock"), which drop the apostrophe.
-                            required_item = (
-                                (target_data.get("evoItem") or "")
-                                .lower()
-                                .replace(" ", "")
-                                .replace("-", "")
-                                .replace("'", "")
-                            )
+                            if target_data.get("evoType") == "other" and "spin while holding a sweet" in (target_data.get("evoCondition") or "").lower():
+                                # In Ankimon, we accept "Strawberry Sweet" for Alcremie spin evolution
+                                required_item = "strawberrysweet"
+                            else:
+                                required_item = (
+                                    (target_data.get("evoItem") or "")
+                                    .lower()
+                                    .replace(" ", "")
+                                    .replace("-", "")
+                                    .replace("'", "")
+                                )
                             normalized_item_name = (
                                 (item_name or "")
                                 .lower()
@@ -1609,6 +1614,8 @@ def check_evolution_for_pokemon(
     evolution_rejected=False,
     current_attacks=None,
     gender=None,
+    nature=None,
+    party_pokemon_ids=None,
 ):
     """
     Check if a Pokémon evolves by a level (or move-based level-up) condition.
@@ -1717,6 +1724,13 @@ def check_evolution_for_pokemon(
                             and target_data.get("evoType")
                             not in ("useItem", "trade", "levelFriendship")
                         )
+
+                        if is_level_evo and target_data.get("evoType") == "levelExtra":
+                            evo_condition = (target_data.get("evoCondition") or "").lower()
+                            if "remoraid in party" in evo_condition:
+                                # National dex ID of Remoraid is 223. We check base ID for forms too
+                                if party_pokemon_ids and not any(pid in (223, "223") for pid in party_pokemon_ids):
+                                    is_level_evo = False
 
                         # Move-based level-up evolution (e.g. Wyrdeer, Mr. Mime-Galar).
                         if target_data.get("evoType") == "levelMove":
@@ -1837,6 +1851,23 @@ def check_evolution_for_pokemon(
                             for candidate in eligible_evos
                             if evolution_target_species_id(candidate) in kept
                         ]
+
+                    if nature and len(eligible_evos) > 1:
+                        amped_natures = {"hardy", "brave", "adamant", "naughty", "docile", "impish", "lax", "hasty", "jolly", "naive", "rash", "sassy", "quirky"}
+                        lowkey_natures = {"lonely", "bold", "relaxed", "timid", "serious", "modest", "mild", "quiet", "bashful", "calm", "gentle", "careful"}
+
+                        target_evo_id = None
+                        if nature.lower() in amped_natures:
+                            target_evo_id = 849
+                        elif nature.lower() in lowkey_natures:
+                            target_evo_id = 10184
+
+                        if target_evo_id:
+                            nature_filtered_evos = [
+                                e for e in eligible_evos if evolution_target_species_id(e) == target_evo_id
+                            ]
+                            if nature_filtered_evos:
+                                eligible_evos = nature_filtered_evos
 
                     eligible_evos.sort(key=lambda x: 0 if x.get("evoRegion") else 1)
                     target_data = eligible_evos[0]

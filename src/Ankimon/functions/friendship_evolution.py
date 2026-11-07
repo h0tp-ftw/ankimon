@@ -412,12 +412,14 @@ def get_item_evolutions_for_species(
                     continue
 
                 evo_type = target_data.get("evoType")
-                if evo_type in ("useItem", "trade", "levelHold"):
+                if evo_type in ("useItem", "trade", "levelHold", "other"):
                     evo_item = target_data.get("evoItem")
                     if not evo_item:
                         # Trade evolutions with no held item use a Linking Cord in Ankimon.
                         if evo_type == "trade":
                             evo_item = "Linking Cord"
+                        elif evo_type == "other" and "spin while holding a sweet" in (target_data.get("evoCondition") or "").lower():
+                            evo_item = "Strawberry Sweet"
                         else:
                             continue
 
@@ -508,7 +510,7 @@ def get_level_evolutions_for_species(
                 # evolutions have no fixed evoLevel; treat them as eligible from
                 # Lv1 so the readiness path can gate them on the move / count.
                 is_eligible = min_level > 0
-                if evo_type == "levelMove" or condition == "minimumdefeated":
+                if evo_type == "levelMove" or condition == "minimumdefeated" or evo_type == "levelExtra":
                     is_eligible = True
                     if min_level <= 0:
                         min_level = 1
@@ -840,6 +842,12 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
         # A species can have both routes (Kirlia -> Gardevoir/Gallade,
         # Snorunt -> Glalie/Froslass). Keep the manual level button when that
         # route is ready, while still showing the alternative item hint.
+        party_pids = None
+        if isinstance(pokemon, dict):
+            party_pids = pokemon.get("party_pokemon_ids")
+        elif pokemon is not None:
+            party_pids = getattr(pokemon, "party_pokemon_ids", None)
+
         level_readiness = _level_readiness(
             species_id=species_id,
             level=level,
@@ -849,6 +857,7 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
             not_evolvable=not_evolvable,
             time_of_day=time_of_day,
             pokemon=pokemon,
+            party_pokemon_ids=party_pids,
         )
         item_readiness = _item_readiness(
             species_id=species_id,
@@ -1139,6 +1148,7 @@ def _level_readiness(
     not_evolvable: dict,
     time_of_day: str,
     pokemon: Any = None,
+    party_pokemon_ids: Optional[list] = None,
 ) -> dict:
     """Compute readiness for a plain level-up evolution.
 
@@ -1198,6 +1208,27 @@ def _level_readiness(
     if split:
         level_evos = tuple(e for e in level_evos if e.evo_id in split)
 
+    pokemon_nature = None
+    if isinstance(pokemon, dict):
+        pokemon_nature = pokemon.get("nature")
+    elif pokemon is not None:
+        pokemon_nature = getattr(pokemon, "nature", None)
+
+    if pokemon_nature and len(level_evos) > 1:
+        amped_natures = {"hardy", "brave", "adamant", "naughty", "docile", "impish", "lax", "hasty", "jolly", "naive", "rash", "sassy", "quirky"}
+        lowkey_natures = {"lonely", "bold", "relaxed", "timid", "serious", "modest", "mild", "quiet", "bashful", "calm", "gentle", "careful"}
+
+        target_evo_id = None
+        if pokemon_nature.lower() in amped_natures:
+            target_evo_id = 849
+        elif pokemon_nature.lower() in lowkey_natures:
+            target_evo_id = 10184
+
+        if target_evo_id:
+            nature_filtered = tuple(e for e in level_evos if e.evo_id == target_evo_id)
+            if nature_filtered:
+                level_evos = nature_filtered
+
     # Among the surviving targets prefer one eligible right now (its time matches
     # or it has no time requirement); an explicit-time row beats a blank-time one.
     eligible_now = [e for e in level_evos if e.time_of_day in (time_of_day, None)]
@@ -1230,6 +1261,8 @@ def _level_readiness(
     required_move = None
     defeated_ok = True
     required_defeated = None
+    party_ok = True
+    required_party = None
     defeated_count = 0
     pokedex_data = _load_pokedex_cache()
     target_name = search_pokedex_by_id(chosen.evo_id)
@@ -1260,8 +1293,29 @@ def _level_readiness(
                 elif pokemon is not None:
                     defeated_count = safe_int(getattr(pokemon, "pokemon_defeated", 0))
                 defeated_ok = defeated_count >= required_defeated
+        elif target_data.get("evoType") == "levelExtra":
+            if "remoraid in party" in condition:
+                required_party = "Remoraid"
+                if party_pokemon_ids is not None:
+                    if not any(pid in (223, "223") for pid in party_pokemon_ids):
+                        party_ok = False
+                else:
+                    # In PC box without party context, fall back to DB or just leave it False
+                    # But actually we just check team DB
+                    try:
+                        from ..services import services
+                        if services.db:
+                            team_data = services.db.get_team() or {}
+                            team_pids = []
+                            for slot in team_data.values():
+                                if slot and isinstance(slot, dict) and "id" in slot:
+                                    team_pids.append(safe_int(slot["id"]))
+                            if not any(pid == 223 for pid in team_pids):
+                                party_ok = False
+                    except Exception:
+                        party_ok = False
 
-    if not knows_move or not defeated_ok:
+    if not knows_move or not defeated_ok or not party_ok:
         ready = False
 
     if everstone:
@@ -1288,6 +1342,8 @@ def _level_readiness(
             f"Needs to defeat {required_defeated} enemies to evolve "
             f"(current: {defeated_count})"
         )
+    elif not party_ok and required_party:
+        status_text = f"Needs a {required_party} in the party to evolve"
     elif ready and evolution_rejected:
         status_text = "Evolution rejected — tap Evolve now to override"
     elif ready:
@@ -1302,6 +1358,8 @@ def _level_readiness(
             status_text = f"Evolves into {evo_name} knowing {required_move}"
         else:
             status_text = f"Evolves into {evo_name} at Lv{min_level}"
+        if required_party:
+            status_text += f" with {required_party} in party"
         if required_time is not None:
             status_text += f" · needs {required_time.capitalize()}"
 
@@ -1417,6 +1475,8 @@ def check_friendship_evolution_for_pokemon(
     now: Optional[datetime] = None,
     attacks: Optional[list] = None,
     pokemon_defeated: Optional[int] = None,
+    nature: Optional[str] = None,
+    party_pokemon_ids: Optional[list] = None,
 ) -> Optional[int]:
     """Prompt a friendship (or defeat-milestone) evolution for a Pokémon if ready.
 
@@ -1499,6 +1559,8 @@ def check_friendship_evolution_for_pokemon(
         # The live moveset lets _select_evolution honor move-type gates
         # (e.g. Sylveon) instead of offering them on unconfirmed data.
         "attacks": attacks,
+        "nature": nature,
+        "party_pokemon_ids": party_pokemon_ids,
     }
     readiness = evolution_readiness(shim, now)
 
