@@ -6,8 +6,10 @@ import shutil
 import subprocess
 import tempfile
 import time
+import threading
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -33,6 +35,26 @@ MIN_UPDATER_VERSION = (2, 0)
 # deliberately refused rather than requested — the branch paths resolve a commit
 # SHA first, so rejecting the name only costs an undated install, never a wrong one.
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_api_request_state = threading.local()
+
+
+def _rate_limit_response(status, headers, body):
+    headers = headers or {}
+    remaining = headers.get("X-RateLimit-Remaining", "")
+    body_text = body.lower()
+    return (
+        status == 429
+        or (status == 403 and remaining == "0")
+        or "rate limit" in body_text
+        or "secondary rate" in body_text
+    )
+
+
+def consume_api_error() -> Optional[str]:
+    """Return and clear the current thread's last GitHub API error category."""
+    error = getattr(_api_request_state, "error", None)
+    _api_request_state.error = None
+    return error
 
 
 def _is_safe_ref(ref: Optional[str]) -> bool:
@@ -49,6 +71,14 @@ def _is_safe_ref(ref: Optional[str]) -> bool:
     if not ref or not _SAFE_REF_RE.match(ref):
         return False
     return not ref.startswith(".") and ".." not in ref
+
+
+def _is_safe_branch_ref(ref: Optional[str]) -> bool:
+    if not isinstance(ref, str) or not ref or len(ref) > 255 or "\\" in ref:
+        return False
+    if any(ord(char) < 32 for char in ref):
+        return False
+    return all(part not in {"", ".", ".."} for part in ref.split("/"))
 
 
 # Auto-update channels (user-selectable in the update dialog). "stable" and
@@ -453,10 +483,24 @@ def _make_request(
 def _api_get(endpoint: str) -> Optional[dict]:
     url = f"{GITHUB_API}/{endpoint}"
     req = _make_request(url)
+    _api_request_state.error = None
     try:
         with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
             return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        if _rate_limit_response(error.code, error.headers, body):
+            _api_request_state.error = "rate_limited"
+        elif error.code == 404:
+            _api_request_state.error = "not_found"
+        else:
+            _api_request_state.error = "api_error"
+        return None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        _api_request_state.error = "connection"
+        return None
     except Exception:
+        _api_request_state.error = "api_error"
         return None
 
 
@@ -545,6 +589,21 @@ def fetch_releases() -> list[dict]:
     ]
 
 
+def order_tags_by_release_order(
+    tags: list[dict], releases: list[dict]
+) -> list[dict]:
+    """Keep tag picker entries in the same newest-first order as the releases."""
+    release_order = {
+        release["name"]: index
+        for index, release in enumerate(releases)
+        if isinstance(release, dict) and isinstance(release.get("name"), str)
+    }
+    return sorted(
+        tags,
+        key=lambda tag: release_order.get(tag.get("name"), len(release_order)),
+    )
+
+
 def fetch_branches() -> list[dict]:
     data = _api_get("branches")
     if not data:
@@ -568,9 +627,51 @@ def fetch_open_prs() -> list[dict]:
 
 
 def fetch_branch_sha(branch: str) -> Optional[str]:
-    data = _api_get(f"branches/{branch}")
+    if not _is_safe_branch_ref(branch):
+        return None
+    data = _api_get(f"branches/{quote(branch, safe='')}")
     if isinstance(data, dict) and isinstance(data.get("commit"), dict):
         return data["commit"].get("sha")
+    return None
+
+
+def fetch_ref_sha(ref: str) -> Optional[str]:
+    if not _is_safe_ref(ref):
+        return None
+    data = _api_get(f"commits/{quote(ref, safe='')}")
+    return data.get("sha") if isinstance(data, dict) else None
+
+
+def fetch_pull_request(number: str) -> Optional[dict]:
+    if (
+        not isinstance(number, str)
+        or not re.fullmatch(r"\d{1,12}", number)
+        or int(number) < 1
+    ):
+        return None
+    data = _api_get(f"pulls/{int(number)}")
+    if not isinstance(data, dict):
+        return None
+    head = data.get("head")
+    if not isinstance(head, dict) or not isinstance(head.get("sha"), str):
+        return None
+    return {
+        "number": data.get("number"),
+        "title": data.get("title", ""),
+        "head_ref": head.get("ref", ""),
+        "head_sha": head["sha"],
+        "state": data.get("state", ""),
+    }
+
+
+def fetch_source_sha(source_type: str, source_name: str) -> Optional[str]:
+    if source_type == "branch":
+        return fetch_branch_sha(source_name)
+    if source_type in {"tag", "release"}:
+        return fetch_ref_sha(source_name)
+    if source_type == "pr":
+        request = fetch_pull_request(source_name)
+        return request.get("head_sha") if request else None
     return None
 
 
@@ -613,11 +714,42 @@ def fetch_branch_relation(local_sha: str, branch: str) -> Optional[str]:
     ``"identical"``; ``"diverged"``. ``None`` when the comparison is unavailable,
     which includes a local commit GitHub has never seen (unpushed work).
     """
-    if not local_sha or not branch:
+    is_sha = (
+        isinstance(branch, str)
+        and len(branch) >= 7
+        and all(char in "0123456789abcdefABCDEF" for char in branch)
+    )
+    if not local_sha or not (is_sha or _is_safe_branch_ref(branch)):
         return None
-    data = _api_get(f"compare/{local_sha}...{branch}")
+    data = _api_get(f"compare/{local_sha}...{quote(branch, safe='')}")
     status = data.get("status") if isinstance(data, dict) else None
     return status if status in {"ahead", "behind", "identical", "diverged"} else None
+
+
+def fetch_commits_between(local_sha: str, remote_sha: str) -> list[dict]:
+    if not all(
+        isinstance(sha, str)
+        and len(sha) >= 7
+        and all(char in "0123456789abcdefABCDEF" for char in sha)
+        for sha in (local_sha, remote_sha)
+    ):
+        return []
+    data = _api_get(f"compare/{local_sha}...{remote_sha}")
+    commits = data.get("commits") if isinstance(data, dict) else None
+    if not isinstance(commits, list):
+        return []
+    result = []
+    for commit in reversed(commits):
+        if not isinstance(commit, dict):
+            continue
+        metadata = commit.get("commit")
+        if not isinstance(metadata, dict):
+            continue
+        lines = (metadata.get("message") or "").splitlines()
+        sha = commit.get("sha")
+        if isinstance(sha, str):
+            result.append({"sha": sha[:7], "message": lines[0] if lines else ""})
+    return result
 
 
 def fetch_branch_commits(branch: str, local_sha: Optional[str] = None) -> list[dict]:
@@ -725,8 +857,8 @@ def resolve_build_mtime(
         published = _parse_iso8601(published_at)
         if published:
             return published
-    # commit_sha and source_name are the same string on the release and tag
-    # paths, so dedupe rather than repeat a request that already failed.
+    # Try the resolved commit first, then the source ref for older state files
+    # that stored a tag name in commit_sha.
     for ref in dict.fromkeys(r for r in (commit_sha, source_name) if r):
         resolved = _parse_iso8601(fetch_ref_date(ref))
         if resolved:
@@ -820,6 +952,9 @@ def save_update_state(
     source_name: str,
     commit_sha: str,
     skip_until: Optional[float] = None,
+    commit_date: Optional[str] = None,
+    main_commit_sha: Optional[str] = None,
+    main_commit_date: Optional[str] = None,
 ):
     try:
         import time
@@ -828,27 +963,60 @@ def save_update_state(
         path = get_update_state_path()
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        old_skip = None
+        old_state = {}
         if skip_until is None and path.exists():
             try:
-                old_state = json.loads(path.read_text(encoding="utf-8"))
-                old_skip = old_state.get("skip_until")
+                loaded_state = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded_state, dict):
+                    old_state = loaded_state
             except Exception:
                 pass
+
+        if not commit_date:
+            if old_state.get("commit_sha") == commit_sha:
+                commit_date = old_state.get("commit_date")
+            if not commit_date and commit_sha:
+                try:
+                    commit_date = fetch_commit_date(commit_sha)
+                except Exception:
+                    commit_date = None
+            if not commit_date and source_name:
+                try:
+                    commit_date = fetch_ref_date(source_name)
+                except Exception:
+                    commit_date = None
+
+        if source_type == "branch" and source_name == "main":
+            main_commit_sha = commit_sha
+            main_commit_date = commit_date
+        else:
+            if not main_commit_sha:
+                main_commit_sha = old_state.get("main_commit_sha")
+            if not main_commit_date:
+                main_commit_date = old_state.get("main_commit_date")
+            if not main_commit_sha and (
+                old_state.get("source_type") == "branch"
+                and old_state.get("source_name") == "main"
+            ):
+                main_commit_sha = old_state.get("commit_sha")
+                main_commit_date = main_commit_date or old_state.get("commit_date")
 
         state = {
             "source_type": source_type,
             "source_name": source_name,
             "commit_sha": commit_sha,
+            "commit_date": commit_date or "",
+            "main_commit_sha": main_commit_sha or "",
+            "main_commit_date": main_commit_date or "",
             "installed_at": time.time(),
             "addon_version": addon_ver,
         }
         if skip_until is not None:
             state["skip_until"] = skip_until
-        elif old_skip is not None:
-            state["skip_until"] = old_skip
+        elif old_state.get("skip_until") is not None:
+            state["skip_until"] = old_state["skip_until"]
 
-        path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        _write_json_atomic(path, state)
     except Exception as e:
         print(f"Ankimon Updater: Failed to save update state: {e}")
 
@@ -876,6 +1044,34 @@ def read_update_state() -> Optional[dict]:
     except Exception:
         pass
     return None
+
+
+def persist_update_state_commit_metadata(
+    commit_sha: Optional[str] = None,
+    commit_date: Optional[str] = None,
+    main_commit_sha: Optional[str] = None,
+    main_commit_date: Optional[str] = None,
+) -> None:
+    """Persist resolved commit metadata without changing the install timestamp."""
+    path = get_update_state_path()
+    state = read_update_state()
+    if not state:
+        return
+    changed = False
+    for key, value in (
+        ("commit_sha", commit_sha),
+        ("commit_date", commit_date),
+        ("main_commit_sha", main_commit_sha),
+        ("main_commit_date", main_commit_date),
+    ):
+        if value and state.get(key) != value:
+            state[key] = value
+            changed = True
+    if changed:
+        try:
+            _write_json_atomic(path, state)
+        except OSError as error:
+            print(f"Ankimon Updater: Failed to persist commit metadata: {error}")
 
 
 def _download_zip_to_temp(url: str, progress_cb=None) -> Optional[str]:
@@ -1061,6 +1257,8 @@ def apply_update(
     commit_sha: Optional[str] = None,
     published_at: Optional[str] = None,
     status_cb=None,
+    main_commit_sha: Optional[str] = None,
+    main_commit_date: Optional[str] = None,
 ) -> tuple[bool, str, Optional[int]]:
     """Install the downloaded build. Runs in the updater's ``QueryOp`` worker.
 
@@ -1254,7 +1452,24 @@ def apply_update(
 
             # --- Save update state if provided ---
             if source_type and source_name:
-                save_update_state(source_type, source_name, commit_sha or "")
+                commit_date = None
+                try:
+                    commit_date = fetch_commit_date(commit_sha or "")
+                except Exception:
+                    pass
+                if not commit_date:
+                    try:
+                        commit_date = fetch_ref_date(source_name)
+                    except Exception:
+                        pass
+                save_update_state(
+                    source_type,
+                    source_name,
+                    commit_sha or "",
+                    commit_date=commit_date,
+                    main_commit_sha=main_commit_sha,
+                    main_commit_date=main_commit_date,
+                )
 
             cleanup()
             log(f"Update complete. Installed {installed} files.")

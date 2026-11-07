@@ -328,16 +328,9 @@ def create_menu_actions(
     rate_action.triggered.connect(rate_addon_url)
     mw.pokemenu.addAction(rate_action)
 
-    # Update Ankimon. Git checkouts use the same full dialog as packaged installs;
-    # the dialog routes branch/PR/tag selections through safe Git operations.
-    def _open_update_dialog():
-        from .pyobj.update_dialog import UpdateDialog
-        dialog = UpdateDialog(parent=mw)
-        dialog.exec()
-
     update_action = QAction(mw.translator.translate("ankimon_update_button"), mw)
     update_action.setMenuRole(QAction.MenuRole.NoRole)
-    update_action.triggered.connect(_open_update_dialog)
+    update_action.triggered.connect(lambda: _open_shell_at("update_manager"))
     help_menu.addAction(update_action)
 
     # Version
