@@ -240,3 +240,72 @@ def test_a_failed_save_leaves_the_legacy_row_alone(isolated_env):
 
     recovered, _ = _boot(env)
     assert recovered.get(NEW_KEY) is False
+
+
+# --- String settings survive decoding and default seeding -------------------
+
+JSON_LIKE_NAMES = ["null", "1e5", "123", "true", "NaN", "[1, 2]", '{"a": 1}', '"Ash"']
+NEW_SETTING = "gui.gif_in_ankimon_window"
+
+
+def _raw_row(db, key):
+    """Return the exact text stored for ``key``, bypassing all decoding."""
+    row = db.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+@pytest.mark.parametrize("name", JSON_LIKE_NAMES)
+def test_json_like_trainer_name_survives_seeding_a_new_setting(isolated_env, name):
+    """An older profile keeps its exact name when a new setting is seeded."""
+    env = isolated_env
+    stored = dict(env["settings_mod"].DEFAULT_CONFIG)
+    del stored[NEW_SETTING]
+    stored["trainer.name"] = name
+
+    settings, db = _boot(env, stored)
+
+    assert settings.get("trainer.name") == name
+    assert db.get_config_value("trainer.name") == name
+    assert _raw_row(db, "trainer.name") == name
+    assert _raw_row(db, NEW_SETTING) == "false"
+
+    restarted, db = _boot(env)
+    assert restarted.get("trainer.name") == name
+    assert _raw_row(db, "trainer.name") == name
+
+
+def test_seeding_a_new_setting_writes_only_that_setting(isolated_env, monkeypatch):
+    """Seeding must not rewrite rows the migration has no reason to change."""
+    env = isolated_env
+    stored = dict(env["settings_mod"].DEFAULT_CONFIG)
+    del stored[NEW_SETTING]
+    stored["custom.left_by_another_version"] = "1.50"
+    env["db_mod"].AnkimonDB().save_all_config(stored)
+
+    writes = []
+    real_save = env["db_mod"].AnkimonDB.save_all_config
+
+    def recording_save(self, config):
+        """Record each bulk write, then perform it."""
+        writes.append(dict(config))
+        return real_save(self, config)
+
+    monkeypatch.setattr(env["db_mod"].AnkimonDB, "save_all_config", recording_save)
+
+    _, db = _boot(env)
+
+    assert writes == [{NEW_SETTING: False}]
+    assert _raw_row(db, "custom.left_by_another_version") == "1.50"
+
+
+def test_non_string_settings_still_decode_to_their_types(isolated_env):
+    """Preserving strings must not turn numbers and booleans into text."""
+    env = isolated_env
+    settings, db = _boot(
+        env, {"trainer.cash": 250, "misc.gen9": True, "trainer.name": "Misty"}
+    )
+
+    assert settings.get("trainer.cash") == 250
+    assert settings.get("misc.gen9") is True
+    assert db.get_config_value("trainer.cash") == 250
+    assert settings.get("trainer.name") == "Misty"

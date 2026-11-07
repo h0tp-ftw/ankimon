@@ -376,8 +376,7 @@ def test_backup_contains_committed_wal_while_reader_blocks_checkpoint(mock_env, 
 def test_backup_uses_active_database_at_custom_path(mock_env, tmp_path, manual, filename):
     """A same-named default save must never stand in for the active profile."""
     bm, _, _, _ = mock_env
-    # '?' is legal in a POSIX folder name but not on Windows.
-    custom_dir = tmp_path / ("profile with spaces #" + ("" if os.name == "nt" else "?"))
+    custom_dir = tmp_path / "profile with spaces #?"
     custom_dir.mkdir()
     active = AnkimonDB(MockLogger(), db_path=custom_dir / filename)
     active.set_config_value("trainer.cash", 76543)

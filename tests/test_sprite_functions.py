@@ -5,21 +5,13 @@ registry. Like test_badges_functions, the entire setup is a plain import plus
 below would fail outright if the module still pulled in Anki.
 """
 
-import os
 import sys
 import types
-from pathlib import Path
 
 import pytest
 
 from Ankimon.services import services
 from Ankimon.functions import sprite_functions as sf
-
-
-def _exists_only(path):
-    """An os.path.exists stand-in; the lookup probes the resolved path."""
-    resolved = os.path.realpath(path)
-    return lambda p: p == resolved
 
 
 class FakeLogger:
@@ -52,7 +44,7 @@ def clear_sprite_cache():
 
 def test_found_sprite_returns_path_and_logs_debug(fake_logger, monkeypatch):
     expected = sf._path_format(back=False, id=25, gif=False, shiny=False, female=False)
-    monkeypatch.setattr("os.path.exists", _exists_only(expected))
+    monkeypatch.setattr("os.path.exists", lambda p: p == expected)
 
     result = sf.get_sprite_path("front", "png", 25, shiny=False, gender="M")
 
@@ -74,7 +66,7 @@ def test_gender_fallback_to_nongendered(fake_logger, monkeypatch):
     nongendered = sf._path_format(
         back=False, id=25, gif=False, shiny=False, female=False
     )
-    monkeypatch.setattr("os.path.exists", _exists_only(nongendered))
+    monkeypatch.setattr("os.path.exists", lambda p: p == nongendered)
 
     result = sf.get_sprite_path("front", "png", 25, shiny=False, gender="F")
 
@@ -153,7 +145,7 @@ def test_mega_form_uses_forme_sprite_id(fake_logger, fake_pokedex, monkeypatch):
     forme_path = sf._path_format(
         back=False, id=10034, gif=False, shiny=False, female=False
     )
-    monkeypatch.setattr("os.path.exists", _exists_only(forme_path))
+    monkeypatch.setattr("os.path.exists", lambda p: p == forme_path)
 
     # id passed in is the base species id (6); pokemon_name drives the Mega lookup.
     result = sf.get_sprite_path(
@@ -167,7 +159,7 @@ def test_mega_form_uses_forme_sprite_id(fake_logger, fake_pokedex, monkeypatch):
 def test_mega_form_falls_back_to_base_id(fake_logger, fake_pokedex, monkeypatch):
     # Forme sprite (10034) missing -> should fall back to the passed-in base id (6).
     base_path = sf._path_format(back=False, id=6, gif=False, shiny=False, female=False)
-    monkeypatch.setattr("os.path.exists", _exists_only(base_path))
+    monkeypatch.setattr("os.path.exists", lambda p: p == base_path)
 
     result = sf.get_sprite_path(
         "front", "png", 6, shiny=False, gender="M", pokemon_name="Charizard-Mega-X"
@@ -182,7 +174,7 @@ def test_mega_form_final_fallback_to_species_id(fake_logger, fake_pokedex, monke
     species_path = sf._path_format(
         back=False, id=6, gif=False, shiny=False, female=False
     )
-    monkeypatch.setattr("os.path.exists", _exists_only(species_path))
+    monkeypatch.setattr("os.path.exists", lambda p: p == species_path)
 
     # Pass a base id (99) that differs from both forme (10034) and species (6).
     result = sf.get_sprite_path(
@@ -199,7 +191,7 @@ def test_non_mega_name_does_not_trigger_form_lookup(fake_logger, monkeypatch):
 
     monkeypatch.setattr(sf, "_get_pokemon_id_from_pokedex", _boom)
     base_path = sf._path_format(back=False, id=25, gif=False, shiny=False, female=False)
-    monkeypatch.setattr("os.path.exists", _exists_only(base_path))
+    monkeypatch.setattr("os.path.exists", lambda p: p == base_path)
 
     result = sf.get_sprite_path(
         "front", "png", 25, shiny=False, gender="M", pokemon_name="Pikachu"
@@ -223,7 +215,7 @@ def test_mega_substring_names_do_not_trigger_form_lookup(fake_logger, monkeypatc
         base_path = sf._path_format(
             back=False, id=dex_id, gif=False, shiny=False, female=False
         )
-        monkeypatch.setattr("os.path.exists", _exists_only(base_path))
+        monkeypatch.setattr("os.path.exists", lambda p, _bp=base_path: p == _bp)
 
         result = sf.get_sprite_path(
             "front", "png", dex_id, shiny=False, gender="M", pokemon_name=name
@@ -453,4 +445,4 @@ def test_cache_clear_discovers_new_preferred_sprite(monkeypatch, tmp_path):
     preferred.touch()
     sf._clear_sprite_cache()
 
-    assert Path(sf.get_sprite_path("back", "gif", 25, False, "F")) == preferred
+    assert sf.get_sprite_path("back", "gif", 25, False, "F") == str(preferred)

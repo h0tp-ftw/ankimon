@@ -90,6 +90,7 @@ class TestWindow(QWidget):
         translator: Translator = None,
         logger: ShowInfoLogger = None,
     ):
+        """Build the Ankimon battle window around the live game objects."""
         super().__init__(parent)  # <-- set parent here
 
         # Set as a tool window so it stays above parent but not above all apps
@@ -142,6 +143,7 @@ class TestWindow(QWidget):
         # self.update()
 
     def init_ui(self):
+        """Create the persistent layout, scene label, overlays and size limits."""
         # Use a single persistent layout
         if self.layout() is None:
             self.setLayout(QVBoxLayout())
@@ -631,6 +633,7 @@ class TestWindow(QWidget):
     # --- Animated-sprite overlays (gui.gif_in_ankimon_window) ---------------
 
     def _gif_in_window_enabled(self):
+        """Whether the animated-sprite setting is on; False if it can't be read."""
         try:
             return bool(self.settings_obj.get("gui.gif_in_ankimon_window", False))
         except Exception:
@@ -679,6 +682,10 @@ class TestWindow(QWidget):
 
     @staticmethod
     def _compute_opaque_rect(pixmap):
+        """Measure the visible bounding box of ``pixmap``, uncached.
+
+        Falls back to the full canvas when no visible content can be measured.
+        """
         # Try the cheap route first (a QRegion off the alpha-derived mask).
         try:
             r = QRegion(pixmap.mask()).boundingRect()
@@ -791,6 +798,7 @@ class TestWindow(QWidget):
         return 0, 0, sx, sy
 
     def _clear_gif_overlay(self, side):
+        """Hide ``side``'s overlay, stop its movie and forget its cached state."""
         movie_attr = "_enemy_gif_movie" if side == "enemy" else "_main_gif_movie"
         label = self._enemy_gif_label if side == "enemy" else self._main_gif_label
         # Detach from the label BEFORE dropping the Python reference — QLabel
@@ -1707,6 +1715,7 @@ class TestWindow(QWidget):
         return pkmnimage_label, kill_button, catch_button, nickname_input
 
     def display_first_encounter(self):
+        """Draw a new encounter's opening frame, cancelling any running shake."""
         # A fresh encounter replaces both sprites, so any shake still stepping
         # belongs to the fight that just ended — it must not follow the new
         # Pokémon in.
@@ -1912,6 +1921,7 @@ class TestWindow(QWidget):
         Receive_Window.show()
 
     def display_pokemon_death(self):
+        """Replace the battle scene with the defeated-Pokémon screen and buttons."""
         # Debounce duplicate death renders (same guard as display_battle)
         if self._same_view_debounced("death"):
             return
@@ -1961,6 +1971,7 @@ class TestWindow(QWidget):
                 widget.deleteLater()
 
     def resizeEvent(self, event):
+        """Re-fit the scene and overlays to the window's new size."""
         super().resizeEvent(event)
         # Neither the scene composite nor the gif overlay labels resize
         # themselves — both are placed by hand (see _refresh_scene_pixmap /
@@ -1974,6 +1985,7 @@ class TestWindow(QWidget):
             pass
 
     def eventFilter(self, obj, event):
+        """Re-fit the scene when main_label resizes without the window resizing."""
         # main_label can be resized by layout changes that don't fire the
         # window's own resizeEvent (e.g. the button row showing/hiding) —
         # catch those here too, or the scene/overlays go stale.
@@ -1986,6 +1998,7 @@ class TestWindow(QWidget):
         return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
+        """Cancel running shakes and retire the overlays as the window closes."""
         # Nothing cancels the singleShot timers on close, so a shake mid-flight
         # keeps calling force_display_battle() on a window the player just shut
         # — and leaves the offsets frozen for the next time it is reopened.
@@ -1994,6 +2007,7 @@ class TestWindow(QWidget):
         self.pkmn_window = False
 
     def showEvent(self, event):
+        """Resume animated sprites paused while the window was hidden."""
         super().showEvent(event)
         # Resume any animated sprite overlays paused while the window was hidden.
         for attr in ("_enemy_gif_movie", "_main_gif_movie"):
@@ -2007,6 +2021,7 @@ class TestWindow(QWidget):
                     pass
 
     def hideEvent(self, event):
+        """Pause animated sprites while the window is hidden."""
         super().hideEvent(event)
         # Pause, don't stop(): hideEvent also fires on occlusion / workspace
         # switches on some WMs, and stop() rewinds to frame 0 with no matching

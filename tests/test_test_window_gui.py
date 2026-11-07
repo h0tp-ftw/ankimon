@@ -33,6 +33,7 @@ the whole module skips cleanly where PyQt6 is absent — mirroring
 """
 
 import importlib
+import struct
 import sys
 import types
 from pathlib import Path
@@ -207,14 +208,14 @@ def tw_module(qapp):
 def make_window(tw_module):
     windows = []
 
-    def _make(main=None, enemy=None, tracker=None):
+    def _make(main=None, enemy=None, tracker=None, settings=None):
         main = main or _FakePokemon("pikachu", 25, type=["electric"])
         enemy = enemy or _FakePokemon("charizard", 6, type=["fire", "flying"])
         tracker = tracker or _FakeTracker()
         win = tw_module.TestWindow(
             main_pokemon=main,
             enemy_pokemon=enemy,
-            settings_obj=_FakeSettings(),
+            settings_obj=settings or _FakeSettings(),
             parent=None,
             ankimon_tracker_obj=tracker,
         )
@@ -224,10 +225,12 @@ def make_window(tw_module):
     yield _make
 
     for win in windows:
+        win.hide_gif_overlays()
         win.deleteLater()
 
 
 def test_init_ui_builds_persistent_scaffolding(make_window):
+    """The window is built once, with its scene, buttons and size limits."""
     win = make_window()
 
     layout = win.layout()
@@ -1186,3 +1189,227 @@ def test_a_new_shake_retires_the_previous_turns_chain(make_window):
     # Retiring the old chain also settles both sprites, so the side the new
     # chain does not cover cannot stay frozen at a mid-shake offset.
     assert win._main_shake_offset == (0, 0)
+
+
+# --- Resizing, scene scaling and animated-sprite overlays ---------------------
+
+_GIF_FRAME_DATA = (b"\x02\x02\x44\x01\x00", b"\x02\x02\x4c\x01\x00")
+
+
+def _write_gif(path):
+    """Write a looping two-frame 1x1 GIF, so no sprite assets are needed."""
+    gif = bytearray(b"GIF89a" + struct.pack("<HH", 1, 1) + b"\x80\x00\x00")
+    gif += b"\x00\x00\x00\xff\xff\xff"
+    gif += b"\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"
+    for data in _GIF_FRAME_DATA:
+        gif += b"\x21\xf9\x04\x00" + struct.pack("<H", 10) + b"\x00\x00"
+        gif += b"\x2c" + struct.pack("<HHHH", 0, 0, 1, 1) + b"\x00" + data
+    gif += b"\x3b"
+    path.write_bytes(bytes(gif))
+    return path
+
+
+class _GifPokemon(_FakePokemon):
+    """A battler whose animated sprite exists, alongside the static PNG."""
+
+    def __init__(self, name, id, gif_path, **kw):
+        super().__init__(name, id, **kw)
+        self.gif_path = gif_path
+
+    def get_sprite_path(self, side, ext):
+        """Return the GIF for ``ext="gif"`` and the static sprite otherwise."""
+        return self.gif_path if ext == "gif" else self.sprite_path
+
+
+@pytest.fixture
+def gif_window(make_window, qapp, tmp_path):
+    """Build a window whose battlers both have a GIF; ``shown`` also opens it."""
+    from PyQt6.QtGui import QImageReader
+
+    if b"gif" not in QImageReader.supportedImageFormats():
+        pytest.skip("this Qt build has no GIF plugin")
+    gif = _write_gif(tmp_path / "sprite.gif")
+
+    def _make(enabled=True, shown=True):
+        """Create the window and draw the first encounter."""
+        win = make_window(
+            main=_GifPokemon("pikachu", 25, gif, type=["electric"]),
+            enemy=_GifPokemon("charizard", 6, gif, type=["fire", "flying"]),
+            settings=_FakeSettings({"gui.gif_in_ankimon_window": enabled}),
+        )
+        if shown:
+            win.show()
+        win.display_first_encounter()
+        qapp.processEvents()
+        return win
+
+    return _make
+
+
+def _movie_state():
+    """Return Qt's movie states; imported late as other tests stub PyQt6."""
+    from PyQt6.QtGui import QMovie
+
+    return QMovie.MovieState
+
+
+def _repaint_battle(win, qapp):
+    """Draw a battle frame, bypassing the same-view repaint debounce."""
+    win._last_display_time = 0
+    win.display_battle()
+    qapp.processEvents()
+
+
+def test_window_shrinks_to_its_floor_and_the_scene_follows(make_window, qapp):
+    """The scene tracks the window both ways and the composite stays native."""
+    win = make_window()
+    win.show()
+    win.display_first_encounter()
+    qapp.processEvents()
+    native = win._scene_native_pixmap.size()
+
+    for width, height in ((1000, 700), (300, 200)):
+        win.resize(width, height)
+        qapp.processEvents()
+        assert (win.width(), win.height()) == (width, height)
+        assert win.main_label.pixmap().size() == win.main_label.size()
+        assert win._scene_native_pixmap.size() == native
+
+    win.resize(10, 10)
+    qapp.processEvents()
+    assert (win.width(), win.height()) == (278, 150)
+    assert win.main_label.pixmap().size() == win.main_label.size()
+
+
+def test_scene_scaling_keeps_hard_pixel_edges(make_window, qapp):
+    """Scaling must not blend pixel art into intermediate colours."""
+    from PyQt6.QtGui import QColor, QImage, QPixmap
+
+    black, white = QColor(0, 0, 0), QColor(255, 255, 255)
+    source = QImage(2, 1, QImage.Format.Format_RGB32)
+    source.setPixelColor(0, 0, black)
+    source.setPixelColor(1, 0, white)
+
+    win = make_window()
+    win.main_label.resize(20, 10)
+    win._display_scene_pixmap(QPixmap.fromImage(source))
+
+    scaled = win.main_label.pixmap().toImage()
+    assert (scaled.width(), scaled.height()) == (20, 10)
+    row = {scaled.pixelColor(x, 5).rgb() for x in range(20)}
+    assert row == {black.rgb(), white.rgb()}
+
+
+def test_gifs_stay_off_until_the_setting_is_enabled(gif_window):
+    """A downloaded GIF is ignored while the setting is off."""
+    win = gif_window(enabled=False)
+
+    assert win._gif_geom == {"enemy": None, "main": None}
+    assert win._enemy_gif_movie is None and win._main_gif_movie is None
+    assert win._enemy_gif_label.isHidden() and win._main_gif_label.isHidden()
+
+
+def test_enabled_gifs_animate_on_both_battlers(gif_window):
+    """With the setting on, each battler gets a running, visible overlay."""
+    win = gif_window()
+
+    for movie, label in (
+        (win._enemy_gif_movie, win._enemy_gif_label),
+        (win._main_gif_movie, win._main_gif_label),
+    ):
+        assert movie.state() == _movie_state().Running
+        assert label.isVisible()
+
+
+def test_static_sprite_is_used_when_no_gif_is_downloaded(make_window, qapp):
+    """A PNG substituted for a missing GIF must not start an overlay."""
+    win = make_window(settings=_FakeSettings({"gui.gif_in_ankimon_window": True}))
+    win.show()
+    win.display_first_encounter()
+    qapp.processEvents()
+
+    assert win._gif_geom == {"enemy": None, "main": None}
+    assert win._enemy_gif_movie is None and win._main_gif_movie is None
+
+
+def test_overlay_position_scales_with_the_window(gif_window, qapp):
+    """Overlays stay on their slot in the scene as the window resizes."""
+    win = gif_window()
+    win.resize(556, 371)
+    qapp.processEvents()
+    before = win._enemy_gif_label.geometry()
+
+    win.resize(1112, 742)
+    qapp.processEvents()
+    after = win._enemy_gif_label.geometry()
+
+    assert abs(after.x() - before.x() * 2) <= 2
+    assert abs(after.y() - before.y() * 2) <= 2
+    assert after.width() == before.width() * 2
+    assert after.height() == before.height() * 2
+
+
+@pytest.mark.parametrize("state", ["fainted", "underground"])
+def test_overlay_is_suppressed_for_a_battler_that_should_not_animate(
+    gif_window, qapp, state
+):
+    """Only the affected battler loses its overlay; the other keeps animating."""
+    win = gif_window()
+    if state == "fainted":
+        win.enemy_pokemon.hp = 0
+    else:
+        win.enemy_pokemon.volatile_status = {"dig"}
+
+    _repaint_battle(win, qapp)
+
+    assert win._enemy_gif_movie is None
+    assert win._enemy_gif_label.isHidden()
+    assert win._main_gif_movie.state() == _movie_state().Running
+
+
+def test_overlays_are_retired_by_the_death_screen(gif_window, qapp):
+    """The death screen replaces the scene, so no sprite may float over it."""
+    win = gif_window()
+    win._last_display_time = 0
+
+    win.display_pokemon_death()
+    qapp.processEvents()
+
+    assert win._enemy_gif_movie is None and win._main_gif_movie is None
+    assert win._enemy_gif_label.isHidden() and win._main_gif_label.isHidden()
+
+
+def test_overlays_are_retired_when_the_window_closes(gif_window, qapp):
+    """Closing stops the movies, so nothing keeps decoding behind the scenes."""
+    win = gif_window()
+
+    win.close()
+    qapp.processEvents()
+
+    assert win._enemy_gif_movie is None and win._main_gif_movie is None
+
+
+def test_hiding_pauses_and_showing_resumes_the_same_movies(gif_window, qapp):
+    """Hide must pause rather than stop, or the sprite can stay frozen."""
+    win = gif_window()
+    movie = win._enemy_gif_movie
+
+    win.hide()
+    qapp.processEvents()
+    assert movie.state() == _movie_state().Paused
+
+    win.show()
+    qapp.processEvents()
+    assert win._enemy_gif_movie is movie
+    assert movie.state() == _movie_state().Running
+
+
+def test_movies_built_while_hidden_start_when_the_window_opens(gif_window, qapp):
+    """A hidden window spends nothing animating, then starts when shown."""
+    win = gif_window(shown=False)
+    movie = win._enemy_gif_movie
+    assert movie.state() == _movie_state().NotRunning
+
+    win.show()
+    qapp.processEvents()
+    assert movie.state() == _movie_state().Running

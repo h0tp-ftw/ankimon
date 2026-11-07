@@ -31,7 +31,6 @@ def _runtime_saves(tmp_path):
             )
             conn.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
             conn.execute("INSERT INTO metadata VALUES ('base_stats_normalized', 'true')")
-        conn.close()
     return target, source
 
 

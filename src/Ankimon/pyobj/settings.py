@@ -214,19 +214,23 @@ class Settings:
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
-        modified = styling_migrated
+        keys_to_persist = {"gui.hud_styling"} if styling_migrated else set()
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None
             ):
-                modified = True
+                keys_to_persist.add(key)
                 config[key] = DEFAULT_CONFIG[key]
 
-        if modified:
+        if keys_to_persist:
             # Persist schema/default migration without triggering behavioral
             # side effects such as HUD autosync. Existing user HUD preferences
-            # must survive the introduction of a new master visibility key.
-            self.save_config(config, apply_hud_autosync=False)
+            # must survive the introduction of a new master visibility key, and
+            # only the keys migrated here are written: every other row stays
+            # exactly as stored.
+            self.save_config(
+                config, apply_hud_autosync=False, persist_keys=keys_to_persist
+            )
 
         # Drop the renamed key's row, but only once gui.hud_styling is really
         # in the store. save_all_config upserts and never deletes, so a row left
@@ -315,7 +319,15 @@ class Settings:
 
         return changed_keys
 
-    def save_config(self, config, explicit_overrides=None, apply_hud_autosync=True):
+    def save_config(
+        self, config, explicit_overrides=None, apply_hud_autosync=True, persist_keys=None
+    ):
+        """Adopt ``config`` as the live settings and persist it.
+
+        ``self.config`` keeps its identity and is updated in place. A failed
+        database write is logged rather than raised. ``persist_keys`` limits the
+        database write to those keys; by default every key is written.
+        """
         previous_value = None
         if hasattr(self, "config") and self.config is not None:
             previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
@@ -326,7 +338,12 @@ class Settings:
         # 1. Always save to database if available
         if services.db is not None:
             try:
-                services.db.save_all_config(config)
+                to_store = (
+                    config
+                    if persist_keys is None
+                    else {key: config[key] for key in persist_keys}
+                )
+                services.db.save_all_config(to_store)
             except Exception as e:
                 print(f"Ankimon: Failed to save config to database: {e}")
 

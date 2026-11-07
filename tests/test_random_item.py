@@ -36,6 +36,7 @@ def test_random_item_grants_an_eligible_item(monkeypatch, tmp_path):
 
 
 def test_random_item_finds_sprites_that_arrive_after_an_empty_scan(monkeypatch, tmp_path):
+    """An empty scan must not hide sprites downloaded later in the session."""
     import Ankimon.utils as utils
 
     utils.clear_utils_caches()
