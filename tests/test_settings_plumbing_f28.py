@@ -600,8 +600,11 @@ def test_sprite_visibility_updates_mobile_svg_and_shell_navigation():
     assert ".pokeball-icon" in shop_obj
     assert "visibility: hidden !important;" in shop_obj
     assert "body.ankimon-sprites-hidden .nav-trigger .app-logo" in nav_css
-    assert "font-size: 0.92rem;" in nav_css
-    assert "text-align: left;" in nav_css
+    hidden_title_style = nav_css.split(
+        "body.ankimon-sprites-hidden .nav-trigger h1 {", 1
+    )[1].split("}", 1)[0]
+    assert "text-align: left;" in hidden_title_style
+    assert "font-size:" not in hidden_title_style
     assert '<svg class="pokeball-icon"' in mobile_html
 
 
