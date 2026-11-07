@@ -527,6 +527,20 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
             return False
 
     # Check for evolution
+    # Fetch party context for remoraid check
+    party_pids = []
+    try:
+        if db:
+            team = db.get_team() or {}
+            for t in team.values():
+                if t and "id" in t:
+                    try:
+                        party_pids.append(int(t["id"]))
+                    except:
+                        pass
+    except Exception:
+        pass
+
     evo_id = check_evolution_for_pokemon(
         pokemon["individual_id"],
         pokemon["id"],
@@ -536,6 +550,8 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
         pokemon.get("evolution_rejected", False),
         current_attacks=pokemon.get("attacks"),
         gender=pokemon.get("gender"),
+        nature=pokemon.get("nature"),
+        party_pokemon_ids=party_pids,
     )
 
     if evo_id is not None:

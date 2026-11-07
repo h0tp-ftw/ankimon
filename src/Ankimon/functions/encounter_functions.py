@@ -1585,6 +1585,19 @@ def save_main_pokemon_progress(
         # Request to open the pokemon evo window — AFTER the level-up attack
         # merge above, so a move-based (levelMove) evolution sees moves learned
         # on this very level and fires on that event instead of one level late.
+
+        # Get team to check for party_pokemon_ids (for Remoraid / Mantyke)
+        party_pokemon_ids = []
+        try:
+            db = services.db
+            if db:
+                team_data = db.get_team() or {}
+                for slot in team_data.values():
+                    if slot and isinstance(slot, dict) and "id" in slot:
+                        party_pokemon_ids.append(safe_int(slot["id"]))
+        except Exception:
+            pass
+
         evo_id = check_evolution_for_pokemon(
             main_pokemon.individual_id,
             main_pokemon.id,
@@ -1594,6 +1607,8 @@ def save_main_pokemon_progress(
             getattr(main_pokemon, "evolution_rejected", False),
             current_attacks=attacks if stored_row_is_main_pokemon else None,
             gender=getattr(main_pokemon, "gender", None),
+            nature=getattr(main_pokemon, "nature", None),
+            party_pokemon_ids=party_pokemon_ids,
         )
         if evo_id is not None:
             evolution_prompted = True
