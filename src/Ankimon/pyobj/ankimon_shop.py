@@ -16,14 +16,42 @@ from ..resources import pokemon_tm_learnset_path
 # surface a download dialog from inside a stats notification, and a headless
 # run (the agent harness) aborted outright on the QWidget construction.
 _DAILY_ITEMS_POOL = None
+_DAILY_ITEMS_POOL_GEN = 0
 
 
 def get_daily_items_pool():
-    """Return the daily-shop item pool, building it once on first call."""
+    """Return the daily-shop item pool, building it once on first call.
+
+    If ``daily_item_list()`` opens the sprite-download dialog, its callback can
+    invalidate the pool (bumping ``_DAILY_ITEMS_POOL_GEN``) while our build is
+    still in flight. In that case the generation check fails and the pool would
+    otherwise remain ``None`` — the Items shop calls ``len(pool)`` before its
+    ``or []`` fallback can apply, raising ``TypeError``. Retry the build so a
+    later generation wins; the loop always terminates because each invalidating
+    callback advances the generation monotonically and only commits a build
+    matching the current generation.
+    """
     global _DAILY_ITEMS_POOL
-    if _DAILY_ITEMS_POOL is None:
-        _DAILY_ITEMS_POOL = daily_item_list() or []
+    while _DAILY_ITEMS_POOL is None:
+        gen = _DAILY_ITEMS_POOL_GEN
+        built = daily_item_list() or []
+        if gen == _DAILY_ITEMS_POOL_GEN:
+            _DAILY_ITEMS_POOL = built
     return _DAILY_ITEMS_POOL
+
+
+def invalidate_daily_items_pool():
+    """Drop the cached daily-shop pool so it rebuilds from current assets.
+
+    Also bumps the pool generation so an in-flight build (e.g. one blocked on
+    the sprite-download dialog opened by daily_item_list()) cannot commit its
+    pre-download empty result after this invalidation runs. Called from the
+    download-success callback so the next get_daily_items_pool() rebuilds from
+    the installed sprites without requiring an Anki restart.
+    """
+    global _DAILY_ITEMS_POOL, _DAILY_ITEMS_POOL_GEN
+    _DAILY_ITEMS_POOL = None
+    _DAILY_ITEMS_POOL_GEN += 1
 
 
 class PokemonShopManager:

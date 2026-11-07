@@ -35,7 +35,10 @@ def presenter_module(monkeypatch):
 
     aqt_qt = types.ModuleType("aqt.qt")
     aqt_qt.QDialog = _QDialog
+    aqt_qt.QDialogButtonBox = object
+    aqt_qt.QLabel = object
     aqt_qt.QTimer = object
+    aqt_qt.QVBoxLayout = object
     monkeypatch.setitem(sys.modules, "aqt.qt", aqt_qt)
 
     aqt_utils = types.ModuleType("aqt.utils")

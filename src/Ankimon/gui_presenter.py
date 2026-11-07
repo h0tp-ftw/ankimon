@@ -13,13 +13,15 @@ never be imported headless. See :mod:`Ankimon.ui_port` for the contract.
 from __future__ import annotations
 
 from aqt import mw
-from aqt.qt import QDialog, QTimer
+from aqt.qt import QDialog, QDialogButtonBox, QLabel, QTimer, QVBoxLayout
 from aqt.utils import showInfo, showWarning
+from PyQt6.QtGui import QIcon
 
 from .classes.choose_move_dialog import MoveSelectionDialog
 from .pyobj.attack_dialog import AttackDialog
 from .pyobj.moveset_dialog import MovesetDialog
 from .pyobj.error_handler import show_warning_with_traceback
+from .resources import icon_path
 
 
 class QtPresenter:
@@ -110,6 +112,32 @@ class QtPresenter:
             showWarning(str(message))
         else:
             showInfo(str(message))
+
+    def show_wishlist_popup(self, message):
+        dialog = QDialog(mw)
+        dialog.setWindowTitle("Wish comes true!")
+        dialog.setWindowIcon(QIcon(str(icon_path)))
+
+        layout = QVBoxLayout(dialog)
+        message_label = QLabel(str(message))
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        QTimer.singleShot(
+            0,
+            lambda: (
+                dialog.raise_(),
+                dialog.activateWindow(),
+            ),
+        )
+        try:
+            dialog.exec()
+        finally:
+            dialog.deleteLater()
 
     def warn(self, message):
         showWarning(str(message))

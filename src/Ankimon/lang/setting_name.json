@@ -1,6 +1,7 @@
 {
     "battle.automatic_battle": "Automatic Battle",
     "battle.auto_catch_wishlist": "Always Catch Wishlist",
+    "gui.item_wishlist": "Item Wishlist",
     "battle.auto_catch_legendary": "Always Catch: Legendary",
     "battle.auto_catch_mythical": "Always Catch: Mythical",
     "battle.auto_catch_ultra": "Always Catch: Ultra Beast",
@@ -32,6 +33,7 @@
     "gui.pop_up_dialog_message_on_defeat": "Pop-Up on Defeat",
     "gui.pop_up_dialog_message_on_encounter": "Pop-Up on Special Encounter",
     "gui.pop_up_dialog_message_on_item": "Pop-Up on Item Receive",
+    "gui.pop_up_dialog_message_wishlist_override": "Wishlist Item Received",
     "gui.review_hp_bar_thickness": "HP Bar Thickness",
     "gui.reviewer_image_gif": "Reviewer Image as GIF",
     "gui.reviewer_text_message_box": "Show Text Message Box in Reviewer",

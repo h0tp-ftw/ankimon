@@ -198,6 +198,11 @@ register_profile_hooks(
     collected_pokemon_ids,
 )
 
+# Daily item-wishlist shop notifications run after Anki finishes constructing
+# its main window, not as part of Ankimon's asynchronous startup work.
+from .functions.item_wishlist import register_item_wishlist_hook
+
+register_item_wishlist_hook()
 
 # --- Asynchronous startup (F32) ----------------------------------------------
 def start_asynchronous_startup():

@@ -136,6 +136,15 @@ class HeadlessPresenter:
         """A would-be info/warning/error popup. Recorded, not shown."""
         events.emit("notify", level=level, message=message)
 
+    def show_wishlist_popup(self, message: str) -> None:
+        """Record a would-be Item Wishlist celebration dialog."""
+        events.emit(
+            "dialog",
+            dialog="item_wishlist",
+            title="Wish comes true!",
+            message=message,
+        )
+
     def warn(self, message: str) -> None:
         """A would-be warning popup."""
         events.emit("notify", level="warning", message=message)

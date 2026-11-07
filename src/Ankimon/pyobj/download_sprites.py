@@ -531,6 +531,27 @@ class DownloadDialog(QDialog):
         self.status_label.setText(message)
         self.cancel_button.setEnabled(False)
         if success:
+            from ..pyobj.ankimon_shop import invalidate_daily_items_pool
+            from ..functions.item_wishlist import on_main_window_did_init
+            from ..utils import clear_utils_caches
+
+            invalidate_daily_items_pool()
+            clear_utils_caches()
+            
+            from PyQt6.QtCore import QTimer
+
+            try:
+                from aqt import mw
+
+                run_on_main = mw.taskman.run_on_main
+            except (ImportError, AttributeError):
+                run_on_main = None
+
+            if run_on_main is not None:
+                run_on_main(on_main_window_did_init)
+            else:
+                QTimer.singleShot(0, on_main_window_did_init)
+
             self.start_button.setText("Download Complete!")
             self.start_button.setEnabled(False)
             self.progress_bar.setValue(100)

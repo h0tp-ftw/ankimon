@@ -15,6 +15,8 @@
     let bridge = null;
     let nav = null;
     let unsavedGuardOpen = false;
+    let pendingInitializeData = null;
+    let domReady = false;
 
     const HUD_TOGGLE_AUTO_SYNC_KEYS = [
         'gui.hud_player_sprite',
@@ -34,41 +36,67 @@
             cb(null);
             return;
         }
-        new QWebChannel(qt.webChannelTransport, function (channel) {
-            bridge = channel.objects && channel.objects.settings;
-            nav = channel.objects && channel.objects.nav;
-            window.bridge = bridge;
-            window.nav = nav;
-            cb(bridge);
-        });
+        try {
+            new QWebChannel(qt.webChannelTransport, function (channel) {
+                bridge = channel.objects && channel.objects.settings;
+                nav = channel.objects && channel.objects.nav;
+                window.bridge = bridge;
+                window.nav = nav;
+                cb(bridge);
+            });
+        } catch (e) {
+            console.warn('QWebChannel init failed — standalone mode', e);
+            cb(null);
+        }
     }
 
     window.initializeSettings = function (data) {
-        state.data = data || {groups: []};
-        state.edits = {};  // fresh data resets dirty state
-        state.explicitHudOverrides.clear();
-        renderAll();
+        if (!domReady || !document.getElementById('settings-content')) {
+            pendingInitializeData = data;
+            return;
+        }
+        try {
+            state.data = (data && typeof data === 'object') ? data : {groups: []};
+            state.edits = {};
+            state.explicitHudOverrides.clear();
+            renderAll();
+        } catch (e) {
+            console.error('Ankimon Settings: initializeSettings failed', e);
+        }
     };
+
+    function applyPendingInitialize() {
+        if (pendingInitializeData !== null) {
+            const data = pendingInitializeData;
+            pendingInitializeData = null;
+            window.initializeSettings(data);
+        }
+    }
 
     // ---------- Rendering ----------
     function renderAll() {
-        renderGroupJumps();
-        renderContent();
-        updateHudStylingDependentUi();
-        applySearchFilter();
-        updateDirtyUI();
+        try { renderGroupJumps(); } catch (e) { console.error('renderGroupJumps failed', e); }
+        try { renderContent(); } catch (e) { console.error('renderContent failed', e); }
+        try { updateHudStylingDependentUi(); } catch (e) { console.error('updateHudStylingDependentUi failed', e); }
+        try { applySearchFilter(); } catch (e) { console.error('applySearchFilter failed', e); }
+        try { updateDirtyUI(); } catch (e) { console.error('updateDirtyUI failed', e); }
         // Re-run the spy after render so the active button reflects the
         // post-render scroll position (in case the DOM rebuild moved things
         // around).
-        updateActiveSection();
+        try { updateActiveSection(); } catch (e) { console.error('updateActiveSection failed', e); }
+    }
+
+    function groups() {
+        return (state.data && Array.isArray(state.data.groups)) ? state.data.groups : [];
     }
 
     function renderGroupJumps() {
         const container = document.getElementById('group-jumps');
+        if (!container) return;
         // Build into a fragment then swap atomically to avoid a brief
         // empty-state on every save refresh.
         const frag = document.createDocumentFragment();
-        (state.data.groups || []).forEach((g) => {
+        groups().forEach((g) => {
             const btn = document.createElement('button');
             btn.className = 'group-jump';
             btn.dataset.group = g.label;
@@ -93,11 +121,12 @@
 
     function renderContent() {
         const root = document.getElementById('settings-content');
+        if (!root) return;
         // Build the whole settings tree into a fragment off-DOM, then swap
         // it in atomically. Without this, every save → re-fetch cycle
         // flashes an empty form area while ~60 rows rebuild sequentially.
         const frag = document.createDocumentFragment();
-        (state.data.groups || []).forEach((group) => {
+        groups().forEach((group) => {
             const groupEl = document.createElement('section');
             groupEl.className = 'settings-group';
             groupEl.dataset.group = group.label;
@@ -228,7 +257,20 @@
     }
 
     function buildWishlistControl(setting) {
-        if (setting.names) {
+        const isItemWishlist = setting.key === 'gui.item_wishlist';
+        const itemOptions = (setting.item_options || []).map((item) => ({
+            id: String(item.id),
+            name: item.name || String(item.id).replace(/-/g, ' '),
+        }));
+        const itemNames = new Map(itemOptions.map((item) => [item.id, item.name]));
+        // "Choose from Bag…" mirrors the Always-Catch "Choose from Caught…":
+        // the grid lists only items the player owns; search covers the full pool.
+        const bagItems = (setting.bag_items || [])
+            .map(String)
+            .filter((id) => itemNames.has(id))
+            .map((id) => ({ id, name: itemNames.get(id) }));
+
+        if (!isItemWishlist && setting.names) {
             state._wishlistNames = state._wishlistNames || {};
             for (const [id, name] of Object.entries(setting.names)) {
                 state._wishlistNames[Number(id)] = name;
@@ -245,7 +287,7 @@
         const input = document.createElement('input');
         input.type = 'text';
         input.className = 'setting-input';
-        input.placeholder = 'Search Pokémon name…';
+        input.placeholder = isItemWishlist ? 'Search item name…' : 'Search Pokémon name…';
 
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
@@ -256,8 +298,10 @@
         const chooseBtn = document.createElement('button');
         chooseBtn.type = 'button';
         chooseBtn.className = 'wishlist-choose-btn';
-        chooseBtn.textContent = 'Choose from Caught…';
-        chooseBtn.title = 'Open dialog to select from caught Pokémon';
+        chooseBtn.textContent = isItemWishlist ? 'Choose from Bag…' : 'Choose from Caught…';
+        chooseBtn.title = isItemWishlist
+            ? 'Open dialog to select from items in your bag'
+            : 'Open dialog to select from caught Pokémon';
 
         const dropdown = document.createElement('div');
         dropdown.className = 'wishlist-dropdown hidden';
@@ -275,19 +319,24 @@
 
         let activeModalBackdrop = null;
         let activeModalGrid = null;
+        let activeCardById = new Map();
         let caughtPokemon = [];
 
-        function getIds() {
-            return (currentValue(setting) || []).map(Number);
+        function getValues() {
+            const values = currentValue(setting);
+            if (!Array.isArray(values)) return [];
+            return isItemWishlist ? values.map(String) : values.map(Number);
         }
 
-        function togglePokemon(id, name) {
-            const current = getIds();
+        function toggleEntry(id, name) {
+            const current = getValues();
             let next;
             if (current.includes(id)) {
                 next = current.filter((v) => v !== id);
             } else {
-                (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                if (!isItemWishlist) {
+                    (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                }
                 next = [...current, id];
             }
             setEdit(setting.key, next);
@@ -296,14 +345,16 @@
             markRowDirty(setting.key);
 
             if (activeModalGrid) {
-                renderModalGrid(activeModalGrid);
+                updateModalCard(id);
             }
         }
 
-        function addPokemon(id, name) {
-            const current = getIds();
+        function addEntry(id, name) {
+            const current = getValues();
             if (!current.includes(id)) {
-                (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                if (!isItemWishlist) {
+                    (state._wishlistNames = state._wishlistNames || {})[id] = name;
+                }
                 const next = [...current, id];
                 setEdit(setting.key, next);
                 renderChips();
@@ -311,7 +362,7 @@
                 markRowDirty(setting.key);
 
                 if (activeModalGrid) {
-                    renderModalGrid(activeModalGrid);
+                    updateModalCard(id);
                 }
             }
             input.value = '';
@@ -321,33 +372,36 @@
 
         function renderChips() {
             chipList.innerHTML = '';
-            const ids = getIds();
-            if (ids.length === 0) {
+            const values = getValues();
+            if (values.length === 0) {
                 const empty = document.createElement('span');
                 empty.className = 'wishlist-empty';
-                empty.textContent = 'No Pokémon added yet.';
+                empty.textContent = isItemWishlist ? 'No items added yet.' : 'No Pokémon added yet.';
                 chipList.appendChild(empty);
                 return;
             }
-            ids.forEach((id) => {
+            values.forEach((id) => {
                 const chip = document.createElement('span');
                 chip.className = 'wishlist-chip';
-                const cached = (state._wishlistNames = state._wishlistNames || {});
-                chip.textContent = cached[id] ? `${cached[id]} (#${id})` : `#${id}`;
+                const cached = isItemWishlist ? {} : (state._wishlistNames = state._wishlistNames || {});
+                const name = isItemWishlist ? itemNames.get(id) : cached[id];
+                chip.textContent = name
+                    ? (isItemWishlist ? name : `${name} (#${id})`)
+                    : (isItemWishlist ? id : `#${id}`);
                 const x = document.createElement('button');
                 x.type = 'button';
                 x.textContent = '×';
                 x.className = 'wishlist-chip-remove';
                 x.title = 'Remove';
                 x.addEventListener('click', () => {
-                    const next = getIds().filter((v) => v !== id);
+                    const next = getValues().filter((v) => v !== id);
                     setEdit(setting.key, next);
                     renderChips();
                     updateDirtyUI();
                     markRowDirty(setting.key);
 
                     if (activeModalGrid) {
-                        renderModalGrid(activeModalGrid);
+                        updateModalCard(id);
                     }
                 });
                 chip.appendChild(x);
@@ -367,6 +421,26 @@
                 lastResults = [];
                 return;
             }
+            if (isItemWishlist) {
+                lastResults = itemOptions.filter((item) =>
+                    item.name.toLowerCase().includes(q.toLowerCase())
+                    || item.id.toLowerCase().includes(q.toLowerCase())
+                ).slice(0, 20);
+                dropdown.innerHTML = '';
+                if (lastResults.length === 0) {
+                    dropdown.classList.add('hidden');
+                    return;
+                }
+                dropdown.classList.remove('hidden');
+                lastResults.forEach((item) => {
+                    const opt = document.createElement('div');
+                    opt.className = 'wishlist-option';
+                    opt.textContent = item.name;
+                    opt.addEventListener('click', () => addEntry(item.id, item.name));
+                    dropdown.appendChild(opt);
+                });
+                return;
+            }
             if (!bridge || !bridge.searchPokemon) return;
             bridge.searchPokemon(q, (res) => {
                 dropdown.innerHTML = '';
@@ -380,7 +454,7 @@
                     const opt = document.createElement('div');
                     opt.className = 'wishlist-option';
                     opt.textContent = `${r.name} (#${r.id})`;
-                    opt.addEventListener('click', () => addPokemon(r.id, r.name));
+                    opt.addEventListener('click', () => addEntry(r.id, r.name));
                     dropdown.appendChild(opt);
                 });
             });
@@ -390,8 +464,17 @@
             const q = input.value.trim();
             if (q.length < 2) return;
 
+            if (isItemWishlist) {
+                const result = itemOptions.find((item) =>
+                    item.name.toLowerCase().includes(q.toLowerCase())
+                    || item.id.toLowerCase().includes(q.toLowerCase())
+                );
+                if (result) addEntry(result.id, result.name);
+                return;
+            }
+
             if (lastResults.length > 0 && lastResults[0].name.toLowerCase().includes(q.toLowerCase())) {
-                addPokemon(lastResults[0].id, lastResults[0].name);
+                addEntry(lastResults[0].id, lastResults[0].name);
                 return;
             }
 
@@ -400,7 +483,7 @@
             bridge.searchPokemon(q, (res) => {
                 const results = (res && res.results) || [];
                 if (results.length > 0) {
-                    addPokemon(results[0].id, results[0].name);
+                    addEntry(results[0].id, results[0].name);
                 }
             });
         };
@@ -424,39 +507,72 @@
         // Modal Suggestions logic
         function renderModalGrid(grid) {
             grid.innerHTML = '';
-            if (caughtPokemon.length === 0) {
+            activeCardById = new Map();
+            const entries = isItemWishlist
+                ? bagItems
+                : caughtPokemon.map((pokemon) => ({
+                    id: Number(pokemon.id),
+                    name: pokemon.name,
+                }));
+            if (entries.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'wishlist-suggestions-empty';
-                empty.textContent = 'No caught Pokémon found.';
+                empty.textContent = isItemWishlist
+                    ? 'No wishlist-eligible items in your bag. Use the search box to add any item.'
+                    : 'No caught Pokémon found.';
                 grid.appendChild(empty);
                 return;
             }
-            const activeIds = getIds();
-            caughtPokemon.forEach((p) => {
-                const isInWishlist = activeIds.includes(p.id);
+            const activeValues = getValues();
+            entries.forEach((entry) => {
+                const isInWishlist = activeValues.includes(entry.id);
 
-                const card = document.createElement('div');
+                const card = document.createElement('button');
+                card.type = 'button';
                 card.className = `wishlist-suggestion-card${isInWishlist ? ' in-wishlist' : ''}`;
-                card.title = `${p.name} (#${p.id})`;
+                card.title = isItemWishlist ? entry.name : `${entry.name} (#${entry.id})`;
+                card.setAttribute('aria-pressed', String(isInWishlist));
 
                 const img = document.createElement('img');
                 img.className = 'wishlist-suggestion-sprite';
-                img.src = `../user_files/sprites/front_default/${p.id}.png`;
+                img.alt = '';
+                img.src = isItemWishlist
+                    ? `../user_files/sprites/items/${encodeURIComponent(entry.id)}.png`
+                    : `../user_files/sprites/front_default/${entry.id}.png`;
+                let triedBundledItemSprite = false;
                 img.onerror = () => {
-                    img.src = '../user_files/sprites/front_default/0.png';
+                    if (isItemWishlist) {
+                        if (!triedBundledItemSprite) {
+                            triedBundledItemSprite = true;
+                            img.src = `../addon_sprites/items/${encodeURIComponent(entry.id)}.png`;
+                        } else {
+                            img.hidden = true;
+                        }
+                    } else {
+                        img.src = '../user_files/sprites/front_default/0.png';
+                    }
                 };
 
                 const nameLbl = document.createElement('div');
                 nameLbl.className = 'wishlist-suggestion-name';
-                nameLbl.textContent = p.name;
+                nameLbl.textContent = entry.name;
 
                 card.append(img, nameLbl);
-                card.addEventListener('click', () => togglePokemon(p.id, p.name));
+                card.addEventListener('click', () => toggleEntry(entry.id, entry.name));
                 grid.appendChild(card);
+                activeCardById.set(entry.id, card);
             });
         }
 
-        function openCaughtModal() {
+        function updateModalCard(id) {
+            const card = activeCardById.get(id);
+            if (!card) return;
+            const isInWishlist = getValues().includes(id);
+            card.classList.toggle('in-wishlist', isInWishlist);
+            card.setAttribute('aria-pressed', String(isInWishlist));
+        }
+
+        function openChooseModal() {
             if (activeModalBackdrop) return;
 
             const backdrop = document.createElement('div');
@@ -471,7 +587,7 @@
 
             const title = document.createElement('h3');
             title.className = 'wishlist-modal-title';
-            title.textContent = 'Select from Caught Pokémon';
+            title.textContent = isItemWishlist ? 'Select from Bag' : 'Select from Caught Pokémon';
 
             const closeBtn = document.createElement('button');
             closeBtn.type = 'button';
@@ -483,6 +599,7 @@
                 backdrop.remove();
                 activeModalBackdrop = null;
                 activeModalGrid = null;
+                activeCardById = new Map();
                 document.removeEventListener('keydown', handleEsc);
             };
 
@@ -505,7 +622,9 @@
 
             const subtitle = document.createElement('div');
             subtitle.className = 'wishlist-modal-subtitle';
-            subtitle.textContent = 'Toggle Pokémon below to add them to your Always-Catch Wishlist:';
+            subtitle.textContent = isItemWishlist
+                ? 'Toggle items below to add them to your Item Wishlist:'
+                : 'Toggle Pokémon below to add them to your Always-Catch Wishlist:';
 
             const grid = document.createElement('div');
             grid.className = 'wishlist-suggestions-grid';
@@ -516,7 +635,9 @@
             backdrop.append(content);
             document.body.appendChild(backdrop);
 
-            if (bridge && bridge.getCaughtPokemon) {
+            if (isItemWishlist) {
+                renderModalGrid(grid);
+            } else if (bridge && bridge.getCaughtPokemon) {
                 bridge.getCaughtPokemon((res) => {
                     caughtPokemon = (res && res.results) || [];
                     renderModalGrid(grid);
@@ -526,7 +647,7 @@
             }
         }
 
-        chooseBtn.addEventListener('click', openCaughtModal);
+        chooseBtn.addEventListener('click', openChooseModal);
 
         // Close dropdown on outside click
         document.addEventListener('click', (e) => {
@@ -740,7 +861,7 @@
     }
 
     function findSetting(key) {
-        for (const g of (state.data.groups || [])) {
+        for (const g of groups()) {
             for (const s of (g.settings || [])) {
                 if (s.key === key) return s;
                 if (s.type === 'chips') {
@@ -825,18 +946,25 @@
         const discardBtn = document.getElementById('discard-btn');
         const pill = document.getElementById('dirty-count');
         const status = document.getElementById('save-status');
-        saveBtn.disabled = !dirty;
-        saveBtn.classList.toggle('dirty', dirty);
-        discardBtn.classList.toggle('hidden', !dirty);
-        if (dirty) {
-            pill.classList.remove('hidden');
-            pill.textContent = n;
-            status.textContent = n + ' unsaved';
-            status.style.color = 'var(--accent-gold)';
-        } else {
-            pill.classList.add('hidden');
-            status.textContent = 'All saved';
-            status.style.color = 'var(--accent-green)';
+        if (saveBtn) {
+            saveBtn.disabled = !dirty;
+            saveBtn.classList.toggle('dirty', dirty);
+        }
+        if (discardBtn) {
+            discardBtn.classList.toggle('hidden', !dirty);
+        }
+        if (pill) {
+            pill.classList.toggle('hidden', !dirty);
+            if (dirty) pill.textContent = n;
+        }
+        if (status) {
+            if (dirty) {
+                status.textContent = n + ' unsaved';
+                status.style.color = 'var(--accent-gold)';
+            } else {
+                status.textContent = 'All saved';
+                status.style.color = 'var(--accent-green)';
+            }
         }
         // Sync the row-level dirty markers (in case render rebuilt them).
         // Chip rows key their edits under each chip's sub-key, not the row's
@@ -872,7 +1000,7 @@
             groupEl.classList.toggle('hidden', groupVisible === 0);
             visible += groupVisible;
         });
-        empty.classList.toggle('hidden', visible > 0);
+        if (empty) empty.classList.toggle('hidden', visible > 0);
     }
 
     // ---------- Save ----------
@@ -1008,6 +1136,7 @@
     function showToast(message, isError, isHudBarsNotice) {
         if (!message) return;
         const toast = document.getElementById('toast');
+        if (!toast) return;
         toast.textContent = message;
         toast.classList.toggle('error', !!isError);
         toast.classList.toggle('hud-bars-notice', !!isHudBarsNotice);
@@ -1071,7 +1200,7 @@
     }
 
     function cssEscape(s) {
-        return s.replace(/"/g, '\\"');
+        return String(s).replace(/"/g, '\\"');
     }
 
     function updateActiveSection() {
@@ -1117,20 +1246,26 @@
     function bindUI() {
         const search = document.getElementById('settings-search');
         const clear = document.getElementById('clear-search');
-        search.addEventListener('input', () => {
-            state.search = search.value.trim().toLowerCase();
-            clear.classList.toggle('hidden', !state.search);
-            applySearchFilter();
-        });
-        clear.addEventListener('click', () => {
-            search.value = '';
-            state.search = '';
-            clear.classList.add('hidden');
-            applySearchFilter();
-        });
+        if (search) {
+            search.addEventListener('input', () => {
+                state.search = search.value.trim().toLowerCase();
+                if (clear) clear.classList.toggle('hidden', !state.search);
+                applySearchFilter();
+            });
+        }
+        if (clear && search) {
+            clear.addEventListener('click', () => {
+                search.value = '';
+                state.search = '';
+                clear.classList.add('hidden');
+                applySearchFilter();
+            });
+        }
 
-        document.getElementById('save-btn').addEventListener('click', () => onSave());
-        document.getElementById('discard-btn').addEventListener('click', onDiscard);
+        const saveBtn = document.getElementById('save-btn');
+        if (saveBtn) saveBtn.addEventListener('click', () => onSave());
+        const discardBtn = document.getElementById('discard-btn');
+        if (discardBtn) discardBtn.addEventListener('click', onDiscard);
         // Let the shared nav switcher consult us before leaving with unsaved edits.
         window.navBeforeLeave = guardUnsavedNavigation;
 
@@ -1140,7 +1275,7 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === '/' && document.activeElement !== search) {
                 e.preventDefault();
-                search.focus();
+                if (search) search.focus();
             } else if ((e.metaKey || e.ctrlKey) && e.key === 's') {
                 e.preventDefault();
                 onSave();
@@ -1148,12 +1283,20 @@
         });
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    function onDomReady() {
+        domReady = true;
         bindUI();
         // Dropdown nav: wire from the shared switcher once the channel resolves
         // so it has the live NavBridge. See ankimon_items_web/nav-switcher.js.
         initChannel(() => {
             if (window.wireNavSwitcher) window.wireNavSwitcher(nav);
         });
-    });
+        applyPendingInitialize();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', onDomReady);
+    } else {
+        onDomReady();
+    }
 })();
