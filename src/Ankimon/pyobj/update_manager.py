@@ -553,25 +553,18 @@ def fetch_branches() -> list[dict]:
 
 
 def fetch_open_prs() -> list[dict]:
-    prs = []
-    page = 1
-    while True:
-        data = _api_get(f"pulls?state=open&per_page=100&page={page}")
-        if not data:
-            break
-        prs.extend([
-            {
-                "number": pr["number"],
-                "title": pr["title"],
-                "head_ref": pr["head"]["ref"],
-                "head_sha": pr["head"]["sha"],
-            }
-            for pr in data
-        ])
-        if len(data) < 100:
-            break
-        page += 1
-    return prs
+    data = _api_get("pulls?state=open&per_page=50")
+    if not data:
+        return []
+    return [
+        {
+            "number": pr["number"],
+            "title": pr["title"],
+            "head_ref": pr["head"]["ref"],
+            "head_sha": pr["head"]["sha"],
+        }
+        for pr in data
+    ]
 
 
 def fetch_branch_sha(branch: str) -> Optional[str]:
