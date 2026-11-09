@@ -803,9 +803,11 @@ function renderReplayBattle(result) {
         playerSprite.src = result.companion_sprite;
     }
 
-    document.getElementById('replay-enemy-name').textContent = result.enemy_name || '???';
+    const eShiny = result.enemy_shiny ? '<span class="shiny-badge">✨</span> ' : '';
+    document.getElementById('replay-enemy-name').innerHTML = `${eShiny}${escapeHtml(result.enemy_name || '???')}`;
     document.getElementById('replay-enemy-level').textContent = `Lv.${result.enemy_level}`;
-    document.getElementById('replay-player-name').textContent = result.companion_name || 'Companion';
+    const pShiny = result.companion_shiny ? '<span class="shiny-badge">✨</span> ' : '';
+    document.getElementById('replay-player-name').innerHTML = `${pShiny}${escapeHtml(result.companion_name || 'Companion')}`;
     document.getElementById('replay-player-level').textContent = `Lv.${result.companion_level}`;
 
     // Render the compact selector

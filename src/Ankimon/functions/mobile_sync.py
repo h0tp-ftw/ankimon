@@ -1287,6 +1287,7 @@ def _run_mobile_battles_impl(
             "companion_name": main_pokemon_clone.display_name
             if main_pokemon_clone
             else "Companion",
+            "companion_shiny": bool(main_pokemon_clone.shiny) if main_pokemon_clone else False,
             "companion_level": main_pokemon_clone.level if main_pokemon_clone else 5,
             "companion_sprite": get_relative_sprite_path(
                 main_pokemon_clone.id,
@@ -1945,6 +1946,9 @@ def _run_mobile_battles_impl(
                                     "companion_name": main_pokemon_clone.display_name
                                     if main_pokemon_clone
                                     else None,
+                                    "companion_shiny": bool(main_pokemon_clone.shiny)
+                                    if main_pokemon_clone
+                                    else False,
                                     "companion_level": main_pokemon_clone.level
                                     if main_pokemon_clone
                                     else None,
@@ -1996,6 +2000,9 @@ def _run_mobile_battles_impl(
                                     "companion_name": main_pokemon_clone.display_name
                                     if main_pokemon_clone
                                     else None,
+                                    "companion_shiny": bool(main_pokemon_clone.shiny)
+                                    if main_pokemon_clone
+                                    else False,
                                     "companion_level": main_pokemon_clone.level
                                     if main_pokemon_clone
                                     else None,
@@ -2680,6 +2687,7 @@ def commit_replay_outcome(
                             "enemy_level": enemy_pokemon.level,
                             "enemy_shiny": enemy_pokemon.shiny,
                             "companion_name": comp_name,
+                            "companion_shiny": bool(main_pokemon_clone.shiny) if main_pokemon_clone else False,
                             "companion_level": comp_level,
                             "outcome": outcome_val,
                             "xp_gained": battle_xp if outcome_val == "defeated" else 0,
