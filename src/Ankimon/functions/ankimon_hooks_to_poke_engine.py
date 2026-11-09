@@ -950,12 +950,13 @@ def simulate_battle_with_poke_engine(
                 (constants.USER, state.user.active, constants.OPPONENT, state.opponent.active),
                 (constants.OPPONENT, state.opponent.active, constants.USER, state.user.active)
             ]:
-                ab_inst = ability_on_switch_in(active_pkmn.ability, state, side, active_pkmn, opp_side, opp_pkmn)
-                if ab_inst:
-                    for i in ab_inst: mutator.apply_one(i)
-                it_inst = item_on_switch_in(active_pkmn.item, state, side, active_pkmn, opp_side, opp_pkmn)
-                if it_inst:
-                    for i in it_inst: mutator.apply_one(i)
+                if active_pkmn:
+                    ab_inst = ability_on_switch_in(active_pkmn.ability, state, side, active_pkmn, opp_side, opp_pkmn)
+                    if ab_inst:
+                        for i in ab_inst: mutator.apply_one(i)
+                    it_inst = item_on_switch_in(active_pkmn.item, state, side, active_pkmn, opp_side, opp_pkmn)
+                    if it_inst:
+                        for i in it_inst: mutator.apply_one(i)
 
         if settings_obj and settings_obj.get("battle.review_based_damage"):
             mutator.review_based_damage_multiplier = (
