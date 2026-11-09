@@ -2662,6 +2662,7 @@ def commit_replay_outcome(
                 try:
                     comp_name = outcome_data.get("companion_name")
                     comp_level = outcome_data.get("companion_level")
+                    comp_shiny = outcome_data.get("companion_shiny", False)
                     if not comp_name:
                         comp_name = "Companion"
                         comp_level = 5
@@ -2674,6 +2675,7 @@ def commit_replay_outcome(
                                 active_comp, "display_name", "Companion"
                             )
                             comp_level = getattr(active_comp, "level", 5)
+                            comp_shiny = getattr(active_comp, "shiny", False)
 
                     outcome_val = "caught" if choice == "catch" else "defeated"
                     if outcome_data.get("companion_fainted", False):
@@ -2687,7 +2689,7 @@ def commit_replay_outcome(
                             "enemy_level": enemy_pokemon.level,
                             "enemy_shiny": enemy_pokemon.shiny,
                             "companion_name": comp_name,
-                            "companion_shiny": bool(active_comp.shiny) if active_comp else False,
+                            "companion_shiny": bool(comp_shiny),
                             "companion_level": comp_level,
                             "outcome": outcome_val,
                             "xp_gained": battle_xp if outcome_val == "defeated" else 0,
