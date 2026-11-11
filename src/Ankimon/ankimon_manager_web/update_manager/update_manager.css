@@ -243,12 +243,21 @@
 	width: 30px;
 	height: 28px;
 	padding: 0;
+	display: grid;
+	place-items: center;
 	color: var(--text-main);
 	background: var(--bg-card-hover);
 	border: 1px solid var(--border-main);
 	border-radius: 6px;
 	font: 600 .95rem 'Outfit', sans-serif;
 	cursor: pointer;
+}
+
+.pr-page-controls svg {
+	display: block;
+	width: 16px;
+	height: 16px;
+	fill: currentColor;
 }
 
 .pr-page-controls button:disabled {

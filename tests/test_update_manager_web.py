@@ -70,6 +70,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
+    assert 'id="pr-page-prev"' in html and "<svg" in html
+    assert 'id="pr-page-next"' in html and 'viewBox="0 0 24 24"' in html
     assert "Max 100 PRs shown" in html
     assert "Showing PR #" in javascript
     assert "const PR_PAGE_SIZE = 50;" in javascript
@@ -77,6 +79,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
         "entries.slice(prPage * PR_PAGE_SIZE, (prPage + 1) * PR_PAGE_SIZE)"
         in javascript
     )
+    assert "querySelector('.custom-select-options').scrollTop = 0;" in javascript
     assert "status-text.neutral" in css
     assert "No updates since last install" in javascript
     assert "Install Latest Main" in javascript

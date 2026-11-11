@@ -696,6 +696,9 @@
 				updateButtonStates();
 			},
 		);
+		if (type === 'pr') {
+			byId('source-target').querySelector('.custom-select-options').scrollTop = 0;
+		}
 		updateButtonStates();
 	}
 
