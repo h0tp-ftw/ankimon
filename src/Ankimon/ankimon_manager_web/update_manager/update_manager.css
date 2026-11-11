@@ -53,11 +53,17 @@
 	border: 0;
 	border-radius: 999px;
 	cursor: pointer;
-	transition: background-color .2s ease, box-shadow .2s ease;
+	overflow: hidden;
+	white-space: nowrap;
+	transition: width .24s ease, flex-basis .24s ease, padding .24s ease,
+		background-color .2s ease, box-shadow .2s ease;
 }
 
 .github-link:hover,
 .github-link:focus-visible {
+	width: 260px;
+	flex-basis: 260px;
+	padding: 6px 12px;
 	background: #1f6feb;
 	box-shadow: 0 4px 16px rgba(31, 111, 235, .28);
 }
@@ -67,6 +73,22 @@
 	width: 24px;
 	height: 24px;
 	flex: 0 0 24px;
+	transition: transform .24s ease;
+}
+
+.github-link-text {
+	max-width: 0;
+	overflow: hidden;
+	opacity: 0;
+	font-size: .86rem;
+	font-weight: 700;
+	transition: max-width .24s ease, opacity .16s ease;
+}
+
+.github-link:hover .github-link-text,
+.github-link:focus-visible .github-link-text {
+	max-width: 205px;
+	opacity: 1;
 }
 
 .installed-source-detail {

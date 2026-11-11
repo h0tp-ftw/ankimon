@@ -100,9 +100,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "event.stopPropagation()" in javascript
     assert "event.target.closest('.update-tab')" in javascript
     assert "has-open-dropdown" in javascript
-    assert "github-link-text" not in html
-    assert "Star Ankimon (-E) on GitHub" not in html
-    assert "width: 260px;" not in css
+    assert 'class="github-link-text" aria-hidden="true">Star Ankimon (-E) on GitHub</span>' in html
+    assert 'title="Star Ankimon' not in html
+    assert "width: 260px;" in css
     assert "sprites-snooze-row" in html
     assert 'id="sprites-progress" class="sprite-progress hidden"' in html
     assert 'id="sprites-status"></span><output>0%</output>' in html
