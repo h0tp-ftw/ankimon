@@ -228,19 +228,30 @@ class UpdateManagerBridge(QObject):
                     relation = None
                 state["git_relation"] = relation
 
-            try:
-                commit_date = (
-                    updater.fetch_commit_date(local_sha) if local_sha else None
+            commit_date = state.get("commit_date")
+            if not commit_date:
+                try:
+                    commit_date = (
+                        updater.fetch_commit_date(local_sha) if local_sha else None
+                    )
+                except Exception:
+                    commit_date = None
+            main_commit_date = state.get("main_commit_date")
+            if not main_commit_date:
+                try:
+                    main_commit_date = (
+                        updater.fetch_commit_date(main_commit_sha)
+                        if main_commit_sha else None
+                    )
+                except Exception:
+                    main_commit_date = None
+            if not git_clone:
+                updater.persist_update_state_commit_metadata(
+                    commit_sha=local_sha,
+                    commit_date=commit_date,
+                    main_commit_sha=main_commit_sha,
+                    main_commit_date=main_commit_date,
                 )
-            except Exception:
-                commit_date = None
-            try:
-                main_commit_date = (
-                    updater.fetch_commit_date(main_commit_sha)
-                    if main_commit_sha else None
-                )
-            except Exception:
-                main_commit_date = None
             try:
                 main_commits = (
                     updater.fetch_commits_between(main_commit_sha, main_remote_sha)
@@ -554,6 +565,9 @@ class UpdateManagerBridge(QObject):
             source_name = source["source_name"]
             commit_sha = None
             published_at = None
+            previous_state = updater.read_update_state() or {}
+            main_commit_sha = previous_state.get("main_commit_sha")
+            main_commit_date = previous_state.get("main_commit_date")
             if source_type == "pr":
                 entry = source["entry"]
                 commit_sha = entry["head_sha"]
@@ -582,6 +596,33 @@ class UpdateManagerBridge(QObject):
                 )
             else:
                 raise ValueError("Unsupported update source.")
+
+            if source_type == "branch" and source_name == "main":
+                main_commit_sha = commit_sha
+                main_commit_date = (
+                    updater.fetch_commit_date(commit_sha) if commit_sha else None
+                )
+            elif not main_commit_sha:
+                if (
+                    previous_state.get("source_type") == "branch"
+                    and previous_state.get("source_name") == "main"
+                ):
+                    main_commit_sha = previous_state.get("commit_sha")
+                    main_commit_date = (
+                        main_commit_date or previous_state.get("commit_date")
+                    )
+                else:
+                    try:
+                        main_commit_sha = updater.fetch_branch_sha("main")
+                    except Exception:
+                        main_commit_sha = None
+                    if main_commit_sha:
+                        try:
+                            main_commit_date = updater.fetch_commit_date(
+                                main_commit_sha
+                            )
+                        except Exception:
+                            main_commit_date = None
 
             if self._git_clone:
                 messages = []
@@ -647,6 +688,8 @@ class UpdateManagerBridge(QObject):
                 commit_sha,
                 published_at,
                 status_cb=status,
+                main_commit_sha=main_commit_sha,
+                main_commit_date=main_commit_date,
             )
             return success, message, messages, pending_mod
 

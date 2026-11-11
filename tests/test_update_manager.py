@@ -628,16 +628,58 @@ def test_save_update_state_preserves_and_advances_main_commit(tmp_path, monkeypa
         encoding="utf-8",
     )
 
-    um.save_update_state("pr", "42", "pr123456")
+    um.save_update_state(
+        "pr",
+        "42",
+        "pr123456",
+        commit_date="2026-11-07T08:30:00Z",
+        main_commit_sha="main123456",
+        main_commit_date="2026-11-06T08:30:00Z",
+    )
     installed_pr = json.loads(state_path.read_text(encoding="utf-8"))
     assert installed_pr["commit_sha"] == "pr123456"
+    assert installed_pr["commit_date"] == "2026-11-07T08:30:00Z"
     assert installed_pr["main_commit_sha"] == "main123456"
+    assert installed_pr["main_commit_date"] == "2026-11-06T08:30:00Z"
     assert installed_pr["skip_until"] == 1234567890
 
-    um.save_update_state("branch", "main", "main987654")
+    um.save_update_state(
+        "branch",
+        "main",
+        "main987654",
+        commit_date="2026-11-08T08:30:00Z",
+    )
     installed_main = json.loads(state_path.read_text(encoding="utf-8"))
     assert installed_main["commit_sha"] == "main987654"
+    assert installed_main["commit_date"] == "2026-11-08T08:30:00Z"
     assert installed_main["main_commit_sha"] == "main987654"
+    assert installed_main["main_commit_date"] == "2026-11-08T08:30:00Z"
+
+
+def test_persist_commit_metadata_does_not_change_install_time(tmp_path, monkeypatch):
+    state_path = tmp_path / "update_state.json"
+    monkeypatch.setattr(um, "get_update_state_path", lambda: state_path)
+    original = {
+        "source_type": "pr",
+        "source_name": "42",
+        "commit_sha": "oldsha123456",
+        "installed_at": 123.0,
+    }
+    state_path.write_text(json.dumps(original), encoding="utf-8")
+
+    um.persist_update_state_commit_metadata(
+        commit_sha="newsha123456",
+        commit_date="2026-11-07T08:30:00Z",
+        main_commit_sha="mainsha123456",
+        main_commit_date="2026-11-06T08:30:00Z",
+    )
+
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved["commit_sha"] == "newsha123456"
+    assert saved["commit_date"] == "2026-11-07T08:30:00Z"
+    assert saved["main_commit_sha"] == "mainsha123456"
+    assert saved["main_commit_date"] == "2026-11-06T08:30:00Z"
+    assert saved["installed_at"] == 123.0
 
 
 def test_fetch_ref_date_falls_back_to_author_date(monkeypatch):
