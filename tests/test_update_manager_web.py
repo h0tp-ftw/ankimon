@@ -98,7 +98,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "install" in javascript and "sourceUrl(sourceType, sourceName)" in javascript
     assert "options.scrollTop = 0" in javascript
     assert "event.stopPropagation()" in javascript
-    assert "event.target.closest('.update-tab')" in javascript
+    assert 'id="update-tabs"' not in html
+    assert "event.target.closest('.update-tab')" not in javascript
     assert "has-open-dropdown" in javascript
     assert 'class="github-link-text" aria-hidden="true">Star Ankimon (-E) on GitHub</span>' in html
     assert 'title="Star Ankimon' not in html
@@ -113,8 +114,28 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "progress-message-failure" in javascript
     assert "setOperationStatus('', false)" in javascript
     assert "github-link').classList.toggle('hidden', tab === 'sprites')" in javascript
-    assert "Your Ankimon collection, progress and sprites are preserved" in html
-    assert "which download and install a ZIP of the selected source" in html
+    assert (
+        "Pull requests and branches may contain unreviewed code. Only install "
+        "sources you trust. Your Ankimon collection and progress will not be lost."
+        in html
+    )
+    assert "<blockquote id=\"developer-warning\"" in html
+    assert ".update-tabs {" not in css
+    assert ".update-tab {" not in css
+    trigger_focus = css[
+        css.index(".custom-select-trigger:focus"):
+        css.index(".custom-select-value")
+    ]
+    assert "outline: none;" in trigger_focus
+    assert "box-shadow: none;" in trigger_focus
+    assert "border-color: var(--accent-blue);" not in trigger_focus
+    assert "Connection rate limited, pika try again soon!" in javascript
+    assert "progress-message-rate-limit" in css
+    assert "status-text.rate-limit" in css
+    assert "release-highlight.error" in css
+    assert "def consume_api_error()" in (
+        ADDON / "pyobj" / "update_manager.py"
+    ).read_text(encoding="utf-8")
     bridge = (ADDON / "pyobj" / "update_manager_web.py").read_text(
         encoding="utf-8"
     )

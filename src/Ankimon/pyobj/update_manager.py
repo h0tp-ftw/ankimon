@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import threading
 import urllib.request
 import urllib.error
 import zipfile
@@ -33,6 +34,26 @@ MIN_UPDATER_VERSION = (2, 0)
 # deliberately refused rather than requested — the branch paths resolve a commit
 # SHA first, so rejecting the name only costs an undated install, never a wrong one.
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_api_request_state = threading.local()
+
+
+def _rate_limit_response(status, headers, body):
+    headers = headers or {}
+    remaining = headers.get("X-RateLimit-Remaining", "")
+    body_text = body.lower()
+    return (
+        status == 429
+        or (status == 403 and remaining == "0")
+        or "rate limit" in body_text
+        or "secondary rate" in body_text
+    )
+
+
+def consume_api_error() -> Optional[str]:
+    """Return and clear the current thread's last GitHub API error category."""
+    error = getattr(_api_request_state, "error", None)
+    _api_request_state.error = None
+    return error
 
 
 def _is_safe_ref(ref: Optional[str]) -> bool:
@@ -453,10 +474,24 @@ def _make_request(
 def _api_get(endpoint: str) -> Optional[dict]:
     url = f"{GITHUB_API}/{endpoint}"
     req = _make_request(url)
+    _api_request_state.error = None
     try:
         with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT) as resp:
             return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        if _rate_limit_response(error.code, error.headers, body):
+            _api_request_state.error = "rate_limited"
+        elif error.code == 404:
+            _api_request_state.error = "not_found"
+        else:
+            _api_request_state.error = "api_error"
+        return None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        _api_request_state.error = "connection"
+        return None
     except Exception:
+        _api_request_state.error = "api_error"
         return None
 
 
