@@ -612,7 +612,7 @@ def fetch_branches() -> list[dict]:
 
 
 def fetch_open_prs() -> list[dict]:
-    data = _api_get("pulls?state=open&per_page=50")
+    data = _api_get("pulls?state=open&per_page=100")
     if not data:
         return []
     return [

@@ -129,6 +129,14 @@
 									<div class="custom-select-menu hidden" role="dialog" aria-label="Choose an update source">
 										<input id="pr-search" class="custom-select-search" type="search" placeholder="Search pull requests by number or title" aria-label="Search update sources">
 										<div class="custom-select-options" role="listbox"></div>
+										<div id="pr-pagination" class="pr-pagination hidden" aria-label="Pull request pages">
+											<span id="pr-page-summary">Showing PR #— to #—</span>
+											<div class="pr-page-controls">
+												<button id="pr-page-prev" type="button" aria-label="Previous pull request page" disabled>←</button>
+												<button id="pr-page-next" type="button" aria-label="Next pull request page" disabled>→</button>
+											</div>
+											<span id="pr-page-limit">Max 100 PRs shown</span>
+										</div>
 									</div>
 								</div>
 							</div>

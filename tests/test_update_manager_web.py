@@ -67,6 +67,19 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
 
     assert 'src="../../user_files/sprites/items/exp-share.png"' in html
     assert 'id="pr-search"' in html
+    assert 'id="pr-pagination"' in html
+    assert 'id="pr-page-summary"' in html
+    assert 'id="pr-page-limit"' in html
+    assert "Max 100 PRs shown" in html
+    assert "Showing PR #" in javascript
+    assert "const PR_PAGE_SIZE = 50;" in javascript
+    assert (
+        "entries.slice(prPage * PR_PAGE_SIZE, (prPage + 1) * PR_PAGE_SIZE)"
+        in javascript
+    )
+    assert "status-text.neutral" in css
+    assert "No updates since last install" in javascript
+    assert "Install Latest Main" in javascript
     assert "Code error [Traceback]" in html
     assert "Status: Code error [Traceback]" not in html
     assert "Could not check connection." in javascript
@@ -193,6 +206,12 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     ).read_text(encoding="utf-8")
     assert "switchBranchView" in javascript
     assert "dataset.branchView" in javascript
+    branch_switch = javascript[
+        javascript.index("function switchBranchView"):
+        javascript.index("function renderReleases")
+    ]
+    assert "const gitInfo = updateData.git_info || {};" in branch_switch
+    assert "if (updateData.git_clone)" in branch_switch
     assert "def consume_api_error()" in (
         ADDON / "pyobj" / "update_manager.py"
     ).read_text(encoding="utf-8")

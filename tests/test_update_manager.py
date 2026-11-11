@@ -486,6 +486,29 @@ def test_fetch_tags_filters_pre_2_0(monkeypatch):
     assert [t["name"] for t in um.fetch_tags()] == ["2.0-E"]
 
 
+def test_fetch_open_prs_requests_100_and_maps_entries(monkeypatch):
+    endpoints = []
+    monkeypatch.setattr(um, "_api_get", lambda endpoint: (
+        endpoints.append(endpoint) or [
+            {
+                "number": 123,
+                "title": "Example PR",
+                "head": {"ref": "feature", "sha": "abc123"},
+            },
+        ]
+    ))
+
+    assert um.fetch_open_prs() == [
+        {
+            "number": 123,
+            "title": "Example PR",
+            "head_ref": "feature",
+            "head_sha": "abc123",
+        },
+    ]
+    assert endpoints == ["pulls?state=open&per_page=100"]
+
+
 # --- dating the installed build ------------------------------------------------
 #
 # Anki decides an addon is out of date by comparing meta.json's "mod" against

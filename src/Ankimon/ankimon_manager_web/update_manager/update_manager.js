@@ -9,6 +9,7 @@
 	let developerLoadFailed = false;
 	let selectedSourceType = 'main';
 	let selectedTarget = '';
+	let prPage = 0;
 	let selectedRelease = '';
 	let latestRelease = null;
 	let branchCanUpdate = false;
@@ -22,6 +23,7 @@
 	const busyOperations = new Set();
 	let toastTimer = null;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
+	const PR_PAGE_SIZE = 50;
 
 	const byId = (id) => document.getElementById(id);
 	const setText = (id, value) => { byId(id).textContent = value; };
@@ -412,9 +414,20 @@
 				: 'Update Installed Source');
 			branchCanUpdate = true;
 		} else {
-			status.textContent = 'Up to date!';
-			status.classList.add('success');
-			setText('branch-update-btn', 'Already Up to Date');
+			const noMainUpdatesForExternalSource = branchView === 'main' &&
+				hasBranchViews && data.source_type &&
+				!(data.source_type === 'branch' && data.source_name === 'main') &&
+				viewData.commits.length === 0;
+			if (noMainUpdatesForExternalSource) {
+				status.textContent = 'No updates since last install';
+				status.classList.add('neutral');
+				setText('branch-update-btn', 'Install Latest Main');
+				branchCanUpdate = Boolean(remoteSha);
+			} else {
+				status.textContent = 'Up to date!';
+				status.classList.add('success');
+				setText('branch-update-btn', 'Already Up to Date');
+			}
 		}
 
 		const commits = byId('recent-commits');
@@ -469,7 +482,8 @@
 		syncBranchProgressVisibility();
 		updateButtonStates();
 
-		if (data.git_clone) {
+		const gitInfo = updateData.git_info || {};
+		if (updateData.git_clone) {
 			const branch = gitInfo.branch || 'unknown';
 			const sha = gitInfo.sha || 'unknown';
 			setText(
@@ -584,6 +598,7 @@
 			(entry) => {
 				selectedSourceType = entry.value;
 				selectedTarget = '';
+				prPage = 0;
 				byId('pr-search').value = '';
 				setDropdownLabel('source-type-select', entry.label);
 				closeDropdown(byId('source-type-select'));
@@ -602,6 +617,8 @@
 		const fields = byId('target-fields');
 		const search = byId('pr-search');
 		const label = byId('target-label');
+		const pagination = byId('pr-pagination');
+		const targetMenu = byId('source-target').querySelector('.custom-select-menu');
 		const options = {
 			pr: { label: 'Pull request:', entries: developerData.prs || [] },
 			branch: { label: 'Branch:', entries: developerData.branches || [] },
@@ -609,10 +626,13 @@
 		};
 		if (type === 'main') {
 			fields.classList.add('hidden');
+			pagination.classList.add('hidden');
 			selectedTarget = '';
 			updateButtonStates();
 			return;
 		}
+		pagination.classList.toggle('hidden', type !== 'pr');
+		targetMenu.classList.toggle('pr-menu', type === 'pr');
 		fields.classList.remove('hidden');
 		label.textContent = options[type].label;
 		search.placeholder = type === 'pr'
@@ -632,6 +652,23 @@
 			}
 			return String(entry.name).toLocaleLowerCase().includes(query);
 		});
+		const pageCount = Math.max(1, Math.ceil(entries.length / PR_PAGE_SIZE));
+		prPage = Math.min(prPage, pageCount - 1);
+		const visibleEntries = type === 'pr'
+			? entries.slice(prPage * PR_PAGE_SIZE, (prPage + 1) * PR_PAGE_SIZE)
+			: entries;
+		if (type === 'pr') {
+			const first = visibleEntries[0];
+			const last = visibleEntries[visibleEntries.length - 1];
+			setText(
+				'pr-page-summary',
+				first && last
+					? `Showing PR #${first.number} to #${last.number}`
+					: 'Showing PR #— to #—',
+			);
+			byId('pr-page-prev').disabled = prPage === 0;
+			byId('pr-page-next').disabled = prPage >= pageCount - 1;
+		}
 		const valueFor = (entry) => type === 'pr' ? String(entry.number) : entry.name;
 		const labelFor = (entry) => type === 'pr'
 			? `#${entry.number} — ${entry.title}`
@@ -646,7 +683,7 @@
 		setDropdownLabel('source-target', selectedEntry ? labelFor(selectedEntry) : 'No sources found');
 		renderOptions(
 			'source-target',
-			entries.map((entry) => ({ value: valueFor(entry), label: labelFor(entry) })),
+			visibleEntries.map((entry) => ({ value: valueFor(entry), label: labelFor(entry) })),
 			selectedTarget,
 			developerData.errors && developerData.errors[type] === 'rate_limited'
 				? RATE_LIMIT_MESSAGE
@@ -1001,7 +1038,22 @@
 	renderSourceTypes();
 	byId('release-select').querySelector('.custom-select-search')
 		.addEventListener('input', renderReleaseOptions);
-	byId('pr-search').addEventListener('input', () => renderDeveloperTargets(false));
+	byId('pr-search').addEventListener('input', () => {
+		prPage = 0;
+		renderDeveloperTargets(false);
+	});
+	byId('pr-page-prev').addEventListener('click', () => {
+		if (prPage > 0) {
+			prPage -= 1;
+			renderDeveloperTargets(false);
+		}
+	});
+	byId('pr-page-next').addEventListener('click', () => {
+		if (!byId('pr-page-next').disabled) {
+			prPage += 1;
+			renderDeveloperTargets(false);
+		}
+	});
 	byId('github-link').addEventListener('click', () => {
 		if (bridge) {
 			bridge.openGitHub((opened) => {
