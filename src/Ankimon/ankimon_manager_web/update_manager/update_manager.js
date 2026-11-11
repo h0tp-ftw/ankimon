@@ -35,16 +35,22 @@
 		modal.classList.remove('hidden');
 		const confirm = byId('modal-confirm');
 		const cancel = byId('modal-cancel');
+		const previous = document.activeElement;
+		const onKey = (event) => { if (event.key === 'Escape') close(); };
 		const close = () => {
 			modal.classList.add('hidden');
 			confirm.onclick = null;
 			cancel.onclick = null;
+			document.removeEventListener('keydown', onKey);
+			if (previous && previous.focus) previous.focus();
 		};
 		confirm.onclick = () => {
 			close();
 			if (onConfirm) onConfirm();
 		};
 		cancel.onclick = close;
+		document.addEventListener('keydown', onKey);
+		(showCancel ? cancel : confirm).focus();
 	}
 
 	function setCodeError(message, traceback) {
