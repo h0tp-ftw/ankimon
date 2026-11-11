@@ -211,7 +211,13 @@ def test_sprite_diff_logic(tmp_path, monkeypatch):
 
     monkeypatch.setattr(requests, "get", mock_get)
 
-    result = su.calculate_sprite_diff(dest_dir)
+    progress_events = []
+    result = su.calculate_sprite_diff(
+        dest_dir,
+        progress_callback=lambda percent, message: progress_events.append(
+            (percent, message)
+        ),
+    )
 
     assert result["status"] == "update_available"
     assert result["remote_sha"] == "new_remote_sha"
@@ -223,6 +229,11 @@ def test_sprite_diff_logic(tmp_path, monkeypatch):
     assert "README.md" not in result["added"]
     assert "LICENSE" not in result["added"]
     assert "download_complete.flag" not in su.get_local_sprites_manifest(dest_dir)
+    assert progress_events[0][0] == 5
+    assert progress_events[-1] == (100, "Sprite update check complete.")
+    assert [percent for percent, _message in progress_events] == sorted(
+        percent for percent, _message in progress_events
+    )
 
 
 def test_sprite_updater_snooze(tmp_path, monkeypatch):

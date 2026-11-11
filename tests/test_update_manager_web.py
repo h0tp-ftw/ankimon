@@ -70,6 +70,21 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "String(entry.number)" in javascript
     assert "entry.title" in javascript
     assert "update-card" in css
+    assert 'id="github-link"' in html
+    assert "Auto-update channel: Experimental (-E)" in html
+    assert "<select" not in html
+    assert 'id="sprites-check-progress"' in html
+    assert 'id="developer-status" class="muted hidden"' in html
+    assert "normalizeTagSearch" in javascript
+    assert ".custom-checkbox:checked + .checkbox-indicator" in css
+    assert "Your Ankimon collection, progress and sprites are preserved" in html
+    assert "which download and install a ZIP of the selected source" in html
+    shell = (ADDON / "ankimon_items_web" / "shop_obj.py").read_text(
+        encoding="utf-8"
+    )
+    assert ".update-manager-heading" in shell
+    assert ".update-manager-logo" in shell
+    assert "openGitHub" in javascript
 
 
 def test_shell_routes_update_manager_without_replacing_help_dialog():
