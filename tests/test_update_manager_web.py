@@ -23,12 +23,15 @@ class PageLinks(HTMLParser):
     def __init__(self):
         super().__init__()
         self.update_manager_links = 0
+        self.nav_screens = []
         self.local_resources = []
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if attrs.get("data-screen") == "update_manager":
             self.update_manager_links += 1
+        if attrs.get("role") == "menuitem" and attrs.get("data-screen"):
+            self.nav_screens.append(attrs["data-screen"])
         resource = (
             attrs.get("src")
             if tag == "script"
@@ -51,6 +54,9 @@ def test_existing_web_ui_pages_route_to_update_manager_and_keep_assets_resolvabl
         parser.feed(page.read_text(encoding="utf-8"))
 
         assert parser.update_manager_links == 1, relative_path
+        assert parser.nav_screens.index("update_manager") < parser.nav_screens.index(
+            "backup_manager"
+        ), relative_path
         assert all((page.parent / item).exists() for item in parser.local_resources)
 
 
@@ -77,8 +83,27 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'id="developer-status" class="muted hidden"' in html
     assert "normalizeTagSearch" in javascript
     assert ".custom-checkbox:checked + .checkbox-indicator" in css
+    assert "height: 24px;" in css
+    assert 'id="branch-progress"' in html
+    assert 'id="releases-progress"' in html
+    assert 'id="developer-progress"' in html
+    assert 'id="sprites-progress"' in html
+    assert "<output>0%</output>" in html
+    assert (
+        "Update applied successfully. Please restart Anki for changes to take effect."
+        in javascript
+    )
+    assert "sprite_check_up_to_date" in javascript
+    assert "openGitHubTarget" in javascript
+    assert "install" in javascript and "sourceUrl(sourceType, sourceName)" in javascript
     assert "Your Ankimon collection, progress and sprites are preserved" in html
     assert "which download and install a ZIP of the selected source" in html
+    bridge = (ADDON / "pyobj" / "update_manager_web.py").read_text(
+        encoding="utf-8"
+    )
+    assert "def openGitHubTarget(self, target)" in bridge
+    assert 'url.host().lower() != "github.com"' in bridge
+    assert "_sprite_check_up_to_date = False" in bridge
     shell = (ADDON / "ankimon_items_web" / "shop_obj.py").read_text(
         encoding="utf-8"
     )

@@ -14,6 +14,8 @@
 	let branchCanUpdate = false;
 	let gitPullAllowed = false;
 	let spriteUpdateAvailable = false;
+	let spriteCheckUpToDate = false;
+	let activeProgressPanel = '';
 	const busyOperations = new Set();
 	let toastTimer = null;
 
@@ -32,7 +34,10 @@
 
 	function showModal(title, message, confirmLabel, onConfirm, showCancel = true) {
 		setText('modal-title', title);
-		setText('modal-message', message);
+		const messageElement = byId('modal-message');
+		messageElement.replaceChildren();
+		if (message instanceof Node) messageElement.appendChild(message);
+		else messageElement.textContent = message;
 		setText('modal-confirm', confirmLabel);
 		setVisible(byId('modal-cancel'), showCancel);
 		const modal = byId('update-modal');
@@ -68,13 +73,27 @@
 	}
 
 	function setOperationProgress(value, visible = true, indeterminate = false) {
-		const progress = byId('operation-progress');
+		if (!activeProgressPanel) return;
+		const container = byId(`${activeProgressPanel}-progress`);
+		const progress = container.querySelector('progress');
 		if (indeterminate) {
 			progress.removeAttribute('value');
+			container.querySelector('output').textContent = '';
 		} else {
-			progress.value = Math.max(0, Math.min(100, Number(value) || 0));
+			const percent = Math.max(0, Math.min(100, Number(value) || 0));
+			progress.value = percent;
+			container.querySelector('output').textContent = `${percent}%`;
 		}
-		setVisible(progress, visible);
+		setVisible(container, visible);
+	}
+
+	function setSpriteProgress(containerId, value, message = null) {
+		const container = byId(containerId);
+		const progress = container.querySelector('progress');
+		const percent = Math.max(0, Math.min(100, Number(value) || 0));
+		progress.value = percent;
+		container.querySelector('output').textContent = `${percent}%`;
+		if (message) container.querySelector('.progress-label span').textContent = message;
 	}
 
 	function setDeveloperStatus(message) {
@@ -154,7 +173,7 @@
 		byId('release-install-btn').disabled = busy || !selectedRelease;
 		byId('developer-install-btn').disabled = busy ||
 			(selectedSourceType !== 'main' && !selectedTarget);
-		byId('sprites-check-btn').disabled = busy;
+		byId('sprites-check-btn').disabled = busy || spriteCheckUpToDate;
 		byId('sprites-install-btn').disabled = busy || !spriteUpdateAvailable;
 	}
 
@@ -285,8 +304,9 @@
 			: [];
 		const query = byId('release-select').querySelector('.custom-select-search')
 			.value.trim().toLocaleLowerCase();
+		const normalizedQuery = normalizeTagSearch(query);
 		const entries = list
-			.filter((release) => String(release.name).toLocaleLowerCase().includes(query))
+			.filter((release) => normalizeTagSearch(release.name).includes(normalizedQuery))
 			.map((release) => ({ value: release.name, label: release.name }));
 		const selected = list.find((release) => release.name === selectedRelease);
 		setDropdownLabel('release-select', selected ? selected.name : 'No releases found');
@@ -306,25 +326,32 @@
 
 	function renderVersion(data) {
 		const state = data.state || {};
-		let version = `Installed: ${data.version}`;
+		let version = '';
 		if (state.source_type === 'branch') {
 			const sha = typeof state.commit_sha === 'string' && state.commit_sha
 				? ` (${state.commit_sha.slice(0, 7)})`
 				: '';
-			version += ` (Branch: ${state.source_name}${sha})`;
+			version = `(Branch: ${state.source_name}${sha})`;
 		} else if (state.source_type === 'pr') {
 			const sha = typeof state.commit_sha === 'string' && state.commit_sha
 				? ` (${state.commit_sha.slice(0, 7)})`
 				: '';
-			version += ` (PR #${state.source_name}${sha})`;
+			version = `(PR #${state.source_name}${sha})`;
 		} else if (state.source_type === 'tag') {
-			version += ` (Tag: ${state.source_name})`;
+			version = `(Tag: ${state.source_name})`;
 		} else if (state.source_type === 'release') {
-			version += ` (Release: ${state.source_name})`;
+			version = `(Release: ${state.source_name})`;
 		} else if (data.experimental_build) {
-			version += ' (Experimental Build)';
+			version = '(Experimental Build)';
 		}
-		setText('installed-version', version);
+		const installed = byId('installed-version');
+		installed.replaceChildren(document.createTextNode(`Installed: ${data.version}`));
+		if (version) {
+			const source = document.createElement('span');
+			source.className = 'installed-source-detail';
+			source.textContent = ` ${version}`;
+			installed.appendChild(source);
+		}
 	}
 
 	function renderSourceTypes() {
@@ -435,35 +462,72 @@
 		}
 	}
 
-	function install(sourceType, sourceName, label, warning = '') {
+	function install(sourceType, sourceName, label, warning = '', progressPanel = 'developer') {
 		const prompt = updateData && updateData.git_clone
-			? `Switch this Git checkout to ${label}?\n\nYour local branches and commits will not be reset. The checkout must be clean, and Anki must be restarted afterward.`
-			: `Update Ankimon to ${label}?\n\nYour Pokemon data, settings, and sprites will be preserved.`;
-		const message = warning ? `${warning}\n\n${prompt}` : prompt;
-		showModal('Confirm Update', message, 'Install', () => {
+			? `Switch this Git checkout to `
+			: `Update Ankimon to `;
+		const fragment = document.createDocumentFragment();
+		if (warning) {
+			fragment.appendChild(document.createTextNode(`${warning}\n\n`));
+		}
+		fragment.appendChild(document.createTextNode(prompt));
+		const link = document.createElement('a');
+		link.href = '#';
+		link.className = 'source-link';
+		link.textContent = label;
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			if (bridge) {
+				bridge.openGitHubTarget(sourceUrl(sourceType, sourceName), (opened) => {
+					if (!opened) showToast('Could not open the selected source in your browser.', true);
+				});
+			}
+		});
+		fragment.appendChild(link);
+		if (updateData && updateData.git_clone) {
+			fragment.appendChild(document.createTextNode('?\n\nYour local branches and commits will not be reset. The checkout must be clean, and Anki must be restarted afterward.'));
+		} else {
+			fragment.appendChild(document.createTextNode('?\n\nYour Pokémon data, settings, and sprites will be preserved.'));
+		}
+		showModal('Confirm Update', fragment, 'Install', () => {
+			activeProgressPanel = progressPanel;
+			setOperationProgress(0, true, true);
 			setOperationStatus(updateData && updateData.git_clone
 				? `Preparing Git checkout for ${label}...`
 				: `Downloading ${label}...`);
 			bridge.installUpdate(sourceType, sourceName, (result) => {
 				if (result && result.success === false) {
+					setOperationProgress(0, false);
 					setOperationStatus(result.message || 'Update could not be started.');
 				}
 			});
 		});
 	}
 
+	function sourceUrl(sourceType, sourceName) {
+		const name = sourceType === 'current' && updateData && updateData.git_info
+			? updateData.git_info.branch
+			: sourceName;
+		const ref = (name || 'main').split('/').map(encodeURIComponent).join('/');
+		if (sourceType === 'pr') return `https://github.com/h0tp-ftw/ankimon/pull/${ref}`;
+		if (sourceType === 'release') return `https://github.com/h0tp-ftw/ankimon/releases/tag/${ref}`;
+		if (sourceType === 'tag') return `https://github.com/h0tp-ftw/ankimon/tree/${ref}`;
+		return `https://github.com/h0tp-ftw/ankimon/tree/${ref}`;
+	}
+
 	function installActiveBranch() {
 		if (!updateData) return;
 		const name = updateData.active_branch || 'main';
 		if (updateData.git_clone) {
-			install('current', 'current', 'current Git branch');
+			install('current', 'current', name, '', 'branch');
 		} else {
-			install('branch', name, `latest ${name}`);
+			install('branch', name, `latest ${name}`, '', 'branch');
 		}
 	}
 
 	window.onUpdateData = (data) => {
 		updateData = data;
+		spriteCheckUpToDate = Boolean(data.sprite_check_up_to_date);
 		renderVersion(data);
 		renderBranch(data);
 		renderReleases(data.releases);
@@ -507,14 +571,19 @@
 			developerLoading = false;
 			setDeveloperStatus('');
 		}
-		if (data.busy && data.kind === 'sprites-check') setText('sprites-status', 'Checking for sprite updates...');
 		if (data.busy && data.kind === 'sprites-check') {
-			byId('sprites-check-progress').value = 0;
+			const status = byId('sprites-status');
+			status.classList.remove('success', 'warning', 'error');
+			status.textContent = 'Checking for sprite updates...';
+			byId('sprites-progress').classList.add('hidden');
+			setSpriteProgress('sprites-check-progress', 0, 'Checking sprites...');
 			byId('sprites-check-progress').classList.remove('hidden');
 		}
 		if (data.busy && data.kind === 'sprites-install') {
+			byId('sprites-status').classList.remove('success', 'warning', 'error');
+			byId('sprites-check-progress').classList.add('hidden');
 			byId('sprites-progress').classList.remove('hidden');
-			byId('sprites-progress').value = 0;
+			setSpriteProgress('sprites-progress', 0, 'Updating sprites...');
 		}
 		if (!data.busy && data.kind === 'load' && !currentBusy()) setOperationStatus('', false);
 		updateButtonStates();
@@ -524,13 +593,23 @@
 		setOperationStatus(updateData && updateData.git_clone
 			? `Preparing Git checkout for ${data.label}...`
 			: `Downloading ${data.label}...`);
-		setOperationProgress(0, true, true);
+		if (activeProgressPanel) {
+			byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span').textContent =
+				data.label ? `Downloading ${data.label}...` : 'Preparing update...';
+		}
+		setOperationProgress(0, true, !updateData || !updateData.git_clone);
 	};
 
-	window.onUpdateProgress = (data) => setOperationProgress(data.percent);
-	window.onUpdateStatus = (data) => setOperationStatus(data.message);
+	window.onUpdateProgress = (data) => setOperationProgress(data.percent, true);
+	window.onUpdateStatus = (data) => {
+		setOperationStatus(data.message);
+		if (activeProgressPanel) {
+			byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span').textContent =
+				data.message;
+		}
+	};
 	window.onSpritesCheckProgress = (data) => {
-		byId('sprites-check-progress').value = Math.max(0, Math.min(100, Number(data.percent) || 0));
+		setSpriteProgress('sprites-check-progress', data.percent, data.message);
 		setText('sprites-status', data.message || 'Checking for sprite updates...');
 	};
 
@@ -540,12 +619,13 @@
 		if (data.success) {
 			showModal(
 				'Update Complete',
-				`${data.message}\n\nPlease restart Anki for changes to take effect.`,
-				'Close',
+				'Update applied successfully. Please restart Anki for changes to take effect.',
+				'OK',
 				null,
 				false,
 			);
 		} else {
+			setOperationProgress(0, false);
 			showModal('Update Failed', data.message || 'The update failed.', 'Close', null, false);
 		}
 	};
@@ -553,13 +633,13 @@
 	window.onSpritesChecked = (result) => {
 		const status = byId('sprites-status');
 		status.classList.remove('success', 'warning', 'error');
-		byId('sprites-check-progress').value = 100;
+		setSpriteProgress('sprites-check-progress', 100, 'Sprite check complete.');
 		byId('sprites-install-btn').classList.add('hidden');
 		spriteUpdateAvailable = result.status === 'update_available';
+		spriteCheckUpToDate = result.status === 'up_to_date';
 		if (result.status === 'up_to_date') {
 			status.textContent = 'Sprites are already up to date!';
 			status.classList.add('success');
-			byId('sprites-check-progress').value = 100;
 		} else if (result.status === 'error') {
 			status.textContent = `Error checking updates: ${result.error}`;
 			status.classList.add('error');
@@ -577,19 +657,23 @@
 		setText('sprites-status', `Error checking sprite updates: ${data.message}`);
 		byId('sprites-status').classList.remove('success', 'warning');
 		byId('sprites-status').classList.add('error');
-		byId('sprites-check-progress').value = 100;
+		setSpriteProgress('sprites-check-progress', 100, 'Sprite check failed.');
+		spriteCheckUpToDate = false;
 	};
 
 	window.onSpriteProgress = (data) => {
-		byId('sprites-progress').value = data.percent;
+		setSpriteProgress('sprites-progress', data.percent);
 	};
 
-	window.onSpriteStatus = (data) => setText('sprites-status', data.message);
+	window.onSpriteStatus = (data) => {
+		setText('sprites-status', data.message);
+		byId('sprites-progress').querySelector('.progress-label span').textContent = data.message;
+	};
 
 	window.onSpritesFinished = (data) => {
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
-		if (data.success) byId('sprites-progress').value = 100;
+		if (data.success) setSpriteProgress('sprites-progress', 100);
 		setText('sprites-status', data.success
 			? `Update complete! ${data.message}`
 			: `Update failed: ${data.message}`);
@@ -609,6 +693,19 @@
 	document.querySelectorAll('.update-tab, .update-tab-link').forEach((button) => {
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
+	byId('update-tabs').addEventListener('wheel', (event) => {
+		if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+		const tabs = ['branch', 'releases', 'developer', 'sprites'];
+		const active = tabs.indexOf(
+			document.querySelector('.update-tab.active').dataset.tab,
+		);
+		const next = event.deltaY < 0 ? Math.min(active + 1, tabs.length - 1) :
+			Math.max(active - 1, 0);
+		if (next !== active) {
+			event.preventDefault();
+			switchTab(tabs[next]);
+		}
+	}, { passive: false });
 
 	document.querySelectorAll('.custom-select').forEach((dropdown) => wireDropdown(dropdown));
 	document.addEventListener('click', () => closeDropdowns());
@@ -644,21 +741,26 @@
 	});
 
 	byId('branch-update-btn').addEventListener('click', installActiveBranch);
-	byId('git-pull-btn').addEventListener('click', () => install('current', 'current', 'current Git branch'));
+	byId('git-pull-btn').addEventListener('click', () => {
+		const branch = updateData && updateData.git_info && updateData.git_info.branch;
+		install('current', 'current', branch || 'current Git branch', '', 'branch');
+	});
 	byId('latest-release-btn').addEventListener('click', () => {
-		if (latestRelease) install('release', latestRelease.name, `latest release (${latestRelease.name})`);
+		if (latestRelease) {
+			install('release', latestRelease.name, `latest release (${latestRelease.name})`, '', 'releases');
+		}
 	});
 	byId('release-install-btn').addEventListener('click', () => {
 		const release = updateData && (updateData.releases || []).find(
 			(item) => item.name === selectedRelease,
 		);
-		if (release) install('release', release.name, `release ${release.name}`);
+		if (release) install('release', release.name, `release ${release.name}`, '', 'releases');
 	});
 
 	byId('developer-install-btn').addEventListener('click', () => {
 		const source = selectedSourceType;
 		if (source === 'main') {
-			install('branch', 'main', 'latest main');
+			install('branch', 'main', 'latest main', '', 'developer');
 			return;
 		}
 		const value = selectedTarget;
@@ -677,15 +779,16 @@
 			value,
 			source === 'pr' ? `PR #${entry.number} (${entry.title})` : `${source} ${value}`,
 			warning,
+			'developer',
 		);
 	});
 
 	byId('sprites-check-btn').addEventListener('click', () => {
-		if (!bridge) return;
+		if (!bridge || spriteCheckUpToDate) return;
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
 		byId('sprites-progress').classList.add('hidden');
-		byId('sprites-check-progress').value = 0;
+		setSpriteProgress('sprites-check-progress', 0, 'Checking sprites...');
 		byId('sprites-check-progress').classList.remove('hidden');
 		bridge.checkSprites();
 	});
