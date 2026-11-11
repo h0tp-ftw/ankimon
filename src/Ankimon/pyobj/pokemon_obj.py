@@ -247,19 +247,23 @@ class PokemonObject:
 
             actual_id = int(self.id)
 
-            # 1. Check for a regional-form intro gen first. REGIONAL_FORME_GEN is
+            # 1. Check for a special-form intro gen first. SPECIAL_FORME_GEN is
             # owned by the encounter-overhaul leaf (functions/encounter_data.py);
-            # until that lands this getattr yields {} and regional forms fall
+            # until that lands this getattr yields {} and special forms fall
             # through to their base-species generation below.
             if actual_id >= 10000:
                 internal_name = search_pokedex_by_id(actual_id)
                 if internal_name and internal_name != "Pokémon not found":
                     forme = search_pokedex(internal_name, "forme") or ""
-                    intro_gen = getattr(encounter_data, "REGIONAL_FORME_GEN", {}).get(
-                        forme
-                    )
-                    if intro_gen:
-                        return intro_gen
+
+                    # Dialga/Palkia Origin special case
+                    if "Origin" in forme and ("dialga" in internal_name or "palkia" in internal_name):
+                        return 8
+
+                    forme_gens = getattr(encounter_data, "SPECIAL_FORME_GEN", getattr(encounter_data, "REGIONAL_FORME_GEN", {}))
+                    for f_name, g in forme_gens.items():
+                        if f_name in forme:
+                            return g
 
             # 2. Fallback to base-species generation.
             species_id = self.pokedex_id
