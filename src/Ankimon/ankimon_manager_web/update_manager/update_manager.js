@@ -72,6 +72,30 @@
 		setVisible(byId('operation-status'), visible && Boolean(message));
 	}
 
+	function setProgressMessage(element, message, result = '') {
+		element.replaceChildren();
+		element.classList.remove(
+			'progress-message-complete',
+			'progress-message-failure',
+		);
+		if (result === 'failure') {
+			element.classList.add('progress-message-failure');
+			element.textContent = message;
+			return;
+		}
+		if (result === 'complete') {
+			element.classList.add('progress-message-complete');
+			const match = message.match(/^(Update complete!)(.*)$/);
+			if (match) {
+				const heading = document.createElement('strong');
+				heading.textContent = match[1];
+				element.append(heading, document.createTextNode(match[2]));
+				return;
+			}
+		}
+		element.textContent = message || '';
+	}
+
 	function setOperationProgress(value, visible = true, indeterminate = false) {
 		if (!activeProgressPanel) return;
 		const container = byId(`${activeProgressPanel}-progress`);
@@ -87,14 +111,15 @@
 		setVisible(container, visible);
 	}
 
-	function setSpriteProgress(containerId, value, message = null) {
-		const container = byId(containerId);
+	function setSpriteProgress(value, message = null, result = '') {
+		const container = byId('sprites-progress');
 		const progress = container.querySelector('progress');
 		const percent = Math.max(0, Math.min(100, Number(value) || 0));
 		progress.value = percent;
 		container.querySelector('output').textContent = `${percent}%`;
-		const label = container.querySelector('.progress-label span');
-		if (message && label) label.textContent = message;
+		if (message !== null) {
+			setProgressMessage(byId('sprites-status'), message, result);
+		}
 	}
 
 	function setDeveloperStatus(message) {
@@ -480,6 +505,7 @@
 		document.querySelectorAll('.tab-panel').forEach((panel) => {
 			panel.classList.toggle('active', panel.id === `panel-${tab}`);
 		});
+		byId('github-link').classList.toggle('hidden', tab === 'sprites');
 		if (tab === 'developer' && !developerData && !developerLoading && bridge) {
 			developerLoading = true;
 			developerLoadFailed = false;
@@ -518,13 +544,18 @@
 		showModal('Confirm Update', fragment, 'Install', () => {
 			activeProgressPanel = progressPanel;
 			setOperationProgress(0, true, true);
-			setOperationStatus(updateData && updateData.git_clone
-				? `Preparing Git checkout for ${label}...`
-				: `Downloading ${label}...`);
+			setOperationStatus('', false);
 			bridge.installUpdate(sourceType, sourceName, (result) => {
 				if (result && result.success === false) {
-					setOperationProgress(0, false);
-					setOperationStatus(result.message || 'Update could not be started.');
+					setOperationProgress(0, true);
+					if (activeProgressPanel) {
+						setProgressMessage(
+							byId(`${activeProgressPanel}-progress`)
+								.querySelector('.progress-label span'),
+							result.message || 'Update could not be started.',
+							'failure',
+						);
+					}
 				}
 			});
 		});
@@ -599,50 +630,59 @@
 			setDeveloperStatus('');
 		}
 		if (data.busy && data.kind === 'sprites-check') {
-			const status = byId('sprites-status');
-			status.classList.remove('success', 'warning', 'error');
-			status.textContent = 'Checking for sprite updates...';
-			byId('sprites-progress').classList.add('hidden');
-			setSpriteProgress('sprites-check-progress', 0, 'Checking sprites...');
-			byId('sprites-check-progress').classList.remove('hidden');
+			setSpriteProgress(0, 'Checking for sprite updates...');
+			byId('sprites-progress').classList.remove('hidden');
 		}
 		if (data.busy && data.kind === 'sprites-install') {
-			byId('sprites-status').classList.remove('success', 'warning', 'error');
-			byId('sprites-check-progress').classList.add('hidden');
 			byId('sprites-progress').classList.remove('hidden');
-			setSpriteProgress('sprites-progress', 0, 'Updating sprites...');
+			setSpriteProgress(0, 'Updating sprites...');
 		}
 		if (!data.busy && data.kind === 'load' && !currentBusy()) setOperationStatus('', false);
 		updateButtonStates();
 	};
 
 	window.onUpdateInstallStarted = (data) => {
-		setOperationStatus(updateData && updateData.git_clone
-			? `Preparing Git checkout for ${data.label}...`
-			: `Downloading ${data.label}...`);
+		setOperationStatus('', false);
 		if (activeProgressPanel) {
-			byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span').textContent =
-				data.label ? `Downloading ${data.label}...` : 'Preparing update...';
+			setProgressMessage(
+				byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span'),
+				data.label ? `Downloading ${data.label}...` : 'Preparing update...',
+			);
 		}
 		setOperationProgress(0, true, !updateData || !updateData.git_clone);
 	};
 
 	window.onUpdateProgress = (data) => setOperationProgress(data.percent, true);
 	window.onUpdateStatus = (data) => {
-		setOperationStatus(data.message);
+		setOperationStatus('', false);
 		if (activeProgressPanel) {
-			byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span').textContent =
-				data.message;
+			setProgressMessage(
+				byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span'),
+				data.message,
+			);
 		}
 	};
 	window.onSpritesCheckProgress = (data) => {
-		setSpriteProgress('sprites-check-progress', data.percent, data.message);
-		setText('sprites-status', data.message || 'Checking for sprite updates...');
+		setSpriteProgress(data.percent, data.message || 'Checking for sprite updates...');
 	};
 
 	window.onUpdateFinished = (data) => {
-		setOperationProgress(data.success ? 100 : 0, Boolean(data.success));
-		setOperationStatus(data.status || data.message, true);
+		const progressMessage = data.success
+			? `Update complete! ${(data.status || data.message || '')
+				.replace(/^Update complete!?\s*/i, '')}`.trim()
+			: (data.message || 'Update failed.');
+		const progressLabel = activeProgressPanel
+			? byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span')
+			: null;
+		if (progressLabel) {
+			setProgressMessage(
+				progressLabel,
+				progressMessage,
+				data.success ? 'complete' : 'failure',
+			);
+		}
+		setOperationStatus('', false);
+		setOperationProgress(data.success ? 100 : 0, true);
 		if (data.success) {
 			showModal(
 				'Update Complete',
@@ -652,61 +692,55 @@
 				false,
 			);
 		} else {
-			setOperationProgress(0, false);
 			showModal('Update Failed', data.message || 'The update failed.', 'Close', null, false);
 		}
 	};
 
 	window.onSpritesChecked = (result) => {
-		const status = byId('sprites-status');
-		status.classList.remove('success', 'warning', 'error');
-		setSpriteProgress('sprites-check-progress', 100, 'Sprite check complete.');
+		let message = '';
+		let outcome = '';
 		byId('sprites-install-btn').classList.add('hidden');
 		spriteUpdateAvailable = result.status === 'update_available';
 		spriteCheckUpToDate = result.status === 'up_to_date';
 		if (result.status === 'up_to_date') {
-			status.textContent = 'Sprites are already up to date!';
-			status.classList.add('success');
+			message = 'Sprites are already up to date!';
 		} else if (result.status === 'error') {
-			status.textContent = `Error checking updates: ${result.error}`;
-			status.classList.add('error');
+			message = `Error checking updates: ${result.error}`;
+			outcome = 'failure';
 		} else if (spriteUpdateAvailable) {
-			let message = `A sprites update is available!\n\n  • New sprites: ${(result.added || []).length}\n  • Modified sprites: ${(result.modified || []).length}`;
+			message = `A sprites update is available!\n\n  • New sprites: ${(result.added || []).length}\n  • Modified sprites: ${(result.modified || []).length}`;
 			if ((result.deleted || []).length) message += `\n  • Obsolete to remove: ${result.deleted.length}`;
-			status.textContent = message;
-			status.classList.add('warning');
 			byId('sprites-install-btn').classList.remove('hidden');
 		}
+		setSpriteProgress(100, message, outcome);
 		updateButtonStates();
 	};
 
 	window.onSpritesCheckFailed = (data) => {
-		setText('sprites-status', `Error checking sprite updates: ${data.message}`);
-		byId('sprites-status').classList.remove('success', 'warning');
-		byId('sprites-status').classList.add('error');
-		setSpriteProgress('sprites-check-progress', 100, 'Sprite check failed.');
+		setSpriteProgress(100, `Error checking sprite updates: ${data.message}`, 'failure');
 		spriteCheckUpToDate = false;
 	};
 
 	window.onSpriteProgress = (data) => {
-		setSpriteProgress('sprites-progress', data.percent);
+		setSpriteProgress(data.percent);
 	};
 
 	window.onSpriteStatus = (data) => {
-		setText('sprites-status', data.message);
-		byId('sprites-progress').querySelector('.progress-label span').textContent = data.message;
+		setSpriteProgress(
+			Number(byId('sprites-progress').querySelector('progress').value),
+			data.message,
+		);
 	};
 
 	window.onSpritesFinished = (data) => {
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
-		if (data.success) setSpriteProgress('sprites-progress', 100);
-		setText('sprites-status', data.success
+		const message = data.success
 			? `Update complete! ${data.message}`
-			: `Update failed: ${data.message}`);
-		byId('sprites-status').classList.remove('warning', 'success', 'error');
-		byId('sprites-status').classList.toggle('success', data.success);
-		byId('sprites-status').classList.toggle('error', !data.success);
+			: `Update failed: ${data.message}`;
+		setSpriteProgress(data.success ? 100 : Number(
+			byId('sprites-progress').querySelector('progress').value,
+		), message, data.success ? 'complete' : 'failure');
 	};
 
 	window.refreshUpdateManager = () => {
@@ -815,9 +849,8 @@
 		if (!bridge || spriteCheckUpToDate) return;
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
-		byId('sprites-progress').classList.add('hidden');
-		setSpriteProgress('sprites-check-progress', 0, 'Checking sprites...');
-		byId('sprites-check-progress').classList.remove('hidden');
+		setSpriteProgress(0, 'Checking for sprite updates...');
+		byId('sprites-progress').classList.remove('hidden');
 		bridge.checkSprites();
 	});
 

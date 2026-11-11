@@ -7,7 +7,7 @@
 	<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="../../ankimon_items_web/shop.css?v=20260634">
 	<link rel="stylesheet" href="../../ankimon_items_web/nav-switcher.css?v=20260634">
-	<link rel="stylesheet" href="update_manager.css?v=20261105.2">
+	<link rel="stylesheet" href="update_manager.css?v=20261106.1">
 	<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body class="dark-mode">
@@ -51,9 +51,8 @@
 				<section class="update-content">
 					<div class="channel-row">
 						<p class="channel-label">Auto-update channel: Experimental (-E)</p>
-						<button id="github-link" class="github-link" type="button" aria-label="Star Ankimon (-E) on GitHub" title="Star Ankimon (-E) on GitHub">
+						<button id="github-link" class="github-link" type="button" aria-label="Open Ankimon on GitHub">
 							<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#fff"/><path fill="#000" d="M16 5.2a10.8 10.8 0 0 0-3.42 21.05c.54.1.73-.23.73-.52v-2.03c-2.98.65-3.62-1.27-3.62-1.27-.48-1.24-1.19-1.57-1.19-1.57-.97-.66.08-.65.08-.65 1.08.08 1.65 1.1 1.65 1.1.95 1.64 2.5 1.16 3.11.89.1-.69.37-1.16.68-1.43-2.38-.27-4.88-1.19-4.88-5.29 0-1.17.42-2.13 1.1-2.88-.11-.27-.48-1.36.11-2.84 0 0 .9-.29 2.96 1.1a10.3 10.3 0 0 1 5.38 0c2.06-1.39 2.96-1.1 2.96-1.1.59 1.48.22 2.57.11 2.84.69.75 1.1 1.71 1.1 2.88 0 4.11-2.5 5.01-4.89 5.28.38.34.72.99.72 1.99v2.98c0 .29.19.62.74.52A10.8 10.8 0 0 0 16 5.2Z"/></svg>
-							<span class="github-link-text">Star Ankimon (-E) on GitHub!</span>
 						</button>
 					</div>
 					<section id="git-notice" class="update-card git-notice hidden">
@@ -147,12 +146,9 @@
 						<div class="update-card">
 							<h3>Sprites</h3>
 							<p class="muted">Check and download updates for the Ankimon sprites repository.</p>
-							<div class="sprite-check-block">
-								<p id="sprites-status" class="status-text" role="status" aria-live="polite">Ready to check for updates.</p>
-								<div id="sprites-check-progress" class="sprite-progress sprite-check-progress hidden" aria-live="polite">
-									<progress max="100" value="0"></progress>
-									<output>0%</output>
-								</div>
+							<div id="sprites-progress" class="sprite-progress hidden" role="status" aria-live="polite">
+								<div class="progress-label"><span id="sprites-status"></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
 							</div>
 						</div>
 						<div class="sprites-actions">
@@ -161,10 +157,6 @@
 								<button id="sprites-install-btn" class="btn btn-primary hidden" type="button">Install Update</button>
 								<button id="sprites-check-btn" class="btn btn-primary" type="button" disabled>Check for Updates</button>
 							</div>
-						</div>
-						<div id="sprites-progress" class="sprite-progress hidden" aria-live="polite">
-							<div class="progress-label"><span>Updating sprites...</span><output>0%</output></div>
-							<progress max="100" value="0"></progress>
 						</div>
 					</section>
 					<div id="operation-status" class="operation-status hidden" role="status" aria-live="polite"></div>
@@ -188,6 +180,6 @@
 	</div>
 	<div id="toast" class="shop-toast"></div>
 	<script src="../../ankimon_items_web/nav-switcher.js?v=20260634"></script>
-	<script src="update_manager.js?v=20261105.2"></script>
+	<script src="update_manager.js?v=20261106.1"></script>
 </body>
 </html>
