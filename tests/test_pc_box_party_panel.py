@@ -784,6 +784,139 @@ def test_queued_drop_is_skipped_once_the_window_is_dead(pc_box, qapp):
     host.on_box_drop.assert_not_called()
 
 
+def _fake_drag(during_exec):
+    """Build a ``QDrag`` stand-in whose ``exec`` runs ``during_exec`` in place."""
+
+    class FakeDrag:
+        """Minimal drag: accepts the setup calls and "blocks" in :meth:`exec`."""
+
+        def __init__(self, source):
+            """Remember the source like ``QDrag(source)`` does."""
+            self.source = source
+
+        def setMimeData(self, mime):
+            """Accept the payload."""
+
+        def setPixmap(self, pixmap):
+            """Accept the drag image."""
+
+        def setHotSpot(self, point):
+            """Accept the hot spot."""
+
+        def exec(self, action):
+            """Run the test body while the drag counts as active."""
+            return during_exec()
+
+    return FakeDrag
+
+
+def test_drop_during_a_drag_waits_until_exec_returns(pc_box, qapp, monkeypatch):
+    """A drop handled inside ``QDrag.exec``'s event loop runs only after the drag ends."""
+    host = _host(pc_box, [_member("p")])
+    host._build_party_panel()
+    host.refresh_party_panel()
+    slot = host.party_slots[0]
+    seen = {}
+
+    def drop_while_dragging():
+        """Deliver the drop and spin the loop, as the platform drag does."""
+        host._queue_drop(host.on_box_drop, "p", "party")
+        qapp.processEvents()
+        seen["during"] = host.on_box_drop.call_count
+        seen["active"] = pc_box.PokemonSlotButton.drag_in_progress()
+
+    monkeypatch.setattr(pc_box, "QDrag", _fake_drag(drop_while_dragging))
+    slot.start_drag()
+
+    assert seen == {"during": 0, "active": True}
+    assert not pc_box.PokemonSlotButton.drag_in_progress()
+    qapp.processEvents()
+    host.on_box_drop.assert_called_once_with("p", "party")
+    assert pc_box._AFTER_DRAG_CALLBACKS == []
+
+
+def test_drag_state_is_released_when_exec_raises(pc_box, qapp, monkeypatch):
+    """A failing drag still clears the active flag and releases the held drop."""
+    host = _host(pc_box, [_member("p")])
+    host._build_party_panel()
+    host.refresh_party_panel()
+    slot = host.party_slots[0]
+
+    def drop_then_fail():
+        """Queue a drop, then fail like a broken platform drag."""
+        host._queue_drop(host.on_box_drop, "p", "party")
+        raise RuntimeError("drag failed")
+
+    monkeypatch.setattr(pc_box, "QDrag", _fake_drag(drop_then_fail))
+    with pytest.raises(RuntimeError):
+        slot.start_drag()
+
+    assert not pc_box.PokemonSlotButton.drag_in_progress()
+    qapp.processEvents()
+    host.on_box_drop.assert_called_once_with("p", "party")
+
+
+def test_callback_queued_before_a_drag_does_not_run_inside_it(pc_box, qapp, monkeypatch):
+    """A handler already on a zero timer is held when a new drag starts first."""
+    host = _host(pc_box, [_member("p")])
+    host._build_party_panel()
+    host.refresh_party_panel()
+    slot = host.party_slots[0]
+    host._queue_drop(host.on_box_drop, "p", "party")
+    seen = {}
+
+    def spin_while_dragging():
+        """Let the pending zero timer fire inside the drag's loop."""
+        qapp.processEvents()
+        seen["during"] = host.on_box_drop.call_count
+
+    monkeypatch.setattr(pc_box, "QDrag", _fake_drag(spin_while_dragging))
+    slot.start_drag()
+
+    assert seen == {"during": 0}
+    qapp.processEvents()
+    host.on_box_drop.assert_called_once_with("p", "party")
+
+
+def test_grid_refresh_requested_during_a_drag_is_postponed(pc_box, qapp, monkeypatch):
+    """A rebuild asked for mid-drag (search, resize, Team save) waits for the drag."""
+    host = _host(pc_box, [_member("p")])
+    host._build_party_panel()
+    host.refresh_party_panel()
+    slot = host.party_slots[0]
+    host.pokemon_grid = types.SimpleNamespace(objectName=lambda: "grid")
+    host.refresh_pokemon_grid = types.MethodType(
+        pc_box.PokemonPC.refresh_pokemon_grid, host
+    )
+    cleared = []
+    monkeypatch.setattr(pc_box, "clear_layout", cleared.append)
+    seen = {}
+
+    def refresh_while_dragging():
+        """Ask for a rebuild and spin the loop while the drag is active."""
+        host.refresh_pokemon_grid(False)
+        qapp.processEvents()
+        seen["during"] = len(cleared)
+
+    monkeypatch.setattr(pc_box, "QDrag", _fake_drag(refresh_while_dragging))
+    slot.start_drag()
+    assert seen == {"during": 0}
+
+    # The postponed call goes back through the method; observe it there.
+    host.refresh_pokemon_grid = mock.MagicMock()
+    qapp.processEvents()
+    host.refresh_pokemon_grid.assert_called_once_with(False)
+
+
+def test_drop_without_an_active_drag_runs_on_the_next_turn(pc_box, qapp):
+    """Outside a drag the handler is still deferred by exactly one loop turn."""
+    host = _host(pc_box)
+    host._queue_drop(host.on_box_drop, "p", "party")
+    host.on_box_drop.assert_not_called()
+    qapp.processEvents()
+    host.on_box_drop.assert_called_once_with("p", "party")
+
+
 def test_compact_threshold_grows_with_the_measured_full_layout(pc_box):
     """On fonts where the full layout needs more than the constant threshold,
     compact mode engages before the window can get narrower than that."""

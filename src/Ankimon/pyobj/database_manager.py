@@ -1659,74 +1659,72 @@ class AnkimonDB:
         """Replaces a pokemon with the given individual_id with the given pokemon_data."""
 
         obfuscated_data = self._obfuscate(pokemon_data)
-        conn = self._get_connection()
-        cursor = conn.cursor()
+        with self.lease_connection() as conn, conn.cursor() as cursor:
+            new_individual_id = pokemon_data["individual_id"]
 
-        new_individual_id = pokemon_data["individual_id"]
+            # Are we trying to replace ourselves?
+            if new_individual_id == old_individual_id:
+                self._log(
+                    "error",
+                    f"You already have this {pokemon_data['name']} in your collection!",
+                )
+                return False
 
-        # Are we trying to replace ourselves?
-        if new_individual_id == old_individual_id:
-            self._log(
-                "error",
-                f"You already have this {pokemon_data['name']} in your collection!",
-            )
-            return False
-
-        # Does the pokemon being replaced exist?
-        cursor.execute(
-            "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
-            (old_individual_id,),
-        )
-        row = cursor.fetchone()
-
-        if row is None:
-            self._log(
-                "error", f"No Pokémon found with individual_id {old_individual_id}"
-            )
-            return False
-
-        is_main = row[0]
-
-        # Does the incoming Pokémon already exist somewhere else?
-        cursor.execute(
-            "SELECT 1 FROM captured_pokemon WHERE individual_id = ?",
-            (new_individual_id,),
-        )
-        if cursor.fetchone() is not None:
-            self._log(
-                "error",
-                f"You already have this {pokemon_data['name']} in your collection!",
-            )
-            return False
-
-        # You passed all the checks. Full steam ahead!
-        # Replace the row in-place. The team update commits with it: the
-        # incoming Pokémon inherits the outgoing one's party slot, and a
-        # failure part-way must not persist half a trade.
-        try:
+            # Does the pokemon being replaced exist?
             cursor.execute(
-                """
-                UPDATE captured_pokemon
-                SET individual_id = ?, is_main = ?, data = ?
-                WHERE individual_id = ?
-                """,
-                (new_individual_id, is_main, obfuscated_data, old_individual_id),
+                "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
+                (old_individual_id,),
             )
-            # Read the outcome before touching any other table: rowcount
-            # reflects the most recent statement only.
-            replaced = cursor.rowcount > 0
+            row = cursor.fetchone()
+
+            if row is None:
+                self._log(
+                    "error", f"No Pokémon found with individual_id {old_individual_id}"
+                )
+                return False
+
+            is_main = row[0]
+
+            # Does the incoming Pokémon already exist somewhere else?
             cursor.execute(
-                "UPDATE team SET individual_id = ? WHERE individual_id = ?",
-                (new_individual_id, old_individual_id),
+                "SELECT 1 FROM captured_pokemon WHERE individual_id = ?",
+                (new_individual_id,),
             )
-            conn.commit()
-        except Exception as e:
+            if cursor.fetchone() is not None:
+                self._log(
+                    "error",
+                    f"You already have this {pokemon_data['name']} in your collection!",
+                )
+                return False
+
+            # You passed all the checks. Full steam ahead!
+            # Replace the row in-place. The team update commits with it: the
+            # incoming Pokémon inherits the outgoing one's party slot, and a
+            # failure part-way must not persist half a trade.
             try:
-                conn.rollback()
-            except Exception as rollback_error:
-                self._log("error", f"Could not roll back the trade: {rollback_error}")
-            self._log("error", f"Trade not saved, your Pokémon is unchanged: {e}")
-            return False
+                cursor.execute(
+                    """
+                    UPDATE captured_pokemon
+                    SET individual_id = ?, is_main = ?, data = ?
+                    WHERE individual_id = ?
+                    """,
+                    (new_individual_id, is_main, obfuscated_data, old_individual_id),
+                )
+                # Read the outcome before touching any other table: rowcount
+                # reflects the most recent statement only.
+                replaced = cursor.rowcount > 0
+                cursor.execute(
+                    "UPDATE team SET individual_id = ? WHERE individual_id = ?",
+                    (new_individual_id, old_individual_id),
+                )
+                conn.commit()
+            except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    self._log("error", f"Could not roll back the trade: {rollback_error}")
+                self._log("error", f"Trade not saved, your Pokémon is unchanged: {e}")
+                return False
         self._clear_reviewer_ownership_cache()
         # Trades acquire the incoming species just like a catch. Record it now
         # so encounter unlocks and the HUD do not lag until the next startup's

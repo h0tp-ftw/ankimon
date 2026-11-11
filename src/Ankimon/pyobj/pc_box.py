@@ -752,6 +752,11 @@ def decode_drag_payload(mime) -> Optional[tuple[str, str]]:
         return None
 
 
+#: Callables held back until the active slot drag has returned
+#: (see :meth:`PokemonSlotButton.run_after_drag`).
+_AFTER_DRAG_CALLBACKS = []
+
+
 class PokemonSlotButton(QPushButton):
     """A box-grid slot: click for details, right-click for actions, drag to move.
 
@@ -767,6 +772,8 @@ class PokemonSlotButton(QPushButton):
     #: Where a drag started from this kind of slot (see :func:`encode_drag_payload`).
     _drag_source = "box"
     _individual_id = None
+    #: ``QDrag.exec`` calls currently on the stack, shared by every slot class.
+    _drags_in_progress = 0
 
     def __init__(self, *args, **kwargs):
         """Create the slot and enable drops onto it."""
@@ -823,15 +830,73 @@ class PokemonSlotButton(QPushButton):
             return
         super().mouseMoveEvent(event)
 
+    @staticmethod
+    def drag_in_progress() -> bool:
+        """Tell whether a slot drag is still inside ``QDrag.exec``.
+
+        Returns
+        -------
+        bool
+            True while any slot's :meth:`start_drag` has not returned yet.
+        """
+        return PokemonSlotButton._drags_in_progress > 0
+
+    @staticmethod
+    def run_after_drag(callback):
+        """Run ``callback`` on a later event-loop turn, never during a drag.
+
+        ``QDrag.exec`` spins its own event loop, so a zero-delay timer started
+        from ``dropEvent`` can fire while the drag (and its source widget) is
+        still on the stack. While a drag is active the callback is therefore
+        held back and only scheduled once :meth:`start_drag` has returned.
+
+        Parameters
+        ----------
+        callback : callable
+            Zero-argument callable; it must do its own liveness checks.
+
+        See Also
+        --------
+        start_drag : Releases the held callbacks when the drag ends.
+        """
+        def run_unless_dragging():
+            """Run ``callback`` now, or hold it if a new drag began meanwhile."""
+            if PokemonSlotButton.drag_in_progress():
+                _AFTER_DRAG_CALLBACKS.append(callback)
+            else:
+                callback()
+
+        if PokemonSlotButton.drag_in_progress():
+            _AFTER_DRAG_CALLBACKS.append(callback)
+        else:
+            QTimer.singleShot(0, run_unless_dragging)
+
     def start_drag(self):
-        """Run a drag of this slot's Pokémon (blocks until it is dropped)."""
+        """Run a drag of this slot's Pokémon (blocks until it is dropped).
+
+        Callbacks registered through :meth:`run_after_drag` while the drag is
+        active are scheduled once ``QDrag.exec`` has returned, also when it
+        raises, so a drop can never rebuild the grid under a live drag.
+        """
         drag = QDrag(self)
         drag.setMimeData(encode_drag_payload(self._individual_id, self._drag_source))
         pixmap = self.grab()
         if not pixmap.isNull():
             drag.setPixmap(pixmap)
             drag.setHotSpot(pixmap.rect().center())
-        drag.exec(Qt.DropAction.MoveAction)
+        PokemonSlotButton._drags_in_progress += 1
+        try:
+            drag.exec(Qt.DropAction.MoveAction)
+        finally:
+            PokemonSlotButton._drags_in_progress -= 1
+            if not PokemonSlotButton._drags_in_progress:
+                pending = list(_AFTER_DRAG_CALLBACKS)
+                del _AFTER_DRAG_CALLBACKS[:]
+                for callback in pending:
+                    # The drag is over; one more turn lets this slot's own
+                    # mouse event unwind before the grid is rebuilt. Going
+                    # through run_after_drag re-checks for a newer drag.
+                    PokemonSlotButton.run_after_drag(callback)
 
     def mouseReleaseEvent(self, event):
         """Emit :attr:`rightClicked` on a right release; otherwise behave as a button."""
@@ -1936,10 +2001,26 @@ class PokemonPC(QDialog):
         self._refresh_slot_selection()
 
     def refresh_pokemon_grid(self, recompute_bff: bool = True):
-        """
-        Clears and rebuilds the grid.
+        """Clear and rebuild the box grid.
+
+        A rebuild deletes every box slot, so one requested while a slot drag
+        is still inside ``QDrag.exec`` (search/resize timers, a Team-page
+        save, a theme change) is postponed until that drag has returned.
+
+        Parameters
+        ----------
+        recompute_bff : bool, optional
+            Forwarded to the rebuild; whether to recompute the best-friend id.
         """
         if not is_alive(self.pokemon_grid):
+            return
+        if PokemonSlotButton.drag_in_progress():
+            def refresh_if_alive():
+                """Redo the postponed rebuild unless the window is gone."""
+                if is_alive(self):
+                    self.refresh_pokemon_grid(recompute_bff)
+
+            PokemonSlotButton.run_after_drag(refresh_if_alive)
             return
 
         self._pokemon_cache = None  # Invalidate database cache
@@ -3367,7 +3448,9 @@ class PokemonPC(QDialog):
         Handling the drop rebuilds the grid, which deletes the drag source
         (box -> party) or the drop target (party -> box). Doing that from
         inside ``dropEvent``, while ``QDrag.exec`` is still on the stack, is
-        unsafe, so the work is queued for the next event-loop turn.
+        unsafe. ``QDrag.exec`` runs its own event loop, so a zero-delay timer
+        alone is not enough: the handler is held until the drag source reports
+        that ``exec`` returned (see :meth:`PokemonSlotButton.run_after_drag`).
 
         Parameters
         ----------
@@ -3381,7 +3464,7 @@ class PokemonPC(QDialog):
             if is_alive(self):
                 handler(*args)
 
-        QTimer.singleShot(0, run_if_alive)
+        PokemonSlotButton.run_after_drag(run_if_alive)
 
     def on_party_slot_drop(self, slot_index: int, individual_id: str, source: str):
         """Handle a Pokémon dropped onto a party slot.
