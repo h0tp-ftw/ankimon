@@ -239,6 +239,14 @@ class Settings:
             or legacy_sprite_mode_migrated
             or gif_mode_override_migrated
         )
+        # A profile that stored the collection GIF choice but never a reviewer
+        # one must not pick up the (now True) reviewer default against it.
+        if (
+            config.get("gui.reviewer_image_gif") is None
+            and isinstance(config.get("gui.gif_in_collection"), bool)
+        ):
+            config["gui.reviewer_image_gif"] = config["gui.gif_in_collection"]
+            modified = True
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None

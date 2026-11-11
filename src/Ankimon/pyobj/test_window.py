@@ -937,6 +937,9 @@ class TestWindow(QWidget):
 
         if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
             painter.drawPixmap(0, 0, pixmap_bckg)
+        else:
+            # Text-only mode: a null pixmap makes the item draws below no-ops.
+            item_pixmap = QPixmap()
 
         # item = str(item)
         if (
@@ -1019,9 +1022,7 @@ class TestWindow(QWidget):
 
             if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
                 painter.drawPixmap(0, 0, pixmap_bckg)
-
-            # item = str(item)
-            painter.drawPixmap(200, 90, item_pixmap)
+                painter.drawPixmap(200, 90, item_pixmap)
 
             # custom font
             custom_font = load_custom_font(

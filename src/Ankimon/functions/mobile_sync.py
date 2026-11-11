@@ -1269,20 +1269,13 @@ def _run_mobile_battles_impl(
 
         from .sprite_functions import get_relative_sprite_path
 
-        sprite_mode = (
-            settings_obj.get(
-                "ankidex.spriteMode",
-                settings_obj.get(
-                    "pokedex_v2.spriteMode",
-                    "animated"
-                    if settings_obj.get("gui.gif_in_collection", True)
-                    else "static",
-                ),
-            )
-            if settings_obj
-            else "static"
+        # Mobile replays obey the master GIF setting, not the AnkiDex
+        # per-screen mode that AnkiDex stores passively on every exit.
+        sprite_format = (
+            "gif"
+            if not settings_obj or settings_obj.get("gui.gif_in_collection", True)
+            else "png"
         )
-        sprite_format = "gif" if sprite_mode == "animated" else "png"
 
         last_result_data = {
             "done": False,

@@ -313,10 +313,9 @@ class StarterWindow(QWidget):
         painter = QPainter(merged_pixmap)
         if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
             painter.drawPixmap(0, 0, pixmap_bckg)
-
-        painter.drawPixmap(57,-5,water_pixmap)
-        painter.drawPixmap(182,-5,fire_pixmap)
-        painter.drawPixmap(311,-3,grass_pixmap)
+            painter.drawPixmap(57,-5,water_pixmap)
+            painter.drawPixmap(182,-5,fire_pixmap)
+            painter.drawPixmap(311,-3,grass_pixmap)
 
         # custom font
         custom_font = load_custom_font(28, int(self.settings_obj.get("misc.language")))
@@ -358,7 +357,7 @@ class StarterWindow(QWidget):
         painter = QPainter(merged_pixmap)
         if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
             painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(125,10,image_pixmap)
+            painter.drawPixmap(125,10,image_pixmap)
 
         # custom font
         custom_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))

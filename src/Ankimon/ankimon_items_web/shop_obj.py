@@ -507,7 +507,15 @@ class MobileBridge(QObject):
 
                 from ..functions.sprite_functions import get_relative_sprite_path
 
-                main_sprite_format = "gif" if sprite_mode == "animated" else "png"
+                # Mobile sprites always followed the GIF path; they obey the
+                # master GIF setting, not the AnkiDex per-screen mode (which
+                # AnkiDex stores passively on every exit).
+                main_sprite_format = (
+                    "gif"
+                    if settings_obj is None
+                    or settings_obj.get("gui.gif_in_collection", True)
+                    else "png"
+                )
                 main_pokemon_sprite = get_relative_sprite_path(
                     main_pokemon.id,
                     bool(main_pokemon.shiny),
@@ -1056,20 +1064,12 @@ class MobileBridge(QObject):
                 if settings_obj
                 else set()
             )
-            sprite_mode = (
-                settings_obj.get(
-                    "ankidex.spriteMode",
-                    settings_obj.get(
-                        "pokedex_v2.spriteMode",
-                        "animated"
-                        if settings_obj.get("gui.gif_in_collection", True)
-                        else "static",
-                    ),
-                )
-                if settings_obj
-                else "static"
+            sprite_format = (
+                "gif"
+                if not settings_obj
+                or settings_obj.get("gui.gif_in_collection", True)
+                else "png"
             )
-            sprite_format = "gif" if sprite_mode == "animated" else "png"
             from ..functions.sprite_functions import get_relative_sprite_path
 
             team_list = []

@@ -142,7 +142,11 @@ class EvoWindow(QWidget):
         except Exception:
             return True
 
-    def _add_evolution_sprite(self, parent, sprite, x, y, max_width, max_height):
+    def _add_evolution_sprite(
+        self, parent, sprite, x, y, max_width, max_height, upscale=False
+    ):
+        """Draw a sprite fitted into the box; ``upscale`` also enlarges small ones."""
+        limit = float("inf") if upscale else 1
         sprite_data, animated = sprite
         if not sprite_data or self._evolution_base_pixmap is None:
             return
@@ -158,7 +162,7 @@ class EvoWindow(QWidget):
                 frame = movie.currentPixmap()
                 if not frame.isNull():
                     scale = min(
-                        1,
+                        limit,
                         max_width / frame.width(),
                         max_height / frame.height(),
                     )
@@ -180,7 +184,7 @@ class EvoWindow(QWidget):
         if not pixmap.loadFromData(sprite_data):
             return
         scale = min(
-            1,
+            limit,
             max_width / pixmap.width(),
             max_height / pixmap.height(),
         )
@@ -428,7 +432,11 @@ class EvoWindow(QWidget):
         pkmn_label.setFixedSize(merged_pixmap.size())
         self._evolution_base_pixmap = merged_pixmap.copy()
         if show_sprites and sprite:
-            self._add_evolution_sprite(pkmn_label, sprite, 125, 10, 250, 250)
+            # The celebration screen has always enlarged the sprite to fill
+            # its 250px box (front PNGs are only 96px).
+            self._add_evolution_sprite(
+                pkmn_label, sprite, 125, 10, 250, 250, upscale=True
+            )
         return pkmn_label
 
     def ask_pokemon_evo(

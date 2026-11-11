@@ -462,6 +462,46 @@ def test_current_ankidex_sprite_mode_wins_over_legacy_value(isolated_env):
     assert settings.config["gui.gif_mode_override"] is True
 
 
+@pytest.mark.parametrize("collection_gif", [True, False])
+def test_missing_reviewer_gif_key_is_seeded_from_collection_choice(
+    isolated_env, collection_gif
+):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    db.save_all_config({"gui.gif_in_collection": collection_gif})
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["gui.reviewer_image_gif"] is collection_gif
+
+
+def test_stored_reviewer_gif_choice_survives_the_new_default(isolated_env):
+    env = isolated_env
+    db = env["db_mod"].AnkimonDB()
+    db.save_all_config(
+        {"gui.gif_in_collection": True, "gui.reviewer_image_gif": False}
+    )
+    env["services"].db = db
+
+    settings = env["settings_mod"].Settings()
+
+    assert settings.config["gui.reviewer_image_gif"] is False
+
+
+def test_mobile_sprites_follow_master_gif_setting_not_ankidex_mode():
+    """AnkiDex stores its mode passively on exit, so a stored "static" must
+    not downgrade mobile sprites that were always animated."""
+    src = _src / "Ankimon"
+    for path in (
+        src / "ankimon_items_web" / "shop_obj.py",
+        src / "functions" / "mobile_sync.py",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert 'if sprite_mode == "animated" else "png"' not in text
+        assert 'settings_obj.get("gui.gif_in_collection", True)' in text
+
+
 def test_unchanged_ankidex_mode_save_preserves_override(isolated_env):
     settings, _ = _settings_with_real_db(isolated_env)
     settings.set("ankidex.spriteMode", "static")
