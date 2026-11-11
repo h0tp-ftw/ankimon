@@ -833,6 +833,10 @@ class ProfileData:
             pass
 
         self._roster_cache = None
+
+        from ..events import emit
+        emit("team_changed", team=team_data)
+
         return {"ok": True, "message": "Team saved.", "count": len(team_data)}
 
     # ------------------------------------------------------------------
