@@ -9,6 +9,7 @@ import time
 import threading
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -70,6 +71,14 @@ def _is_safe_ref(ref: Optional[str]) -> bool:
     if not ref or not _SAFE_REF_RE.match(ref):
         return False
     return not ref.startswith(".") and ".." not in ref
+
+
+def _is_safe_branch_ref(ref: Optional[str]) -> bool:
+    if not isinstance(ref, str) or not ref or len(ref) > 255 or "\\" in ref:
+        return False
+    if any(ord(char) < 32 for char in ref):
+        return False
+    return all(part not in {"", ".", ".."} for part in ref.split("/"))
 
 
 # Auto-update channels (user-selectable in the update dialog). "stable" and
@@ -618,9 +627,51 @@ def fetch_open_prs() -> list[dict]:
 
 
 def fetch_branch_sha(branch: str) -> Optional[str]:
-    data = _api_get(f"branches/{branch}")
+    if not _is_safe_branch_ref(branch):
+        return None
+    data = _api_get(f"branches/{quote(branch, safe='')}")
     if isinstance(data, dict) and isinstance(data.get("commit"), dict):
         return data["commit"].get("sha")
+    return None
+
+
+def fetch_ref_sha(ref: str) -> Optional[str]:
+    if not _is_safe_ref(ref):
+        return None
+    data = _api_get(f"commits/{quote(ref, safe='')}")
+    return data.get("sha") if isinstance(data, dict) else None
+
+
+def fetch_pull_request(number: str) -> Optional[dict]:
+    if (
+        not isinstance(number, str)
+        or not re.fullmatch(r"\d{1,12}", number)
+        or int(number) < 1
+    ):
+        return None
+    data = _api_get(f"pulls/{int(number)}")
+    if not isinstance(data, dict):
+        return None
+    head = data.get("head")
+    if not isinstance(head, dict) or not isinstance(head.get("sha"), str):
+        return None
+    return {
+        "number": data.get("number"),
+        "title": data.get("title", ""),
+        "head_ref": head.get("ref", ""),
+        "head_sha": head["sha"],
+        "state": data.get("state", ""),
+    }
+
+
+def fetch_source_sha(source_type: str, source_name: str) -> Optional[str]:
+    if source_type == "branch":
+        return fetch_branch_sha(source_name)
+    if source_type in {"tag", "release"}:
+        return fetch_ref_sha(source_name)
+    if source_type == "pr":
+        request = fetch_pull_request(source_name)
+        return request.get("head_sha") if request else None
     return None
 
 
@@ -663,11 +714,42 @@ def fetch_branch_relation(local_sha: str, branch: str) -> Optional[str]:
     ``"identical"``; ``"diverged"``. ``None`` when the comparison is unavailable,
     which includes a local commit GitHub has never seen (unpushed work).
     """
-    if not local_sha or not branch:
+    is_sha = (
+        isinstance(branch, str)
+        and len(branch) >= 7
+        and all(char in "0123456789abcdefABCDEF" for char in branch)
+    )
+    if not local_sha or not (is_sha or _is_safe_branch_ref(branch)):
         return None
-    data = _api_get(f"compare/{local_sha}...{branch}")
+    data = _api_get(f"compare/{local_sha}...{quote(branch, safe='')}")
     status = data.get("status") if isinstance(data, dict) else None
     return status if status in {"ahead", "behind", "identical", "diverged"} else None
+
+
+def fetch_commits_between(local_sha: str, remote_sha: str) -> list[dict]:
+    if not all(
+        isinstance(sha, str)
+        and len(sha) >= 7
+        and all(char in "0123456789abcdefABCDEF" for char in sha)
+        for sha in (local_sha, remote_sha)
+    ):
+        return []
+    data = _api_get(f"compare/{local_sha}...{remote_sha}")
+    commits = data.get("commits") if isinstance(data, dict) else None
+    if not isinstance(commits, list):
+        return []
+    result = []
+    for commit in reversed(commits):
+        if not isinstance(commit, dict):
+            continue
+        metadata = commit.get("commit")
+        if not isinstance(metadata, dict):
+            continue
+        lines = (metadata.get("message") or "").splitlines()
+        sha = commit.get("sha")
+        if isinstance(sha, str):
+            result.append({"sha": sha[:7], "message": lines[0] if lines else ""})
+    return result
 
 
 def fetch_branch_commits(branch: str, local_sha: Optional[str] = None) -> list[dict]:
@@ -775,8 +857,8 @@ def resolve_build_mtime(
         published = _parse_iso8601(published_at)
         if published:
             return published
-    # commit_sha and source_name are the same string on the release and tag
-    # paths, so dedupe rather than repeat a request that already failed.
+    # Try the resolved commit first, then the source ref for older state files
+    # that stored a tag name in commit_sha.
     for ref in dict.fromkeys(r for r in (commit_sha, source_name) if r):
         resolved = _parse_iso8601(fetch_ref_date(ref))
         if resolved:
@@ -878,25 +960,38 @@ def save_update_state(
         path = get_update_state_path()
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        old_skip = None
+        old_state = {}
         if skip_until is None and path.exists():
             try:
-                old_state = json.loads(path.read_text(encoding="utf-8"))
-                old_skip = old_state.get("skip_until")
+                loaded_state = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded_state, dict):
+                    old_state = loaded_state
             except Exception:
                 pass
+
+        if source_type == "branch" and source_name == "main":
+            main_commit_sha = commit_sha
+        else:
+            main_commit_sha = old_state.get("main_commit_sha")
+            if (
+                not main_commit_sha
+                and old_state.get("source_type") == "branch"
+                and old_state.get("source_name") == "main"
+            ):
+                main_commit_sha = old_state.get("commit_sha")
 
         state = {
             "source_type": source_type,
             "source_name": source_name,
             "commit_sha": commit_sha,
+            "main_commit_sha": main_commit_sha or "",
             "installed_at": time.time(),
             "addon_version": addon_ver,
         }
         if skip_until is not None:
             state["skip_until"] = skip_until
-        elif old_skip is not None:
-            state["skip_until"] = old_skip
+        elif old_state.get("skip_until") is not None:
+            state["skip_until"] = old_state["skip_until"]
 
         path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     except Exception as e:

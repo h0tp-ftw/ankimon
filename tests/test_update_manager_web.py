@@ -67,8 +67,10 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
 
     assert 'src="../../user_files/sprites/items/exp-share.png"' in html
     assert 'id="pr-search"' in html
-    assert "Status: Code error [Traceback]" in html
-    assert "Status: Could not check connection." in javascript
+    assert "Code error [Traceback]" in html
+    assert "Status: Code error [Traceback]" not in html
+    assert "Could not check connection." in javascript
+    assert "Status: " not in javascript
     assert "window.onUpdateCodeError" in javascript
     assert "setCodeError(data.message, data.traceback)" in javascript
     assert "window.onUpdateLoadFailed" in javascript
@@ -85,6 +87,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert ".custom-checkbox:checked + .checkbox-indicator" in css
     assert "height: 24px;" in css
     assert 'id="branch-progress"' in html
+    assert 'id="branch-subtabs"' in html
+    assert 'data-branch-view="main"' in html
+    assert 'data-branch-view="current"' in html
     assert 'id="releases-progress"' in html
     assert 'id="developer-progress"' in html
     assert 'id="sprites-progress"' in html
@@ -114,11 +119,11 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "progress-message-failure" in javascript
     assert "setOperationStatus('', false)" in javascript
     assert "github-link').classList.toggle('hidden', tab === 'sprites')" in javascript
-    assert (
-        "Pull requests and branches may contain unreviewed code. Only install "
-        "sources you trust. Your Ankimon collection and progress will not be lost."
-        in html
-    )
+    warning_start = html.index('<blockquote id="developer-warning"')
+    warning_end = html.index("</blockquote>", warning_start)
+    warning = html[warning_start:warning_end]
+    assert "progress file(s) will not be lost" in warning
+    assert "pull requests and branches may contain unreviewed code" in warning
     assert "<blockquote id=\"developer-warning\"" in html
     assert ".update-tabs {" not in css
     assert ".update-tab {" not in css
@@ -133,6 +138,22 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "progress-message-rate-limit" in css
     assert "status-text.rate-limit" in css
     assert "release-highlight.error" in css
+    assert ".content-scroll {" in css
+    assert "overflow-x: hidden;" in css
+    assert "max-width: 100%;" in css[css.index(".custom-select-menu {"):css.index(".custom-select-menu .custom-select-search")]
+    assert "padding-bottom: 180px;" in css
+    assert "padding-bottom: 360px;" not in css
+    assert "fetch_source_sha" in (
+        ADDON / "pyobj" / "update_manager_web.py"
+    ).read_text(encoding="utf-8")
+    assert "fetch_pull_request" in (
+        ADDON / "pyobj" / "update_manager_web.py"
+    ).read_text(encoding="utf-8")
+    assert "fetch_commits_between" in (
+        ADDON / "pyobj" / "update_manager.py"
+    ).read_text(encoding="utf-8")
+    assert "switchBranchView" in javascript
+    assert "dataset.branchView" in javascript
     assert "def consume_api_error()" in (
         ADDON / "pyobj" / "update_manager.py"
     ).read_text(encoding="utf-8")
