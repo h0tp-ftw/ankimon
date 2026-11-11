@@ -322,25 +322,27 @@
 	width: fit-content;
 	max-width: 100%;
 	gap: 6px;
-	padding: 4px;
-	background: var(--bg-card);
-	border: 1px solid var(--border-main);
-	border-radius: 10px;
+	padding: 0;
+	border-bottom: 1px solid var(--border-main);
 }
 
 .branch-subtab {
-	padding: 8px 14px;
+	padding: 10px 16px;
 	color: var(--text-muted);
 	background: transparent;
-	border: 0;
-	border-radius: 7px;
-	font: 600 .88rem 'Outfit', sans-serif;
+	border: 1px solid transparent;
+	border-bottom: 2px solid transparent;
+	font: 600 .9rem 'Outfit', sans-serif;
 	cursor: pointer;
 }
 
+.branch-subtab:hover,
 .branch-subtab.active {
 	color: var(--text-bright);
-	background: var(--bg-card-hover);
+}
+
+.branch-subtab.active {
+	border-bottom-color: var(--accent-blue);
 }
 
 .status-text {
@@ -397,6 +399,22 @@
 	color: var(--accent-blue);
 	font-family: 'JetBrains Mono', monospace;
 	margin-right: 8px;
+}
+
+.commit-link {
+	color: var(--accent-blue);
+	font-family: 'JetBrains Mono', monospace;
+	margin-right: 8px;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.commit-link:hover {
+	color: #8bc4ff;
+}
+
+#panel-developer {
+	padding-bottom: 180px;
 }
 
 .branch-actions {

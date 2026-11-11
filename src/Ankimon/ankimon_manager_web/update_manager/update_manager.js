@@ -273,20 +273,37 @@
 		branchSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
 			button.classList.toggle('active', button.dataset.branchView === branchView);
 		});
-		setText(
-			'active-branch-title',
+		const activeBranchTitle = byId('active-branch-title');
+		activeBranchTitle.replaceChildren();
+		activeBranchTitle.appendChild(document.createTextNode(
 			data.source_type === 'branch'
-				? `Active Branch: ${active}`
-				: `Installed Source: ${active}`,
-		);
+				? 'Active Branch: '
+				: 'Installed Source: ',
+		));
+		if (data.source_type && data.source_name) {
+			const sourceLink = document.createElement('a');
+			sourceLink.href = '#';
+			sourceLink.className = 'source-link';
+			sourceLink.textContent = active;
+			sourceLink.addEventListener('click', (event) => {
+				event.preventDefault();
+				openGitHubTarget(
+					sourceUrl(data.source_type, data.source_name),
+					'Could not open the installed source in your browser.',
+				);
+			});
+			activeBranchTitle.appendChild(sourceLink);
+		} else {
+			activeBranchTitle.appendChild(document.createTextNode(active));
+		}
 		const mainCommitSha = data.main_commit_sha || (data.source_type === 'branch' &&
 			data.source_name === 'main' ? localSha : '');
 		setText(
 			'installed-commit',
 			[
-				localSha ? localSha.slice(0, 7) : 'unknown',
+				`${localSha ? localSha.slice(0, 7) : 'unknown'} (Current)`,
 				...(hasBranchViews
-					? [mainCommitSha ? mainCommitSha.slice(0, 7) : 'unknown (not recorded)']
+					? [`${mainCommitSha ? mainCommitSha.slice(0, 7) : 'unknown (not recorded)'} (Last Main)`]
 					: []),
 			].join('\n'),
 		);
@@ -392,9 +409,25 @@
 		if (viewData.commits.length) {
 			viewData.commits.forEach((commit) => {
 				const item = document.createElement('li');
-				const sha = document.createElement('code');
-				sha.textContent = commit.sha || '';
-				item.append(sha, document.createTextNode(commit.message || ''));
+				const sha = String(commit.sha || '');
+				if (/^[\da-f]{7,40}$/i.test(sha)) {
+					const link = document.createElement('a');
+					link.href = '#';
+					link.className = 'commit-link';
+					link.textContent = sha;
+					link.addEventListener('click', (event) => {
+						event.preventDefault();
+						openGitHubTarget(
+							`https://github.com/h0tp-ftw/ankimon/commit/${encodeURIComponent(sha)}`,
+							'Could not open the commit in your browser.',
+						);
+					});
+					item.append(link, document.createTextNode(commit.message || ''));
+				} else {
+					const code = document.createElement('code');
+					code.textContent = sha;
+					item.append(code, document.createTextNode(commit.message || ''));
+				}
 				commits.appendChild(item);
 			});
 		} else {
@@ -678,6 +711,13 @@
 		});
 	}
 
+	function openGitHubTarget(target, errorMessage) {
+		if (!bridge) return;
+		bridge.openGitHubTarget(target, (opened) => {
+			if (!opened) showToast(errorMessage, true);
+		});
+	}
+
 	function sourceUrl(sourceType, sourceName) {
 		const name = sourceType === 'current' && updateData && updateData.git_info
 			? updateData.git_info.branch
@@ -883,6 +923,20 @@
 	document.querySelectorAll('.update-tab-link').forEach((button) => {
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
+	const updateTabNames = ['branch', 'releases', 'developer', 'sprites'];
+	document.querySelector('.sidebar-nav').addEventListener('wheel', (event) => {
+		const tab = event.target.closest('.update-tab-link');
+		if (!tab || !event.deltaY) return;
+		const tabIndex = updateTabNames.indexOf(tab.dataset.tab);
+		if (tabIndex < 0) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const nextIndex = Math.max(
+			0,
+			Math.min(updateTabNames.length - 1, tabIndex + (event.deltaY > 0 ? 1 : -1)),
+		);
+		if (nextIndex !== tabIndex) switchTab(updateTabNames[nextIndex]);
+	}, { passive: false });
 
 	const branchSubtabs = byId('branch-subtabs');
 	branchSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
