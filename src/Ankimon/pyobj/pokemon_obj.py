@@ -107,8 +107,24 @@ class PokemonObject:
         }
 
         # Attacks and moves
-        self.attacks = list(attacks) if attacks else ["Struggle"]
-        self.moves = list(moves) if moves else []
+        def _parse_legacy_list(val, default):
+            if not val:
+                return default or []
+            if isinstance(val, str):
+                try:
+                    import ast
+                    parsed = ast.literal_eval(val)
+                    if isinstance(parsed, list):
+                        return parsed or default or []
+                except Exception:
+                    pass
+                # Fallback to string processing for "[Item1, Item2]"
+                cleaned = val.strip("[]")
+                return [a.strip() for a in cleaned.split(",") if a.strip()] or default or []
+            return list(val)
+
+        self.attacks = _parse_legacy_list(attacks, ["Struggle"])
+        self.moves = _parse_legacy_list(moves, [])
 
         # Experience and growth
         self.base_experience = base_experience
