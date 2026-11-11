@@ -427,6 +427,32 @@ def test_fetch_releases_filters_pre_2_0(monkeypatch):
     assert [r["name"] for r in um.fetch_releases()] == ["2.01-E"]
 
 
+def test_order_tags_by_release_order_matches_release_picker():
+    tags = [
+        {"name": "2.5-E"},
+        {"name": "2.02-E"},
+        {"name": "2.1-E"},
+        {"name": "2.31-E"},
+        {"name": "2.4-E"},
+    ]
+    releases = [
+        {"name": "2.31-E"},
+        {"name": "2.1-E"},
+        {"name": "2.02-E"},
+        {"name": "2.5-E"},
+    ]
+
+    ordered = um.order_tags_by_release_order(tags, releases)
+
+    assert [tag["name"] for tag in ordered] == [
+        "2.31-E",
+        "2.1-E",
+        "2.02-E",
+        "2.5-E",
+        "2.4-E",
+    ]
+
+
 def test_fetch_tags_filters_pre_2_0(monkeypatch):
     monkeypatch.setattr(um, "_api_get", lambda _ep: [
         {"name": "nightly-release", "zipball_url": "z"},

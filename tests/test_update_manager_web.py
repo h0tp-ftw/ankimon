@@ -96,12 +96,24 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "sprite_check_up_to_date" in javascript
     assert "openGitHubTarget" in javascript
     assert "install" in javascript and "sourceUrl(sourceType, sourceName)" in javascript
+    assert "options.scrollTop = 0" in javascript
+    assert "event.stopPropagation()" in javascript
+    assert "event.target.closest('.update-tab')" in javascript
+    assert "has-open-dropdown" in javascript
+    assert "Star Ankimon (-E) on GitHub!" in html
+    assert "sprites-snooze-row" in html
+    assert ".sprites-check-progress" not in css
+    assert html.index('id="sprites-status"') < html.index(
+        'id="sprites-check-progress"'
+    )
+    assert 'class="sprite-progress sprite-check-progress hidden"' in html
     assert "Your Ankimon collection, progress and sprites are preserved" in html
     assert "which download and install a ZIP of the selected source" in html
     bridge = (ADDON / "pyobj" / "update_manager_web.py").read_text(
         encoding="utf-8"
     )
     assert "def openGitHubTarget(self, target)" in bridge
+    assert "updater.order_tags_by_release_order" in bridge
     assert 'url.host().lower() != "github.com"' in bridge
     assert "_sprite_check_up_to_date = False" in bridge
     shell = (ADDON / "ankimon_items_web" / "shop_obj.py").read_text(
@@ -112,7 +124,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "openGitHub" in javascript
 
 
-def test_shell_routes_update_manager_without_replacing_help_dialog():
+def test_shell_routes_update_manager_from_help_menu():
     shell = (ADDON / "ankimon_items_web" / "shop_obj.py").read_text(
         encoding="utf-8"
     )
@@ -121,4 +133,5 @@ def test_shell_routes_update_manager_without_replacing_help_dialog():
     assert 'SCREEN_UPDATE = "update_manager"' in shell
     assert "def openUpdateManager(self)" in shell
     assert "update_manager" in shell
-    assert "from .pyobj.update_dialog import UpdateDialog" in menu
+    assert '_open_shell_at("update_manager")' in menu
+    assert "from .pyobj.update_dialog import UpdateDialog" not in menu

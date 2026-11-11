@@ -93,7 +93,8 @@
 		const percent = Math.max(0, Math.min(100, Number(value) || 0));
 		progress.value = percent;
 		container.querySelector('output').textContent = `${percent}%`;
-		if (message) container.querySelector('.progress-label span').textContent = message;
+		const label = container.querySelector('.progress-label span');
+		if (message && label) label.textContent = message;
 	}
 
 	function setDeveloperStatus(message) {
@@ -105,6 +106,13 @@
 		dropdown.classList.remove('open');
 		dropdown.querySelector('.custom-select-menu').classList.add('hidden');
 		dropdown.querySelector('.custom-select-trigger').setAttribute('aria-expanded', 'false');
+		syncDropdownScrollSpace();
+	}
+
+	function syncDropdownScrollSpace() {
+		const hasOpenDropdown = document.querySelector('.custom-select.open');
+		document.querySelector('.update-content')
+			.classList.toggle('has-open-dropdown', Boolean(hasOpenDropdown));
 	}
 
 	function closeDropdowns(except = null) {
@@ -126,11 +134,29 @@
 			dropdown.classList.add('open');
 			menu.classList.remove('hidden');
 			trigger.setAttribute('aria-expanded', 'true');
+			const options = menu.querySelector('.custom-select-options');
+			if (options) options.scrollTop = 0;
+			syncDropdownScrollSpace();
 			if (onOpen) onOpen();
 			const search = menu.querySelector('input[type="search"]');
 			if (search && !search.classList.contains('hidden')) search.focus();
 		});
 		menu.addEventListener('click', (event) => event.stopPropagation());
+		menu.addEventListener('wheel', (event) => {
+			event.stopPropagation();
+			const options = menu.querySelector('.custom-select-options');
+			if (!options || !options.contains(event.target)) {
+				event.preventDefault();
+				return;
+			}
+			const maxScroll = options.scrollHeight - options.clientHeight;
+			const atStart = options.scrollTop <= 0;
+			const atEnd = options.scrollTop >= maxScroll - 1;
+			if (maxScroll <= 0 || (event.deltaY < 0 && atStart) ||
+				(event.deltaY > 0 && atEnd)) {
+				event.preventDefault();
+			}
+		}, { passive: false });
 	}
 
 	function setDropdownLabel(dropdownId, label) {
@@ -534,6 +560,7 @@
 		byId('branch-snooze').checked = Number(data.skip_until) > Date.now() / 1000;
 		byId('sprites-snooze').checked = Boolean(data.sprite_snoozed);
 		updateButtonStates();
+		if (developerData) renderDeveloperTargets();
 	};
 
 	window.onDeveloperData = (data) => {
@@ -694,6 +721,7 @@
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
 	byId('update-tabs').addEventListener('wheel', (event) => {
+		if (!(event.target instanceof Element) || !event.target.closest('.update-tab')) return;
 		if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
 		const tabs = ['branch', 'releases', 'developer', 'sprites'];
 		const active = tabs.indexOf(
