@@ -34,13 +34,14 @@ DEFAULT_CONFIG = {
     "controls.allow_to_choose_moves": False,
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
+    "gui.gif_mode_override": False,
     "gui.show_sprites_across_ankimon": True,
     "gui.hud_styling": True,
     "gui.pop_up_dialog_message_on_defeat": False,
     "gui.pop_up_dialog_message_on_encounter": False,
     "gui.pop_up_dialog_message_on_item": True,
     "gui.review_hp_bar_thickness": 2,
-    "gui.reviewer_image_gif": False,
+    "gui.reviewer_image_gif": True,
     "gui.reviewer_text_message_box": True,
     "gui.reviewer_text_message_box_time": 3,
     "gui.show_mainpkmn_in_reviewer": 1,
@@ -115,12 +116,16 @@ HUD_TOGGLE_AUTO_SYNC_KEYS = (
     "gui.hud_player_sprite",
     "gui.hud_enemy_sprite",
     "gui.hud_xp_bar",
-    "gui.hud_xp_values",
     "gui.hud_hp_bars",
     "gui.hud_status_badge",
     "gui.hud_owned_indicator",
     "gui.hud_enemy_shiny_indicator",
     "gui.hud_player_shiny_indicator",
+)
+
+GIF_TOGGLE_AUTO_SYNC_KEYS = (
+    "gui.reviewer_image_gif",
+    "ankidex.spriteMode",
 )
 
 
@@ -215,7 +220,33 @@ class Settings:
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
-        modified = styling_migrated
+        legacy_sprite_mode_migrated = (
+            "ankidex.spriteMode" not in config
+            and "pokedex_v2.spriteMode" in config
+        )
+        if legacy_sprite_mode_migrated:
+            config["ankidex.spriteMode"] = config["pokedex_v2.spriteMode"]
+
+        gif_mode_override_migrated = (
+            "gui.gif_mode_override" not in config
+            and "ankidex.spriteMode" in config
+        )
+        if gif_mode_override_migrated:
+            config["gui.gif_mode_override"] = True
+
+        modified = (
+            styling_migrated
+            or legacy_sprite_mode_migrated
+            or gif_mode_override_migrated
+        )
+        # A profile that stored the collection GIF choice but never a reviewer
+        # one must not pick up the (now True) reviewer default against it.
+        if (
+            config.get("gui.reviewer_image_gif") is None
+            and isinstance(config.get("gui.gif_in_collection"), bool)
+        ):
+            config["gui.reviewer_image_gif"] = config["gui.gif_in_collection"]
+            modified = True
         for key in DEFAULT_CONFIG:
             if key not in config or (
                 config[key] is None and DEFAULT_CONFIG[key] is not None
@@ -225,9 +256,9 @@ class Settings:
 
         if modified:
             # Persist schema/default migration without triggering behavioral
-            # side effects such as HUD autosync. Existing user HUD preferences
-            # must survive the introduction of a new master visibility key.
-            self.save_config(config, apply_hud_autosync=False)
+            # side effects such as visibility autosync. Existing user HUD and
+            # GIF preferences must survive newly introduced master keys.
+            self.save_config(config, apply_visibility_autosync=False)
 
         # Drop the renamed key's row, but only once gui.hud_styling is really
         # in the store. save_all_config upserts and never deletes, so a row left
@@ -316,16 +347,54 @@ class Settings:
 
         return changed_keys
 
+    def _apply_gif_toggle_autosync(
+        self, config, previous_value=None, explicit_overrides=None
+    ):
+        """Mirror the global GIF choice into per-surface animation settings."""
+        if not isinstance(config, dict):
+            return []
+
+        main_key = "gui.gif_in_collection"
+        if main_key not in config:
+            return []
+
+        current_value = config.get(main_key, True)
+        if previous_value is None or previous_value == current_value:
+            return []
+
+        explicit_overrides = set(explicit_overrides or ())
+        animated_mode = "animated" if current_value else "static"
+        changed_keys = []
+        for key in GIF_TOGGLE_AUTO_SYNC_KEYS:
+            if (
+                key == "ankidex.spriteMode"
+                and config.get("gui.gif_mode_override", False)
+            ):
+                continue
+            if key in explicit_overrides:
+                continue
+            value = current_value if key == "gui.reviewer_image_gif" else animated_mode
+            if config.get(key) != value:
+                config[key] = value
+                changed_keys.append(key)
+
+        return changed_keys
+
     def save_config(
-        self, config, explicit_overrides=None, apply_hud_autosync=True
+        self, config, explicit_overrides=None, apply_visibility_autosync=True
     ):
         previous_value = None
+        previous_gif_value = None
         if hasattr(self, "config") and self.config is not None:
             previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
+            previous_gif_value = self.config.get("gui.gif_in_collection", True)
 
-        if apply_hud_autosync:
+        if apply_visibility_autosync:
             self._apply_hud_toggle_autosync(
                 config, previous_value, explicit_overrides
+            )
+            self._apply_gif_toggle_autosync(
+                config, previous_gif_value, explicit_overrides
             )
 
         # 1. Always save to database if available
@@ -379,9 +448,25 @@ class Settings:
 
     def set(self, key, value, explicit_overrides=None):
         previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
+        previous_gif_value = self.config.get("gui.gif_in_collection", True)
+        previous_sprite_mode = self.config.get("ankidex.spriteMode")
         self.config[key] = value
-        changed_keys = self._apply_hud_toggle_autosync(
-            self.config, previous_value, explicit_overrides
+        changed_keys = []
+        if key == "ankidex.spriteMode" and value != previous_sprite_mode:
+            expected_mode = "animated" if previous_gif_value else "static"
+            mode_override = value != expected_mode
+            if self.config.get("gui.gif_mode_override", False) != mode_override:
+                self.config["gui.gif_mode_override"] = mode_override
+                changed_keys.append("gui.gif_mode_override")
+        changed_keys.extend(
+            self._apply_hud_toggle_autosync(
+                self.config, previous_value, explicit_overrides
+            )
+        )
+        changed_keys.extend(
+            self._apply_gif_toggle_autosync(
+                self.config, previous_gif_value, explicit_overrides
+            )
         )
 
         # Persist ONLY the changed key. The previous implementation re-saved the

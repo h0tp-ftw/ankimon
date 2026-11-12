@@ -157,6 +157,13 @@ body {
   color: var(--text-bright, #ffffff);
 }
 
+body.ankimon-sprites-hidden.mobile-reviews-page .top-bar-titles > h2,
+body.ankimon-sprites-hidden.mobile-reviews-page #state-empty .pokeball-icon-container,
+body.ankimon-sprites-hidden.mobile-reviews-page #state-empty .empty-content > h2,
+body.ankimon-sprites-hidden.mobile-history-page .top-bar-titles > h2 {
+  display: none !important;
+}
+
 .empty-content p {
   color: var(--text-muted);
   font-size: 14px;
@@ -1481,7 +1488,6 @@ body {
   right: 2px;
   transform: none;
 }
-
 
 
 

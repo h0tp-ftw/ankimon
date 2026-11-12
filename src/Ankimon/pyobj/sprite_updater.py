@@ -375,8 +375,10 @@ class SpriteUpdateDialog(QDialog):
     def on_download_finished(self, success, message):
         # Refresh hits and misses even when an update only partially completed.
         from ..functions.sprite_functions import _clear_sprite_cache
+        from ..utils import clear_utils_caches
 
         _clear_sprite_cache()
+        clear_utils_caches()
         if success:
             try:
                 manifest_path = self.dest_dir.parent / "sprites_local_manifest.json"

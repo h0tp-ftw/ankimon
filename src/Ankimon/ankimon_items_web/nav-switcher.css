@@ -44,6 +44,17 @@
     margin: 0;
 }
 
+body.ankimon-sprites-hidden .nav-trigger .app-logo {
+    display: none;
+}
+
+body.ankimon-sprites-hidden .nav-trigger h1 {
+    color: var(--text-bright);
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    text-align: left;
+}
+
 .nav-chevron {
     font-size: 0.9rem;
     color: var(--text-muted);

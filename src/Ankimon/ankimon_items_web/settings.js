@@ -8,6 +8,7 @@
         data: null,           // raw payload from Python
         edits: {},            // key → new value (only present if dirty)
         explicitHudOverrides: new Set(),
+        explicitGifOverrides: new Set(),
         search: '',
         activeGroup: null,    // currently scrolled-into-view group label
     };
@@ -20,12 +21,14 @@
         'gui.hud_player_sprite',
         'gui.hud_enemy_sprite',
         'gui.hud_xp_bar',
-        'gui.hud_xp_values',
         'gui.hud_hp_bars',
         'gui.hud_status_badge',
         'gui.hud_owned_indicator',
         'gui.hud_enemy_shiny_indicator',
         'gui.hud_player_shiny_indicator',
+    ];
+    const GIF_TOGGLE_AUTO_SYNC_KEYS = [
+        'gui.reviewer_image_gif',
     ];
 
     function initChannel(cb) {
@@ -47,6 +50,7 @@
         state.data = data || {groups: []};
         state.edits = {};  // fresh data resets dirty state
         state.explicitHudOverrides.clear();
+        state.explicitGifOverrides.clear();
         renderAll();
     };
 
@@ -607,9 +611,17 @@
                     setEdit(setting.key, nextValue);
                     syncHudTogglesForSpriteVisibility();
                     HUD_TOGGLE_AUTO_SYNC_KEYS.forEach(refreshBooleanControl);
+                } else if (setting.key === 'gui.gif_in_collection') {
+                    state.explicitGifOverrides.clear();
+                    setEdit(setting.key, nextValue);
+                    syncGifTogglesForGifVisibility();
+                    GIF_TOGGLE_AUTO_SYNC_KEYS.forEach(refreshBooleanControl);
                 } else {
                     if (HUD_TOGGLE_AUTO_SYNC_KEYS.includes(setting.key)) {
                         state.explicitHudOverrides.add(setting.key);
+                    }
+                    if (GIF_TOGGLE_AUTO_SYNC_KEYS.includes(setting.key)) {
+                        state.explicitGifOverrides.add(setting.key);
                     }
                     setEdit(setting.key, nextValue);
                 }
@@ -661,6 +673,17 @@
                 // Programmatic synchronization changes dirty state but must not
                 // mark the HUD key as an explicit user override. setEdit also
                 // correctly removes the edit if sync restores the saved value.
+                setEdit(key, mainValue);
+            }
+        });
+    }
+
+    function syncGifTogglesForGifVisibility() {
+        const mainValue = getSettingValue('gui.gif_in_collection');
+        if (mainValue === undefined) return;
+
+        GIF_TOGGLE_AUTO_SYNC_KEYS.forEach((key) => {
+            if (getSettingValue(key) !== mainValue) {
                 setEdit(key, mainValue);
             }
         });
@@ -886,6 +909,7 @@
         const payload = {
             values: edits,
             explicit_hud_overrides: Array.from(state.explicitHudOverrides),
+            explicit_gif_overrides: Array.from(state.explicitGifOverrides),
         };
         // Stringify so the bridge sees a stable `str` parameter — see the
         // SettingsBridge.saveSettings comment for why we avoid passing the
