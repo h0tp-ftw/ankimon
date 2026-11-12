@@ -64,7 +64,11 @@ def check_rename(d, app, db, pc, pool):
     before = pkmn.get("nickname", "")
     pc.show_pokemon_details(pkmn)
     app.processEvents()
-    edit = _find(app, QLineEdit, placeholderText="Nickname")
+    # Exact placeholder: a substring match ("Nickname") also hits the PC search
+    # box ("Search Pokémon (by nickname, name)") and, depending on widget order,
+    # typed the nickname into the search filter, emptying the grid for every
+    # later check (flaky party failures).
+    edit = _find(app, QLineEdit, placeholderText="Enter a new Nickname for your Pokémon")
     btn = _find(app, QPushButton, text="Rename")
     if not edit or not btn:
         return ("rename (full GUI)", False, "could not find the rename field/button in the details window")
@@ -73,7 +77,9 @@ def check_rename(d, app, db, pc, pool):
     btn.click()
     app.processEvents()
     after = (db.get_pokemon(iid) or {}).get("nickname", "")
-    return ("rename (full GUI)", after == "Sparky", "nickname %r -> %r (intended 'Sparky')" % (before, after))
+    search_clean = pc.search_edit.text() == ""
+    return ("rename (full GUI)", after == "Sparky" and search_clean,
+            "nickname %r -> %r (intended 'Sparky'); search box untouched: %s" % (before, after, search_clean))
 
 
 def check_make_favorite(d, app, db, pc, pool):
@@ -239,8 +245,94 @@ def check_update_dialog_git_mode(d, app, db, pc, pool):
     return ("update_dialog (git checkout mode)", not problems, "; ".join(problems) or "3 checkout states OK")
 
 
+def check_party_add_remove(d, app, db, pc, pool):
+    """The PC box 'Add to team' / 'Remove from team' context actions (their real wired
+    callbacks): adding appends the Pokemon to the team table and the party column and
+    hides it from the box grid; removing puts it back."""
+    iid = pool.pop()
+    team_before = [r["individual_id"] for r in db.get_team()]
+    pc.add_to_team(db.get_pokemon(iid))
+    app.processEvents()
+    team_added = [r["individual_id"] for r in db.get_team()]
+    grid_after_add = {p["individual_id"] for p in pc._filtered_pokemon}
+    slots_after_add = [s._individual_id for s in pc.party_slots]
+    pc.remove_from_team(db.get_pokemon(iid))
+    app.processEvents()
+    team_removed = [r["individual_id"] for r in db.get_team()]
+    grid_after_remove = {p["individual_id"] for p in pc._filtered_pokemon}
+    ok = (
+        team_added == team_before + [iid]
+        and iid not in grid_after_add
+        and iid in slots_after_add
+        and team_removed == team_before
+        and iid in grid_after_remove
+    )
+    return ("party add/remove (context actions)", ok,
+            "team %d -> %d -> %d members; hidden from grid after add: %s; back after remove: %s"
+            % (len(team_before), len(team_added), len(team_removed),
+               iid not in grid_after_add, iid in grid_after_remove))
+
+
+def check_party_drag_drop(d, app, db, pc, pool):
+    """Drag-and-drop between the boxes and the party column (the real drop callbacks
+    the slot widgets fire): box -> empty party slot appends, box -> occupied slot
+    swaps the occupant out, party -> party reorders, party -> box grid removes."""
+    def team():
+        """Ordered ids currently in the team table."""
+        return [r["individual_id"] for r in db.get_team()]
+
+    a, b = pool.pop(), pool.pop()
+    base = team()
+    pc.on_party_slot_drop(len(base), a, "box"); app.processEvents()
+    appended = team() == base + [a]
+    pc.on_party_slot_drop(len(base), b, "box"); app.processEvents()   # onto a's slot
+    swapped = team() == base + [b] and a in {p["individual_id"] for p in pc._filtered_pokemon}
+    pc.on_party_slot_drop(0, b, "party"); app.processEvents()
+    reordered = team() == [b] + base
+    pc.on_box_drop(b, "party"); app.processEvents()
+    removed = team() == base
+    ok = appended and swapped and reordered and removed
+    return ("party drag/drop (drop callbacks)", ok,
+            "append=%s swap=%s reorder=%s remove=%s" % (appended, swapped, reordered, removed))
+
+
+def check_pc_fits_1024x768(d, app, db, pc, pool):
+    """The PC must still fit a 1024x768 screen: at that size the party column
+    switches to compact sprite tiles, the layout minimum stays within the window,
+    and every main control (party, grid, search, filters, details with a Pokemon
+    selected, trade/release/rename) is fully inside the window."""
+    iid = pool[-1]
+    # A long nickname must wrap inside the details panel, not widen the window.
+    pkmn = db.get_pokemon(iid); pkmn["nickname"] = "Review Pikachu Longname"; db.save_pokemon(pkmn)
+    pc.show_pokemon_details(db.get_pokemon(iid)); app.processEvents(); app.processEvents()
+    pc.resize(1024, 768); app.processEvents(); app.processEvents()
+    layout_min = pc.layout().minimumSize()
+    controls = {
+        "party_slot": pc.party_slots[0], "grid": pc.scroll_area, "search": pc.search_edit,
+        "type_filter": pc.type_combo, "details": pc.details_panel_stack,
+    }
+    clipped = [name for name, w in controls.items()
+               if not w.isVisible() or not pc.rect().contains(w.mapTo(pc, w.rect().bottomRight()))]
+    compact_ok = pc._party_compact and pc.party_panel.width() <= pc.party_compact_width + 4
+    small_w, small_h = pc.width(), pc.height()
+    fits = small_w <= 1024 and small_h <= 768 and layout_min.width() <= pc.minimumWidth() <= 1024
+    # Nothing inside the details panel may be squeezed off its right edge.
+    from PyQt6.QtWidgets import QWidget
+    ds = pc.details_panel_stack
+    squeezed = [type(w).__name__ for w in ds.findChildren(QWidget)
+                if w.isVisible() and w.mapTo(ds, w.rect().bottomRight()).x() > ds.width() + 1]
+    pc.resize(1300, 800); app.processEvents()
+    restored = not pc._party_compact
+    ok = fits and compact_ok and not clipped and not squeezed and restored
+    return ("pc fits 1024x768 (compact party column)", ok,
+            "window %dx%d layout_min %dx%d compact=%s clipped=%s details_squeezed=%s full_mode_back=%s"
+            % (small_w, small_h, layout_min.width(), layout_min.height(),
+               compact_ok, clipped or "none", squeezed[:3] or "none", restored))
+
+
 CHECKS = [check_rename, check_make_favorite, check_catch_grows_collection, check_update_channel,
-          check_update_dialog_git_mode]
+          check_update_dialog_git_mode, check_party_add_remove, check_party_drag_drop,
+          check_pc_fits_1024x768]
 
 
 def _boot():

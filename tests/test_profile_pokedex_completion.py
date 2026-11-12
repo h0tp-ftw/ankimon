@@ -100,6 +100,12 @@ def profile_env(tmp_path, monkeypatch):
         _src / "Ankimon" / "functions" / "pokedex_functions.py",
         monkeypatch,
     )
+    # profile_data imports the (aqt-free) team seam at module level.
+    _load_module(
+        "Ankimon.functions.team_functions",
+        _src / "Ankimon" / "functions" / "team_functions.py",
+        monkeypatch,
+    )
 
     profile_mod = _load_module(
         "Ankimon.ankimon_profile_web.profile_data",
