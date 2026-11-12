@@ -50,11 +50,13 @@ The reviewer is the screen where you study cards. Its HUD shows your Pokémon an
 ### Pokémon and animations
 
 - `gui.show_mainpkmn_in_reviewer` [0/1/2]: Choose the Pokémon layout: `0` shows only the wild Pokémon, `1` shows both Pokémon with their HP bars at the same height, and `2` uses a battle-style layout.
-- `gui.reviewer_image_gif` [true/false]: Use animated Pokémon GIFs in the reviewer. This follows `gui.gif_in_collection` unless explicitly overridden when saving settings.
+- `gui.reviewer_image_gif` [true/false] (default: true): Use animated Pokémon GIFs in the reviewer. Changing Show GIFs Across Ankimon synchronises this toggle; to keep a different reviewer choice, change this toggle after the global toggle and save.
 - `gui.view_main_front` [true/false]: Show your main Pokémon from the front when reviewer GIFs are enabled. Disable it to show the back view.
 - `gui.animate_time` [true/false]: Play a brief animation when either Pokémon takes damage.
-- `gui.gif_in_collection` [true/false]: Show animated sprites (GIFs) instead of static sprites in the PC box, during reviews, and other windows.
-- `gui.show_sprites_across_ankimon` [true/false] (default: true): Show sprites, GIFs, and HP/XP bars across Ankimon. Disable for a text-based presentation; the Ankimon Window (Ctrl+Shift +P) is excluded.
+- `gui.gif_in_collection` [true/false] (default: true): **Show GIFs Across Ankimon**, under Settings > Styling (formerly Show GIFs in Collection). Choose animated GIFs instead of static sprites in the PC box, Monthly Challenge, trades, deck-overview team cards, evolution windows, and Mobile & Web Reviews, including mobile battle replays. Evolution windows fall back to static sprites when a GIF is unavailable.
+- `gui.show_sprites_across_ankimon` [true/false] (default: true): Show sprites, GIFs, and HP/XP bars across Ankimon. Disable for a text-based presentation, including Mobile & Web Reviews, evolution, starter selection, and fossil revival. Selected web headings and empty-state placeholders are also hidden, and the Profile trainer image space is reduced. The Ankimon Window (`Ctrl+Shift+P`) is excluded. Reviewer text values, including XP values, keep their own settings.
+
+Changing Show GIFs Across Ankimon also selects animated or static mode for AnkiDex unless its sprite mode has been overridden. AnkiDex and Profile team sprites use that mode; mobile sprites follow the global GIF toggle. Choosing a different AnkiDex mode preserves it across global GIF changes; changing it back to match the global toggle restores synchronisation. Existing saved AnkiDex modes (including legacy Pokédex modes) and reviewer GIF choices are preserved on upgrade. A missing reviewer GIF preference inherits the saved global GIF choice.
 
 ### Messages
 
