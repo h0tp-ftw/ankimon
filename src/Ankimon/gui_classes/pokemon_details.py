@@ -298,10 +298,13 @@ def PokemonCollectionDetailsSplit(
         description_txt = f"Description: \n {description_formated}"
         lvl = f" Level: {level}"
         from ..localized_text import ability_name, ability_description, nature_name
+
         ability_local = ability_name(ability, ability.capitalize()) if ability else ""
         ability_txt = f" Ability: {ability_local}"
         ability_desc_local = ability_description(ability) if ability else ""
-        nature_display = nature_name(nature or "serious", (nature or "serious").strip().title())
+        nature_display = nature_name(
+            nature or "serious", (nature or "serious").strip().title()
+        )
         nature_txt = f" Nature: {nature_display}"
         _stats_dict = {}
         for key in ("hp", "atk", "def", "spa", "spd", "spe"):
@@ -405,82 +408,32 @@ def PokemonCollectionDetailsSplit(
         attacks_label.setFixedWidth(230)
         attacks_label.setFixedHeight(80)
 
-        # Evolution UI: show the requirement line whenever the Pokémon is not
-        # ready (e.g. "40 friendship to evolve into Espeon · needs Day").
-        # When ready, the classic path renders its own "Evolve now" button only
-        # if the caller did not supply trigger_evo_callback; callback callers
-        # render their evolve button in the right-hand column instead.
+        # Keep evolution actions on their existing callback paths. Requirements
+        # are rendered once below both columns, using the full details width.
         evolution_req_widget = None
-        # A secondary note shown alongside the Evolve button when the user
-        # previously rejected this evolution (soft state) — the manual button
-        # stays available so they can still evolve on demand.
-        evolution_note_widget = None
-        item_hint_widget = None
-        # The friendship/time evolution feature is gated behind a master toggle,
-        # so its UI must only appear when the toggle is on. Every other
-        # evolution method (level, and any future methods) is base-game
-        # behaviour and always shows.
         show_evolution_ui = readiness["method"] is not None and (
             readiness["method"] != "friendship" or friendship_time_enabled
         )
-        if show_evolution_ui:
-            # Item evolutions are hints here; using an evolution item belongs to
-            # the Bag. Only a ready friendship or level route gets this button.
-            if trigger_evo_callback is None and readiness["ready"]:
-                evo_name = readiness["evo_name"] or "the next form"
-                evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
-                evolve_now_button.setFont(custom_font)
-                evolve_now_button.setStyleSheet(
-                    "QPushButton { background-color: #FF69B4; color: white;"
-                    " border-radius: 6px; padding: 5px; font-weight: bold; }"
-                    " QPushButton:hover { background-color: #FF8DC7; }"
-                )
-                evolve_now_button.setMinimumWidth(
-                    max(230, evolve_now_button.sizeHint().width())
-                )
+        if show_evolution_ui and trigger_evo_callback is None and readiness["ready"]:
+            evo_name = readiness["evo_name"] or "the next form"
+            evolve_now_button = QPushButton(f"✨ Evolve into {evo_name} now")
+            evolve_now_button.setFont(custom_font)
+            evolve_now_button.setStyleSheet(
+                "QPushButton { background-color: #FF69B4; color: white;"
+                " border-radius: 6px; padding: 5px; font-weight: bold; }"
+                " QPushButton:hover { background-color: #FF8DC7; }"
+            )
+            evolve_now_button.setMinimumWidth(
+                max(230, evolve_now_button.sizeHint().width())
+            )
 
-                def evolve_now():
-                    # Lazy import: evo_window is a singleton built after this
-                    # module is first imported, so importing it at module top
-                    # would cycle.
-                    from ..singletons import evo_window
+            def evolve_now():
+                from ..singletons import evo_window
 
-                    # ask_pokemon_evo is modeless and returns immediately, so a
-                    # refresh here would run BEFORE the user confirms — a no-op.
-                    # The real refresh happens inside evolve_pokemon after
-                    # confirmation.
-                    evo_window.ask_pokemon_evo(individual_id, id, readiness["evo_id"])
+                evo_window.ask_pokemon_evo(individual_id, id, readiness["evo_id"])
 
-                qconnect(evolve_now_button.clicked, evolve_now)
-                evolution_req_widget = evolve_now_button
-
-                if readiness.get("rejected"):
-                    evolution_note_label = QLabel(
-                        "Evolution rejected — tap Evolve now to override"
-                    )
-                    evolution_note_label.setFont(custom_font)
-                    evolution_note_label.setWordWrap(True)
-                    evolution_note_label.setFixedWidth(230)
-                    evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    evolution_note_label.setStyleSheet("color: #FF69B4;")
-                    evolution_note_widget = evolution_note_label
-
-            if trigger_evo_callback is None and readiness.get("item_status_text"):
-                item_hint_widget = QLabel(readiness["item_status_text"])
-                item_hint_widget.setFont(custom_font)
-                item_hint_widget.setWordWrap(True)
-                item_hint_widget.setFixedWidth(230)
-                item_hint_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                item_hint_widget.setStyleSheet("color: #FF69B4;")
-
-        if show_evolution_ui and not readiness["ready"] and readiness.get("status_text"):
-            evolution_req_label = QLabel(readiness["status_text"])
-            evolution_req_label.setFont(custom_font)
-            evolution_req_label.setWordWrap(True)
-            evolution_req_label.setFixedWidth(230)
-            evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            evolution_req_label.setStyleSheet("color: #FF69B4;")
-            evolution_req_widget = evolution_req_label
+            qconnect(evolve_now_button.clicked, evolve_now)
+            evolution_req_widget = evolve_now_button
 
         first_layout = QHBoxLayout()
         TopL_layout_Box = QVBoxLayout()
@@ -512,10 +465,6 @@ def PokemonCollectionDetailsSplit(
         TopL_layout_Box.addWidget(pokemon_defeated_label)
         if evolution_req_widget is not None:
             TopL_layout_Box.addWidget(evolution_req_widget)
-        if evolution_note_widget is not None:
-            TopL_layout_Box.addWidget(evolution_note_widget)
-        if item_hint_widget is not None:
-            TopL_layout_Box.addWidget(item_hint_widget)
 
         attacks_details_button = QPushButton("Attack Details")
         qconnect(attacks_details_button.clicked, lambda: attack_details_window(attacks))
@@ -592,17 +541,6 @@ def PokemonCollectionDetailsSplit(
         # the callback. The same friendship master-toggle gating applies.
         if trigger_evo_callback and show_evolution_ui:
             if readiness["ready"]:
-                if readiness.get("rejected"):
-                    evolution_note_label = QLabel(
-                        "Evolution rejected — tap Evolve now to override"
-                    )
-                    evolution_note_label.setFont(custom_font)
-                    evolution_note_label.setWordWrap(True)
-                    evolution_note_label.setFixedWidth(230)
-                    evolution_note_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    evolution_note_label.setStyleSheet("color: #FF69B4;")
-                    TopR_layout_Box.addWidget(evolution_note_label)
-
                 translator = services.translator or Translator(language)
                 evolve_text = translator.translate(
                     "evolve_now_button",
@@ -646,22 +584,6 @@ def PokemonCollectionDetailsSplit(
                     lambda: trigger_evo_callback(readiness["method"]),
                 )
                 TopR_layout_Box.addWidget(evolve_now_button)
-                if readiness.get("item_status_text"):
-                    item_hint_label = QLabel(readiness["item_status_text"])
-                    item_hint_label.setFont(custom_font)
-                    item_hint_label.setWordWrap(True)
-                    item_hint_label.setFixedWidth(230)
-                    item_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    item_hint_label.setStyleSheet("color: #FF69B4;")
-                    TopR_layout_Box.addWidget(item_hint_label)
-            elif readiness.get("status_text"):
-                evolution_req_label = QLabel(readiness["status_text"])
-                evolution_req_label.setFont(custom_font)
-                evolution_req_label.setWordWrap(True)
-                evolution_req_label.setFixedWidth(230)
-                evolution_req_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                evolution_req_label.setStyleSheet("color: #FF69B4;")
-                TopR_layout_Box.addWidget(evolution_req_label)
 
         TopR_widget = QWidget()
         TopR_widget.setLayout(TopR_layout_Box)
@@ -675,6 +597,18 @@ def PokemonCollectionDetailsSplit(
         header_layout = QVBoxLayout(header_widget)
         header_layout.addWidget(name_label)
         header_layout.addLayout(first_layout)
+
+        # Lazy imports keep the legacy details module's import surface stable.
+        from ..functions.friendship_evolution import evolution_requirement_details
+        from .evolution_requirements import EvolutionRequirements
+
+        requirements = evolution_requirement_details(
+            pkmn_data_stub,
+            readiness,
+            friendship_time_enabled=friendship_time_enabled,
+        )
+        if any(requirements.values()):
+            header_layout.addWidget(EvolutionRequirements(requirements))
         header_layout.addWidget(description_label)
 
         # Create tabbed widget for Stats / IV / EV
