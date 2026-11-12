@@ -17,7 +17,7 @@ from aqt.qt import (
     qconnect,
 )
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QSize
-from PyQt6.QtGui import QColor, QMovie, QPen
+from PyQt6.QtGui import QColor, QImage, QMovie, QPen
 from PyQt6.QtWidgets import (
     QPushButton,
 )
@@ -157,9 +157,9 @@ class EvoWindow(QWidget):
             if buffer.open(QIODevice.OpenModeFlag.ReadOnly):
                 movie = QMovie(parent)
                 movie.setDevice(buffer)
-                movie.setCacheMode(QMovie.CacheMode.CacheAll)
-                movie.jumpToFrame(0)
-                frame = movie.currentPixmap()
+                # Measure independently so QMovie decodes every frame at the
+                # requested size, including the first cached frame.
+                frame = QImage.fromData(sprite_data)
                 if not frame.isNull():
                     scale = min(
                         limit,
@@ -171,6 +171,8 @@ class EvoWindow(QWidget):
                         max(1, round(frame.height() * scale)),
                     )
                     movie.setScaledSize(size)
+                    movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                    movie.jumpToFrame(0)
                     self._evolution_movies.append((buffer, movie, x, y))
                     self._evolution_canvas = parent
                     movie.frameChanged.connect(
