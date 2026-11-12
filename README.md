@@ -125,10 +125,11 @@ To get started:
           catchable.add(pokemon)
   return catchable
   ```
-  Can you work out what this code does?
-- Use an AI coding assistant if it helps. Practice giving clear instructions, reviewing its suggestions, and spotting mistakes.
+  Can you figure out what this code is actually trying to do?
 
-You do not need to write everything from scratch. Focus on understanding the changes, testing them, and fixing any errors before submitting a PR.
+- Start using AI! Use the AI service of your choice to get help with coding. Learn how to guide AI and spot the errors that AI makes in coding.
+
+At this point, it is more important to let AI do the coding, and you should be able to guide it! Fixing the errors it makes will be your main concern.
 
 ---
 
