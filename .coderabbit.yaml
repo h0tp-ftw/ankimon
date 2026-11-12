@@ -245,7 +245,7 @@ reviews:
         Default to taking no action. Act only when the merged PR adds, removes, or
         renames a setting, changes a setting's default or accepted values, or changes
         installation/update steps or supported Anki/PyQt versions, AND the current
-        README.md, CONFIG.md, or src/Ankimon/config.md (as of the merge commit)
+        README.md or src/Ankimon/config.md (as of the merge commit)
         states something that is now false. Do not act for bug fixes that restore
         intended behaviour, visual/styling tweaks, refactors, tests, generated data,
         CI, or release chores. Do not act when the merged PR already updated the docs.

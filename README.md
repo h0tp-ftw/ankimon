@@ -1,5 +1,5 @@
 ## Ankimon Experimental Branch `(h0tp-ftw/ankimon)`
- This repository is an **experimental branch** for [Ankimon](https://github.com/Unlucky-life/Ankimon) with new features and community-driven development. You can try out the latest features, but beware, you may also have bugs and issues!
+This repository is an **experimental branch** of [Ankimon](https://github.com/Unlucky-life/Ankimon), with new features and community-driven development. Try the latest features here, but expect occasional bugs and issues.
 
 ---
 
@@ -76,29 +76,29 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Downloading the Experimental Ankimon Build
 
-Check the [**Releases**](https://github.com/h0tp-ftw/ankimon/releases) tab here! Make sure to **BACKUP** before updating! 
+Download a build from the [**Releases**](https://github.com/h0tp-ftw/ankimon/releases) tab. Make sure to **back up your save** before updating!
 
-Releases will be published every time a major pull request or a large number of pull requests are merged into `main`; in simple words, after a major change is added. 
+Releases are published after a major change or a batch of pull requests has been merged into `main`.
 
-You can also download the source code directly, but this is NOT RECOMMENDED. If there is a specific fix or change you are looking for, you can download the individual files that are changed and replace those files.
+You can also download the source code directly, but we recommend using a release. If you need a specific unreleased fix, follow the instructions in its pull request.
 
 ---
 
 ## Instructions for Current Contributors
 
-- **Branching:** Always create a new branch for your changes.  
+- **Branching:** Always create a new branch for your changes.
   Name your branch using the format:
   - `name/branch-name`
-  - e.g. If I am adding changes to achievement display, I named it as `h0tp/achievements-new-look`
-  
-  `main` is used to get changes from branches (after testing), it combines all the new changes to be combined into a "release".
+  - For example, use `h0tp/achievements-new-look` for changes to the achievement display.
 
-- **Pull Requests:** After making your changes, open a Pull Request (PR) to merge your branch into the `main` branch.  
+  Tested changes are merged into `main` and included in a future release.
+
+- **Pull Requests:** When your changes are ready, open a pull request (PR) targeting `main`.
   Add a clear description of your changes in the PR.
 
-- **Testing**: For the PRs that are created here, please feel free to review these changes and try them out. We will merge them ONLY if contributors show that it is working properly :)
+- **Testing:** Please review open PRs and try out their changes. We merge them once contributors have verified that they work properly.
 
-- After major changes, I will merge it to `upstream` branch, and add a PR to merge it with the official Ankimon branch. 
+- After major changes, I merge them into the `upstream` branch and open a PR to contribute them back to the official Ankimon repository.
 
 
 
@@ -106,53 +106,54 @@ You can also download the source code directly, but this is NOT RECOMMENDED. If 
 
 ## I don't know how to CODE! Where do I start?
 
-Both me (h0tp) and Unlucky started with barely any experience. You do not need ANY experience to start, as long as you have a **passion** for Ankimon and can spend some time learning new stuff! Ankimon is largely made using *Vibe-coding*, i.e. getting AI assistance with coding. 
+Both Unlucky and I (h0tp) started with very little coding experience. You do not need prior experience to contribute, just an **interest** in Ankimon and some time to learn! Much of Ankimon is developed with AI coding assistance.
 
-It is made 100% by volunteers that help in their spare time. Having more people (like you) will help to make Ankimon better! It is also made using Python (for functions) and JavaScript (for data storage), which are easy to learn!
+Ankimon is built entirely by volunteers in their spare time, and new contributors are welcome. It uses Python for game logic, JavaScript for web interfaces, and SQLite for save data.
 
 To get started:
 
-- Join our [Discord server](https://discord.gg/eY8jPHZw4z) and get the New Contributors role, so that we can help you out!
-- Download [VS Code](https://code.visualstudio.com/) for coding
-- Go through the [W3schools Python tutorial](https://www.w3schools.com/python/default.asp) - no need to learn and memorize every single topic in detail. Have a general understanding of what code looks like and how it works! 
-- Make some simple code for practice! For example, you could try making a calculator, or coding some new changes for Ankimon.
-- Go through the Ankimon code, especially [here](https://github.com/Unlucky-Life/ankimon/tree/main/src/Ankimon/functions) and learn about how functions work. For example, if it says 
-``` catchable = set()
-        for pokemon in self.excluded:
-            if self.can_catch(caught_pokemon, pokemon):
-                catchable.add(pokemon)
-        return catchable
-```
-Can you figure out what this code is actually trying to do? 
-- Start using AI! Use the AI service of your choice to get help with coding. Learn how to guide AI and spot the errors that AI makes in coding. 
+- Join our [Discord server](https://discord.gg/eY8jPHZw4z) and ask for the New Contributors role so we can help you get started.
+- Download [VS Code](https://code.visualstudio.com/) to edit the code.
+- Work through the [W3Schools Python tutorial](https://www.w3schools.com/python/default.asp). You do not need to memorize everything; focus on understanding the basics.
+- Practice with a small project, such as a calculator, or try a small change to Ankimon.
+- Browse the [Ankimon functions](src/Ankimon/functions) to see how the code works. For example:
 
-At this point, it is more important to let AI do the coding, and you should be able to *guide* it! Fixing the errors it makes will be your main concern. 
+  ```python
+  catchable = set()
+  for pokemon in self.excluded:
+      if self.can_catch(caught_pokemon, pokemon):
+          catchable.add(pokemon)
+  return catchable
+  ```
+  Can you work out what this code does?
+- Use an AI coding assistant if it helps. Practice giving clear instructions, reviewing its suggestions, and spotting mistakes.
+
+You do not need to write everything from scratch. Focus on understanding the changes, testing them, and fixing any errors before submitting a PR.
 
 ---
 
 ## Instructions for New Contributors
 
-1. **Fork this repository:**  
+1. **Fork this repository:**
    Click the "Fork" button at the top right of this page to create your own copy.
 
-2. **Make your changes:**  
+2. **Make your changes:**
    Add your improvements or fixes in your forked repository.
 
-3. **Submit a Pull Request:**  
+3. **Submit a Pull Request:**
    - Push your changes to your fork.
    - Go to this repository and click "Pull request".
    - Add a description of your changes and submit.
 
-4. **After your first accepted PR**, you will become access to this repository as a **maintainer** to help shape the project!
-You will also get access to our Discord channel for contributors and can collaborate on new features and fixes.
+4. **After your first accepted PR**, you will receive **maintainer** access to help shape the project. You will also get access to our Discord channel for contributors, where we collaborate on features and fixes.
 
 ---
 
 
 ### Need Help?
 
-- Please reach out on the [Ankimon Discord server](https://discord.gg/eY8jPHZw4z)
-- You can also add to [Issues](../../issues) or [Discussions](../../discussions) tabs here
+- Ask for help on the [Ankimon Discord server](https://discord.gg/eY8jPHZw4z).
+- Report bugs in [Issues](https://github.com/h0tp-ftw/ankimon/issues) or ask questions in [Discussions](https://github.com/h0tp-ftw/ankimon/discussions).
 
 ___
 
@@ -160,9 +161,9 @@ ___
 ## Star History
 [![Star History Chart](https://api.star-history.com/svg?repos=unlucky-life/ankimon&type=Date)](https://www.star-history.com/#unlucky-life/ankimon&Date)
 
-Ankimon is an Anki addon designed to gamify your learning experience by allowing you to catch, collect, train, and fight with Pokémon within the Anki environment. With Ankimon, learning becomes an adventure where you can enhance your knowledge while having fun.
+Ankimon is an Anki add-on that lets you catch, collect, train, and battle Pokémon as you study. Turn your daily reviews into a Pokémon adventure.
 
-Support my Caffeine Addiction (something that helps building this Addon):
+Support my caffeine habit and help me keep building Ankimon:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/A0A7SGLI8)
 
@@ -170,14 +171,14 @@ Support my Caffeine Addiction (something that helps building this Addon):
 
 - **Pokémon Collection:** Catch and collect Pokémon as you progress through your Anki decks.
 - **Training:** Train your Pokémon to improve their abilities and strengths.
-- **Battles:** Engage in battles with other users on Pokémon Showdown to test your knowledge and skills.
-- **Interactive Learning:** Ankimon integrates seamlessly with Anki, enhancing your learning process by adding an element of excitement and challenge.
+- **Battles:** Battle other players on Pokémon Showdown with your trained Pokémon.
+- **Interactive Learning:** Make progress in Ankimon as you review your Anki cards.
 
 ## How to Use
 
-1. **Installation:** Download and install Ankimon addon for Anki.
+1. **Installation:** Download and install the Ankimon add-on for Anki.
 
-   **Important:** You need to download: „Data Files, Sprite Files and Badges and Item Sprites“!
+   **Important:** Download the data files, Pokémon sprites, and badge and item sprites from the Ankimon menu.
 
 2. **Catch Pokémon:** As you review your Anki cards, encounter and catch Pokémon to add to your collection.
    Your permanent Pokédex caught history remains recorded after releasing, evolving, or trading away a Pokémon. The reviewer Pokéball indicator, encounter Capture Requirements, and “Catch if uncollected” mode use this history, not just the Pokémon currently in your PC. Incoming traded Pokémon are recorded immediately; merely seeing a Pokémon does not count as catching it. Forms retain distinct caught records.
@@ -198,17 +199,26 @@ Support my Caffeine Addiction (something that helps building this Addon):
 
    When choosing a Pokémon for an item in the web Bag, search by its custom nickname, localized species name, or English species name (including internal names such as `wooperpaldea`). Custom nicknames remain separate from species names; automatically assigned English names do not replace localized species names.
 4. **Battles:** Challenge other users on Pokémon Showdown to battles using your trained Pokémon.
-5. **Bug Reporting:** If you encounter any issues or bugs, please report them on the [GitHub Issues Page](https://github.com/Unlucky-Life/ankimon/issues). Your feedback helps improve the addon for everyone.
+5. **Bug Reporting:** Report bugs on the [GitHub Issues page](https://github.com/h0tp-ftw/ankimon/issues). Your feedback helps improve Ankimon for everyone.
+
+## Documentation
+
+- [Getting started](docs/HowToStart.md)
+- [Configuration reference](src/Ankimon/config.md)
+- [Demo animations](docs/media/)
+- [Privacy policy](docs/legal/PrivacyPolicy.txt)
+- [Terms of service](docs/legal/TermsofService.txt)
+- [License (HTML)](docs/legal/LICENSE.html)
 
 ## Important Notes
 
 - **Startup and automatic dialogs:** Ankimon's background startup checks run independently of Anki's collection work. Startup dialogs, automatic update notifications, and automatic monthly-challenge dialogs wait until an Anki profile is open, Anki's progress indicator has finished, and other modal dialogs have closed. These prompts may therefore appear after startup sync completes.
 - **Mobile & Web Reviews:** After sync, mobile-review detection waits until Anki is idle. If a mobile battle replay is still running or paused, detection retries without blocking the interface. Resume or stop the current replay to let detection continue; open **Ankimon → Mobile & Web Reviews** to resolve pending battles manually.
-- **Linux OS** Before reporting an issue on Linux, make sure you check if it works with the package downloaded directly from the [Anki github](https://github.com/ankitects/anki/releases) as it could be a problem with the package maintained by a third party (distro maintainer or flatpak)
-- **Addon Status:** Ankimon is still in development. Please report any bugs you encounter to help improve the addon.
-- **Backup Files:** Migrating your legacy save now preserves "mypokemon.json" and "mainpokemon.json" and only archives them once the import is verified successful, so a failed or cancelled migration is safe to retry. We still recommend copying these files before updating as an extra precaution. Please check out my GitHub Ankimon Page before updating - I will let you know when an update is coming in.
+- **Linux:** Before reporting a Linux issue, try the official package from [Anki’s GitHub releases](https://github.com/ankitects/anki/releases). The issue may be specific to a third-party package, such as a distribution package or Flatpak.
+- **Development Status:** Ankimon is still in development. Please report any bugs you encounter.
+- **Backup Files:** Migrating your legacy save now preserves "mypokemon.json" and "mainpokemon.json" and only archives them once the import is verified successful, so a failed or cancelled migration is safe to retry. We still recommend copying these files before updating as an extra precaution. Check the release notes before updating.
 - **Backup Manager:** Legacy backups move from `ankimon_backups` beside the add-on to `Ankimon_Backups` in the current Anki profile. This archive migration runs in the background without delaying Ankimon's startup readiness; the rolling safety backup still runs before save migration. If that move is interrupted, Ankimon preserves originals whose copies cannot be verified and protects the migration's recovery copies from deletion; unrelated backups can still be deleted or rotated. Restore and Delete selections remain usable after a backup moves. If migration is running when you select one, try again shortly.
-- **Compatibility:** Currently, Ankimon is **only compatible with PyQt6**. Updates for compatibility with other versions will be provided in the future.
+- **Compatibility:** Ankimon currently requires **PyQt6**.
 
 ## Screenshots
 <div style="display:flex;flex-wrap:wrap;justify-content:center;">
@@ -225,10 +235,10 @@ Start your Pokémon journey with Ankimon and make learning an adventure!
 ![image](https://github.com/user-attachments/assets/1e5b9f0e-18c4-4115-a73e-08fc2e97f4d8)
 
 
-### NOTE - for any contributions, make sure to **create your own branch** instead of merging into `main`, and add pull requests with your changes. We will review these changes and merge onto `main` after testing them.
+For all contributions, **create your own branch** and open a pull request. Changes are reviewed and tested before being merged into `main`.
 
-## Honorable Mentions for current active contributors
+## Honorable Mentions for Active Contributors
 **h0tp** @h0tp-ftw
 **Peace** @thepeacemonk
 **Gill** @gykoh
-**richy** @richy431 
+**richy** @richy431
