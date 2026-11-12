@@ -650,7 +650,12 @@ class ProfileData:
             cycle_count = self.settings_obj.get("controls.team_cycle_count", 3)
             sprite_mode = self.settings_obj.get(
                 "ankidex.spriteMode",
-                self.settings_obj.get("pokedex_v2.spriteMode", "static")
+                self.settings_obj.get(
+                    "pokedex_v2.spriteMode",
+                    "animated"
+                    if self.settings_obj.get("gui.gif_in_collection", True)
+                    else "static",
+                ),
             )
         except Exception:
             xp_share = None

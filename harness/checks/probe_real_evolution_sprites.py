@@ -289,6 +289,76 @@ class EvolutionSpriteTests(unittest.TestCase):
                     self.complete_color(colors[2])
                     self.screenshot(f"{'shiny' if shiny else 'ordinary'}-complete.png")
 
+    @staticmethod
+    def two_frame_gif():
+        """A hand-assembled 1x1 GIF89a: a red frame, then a blue frame."""
+        frame = b"\x21\xf9\x04\x00\x0a\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02"
+        return (
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\x00\x00\x00\x00\xff"
+            b"\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"
+            + frame + b"\x44\x01\x00"
+            + frame + b"\x4c\x01\x00"
+            + b";"
+        )
+
+    def test_completion_enlarges_static_sprite_to_its_box(self):
+        self.window.display_evo_complete(1, 2, False)
+        self.finish_latest()
+        image = self.canvas()
+        # The 96px placeholder is enlarged to the 250px box at (125, 10).
+        self.assertEqual(image.pixelColor(130, 15).name(), self.NORMAL[2])
+        self.assertEqual(image.pixelColor(370, 255).name(), self.NORMAL[2])
+        self.assertEqual(self.window._evolution_movies, [])
+
+    def test_animated_sprites_play_and_are_released(self):
+        from PyQt6.QtGui import QMovie
+
+        gif_dir = self.front.parent / "front_default_gif"
+        gif_dir.mkdir(parents=True, exist_ok=True)
+        gifs = [gif_dir / f"{species}.gif" for species in (1, 2)]
+        for gif in gifs:
+            gif.write_bytes(self.two_frame_gif())
+        self.addCleanup(lambda: [gif.unlink() for gif in gifs if gif.exists()])
+        self.addCleanup(self.sprites._clear_sprite_cache)
+        self.addCleanup(self.driver.set_setting, "gui.gif_in_collection", True)
+        self.sprites._clear_sprite_cache()
+        frame_colors = {"#ff0000", "#0000ff"}
+
+        self.driver.set_setting("gui.gif_in_collection", True)
+        iid = self.pokemon(False)
+        self.window.ask_pokemon_evo(iid, 1, 2)
+        self.finish_latest()
+        movies = [movie for _buffer, movie, _x, _y in self.window._evolution_movies]
+        self.assertEqual(len(movies), 2)
+        for movie in movies:
+            self.assertEqual(movie.state(), QMovie.MovieState.Running)
+            self.assertEqual(movie.frameCount(), 2)
+        self.assertIn(self.canvas().pixelColor(255, 70).name(), frame_colors)
+        self.assertIn(self.canvas().pixelColor(255, 285).name(), frame_colors)
+        self.assertTrue(movies[0].jumpToNextFrame())
+        self.assertEqual(
+            self.canvas().pixelColor(255, 70).name(),
+            movies[0].currentPixmap().toImage().pixelColor(0, 0).name(),
+        )
+
+        self.window.display_evo_complete(1, 2, False)
+        self.finish_latest()
+        self.flush()
+        self.assertTrue(all(sip.isdeleted(movie) for movie in movies))
+        self.assertEqual(len(self.window._evolution_movies), 1)
+        image = self.canvas()
+        self.assertIn(image.pixelColor(130, 15).name(), frame_colors)
+        self.assertIn(image.pixelColor(370, 255).name(), frame_colors)
+
+        self.window.close()
+        self.assertEqual(self.window._evolution_movies, [])
+
+        self.driver.set_setting("gui.gif_in_collection", False)
+        self.window.display_evo_complete(1, 2, False)
+        self.finish_latest()
+        self.assertEqual(self.window._evolution_movies, [])
+        self.assertEqual(self.canvas().pixelColor(370, 255).name(), self.NORMAL[2])
+
     def test_missing_shiny_source_and_target_use_ordinary_independently(self):
         iid = self.pokemon(True)
         for missing in ((1,), (2,), (1, 2)):
@@ -346,12 +416,73 @@ class EvolutionSpriteTests(unittest.TestCase):
                 self.canvas().pixelColor(260, 75).name(),
                 (self.NORMAL[1], self.SHINY[1]),
             )
+            source_background = QImage(str(self.module.evolve_image_path))
+            yellow_title_pixel = source_background.pixelColor(250, 220).name()
+            self.assertNotEqual(
+                self.canvas().pixelColor(250, 220).name(), yellow_title_pixel
+            )
             self.window.display_evo_complete(1, 2, True)
             self.flush()
             self.assertEqual(set(self.buttons()), {"Close"})
+            completion_canvas = self.canvas()
+            self.assertEqual(
+                completion_canvas.pixelColor(10, 10).alpha(),
+                0,
+                "the starter-screen background must be hidden in text-only mode",
+            )
             self.assertEqual(DeferredQueryOp.pending, [])
             get.assert_not_called()
             resolve.assert_not_called()
+
+    def test_fossil_revival_hides_pokemon_sprite_when_disabled(self):
+        from Ankimon.pyobj.starter_window import StarterWindow
+
+        starter = StarterWindow(
+            SimpleNamespace(),
+            self.driver.services.settings,
+        )
+        sprite = QPixmap(32, 32)
+        sprite.fill(QColor("#fa00ff"))
+        starter._load_sprite = lambda _path: sprite
+
+        self.driver.set_setting("gui.show_sprites_across_ankimon", False)
+        try:
+            hidden = starter.pokemon_display_fossil_pokemon(138, "Omanyte")
+            hidden_image = hidden.pixmap().toImage()
+            self.assertEqual(
+                hidden_image.pixelColor(10, 10).alpha(),
+                0,
+                "the fossil window background must be hidden in text-only mode",
+            )
+            self.assertNotEqual(
+                hidden_image.pixelColor(130, 15).name(), "#fa00ff"
+            )
+
+            chosen = starter.pokemon_display_chosen_starter("Omanyte")
+            self.assertEqual(
+                chosen.pixmap().toImage().pixelColor(10, 10).alpha(),
+                0,
+                "the starter window background must be hidden in text-only mode",
+            )
+            self.assertNotEqual(
+                chosen.pixmap().toImage().pixelColor(130, 15).name(), "#fa00ff"
+            )
+            choices = starter.pokemon_display_starter(
+                "Squirtle", "Charmander", "Bulbasaur"
+            )
+            self.assertNotEqual(
+                choices.pixmap().toImage().pixelColor(70, 20).name(), "#fa00ff"
+            )
+
+            self.driver.set_setting("gui.show_sprites_across_ankimon", True)
+            visible = starter.pokemon_display_fossil_pokemon(138, "Omanyte")
+            self.assertEqual(
+                visible.pixmap().toImage().pixelColor(130, 15).name(), "#fa00ff"
+            )
+        finally:
+            self.driver.set_setting("gui.show_sprites_across_ankimon", True)
+            starter.close()
+            starter.deleteLater()
 
     def test_lookup_error_is_logged_and_retry_recovers_without_false_ordinary_sprite(
         self,
