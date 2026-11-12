@@ -661,6 +661,10 @@ body {
     background: var(--bg-dark);
     transition: border-color var(--transition-fast);
 }
+body.ankimon-sprites-hidden .rail-avatar img,
+body.ankimon-sprites-hidden .rail-avatar .no-sprite {
+    display: none !important;
+}
 .rail-avatar:hover img { border-color: var(--accent-gold); }
 .rail-avatar .no-sprite {
     width: 180px; height: 180px; margin: 0 auto;
@@ -670,6 +674,7 @@ body {
     color: var(--text-muted); font-size: 0.8rem;
 }
 .rail-avatar .change-hint { margin-top: 10px; }
+body.ankimon-sprites-hidden .rail-avatar .change-hint { margin-top: 0; }
 .rail-avatar:hover .change-hint { color: var(--accent-gold); border-color: var(--accent-gold); }
 
 .rail-meta { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; flex: 1; }
@@ -1065,5 +1070,4 @@ body.companion-picker-only #picker .picker-modal {
     border: none;
     border-radius: 0;
 }
-
 

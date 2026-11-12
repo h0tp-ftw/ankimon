@@ -446,13 +446,37 @@ def random_item() -> Optional[str]:
     return item_name
 
 
+# These filenames in the downloaded pack predate the lowercase item identifiers.
+_ITEM_SPRITE_FILENAMES = {
+    "black-augurite": "Black-Augurite.png",
+    "peat-block": "Peat-Block.png",
+}
+
+
 def get_item_sprite_path(item_name):
-    """Resolve an item icon from downloaded or bundled item sprites."""
+    """Resolve display names and identifiers to downloaded or bundled icons."""
+    raw_name = str(item_name)
+    identifier = normalize_item_identifier(item_name)
+    # NFKD also folds fullwidth path punctuation. Check both forms before any
+    # file lookup; item sprites are always single filenames within items_path.
+    if any(char in raw_name or char in identifier for char in ("/", "\\", ":", "\0")):
+        return items_path / "unknown-item.png"
+
     downloaded = items_path / f"{item_name}.png"
     if downloaded.is_file():
         return downloaded
 
-    bundled = _BUNDLED_ITEM_SPRITES.get(item_name)
+    normalized = items_path / f"{identifier}.png"
+    if normalized != downloaded and normalized.is_file():
+        return normalized
+
+    filename = _ITEM_SPRITE_FILENAMES.get(identifier)
+    if filename is not None:
+        legacy = items_path / filename
+        if legacy.is_file():
+            return legacy
+
+    bundled = _BUNDLED_ITEM_SPRITES.get(identifier)
     if bundled is not None and bundled.is_file():
         return bundled
     return downloaded

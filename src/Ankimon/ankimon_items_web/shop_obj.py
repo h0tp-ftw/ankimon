@@ -49,7 +49,11 @@ from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWidgets import QStackedWidget
 import csv
 from ..utils import get_item_sprite_path, give_item, is_alive
-from ..pyobj.settings import DEFAULT_CONFIG, HUD_TOGGLE_AUTO_SYNC_KEYS
+from ..pyobj.settings import (
+    DEFAULT_CONFIG,
+    GIF_TOGGLE_AUTO_SYNC_KEYS,
+    HUD_TOGGLE_AUTO_SYNC_KEYS,
+)
 
 try:
     from ..utils import is_dev_mode
@@ -60,7 +64,6 @@ except ImportError:  # dev helper not landed yet (thread-reload-and-misc-utils u
 
 
 from ..resources import (
-    items_path,
     csv_file_items_cost,
     csv_file_descriptions,
     icon_path,
@@ -154,6 +157,8 @@ SPRITE_VISIBILITY_SCREENS = (
     SCREEN_SETTINGS,
     SCREEN_PROFILE,
     SCREEN_TEAM,
+    SCREEN_MOBILE,
+    SCREEN_HISTORY,
     SCREEN_BACKUP,
 )
 
@@ -305,7 +310,10 @@ class SettingsBridge(QObject):
 
         explicit_overrides = None
         if isinstance(payload, dict) and isinstance(payload.get("values"), dict):
-            explicit_overrides = payload.get("explicit_hud_overrides")
+            explicit_overrides = set(payload.get("explicit_hud_overrides") or ())
+            explicit_overrides.update(
+                payload.get("explicit_gif_overrides") or ()
+            )
             payload = payload["values"]
         return self._w.handle_save_settings(payload, explicit_overrides)
 
@@ -479,28 +487,41 @@ class MobileBridge(QObject):
             # Main Pokémon info for preview
             main_pokemon_name = None
             main_pokemon_level = None
-            main_pokemon_sprite = None
             sprite_mode = "static"
+            if settings_obj is not None:
+                sprite_mode = settings_obj.get(
+                    "ankidex.spriteMode",
+                    settings_obj.get(
+                        "pokedex_v2.spriteMode",
+                        "animated"
+                        if settings_obj.get("gui.gif_in_collection", True)
+                        else "static",
+                    ),
+                )
+
+            main_pokemon_sprite = None
             if main_pokemon is not None:
                 main_pokemon_name = main_pokemon.name
                 main_pokemon_level = main_pokemon.level
 
                 from ..functions.sprite_functions import get_relative_sprite_path
 
+                # Mobile sprites always followed the GIF path; they obey the
+                # master GIF setting, not the AnkiDex per-screen mode (which
+                # AnkiDex stores passively on every exit).
+                main_sprite_format = (
+                    "gif"
+                    if settings_obj is None
+                    or settings_obj.get("gui.gif_in_collection", True)
+                    else "png"
+                )
                 main_pokemon_sprite = get_relative_sprite_path(
                     main_pokemon.id,
                     bool(main_pokemon.shiny),
                     (main_pokemon.gender or "N"),
                     main_pokemon.name,
-                    "gif",
+                    main_sprite_format,
                 )
-
-            if settings_obj is not None:
-                sprite_mode = settings_obj.get(
-                    "ankidex.spriteMode",
-                    settings_obj.get("pokedex_v2.spriteMode", "static"),
-                )
-
             # Trigger async estimates calculation if there are pending reviews
             estimates_loading = False
             estimates = {
@@ -1042,6 +1063,12 @@ class MobileBridge(QObject):
                 if settings_obj
                 else set()
             )
+            sprite_format = (
+                "gif"
+                if not settings_obj
+                or settings_obj.get("gui.gif_in_collection", True)
+                else "png"
+            )
             from ..functions.sprite_functions import get_relative_sprite_path
 
             team_list = []
@@ -1063,7 +1090,7 @@ class MobileBridge(QObject):
                             pkmn_type = [pkmn_type]
 
                         sprite_path = get_relative_sprite_path(
-                            pkmn_id, shiny, gender, pkmn.name, "gif"
+                            pkmn_id, shiny, gender, pkmn.name, sprite_format
                         )
                         is_inactive = ind_id in inactive
 
@@ -2061,6 +2088,7 @@ class AnkimonItemsWeb(QDialog):
         script = f"""
             (() => {{
                 const show = {enabled};
+                document.body.classList.toggle('ankimon-sprites-hidden', !show);
                 let style = document.getElementById('ankimon-sprite-visibility');
                 if (!style) {{
                     style = document.createElement('style');
@@ -2077,6 +2105,7 @@ class AnkimonItemsWeb(QDialog):
                     img[src*=".png"], img[src*=".gif"] {{ visibility: hidden !important; }}
                     [style*=".png"], [style*=".gif"] {{ background-image: none !important; }}
                     .ankimon-raster-background {{ background-image: none !important; }}
+                    .pokeball-icon {{ visibility: hidden !important; }}
                 `;
             }})()
         """
@@ -2573,7 +2602,7 @@ class AnkimonItemsWeb(QDialog):
             move = find_details_move(name) or {}
             move_type = move.get("type") or "Normal"
             entry["image_url"] = QUrl.fromLocalFile(
-                str(items_path / f"Bag_TM_{move_type}_SV_Sprite.png")
+                str(get_item_sprite_path(f"Bag_TM_{move_type.lower()}_SV_Sprite"))
             ).toString()
             short_desc = _move_desc(name, move.get("shortDesc") or "")
             entry["description"] = (
@@ -3346,17 +3375,20 @@ class AnkimonItemsWeb(QDialog):
             # Backward compatibility for callers that still send the legacy flat
             # payload: a HUD key present there represents an explicit edit.
             explicit_overrides = {
-                key for key in payload if key in HUD_TOGGLE_AUTO_SYNC_KEYS
+                key
+                for key in payload
+                if key in HUD_TOGGLE_AUTO_SYNC_KEYS
+                or key in GIF_TOGGLE_AUTO_SYNC_KEYS
             }
         elif isinstance(explicit_overrides, (list, tuple, set)):
             explicit_overrides = {
                 str(key)
                 for key in explicit_overrides
                 if str(key) in HUD_TOGGLE_AUTO_SYNC_KEYS
+                or str(key) in GIF_TOGGLE_AUTO_SYNC_KEYS
             }
         else:
             explicit_overrides = set()
-
         settings_obj = (
             self.shop_manager.settings_obj if self.shop_manager is not None else None
         )
@@ -3394,11 +3426,15 @@ class AnkimonItemsWeb(QDialog):
         try:
             changed = False
             save_order = []
-            main_key = "gui.show_sprites_across_ankimon"
-            if original_config.get(main_key) != working_config.get(main_key):
-                save_order.append(main_key)
+            main_keys = (
+                "gui.show_sprites_across_ankimon",
+                "gui.gif_in_collection",
+            )
+            for main_key in main_keys:
+                if original_config.get(main_key) != working_config.get(main_key):
+                    save_order.append(main_key)
             for key, val in working_config.items():
-                if key == main_key:
+                if key in main_keys:
                     continue
                 if original_config.get(key) != val:
                     save_order.append(key)

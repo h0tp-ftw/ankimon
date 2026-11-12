@@ -934,8 +934,11 @@ class TestWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
 
-        # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
+        if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+            painter.drawPixmap(0, 0, pixmap_bckg)
+        else:
+            # Text-only mode: a null pixmap makes the item draws below no-ops.
+            item_pixmap = QPixmap()
 
         # item = str(item)
         if (
@@ -1016,11 +1019,9 @@ class TestWindow(QWidget):
             # merge both images together
             painter = QPainter(merged_pixmap)
 
-            # draw background to a specific pixel
-            painter.drawPixmap(0, 0, pixmap_bckg)
-
-            # item = str(item)
-            painter.drawPixmap(200, 90, item_pixmap)
+            if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+                painter.drawPixmap(0, 0, pixmap_bckg)
+                painter.drawPixmap(200, 90, item_pixmap)
 
             # custom font
             custom_font = load_custom_font(

@@ -1,0 +1,63 @@
+name: Release Version Check
+
+# Fails when a release tag's source tree (or its attached .ankiaddon) carries a
+# manifest.json version that doesn't match the tag. See
+# scripts/check_release_version.py for why the two can differ.
+#
+# This watches the releases release.yml does NOT make: a tag pushed by hand, or a
+# release created in the web UI / with `gh release create`. (Tags and releases
+# created with GITHUB_TOKEN don't trigger other workflows, so release.yml runs the
+# same script inline instead.) It can't un-publish anything; it fails loudly so
+# the bad release is noticed and fixed before users report the wrong version.
+#
+# 2.4.3-E is the case this was written for: tagged by hand, the .ankiaddon was
+# right (aab rewrites the manifest) but the tag's tree still said 2.4.2-E, which
+# is what in-app updates and git installs read.
+
+on:
+  push:
+    tags: ['[0-9]*', 'v[0-9]*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to check (e.g. 2.4.3-E)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Bound once and read as "$TAG" (never ${{ }} inside run:), so a crafted
+      # tag name can't inject shell.
+      TAG: ${{ github.event.release.tag_name || github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Check the tag's manifest and changelog
+        run: python3 scripts/check_release_version.py --tag "$TAG" --require-changelog --skip-non-version
+
+      # Only a release has packages to inspect; a bare tag push stops above.
+      - name: Check the attached .ankiaddon packages
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p '*.ankiaddon' -D release-assets || true
+          shopt -s nullglob
+          packages=(release-assets/*.ankiaddon)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "Release $TAG has no .ankiaddon attached; nothing to check."
+            exit 0
+          fi
+          python3 scripts/check_release_version.py --tag "$TAG" --skip-non-version --addon "${packages[@]}"
