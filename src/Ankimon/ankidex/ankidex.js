@@ -731,7 +731,10 @@ function updateGlobalProgress() {
     if (p) seenSpecies.add(p.species_id);
   });
   const caughtCount = caughtSpecies.size;
-  const seenCount = seenSpecies.size;
+  let seenCount = seenSpecies.size;
+  if (window.AnkidexData && window.AnkidexData.total_encounters > 0) {
+      seenCount = window.AnkidexData.total_encounters;
+  }
   const percent = total > 0 ? Math.round((caughtCount / total) * 100) : 0;
   if (
     percent === lastGlobalPct &&

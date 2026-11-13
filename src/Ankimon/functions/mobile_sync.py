@@ -1698,8 +1698,14 @@ def _run_mobile_battles_impl(
             ):
                 cards_battle_round = 0
 
+
                 if current_enemy_pokemon is None:
                     encounters_fought += 1
+
+                    if commit:
+                        _current_encounters = int(settings_obj.get("trainer.total_encounters", 0))
+                        settings_obj.set("trainer.total_encounters", _current_encounters + 1)
+
                     current_encounter_reviews = len(current_turn_reviews)
 
                     # Stable seeding based on encounter index
@@ -1942,8 +1948,15 @@ def _run_mobile_battles_impl(
                             )
                             if allow_to_choose_move:
                                 txp *= 0.5
+
                             txp = int(txp) if last_outcome == "defeated" else 0
+
+                            if last_outcome == "defeated":
+                                _current_defeated = int(settings_obj.get("trainer.total_pokemon_defeated", 0))
+                                settings_obj.set("trainer.total_pokemon_defeated", _current_defeated + 1)
+
                             history_entries_to_add.append(
+
                                 {
                                     "timestamp": int(time.time() * 1000),
                                     "enemy_id": current_enemy_pokemon.id,

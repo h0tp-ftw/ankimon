@@ -137,6 +137,7 @@ def _empty_payload():
         "owned": [],
         "shinies": [],
         "seen": [],
+        "total_encounters": 0,
         "encounterable": [],
         "prerequisites": {},
         "prefs": {
@@ -265,6 +266,7 @@ def get_ankidex_data(db, settings, tracker=None):
         "owned": list(caught_ids),
         "shinies": shiny_owned_ids,
         "seen": list(seen_ids),
+        "total_encounters": settings.get("trainer.total_encounters", 0) if settings else 0,
         "encounterable": list(encounterable_ids),
         "prerequisites": prereqs,
         "prefs": _prefs(settings),
