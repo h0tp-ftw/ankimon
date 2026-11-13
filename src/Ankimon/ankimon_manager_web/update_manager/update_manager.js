@@ -597,7 +597,22 @@
 			const content = document.createElement('div');
 			const warning = document.createElement('p');
 			warning.className = 'warning-text modal-warning-text developer-warning-text';
-			warning.textContent = 'This section contains developer tools and is usually for testing purposes. Installations made here are irreversible, and the code might not do as their description says. Pull requests and side branches may be experiments or work in progress. Please proceed with sources you trust.';
+			warning.append(
+				document.createTextNode(
+					'This section contains developer tools and is usually for testing purposes. Installations made here are ',
+				),
+			);
+			const irreversible = document.createElement('strong');
+			irreversible.textContent = 'irreversible';
+			warning.append(
+				irreversible,
+				document.createTextNode(
+					', and the code might not do as their description says. Pull requests and side branches may be experiments or work in progress. ',
+				),
+			);
+			const trustSources = document.createElement('strong');
+			trustSources.textContent = 'Please proceed with sources you trust.';
+			warning.appendChild(trustSources);
 			const row = document.createElement('label');
 			row.className = 'check-row developer-warning-checkbox';
 			const checkbox = document.createElement('input');
@@ -916,17 +931,32 @@
 			resolvedTarget.name && resolvedTarget.name !== 'main') {
 			warning = 'Unlike main, these are collaborator branches and can be unreleased. The branch may be a work in progress, and may or may not behave as expected. Please proceed if you trust this branch. Use at your own risk.';
 		}
+		const isPullRequestOrSideBranch = resolvedTarget.type === 'pr' ||
+			(resolvedTarget.type === 'branch' && resolvedTarget.name !== 'main');
+		const developerSourceInstall = progressPanel === 'developer' &&
+			isPullRequestOrSideBranch;
 		const linkTarget = sourceLinkTarget(sourceType, sourceName);
 		const fragment = document.createDocumentFragment();
 		if (warning) {
 			const warningElement = document.createElement('p');
-			warningElement.className = 'warning-text modal-warning-text';
+			warningElement.className = 'warning-text modal-warning-text confirm-update-warning';
 			const heading = document.createElement('strong');
 			heading.textContent = 'Warning: ';
-			warningElement.append(heading, document.createTextNode(warning));
+			const riskText = 'Use at your own risk.';
+			if (isPullRequestOrSideBranch && warning.endsWith(riskText)) {
+				const risk = document.createElement('strong');
+				risk.textContent = riskText;
+				warningElement.append(
+					heading,
+					document.createTextNode(warning.slice(0, -riskText.length)),
+					risk,
+				);
+			} else {
+				warningElement.append(heading, document.createTextNode(warning));
+			}
 			fragment.append(warningElement, document.createTextNode('\n'));
 		}
-		if (!updateData || !updateData.git_clone) {
+		if (developerSourceInstall) {
 			const userFilesWarning = document.createElement('p');
 			userFilesWarning.className =
 				'warning-text modal-warning-text user-files-warning';
@@ -955,8 +985,14 @@
 		fragment.appendChild(link);
 		if (updateData && updateData.git_clone) {
 			fragment.appendChild(document.createTextNode('?\n\nYour local branches and commits will not be reset. The checkout must be clean, and Anki must be restarted afterward.'));
+		} else if (isPullRequestOrSideBranch) {
+			fragment.appendChild(document.createTextNode('?'));
 		} else {
-			fragment.appendChild(document.createTextNode('?\n\nYour Pokémon data, settings, and sprites will be preserved.'));
+			fragment.appendChild(
+				document.createTextNode(
+					'?\n\nYour Ankimon progress and configuration will not be lost.',
+				),
+			);
 		}
 		showModal(
 			'Confirm Update',

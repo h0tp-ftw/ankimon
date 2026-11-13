@@ -840,6 +840,10 @@ progress::-moz-progress-bar {
 	margin: 0 0 12px;
 }
 
+.confirm-update-warning {
+	margin-bottom: 3px;
+}
+
 .update-modal-card .modal-warning-text {
 	color: var(--update-warning);
 }

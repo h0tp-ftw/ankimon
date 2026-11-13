@@ -79,6 +79,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
+    assert 'href="update_manager.css?v=20261113.2"' in html
+    assert 'src="update_manager.js?v=20261113.2"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
@@ -138,7 +140,11 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert pre_release.index("Recent Branch Updates") < pre_release.index('id="branch-status"')
     assert pre_release.index('id="branch-status"') < pre_release.index('id="recent-commits"')
     assert 'id="branch-snooze"' in pre_release and 'id="branch-update-btn"' in pre_release
-    assert "padding-bottom: 90px;" in css[css.index("#panel-releases"):]
+    release_panel_start = css.index("#panel-releases,")
+    release_panel_padding = css[
+        release_panel_start:css.index("}", release_panel_start)
+    ]
+    assert "padding-bottom: 90px;" in release_panel_padding
     assert "border-bottom-color: var(--accent-blue);" in css
     assert " (Current)" in javascript
     assert " (Last Main)" in javascript
@@ -224,6 +230,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "overflow-x: hidden;" in css
     assert "max-width: 100%;" in css[css.index(".custom-select-menu {"):css.index(".custom-select-menu .custom-select-search")]
     assert "padding-bottom: 90px;" in css
+    assert "padding-bottom: 90px;" in css[css.index(".update-content.has-open-dropdown"):css.index(".code-error")]
     assert "padding-bottom: 360px;" not in css
     assert "fetch_source_sha" in (
         ADDON / "pyobj" / "update_manager_web.py"
@@ -321,6 +328,19 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "const externalPrOrBranch = hasBranchViews" in javascript
     assert "branchCanUpdate = true;" in javascript
     assert "user_files/, which stores your Ankimon data." in javascript
+    assert javascript.count(
+        "Please check if the source modifies user_files/, which stores your Ankimon data."
+    ) == 1
+    assert "const developerSourceInstall = progressPanel === 'developer' &&" in javascript
+    assert "isPullRequestOrSideBranch" in javascript
+    assert "Your Pokémon data, settings, and sprites will be preserved." not in javascript
+    assert "Your Ankimon progress and configuration will not be lost." in javascript
+    assert "confirm-update-warning" in javascript
+    assert "risk.textContent = riskText;" in javascript
+    assert "trustSources.textContent = 'Please proceed with sources you trust.'" in javascript
+    assert "irreversible.textContent = 'irreversible';" in javascript
+    assert "warning.endsWith(riskText)" in javascript
+    assert "margin-bottom: 3px;" in css[css.index(".confirm-update-warning"):css.index(".update-modal-card .modal-warning-text")]
     assert "user-files-warning" in javascript
     assert ".update-modal-card .user-files-warning" in css
     assert "--update-deep-warning: #b26a00;" in css
