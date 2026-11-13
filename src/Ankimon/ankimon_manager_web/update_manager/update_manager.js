@@ -184,6 +184,10 @@
 			'has-open-release-dropdown',
 			Boolean(openDropdown && openDropdown.id === 'release-select'),
 		);
+		contentScroll.classList.toggle(
+			'has-open-source-dropdown',
+			Boolean(openDropdown && openDropdown.id === 'source-target'),
+		);
 	}
 
 	function closeDropdowns(except = null) {

@@ -761,6 +761,10 @@ progress::-moz-progress-bar {
 	padding-bottom: 80px;
 }
 
+.content-scroll.has-open-source-dropdown {
+	padding-bottom: 80px;
+}
+
 .code-error {
 	padding: 16px 18px;
 	background: rgba(248, 81, 73, .08);

@@ -79,8 +79,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261113.5"' in html
-    assert 'src="update_manager.js?v=20261113.5"' in html
+    assert 'href="update_manager.css?v=20261113.6"' in html
+    assert 'src="update_manager.js?v=20261113.6"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
@@ -329,11 +329,13 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "branchCanUpdate = true;" in javascript
     assert "user_files/, which stores your Ankimon data." in javascript
     assert "has-open-release-dropdown" in javascript
+    assert "Boolean(openDropdown && openDropdown.id === 'source-target')" in javascript
     release_dropdown_padding = css[
         css.index(".content-scroll.has-open-release-dropdown"):
         css.index(".code-error")
     ]
     assert "padding-bottom: 80px;" in release_dropdown_padding
+    assert ".content-scroll.has-open-source-dropdown" in release_dropdown_padding
     assert javascript.count(
         "Please check if the source modifies user_files/, which stores your Ankimon data."
     ) == 1
