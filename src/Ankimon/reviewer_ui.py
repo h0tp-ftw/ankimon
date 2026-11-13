@@ -136,7 +136,7 @@ def cycle_team_pokemon():
 
             # The mutable main singleton is about to represent another
             # individual. The pending faint belongs to the previous one.
-            from .battle_loop import _cancel_main_faint_deferral
+            from .battle_loop import _cancel_main_faint_deferral, mark_swap_turn_lost
 
             outgoing_id = getattr(main_pokemon, "individual_id", None)
             if outgoing_id and services.db.get_main_pokemon():
@@ -157,6 +157,7 @@ def cycle_team_pokemon():
                 return
             _cancel_main_faint_deferral()
             main_pokemon.__dict__.update(incoming.__dict__)
+            mark_swap_turn_lost()
         except Exception as e:
             print(f"Error updating pokemon: {e}")
             tooltip(f"Error switching pokemon: {e}")

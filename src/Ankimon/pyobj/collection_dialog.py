@@ -60,6 +60,7 @@ def MainPokemon(
     from ..battle_loop import (
         _cancel_main_faint_deferral,
         _main_faint_pending_for,
+        mark_swap_turn_lost,
     )
 
     # Re-selecting the active companion while both Pokémon are fainted is not
@@ -70,6 +71,7 @@ def MainPokemon(
         return
 
     db = mw.ankimon_db
+    outgoing_id = getattr(main_pokemon, "individual_id", None)
 
     # Save combat HP without replacing newer stored moves, rewards, or metadata.
     try:
@@ -178,6 +180,8 @@ def MainPokemon(
 
     _cancel_main_faint_deferral()
     main_pokemon.__dict__.update(new_main_pokemon.__dict__)
+    if str(outgoing_id) != str(pokemon_data.get("individual_id")):
+        mark_swap_turn_lost()
 
     logger.log_and_showinfo(
         "info",

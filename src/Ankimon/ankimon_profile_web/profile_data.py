@@ -842,6 +842,10 @@ class ProfileData:
                     services.main_pokemon.update_stats(**new_main.to_dict())
                 if mainpokemon_empty:
                     raise RuntimeError("The selected companion could not be loaded")
+                if str(getattr(active, "individual_id", None)) != str(companion_id):
+                    from ..battle_loop import mark_swap_turn_lost
+
+                    mark_swap_turn_lost()
                 if services.reviewer is not None:
                     services.reviewer.refresh_hud()
         except Exception as e:

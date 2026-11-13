@@ -178,6 +178,7 @@ def swap_env(monkeypatch):
             "Ankimon.battle_loop",
             init_battle_state=MagicMock(),
             _cancel_main_faint_deferral=MagicMock(),
+            mark_swap_turn_lost=MagicMock(),
         ),
     )
     monkeypatch.setitem(

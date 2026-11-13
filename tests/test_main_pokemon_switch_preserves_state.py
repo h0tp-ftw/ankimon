@@ -138,6 +138,7 @@ def collection_dialog():
             "Ankimon.battle_loop",
             _main_faint_pending_for=MagicMock(return_value=False),
             _cancel_main_faint_deferral=MagicMock(),
+            mark_swap_turn_lost=MagicMock(),
         ),
         # Imported at the very END of MainPokemon's body.
         "Ankimon.singletons": singletons,

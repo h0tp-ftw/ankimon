@@ -1239,6 +1239,7 @@ def new_pokemon(
 
         _state.new_state = None
         _state.mutator_full_reset = 1
+        _state.swap_turn_pending = False
     except Exception as e:
         print(f"[Ankimon] Error resetting battle state in new_pokemon: {e}")
 

@@ -52,6 +52,17 @@ def _cancel_main_faint_deferral():
     _main_faint_context = None
 
 
+def mark_swap_turn_lost():
+    """Make a mid-battle swap cost the incoming Pokemon its next attack."""
+    enemy = enemy_pokemon
+    try:
+        in_battle = enemy is not None and int(getattr(enemy, "hp", 0) or 0) > 0
+    except (TypeError, ValueError):
+        in_battle = False
+    if in_battle:
+        _state.swap_turn_pending = True
+
+
 def _main_faint_pending_for(main_pokemon, individual_id):
     """Whether this active individual still owns the unresolved double faint."""
     if not _main_faint_deferred or _main_faint_context is None:
@@ -158,6 +169,9 @@ class BattleState:
     dmg_from_user_move: int = 0
     item_receive_value: int = 0
     collected_pokemon_ids: set = field(default_factory=set)
+    # Set when the active Pokemon is swapped mid-battle: the incoming Pokemon
+    # spends the next battle round switching in and does not attack.
+    swap_turn_pending: bool = False
 
 
 _state = BattleState()
@@ -323,7 +337,10 @@ def on_review_card(*args):
                 and main_pokemon.hp > 0
                 and enemy_pokemon.hp > 0
             ):
-                if settings_obj.get("controls.allow_to_choose_moves") == True:
+                if (
+                    settings_obj.get("controls.allow_to_choose_moves") == True
+                    and not s.swap_turn_pending
+                ):
                     # Real dialog under Anki (QtPresenter); scripted/None headless.
                     chosen = services.ui.choose_move(main_pokemon.attacks)
                     if chosen:
@@ -335,6 +352,12 @@ def on_review_card(*args):
                     color = "#D2B4DE"
                 else:
                     color = "#F0B27A"
+
+            # A swap made since the last round costs this round's attack.
+            lost_turn_to_swap = s.swap_turn_pending
+            if lost_turn_to_swap:
+                s.swap_turn_pending = False
+                user_attack = "splash"
 
             results = simulate_battle_with_poke_engine(
                 main_pokemon,
@@ -404,6 +427,13 @@ def on_review_card(*args):
                 changes=current_battle_info_changes,
                 review_based_damage=is_review_based_damage_enabled,
             )
+
+            if lost_turn_to_swap:
+                swapped_name = getattr(main_pokemon, "display_name", None) or main_pokemon.name
+                formatted_battle_log = (
+                    f"{swapped_name} is switching in and lost its turn!\n"
+                    + (formatted_battle_log or "")
+                )
 
             tooltipWithColour(formatted_battle_log, color)
 
