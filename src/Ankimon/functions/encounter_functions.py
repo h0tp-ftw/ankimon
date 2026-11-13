@@ -1495,6 +1495,8 @@ def save_main_pokemon_progress(
         )
         main_pokemon.level += 1
         main_pokemon.update_stats()
+        # Levelling up fully heals the Pokemon to its new max HP.
+        main_pokemon.hp = main_pokemon.current_hp = main_pokemon.max_hp
         events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
@@ -1702,6 +1704,10 @@ def save_main_pokemon_progress(
         # Include this defeat's EVs, even when no level was gained. Keep the
         # cached HP used by battles/HUD and the saved stats in sync.
         main_pokemon.update_stats()
+        if levels_gained > 0:
+            # Re-apply the level-up full heal: this defeat's HP EVs can raise
+            # max HP after the heal inside the level-up loop.
+            main_pokemon.hp = main_pokemon.current_hp = main_pokemon.max_hp
         mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
         mainpkmndata.pop("hp", None)
