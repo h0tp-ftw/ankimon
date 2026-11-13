@@ -770,6 +770,7 @@ class PokemonPC(QDialog):
         self.filter_favorites = None
         self.filter_is_holding_item = None
         self.filter_shiny = None
+        self.filter_monthly = None
         self.sort_by_id = None
         self.sort_by_name = None
         self.sort_by_level = None
@@ -1246,6 +1247,14 @@ class PokemonPC(QDialog):
         self.filter_shiny = QCheckBox("Shiny")
         self.filter_shiny.setChecked(is_checked)
         self.filter_shiny.stateChanged.connect(lambda: self.go_to_box(0))
+
+        # Monthly filter
+        is_checked = (
+            self.filter_monthly.isChecked() if self.filter_monthly is not None else False
+        )
+        self.filter_monthly = QCheckBox("Monthly")
+        self.filter_monthly.setChecked(is_checked)
+        self.filter_monthly.stateChanged.connect(lambda: self.go_to_box(0))
         # Sorting options
         sort_label = QLabel("Sort by:")
 
@@ -1309,6 +1318,7 @@ class PokemonPC(QDialog):
         checkboxes_layout.addWidget(self.filter_favorites)
         checkboxes_layout.addWidget(self.filter_is_holding_item)
         checkboxes_layout.addWidget(self.filter_shiny)
+        checkboxes_layout.addWidget(self.filter_monthly)
         checkboxes_layout.addWidget(self.desc_sort)  # Moved here
         checkboxes_widget = QWidget()
         checkboxes_widget.setLayout(checkboxes_layout)
@@ -2022,6 +2032,7 @@ class PokemonPC(QDialog):
             else "All gens",
             "tier": self.tier_combo.currentText() if self.tier_combo else "All tiers",
             "shiny": self.filter_shiny.isChecked() if self.filter_shiny else False,
+            "monthly": self.filter_monthly.isChecked() if self.filter_monthly else False,
             "favorite": self.filter_favorites.isChecked()
             if self.filter_favorites
             else False,
@@ -2039,7 +2050,7 @@ class PokemonPC(QDialog):
         # Base query mapping direct virtual columns where available
         query_parts = [
             "SELECT individual_id, name, level, pokedex_id as id, shiny as shiny, "
-            "rowid as original_index, json_extract(data, '$.nickname') as nickname, "
+            "is_monthly as is_monthly, json_extract(data, '$.monthly_month') as monthly_month, rowid as original_index, json_extract(data, '$.nickname') as nickname, "
             "json_extract(data, '$.gender') as gender, json_extract(data, '$.is_favorite') as is_favorite, "
             "json_extract(data, '$.held_item') as held_item, "
             "json_extract(data, '$.captured_date') as captured_date, "
@@ -2087,6 +2098,10 @@ class PokemonPC(QDialog):
         # Shiny filtering
         if self.filter_shiny is not None and self.filter_shiny.isChecked():
             query_parts.append("AND shiny = 1")
+
+        # Monthly filtering
+        if self.filter_monthly is not None and self.filter_monthly.isChecked():
+            query_parts.append("AND is_monthly = 1")
 
         # Generation filtering
         if self.generation_combo is not None:
@@ -2169,6 +2184,8 @@ class PokemonPC(QDialog):
                     "name": row["name"],
                     "nickname": row["nickname"],
                     "shiny": bool(row["shiny"]),
+                    "is_monthly": bool(row["is_monthly"] if "is_monthly" in row.keys() and row["is_monthly"] is not None else False),
+                    "monthly_month": row["monthly_month"] if "monthly_month" in row.keys() else None,
                     "level": row["level"],
                     "gender": row["gender"],
                     "is_favorite": bool(row["is_favorite"]),
@@ -2416,6 +2433,7 @@ class PokemonPC(QDialog):
             gif_in_collection=self.gif_in_collection,
             remove_levelcap=self.settings.get("misc.remove_level_cap"),
             logger=self.logger,
+            monthly_month=pokemon.get("monthly_month"),
             refresh_callback=lambda: (
                 self.refresh_gui(),
                 self.show_pokemon_details(pokemon_stub),
