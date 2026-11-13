@@ -386,7 +386,7 @@ def PokemonCollectionDetailsSplit(
         captured_date_label.setFont(custom_font)
 
         if gif_in_collection is False:
-            pkmnimage_label.setFixedHeight(100)
+            pkmnimage_label.setFixedHeight(150)
         pkmnimage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
