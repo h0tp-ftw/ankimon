@@ -625,8 +625,8 @@ class UpdateManagerBridge(QObject):
 
         warning = (
             "WARNING: Anyone can open a pull request. This code is unreviewed and "
-            "unreleased — installing it runs unverified code on your computer. "
-            "Only proceed if you trust this PR. Use at your own risk."
+            "unreleased — installing it runs unverified code on your device. "
+            "Please proceed if you trust this PR. Use at your own risk."
             if source["source_type"] == "pr"
             else ""
         )

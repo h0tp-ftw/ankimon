@@ -490,6 +490,19 @@
 				status.classList.add('success');
 			}
 		}
+		const externalPrOrBranch = hasBranchViews && (
+			data.source_type === 'pr' ||
+			(data.source_type === 'branch' && data.source_name !== 'main')
+		);
+		if (branchView === 'main' && externalPrOrBranch && remoteSha) {
+			if (compareSha === remoteSha) {
+				status.textContent = 'Up to date!';
+				status.classList.remove('warning', 'error', 'rate-limit', 'neutral');
+				status.classList.add('success');
+				setText('branch-update-btn', 'Install Latest Main');
+			}
+			branchCanUpdate = true;
+		}
 
 		const commits = byId('recent-commits');
 		commits.replaceChildren();
@@ -584,7 +597,7 @@
 			const content = document.createElement('div');
 			const warning = document.createElement('p');
 			warning.className = 'warning-text modal-warning-text developer-warning-text';
-			warning.textContent = 'This section contains developer tools and is usually for developer use. Installations made here are irreversible, and the code might not do as their description says. Pull requests and side branches may be experiments or work in progress. Please only proceed with sources you trust.';
+			warning.textContent = 'This section contains developer tools and is usually for testing purposes. Installations made here are irreversible, and the code might not do as their description says. Pull requests and side branches may be experiments or work in progress. Please proceed with sources you trust.';
 			const row = document.createElement('label');
 			row.className = 'check-row developer-warning-checkbox';
 			const checkbox = document.createElement('input');
@@ -680,13 +693,12 @@
 		if (state.source_type === 'branch' && state.source_name === 'main') {
 			version = '| Pre-Release';
 		} else if (state.source_type === 'branch') {
-			const sha = typeof state.commit_sha === 'string' && state.commit_sha
-				? ` (${state.commit_sha.slice(0, 7)})`
-				: '';
-			version = `(Branch: ${state.source_name}${sha})`;
+			version = `| Branch ${state.source_name}`;
+		} else if (state.source_type === 'pr') {
+			version = `| PR #${state.source_name}`;
 		} else if (state.source_type === 'tag') {
 			version = `(Tag: ${state.source_name})`;
-		} else if (state.source_type === 'release' || state.source_type === 'pr') {
+		} else if (state.source_type === 'release') {
 			version = '';
 		} else if (data.experimental_build) {
 			version = '(Experimental Build)';
@@ -899,10 +911,10 @@
 				? { type: 'branch', name: updateData.git_info && updateData.git_info.branch }
 				: { type: sourceType, name: sourceName };
 		if (!warning && resolvedTarget.type === 'pr') {
-			warning = 'Anyone can open a pull request; this code is unreviewed and unreleased. Installing it runs unverified code on your computer. It may or may not behave as expected, and can even break the add-on. Only proceed if you trust this PR. Use at your own risk.';
+			warning = 'Anyone can open a pull request; this code is unreviewed and unreleased. Installing it runs unverified code on your device. It may or may not behave as expected, and can even break the add-on. Please proceed if you trust this PR. Use at your own risk.';
 		} else if (!warning && resolvedTarget.type === 'branch' &&
 			resolvedTarget.name && resolvedTarget.name !== 'main') {
-			warning = 'Unlike main, these are collaborator branches and can be unreleased. The branch may be a work in progress. They may or may not behave as expected, and might even break the add-on. Only proceed if you trust this branch. Use at your own risk.';
+			warning = 'Unlike main, these are collaborator branches and can be unreleased. The branch may be a work in progress, and may or may not behave as expected. Please proceed if you trust this branch. Use at your own risk.';
 		}
 		const linkTarget = sourceLinkTarget(sourceType, sourceName);
 		const fragment = document.createDocumentFragment();
@@ -913,6 +925,14 @@
 			heading.textContent = 'Warning: ';
 			warningElement.append(heading, document.createTextNode(warning));
 			fragment.append(warningElement, document.createTextNode('\n'));
+		}
+		if (!updateData || !updateData.git_clone) {
+			const userFilesWarning = document.createElement('p');
+			userFilesWarning.className =
+				'warning-text modal-warning-text user-files-warning';
+			userFilesWarning.textContent =
+				'Please check if the source modifies user_files/, which stores your Ankimon data. If it does, you may want to back up your files in Ankimon > Game > Backup Manager before proceeding.';
+			fragment.append(userFilesWarning, document.createTextNode('\n'));
 		}
 		fragment.appendChild(document.createTextNode(prompt));
 		const link = document.createElement('a');
@@ -1271,7 +1291,7 @@
 		const currentIndex = views.indexOf(selectedDeveloperView);
 		const nextIndex = Math.max(
 			0,
-			Math.min(views.length - 1, currentIndex + (event.deltaY < 0 ? 1 : -1)),
+			Math.min(views.length - 1, currentIndex + (event.deltaY > 0 ? 1 : -1)),
 		);
 		if (nextIndex !== currentIndex) switchDeveloperView(views[nextIndex]);
 	}, { passive: false });

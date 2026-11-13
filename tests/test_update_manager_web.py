@@ -138,7 +138,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert pre_release.index("Recent Branch Updates") < pre_release.index('id="branch-status"')
     assert pre_release.index('id="branch-status"') < pre_release.index('id="recent-commits"')
     assert 'id="branch-snooze"' in pre_release and 'id="branch-update-btn"' in pre_release
-    assert "padding-bottom: 180px;" in css[css.index("#panel-releases"):]
+    assert "padding-bottom: 90px;" in css[css.index("#panel-releases"):]
     assert "border-bottom-color: var(--accent-blue);" in css
     assert " (Current)" in javascript
     assert " (Last Main)" in javascript
@@ -202,7 +202,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     warning_start = html.index('<blockquote id="developer-warning"')
     warning_end = html.index("</blockquote>", warning_start)
     warning = html[warning_start:warning_end]
-    assert "progress file(s) will not be lost" in warning
+    assert "progress and configuration will not be lost" in warning
     assert "pull requests and side branches may contain unreviewed code" in warning
     assert "<strong>irreversible</strong>" in warning
     assert "<strong>Please install sources you trust.</strong>" in warning
@@ -223,7 +223,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert ".content-scroll {" in css
     assert "overflow-x: hidden;" in css
     assert "max-width: 100%;" in css[css.index(".custom-select-menu {"):css.index(".custom-select-menu .custom-select-search")]
-    assert "padding-bottom: 180px;" in css
+    assert "padding-bottom: 90px;" in css
     assert "padding-bottom: 360px;" not in css
     assert "fetch_source_sha" in (
         ADDON / "pyobj" / "update_manager_web.py"
@@ -252,8 +252,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "Unlike main, these are collaborator branches and can be unreleased." in javascript
     assert (
         "Anyone can open a pull request; this code is unreviewed and unreleased. "
-        "Installing it runs unverified code on your computer. It may or may not "
-        "behave as expected, and can even break the add-on. Only proceed if you "
+        "Installing it runs unverified code on your device. It may or may not "
+        "behave as expected, and can even break the add-on. Please proceed if you "
         "trust this PR. Use at your own risk."
     ) in javascript
     assert "unreleased — installing it runs unverified code" not in javascript
@@ -311,11 +311,19 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "{ value: 'branch', label: 'Side Branch' }" in javascript
     assert "status.textContent = 'Update available!';" in javascript
     assert "status.textContent = 'Up to date!';" in javascript
-    assert "One click to enjoy the latest bleeding edge updates pre-release." in html
+    assert "One click to enjoy the latest bleeding edge updates, pre-release." in html
     assert 'id="source-rate-limit-status"' in html
     assert "developer-subtabs').addEventListener('wheel'" in javascript
-    assert "event.deltaY < 0 ? 1 : -1" in javascript
+    assert "event.deltaY > 0 ? 1 : -1" in javascript
     assert "gap: 14px;" in css[css.index("#branch-update-view"):css.index(".status-text")]
+    assert "version = `| PR #${state.source_name}`;" in javascript
+    assert "version = `| Branch ${state.source_name}`;" in javascript
+    assert "const externalPrOrBranch = hasBranchViews" in javascript
+    assert "branchCanUpdate = true;" in javascript
+    assert "user_files/, which stores your Ankimon data." in javascript
+    assert "user-files-warning" in javascript
+    assert ".update-modal-card .user-files-warning" in css
+    assert "--update-deep-warning: #b26a00;" in css
 
 
 def test_shell_routes_update_manager_from_help_menu():

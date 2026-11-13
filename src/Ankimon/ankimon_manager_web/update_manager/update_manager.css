@@ -1,6 +1,7 @@
 :root {
 	--update-success: #3fb950;
 	--update-warning: #d29922;
+	--update-deep-warning: #b26a00;
 	--update-error: #f85149;
 }
 
@@ -500,7 +501,7 @@
 
 #panel-releases,
 #panel-developer {
-	padding-bottom: 180px;
+	padding-bottom: 90px;
 }
 
 .branch-actions {
@@ -753,7 +754,7 @@ progress::-moz-progress-bar {
 }
 
 .update-content.has-open-dropdown {
-	padding-bottom: 180px;
+	padding-bottom: 90px;
 }
 
 .code-error {
@@ -841,6 +842,12 @@ progress::-moz-progress-bar {
 
 .update-modal-card .modal-warning-text {
 	color: var(--update-warning);
+}
+
+.update-modal-card .user-files-warning {
+	color: var(--update-deep-warning);
+	background: rgba(178, 106, 0, .09);
+	border-left-color: var(--update-deep-warning);
 }
 
 .developer-warning-checkbox {
