@@ -160,6 +160,11 @@
 	box-shadow: none;
 }
 
+.custom-select-trigger:disabled {
+	cursor: not-allowed;
+	opacity: .65;
+}
+
 .custom-select-value {
 	min-width: 0;
 	overflow: hidden;
@@ -414,6 +419,12 @@
 	display: grid;
 }
 
+#branch-update-view {
+	display: grid;
+	gap: 14px;
+	min-width: 0;
+}
+
 .status-text {
 	margin: 0;
 	color: var(--text-muted);
@@ -630,6 +641,7 @@
 }
 
 .developer-intro {
+	margin: 0;
 	color: var(--text-muted);
 	font-size: .9rem;
 	line-height: 1.5;
@@ -827,13 +839,21 @@ progress::-moz-progress-bar {
 	margin: 0 0 12px;
 }
 
+.update-modal-card .modal-warning-text {
+	color: var(--update-warning);
+}
+
 .developer-warning-checkbox {
 	display: inline-flex;
 	align-items: center;
-	gap: 9px;
+	margin-top: 16px;
 	color: var(--text-main);
 	font-size: .9rem;
 	cursor: pointer;
+}
+
+.developer-warning-text {
+	margin-bottom: 0;
 }
 
 .lost-commit-list {
@@ -843,7 +863,6 @@ progress::-moz-progress-bar {
 .lost-commits-more {
 	color: var(--text-muted) !important;
 	font-size: .76rem !important;
-	font-style: italic;
 	text-align: center;
 }
 

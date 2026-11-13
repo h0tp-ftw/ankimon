@@ -60,7 +60,7 @@
 					</section>
 					<section id="panel-releases" class="tab-panel active">
 						<nav id="release-subtabs" class="branch-subtabs" aria-label="Release update view">
-							<button class="branch-subtab active" type="button" data-release-view="releases">Releases</button>
+							<button class="branch-subtab active" type="button" data-release-view="releases">Release</button>
 							<button class="branch-subtab" type="button" data-release-view="pre-release">Pre-Release</button>
 						</nav>
 						<div id="release-view-releases" class="subtab-panel active">
@@ -86,7 +86,8 @@
 						<div id="release-view-pre-release" class="subtab-panel">
 							<div id="branch-update-view">
 								<div class="update-card">
-									<h3>Recent Branch Updates</h3>
+									<h3 id="branch-updates-title">Recent Branch Updates</h3>
+									<p id="branch-update-description" class="muted">One click to enjoy the latest bleeding edge updates pre-release.</p>
 									<p id="branch-status" class="status-text" role="status" aria-live="polite">Checking branch...</p>
 									<ul id="recent-commits" class="commit-list"><li>Checking for changes...</li></ul>
 								</div>
@@ -106,6 +107,7 @@
 						</div>
 					</section>
 					<section id="panel-developer" class="tab-panel">
+						<p class="developer-intro">Install code directly from branches, pull requests, or tags. You can also check and update your current branch status.</p>
 						<div class="update-card">
 							<h3 id="active-branch-title">Installed Source: Loading...</h3>
 							<dl class="branch-details">
@@ -114,8 +116,7 @@
 								<div><dt>Last Update Installed</dt><dd id="last-update-installed">Loading...</dd></div>
 							</dl>
 						</div>
-						<p class="developer-intro">Install code directly from branches, pull requests, or tags.</p>
-						<blockquote id="developer-warning" class="warning-text"><strong>Note:</strong> Your Ankimon progress file(s) will not be lost. However, pull requests and branches may contain unreviewed code. They may or may not break the add-on. <strong>Please install sources you trust.</strong></blockquote>
+						<blockquote id="developer-warning" class="warning-text"><strong>Note:</strong> Installations made here are <strong>irreversible</strong>. Your Ankimon progress file(s) will not be lost. However, pull requests and side branches may contain unreviewed code. They may or may not break the add-on. <strong>Please install sources you trust.</strong></blockquote>
 						<nav id="developer-subtabs" class="branch-subtabs" aria-label="Developer update view">
 							<button class="branch-subtab active" type="button" data-developer-view="source">Source</button>
 							<button class="branch-subtab" type="button" data-developer-view="main">Main</button>
@@ -124,9 +125,10 @@
 						<div id="developer-view-source" class="subtab-panel active">
 							<div class="update-card">
 							<h3>Install from Source</h3>
+							<p id="source-rate-limit-status" class="status-text rate-limit hidden" role="status" aria-live="polite"></p>
 							<label>Source type:</label>
 							<div id="source-type-select" class="custom-select">
-								<button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">Latest Main Branch</span><span class="custom-select-chevron" aria-hidden="true"></span></button>
+								<button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">Pull Request</span><span class="custom-select-chevron" aria-hidden="true"></span></button>
 								<div class="custom-select-menu hidden" role="dialog" aria-label="Choose a source type">
 									<div class="custom-select-options" role="listbox"></div>
 								</div>

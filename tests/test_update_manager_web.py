@@ -23,6 +23,8 @@ class PageLinks(HTMLParser):
     def __init__(self):
         super().__init__()
         self.update_manager_links = 0
+        self.update_manager_icons = []
+        self.inside_update_manager = False
         self.nav_screens = []
         self.local_resources = []
 
@@ -30,6 +32,9 @@ class PageLinks(HTMLParser):
         attrs = dict(attrs)
         if attrs.get("data-screen") == "update_manager":
             self.update_manager_links += 1
+            self.inside_update_manager = True
+        if tag == "img" and self.inside_update_manager:
+            self.update_manager_icons.append(attrs.get("src"))
         if attrs.get("role") == "menuitem" and attrs.get("data-screen"):
             self.nav_screens.append(attrs["data-screen"])
         resource = (
@@ -41,6 +46,10 @@ class PageLinks(HTMLParser):
         )
         if resource and not urlparse(resource).scheme and not resource.startswith("qrc:"):
             self.local_resources.append(resource.split("?", 1)[0])
+
+    def handle_endtag(self, tag):
+        if tag == "button" and self.inside_update_manager:
+            self.inside_update_manager = False
 
 
 def test_existing_web_ui_pages_route_to_update_manager_and_keep_assets_resolvable():
@@ -54,6 +63,8 @@ def test_existing_web_ui_pages_route_to_update_manager_and_keep_assets_resolvabl
         parser.feed(page.read_text(encoding="utf-8"))
 
         assert parser.update_manager_links == 1, relative_path
+        assert len(parser.update_manager_icons) == 1, relative_path
+        assert parser.update_manager_icons[0].endswith("/up-grade.png"), relative_path
         assert parser.nav_screens.index("update_manager") < parser.nav_screens.index(
             "backup_manager"
         ), relative_path
@@ -82,7 +93,6 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     )
     assert "querySelector('.custom-select-options').scrollTop = 0;" in javascript
     assert "status-text.neutral" in css
-    assert "No updates since last install" in javascript
     assert "Install Latest Main" in javascript
     assert "Code error [Traceback]" in html
     assert "Status: Code error [Traceback]" not in html
@@ -103,12 +113,14 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "normalizeTagSearch" in javascript
     assert ".custom-checkbox:checked + .checkbox-indicator" in css
     assert "height: 24px;" in css
+    assert "font-style: italic;" not in css[css.index(".lost-commits-more"):css.index(".btn:disabled")]
     assert 'id="branch-progress"' in html
     assert 'id="developer-subtabs"' in html
     assert 'data-developer-view="source"' in html
     assert 'data-developer-view="main"' in html
     assert 'data-developer-view="current"' in html
     assert 'id="release-subtabs"' in html
+    assert 'data-release-view="releases">Release</button>' in html
     assert 'data-release-view="releases"' in html
     assert 'data-release-view="pre-release"' in html
     assert 'id="panel-branch"' not in html
@@ -117,7 +129,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
         "releases", "sprites", "developer"
     ]
     developer_panel = html[html.index('id="panel-developer"'):html.index('id="panel-sprites"')]
-    assert developer_panel.index('id="active-branch-title"') < developer_panel.index("Install code directly")
+    assert developer_panel.index("Install code directly from branches, pull requests, or tags.") < developer_panel.index('id="active-branch-title"')
+    assert developer_panel.index('id="active-branch-title"') < developer_panel.index("Note:")
     assert developer_panel.index("<blockquote id=\"developer-warning\"") < developer_panel.index('id="developer-subtabs"')
     assert developer_panel.index('id="developer-subtabs"') < developer_panel.index("Install from Source")
     releases_panel = html[html.index('id="panel-releases"'):html.index('id="panel-developer"')]
@@ -190,7 +203,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     warning_end = html.index("</blockquote>", warning_start)
     warning = html[warning_start:warning_end]
     assert "progress file(s) will not be lost" in warning
-    assert "pull requests and branches may contain unreviewed code" in warning
+    assert "pull requests and side branches may contain unreviewed code" in warning
+    assert "<strong>irreversible</strong>" in warning
+    assert "<strong>Please install sources you trust.</strong>" in warning
     assert "<blockquote id=\"developer-warning\"" in html
     assert ".update-tabs {" not in css
     assert ".update-tab {" not in css
@@ -244,6 +259,13 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "unreleased — installing it runs unverified code" not in javascript
     assert "warning-modal" in css
     assert "Do not show this again" in javascript
+    assert "'Developer Warning'" in javascript
+    assert "the code might not do as their description says" in javascript
+    assert "Pull requests and side branches may be experiments or work in progress." in javascript
+    assert "row.className = 'check-row developer-warning-checkbox';" in javascript
+    assert "indicator.className = 'checkbox-indicator';" in javascript
+    assert "escapeCloses = true" in javascript
+    assert "false,\n\t\t\t);" in javascript
     assert "showDeveloperWarningIfNeeded();" in javascript
     assert "def consume_api_error()" in (
         ADDON / "pyobj" / "update_manager.py"
@@ -263,7 +285,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "database = services.db" in bridge
     assert "database.set_user_data(\"hide_developer_warning\", 1 if hidden else 0)" in bridge
     assert "commit_cache = {}" in bridge
-    assert "commit_cache[key] = updater.fetch_commits_between(*key)" in bridge
+    assert "commit_cache[key] = (" in bridge
+    assert "updater.consume_api_error()" in bridge
+    assert '"main_commits_error": main_commits_error' in bridge
     assert "bleeding_edge_release" in bridge
     assert "bridge.setBranchSnooze(event.target.checked" in javascript
     assert "bridge.setSpriteSnooze(event.target.checked" in javascript
@@ -273,6 +297,25 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert ".update-manager-heading" in shell
     assert ".update-manager-logo" in shell
     assert "openGitHub" in javascript
+    assert "Connection rate limited! Pika try again soon." in javascript
+    assert "Connection rate limited, Pika try again!" in javascript
+    assert "No PRs found" in javascript
+    assert "No branches found" in javascript
+    assert "No tags found" in javascript
+    assert "Could not load PRs" in javascript
+    assert "Could not load branches" in javascript
+    assert "Could not load tags" in javascript
+    assert "targetTrigger.disabled = noSources;" in javascript
+    assert "entries: (developerData.branches || []).filter((entry) => entry.name !== 'main')" in javascript
+    assert "{ value: 'main', label: 'Latest Main Branch' }" not in javascript
+    assert "{ value: 'branch', label: 'Side Branch' }" in javascript
+    assert "status.textContent = 'Update available!';" in javascript
+    assert "status.textContent = 'Up to date!';" in javascript
+    assert "One click to enjoy the latest bleeding edge updates pre-release." in html
+    assert 'id="source-rate-limit-status"' in html
+    assert "developer-subtabs').addEventListener('wheel'" in javascript
+    assert "event.deltaY < 0 ? 1 : -1" in javascript
+    assert "gap: 14px;" in css[css.index("#branch-update-view"):css.index(".status-text")]
 
 
 def test_shell_routes_update_manager_from_help_menu():

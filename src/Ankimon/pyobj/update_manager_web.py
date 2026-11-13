@@ -259,26 +259,35 @@ class UpdateManagerBridge(QObject):
             def commits_between(base_sha, head_sha):
                 key = (base_sha, head_sha)
                 if key not in commit_cache:
-                    commit_cache[key] = updater.fetch_commits_between(*key)
+                    commit_cache[key] = (
+                        updater.fetch_commits_between(*key),
+                        updater.consume_api_error(),
+                    )
                 return commit_cache[key]
 
+            main_commits_error = None
             try:
-                main_commits = (
-                    commits_between(main_commit_sha, main_remote_sha)
-                    if main_commit_sha and main_remote_sha
+                if (
+                    main_commit_sha
+                    and main_remote_sha
                     and main_commit_sha != main_remote_sha
-                    else updater.fetch_branch_commits("main")
-                    if main_remote_sha and not main_commit_sha
-                    else []
-                )
+                ):
+                    main_commits, main_commits_error = commits_between(
+                        main_commit_sha, main_remote_sha
+                    )
+                elif main_remote_sha and not main_commit_sha:
+                    main_commits = updater.fetch_branch_commits("main")
+                    main_commits_error = updater.consume_api_error()
+                else:
+                    main_commits = []
             except Exception:
                 main_commits = []
+                main_commits_error = "api_error"
             try:
-                current_commits = (
-                    commits_between(local_sha, current_remote_sha)
-                    if local_sha and current_remote_sha and local_sha != current_remote_sha
-                    else []
-                )
+                if local_sha and current_remote_sha and local_sha != current_remote_sha:
+                    current_commits, _ = commits_between(local_sha, current_remote_sha)
+                else:
+                    current_commits = []
             except Exception:
                 current_commits = []
 
@@ -296,7 +305,7 @@ class UpdateManagerBridge(QObject):
                 if latest_release_sha and latest_release_sha != main_commit_sha:
                     bleeding_edge_release = True
                     try:
-                        release_lost_commits = commits_between(
+                        release_lost_commits, _ = commits_between(
                             latest_release_sha, main_commit_sha
                         )
                     except Exception:
@@ -358,6 +367,7 @@ class UpdateManagerBridge(QObject):
                 "main_commit_sha": main_commit_sha,
                 "main_error": main_error,
                 "main_commits": main_commits,
+                "main_commits_error": main_commits_error,
                 "current_commits": current_commits,
                 "bleeding_edge_release": bleeding_edge_release,
                 "release_lost_commits": release_lost_commits,

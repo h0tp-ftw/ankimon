@@ -7,7 +7,7 @@
 	let developerData = null;
 	let developerLoading = false;
 	let developerLoadFailed = false;
-	let selectedSourceType = 'main';
+	let selectedSourceType = 'pr';
 	let selectedTarget = '';
 	let prPage = 0;
 	let selectedRelease = '';
@@ -27,6 +27,8 @@
 	const busyOperations = new Set();
 	let toastTimer = null;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
+	const MAIN_RATE_LIMIT_MESSAGE = 'Connection rate limited! Pika try again soon.';
+	const SOURCE_RATE_LIMIT_MESSAGE = 'Connection rate limited, Pika try again!';
 	const PR_PAGE_SIZE = 50;
 
 	const byId = (id) => document.getElementById(id);
@@ -42,7 +44,7 @@
 		toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000);
 	}
 
-	function showModal(title, message, confirmLabel, onConfirm, showCancel = true, warningStyle = false) {
+	function showModal(title, message, confirmLabel, onConfirm, showCancel = true, warningStyle = false, escapeCloses = true) {
 		setText('modal-title', title);
 		const messageElement = byId('modal-message');
 		messageElement.replaceChildren();
@@ -57,7 +59,9 @@
 		const confirm = byId('modal-confirm');
 		const cancel = byId('modal-cancel');
 		const previous = document.activeElement;
-		const onKey = (event) => { if (event.key === 'Escape') close(); };
+		const onKey = (event) => {
+			if (event.key === 'Escape' && escapeCloses) close();
+		};
 		const close = () => {
 			modal.classList.add('hidden');
 			modalCard.classList.remove('warning-modal');
@@ -259,8 +263,7 @@
 		byId('latest-release-btn').disabled = busy || !latestRelease ||
 			(latestRelease.name === (updateData && updateData.version) && !isBleedingEdge);
 		byId('release-install-btn').disabled = busy || !selectedRelease;
-		byId('developer-install-btn').disabled = busy ||
-			(selectedSourceType !== 'main' && !selectedTarget);
+		byId('developer-install-btn').disabled = busy || !selectedTarget;
 		byId('sprites-check-btn').disabled = busy || spriteCheckUpToDate;
 		byId('sprites-install-btn').disabled = busy || !spriteUpdateAvailable;
 	}
@@ -324,12 +327,27 @@
 		}
 		const mainCommitSha = data.main_commit_sha || (data.source_type === 'branch' &&
 			data.source_name === 'main' ? localSha : '');
+		const branchUpdateView = byId('branch-update-view');
+		const branchUpdateParent = branchUpdateView.parentElement;
+		const inDeveloperMain = Boolean(
+			branchUpdateParent.closest('#panel-developer') &&
+			branchUpdateParent.id === 'developer-view-main',
+		);
+		setText('branch-updates-title', inDeveloperMain
+			? 'Recent Main Updates'
+			: 'Recent Branch Updates');
+		setVisible(
+			byId('branch-update-description'),
+			branchUpdateParent.id === 'release-view-pre-release',
+		);
 		setText(
 			'installed-commit',
 			[
 				localSha ? `${localSha.slice(0, 7)} (Current)` : 'unknown',
 				...(hasBranchViews
-					? [mainCommitSha ? `${mainCommitSha.slice(0, 7)} (Last Main)` : 'unknown']
+					? [mainCommitSha
+						? `${mainCommitSha.slice(0, 7)} (Last Main)`
+						: 'unknown (Next update will fetch this)']
 					: []),
 			].join('\n'),
 		);
@@ -338,11 +356,11 @@
 			[
 				typeof data.commit_date === 'string' && data.commit_date
 				? `${data.commit_date.replace('T', ' ').replace('Z', '')} UTC`
-				: 'Unknown (first update will fetch this)',
+				: 'unknown (Next update will fetch this)',
 				...(hasBranchViews
 					? [typeof data.main_commit_date === 'string' && data.main_commit_date
 						? `${data.main_commit_date.replace('T', ' ').replace('Z', '')} UTC`
-						: 'unknown']
+						: 'unknown (Next update will fetch this)']
 					: []),
 			].join('\n'),
 		);
@@ -358,10 +376,9 @@
 		branchCanUpdate = false;
 		if (branchView === 'main' && hasBranchViews && !mainCommitSha) {
 			if (remoteSha) {
-				status.textContent = 'unknown';
-				status.classList.add('warning');
+				status.textContent = '';
 			} else if (data.main_error === 'rate_limited') {
-				status.textContent = RATE_LIMIT_MESSAGE;
+				status.textContent = MAIN_RATE_LIMIT_MESSAGE;
 				status.classList.add('rate-limit');
 			} else if (data.main_error === 'connection') {
 				status.textContent = 'Could not reach GitHub. Check your connection and try again.';
@@ -430,14 +447,47 @@
 				!(data.source_type === 'branch' && data.source_name === 'main') &&
 				viewData.commits.length === 0;
 			if (noMainUpdatesForExternalSource) {
-				status.textContent = 'No updates since last install';
-				status.classList.add('neutral');
+				status.textContent = 'Up to date!';
+				status.classList.add('success');
 				setText('branch-update-btn', 'Install Latest Main');
 				branchCanUpdate = Boolean(remoteSha);
 			} else {
 				status.textContent = 'Up to date!';
 				status.classList.add('success');
 				setText('branch-update-btn', 'Already Up to Date');
+			}
+		}
+
+		if (branchView === 'main') {
+			status.classList.remove('success', 'warning', 'error', 'rate-limit', 'neutral');
+			const requestError = data.main_error === 'rate_limited'
+				? data.main_error
+				: data.main_commits_error;
+			if (requestError === 'rate_limited') {
+				status.textContent = MAIN_RATE_LIMIT_MESSAGE;
+				status.classList.add('rate-limit');
+			} else if (!remoteSha) {
+				if (data.main_error === 'connection') {
+					status.textContent = 'Could not reach GitHub. Check your connection and try again.';
+					status.classList.add('error');
+				} else if (data.main_error === 'not_found') {
+					status.textContent = "Could not find branch 'main' on GitHub.";
+					status.classList.add('warning');
+				} else {
+					status.textContent = 'GitHub could not verify the Main branch. Please try again later.';
+					status.classList.add('warning');
+				}
+			} else if (data.main_commits_error) {
+				status.textContent = data.main_commits_error === 'connection'
+					? 'Could not reach GitHub. Check your connection and try again.'
+					: 'GitHub could not load Main updates. Please try again later.';
+				status.classList.add(data.main_commits_error === 'connection' ? 'error' : 'warning');
+			} else if (viewData.commits.length) {
+				status.textContent = 'Update available!';
+				status.classList.add('warning');
+			} else {
+				status.textContent = 'Up to date!';
+				status.classList.add('success');
 			}
 		}
 
@@ -494,6 +544,10 @@
 		document.querySelectorAll('#panel-developer .subtab-panel').forEach((panel) => {
 			panel.classList.toggle('active', panel.id === `developer-view-${selectedDeveloperView}`);
 		});
+		setText('branch-updates-title', selectedDeveloperView === 'main'
+			? 'Recent Main Updates'
+			: 'Recent Branch Updates');
+		setVisible(byId('branch-update-description'), false);
 		if (selectedDeveloperView !== 'source') {
 			byId(`developer-view-${selectedDeveloperView}`).appendChild(byId('branch-update-view'));
 			if (updateData && updateData.show_branch_views) {
@@ -516,6 +570,8 @@
 		if (selectedReleaseView === 'pre-release') {
 			byId('release-view-pre-release').appendChild(byId('branch-update-view'));
 			selectedBranchView = 'main';
+			setText('branch-updates-title', 'Recent Branch Updates');
+			setVisible(byId('branch-update-description'), true);
 			if (updateData) renderBranch(updateData);
 			syncBranchProgressVisibility();
 		}
@@ -527,17 +583,22 @@
 			if (hidden) return;
 			const content = document.createElement('div');
 			const warning = document.createElement('p');
-			warning.textContent = 'This section contains developer tools and is usually for developer use. Installations made here are irreversible, and not all code does what it says. Pull requests may be blueprints or drafts. Only proceed with sources you trust.';
+			warning.className = 'warning-text modal-warning-text developer-warning-text';
+			warning.textContent = 'This section contains developer tools and is usually for developer use. Installations made here are irreversible, and the code might not do as their description says. Pull requests and side branches may be experiments or work in progress. Please only proceed with sources you trust.';
 			const row = document.createElement('label');
-			row.className = 'developer-warning-checkbox';
+			row.className = 'check-row developer-warning-checkbox';
 			const checkbox = document.createElement('input');
+			checkbox.className = 'custom-checkbox';
 			checkbox.type = 'checkbox';
+			const indicator = document.createElement('span');
+			indicator.className = 'checkbox-indicator';
+			indicator.setAttribute('aria-hidden', 'true');
 			const label = document.createElement('span');
 			label.textContent = 'Do not show this again';
-			row.append(checkbox, label);
+			row.append(checkbox, indicator, label);
 			content.append(warning, row);
 			showModal(
-				'Developer warning',
+				'Developer Warning',
 				content,
 				'Got it',
 				() => bridge.setDeveloperWarningHidden(checkbox.checked, (saved) => {
@@ -545,6 +606,7 @@
 				}),
 				false,
 				true,
+				false,
 			);
 		});
 	}
@@ -616,7 +678,7 @@
 		const state = data.state || {};
 		let version = '';
 		if (state.source_type === 'branch' && state.source_name === 'main') {
-			version = '(Pre-Release)';
+			version = '| Pre-Release';
 		} else if (state.source_type === 'branch') {
 			const sha = typeof state.commit_sha === 'string' && state.commit_sha
 				? ` (${state.commit_sha.slice(0, 7)})`
@@ -641,9 +703,8 @@
 
 	function renderSourceTypes() {
 		const types = [
-			{ value: 'main', label: 'Latest Main Branch' },
 			{ value: 'pr', label: 'Pull Request' },
-			{ value: 'branch', label: 'Branch' },
+			{ value: 'branch', label: 'Side Branch' },
 			{ value: 'tag', label: 'Tag' },
 		];
 		const selected = types.find((entry) => entry.value === selectedSourceType) || types[0];
@@ -679,24 +740,22 @@
 		const targetMenu = byId('source-target').querySelector('.custom-select-menu');
 		const options = {
 			pr: { label: 'Pull request:', entries: developerData.prs || [] },
-			branch: { label: 'Branch:', entries: developerData.branches || [] },
+			branch: {
+				label: 'Side branch:',
+				entries: (developerData.branches || []).filter((entry) => entry.name !== 'main'),
+			},
 			tag: { label: 'Tag:', entries: developerData.tags || [] },
 		};
-		if (type === 'main') {
-			fields.classList.add('hidden');
-			pagination.classList.add('hidden');
-			selectedTarget = '';
-			updateButtonStates();
-			return;
-		}
 		pagination.classList.toggle('hidden', type !== 'pr');
 		targetMenu.classList.toggle('pr-menu', type === 'pr');
 		fields.classList.remove('hidden');
 		label.textContent = options[type].label;
 		search.placeholder = type === 'pr'
 			? 'Search pull requests by number or title'
-			: `Search ${type === 'branch' ? 'branches' : 'tags'}`;
-		search.setAttribute('aria-label', `Search ${type === 'pr' ? 'pull requests' : `${type}s`}`);
+			: `Search ${type === 'branch' ? 'side branches' : 'tags'}`;
+		search.setAttribute('aria-label', type === 'pr'
+			? 'Search pull requests'
+			: `Search ${type === 'branch' ? 'side branches' : 'tags'}`);
 		const query = search.value.trim().toLocaleLowerCase();
 		const numberQuery = query.startsWith('#') ? query.slice(1) : query;
 		const entries = options[type].entries.filter((entry) => {
@@ -738,15 +797,40 @@
 				: (options[type].entries[0] ? valueFor(options[type].entries[0]) : '');
 		}
 		const selectedEntry = options[type].entries.find((entry) => valueFor(entry) === selectedTarget);
-		setDropdownLabel('source-target', selectedEntry ? labelFor(selectedEntry) : 'No sources found');
+		const error = developerData.errors && developerData.errors[type];
+		const emptyLabels = {
+			pr: 'No PRs found',
+			branch: 'No branches found',
+			tag: 'No tags found',
+		};
+		const unavailableLabels = {
+			pr: 'Could not load PRs',
+			branch: 'Could not load branches',
+			tag: 'Could not load tags',
+		};
+		const noSources = options[type].entries.length === 0;
+		const rateLimited = noSources && error === 'rate_limited';
+		const emptyLabel = rateLimited
+			? '-'
+			: error ? unavailableLabels[type] : emptyLabels[type];
+		const targetDropdown = byId('source-target');
+		const targetTrigger = targetDropdown.querySelector('.custom-select-trigger');
+		targetTrigger.disabled = noSources;
+		if (noSources) closeDropdown(targetDropdown);
+		setText('source-rate-limit-status', rateLimited ? SOURCE_RATE_LIMIT_MESSAGE : '');
+		setVisible(byId('source-rate-limit-status'), rateLimited);
+		setDropdownLabel(
+			'source-target',
+			selectedEntry ? labelFor(selectedEntry) : noSources ? emptyLabel : '',
+		);
 		renderOptions(
 			'source-target',
 			visibleEntries.map((entry) => ({ value: valueFor(entry), label: labelFor(entry) })),
 			selectedTarget,
-			developerData.errors && developerData.errors[type] === 'rate_limited'
-				? RATE_LIMIT_MESSAGE
+			noSources
+				? emptyLabel
 				: type === 'pr' ? 'No matching open pull requests' :
-					(type === 'branch' ? 'No matching branches' : 'No matching tags'),
+					(type === 'branch' ? 'No matching side branches' : 'No matching tags'),
 			(entry) => {
 				selectedTarget = entry.value;
 				setDropdownLabel('source-target', entry.label);
@@ -1083,6 +1167,7 @@
 		setOperationStatus('', false);
 		setOperationProgress(data.success ? 100 : 0, true);
 		if (data.success) {
+			if (bridge) bridge.loadData();
 			showModal(
 				'Update Complete',
 				'Update applied successfully. Please restart Anki for changes to take effect.',
@@ -1176,6 +1261,20 @@
 	byId('developer-subtabs').querySelectorAll('[data-developer-view]').forEach((button) => {
 		button.addEventListener('click', () => switchDeveloperView(button.dataset.developerView));
 	});
+	byId('developer-subtabs').addEventListener('wheel', (event) => {
+		if (!event.deltaY) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const views = updateData && updateData.show_branch_views
+			? ['source', 'main', 'current']
+			: ['source'];
+		const currentIndex = views.indexOf(selectedDeveloperView);
+		const nextIndex = Math.max(
+			0,
+			Math.min(views.length - 1, currentIndex + (event.deltaY < 0 ? 1 : -1)),
+		);
+		if (nextIndex !== currentIndex) switchDeveloperView(views[nextIndex]);
+	}, { passive: false });
 	byId('release-subtabs').querySelectorAll('[data-release-view]').forEach((button) => {
 		button.addEventListener('click', () => switchReleaseView(button.dataset.releaseView));
 	});
@@ -1258,10 +1357,6 @@
 
 	byId('developer-install-btn').addEventListener('click', () => {
 		const source = selectedSourceType;
-		if (source === 'main') {
-			install('branch', 'main', 'latest main', '', 'developer');
-			return;
-		}
 		const value = selectedTarget;
 		if (!value || !developerData) return;
 		const entry = source === 'pr'
