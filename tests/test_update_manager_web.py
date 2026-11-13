@@ -79,8 +79,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261113.6"' in html
-    assert 'src="update_manager.js?v=20261113.6"' in html
+    assert 'href="update_manager.css?v=20261113.8"' in html
+    assert 'src="update_manager.js?v=20261113.8"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
@@ -95,7 +95,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     )
     assert "querySelector('.custom-select-options').scrollTop = 0;" in javascript
     assert "status-text.neutral" in css
-    assert "Install Latest Main" in javascript
+    assert "Switch to Latest Main" in javascript
+    assert "Install Latest Main" not in javascript
     assert "Code error [Traceback]" in html
     assert "Status: Code error [Traceback]" not in html
     assert "Could not check connection." in javascript
@@ -116,7 +117,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert ".custom-checkbox:checked + .checkbox-indicator" in css
     assert "height: 24px;" in css
     assert "font-style: italic;" not in css[css.index(".lost-commits-more"):css.index(".btn:disabled")]
-    assert 'id="branch-progress"' in html
+    assert 'id="pre-release-progress"' in html
     assert 'id="developer-subtabs"' in html
     assert 'data-developer-view="source"' in html
     assert 'data-developer-view="main"' in html
@@ -137,9 +138,15 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert developer_panel.index('id="developer-subtabs"') < developer_panel.index("Install from Source")
     releases_panel = html[html.index('id="panel-releases"'):html.index('id="panel-developer"')]
     pre_release = releases_panel[releases_panel.index('id="release-view-pre-release"'):]
-    assert pre_release.index("Recent Branch Updates") < pre_release.index('id="branch-status"')
+    assert pre_release.index("Recent Updates") < pre_release.index('id="branch-status"')
     assert pre_release.index('id="branch-status"') < pre_release.index('id="recent-commits"')
     assert 'id="branch-snooze"' in pre_release and 'id="branch-update-btn"' in pre_release
+    assert 'id="pre-release-progress"' in pre_release
+    release_view = releases_panel[
+        releases_panel.index('id="release-view-releases"'):
+        releases_panel.index('id="release-view-pre-release"')
+    ]
+    assert 'id="release-progress"' in release_view
     release_panel_start = css.index("#panel-releases,")
     release_panel_padding = css[
         release_panel_start:css.index("}", release_panel_start)
@@ -173,11 +180,16 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "/commit/${encodeURIComponent(sha)}" in javascript
     assert "event.target.closest('.update-tab-link')" in javascript
     assert "passive: false" in javascript
-    assert "activeProgressBranchView" in javascript
-    assert "syncBranchProgressVisibility()" in javascript
-    assert "selectedBranchView === activeProgressBranchView" in javascript
-    assert 'id="releases-progress"' in html
-    assert 'id="developer-progress"' in html
+    assert "activeProgressBranchView" not in javascript
+    assert "syncBranchProgressVisibility()" not in javascript
+    assert "activeProgressKey = progressKey;" in javascript
+    assert "hostId === 'release-view-pre-release'" in javascript
+    assert 'id="release-progress"' in html
+    assert 'id="pre-release-progress"' in html
+    assert 'id="developer-source-progress"' in html
+    assert 'id="developer-main-progress"' in html
+    assert 'id="developer-current-progress"' in html
+    assert 'id="git-progress"' in html
     assert 'id="sprites-progress"' in html
     assert "<output>0%</output>" in html
     assert (
@@ -222,7 +234,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "outline: none;" in trigger_focus
     assert "box-shadow: none;" in trigger_focus
     assert "border-color: var(--accent-blue);" not in trigger_focus
-    assert "Connection rate limited, pika try again soon!" in javascript
+    assert javascript.count("Connection rate limited, pika try again soon!") == 1
+    assert "Connection rate limited! Pika try again soon." not in javascript
+    assert "Connection rate limited, Pika try again!" not in javascript
     assert "progress-message-rate-limit" in css
     assert "status-text.rate-limit" in css
     assert "release-highlight.error" in css
@@ -249,6 +263,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "selectedBranchView = selectedDeveloperView;" in branch_switch
     assert "appendChild(byId('branch-update-view'))" in branch_switch
     assert "Update to Main Now" in javascript
+    assert "Update Now" in javascript
+    assert ": inPreRelease ? 'Recent Updates' : 'Recent Branch Updates'" in javascript
     assert "Main comparison point not recorded" not in javascript
     assert "unknown (not recorded)" not in javascript
     assert "'unknown'" in javascript
@@ -304,8 +320,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert ".update-manager-heading" in shell
     assert ".update-manager-logo" in shell
     assert "openGitHub" in javascript
-    assert "Connection rate limited! Pika try again soon." in javascript
-    assert "Connection rate limited, Pika try again!" in javascript
+    assert javascript.count("Connection rate limited, pika try again soon!") == 1
     assert "No PRs found" in javascript
     assert "No branches found" in javascript
     assert "No tags found" in javascript
@@ -327,7 +342,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "version = `| Branch ${state.source_name}`;" in javascript
     assert "const externalPrOrBranch = hasBranchViews" in javascript
     assert "branchCanUpdate = true;" in javascript
-    assert "user_files/, which stores your Ankimon data." in javascript
+    assert ", which stores your Ankimon data." in javascript
+    assert "userFilesLead.textContent = 'Please check if the source modifies user_files/';" in javascript
     assert "has-open-release-dropdown" in javascript
     assert "Boolean(openDropdown && openDropdown.id === 'source-target')" in javascript
     release_dropdown_padding = css[
@@ -336,10 +352,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     ]
     assert "padding-bottom: 80px;" in release_dropdown_padding
     assert ".content-scroll.has-open-source-dropdown" in release_dropdown_padding
-    assert javascript.count(
-        "Please check if the source modifies user_files/, which stores your Ankimon data."
-    ) == 1
-    assert "const developerSourceInstall = progressPanel === 'developer' &&" in javascript
+    assert javascript.count("Please check if the source modifies user_files/") == 1
+    assert "const developerSourceInstall = progressKey === 'developer-source' &&" in javascript
     assert "isPullRequestOrSideBranch" in javascript
     assert "Your Pokémon data, settings, and sprites will be preserved." not in javascript
     assert "Your Ankimon progress and configuration will not be lost." in javascript

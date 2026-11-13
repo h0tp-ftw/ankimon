@@ -21,14 +21,10 @@
 	let selectedBranchView = 'main';
 	let selectedDeveloperView = 'source';
 	let selectedReleaseView = 'releases';
-	let activeProgressPanel = '';
-	let activeProgressBranchView = '';
-	let activeProgressVisible = false;
+	let activeProgressKey = '';
 	const busyOperations = new Set();
 	let toastTimer = null;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
-	const MAIN_RATE_LIMIT_MESSAGE = 'Connection rate limited! Pika try again soon.';
-	const SOURCE_RATE_LIMIT_MESSAGE = 'Connection rate limited, Pika try again!';
 	const PR_PAGE_SIZE = 50;
 
 	const byId = (id) => document.getElementById(id);
@@ -126,9 +122,27 @@
 		element.textContent = message || '';
 	}
 
+	function activeProgressContainer() {
+		if (!activeProgressKey) return null;
+		const container = byId(`${activeProgressKey}-progress`);
+		if (!container) throw new Error(`Missing progress container: ${activeProgressKey}`);
+		return container;
+	}
+
+	function setActiveProgressMessage(message, result = '') {
+		const container = activeProgressContainer();
+		if (container) {
+			setProgressMessage(
+				container.querySelector('.progress-label span'),
+				message,
+				result,
+			);
+		}
+	}
+
 	function setOperationProgress(value, visible = true, indeterminate = false) {
-		if (!activeProgressPanel) return;
-		const container = byId(`${activeProgressPanel}-progress`);
+		const container = activeProgressContainer();
+		if (!container) return;
 		const progress = container.querySelector('progress');
 		if (indeterminate) {
 			progress.removeAttribute('value');
@@ -138,18 +152,7 @@
 			progress.value = percent;
 			container.querySelector('output').textContent = `${percent}%`;
 		}
-		activeProgressVisible = visible;
-		if (activeProgressPanel === 'branch') {
-			syncBranchProgressVisibility();
-		} else {
-			setVisible(container, visible);
-		}
-	}
-
-	function syncBranchProgressVisibility() {
-		const matchesView = !updateData || !updateData.show_branch_views ||
-			selectedBranchView === activeProgressBranchView;
-		setVisible(byId('branch-progress'), activeProgressVisible && matchesView);
+		setVisible(container, visible);
 	}
 
 	function setSpriteProgress(value, message = null, result = '') {
@@ -265,12 +268,27 @@
 		return busyOperations.size > 0;
 	}
 
+	function shouldSwitchToLatestRelease() {
+		if (isBleedingEdge) return true;
+		if (!updateData) return false;
+		if (updateData.source_type === 'pr') return true;
+		if (updateData.source_type === 'branch' && updateData.source_name !== 'main') {
+			return true;
+		}
+		return Boolean(
+			updateData.source_type === 'tag' &&
+			latestRelease &&
+			updateData.source_name !== latestRelease.name,
+		);
+	}
+
 	function updateButtonStates() {
 		const busy = currentBusy();
+		const switchToRelease = shouldSwitchToLatestRelease();
 		byId('branch-update-btn').disabled = busy || !branchCanUpdate;
 		byId('git-pull-btn').disabled = busy || !gitPullAllowed;
 		byId('latest-release-btn').disabled = busy || !latestRelease ||
-			(latestRelease.name === (updateData && updateData.version) && !isBleedingEdge);
+			(latestRelease.name === (updateData && updateData.version) && !switchToRelease);
 		byId('release-install-btn').disabled = busy || !selectedRelease;
 		byId('developer-install-btn').disabled = busy || !selectedTarget;
 		byId('sprites-check-btn').disabled = busy || spriteCheckUpToDate;
@@ -338,16 +356,17 @@
 			data.source_name === 'main' ? localSha : '');
 		const branchUpdateView = byId('branch-update-view');
 		const branchUpdateParent = branchUpdateView.parentElement;
+		const inPreRelease = branchUpdateParent.id === 'release-view-pre-release';
 		const inDeveloperMain = Boolean(
 			branchUpdateParent.closest('#panel-developer') &&
 			branchUpdateParent.id === 'developer-view-main',
 		);
 		setText('branch-updates-title', inDeveloperMain
 			? 'Recent Main Updates'
-			: 'Recent Branch Updates');
+			: inPreRelease ? 'Recent Updates' : 'Recent Branch Updates');
 		setVisible(
 			byId('branch-update-description'),
-			branchUpdateParent.id === 'release-view-pre-release',
+			inPreRelease,
 		);
 		setText(
 			'installed-commit',
@@ -387,7 +406,7 @@
 			if (remoteSha) {
 				status.textContent = '';
 			} else if (data.main_error === 'rate_limited') {
-				status.textContent = MAIN_RATE_LIMIT_MESSAGE;
+				status.textContent = RATE_LIMIT_MESSAGE;
 				status.classList.add('rate-limit');
 			} else if (data.main_error === 'connection') {
 				status.textContent = 'Could not reach GitHub. Check your connection and try again.';
@@ -458,7 +477,7 @@
 			if (noMainUpdatesForExternalSource) {
 				status.textContent = 'Up to date!';
 				status.classList.add('success');
-				setText('branch-update-btn', 'Install Latest Main');
+				setText('branch-update-btn', 'Switch to Latest Main');
 				branchCanUpdate = Boolean(remoteSha);
 			} else {
 				status.textContent = 'Up to date!';
@@ -473,7 +492,7 @@
 				? data.main_error
 				: data.main_commits_error;
 			if (requestError === 'rate_limited') {
-				status.textContent = MAIN_RATE_LIMIT_MESSAGE;
+				status.textContent = RATE_LIMIT_MESSAGE;
 				status.classList.add('rate-limit');
 			} else if (!remoteSha) {
 				if (data.main_error === 'connection') {
@@ -508,9 +527,13 @@
 				status.textContent = 'Up to date!';
 				status.classList.remove('warning', 'error', 'rate-limit', 'neutral');
 				status.classList.add('success');
-				setText('branch-update-btn', 'Install Latest Main');
+				setText('branch-update-btn', 'Switch to Latest Main');
 			}
 			branchCanUpdate = true;
+		}
+		if (inPreRelease && branchView === 'main' && branchCanUpdate &&
+			status.textContent === 'Update available!') {
+			setText('branch-update-btn', 'Update Now');
 		}
 
 		const commits = byId('recent-commits');
@@ -571,11 +594,15 @@
 			: 'Recent Branch Updates');
 		setVisible(byId('branch-update-description'), false);
 		if (selectedDeveloperView !== 'source') {
-			byId(`developer-view-${selectedDeveloperView}`).appendChild(byId('branch-update-view'));
+			const viewPanel = byId(`developer-view-${selectedDeveloperView}`);
+			viewPanel.appendChild(byId('branch-update-view'));
+			const progressKey = selectedDeveloperView === 'main'
+				? 'developer-main'
+				: 'developer-current';
+			viewPanel.appendChild(byId(`${progressKey}-progress`));
 			if (updateData && updateData.show_branch_views) {
 				selectedBranchView = selectedDeveloperView;
 				renderBranch(updateData);
-				syncBranchProgressVisibility();
 			}
 		}
 		updateButtonStates();
@@ -590,12 +617,13 @@
 			panel.classList.toggle('active', panel.id === `release-view-${selectedReleaseView}`);
 		});
 		if (selectedReleaseView === 'pre-release') {
-			byId('release-view-pre-release').appendChild(byId('branch-update-view'));
+			const preReleasePanel = byId('release-view-pre-release');
+			preReleasePanel.appendChild(byId('branch-update-view'));
+			preReleasePanel.appendChild(byId('pre-release-progress'));
 			selectedBranchView = 'main';
-			setText('branch-updates-title', 'Recent Branch Updates');
+			setText('branch-updates-title', 'Recent Updates');
 			setVisible(byId('branch-update-description'), true);
 			if (updateData) renderBranch(updateData);
-			syncBranchProgressVisibility();
 		}
 	}
 
@@ -666,16 +694,21 @@
 		} else if (isBleedingEdge) {
 			latestLabel.textContent = `Switch back to ${latestRelease.name} from the pre-release`;
 			latestLabel.classList.add('warning');
-			setText('latest-release-btn', 'Switch to Latest Release');
 		} else if (latestRelease.name === updateData.version) {
 			latestLabel.textContent = `You're up to date (${latestRelease.name})`;
 			latestLabel.classList.add('success');
-			setText('latest-release-btn', 'Already Up to Date');
 		} else {
 			latestLabel.textContent = `New version available: ${latestRelease.name}`;
 			latestLabel.classList.add('warning');
-			setText('latest-release-btn', 'Update to Latest Release');
 		}
+		setText(
+			'latest-release-btn',
+			latestRelease && shouldSwitchToLatestRelease()
+				? 'Switch to Latest Release'
+				: latestRelease && latestRelease.name === updateData.version
+					? 'Already Up to Date'
+					: 'Update to Latest Release',
+		);
 
 		if (!list.some((release) => release.name === selectedRelease)) {
 			selectedRelease = list[0] ? list[0].name : '';
@@ -853,7 +886,7 @@
 		const targetTrigger = targetDropdown.querySelector('.custom-select-trigger');
 		targetTrigger.disabled = noSources;
 		if (noSources) closeDropdown(targetDropdown);
-		setText('source-rate-limit-status', rateLimited ? SOURCE_RATE_LIMIT_MESSAGE : '');
+		setText('source-rate-limit-status', rateLimited ? RATE_LIMIT_MESSAGE : '');
 		setVisible(byId('source-rate-limit-status'), rateLimited);
 		setDropdownLabel(
 			'source-target',
@@ -902,30 +935,22 @@
 		}
 	}
 
-	function startInstall(sourceType, sourceName, progressPanel) {
-		activeProgressPanel = progressPanel;
-		activeProgressBranchView = progressPanel === 'branch' &&
-			updateData && updateData.show_branch_views
-			? selectedBranchView
-			: 'current';
+	function startInstall(sourceType, sourceName, progressKey) {
+		activeProgressKey = progressKey;
 		setOperationProgress(0, true, true);
 		setOperationStatus('', false);
 		bridge.installUpdate(sourceType, sourceName, (result) => {
 			if (result && result.success === false) {
 				setOperationProgress(0, true);
-				if (activeProgressPanel) {
-					setProgressMessage(
-						byId(`${activeProgressPanel}-progress`)
-							.querySelector('.progress-label span'),
-						result.message || 'Update could not be started.',
-						'failure',
-					);
-				}
+				setActiveProgressMessage(
+					result.message || 'Update could not be started.',
+					'failure',
+				);
 			}
 		});
 	}
 
-	function install(sourceType, sourceName, _label, warning = '', progressPanel = 'developer') {
+	function install(sourceType, sourceName, _label, warning = '', progressKey = 'developer-source') {
 		const prompt = updateData && updateData.git_clone
 			? `Switch this Git checkout to `
 			: `Update Ankimon to `;
@@ -942,7 +967,7 @@
 		}
 		const isPullRequestOrSideBranch = resolvedTarget.type === 'pr' ||
 			(resolvedTarget.type === 'branch' && resolvedTarget.name !== 'main');
-		const developerSourceInstall = progressPanel === 'developer' &&
+		const developerSourceInstall = progressKey === 'developer-source' &&
 			isPullRequestOrSideBranch;
 		const linkTarget = sourceLinkTarget(sourceType, sourceName);
 		const fragment = document.createDocumentFragment();
@@ -969,8 +994,14 @@
 			const userFilesWarning = document.createElement('p');
 			userFilesWarning.className =
 				'warning-text modal-warning-text user-files-warning';
-			userFilesWarning.textContent =
-				'Please check if the source modifies user_files/, which stores your Ankimon data. If it does, you may want to back up your files in Ankimon > Game > Backup Manager before proceeding.';
+			const userFilesLead = document.createElement('strong');
+			userFilesLead.textContent = 'Please check if the source modifies user_files/';
+			userFilesWarning.append(
+				userFilesLead,
+				document.createTextNode(
+					', which stores your Ankimon data. If it does, you may want to back up your files in Ankimon > Game > Backup Manager before proceeding.',
+				),
+			);
 			fragment.append(userFilesWarning, document.createTextNode('\n'));
 		}
 		fragment.appendChild(document.createTextNode(prompt));
@@ -1007,7 +1038,7 @@
 			'Confirm Update',
 			fragment,
 			'Install',
-			() => startInstall(sourceType, sourceName, progressPanel),
+			() => startInstall(sourceType, sourceName, progressKey),
 			true,
 			Boolean(warning),
 		);
@@ -1067,7 +1098,7 @@
 			'Updates that will be lost',
 			content,
 			'Switch to Latest Release',
-			() => startInstall('release', releaseName, 'releases'),
+			() => startInstall('release', releaseName, 'release'),
 			true,
 			true,
 		);
@@ -1113,19 +1144,31 @@
 
 	function installActiveBranch() {
 		if (!updateData) return;
+		const hostId = byId('branch-update-view').parentElement.id;
+		const progressKey = hostId === 'release-view-pre-release'
+			? 'pre-release'
+			: hostId === 'developer-view-main'
+				? 'developer-main'
+				: 'developer-current';
 		if (selectedBranchView === 'main') {
-			install('branch', 'main', 'latest main', '', 'branch');
+			install('branch', 'main', 'latest main', '', progressKey);
 			return;
 		}
 		if (updateData.show_branch_views) {
-			install('installed', 'current', `latest installed source (${updateData.active_branch})`, '', 'branch');
+			install(
+				'installed',
+				'current',
+				`latest installed source (${updateData.active_branch})`,
+				'',
+				progressKey,
+			);
 			return;
 		}
 		const name = updateData.active_branch || 'main';
 		if (updateData.git_clone) {
-			install('current', 'current', name, '', 'branch');
+			install('current', 'current', name, '', progressKey);
 		} else {
-			install('branch', updateData.source_name || 'main', `latest ${name}`, '', 'branch');
+			install('branch', updateData.source_name || 'main', `latest ${name}`, '', progressKey);
 		}
 	}
 
@@ -1191,24 +1234,16 @@
 
 	window.onUpdateInstallStarted = (data) => {
 		setOperationStatus('', false);
-		if (activeProgressPanel) {
-			setProgressMessage(
-				byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span'),
-				data.label ? `Downloading ${data.label}...` : 'Preparing update...',
-			);
-		}
+		setActiveProgressMessage(
+			data.label ? `Downloading ${data.label}...` : 'Preparing update...',
+		);
 		setOperationProgress(0, true, !updateData || !updateData.git_clone);
 	};
 
 	window.onUpdateProgress = (data) => setOperationProgress(data.percent, true);
 	window.onUpdateStatus = (data) => {
 		setOperationStatus('', false);
-		if (activeProgressPanel) {
-			setProgressMessage(
-				byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span'),
-				data.message,
-			);
-		}
+		setActiveProgressMessage(data.message);
 	};
 	window.onSpritesCheckProgress = (data) => {
 		setSpriteProgress(data.percent, data.message || 'Checking for sprite updates...');
@@ -1219,16 +1254,10 @@
 			? `Update complete! ${(data.status || data.message || '')
 				.replace(/^Update complete!?\s*/i, '')}`.trim()
 			: (data.message || 'Update failed.');
-		const progressLabel = activeProgressPanel
-			? byId(`${activeProgressPanel}-progress`).querySelector('.progress-label span')
-			: null;
-		if (progressLabel) {
-			setProgressMessage(
-				progressLabel,
-				progressMessage,
-				data.success ? 'complete' : 'failure',
-			);
-		}
+		setActiveProgressMessage(
+			progressMessage,
+			data.success ? 'complete' : 'failure',
+		);
 		setOperationStatus('', false);
 		setOperationProgress(data.success ? 100 : 0, true);
 		if (data.success) {
@@ -1402,14 +1431,14 @@
 	byId('branch-update-btn').addEventListener('click', installActiveBranch);
 	byId('git-pull-btn').addEventListener('click', () => {
 		const branch = updateData && updateData.git_info && updateData.git_info.branch;
-		install('current', 'current', branch || 'current Git branch', '', 'branch');
+		install('current', 'current', branch || 'current Git branch', '', 'git');
 	});
 	byId('latest-release-btn').addEventListener('click', () => {
 		if (latestRelease) {
 			if (isBleedingEdge) {
 				showReleaseSwitchConfirmation();
 			} else {
-				install('release', latestRelease.name, `latest release (${latestRelease.name})`, '', 'releases');
+				install('release', latestRelease.name, `latest release (${latestRelease.name})`, '', 'release');
 			}
 		}
 	});
@@ -1417,7 +1446,7 @@
 		const release = updateData && (updateData.releases || []).find(
 			(item) => item.name === selectedRelease,
 		);
-		if (release) install('release', release.name, `release ${release.name}`, '', 'releases');
+		if (release) install('release', release.name, `release ${release.name}`, '', 'release');
 	});
 
 	byId('developer-install-btn').addEventListener('click', () => {
@@ -1435,7 +1464,7 @@
 			value,
 			source === 'pr' ? `PR #${entry.number} (${entry.title})` : `${source} ${value}`,
 			'',
-			'developer',
+			'developer-source',
 		);
 	});
 

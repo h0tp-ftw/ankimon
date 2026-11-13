@@ -7,7 +7,7 @@
 	<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="../../ankimon_items_web/shop.css?v=20260634">
 	<link rel="stylesheet" href="../../ankimon_items_web/nav-switcher.css?v=20260634">
-	<link rel="stylesheet" href="update_manager.css?v=20261113.6">
+	<link rel="stylesheet" href="update_manager.css?v=20261113.8">
 	<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body class="dark-mode">
@@ -55,7 +55,15 @@
 						</button>
 					</div>
 					<section id="git-notice" class="update-card git-notice hidden">
-						<div><h3>Git Workspace Mode</h3><p id="git-info"></p><p>Selected sources are checked out from the official Ankimon repository. The working tree must be clean; restart Anki after an update.</p></div>
+						<div>
+							<h3>Git Workspace Mode</h3>
+							<p id="git-info"></p>
+							<p>Selected sources are checked out from the official Ankimon repository. The working tree must be clean; restart Anki after an update.</p>
+							<div id="git-progress" class="operation-progress hidden" aria-live="polite">
+								<div class="progress-label"><span></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
+							</div>
+						</div>
 						<button id="git-pull-btn" class="btn btn-primary" type="button">Fast-forward Current Branch</button>
 					</section>
 					<section id="panel-releases" class="tab-panel active">
@@ -82,11 +90,15 @@
 								</div>
 								<button id="release-install-btn" class="btn btn-primary" type="button" disabled>Install Selected Release</button>
 							</div>
+							<div id="release-progress" class="operation-progress hidden" aria-live="polite">
+								<div class="progress-label"><span></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
+							</div>
 						</div>
 						<div id="release-view-pre-release" class="subtab-panel">
 							<div id="branch-update-view">
 								<div class="update-card">
-									<h3 id="branch-updates-title">Recent Branch Updates</h3>
+									<h3 id="branch-updates-title">Recent Updates</h3>
 									<p id="branch-update-description" class="muted">One click to enjoy the latest bleeding edge updates, pre-release.</p>
 									<p id="branch-status" class="status-text" role="status" aria-live="polite">Checking branch...</p>
 									<ul id="recent-commits" class="commit-list"><li>Checking for changes...</li></ul>
@@ -95,15 +107,11 @@
 									<label class="check-row"><input id="branch-snooze" class="custom-checkbox" type="checkbox"><span class="checkbox-indicator" aria-hidden="true"></span><span>Snooze these update notifications for 1 week.</span></label>
 									<button id="branch-update-btn" class="btn btn-primary" type="button" disabled>Update to Main Now</button>
 								</div>
-								<div id="branch-progress" class="operation-progress hidden" aria-live="polite">
-									<div class="progress-label"><span></span><output>0%</output></div>
-									<progress max="100" value="0"></progress>
-								</div>
 							</div>
-						</div>
-						<div id="releases-progress" class="operation-progress hidden" aria-live="polite">
-							<div class="progress-label"><span></span><output>0%</output></div>
-							<progress max="100" value="0"></progress>
+							<div id="pre-release-progress" class="operation-progress hidden" aria-live="polite">
+								<div class="progress-label"><span></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
+							</div>
 						</div>
 					</section>
 					<section id="panel-developer" class="tab-panel">
@@ -156,15 +164,25 @@
 								</div>
 							</div>
 							<button id="developer-install-btn" class="btn btn-primary" type="button" disabled>Install</button>
+							<div id="developer-source-progress" class="operation-progress hidden" aria-live="polite">
+								<div class="progress-label"><span></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
+							</div>
 							</div>
 						</div>
-						<div id="developer-view-main" class="subtab-panel"></div>
-						<div id="developer-view-current" class="subtab-panel"></div>
-						<p id="developer-status" class="muted hidden" role="status" aria-live="polite"></p>
-						<div id="developer-progress" class="operation-progress hidden" aria-live="polite">
-							<div class="progress-label"><span></span><output>0%</output></div>
-							<progress max="100" value="0"></progress>
+						<div id="developer-view-main" class="subtab-panel">
+							<div id="developer-main-progress" class="operation-progress hidden" aria-live="polite">
+								<div class="progress-label"><span></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
+							</div>
 						</div>
+						<div id="developer-view-current" class="subtab-panel">
+							<div id="developer-current-progress" class="operation-progress hidden" aria-live="polite">
+								<div class="progress-label"><span></span><output>0%</output></div>
+								<progress max="100" value="0"></progress>
+							</div>
+						</div>
+						<p id="developer-status" class="muted hidden" role="status" aria-live="polite"></p>
 					</section>
 					<section id="panel-sprites" class="tab-panel">
 						<div class="update-card">
@@ -204,6 +222,6 @@
 	</div>
 	<div id="toast" class="shop-toast"></div>
 	<script src="../../ankimon_items_web/nav-switcher.js?v=20260634"></script>
-	<script src="update_manager.js?v=20261113.6"></script>
+	<script src="update_manager.js?v=20261113.8"></script>
 </body>
 </html>
