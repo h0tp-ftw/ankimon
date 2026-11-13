@@ -10,6 +10,7 @@ from PyQt6.QtCore import QObject, QUrl, Qt, pyqtSlot
 from PyQt6.QtGui import QDesktopServices
 
 from ..resources import IS_EXPERIMENTAL_BUILD, addon_ver, user_path_sprites
+from ..services import services
 from . import update_manager as updater
 
 
@@ -252,9 +253,18 @@ class UpdateManagerBridge(QObject):
                     main_commit_sha=main_commit_sha,
                     main_commit_date=main_commit_date,
                 )
+
+            commit_cache = {}
+
+            def commits_between(base_sha, head_sha):
+                key = (base_sha, head_sha)
+                if key not in commit_cache:
+                    commit_cache[key] = updater.fetch_commits_between(*key)
+                return commit_cache[key]
+
             try:
                 main_commits = (
-                    updater.fetch_commits_between(main_commit_sha, main_remote_sha)
+                    commits_between(main_commit_sha, main_remote_sha)
                     if main_commit_sha and main_remote_sha
                     and main_commit_sha != main_remote_sha
                     else updater.fetch_branch_commits("main")
@@ -265,12 +275,32 @@ class UpdateManagerBridge(QObject):
                 main_commits = []
             try:
                 current_commits = (
-                    updater.fetch_commits_between(local_sha, current_remote_sha)
+                    commits_between(local_sha, current_remote_sha)
                     if local_sha and current_remote_sha and local_sha != current_remote_sha
                     else []
                 )
             except Exception:
                 current_commits = []
+
+            latest_release = releases[0] if releases else None
+            latest_release_sha = None
+            release_lost_commits = []
+            bleeding_edge_release = False
+            if latest_release and is_main_source and main_commit_sha:
+                try:
+                    latest_release_sha = updater.fetch_source_sha(
+                        "release", latest_release["name"]
+                    )
+                except Exception:
+                    latest_release_sha = None
+                if latest_release_sha and latest_release_sha != main_commit_sha:
+                    bleeding_edge_release = True
+                    try:
+                        release_lost_commits = commits_between(
+                            latest_release_sha, main_commit_sha
+                        )
+                    except Exception:
+                        release_lost_commits = []
 
             installed_at = state.get("installed_at")
             if not isinstance(installed_at, (int, float)) or not installed_at:
@@ -329,6 +359,8 @@ class UpdateManagerBridge(QObject):
                 "main_error": main_error,
                 "main_commits": main_commits,
                 "current_commits": current_commits,
+                "bleeding_edge_release": bleeding_edge_release,
+                "release_lost_commits": release_lost_commits,
                 "show_branch_views": show_branch_views,
                 "installed_pr": installed_pr,
                 "source_type": source_type,
@@ -407,6 +439,35 @@ class UpdateManagerBridge(QObject):
 
         self._start_query("developer", worker, done, failed)
         return {"pending": True}
+
+    @pyqtSlot(result=bool)
+    def getDeveloperWarningHidden(self):
+        database = services.db
+        if database is None:
+            self._log_error("Could not read the developer warning preference: Ankimon database is unavailable.")
+            return False
+        try:
+            value = database.get_user_data("hide_developer_warning")
+            if value is None:
+                database.set_user_data("hide_developer_warning", 0)
+                return False
+            return value in (1, True, "1", "true")
+        except Exception as error:
+            self._report_code_error(error)
+            return False
+
+    @pyqtSlot(bool, result=bool)
+    def setDeveloperWarningHidden(self, hidden):
+        database = services.db
+        if database is None:
+            self._log_error("Could not save the developer warning preference: Ankimon database is unavailable.")
+            return False
+        try:
+            database.set_user_data("hide_developer_warning", 1 if hidden else 0)
+        except Exception as error:
+            self._report_code_error(error)
+            return False
+        return True
 
     @pyqtSlot(str, result=bool)
     def setChannel(self, channel):

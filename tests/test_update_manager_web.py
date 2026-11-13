@@ -65,7 +65,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     css = (UPDATE_PAGE / "update_manager.css").read_text(encoding="utf-8")
     javascript = (UPDATE_PAGE / "update_manager.js").read_text(encoding="utf-8")
 
-    assert 'src="../../user_files/sprites/items/exp-share.png"' in html
+    assert 'src="../../user_files/sprites/items/up-grade.png"' in html
+    assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
@@ -103,17 +104,28 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert ".custom-checkbox:checked + .checkbox-indicator" in css
     assert "height: 24px;" in css
     assert 'id="branch-progress"' in html
-    assert 'id="branch-subtabs"' in html
-    assert 'data-branch-view="main"' in html
-    assert 'data-branch-view="current"' in html
-    branch_panel = html[html.index('id="panel-branch"'):html.index('id="panel-releases"')]
-    assert branch_panel.index('id="active-branch-title"') < branch_panel.index(
-        'id="branch-subtabs"'
-    ) < branch_panel.index("Recent Branch Updates")
-    assert branch_panel.index("Recent Branch Updates") < branch_panel.index(
-        'id="branch-status"'
-    ) < branch_panel.index('id="recent-commits"')
-    assert "padding-bottom: 180px;" in css[css.index("#panel-developer"):]
+    assert 'id="developer-subtabs"' in html
+    assert 'data-developer-view="source"' in html
+    assert 'data-developer-view="main"' in html
+    assert 'data-developer-view="current"' in html
+    assert 'id="release-subtabs"' in html
+    assert 'data-release-view="releases"' in html
+    assert 'data-release-view="pre-release"' in html
+    assert 'id="panel-branch"' not in html
+    sidebar = html[html.index('<nav class="sidebar-nav">'):html.index("</nav>", html.index('<nav class="sidebar-nav">'))]
+    assert [part.split('"')[0] for part in sidebar.split('data-tab="')[1:]] == [
+        "releases", "sprites", "developer"
+    ]
+    developer_panel = html[html.index('id="panel-developer"'):html.index('id="panel-sprites"')]
+    assert developer_panel.index('id="active-branch-title"') < developer_panel.index("Install code directly")
+    assert developer_panel.index("<blockquote id=\"developer-warning\"") < developer_panel.index('id="developer-subtabs"')
+    assert developer_panel.index('id="developer-subtabs"') < developer_panel.index("Install from Source")
+    releases_panel = html[html.index('id="panel-releases"'):html.index('id="panel-developer"')]
+    pre_release = releases_panel[releases_panel.index('id="release-view-pre-release"'):]
+    assert pre_release.index("Recent Branch Updates") < pre_release.index('id="branch-status"')
+    assert pre_release.index('id="branch-status"') < pre_release.index('id="recent-commits"')
+    assert 'id="branch-snooze"' in pre_release and 'id="branch-update-btn"' in pre_release
+    assert "padding-bottom: 180px;" in css[css.index("#panel-releases"):]
     assert "border-bottom-color: var(--accent-blue);" in css
     assert " (Current)" in javascript
     assert " (Last Main)" in javascript
@@ -207,14 +219,32 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "fetch_commits_between" in (
         ADDON / "pyobj" / "update_manager.py"
     ).read_text(encoding="utf-8")
-    assert "switchBranchView" in javascript
-    assert "dataset.branchView" in javascript
+    assert "dataset.developerView" in javascript
     branch_switch = javascript[
-        javascript.index("function switchBranchView"):
-        javascript.index("function renderReleases")
+        javascript.index("function switchDeveloperView"):
+        javascript.index("function showDeveloperWarningIfNeeded")
     ]
-    assert "const gitInfo = updateData.git_info || {};" in branch_switch
-    assert "if (updateData.git_clone)" in branch_switch
+    assert "selectedBranchView = selectedDeveloperView;" in branch_switch
+    assert "appendChild(byId('branch-update-view'))" in branch_switch
+    assert "Update to Main Now" in javascript
+    assert "Main comparison point not recorded" not in javascript
+    assert "unknown (not recorded)" not in javascript
+    assert "'unknown'" in javascript
+    assert "Switch to Latest Release" in javascript
+    assert "Updates that will be lost" in javascript
+    assert "lostReleaseCommits.slice(0, 100)" in javascript
+    assert "...And more." in javascript
+    assert "Unlike main, these are collaborator branches and can be unreleased." in javascript
+    assert (
+        "Anyone can open a pull request; this code is unreviewed and unreleased. "
+        "Installing it runs unverified code on your computer. It may or may not "
+        "behave as expected, and can even break the add-on. Only proceed if you "
+        "trust this PR. Use at your own risk."
+    ) in javascript
+    assert "unreleased — installing it runs unverified code" not in javascript
+    assert "warning-modal" in css
+    assert "Do not show this again" in javascript
+    assert "showDeveloperWarningIfNeeded();" in javascript
     assert "def consume_api_error()" in (
         ADDON / "pyobj" / "update_manager.py"
     ).read_text(encoding="utf-8")
@@ -227,6 +257,14 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "_sprite_check_up_to_date = False" in bridge
     assert "def setBranchSnooze(self, snoozed)" in bridge
     assert "def setSpriteSnooze(self, snoozed)" in bridge
+    assert "def getDeveloperWarningHidden(self)" in bridge
+    assert "def setDeveloperWarningHidden(self, hidden)" in bridge
+    assert '"hide_developer_warning"' in bridge
+    assert "database = services.db" in bridge
+    assert "database.set_user_data(\"hide_developer_warning\", 1 if hidden else 0)" in bridge
+    assert "commit_cache = {}" in bridge
+    assert "commit_cache[key] = updater.fetch_commits_between(*key)" in bridge
+    assert "bleeding_edge_release" in bridge
     assert "bridge.setBranchSnooze(event.target.checked" in javascript
     assert "bridge.setSpriteSnooze(event.target.checked" in javascript
     shell = (ADDON / "ankimon_items_web" / "shop_obj.py").read_text(

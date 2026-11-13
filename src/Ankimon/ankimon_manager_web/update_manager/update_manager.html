@@ -7,7 +7,7 @@
 	<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="../../ankimon_items_web/shop.css?v=20260634">
 	<link rel="stylesheet" href="../../ankimon_items_web/nav-switcher.css?v=20260634">
-	<link rel="stylesheet" href="update_manager.css?v=20261107.1">
+	<link rel="stylesheet" href="update_manager.css?v=20261113.1">
 	<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body class="dark-mode">
@@ -16,7 +16,7 @@
 			<div class="sidebar-header">
 				<div id="nav-switcher" class="nav-switcher">
 					<button id="nav-trigger" class="nav-trigger" type="button" aria-haspopup="true" aria-expanded="false">
-						<img src="../../user_files/sprites/items/exp-share.png" class="app-logo icon-item-sprite update-manager-logo" alt="">
+						<img src="../../user_files/sprites/items/up-grade.png" class="app-logo icon-item-sprite update-manager-logo" alt="">
 						<h1>UPDATE MANAGER</h1>
 						<span class="nav-chevron">▾</span>
 					</button>
@@ -27,7 +27,7 @@
 						<button class="nav-menu-item" role="menuitem" data-screen="profile"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/water-gem.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Profile</span><span class="nav-menu-desc">Card, badges &amp; avatar</span></div></button>
 						<button class="nav-menu-item" role="menuitem" data-screen="settings"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/x-speed.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Settings</span><span class="nav-menu-desc">Configure Ankimon</span></div></button>
 						<button class="nav-menu-item" role="menuitem" data-screen="mobile"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/elixir.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Mobile &amp; Web Reviews</span><span class="nav-menu-desc">Pending mobile/web battles</span></div></button>
-						<button class="nav-menu-item active" role="menuitem" data-screen="update_manager"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/exp-share.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Update Manager</span><span class="nav-menu-desc">Check and install Ankimon updates</span></div></button>
+						<button class="nav-menu-item active" role="menuitem" data-screen="update_manager"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/up-grade.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Update Manager</span><span class="nav-menu-desc">Check and install Ankimon updates</span></div></button>
 						<button class="nav-menu-item" role="menuitem" data-screen="backup_manager"><span class="nav-menu-icon"><img src="../../user_files/sprites/items/skull-fossil.png" class="icon-item-sprite" alt=""></span><div class="nav-menu-text"><span class="nav-menu-title">Backup Manager</span><span class="nav-menu-desc">Create and restore backups</span></div></button>
 					</div>
 				</div>
@@ -35,10 +35,9 @@
 			<nav class="sidebar-nav">
 				<div class="nav-group">
 					<label>Update options</label>
-					<button class="nav-item update-tab-link active" type="button" data-tab="branch">Branch</button>
-					<button class="nav-item update-tab-link" type="button" data-tab="releases">Releases</button>
-					<button class="nav-item update-tab-link" type="button" data-tab="developer">Developer</button>
+					<button class="nav-item update-tab-link active" type="button" data-tab="releases">Releases</button>
 					<button class="nav-item update-tab-link" type="button" data-tab="sprites">Sprites</button>
+					<button class="nav-item update-tab-link" type="button" data-tab="developer">Developer</button>
 				</div>
 			</nav>
 		</aside>
@@ -59,51 +58,47 @@
 						<div><h3>Git Workspace Mode</h3><p id="git-info"></p><p>Selected sources are checked out from the official Ankimon repository. The working tree must be clean; restart Anki after an update.</p></div>
 						<button id="git-pull-btn" class="btn btn-primary" type="button">Fast-forward Current Branch</button>
 					</section>
-					<section id="panel-branch" class="tab-panel active">
-						<div class="update-card">
-							<h3 id="active-branch-title">Active Branch: Loading...</h3>
-							<dl class="branch-details">
-								<div><dt>Installed Commit</dt><dd id="installed-commit">Loading...</dd></div>
-								<div><dt>Commit Date</dt><dd id="commit-date">Loading...</dd></div>
-								<div><dt>Last Update Installed</dt><dd id="last-update-installed">Loading...</dd></div>
-							</dl>
-						</div>
-						<nav id="branch-subtabs" class="branch-subtabs hidden" aria-label="Branch update view">
-							<button class="branch-subtab active" type="button" data-branch-view="main">Main</button>
-							<button class="branch-subtab" type="button" data-branch-view="current">Current Installed</button>
+					<section id="panel-releases" class="tab-panel active">
+						<nav id="release-subtabs" class="branch-subtabs" aria-label="Release update view">
+							<button class="branch-subtab active" type="button" data-release-view="releases">Releases</button>
+							<button class="branch-subtab" type="button" data-release-view="pre-release">Pre-Release</button>
 						</nav>
-						<div class="update-card">
-							<h3>Recent Branch Updates</h3>
-							<p id="branch-status" class="status-text" role="status" aria-live="polite">Checking branch...</p>
-							<ul id="recent-commits" class="commit-list"><li>Checking for changes...</li></ul>
+						<div id="release-view-releases" class="subtab-panel active">
+							<div class="update-card">
+								<h3>Quick Update</h3>
+								<p class="muted">One click to get the latest experimental release.</p>
+								<p id="latest-release-label" class="release-highlight">Checking...</p>
+								<button id="latest-release-btn" class="btn btn-primary" type="button" disabled>Update to Latest Release</button>
+							</div>
+							<div class="update-card">
+								<h3>Specific Release</h3>
+								<label>Choose a version:</label>
+								<div id="release-select" class="custom-select">
+									<button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">Select a release</span><span class="custom-select-chevron" aria-hidden="true"></span></button>
+									<div class="custom-select-menu hidden" role="dialog" aria-label="Choose a release">
+										<input class="custom-select-search" type="search" placeholder="Search releases" aria-label="Search releases">
+										<div class="custom-select-options" role="listbox"></div>
+									</div>
+								</div>
+								<button id="release-install-btn" class="btn btn-primary" type="button" disabled>Install Selected Release</button>
+							</div>
 						</div>
-						<div class="branch-actions">
-							<label class="check-row"><input id="branch-snooze" class="custom-checkbox" type="checkbox"><span class="checkbox-indicator" aria-hidden="true"></span><span>Snooze these update notifications for 1 week.</span></label>
-							<button id="branch-update-btn" class="btn btn-primary" type="button" disabled>Update Branch Now</button>
-						</div>
-						<div id="branch-progress" class="operation-progress hidden" aria-live="polite">
-							<div class="progress-label"><span></span><output>0%</output></div>
-							<progress max="100" value="0"></progress>
-						</div>
-					</section>
-					<section id="panel-releases" class="tab-panel">
-						<div class="update-card">
-							<h3>Quick Update</h3>
-							<p class="muted">One click to get the latest experimental release.</p>
-							<p id="latest-release-label" class="release-highlight">Checking...</p>
-							<button id="latest-release-btn" class="btn btn-primary" type="button" disabled>Update to Latest Release</button>
-						</div>
-						<div class="update-card">
-							<h3>Specific Release</h3>
-							<label>Choose a version:</label>
-							<div id="release-select" class="custom-select">
-								<button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">Select a release</span><span class="custom-select-chevron" aria-hidden="true"></span></button>
-								<div class="custom-select-menu hidden" role="dialog" aria-label="Choose a release">
-									<input class="custom-select-search" type="search" placeholder="Search releases" aria-label="Search releases">
-									<div class="custom-select-options" role="listbox"></div>
+						<div id="release-view-pre-release" class="subtab-panel">
+							<div id="branch-update-view">
+								<div class="update-card">
+									<h3>Recent Branch Updates</h3>
+									<p id="branch-status" class="status-text" role="status" aria-live="polite">Checking branch...</p>
+									<ul id="recent-commits" class="commit-list"><li>Checking for changes...</li></ul>
+								</div>
+								<div class="branch-actions">
+									<label class="check-row"><input id="branch-snooze" class="custom-checkbox" type="checkbox"><span class="checkbox-indicator" aria-hidden="true"></span><span>Snooze these update notifications for 1 week.</span></label>
+									<button id="branch-update-btn" class="btn btn-primary" type="button" disabled>Update to Main Now</button>
+								</div>
+								<div id="branch-progress" class="operation-progress hidden" aria-live="polite">
+									<div class="progress-label"><span></span><output>0%</output></div>
+									<progress max="100" value="0"></progress>
 								</div>
 							</div>
-							<button id="release-install-btn" class="btn btn-primary" type="button" disabled>Install Selected Release</button>
 						</div>
 						<div id="releases-progress" class="operation-progress hidden" aria-live="polite">
 							<div class="progress-label"><span></span><output>0%</output></div>
@@ -111,9 +106,23 @@
 						</div>
 					</section>
 					<section id="panel-developer" class="tab-panel">
+						<div class="update-card">
+							<h3 id="active-branch-title">Installed Source: Loading...</h3>
+							<dl class="branch-details">
+								<div><dt>Installed Commit</dt><dd id="installed-commit">Loading...</dd></div>
+								<div><dt>Commit Date</dt><dd id="commit-date">Loading...</dd></div>
+								<div><dt>Last Update Installed</dt><dd id="last-update-installed">Loading...</dd></div>
+							</dl>
+						</div>
 						<p class="developer-intro">Install code directly from branches, pull requests, or tags.</p>
 						<blockquote id="developer-warning" class="warning-text"><strong>Note:</strong> Your Ankimon progress file(s) will not be lost. However, pull requests and branches may contain unreviewed code. They may or may not break the add-on. <strong>Please install sources you trust.</strong></blockquote>
-						<div class="update-card">
+						<nav id="developer-subtabs" class="branch-subtabs" aria-label="Developer update view">
+							<button class="branch-subtab active" type="button" data-developer-view="source">Source</button>
+							<button class="branch-subtab" type="button" data-developer-view="main">Main</button>
+							<button class="branch-subtab" type="button" data-developer-view="current">Current Installed</button>
+						</nav>
+						<div id="developer-view-source" class="subtab-panel active">
+							<div class="update-card">
 							<h3>Install from Source</h3>
 							<label>Source type:</label>
 							<div id="source-type-select" class="custom-select">
@@ -145,7 +154,10 @@
 								</div>
 							</div>
 							<button id="developer-install-btn" class="btn btn-primary" type="button" disabled>Install</button>
+							</div>
 						</div>
+						<div id="developer-view-main" class="subtab-panel"></div>
+						<div id="developer-view-current" class="subtab-panel"></div>
 						<p id="developer-status" class="muted hidden" role="status" aria-live="polite"></p>
 						<div id="developer-progress" class="operation-progress hidden" aria-live="polite">
 							<div class="progress-label"><span></span><output>0%</output></div>
@@ -190,6 +202,6 @@
 	</div>
 	<div id="toast" class="shop-toast"></div>
 	<script src="../../ankimon_items_web/nav-switcher.js?v=20260634"></script>
-	<script src="update_manager.js?v=20261107.1"></script>
+	<script src="update_manager.js?v=20261113.1"></script>
 </body>
 </html>

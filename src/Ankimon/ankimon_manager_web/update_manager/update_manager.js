@@ -12,11 +12,15 @@
 	let prPage = 0;
 	let selectedRelease = '';
 	let latestRelease = null;
+	let lostReleaseCommits = [];
+	let isBleedingEdge = false;
 	let branchCanUpdate = false;
 	let gitPullAllowed = false;
 	let spriteUpdateAvailable = false;
 	let spriteCheckUpToDate = false;
 	let selectedBranchView = 'main';
+	let selectedDeveloperView = 'source';
+	let selectedReleaseView = 'releases';
 	let activeProgressPanel = '';
 	let activeProgressBranchView = '';
 	let activeProgressVisible = false;
@@ -38,7 +42,7 @@
 		toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000);
 	}
 
-	function showModal(title, message, confirmLabel, onConfirm, showCancel = true) {
+	function showModal(title, message, confirmLabel, onConfirm, showCancel = true, warningStyle = false) {
 		setText('modal-title', title);
 		const messageElement = byId('modal-message');
 		messageElement.replaceChildren();
@@ -48,12 +52,15 @@
 		setVisible(byId('modal-cancel'), showCancel);
 		const modal = byId('update-modal');
 		modal.classList.remove('hidden');
+		const modalCard = modal.querySelector('.update-modal-card');
+		modalCard.classList.toggle('warning-modal', warningStyle);
 		const confirm = byId('modal-confirm');
 		const cancel = byId('modal-cancel');
 		const previous = document.activeElement;
 		const onKey = (event) => { if (event.key === 'Escape') close(); };
 		const close = () => {
 			modal.classList.add('hidden');
+			modalCard.classList.remove('warning-modal');
 			confirm.onclick = null;
 			cancel.onclick = null;
 			document.removeEventListener('keydown', onKey);
@@ -250,7 +257,7 @@
 		byId('branch-update-btn').disabled = busy || !branchCanUpdate;
 		byId('git-pull-btn').disabled = busy || !gitPullAllowed;
 		byId('latest-release-btn').disabled = busy || !latestRelease ||
-			latestRelease.name === (updateData && updateData.version);
+			(latestRelease.name === (updateData && updateData.version) && !isBleedingEdge);
 		byId('release-install-btn').disabled = busy || !selectedRelease;
 		byId('developer-install-btn').disabled = busy ||
 			(selectedSourceType !== 'main' && !selectedTarget);
@@ -264,7 +271,7 @@
 		const active = data.active_branch || 'main';
 		const localSha = typeof data.local_sha === 'string' ? data.local_sha : '';
 		const hasBranchViews = Boolean(data.show_branch_views);
-		const branchView = hasBranchViews ? selectedBranchView : 'current';
+		const branchView = selectedBranchView;
 		const viewData = branchView === 'main'
 			? {
 				localSha: data.main_commit_sha || '',
@@ -283,10 +290,14 @@
 		const remoteSha = viewData.remoteSha;
 		const compareSha = viewData.localSha;
 		const relation = data.relation || state.git_relation || null;
-		const branchSubtabs = byId('branch-subtabs');
-		setVisible(branchSubtabs, hasBranchViews);
-		branchSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
-			button.classList.toggle('active', button.dataset.branchView === branchView);
+		const developerSubtabs = byId('developer-subtabs');
+		developerSubtabs.querySelectorAll('[data-developer-view="main"], [data-developer-view="current"]')
+			.forEach((button) => setVisible(button, hasBranchViews));
+		if (!hasBranchViews && selectedDeveloperView !== 'source') {
+			switchDeveloperView('source');
+		}
+		developerSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
+			button.classList.toggle('active', button.dataset.developerView === selectedDeveloperView);
 		});
 		const activeBranchTitle = byId('active-branch-title');
 		activeBranchTitle.replaceChildren();
@@ -316,9 +327,9 @@
 		setText(
 			'installed-commit',
 			[
-				`${localSha ? localSha.slice(0, 7) : 'unknown'} (Current)`,
+				localSha ? `${localSha.slice(0, 7)} (Current)` : 'unknown',
 				...(hasBranchViews
-					? [`${mainCommitSha ? mainCommitSha.slice(0, 7) : 'unknown (not recorded)'} (Last Main)`]
+					? [mainCommitSha ? `${mainCommitSha.slice(0, 7)} (Last Main)` : 'unknown']
 					: []),
 			].join('\n'),
 		);
@@ -331,7 +342,7 @@
 				...(hasBranchViews
 					? [typeof data.main_commit_date === 'string' && data.main_commit_date
 						? `${data.main_commit_date.replace('T', ' ').replace('Z', '')} UTC`
-						: 'Unknown (main baseline not recorded)']
+						: 'unknown']
 					: []),
 			].join('\n'),
 		);
@@ -347,7 +358,7 @@
 		branchCanUpdate = false;
 		if (branchView === 'main' && hasBranchViews && !mainCommitSha) {
 			if (remoteSha) {
-				status.textContent = 'Main comparison point not recorded. Update Main to establish one.';
+				status.textContent = 'unknown';
 				status.classList.add('warning');
 			} else if (data.main_error === 'rate_limited') {
 				status.textContent = RATE_LIMIT_MESSAGE;
@@ -362,7 +373,7 @@
 				status.textContent = 'GitHub could not verify the Main branch. Please try again later.';
 				status.classList.add('warning');
 			}
-			setText('branch-update-btn', 'Update Main Now');
+			setText('branch-update-btn', 'Update to Main Now');
 			branchCanUpdate = Boolean(remoteSha);
 		} else if (data.git_clone && active === 'detached') {
 			status.textContent = 'Detached checkout. Pick a branch, release, tag, or PR from the other tabs.';
@@ -399,7 +410,7 @@
 			}
 			setText('branch-update-btn', data.git_clone
 				? 'Branch Not on Ankimon Repository'
-				: branchView === 'main' ? 'Update Main Now' : 'Update Installed Source');
+				: branchView === 'main' ? 'Update to Main Now' : 'Update Installed Source');
 		} else if (data.git_clone && compareSha !== remoteSha && ['behind', 'diverged'].includes(relation)) {
 			status.textContent = relation === 'behind'
 				? `Your checkout is ahead of '${active}' on the Ankimon repository.`
@@ -410,7 +421,7 @@
 			status.textContent = `New update available! (Latest: ${remoteSha.slice(0, 7)})`;
 			status.classList.add('warning');
 			setText('branch-update-btn', branchView === 'main'
-				? 'Update Main Now'
+				? 'Update to Main Now'
 				: 'Update Installed Source');
 			branchCanUpdate = true;
 		} else {
@@ -475,25 +486,67 @@
 		);
 	}
 
-	function switchBranchView(view) {
-		if (!updateData || !updateData.show_branch_views) return;
-		selectedBranchView = view === 'current' ? 'current' : 'main';
-		renderBranch(updateData);
-		syncBranchProgressVisibility();
-		updateButtonStates();
-
-		const gitInfo = updateData.git_info || {};
-		if (updateData.git_clone) {
-			const branch = gitInfo.branch || 'unknown';
-			const sha = gitInfo.sha || 'unknown';
-			setText(
-				'git-info',
-				`${branch === 'HEAD' ? 'detached checkout' : branch} · ${sha} · ${gitInfo.dirty ? 'local changes' : 'clean'}`,
-			);
-			byId('git-notice').classList.remove('hidden');
-		} else {
-			byId('git-notice').classList.add('hidden');
+	function switchDeveloperView(view) {
+		selectedDeveloperView = ['main', 'current'].includes(view) ? view : 'source';
+		byId('developer-subtabs').querySelectorAll('.branch-subtab').forEach((button) => {
+			button.classList.toggle('active', button.dataset.developerView === selectedDeveloperView);
+		});
+		document.querySelectorAll('#panel-developer .subtab-panel').forEach((panel) => {
+			panel.classList.toggle('active', panel.id === `developer-view-${selectedDeveloperView}`);
+		});
+		if (selectedDeveloperView !== 'source') {
+			byId(`developer-view-${selectedDeveloperView}`).appendChild(byId('branch-update-view'));
+			if (updateData && updateData.show_branch_views) {
+				selectedBranchView = selectedDeveloperView;
+				renderBranch(updateData);
+				syncBranchProgressVisibility();
+			}
 		}
+		updateButtonStates();
+	}
+
+	function switchReleaseView(view) {
+		selectedReleaseView = view === 'pre-release' ? 'pre-release' : 'releases';
+		byId('release-subtabs').querySelectorAll('.branch-subtab').forEach((button) => {
+			button.classList.toggle('active', button.dataset.releaseView === selectedReleaseView);
+		});
+		document.querySelectorAll('#panel-releases .subtab-panel').forEach((panel) => {
+			panel.classList.toggle('active', panel.id === `release-view-${selectedReleaseView}`);
+		});
+		if (selectedReleaseView === 'pre-release') {
+			byId('release-view-pre-release').appendChild(byId('branch-update-view'));
+			selectedBranchView = 'main';
+			if (updateData) renderBranch(updateData);
+			syncBranchProgressVisibility();
+		}
+	}
+
+	function showDeveloperWarningIfNeeded() {
+		if (!bridge) return;
+		bridge.getDeveloperWarningHidden((hidden) => {
+			if (hidden) return;
+			const content = document.createElement('div');
+			const warning = document.createElement('p');
+			warning.textContent = 'This section contains developer tools and is usually for developer use. Installations made here are irreversible, and not all code does what it says. Pull requests may be blueprints or drafts. Only proceed with sources you trust.';
+			const row = document.createElement('label');
+			row.className = 'developer-warning-checkbox';
+			const checkbox = document.createElement('input');
+			checkbox.type = 'checkbox';
+			const label = document.createElement('span');
+			label.textContent = 'Do not show this again';
+			row.append(checkbox, label);
+			content.append(warning, row);
+			showModal(
+				'Developer warning',
+				content,
+				'Got it',
+				() => bridge.setDeveloperWarningHidden(checkbox.checked, (saved) => {
+					if (!saved) showToast('Could not save the developer warning setting.', true);
+				}),
+				false,
+				true,
+			);
+		});
 	}
 
 	function renderReleases(releases, error = null) {
@@ -501,12 +554,20 @@
 		latestRelease = list[0] || null;
 		const latestLabel = byId('latest-release-label');
 		latestLabel.classList.remove('success', 'warning', 'error');
+		isBleedingEdge = Boolean(updateData && updateData.bleeding_edge_release);
+		lostReleaseCommits = updateData && Array.isArray(updateData.release_lost_commits)
+			? updateData.release_lost_commits
+			: [];
 		if (error === 'rate_limited') {
 			latestLabel.textContent = RATE_LIMIT_MESSAGE;
 			latestLabel.classList.add('error');
 		} else if (!latestRelease) {
 			latestLabel.textContent = 'Could not check for updates.';
 			latestLabel.classList.add('warning');
+		} else if (isBleedingEdge) {
+			latestLabel.textContent = `Switch back to ${latestRelease.name} from the pre-release`;
+			latestLabel.classList.add('warning');
+			setText('latest-release-btn', 'Switch to Latest Release');
 		} else if (latestRelease.name === updateData.version) {
 			latestLabel.textContent = `You're up to date (${latestRelease.name})`;
 			latestLabel.classList.add('success');
@@ -554,20 +615,17 @@
 	function renderVersion(data) {
 		const state = data.state || {};
 		let version = '';
-		if (state.source_type === 'branch') {
+		if (state.source_type === 'branch' && state.source_name === 'main') {
+			version = '(Pre-Release)';
+		} else if (state.source_type === 'branch') {
 			const sha = typeof state.commit_sha === 'string' && state.commit_sha
 				? ` (${state.commit_sha.slice(0, 7)})`
 				: '';
 			version = `(Branch: ${state.source_name}${sha})`;
-		} else if (state.source_type === 'pr') {
-			const sha = typeof state.commit_sha === 'string' && state.commit_sha
-				? ` (${state.commit_sha.slice(0, 7)})`
-				: '';
-			version = `(PR #${state.source_name}${sha})`;
 		} else if (state.source_type === 'tag') {
 			version = `(Tag: ${state.source_name})`;
-		} else if (state.source_type === 'release') {
-			version = `(Release: ${state.source_name})`;
+		} else if (state.source_type === 'release' || state.source_type === 'pr') {
+			version = '';
 		} else if (data.experimental_build) {
 			version = '(Experimental Build)';
 		}
@@ -716,16 +774,61 @@
 			setDeveloperStatus('Loading developer options...');
 			bridge.loadDeveloperData();
 		}
+		if (tab === 'developer') {
+			switchDeveloperView(selectedDeveloperView);
+			showDeveloperWarningIfNeeded();
+		} else if (tab === 'releases') {
+			switchReleaseView(selectedReleaseView);
+		}
+	}
+
+	function startInstall(sourceType, sourceName, progressPanel) {
+		activeProgressPanel = progressPanel;
+		activeProgressBranchView = progressPanel === 'branch' &&
+			updateData && updateData.show_branch_views
+			? selectedBranchView
+			: 'current';
+		setOperationProgress(0, true, true);
+		setOperationStatus('', false);
+		bridge.installUpdate(sourceType, sourceName, (result) => {
+			if (result && result.success === false) {
+				setOperationProgress(0, true);
+				if (activeProgressPanel) {
+					setProgressMessage(
+						byId(`${activeProgressPanel}-progress`)
+							.querySelector('.progress-label span'),
+						result.message || 'Update could not be started.',
+						'failure',
+					);
+				}
+			}
+		});
 	}
 
 	function install(sourceType, sourceName, _label, warning = '', progressPanel = 'developer') {
 		const prompt = updateData && updateData.git_clone
 			? `Switch this Git checkout to `
 			: `Update Ankimon to `;
+		const resolvedTarget = sourceType === 'installed' && updateData
+			? { type: updateData.source_type, name: updateData.source_name }
+			: sourceType === 'current' && updateData
+				? { type: 'branch', name: updateData.git_info && updateData.git_info.branch }
+				: { type: sourceType, name: sourceName };
+		if (!warning && resolvedTarget.type === 'pr') {
+			warning = 'Anyone can open a pull request; this code is unreviewed and unreleased. Installing it runs unverified code on your computer. It may or may not behave as expected, and can even break the add-on. Only proceed if you trust this PR. Use at your own risk.';
+		} else if (!warning && resolvedTarget.type === 'branch' &&
+			resolvedTarget.name && resolvedTarget.name !== 'main') {
+			warning = 'Unlike main, these are collaborator branches and can be unreleased. The branch may be a work in progress. They may or may not behave as expected, and might even break the add-on. Only proceed if you trust this branch. Use at your own risk.';
+		}
 		const linkTarget = sourceLinkTarget(sourceType, sourceName);
 		const fragment = document.createDocumentFragment();
 		if (warning) {
-			fragment.appendChild(document.createTextNode(`${warning}\n\n`));
+			const warningElement = document.createElement('p');
+			warningElement.className = 'warning-text modal-warning-text';
+			const heading = document.createElement('strong');
+			heading.textContent = 'Warning: ';
+			warningElement.append(heading, document.createTextNode(warning));
+			fragment.append(warningElement, document.createTextNode('\n'));
 		}
 		fragment.appendChild(document.createTextNode(prompt));
 		const link = document.createElement('a');
@@ -751,28 +854,74 @@
 		} else {
 			fragment.appendChild(document.createTextNode('?\n\nYour Pokémon data, settings, and sprites will be preserved.'));
 		}
-		showModal('Confirm Update', fragment, 'Install', () => {
-			activeProgressPanel = progressPanel;
-			activeProgressBranchView = progressPanel === 'branch' &&
-				updateData && updateData.show_branch_views
-				? selectedBranchView
-				: 'current';
-			setOperationProgress(0, true, true);
-			setOperationStatus('', false);
-			bridge.installUpdate(sourceType, sourceName, (result) => {
-				if (result && result.success === false) {
-					setOperationProgress(0, true);
-					if (activeProgressPanel) {
-						setProgressMessage(
-							byId(`${activeProgressPanel}-progress`)
-								.querySelector('.progress-label span'),
-							result.message || 'Update could not be started.',
-							'failure',
-						);
-					}
-				}
-			});
+		showModal(
+			'Confirm Update',
+			fragment,
+			'Install',
+			() => startInstall(sourceType, sourceName, progressPanel),
+			true,
+			Boolean(warning),
+		);
+	}
+
+	function showReleaseSwitchConfirmation() {
+		if (!latestRelease) return;
+		const content = document.createElement('div');
+		const warning = document.createElement('p');
+		warning.className = 'warning-text modal-warning-text';
+		const heading = document.createElement('strong');
+		heading.textContent = 'Warning: ';
+		warning.append(
+			heading,
+			document.createTextNode("Some of the comfort features that you've been using might vanish, as this release might be far behind."),
+		);
+		const list = document.createElement('ul');
+		list.className = 'commit-list lost-commit-list';
+		const commits = lostReleaseCommits.slice(0, 100);
+		commits.forEach((commit) => {
+			const item = document.createElement('li');
+			const sha = String(commit.sha || '');
+			if (/^[\da-f]{7,40}$/i.test(sha)) {
+				const link = document.createElement('a');
+				link.href = '#';
+				link.className = 'commit-link';
+				link.textContent = sha;
+				link.addEventListener('click', (event) => {
+					event.preventDefault();
+					openGitHubTarget(
+						`https://github.com/h0tp-ftw/ankimon/commit/${encodeURIComponent(sha)}`,
+						'Could not open the commit in your browser.',
+					);
+				});
+				item.append(link, document.createTextNode(commit.message || ''));
+			} else {
+				const code = document.createElement('code');
+				code.textContent = sha;
+				item.append(code, document.createTextNode(commit.message || ''));
+			}
+			list.appendChild(item);
 		});
+		if (lostReleaseCommits.length > 100) {
+			const more = document.createElement('li');
+			more.className = 'lost-commits-more';
+			more.textContent = '...And more.';
+			list.appendChild(more);
+		}
+		if (!commits.length) {
+			const empty = document.createElement('li');
+			empty.textContent = 'No intervening commits were found.';
+			list.appendChild(empty);
+		}
+		content.append(warning, list);
+		const releaseName = latestRelease.name;
+		showModal(
+			'Updates that will be lost',
+			content,
+			'Switch to Latest Release',
+			() => startInstall('release', releaseName, 'releases'),
+			true,
+			true,
+		);
 	}
 
 	function openGitHubTarget(target, errorMessage) {
@@ -815,7 +964,7 @@
 
 	function installActiveBranch() {
 		if (!updateData) return;
-		if (updateData.show_branch_views && selectedBranchView === 'main') {
+		if (selectedBranchView === 'main') {
 			install('branch', 'main', 'latest main', '', 'branch');
 			return;
 		}
@@ -837,6 +986,7 @@
 		renderVersion(data);
 		renderBranch(data);
 		renderReleases(data.releases, data.releases_error);
+		switchDeveloperView(selectedDeveloperView);
 		byId('branch-snooze').checked = Number(data.skip_until) > Date.now() / 1000;
 		byId('sprites-snooze').checked = Boolean(data.sprite_snoozed);
 		updateButtonStates();
@@ -1007,11 +1157,12 @@
 	document.querySelectorAll('.update-tab-link').forEach((button) => {
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
 	});
-	const updateTabNames = ['branch', 'releases', 'developer', 'sprites'];
+	const updateTabNames = ['releases', 'sprites', 'developer'];
 	document.querySelector('.sidebar-nav').addEventListener('wheel', (event) => {
 		const tab = event.target.closest('.update-tab-link');
 		if (!tab || !event.deltaY) return;
-		const tabIndex = updateTabNames.indexOf(tab.dataset.tab);
+		const activeTab = document.querySelector('.update-tab-link.active');
+		const tabIndex = updateTabNames.indexOf(activeTab && activeTab.dataset.tab);
 		if (tabIndex < 0) return;
 		event.preventDefault();
 		event.stopPropagation();
@@ -1022,15 +1173,18 @@
 		if (nextIndex !== tabIndex) switchTab(updateTabNames[nextIndex]);
 	}, { passive: false });
 
-	const branchSubtabs = byId('branch-subtabs');
-	branchSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
-		button.addEventListener('click', () => switchBranchView(button.dataset.branchView));
+	byId('developer-subtabs').querySelectorAll('[data-developer-view]').forEach((button) => {
+		button.addEventListener('click', () => switchDeveloperView(button.dataset.developerView));
 	});
-	branchSubtabs.addEventListener('wheel', (event) => {
-		if (!updateData || !updateData.show_branch_views || !event.deltaY) return;
+	byId('release-subtabs').querySelectorAll('[data-release-view]').forEach((button) => {
+		button.addEventListener('click', () => switchReleaseView(button.dataset.releaseView));
+	});
+	byId('release-subtabs').addEventListener('wheel', (event) => {
+		if (!event.deltaY) return;
 		event.preventDefault();
 		event.stopPropagation();
-		switchBranchView(event.deltaY > 0 ? 'current' : 'main');
+		const nextView = event.deltaY > 0 ? 'pre-release' : 'releases';
+		switchReleaseView(nextView);
 	}, { passive: false });
 
 	document.querySelectorAll('.custom-select').forEach((dropdown) => wireDropdown(dropdown));
@@ -1088,7 +1242,11 @@
 	});
 	byId('latest-release-btn').addEventListener('click', () => {
 		if (latestRelease) {
-			install('release', latestRelease.name, `latest release (${latestRelease.name})`, '', 'releases');
+			if (isBleedingEdge) {
+				showReleaseSwitchConfirmation();
+			} else {
+				install('release', latestRelease.name, `latest release (${latestRelease.name})`, '', 'releases');
+			}
 		}
 	});
 	byId('release-install-btn').addEventListener('click', () => {
@@ -1112,14 +1270,11 @@
 				? (developerData.branches || []).find((branch) => branch.name === value)
 				: (developerData.tags || []).find((tag) => tag.name === value);
 		if (!entry) return;
-		const warning = source === 'pr'
-			? 'WARNING: Anyone can open a pull request. This code is unreviewed and unreleased — installing it runs unverified code on your computer. Only proceed if you trust this PR. Use at your own risk.'
-			: '';
 		install(
 			source,
 			value,
 			source === 'pr' ? `PR #${entry.number} (${entry.title})` : `${source} ${value}`,
-			warning,
+			'',
 			'developer',
 		);
 	});
