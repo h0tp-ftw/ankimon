@@ -803,9 +803,24 @@ function renderReplayBattle(result) {
         playerSprite.src = result.companion_sprite;
     }
 
-    document.getElementById('replay-enemy-name').textContent = result.enemy_name || '???';
+    const enemyNameEl = document.getElementById('replay-enemy-name');
+    enemyNameEl.textContent = result.enemy_name || '???';
+    if (result.enemy_shiny) {
+        const shinySpan = document.createElement('span');
+        shinySpan.className = 'shiny-badge';
+        shinySpan.textContent = '✨';
+        enemyNameEl.prepend(shinySpan, ' ');
+    }
     document.getElementById('replay-enemy-level').textContent = `Lv.${result.enemy_level}`;
-    document.getElementById('replay-player-name').textContent = result.companion_name || 'Companion';
+
+    const playerNameEl = document.getElementById('replay-player-name');
+    playerNameEl.textContent = result.companion_name || 'Companion';
+    if (result.companion_shiny) {
+        const shinySpan = document.createElement('span');
+        shinySpan.className = 'shiny-badge';
+        shinySpan.textContent = '✨';
+        playerNameEl.prepend(shinySpan, ' ');
+    }
     document.getElementById('replay-player-level').textContent = `Lv.${result.companion_level}`;
 
     // Render the compact selector

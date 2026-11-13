@@ -207,7 +207,7 @@ function renderHistory(historyList) {
 
         const details = makeElement('span', 'history-item-details');
         appendText(details, 'Your ');
-        details.appendChild(makeElement('strong', '', entry.companion_name || 'Companion'));
+        details.appendChild(makeElement('strong', '', (entry.companion_shiny ? '✨ ' : '') + (entry.companion_name || 'Companion')));
         appendText(details, ` (Lv.${finiteNumber(entry.companion_level, 5)}) vs wild `);
         details.appendChild(makeElement(
             'strong',
