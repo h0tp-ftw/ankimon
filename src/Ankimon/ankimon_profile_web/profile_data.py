@@ -821,6 +821,8 @@ class ProfileData:
             services.db.save_team(team_data)
             if companion_id:
                 active = services.main_pokemon
+                # Read before the switch: the main singleton is updated in place.
+                outgoing_id = getattr(active, "individual_id", None)
                 if (
                     active is not None
                     and getattr(active, "individual_id", None)
@@ -842,7 +844,7 @@ class ProfileData:
                     services.main_pokemon.update_stats(**new_main.to_dict())
                 if mainpokemon_empty:
                     raise RuntimeError("The selected companion could not be loaded")
-                if str(getattr(active, "individual_id", None)) != str(companion_id):
+                if outgoing_id is not None and str(outgoing_id) != str(companion_id):
                     from ..battle_loop import mark_swap_turn_lost
 
                     mark_swap_turn_lost()

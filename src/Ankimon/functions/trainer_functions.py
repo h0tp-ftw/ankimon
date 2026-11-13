@@ -510,6 +510,11 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
                 if new_max_hp is not None:
                     pokemon["current_hp"] = int(new_max_hp)
                     pokemon.pop("hp", None)
+                    if (
+                        str(pokemon.get("battle_status") or "").strip().lower()
+                        == "fainted"
+                    ):
+                        pokemon["battle_status"] = "fighting"
 
         # Passive XP Share earns less friendship than battling; neither is capped.
         friendship_gain = random.randint(1, 2)

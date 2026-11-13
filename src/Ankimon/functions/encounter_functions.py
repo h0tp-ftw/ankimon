@@ -1498,6 +1498,8 @@ def save_main_pokemon_progress(
         main_pokemon.update_stats()
         # Levelling up fully heals the Pokemon to its new max HP.
         main_pokemon.hp = main_pokemon.current_hp = main_pokemon.max_hp
+        if getattr(main_pokemon, "battle_status", None) == "fainted":
+            main_pokemon.battle_status = "fighting"
         events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"

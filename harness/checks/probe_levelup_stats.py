@@ -42,14 +42,20 @@ class LevelupStatsTests(unittest.TestCase):
             for level in range(self.mp.level, self.mp.level + count)
         )
 
-    def assert_live_stats(self, level, hp_ev, original_hp=20):
+    def assert_live_stats(self, level, hp_ev, original_hp=20, healed=False):
         self.assertEqual(self.mp.level, level)
         self.assertEqual(self.mp.ev["hp"], hp_ev)
         expected_hp = 10 + level + ((2 * 35 + 31 + hp_ev // 4) * level // 100)
         self.assertEqual(self.mp.max_hp, expected_hp)
         self.assertEqual(self.mp.to_engine_format()["maxhp"], expected_hp)
-        self.assertEqual(self.mp.hp, original_hp, "Recalculation must not heal")
-        self.assertEqual(self.mp.current_hp, original_hp)
+        if healed:
+            # A real level-up fully heals to the new max HP.
+            self.assertEqual(self.mp.hp, expected_hp, "Level-up must fully heal")
+            self.assertEqual(self.mp.current_hp, expected_hp)
+            self.assertEqual(self.s.db.get_main_pokemon()["current_hp"], expected_hp)
+        else:
+            self.assertEqual(self.mp.hp, original_hp, "Recalculation must not heal")
+            self.assertEqual(self.mp.current_hp, original_hp)
         row = self.s.db.get_main_pokemon()
         self.assertEqual(row["level"], level)
         self.assertEqual(row["ev"], self.mp.ev)
@@ -72,11 +78,11 @@ class LevelupStatsTests(unittest.TestCase):
         ) if e["type"] == "levelup" else None)
         self.desktop_award(self.xp_for_levels(2), 0)
         self.assertEqual(seen, [(51, 112), (52, 114)])
-        self.assert_live_stats(52, 0)
+        self.assert_live_stats(52, 0, healed=True)
 
     def test_desktop_levelup_includes_new_evs(self):
         self.desktop_award(self.xp_for_levels(2), 8)
-        self.assert_live_stats(52, 8)
+        self.assert_live_stats(52, 8, healed=True)
 
     def test_desktop_ev_only_gain_refreshes_stats(self):
         self.desktop_award(1, 8)
@@ -105,7 +111,7 @@ class LevelupStatsTests(unittest.TestCase):
 
     def test_mobile_levelup_includes_new_evs(self):
         self.mobile_award(self.xp_for_levels(2), 8)
-        self.assert_live_stats(52, 8)
+        self.assert_live_stats(52, 8, healed=True)
 
     def test_mobile_ev_only_gain_refreshes_stats(self):
         self.mobile_award(0, 8)
@@ -121,6 +127,7 @@ class LevelupStatsTests(unittest.TestCase):
         self.assertEqual(saved["level"], 52)
         self.assertEqual(saved["ev"]["hp"], 8)
         self.assertEqual(saved["stats"]["hp"], 115)
+        self.assertEqual(saved["current_hp"], 115)
 
     def test_defeat_excludes_active_pokemon_from_xp_share(self):
         from Ankimon.functions.encounter_functions import kill_pokemon
@@ -152,7 +159,10 @@ class LevelupStatsTests(unittest.TestCase):
             self.mp.individual_id, xp, companion.individual_id,
         )
         self.assertEqual(remaining, xp // 2)
-        self.assertEqual(self.s.db.get_pokemon(companion.individual_id)["level"], 51)
+        shared = self.s.db.get_pokemon(companion.individual_id)
+        self.assertEqual(shared["level"], 51)
+        # Pikachu (base HP 35, IV 31) at level 51 has 112 max HP.
+        self.assertEqual(shared["current_hp"], 10 + 51 + (2 * 35 + 31) * 51 // 100)
         self.assertEqual(self.mp.to_dict(), before)
 
 

@@ -550,3 +550,23 @@ def test_reselect_main_preserves_live_hp_and_refreshes_saved_moves(collection_di
     assert main.hp == main.current_hp == 40
     assert db.saved_main[-1]["current_hp"] == 40
     assert main.attacks == ["psychic", "recover"]
+
+
+def test_pc_switch_costs_the_incoming_pokemon_its_next_attack(collection_dialog):
+    """Making another Pokemon main mid-battle arms the lost-turn penalty (#975)."""
+    _call(collection_dialog, _stored_pokemon())
+    sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
+
+
+def test_reselecting_the_current_main_does_not_cost_a_turn(collection_dialog):
+    stored = _stored_pokemon(current_hp=100, hp=100)
+    main = collection_dialog._PokemonObject(**stored, base_stats=dict(_BASE_STATS))
+    collection_dialog.mw.ankimon_db = _FakeDB(existing_main=dict(stored))
+    test_window = MagicMock()
+    test_window.isVisible.return_value = False
+
+    collection_dialog.MainPokemon(
+        stored, main, MagicMock(), MagicMock(), MagicMock(), test_window
+    )
+
+    sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_not_called()

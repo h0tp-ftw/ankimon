@@ -180,6 +180,7 @@ _state = BattleState()
 def init_battle_state(collected_pokemon_ids: set):
     _state.item_receive_value = random.randint(3, 385)
     _state.collected_pokemon_ids = collected_pokemon_ids
+    _state.swap_turn_pending = False
 
 
 def _get_cards_per_round() -> int:

@@ -280,3 +280,9 @@ def test_cycle_saves_hp_without_erasing_newer_stored_progress(team_cycle):
     assert outgoing["attacks"] == ["tackle", "thunderbolt"]
     assert outgoing["xp"] == 123
     assert outgoing["custom_metadata"] == {"retained": True}
+
+
+def test_cycle_costs_the_incoming_pokemon_its_next_attack(team_cycle):
+    """A successful team-cycle swap arms the lost-turn penalty once (#975)."""
+    _cycle(team_cycle, current_hp=7)
+    sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()

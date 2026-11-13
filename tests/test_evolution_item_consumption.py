@@ -725,3 +725,58 @@ def test_item_evolution_rechecks_time_after_move_dialogs(phase):
             )
     finally:
         patch.stopall()
+
+
+@pytest.mark.parametrize("item_name", [None, "fire-stone"])
+def test_evolution_fully_heals_to_the_new_max_hp(item_name):
+    """Evolving restores current HP to the evolved form's max HP (#975).
+
+    Covers both the level-up save path and the atomic item-evolution path,
+    and checks the legacy duplicate ``hp`` field is not written back.
+    """
+    evo_mod, _ = _load_evo_window()
+    mock_db = MagicMock()
+    mock_db.db_path = "original.db"
+    evo_mod.services.db = mock_db
+
+    handles = _apply_common_patches()
+    try:
+        handles["search"].side_effect = lambda name, key: (
+            ["Fire"] if key == "types" else {"hp": 65} if key == "baseStats" else {}
+        )
+        handles["hp"].return_value = 100
+        mock_db.get_pokemon.return_value = {
+            "individual_id": "some-uuid",
+            "id": 133,
+            "name": "Eevee",
+            "level": 20,
+            "attacks": [],
+            "iv": {},
+            "ev": {},
+            "xp": 100,
+            "hp": 7,
+            "current_hp": 7,
+            "battle_status": "fainted",
+        }
+
+        win = _make_evo_window(evo_mod)
+        win.evolve_pokemon(
+            individual_id="some-uuid",
+            prevo_id=133,
+            prevo_name="eevee",
+            evo_id=136,
+            evo_name="flareon",
+            main_pokemon=None,
+            item_name=item_name,
+        )
+
+        if item_name:
+            evolved = handles["atomic"].call_args.args[2]
+        else:
+            evolved = mock_db.save_pokemon.call_args.args[0]
+        assert evolved["id"] == 136
+        assert evolved["current_hp"] == 100
+        assert "hp" not in evolved
+        assert evolved["battle_status"] == "fighting"
+    finally:
+        patch.stopall()
