@@ -139,6 +139,7 @@ def collection_dialog():
             _main_faint_pending_for=MagicMock(return_value=False),
             _cancel_main_faint_deferral=MagicMock(),
             mark_swap_turn_lost=MagicMock(),
+            outgoing_hp_for_swap=lambda pokemon: pokemon.current_hp,
         ),
         # Imported at the very END of MainPokemon's body.
         "Ankimon.singletons": singletons,

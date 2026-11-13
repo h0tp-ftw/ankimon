@@ -61,6 +61,7 @@ def MainPokemon(
         _cancel_main_faint_deferral,
         _main_faint_pending_for,
         mark_swap_turn_lost,
+        outgoing_hp_for_swap,
     )
 
     # Re-selecting the active companion while both Pokémon are fainted is not
@@ -81,7 +82,7 @@ def MainPokemon(
             and db.get_main_pokemon()
         ):
             if not db.update_pokemon_current_hp(
-                str(main_pokemon.individual_id), main_pokemon.current_hp
+                str(main_pokemon.individual_id), outgoing_hp_for_swap(main_pokemon)
             ):
                 raise RuntimeError("The outgoing Pokémon was not saved")
     except Exception as exc:

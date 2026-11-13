@@ -156,6 +156,7 @@ def team_cycle():
                 "Ankimon.battle_loop",
                 _cancel_main_faint_deferral=MagicMock(),
                 mark_swap_turn_lost=MagicMock(),
+                outgoing_hp_for_swap=lambda pokemon: pokemon.current_hp,
                 _main_faint_pending_for=MagicMock(return_value=False),
             ),
             "Ankimon.functions.pokedex_functions": _make_module(

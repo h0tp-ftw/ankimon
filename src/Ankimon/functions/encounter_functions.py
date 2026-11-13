@@ -1793,6 +1793,22 @@ def save_main_pokemon_progress(
         # Save to database (replaces JSON file I/O for performance)
         ankimon_db.save_main_pokemon(mainpkmndata)
 
+    if levels_gained > 0:
+        # Callers outside the defeat path (mobile Resolve All) keep the current
+        # encounter, so push the level-up stats and heal into its cached engine
+        # state; otherwise the next turn writes the pre-level-up HP back.
+        try:
+            from ..battle_loop import _state
+            from .ankimon_hooks_to_poke_engine import (
+                sync_active_pokemon_hp,
+                sync_active_pokemon_stats,
+            )
+
+            sync_active_pokemon_stats(_state.new_state, main_pokemon)
+            sync_active_pokemon_hp(_state.new_state, main_pokemon)
+        except Exception as error:
+            logger.log("warning", f"Could not refresh levelled-up battle HP: {error}")
+
     return main_pokemon.level
 
 

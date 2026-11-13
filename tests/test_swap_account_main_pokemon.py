@@ -179,6 +179,7 @@ def swap_env(monkeypatch):
             init_battle_state=MagicMock(),
             _cancel_main_faint_deferral=MagicMock(),
             mark_swap_turn_lost=MagicMock(),
+            outgoing_hp_for_swap=lambda pokemon: pokemon.current_hp,
         ),
     )
     monkeypatch.setitem(

@@ -63,6 +63,20 @@ def mark_swap_turn_lost():
         _state.swap_turn_pending = True
 
 
+def outgoing_hp_for_swap(main_pokemon):
+    """HP to save for the active Pokemon as it is swapped out.
+
+    A swap cancels a pending manual-mode double faint, and with it the only
+    heal the fainted Pokemon would get. If the outgoing Pokemon owns that
+    deferral, save it at full HP, as the faint handler would have.
+    """
+    if _main_faint_pending_for(
+        main_pokemon, getattr(main_pokemon, "individual_id", None)
+    ):
+        return main_pokemon.max_hp
+    return main_pokemon.current_hp
+
+
 def _main_faint_pending_for(main_pokemon, individual_id):
     """Whether this active individual still owns the unresolved double faint."""
     if not _main_faint_deferred or _main_faint_context is None:

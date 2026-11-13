@@ -828,8 +828,10 @@ class ProfileData:
                     and getattr(active, "individual_id", None)
                     and services.db.get_main_pokemon()
                 ):
+                    from ..battle_loop import outgoing_hp_for_swap
+
                     if not services.db.update_pokemon_current_hp(
-                        str(active.individual_id), active.current_hp
+                        str(active.individual_id), outgoing_hp_for_swap(active)
                     ):
                         raise RuntimeError(
                             "Could not save the active Pokémon before switching"
@@ -845,8 +847,13 @@ class ProfileData:
                 if mainpokemon_empty:
                     raise RuntimeError("The selected companion could not be loaded")
                 if outgoing_id is not None and str(outgoing_id) != str(companion_id):
-                    from ..battle_loop import mark_swap_turn_lost
+                    from ..battle_loop import (
+                        _cancel_main_faint_deferral,
+                        mark_swap_turn_lost,
+                    )
 
+                    # The outgoing Pokemon's deferred faint was settled above.
+                    _cancel_main_faint_deferral()
                     mark_swap_turn_lost()
                 if services.reviewer is not None:
                     services.reviewer.refresh_hud()
