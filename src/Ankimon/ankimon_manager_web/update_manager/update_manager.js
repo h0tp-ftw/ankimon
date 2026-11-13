@@ -176,9 +176,14 @@
 	}
 
 	function syncDropdownScrollSpace() {
-		const hasOpenDropdown = document.querySelector('.custom-select.open');
-		document.querySelector('.update-content')
-			.classList.toggle('has-open-dropdown', Boolean(hasOpenDropdown));
+		const openDropdown = document.querySelector('.custom-select.open');
+		const content = document.querySelector('.update-content');
+		const contentScroll = document.querySelector('.content-scroll');
+		content.classList.toggle('has-open-dropdown', Boolean(openDropdown));
+		contentScroll.classList.toggle(
+			'has-open-release-dropdown',
+			Boolean(openDropdown && openDropdown.id === 'release-select'),
+		);
 	}
 
 	function closeDropdowns(except = null) {
