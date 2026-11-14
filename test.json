@@ -1,0 +1,845 @@
+[
+  {
+    "num": 493,
+    "name": "Arceus-Fairy",
+    "baseSpecies": "Arceus",
+    "forme": "Fairy",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 120,
+      "attack": 120,
+      "defense": 120,
+      "special-attack": 120,
+      "special-defense": 120,
+      "speed": 120
+    },
+    "abilities": {
+      "0": "Multitype"
+    },
+    "heightm": 3.2,
+    "weightkg": 320,
+    "color": "White",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "requiredItems": [
+      "Pixie Plate",
+      "Fairium Z"
+    ],
+    "changesFrom": "Arceus",
+    "gen": 6
+  },
+  {
+    "num": 531,
+    "name": "Audino-Mega",
+    "baseSpecies": "Audino",
+    "forme": "Mega",
+    "types": [
+      "Normal",
+      "Fairy"
+    ],
+    "baseStats": {
+      "hp": 103,
+      "attack": 60,
+      "defense": 126,
+      "special-attack": 80,
+      "special-defense": 126,
+      "speed": 50
+    },
+    "abilities": {
+      "0": "Healer"
+    },
+    "heightm": 1.5,
+    "weightkg": 32,
+    "color": "White",
+    "eggGroups": [
+      "Fairy"
+    ],
+    "requiredItem": "Audinite",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 670,
+    "name": "Floette-Eternal",
+    "baseSpecies": "Floette",
+    "forme": "Eternal",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "F",
+    "baseStats": {
+      "hp": 74,
+      "attack": 65,
+      "defense": 67,
+      "special-attack": 125,
+      "special-defense": 128,
+      "speed": 92
+    },
+    "abilities": {
+      "0": "Flower Veil",
+      "H": "Symbiosis"
+    },
+    "heightm": 0.2,
+    "weightkg": 0.9,
+    "color": "White",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 670,
+    "name": "Floette-Mega",
+    "baseSpecies": "Floette",
+    "forme": "Mega",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "F",
+    "baseStats": {
+      "hp": 74,
+      "attack": 85,
+      "defense": 87,
+      "special-attack": 155,
+      "special-defense": 148,
+      "speed": 102
+    },
+    "abilities": {
+      "0": "Flower Veil",
+      "H": "Symbiosis"
+    },
+    "heightm": 0.2,
+    "weightkg": 100.8,
+    "color": "White",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "requiredItem": "Floettite",
+    "battleOnly": "Floette-Eternal",
+    "gen": 9,
+    "tier": "Illegal",
+    "isNonstandard": "Future"
+  },
+  {
+    "num": 716,
+    "name": "Xerneas",
+    "baseForme": "Active",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 126,
+      "attack": 131,
+      "defense": 95,
+      "special-attack": 131,
+      "special-defense": 98,
+      "speed": 99
+    },
+    "abilities": {
+      "0": "Fairy Aura"
+    },
+    "heightm": 3,
+    "weightkg": 215,
+    "color": "Blue",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tags": [
+      "Restricted Legendary"
+    ],
+    "otherFormes": [
+      "Xerneas-Neutral"
+    ],
+    "formeOrder": [
+      "Xerneas-Neutral",
+      "Xerneas"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 716,
+    "name": "Xerneas-Neutral",
+    "baseSpecies": "Xerneas",
+    "forme": "Neutral",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 126,
+      "attack": 131,
+      "defense": 95,
+      "special-attack": 131,
+      "special-defense": 98,
+      "speed": 99
+    },
+    "abilities": {
+      "0": "Fairy Aura"
+    },
+    "heightm": 3,
+    "weightkg": 215,
+    "color": "Blue",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Custom"
+  },
+  {
+    "num": 719,
+    "name": "Diancie",
+    "types": [
+      "Rock",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 50,
+      "attack": 100,
+      "defense": 150,
+      "special-attack": 100,
+      "special-defense": 150,
+      "speed": 50
+    },
+    "abilities": {
+      "0": "Clear Body"
+    },
+    "heightm": 0.7,
+    "weightkg": 8.8,
+    "color": "Pink",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tags": [
+      "Mythical"
+    ],
+    "otherFormes": [
+      "Diancie-Mega"
+    ],
+    "formeOrder": [
+      "Diancie",
+      "Diancie-Mega"
+    ],
+    "tier": "RU"
+  },
+  {
+    "num": 719,
+    "name": "Diancie-Mega",
+    "baseSpecies": "Diancie",
+    "forme": "Mega",
+    "types": [
+      "Rock",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 50,
+      "attack": 160,
+      "defense": 110,
+      "special-attack": 160,
+      "special-defense": 110,
+      "speed": 110
+    },
+    "abilities": {
+      "0": "Magic Bounce"
+    },
+    "heightm": 1.1,
+    "weightkg": 27.8,
+    "color": "Pink",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "requiredItem": "Diancite",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 743,
+    "name": "Ribombee-Totem",
+    "baseSpecies": "Ribombee",
+    "forme": "Totem",
+    "types": [
+      "Bug",
+      "Fairy"
+    ],
+    "baseStats": {
+      "hp": 60,
+      "attack": 55,
+      "defense": 60,
+      "special-attack": 95,
+      "special-defense": 70,
+      "speed": 124
+    },
+    "abilities": {
+      "0": "Sweet Veil"
+    },
+    "heightm": 0.4,
+    "weightkg": 2,
+    "color": "Yellow",
+    "eggGroups": [
+      "Bug",
+      "Fairy"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 773,
+    "name": "Silvally-Fairy",
+    "baseSpecies": "Silvally",
+    "forme": "Fairy",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 95,
+      "attack": 95,
+      "defense": 95,
+      "special-attack": 95,
+      "special-defense": 95,
+      "speed": 95
+    },
+    "abilities": {
+      "0": "RKS System"
+    },
+    "heightm": 2.3,
+    "weightkg": 100.5,
+    "color": "Gray",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "requiredItem": "Fairy Memory",
+    "changesFrom": "Silvally",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 778,
+    "name": "Mimikyu-Totem",
+    "baseSpecies": "Mimikyu",
+    "forme": "Totem",
+    "types": [
+      "Ghost",
+      "Fairy"
+    ],
+    "baseStats": {
+      "hp": 55,
+      "attack": 90,
+      "defense": 80,
+      "special-attack": 50,
+      "special-defense": 105,
+      "speed": 96
+    },
+    "abilities": {
+      "0": "Disguise"
+    },
+    "heightm": 0.4,
+    "weightkg": 2.8,
+    "color": "Yellow",
+    "eggGroups": [
+      "Amorphous"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 778,
+    "name": "Mimikyu-Busted-Totem",
+    "baseSpecies": "Mimikyu",
+    "forme": "Busted-Totem",
+    "types": [
+      "Ghost",
+      "Fairy"
+    ],
+    "baseStats": {
+      "hp": 55,
+      "attack": 90,
+      "defense": 80,
+      "special-attack": 50,
+      "special-defense": 105,
+      "speed": 96
+    },
+    "abilities": {
+      "0": "Disguise"
+    },
+    "heightm": 0.4,
+    "weightkg": 2.8,
+    "color": "Yellow",
+    "eggGroups": [
+      "Amorphous"
+    ],
+    "requiredAbility": "Disguise",
+    "battleOnly": "Mimikyu-Totem",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 785,
+    "name": "Tapu Koko",
+    "types": [
+      "Electric",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 70,
+      "attack": 115,
+      "defense": 85,
+      "special-attack": 95,
+      "special-defense": 75,
+      "speed": 130
+    },
+    "abilities": {
+      "0": "Electric Surge",
+      "H": "Telepathy"
+    },
+    "heightm": 1.8,
+    "weightkg": 20.5,
+    "color": "Yellow",
+    "tags": [
+      "Sub-Legendary"
+    ],
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 786,
+    "name": "Tapu Lele",
+    "types": [
+      "Psychic",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 70,
+      "attack": 85,
+      "defense": 75,
+      "special-attack": 130,
+      "special-defense": 115,
+      "speed": 95
+    },
+    "abilities": {
+      "0": "Psychic Surge",
+      "H": "Telepathy"
+    },
+    "heightm": 1.2,
+    "weightkg": 18.6,
+    "color": "Pink",
+    "tags": [
+      "Sub-Legendary"
+    ],
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 787,
+    "name": "Tapu Bulu",
+    "types": [
+      "Grass",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 70,
+      "attack": 130,
+      "defense": 115,
+      "special-attack": 85,
+      "special-defense": 95,
+      "speed": 75
+    },
+    "abilities": {
+      "0": "Grassy Surge",
+      "H": "Telepathy"
+    },
+    "heightm": 1.9,
+    "weightkg": 45.5,
+    "color": "Red",
+    "tags": [
+      "Sub-Legendary"
+    ],
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 788,
+    "name": "Tapu Fini",
+    "types": [
+      "Water",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 70,
+      "attack": 75,
+      "defense": 115,
+      "special-attack": 95,
+      "special-defense": 130,
+      "speed": 85
+    },
+    "abilities": {
+      "0": "Misty Surge",
+      "H": "Telepathy"
+    },
+    "heightm": 1.3,
+    "weightkg": 21.2,
+    "color": "Purple",
+    "tags": [
+      "Sub-Legendary"
+    ],
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 801,
+    "name": "Magearna",
+    "types": [
+      "Steel",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 80,
+      "attack": 95,
+      "defense": 115,
+      "special-attack": 130,
+      "special-defense": 115,
+      "speed": 65
+    },
+    "abilities": {
+      "0": "Soul-Heart"
+    },
+    "heightm": 1,
+    "weightkg": 80.5,
+    "color": "Gray",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tags": [
+      "Mythical"
+    ],
+    "otherFormes": [
+      "Magearna-Original"
+    ],
+    "formeOrder": [
+      "Magearna",
+      "Magearna-Original"
+    ],
+    "tier": "Uber"
+  },
+  {
+    "num": 801,
+    "name": "Magearna-Original",
+    "baseSpecies": "Magearna",
+    "forme": "Original",
+    "types": [
+      "Steel",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 80,
+      "attack": 95,
+      "defense": 115,
+      "special-attack": 130,
+      "special-defense": 115,
+      "speed": 65
+    },
+    "abilities": {
+      "0": "Soul-Heart"
+    },
+    "heightm": 1,
+    "weightkg": 80.5,
+    "color": "Red",
+    "eggGroups": [
+      "Undiscovered"
+    ]
+  },
+  {
+    "num": 858,
+    "name": "Hatterene-Gmax",
+    "baseSpecies": "Hatterene",
+    "forme": "Gmax",
+    "types": [
+      "Psychic",
+      "Fairy"
+    ],
+    "gender": "F",
+    "baseStats": {
+      "hp": 57,
+      "attack": 90,
+      "defense": 95,
+      "special-attack": 136,
+      "special-defense": 103,
+      "speed": 29
+    },
+    "abilities": {
+      "0": "Healer",
+      "1": "Anticipation",
+      "H": "Magic Bounce"
+    },
+    "heightm": 26,
+    "weightkg": 0,
+    "color": "Pink",
+    "eggGroups": [
+      "Fairy"
+    ],
+    "changesFrom": "Hatterene",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 861,
+    "name": "Grimmsnarl-Gmax",
+    "baseSpecies": "Grimmsnarl",
+    "forme": "Gmax",
+    "types": [
+      "Dark",
+      "Fairy"
+    ],
+    "gender": "M",
+    "baseStats": {
+      "hp": 95,
+      "attack": 120,
+      "defense": 65,
+      "special-attack": 95,
+      "special-defense": 75,
+      "speed": 60
+    },
+    "abilities": {
+      "0": "Prankster",
+      "1": "Frisk",
+      "H": "Pickpocket"
+    },
+    "heightm": 32,
+    "weightkg": 0,
+    "color": "Purple",
+    "eggGroups": [
+      "Fairy",
+      "Human-Like"
+    ],
+    "changesFrom": "Grimmsnarl",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 869,
+    "name": "Alcremie-Gmax",
+    "baseSpecies": "Alcremie",
+    "forme": "Gmax",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "F",
+    "baseStats": {
+      "hp": 65,
+      "attack": 60,
+      "defense": 75,
+      "special-attack": 110,
+      "special-defense": 121,
+      "speed": 64
+    },
+    "abilities": {
+      "0": "Sweet Veil",
+      "H": "Aroma Veil"
+    },
+    "heightm": 30,
+    "weightkg": 0,
+    "color": "Yellow",
+    "eggGroups": [
+      "Fairy",
+      "Amorphous"
+    ],
+    "changesFrom": "Alcremie",
+    "tier": "Illegal",
+    "isNonstandard": "Past"
+  },
+  {
+    "num": 888,
+    "name": "Zacian",
+    "baseForme": "Hero",
+    "types": [
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 92,
+      "attack": 120,
+      "defense": 115,
+      "special-attack": 80,
+      "special-defense": 115,
+      "speed": 138
+    },
+    "abilities": {
+      "0": "Intrepid Sword"
+    },
+    "heightm": 2.8,
+    "weightkg": 110,
+    "color": "Blue",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tags": [
+      "Restricted Legendary"
+    ],
+    "otherFormes": [
+      "Zacian-Crowned"
+    ],
+    "formeOrder": [
+      "Zacian",
+      "Zacian-Crowned"
+    ],
+    "cannotDynamax": true,
+    "tier": "Uber"
+  },
+  {
+    "num": 888,
+    "name": "Zacian-Crowned",
+    "baseSpecies": "Zacian",
+    "forme": "Crowned",
+    "types": [
+      "Fairy",
+      "Steel"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 92,
+      "attack": 150,
+      "defense": 115,
+      "special-attack": 80,
+      "special-defense": 115,
+      "speed": 148
+    },
+    "abilities": {
+      "0": "Intrepid Sword"
+    },
+    "heightm": 2.8,
+    "weightkg": 355,
+    "color": "Blue",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "requiredItem": "Rusted Sword",
+    "battleOnly": "Zacian",
+    "cannotDynamax": true,
+    "tier": "Uber"
+  },
+  {
+    "num": 905,
+    "name": "Enamorus",
+    "baseForme": "Incarnate",
+    "types": [
+      "Fairy",
+      "Flying"
+    ],
+    "gender": "F",
+    "baseStats": {
+      "hp": 74,
+      "attack": 115,
+      "defense": 70,
+      "special-attack": 135,
+      "special-defense": 80,
+      "speed": 106
+    },
+    "abilities": {
+      "0": "Cute Charm",
+      "H": "Contrary"
+    },
+    "heightm": 1.6,
+    "weightkg": 48,
+    "color": "Pink",
+    "tags": [
+      "Sub-Legendary"
+    ],
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "otherFormes": [
+      "Enamorus-Therian"
+    ],
+    "formeOrder": [
+      "Enamorus",
+      "Enamorus-Therian"
+    ],
+    "tier": "OU"
+  },
+  {
+    "num": 905,
+    "name": "Enamorus-Therian",
+    "baseSpecies": "Enamorus",
+    "forme": "Therian",
+    "types": [
+      "Fairy",
+      "Flying"
+    ],
+    "gender": "F",
+    "baseStats": {
+      "hp": 74,
+      "attack": 115,
+      "defense": 110,
+      "special-attack": 135,
+      "special-defense": 100,
+      "speed": 46
+    },
+    "abilities": {
+      "0": "Overcoat"
+    },
+    "heightm": 1.6,
+    "weightkg": 48,
+    "color": "Pink",
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "changesFrom": "Enamorus",
+    "tier": "RUBL"
+  },
+  {
+    "num": 987,
+    "name": "Flutter Mane",
+    "types": [
+      "Ghost",
+      "Fairy"
+    ],
+    "gender": "N",
+    "baseStats": {
+      "hp": 55,
+      "attack": 55,
+      "defense": 55,
+      "special-attack": 135,
+      "special-defense": 135,
+      "speed": 135
+    },
+    "abilities": {
+      "0": "Protosynthesis"
+    },
+    "heightm": 1.4,
+    "weightkg": 4,
+    "color": "Gray",
+    "tags": [
+      "Paradox"
+    ],
+    "eggGroups": [
+      "Undiscovered"
+    ],
+    "tier": "Uber"
+  }
+]

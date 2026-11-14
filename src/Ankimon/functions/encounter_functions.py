@@ -809,7 +809,7 @@ def check_id_ok(id_num: Union[int, list[int]]):
         if id_num in encounter_data.REGIONAL_FORM_REGION:
             forme = search_pokedex(name, "forme") or ""
             intro_gen = None
-            for f_name, g in encounter_data.REGIONAL_FORME_GEN.items():
+            for f_name, g in encounter_data.SPECIAL_FORME_GEN.items():
                 if f_name in forme:
                     intro_gen = g
                     break
