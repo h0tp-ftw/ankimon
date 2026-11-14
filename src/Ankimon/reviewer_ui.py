@@ -1,3 +1,5 @@
+import copy
+
 from anki.hooks import wrap
 from aqt.reviewer import Reviewer
 from aqt.utils import downArrow, tooltip, tr
@@ -78,7 +80,12 @@ def cycle_team_pokemon():
     try:
         from .functions.update_main_pokemon import (
             _apply_loaded_hp,
-            save_main_pokemon,
+        )
+        from .functions.hp_recovery import (
+            USER_ACTION_WAIT_MS,
+            credit_rest,
+            keep_rest_clock,
+            swap_heals,
         )
 
         cycle_count = _team_cycle_count()
@@ -109,6 +116,12 @@ def cycle_team_pokemon():
         if not pokemon_data or not pokemon_data.get("id"):
             tooltip("Invalid pokemon data")
             return
+        if str(active_id) == str(next_id):
+            return
+        # The incoming Pokémon has been resting on the bench.
+        pokemon_data = credit_rest(
+            services.db, pokemon_data, getattr(services, "logger", None)
+        )
 
         try:
             from .functions.pokedex_functions import (
@@ -133,19 +146,40 @@ def cycle_team_pokemon():
 
             # The mutable main singleton is about to represent another
             # individual. The pending faint belongs to the previous one.
-            from .battle_loop import _cancel_main_faint_deferral
+            from .battle_loop import (
+                _cancel_main_faint_deferral,
+                mark_swap_turn_lost,
+                outgoing_hp_for_swap,
+            )
 
+            outgoing_id = getattr(main_pokemon, "individual_id", None)
+            if outgoing_id and services.db.get_main_pokemon():
+                if not services.db.update_pokemon_current_hp(
+                    str(outgoing_id),
+                    outgoing_hp_for_swap(main_pokemon),
+                    wait_ms=USER_ACTION_WAIT_MS,
+                ):
+                    tooltip("Could not save the active Pokémon; switch cancelled.")
+                    return
+
+            incoming = copy.copy(main_pokemon)
+            incoming.update_stats(**pokemon_data)
+            # Apply the incoming row's saved HP to the runtime battle object.
+            _apply_loaded_hp(incoming, pokemon_data)
+            if swap_heals(getattr(services, "settings", None)):
+                # Classic swap rule: the incoming Pokémon arrives fully healed.
+                incoming.hp = incoming.current_hp = incoming.max_hp
+            incoming.reset_bonuses()
+
+            incoming_record = incoming.to_dict()
+            # to_dict() does not carry the rest clock credit_rest just settled.
+            keep_rest_clock(incoming_record, incoming.max_hp)
+            if not services.db.save_main_pokemon(incoming_record):
+                tooltip("Could not save the selected Pokémon; switch cancelled.")
+                return
             _cancel_main_faint_deferral()
-            main_pokemon.update_stats(**pokemon_data)
-            # update_stats only overwrites the HP keys the incoming row carries,
-            # so hp/current_hp can still hold the outgoing Pokemon's values.
-            # Resolve HP from the incoming row like the launch-time loader does
-            # (current_hp, then hp, then max HP) and write it to both fields;
-            # this also recalculates max_hp.
-            _apply_loaded_hp(main_pokemon, pokemon_data)
-            main_pokemon.reset_bonuses()
-
-            save_main_pokemon(main_pokemon)
+            main_pokemon.__dict__.update(incoming.__dict__)
+            mark_swap_turn_lost()
         except Exception as e:
             print(f"Error updating pokemon: {e}")
             tooltip(f"Error switching pokemon: {e}")

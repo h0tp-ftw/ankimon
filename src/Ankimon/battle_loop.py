@@ -24,7 +24,15 @@ from .utils import (
     is_alive,
     random_item,
 )
-from .functions.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
+from .functions.ankimon_hooks_to_poke_engine import (
+    simulate_battle_with_poke_engine,
+    sync_active_pokemon_hp,
+)
+from .functions.hp_recovery import (
+    REGEN_TICK_SECONDS,
+    current_timestamp,
+    swap_heals,
+)
 from .pyobj.error_handler import show_warning_with_traceback
 
 # Shared game state used as bare module globals below. core.bind_runtime_globals()
@@ -50,6 +58,82 @@ def _cancel_main_faint_deferral():
     global _main_faint_deferred, _main_faint_context
     _main_faint_deferred = False
     _main_faint_context = None
+
+
+def mark_swap_turn_lost():
+    """Make a mid-battle swap cost the incoming Pokemon its next attack.
+
+    A battle is under way once a round has been fought against a wild Pokemon
+    that is still standing; new_pokemon() clears the engine state for each
+    fresh encounter. Choosing who leads an encounter that has not started
+    (after startup, or right after a catch or defeat) is free, and so is every
+    swap under the classic rule (battle.heal_on_swap).
+    """
+    if swap_heals(settings_obj):
+        return
+    enemy = enemy_pokemon
+    try:
+        in_battle = (
+            _state.new_state is not None
+            and enemy is not None
+            and int(getattr(enemy, "hp", 0) or 0) > 0
+        )
+    except (TypeError, ValueError):
+        in_battle = False
+    if in_battle:
+        _state.swap_turn_pending = True
+
+
+def outgoing_hp_for_swap(main_pokemon):
+    """HP to save for the active Pokemon as it is swapped out.
+
+    A swap cancels a pending manual-mode double faint, and with it the only
+    heal the fainted Pokemon would get. If the outgoing Pokemon owns that
+    deferral, save it at full HP, as the faint handler would have. Under the
+    classic rule (battle.heal_on_swap) every swap heals it.
+    """
+    if swap_heals(settings_obj) or _main_faint_pending_for(
+        main_pokemon, getattr(main_pokemon, "individual_id", None)
+    ):
+        return main_pokemon.max_hp
+    return main_pokemon.current_hp
+
+
+# (individual_id, timestamp) of the last regeneration credited to the active
+# Pokemon, so the per-card loop touches the database once a tick, not per card.
+_last_rest_credit = None
+
+
+def _credit_rest_to_active(main_pokemon, state):
+    """Regenerate the active Pokemon's HP for the time since its last credit.
+
+    Runs before a battle round so the engine fights with the regenerated HP.
+    A fainted Pokemon does not rest.
+    """
+    global _last_rest_credit
+    individual_id = getattr(main_pokemon, "individual_id", None)
+    db = services.db
+    if not individual_id or db is None:
+        return
+    now = current_timestamp()
+    if _last_rest_credit is not None:
+        last_id, last_at = _last_rest_credit
+        if last_id == str(individual_id) and 0 <= now - last_at < REGEN_TICK_SECONDS:
+            return
+    try:
+        if int(main_pokemon.current_hp) <= 0:
+            return
+        _last_rest_credit = (str(individual_id), now)
+        gained = db.regenerate_pokemon_hp(str(individual_id), now=now).get(
+            str(individual_id), 0
+        )
+        if isinstance(gained, int) and gained > 0:
+            healed = min(int(main_pokemon.max_hp), int(main_pokemon.current_hp) + gained)
+            main_pokemon.hp = main_pokemon.current_hp = healed
+            sync_active_pokemon_hp(state, main_pokemon)
+            events.emit("regen", pokemon=main_pokemon.name, gained=gained, hp=healed)
+    except Exception as error:
+        logger.log("warning", f"Could not regenerate the active Pokemon's HP: {error}")
 
 
 def _main_faint_pending_for(main_pokemon, individual_id):
@@ -158,6 +242,9 @@ class BattleState:
     dmg_from_user_move: int = 0
     item_receive_value: int = 0
     collected_pokemon_ids: set = field(default_factory=set)
+    # Set when the active Pokemon is swapped mid-battle: the incoming Pokemon
+    # spends the next battle round switching in and does not attack.
+    swap_turn_pending: bool = False
 
 
 _state = BattleState()
@@ -166,6 +253,7 @@ _state = BattleState()
 def init_battle_state(collected_pokemon_ids: set):
     _state.item_receive_value = random.randint(3, 385)
     _state.collected_pokemon_ids = collected_pokemon_ids
+    _state.swap_turn_pending = False
 
 
 def _get_cards_per_round() -> int:
@@ -298,6 +386,7 @@ def on_review_card(*args):
             ankimon_tracker_obj.attack_counter = 0
             ankimon_tracker_obj.pokemon_encounter += 1
             multiplier = ankimon_tracker_obj.multiplier
+            _credit_rest_to_active(main_pokemon, s.new_state)
 
             if (
                 ankimon_tracker_obj.pokemon_encounter > 0
@@ -323,7 +412,10 @@ def on_review_card(*args):
                 and main_pokemon.hp > 0
                 and enemy_pokemon.hp > 0
             ):
-                if settings_obj.get("controls.allow_to_choose_moves") == True:
+                if (
+                    settings_obj.get("controls.allow_to_choose_moves") == True
+                    and not s.swap_turn_pending
+                ):
                     # Real dialog under Anki (QtPresenter); scripted/None headless.
                     chosen = services.ui.choose_move(main_pokemon.attacks)
                     if chosen:
@@ -335,6 +427,12 @@ def on_review_card(*args):
                     color = "#D2B4DE"
                 else:
                     color = "#F0B27A"
+
+            # A swap made since the last round costs this round's attack.
+            lost_turn_to_swap = s.swap_turn_pending
+            if lost_turn_to_swap:
+                s.swap_turn_pending = False
+                user_attack = "splash"
 
             results = simulate_battle_with_poke_engine(
                 main_pokemon,
@@ -404,6 +502,13 @@ def on_review_card(*args):
                 changes=current_battle_info_changes,
                 review_based_damage=is_review_based_damage_enabled,
             )
+
+            if lost_turn_to_swap:
+                swapped_name = getattr(main_pokemon, "display_name", None) or main_pokemon.name
+                formatted_battle_log = (
+                    f"{swapped_name} is switching in and lost its turn!\n"
+                    + (formatted_battle_log or "")
+                )
 
             tooltipWithColour(formatted_battle_log, color)
 

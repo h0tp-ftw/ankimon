@@ -2942,6 +2942,7 @@ def _attribute_xp_and_evs_to_companion(
         )
 
     def refresh_active(record):
+        nonlocal heal_pending
         main.xp = record["xp"]
         main.level = record["level"]
         main.ev = record["ev"].copy()
@@ -2950,8 +2951,27 @@ def _attribute_xp_and_evs_to_companion(
         if isinstance(record.get("attacks"), list):
             main.attacks = list(record["attacks"])
         main.invalidate_cp_cache()
-        main.update_stats()
+        if heal_pending and record.get("current_hp") is not None:
+            heal_pending = False
+            # The reward's level-up heal must reach the live Pokemon and any
+            # ongoing battle, or the next turn writes the old HP back.
+            main.update_stats(current_hp=record["current_hp"])
+            try:
+                from ..battle_loop import _state
+                from .ankimon_hooks_to_poke_engine import sync_active_pokemon_hp
 
+                sync_active_pokemon_hp(_state.new_state, main)
+            except Exception as error:
+                if active_logger:
+                    active_logger.log(
+                        "warning", f"Could not refresh levelled-up battle HP: {error}"
+                    )
+        else:
+            main.update_stats()
+
+    # Apply the level-up heal to the live Pokemon once; a later refresh after a
+    # move choice must not re-heal damage taken since.
+    heal_pending = any(kind == "level" for kind, _ in messages)
     if still_active():
         refresh_active(pokemon)
     for kind, message in messages:
@@ -3032,6 +3052,18 @@ def _calculate_mobile_reward(
         get_levelup_move_for_pokemon,
     )
     from ..pyobj.pokemon_obj import PokemonObject
+
+    raw_current_hp = pkmndata.get("current_hp")
+    if raw_current_hp is None:
+        raw_current_hp = pkmndata.get("hp")
+    saved_current_hp = None
+    if raw_current_hp is not None and not isinstance(raw_current_hp, bool):
+        try:
+            saved_current_hp = max(0, int(raw_current_hp))
+        except (TypeError, ValueError, OverflowError):
+            saved_current_hp = None
+
+    pkmndata.pop("hp", None)
 
     growth_rate = pkmndata.get("growth_rate", "medium-fast")
     level = int(pkmndata.get("level", 1))
@@ -3201,7 +3233,22 @@ def _calculate_mobile_reward(
             for k, val in base_stats.items()
             if k in ("hp", "atk", "def", "spa", "spd", "spe")
         }
-        pkmndata["current_hp"] = pkmndata["stats"].get("hp", 15)
+        max_hp = int(pkmndata["stats"].get("hp", 15))
+        # Levelling up fully heals the Pokemon to its new max HP, as on desktop.
+        if saved_current_hp is None or levels_gained > 0:
+            pkmndata["current_hp"] = max_hp
+            if (
+                levels_gained > 0
+                and str(pkmndata.get("battle_status") or "").strip().lower()
+                == "fainted"
+            ):
+                pkmndata["battle_status"] = "fighting"
+        else:
+            pkmndata["current_hp"] = min(saved_current_hp, max_hp)
+    elif saved_current_hp is not None:
+        # Unscaled stats give no maximum to clamp against. Keep the HP the
+        # record arrived with, which the dropped legacy key may have held.
+        pkmndata["current_hp"] = saved_current_hp
 
     friendship = int(pkmndata.get("friendship", 0))
     friendship_gain = random.randint(1, 2) if xp_share else random.randint(5, 9)

@@ -244,6 +244,192 @@ def test_migrate_from_json_skips_string_entries_and_repairs_junk_ids(tmp_path):
     assert "keep-me" in ids
 
 
+@pytest.mark.parametrize("in_collection", [False, True])
+@pytest.mark.parametrize(
+    "hp_fields, expected_hp",
+    [
+        ({"hp": 7}, 7),
+        ({"hp": 7, "current_hp": "invalid"}, 7),
+        ({"hp": 7, "current_hp": 0}, 0),
+        ({"current_hp": 100}, 100),
+    ],
+)
+def test_migrate_legacy_hp_before_saving(
+    tmp_path, in_collection, hp_fields, expected_hp
+):
+    """Old JSON stores base stats in stats and may use only top-level hp."""
+    db = AnkimonDB(db_path=tmp_path / "ankimon.db")
+    pokemon = _pokemon("Charizard", 6, 50, individual_id="legacy-hp", **hp_fields)
+    paths = _write_save(tmp_path, [pokemon] if in_collection else [], [pokemon], [], [])
+    sources = {key: path.read_bytes() for key, path in paths.items()}
+
+    result = db.migrate_from_json(**paths)
+
+    assert not result.get("errors"), result
+    assert db.is_migrated()
+    saved = db.get_main_pokemon()
+    assert saved["current_hp"] == expected_hp
+    assert "hp" not in saved
+    assert saved["base_stats"]["hp"] == 78
+    assert {key: path.read_bytes() for key, path in paths.items()} == sources
+    _clear_migration_flags(db)
+    assert not db.migrate_from_json(**paths).get("errors")
+    assert db.get_main_pokemon() == saved
+
+
+def test_migrate_legacy_hp_without_resolvable_base_stats_preserves_source(tmp_path):
+    db = AnkimonDB(db_path=tmp_path / "ankimon.db")
+    pokemon = _pokemon("Unknown Species", 999999, 50, current_hp=100)
+    paths = _write_save(tmp_path, [pokemon], [], [], [])
+    source = paths["mypokemon_path"].read_bytes()
+
+    result = db.migrate_from_json(**paths)
+
+    assert result.get("errors")
+    assert not db.is_migrated()
+    assert db.get_pokemon_count() == 0
+    assert paths["mypokemon_path"].read_bytes() == source
+
+
+@pytest.mark.parametrize("base_hp", [0, -1])
+@pytest.mark.parametrize("in_collection", [False, True])
+def test_migrate_legacy_hp_repairs_invalid_base_hp(tmp_path, base_hp, in_collection):
+    """A corrupt base HP must not reduce a known species' saved health."""
+    db = AnkimonDB(db_path=tmp_path / "ankimon.db")
+    pokemon = _pokemon("Charizard", 6, 50, individual_id="legacy-hp", current_hp=100)
+    pokemon["base_stats"] = dict(pokemon["stats"], hp=base_hp)
+    paths = _write_save(tmp_path, [pokemon] if in_collection else [], [pokemon], [], [])
+    sources = {key: path.read_bytes() for key, path in paths.items()}
+
+    result = db.migrate_from_json(**paths)
+
+    assert not result.get("errors"), result
+    assert db.is_migrated()
+    saved = db.get_main_pokemon()
+    assert saved["current_hp"] == 100
+    assert saved["base_stats"]["hp"] == 78
+    assert {key: path.read_bytes() for key, path in paths.items()} == sources
+
+
+@pytest.mark.parametrize("switch_save", [False, True])
+@pytest.mark.parametrize("base_hp", [None, 0, -1])
+def test_existing_legacy_database_hp_survives_upgrade(tmp_path, switch_save, base_hp):
+    legacy_path = tmp_path / "legacy.db"
+    db = AnkimonDB(db_path=legacy_path)
+    pokemon = _pokemon("Charizard", 6, 50, individual_id="legacy-hp", current_hp=100)
+    if base_hp is not None:
+        pokemon["base_stats"] = dict(pokemon["stats"], hp=base_hp)
+    # Base imported JSON after its empty-database normalization had completed.
+    assert (
+        db.execute(
+            "SELECT value FROM metadata WHERE key = 'base_stats_normalized'"
+        ).fetchone()["value"]
+        == "true"
+    )
+    db.execute(
+        "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
+        (pokemon["individual_id"], json.dumps(pokemon)),
+    )
+    db._get_connection().commit()
+    db.close()
+
+    if switch_save:
+        db = AnkimonDB(db_path=tmp_path / "active.db")
+        assert db.switch_database(str(legacy_path))
+    else:
+        db = AnkimonDB(db_path=legacy_path)
+
+    saved = db.get_main_pokemon()
+    assert saved["current_hp"] == 100
+    assert saved["base_stats"]["hp"] == 78
+    raw = db.execute("SELECT data FROM captured_pokemon").fetchone()["data"]
+    assert json.loads(raw) == saved
+
+
+def test_hp_upgrade_leaves_unresolved_species_row_unchanged(tmp_path, capsys):
+    db_path = tmp_path / "legacy.db"
+    db = AnkimonDB(db_path=db_path)
+    pokemon = _pokemon(
+        "Unknown Species", 999999, 50, individual_id="unknown", current_hp=100
+    )
+    db.execute(
+        "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
+        (pokemon["individual_id"], json.dumps(pokemon)),
+    )
+    db._get_connection().commit()
+    db.close()
+
+    db = AnkimonDB(db_path=db_path)
+
+    raw = db.execute("SELECT data FROM captured_pokemon").fetchone()["data"]
+    assert json.loads(raw) == pokemon
+    assert "Preserved unresolved HP for unknown" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("base_hp", [None, 0, -1])
+@pytest.mark.parametrize("species", [("Unknown Species", 999999), ("Charizard", 6)])
+def test_unresolved_legacy_hp_survives_metadata_save(tmp_path, base_hp, species):
+    """Skipped upgrades must stay lossless through getters and ordinary edits."""
+    db_path = tmp_path / "legacy.db"
+    db = AnkimonDB(db_path=db_path)
+    pokemon = _pokemon(*species, 50, individual_id="legacy-hp", current_hp=100, hp=5)
+    if base_hp is not None:
+        pokemon["base_stats"] = dict(pokemon["stats"], hp=base_hp)
+    db.execute(
+        "INSERT INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
+        (pokemon["individual_id"], json.dumps(pokemon)),
+    )
+    db._get_connection().commit()
+    db.close()
+
+    # A valid species has the same failure mode if its dex entry cannot be
+    # loaded during startup. No guessed maximum may replace the saved HP.
+    with (
+        patch("Ankimon.functions.pokedex_functions.search_pokedex", return_value=[]),
+        patch(
+            "Ankimon.functions.pokedex_functions.search_pokedex_by_id",
+            return_value="Pokémon not found",
+        ),
+    ):
+        db = AnkimonDB(db_path=db_path)
+        try:
+            for saved in (
+                db.get_pokemon("legacy-hp"),
+                db.get_main_pokemon(),
+                db.get_all_pokemon()[0],
+            ):
+                assert saved["current_hp"] == 100
+                assert "hp" not in saved  # A stale duplicate never wins.
+            saved = db.get_pokemon("legacy-hp")
+            saved["is_favorite"] = True
+            assert db.save_pokemon(saved)
+        finally:
+            db.close()
+
+        db = AnkimonDB(db_path=db_path)
+        try:
+            saved = db.get_pokemon("legacy-hp")
+            assert saved["current_hp"] == 100
+            assert saved["is_favorite"] is True
+            raw = db.execute("SELECT data FROM captured_pokemon").fetchone()["data"]
+            assert json.loads(raw) == saved
+        finally:
+            db.close()
+
+
+def test_persisted_hp_still_clamps_to_known_base_stats(tmp_path):
+    """Modern records retain a calculable HP maximum despite the legacy guard."""
+    db = AnkimonDB(db_path=tmp_path / "modern.db")
+    pokemon = _pokemon("Charizard", 6, 50, individual_id="modern", current_hp=999)
+    pokemon["base_stats"] = dict(pokemon["stats"])
+    pokemon["stats"]["hp"] = 147
+    try:
+        assert db.save_main_pokemon(pokemon)
+        assert db.get_main_pokemon()["current_hp"] == 147
+    finally:
+        db.close()
+
+
 def test_migrate_from_json_matches_main_by_canonical_name(tmp_path):
     """A case- or hyphen-only name difference must not create a second captured row."""
     db = AnkimonDB(db_path=tmp_path / "ankimon.db")

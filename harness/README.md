@@ -348,6 +348,7 @@ for _ in range(50):
 | `faint` | a Pokémon faints | who (`enemy`/`main`), pokemon |
 | `catch` / `defeat` | resolution | pokemon, id, tier (catch also: shiny, nickname) |
 | `levelup` | the main levels up | pokemon, level |
+| `regen` | the main regenerates HP between rounds | pokemon, gained, hp |
 | `evolution_offered` | evolution eligible | pokemon, trigger (`level`/`friendship`), evo_id |
 | `tooltip` | on-screen battle/level text | message, color |
 | `sound` | a cry/effect would play | kind, sound / pokemon_id |

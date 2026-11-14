@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "battle.card_max_time": 60,
     "battle.review_based_damage": True,
     "battle.ignore_learning_cards": False,
+    "battle.heal_on_swap": False,
     "evolution.friendship_time_enabled": True,
     "evolution.day_start_hour": 6,
     "evolution.night_start_hour": 18,

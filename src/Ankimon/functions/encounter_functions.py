@@ -56,6 +56,7 @@ from ..utils import (
 )
 from ..business import calc_experience, calculate_cp_from_dict
 from ..const import gen_ids
+from .hp_recovery import keep_rest_clock
 from . import encounter_data
 
 if TYPE_CHECKING:
@@ -1239,6 +1240,7 @@ def new_pokemon(
 
         _state.new_state = None
         _state.mutator_full_reset = 1
+        _state.swap_turn_pending = False
     except Exception as e:
         print(f"[Ankimon] Error resetting battle state in new_pokemon: {e}")
 
@@ -1495,6 +1497,10 @@ def save_main_pokemon_progress(
         )
         main_pokemon.level += 1
         main_pokemon.update_stats()
+        # Levelling up fully heals the Pokemon to its new max HP.
+        main_pokemon.hp = main_pokemon.current_hp = main_pokemon.max_hp
+        if getattr(main_pokemon, "battle_status", None) == "fainted":
+            main_pokemon.battle_status = "fighting"
         events.emit("levelup", pokemon=main_pokemon.name, level=main_pokemon.level)
         msg = ""
         msg += f"Your {main_pokemon.name} is now level {main_pokemon.level} !"
@@ -1702,8 +1708,15 @@ def save_main_pokemon_progress(
         # Include this defeat's EVs, even when no level was gained. Keep the
         # cached HP used by battles/HUD and the saved stats in sync.
         main_pokemon.update_stats()
+        if levels_gained > 0:
+            # Re-apply the level-up full heal: this defeat's HP EVs can raise
+            # max HP after the heal inside the level-up loop.
+            main_pokemon.hp = main_pokemon.current_hp = main_pokemon.max_hp
         mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
+        mainpkmndata.pop("hp", None)
+        # This save can be the first to record a wound from the final round.
+        keep_rest_clock(mainpkmndata, getattr(main_pokemon, "max_hp", None))
         # Friendship is uncapped — it keeps climbing past MAX_FRIENDSHIP (400) so
         # players can flex a super-bonded Pokémon. The progress bar still fills at
         # MAX_FRIENDSHIP; the raw number above it is what keeps growing.
@@ -1782,6 +1795,22 @@ def save_main_pokemon_progress(
 
         # Save to database (replaces JSON file I/O for performance)
         ankimon_db.save_main_pokemon(mainpkmndata)
+
+    if levels_gained > 0:
+        # Callers outside the defeat path (mobile Resolve All) keep the current
+        # encounter, so push the level-up stats and heal into its cached engine
+        # state; otherwise the next turn writes the pre-level-up HP back.
+        try:
+            from ..battle_loop import _state
+            from .ankimon_hooks_to_poke_engine import (
+                sync_active_pokemon_hp,
+                sync_active_pokemon_stats,
+            )
+
+            sync_active_pokemon_stats(_state.new_state, main_pokemon)
+            sync_active_pokemon_hp(_state.new_state, main_pokemon)
+        except Exception as error:
+            logger.log("warning", f"Could not refresh levelled-up battle HP: {error}")
 
     return main_pokemon.level
 
@@ -1962,7 +1991,6 @@ def save_caught_pokemon(
             "special_form": None,
             "is_favorite": False,
             "held_item": None,
-            "hp": _max_hp,
             "current_hp": _max_hp,
         }
     )
@@ -2320,7 +2348,6 @@ def handle_main_pokemon_faint(
     )
     if stored:
         healed = int(main_pokemon.max_hp)
-        stored["hp"] = healed
         stored["current_hp"] = healed
         main_row = db.get_main_pokemon()
         same_main = (

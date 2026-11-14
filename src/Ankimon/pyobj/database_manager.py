@@ -6,6 +6,7 @@ replacing multiple JSON files with a single, obfuscated database file.
 """
 
 import json
+import math
 import sqlite3
 import threading
 import uuid
@@ -501,6 +502,34 @@ def find_matching_captured(
     return None
 
 
+def canonicalize_pokemon_record(
+    data: Dict[str, Any], *, allow_legacy_hp: bool = False
+) -> Dict[str, Any]:
+    """Return the canonical form of a captured-Pokemon record.
+
+    #975 makes ``save_pokemon`` / ``save_main_pokemon`` / every read path
+    canonicalise HP data: a legacy top-level ``hp`` is dropped, the
+    authoritative value is written to ``current_hp``, and the value is
+    clamped to the record's own derivable max HP. This module-level helper is
+    the single source of truth for that transformation.
+
+    ``legacy_migration.py`` MUST build its read-back expectation with this
+    function rather than reimplementing the shape: the migration compares a
+    just-saved row against an expected record, and if the two sides disagree
+    by even one key (e.g. the migration keeps ``hp``, the save drops it) every
+    migrated entry fails verification and rolls back.
+
+    ``allow_legacy_hp=True`` lets a caller accept an incoming ``hp`` key as the
+    source of ``current_hp`` (used by the migration and the startup sweep);
+    the saved row never contains ``hp`` either way. ``allow_legacy_hp=False``
+    (the default, and what every public save/read path uses) ignores ``hp``
+    and only reads ``current_hp`` — so an in-memory caller that hands
+    ``save_pokemon`` an ``hp``-only record gets a row without HP, which is the
+    documented #975 contract.
+    """
+    return AnkimonDB._canonicalize_pokemon_hp(data, allow_legacy_hp=allow_legacy_hp)
+
+
 class AnkimonDB:
     """Handles all database operations for Ankimon. Stores data in SQLite."""
 
@@ -546,7 +575,177 @@ class AnkimonDB:
         self._connection_epoch = 0
         self._connection_epoch_gui = -1
         self._setup_database()
+        self._normalize_captured_pokemon_hp_safely()
         self._reconcile_pokedex_history_safely()
+
+    @staticmethod
+    def _hp_integer(value):
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            result = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not isinstance(value, str) and value != result:
+            return None
+        return result
+
+    @classmethod
+    def _pokemon_max_hp(cls, data):
+        """Return the computed max HP, or ``None`` when the record carries no
+        inputs to compute one.
+
+        A ``None`` return means "cannot trust any max": the caller must not
+        clamp a real ``current_hp`` against a fabricated fallback (doing so is
+        what turned a 75 HP record into a 1 HP record). Callers that need a
+        battle-ready max compute it themselves (PokemonObject fills it at
+        construction from ``base_stats``).
+        """
+        level = cls._hp_integer(data.get("level")) or 5
+        ev = data.get("ev") if isinstance(data.get("ev"), dict) else {}
+        iv = data.get("iv") if isinstance(data.get("iv"), dict) else {}
+        base_stats = data.get("base_stats")
+        base_hp = cls._hp_integer(
+            base_stats.get("hp") if isinstance(base_stats, dict) else None
+        )
+        if base_hp is not None:
+            ev_hp = max(0, cls._hp_integer(ev.get("hp")) or 0)
+            iv_hp = cls._hp_integer(iv.get("hp"))
+            if iv_hp is None:
+                iv_hp = 15
+            return max(
+                1,
+                10
+                + level
+                + int((2 * base_hp + iv_hp + int(ev_hp / 4)) * level / 100),
+            )
+
+        stats = data.get("stats")
+        stats_hp = cls._hp_integer(stats.get("hp") if isinstance(stats, dict) else None)
+        return stats_hp if stats_hp is not None else None
+
+    @classmethod
+    def _derived_max_hp(cls, data):
+        """Max HP that is safe to clamp a saved ``current_hp`` against.
+
+        Only a positive ``base_stats.hp`` qualifies. ``_pokemon_max_hp`` also
+        falls back to ``stats.hp``, which legacy saves used for *base* HP, so
+        clamping against that fallback would cut a healthy Pokemon down to its
+        base stat. ``None`` means "do not clamp".
+        """
+        base_stats = data.get("base_stats")
+        base_hp = cls._hp_integer(
+            base_stats.get("hp") if isinstance(base_stats, dict) else None
+        )
+        if base_hp is None or base_hp <= 0:
+            return None
+        return cls._pokemon_max_hp(data)
+
+    @classmethod
+    def _canonicalize_pokemon_hp(cls, data, *, allow_legacy_hp=False):
+        """Return a captured-Pokemon record with only authoritative current HP.
+
+        A record that carries no HP information is returned unchanged (save for
+        dropping a legacy top-level ``hp`` key). This is load-bearing: the
+        persistence layer must not invent a ``current_hp`` out of max HP, or
+        saving a hand-built record would silently add ``current_hp: <max>``
+        (and, when max HP itself is unknown, ``current_hp: 1``) to rows that
+        never had HP -- including migration records that must be preserved
+        verbatim. When the record does carry an HP value but no inputs for a
+        real max, the caller's value is preserved (not clamped against a
+        fabricated fallback); clamping is only safe when the max is derivable
+        from a positive ``base_stats.hp``. ``stats.hp`` alone is ambiguous:
+        legacy saves used it for base HP, modern saves for calculated max HP.
+        Callers that need a battle-ready value compute it themselves
+        (PokemonObject fills max HP at construction); only
+        ``update_pokemon_current_hp`` and
+        ``consume_item_and_save_main_pokemon`` may write it.
+
+        ``stats.hp`` is deliberately NOT a source of the *current* value:
+        reading it here would inject ``current_hp: <max>`` into every record
+        that only carried ``stats`` (e.g. the migration round-trip and
+        hand-built test fixtures). The legacy
+        source of current HP is the top-level ``hp`` key alone, and only when
+        the caller opts into ``allow_legacy_hp``.
+        """
+        if not isinstance(data, dict):
+            raise TypeError("Pokémon data must be a dictionary")
+        result = dict(data)
+        current_hp = None
+        keys = ("current_hp", "hp") if allow_legacy_hp else ("current_hp",)
+        for key in keys:
+            candidate = result.get(key)
+            current_hp = cls._hp_integer(candidate)
+            if current_hp is not None:
+                break
+        result.pop("hp", None)
+        if current_hp is None:
+            return result
+        # Startup preserves rows whose species stats cannot be resolved. A
+        # later getter or metadata edit must not clamp those rows against
+        # legacy stats.hp (base HP), or against an invalid base HP.
+        max_hp = cls._derived_max_hp(result)
+        if max_hp is None:
+            result["current_hp"] = max(0, current_hp)
+        else:
+            result["current_hp"] = max(0, min(current_hp, max_hp))
+            if result["current_hp"] >= max_hp:
+                # Only a wounded Pokémon is resting. A clock left on a healthy
+                # one would credit its next wound with time spent at full HP.
+                result.pop("hp_regen_at", None)
+        return result
+
+    def _normalize_captured_pokemon_hp_safely(self):
+        """``_normalize_captured_pokemon_hp`` that can never stop the DB from opening.
+
+        Mirrors ``_reconcile_pokedex_history_safely``: a locked database or a
+        SQLite error during this one-off sweep must not fail the constructor
+        (which would stop the add-on from loading inside Anki). The sweep is
+        idempotent, so it simply runs again on the next launch.
+        """
+        try:
+            self._normalize_captured_pokemon_hp()
+        except Exception as e:
+            self._log("error", f"Failed to normalize captured Pokémon HP: {e}")
+
+    def _normalize_captured_pokemon_hp(self):
+        """Migrate legacy duplicate HP fields and clamp saved current HP."""
+        from .legacy_migration import LegacyMigration
+
+        prepare_legacy_hp = LegacyMigration(self, {}).prepare_legacy_pokemon
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT individual_id, data FROM captured_pokemon")
+            updates = []
+            for individual_id, raw_data in cursor.fetchall():
+                data = self._deobfuscate(raw_data)
+                if not isinstance(data, dict):
+                    continue
+                try:
+                    normalized = prepare_legacy_hp(data)
+                except ValueError as exc:
+                    self._log(
+                        "warning", f"Preserved unresolved HP for {individual_id}: {exc}"
+                    )
+                    continue
+                if normalized != data:
+                    updates.append((self._obfuscate(normalized), individual_id))
+            if updates:
+                cursor.executemany(
+                    "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
+                    updates,
+                )
+                conn.commit()
+                self._log(
+                    "info",
+                    f"Normalized current HP for {len(updates)} captured Pokémon.",
+                )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
 
     def _prepare_connection(self, conn):
         """Apply row factory, a generous busy-timeout, and (only when opted in)
@@ -867,10 +1066,11 @@ class AnkimonDB:
                 for row in rows:
                     ind_id, obfuscated_data = row
                     pokemon_data = self._deobfuscate(obfuscated_data)
-                    if not pokemon_data:
+                    if not isinstance(pokemon_data, dict):
                         continue
 
                     base_stats = pokemon_data.get("base_stats")
+                    base_stats_changed = False
                     if not is_valid_base_stats(base_stats):
                         base_stats = (
                             search_pokedex(pokemon_data.get("name", ""), "baseStats")
@@ -878,8 +1078,12 @@ class AnkimonDB:
                         )
                         if is_valid_base_stats(base_stats):
                             pokemon_data["base_stats"] = base_stats
-                            new_obfuscated = self._obfuscate(pokemon_data)
-                            updates.append((new_obfuscated, ind_id))
+                            base_stats_changed = True
+                    normalized = self._canonicalize_pokemon_hp(
+                        pokemon_data, allow_legacy_hp=True
+                    )
+                    if base_stats_changed or normalized != pokemon_data:
+                        updates.append((self._obfuscate(normalized), ind_id))
 
                 if updates:
                     cursor.executemany(
@@ -1003,11 +1207,22 @@ class AnkimonDB:
             self._connection = None
             try:
                 self._setup_database()
+                # Legacy rows in the newly selected save may still carry the old
+                # duplicate HP fields. The constructor-only sweep does not run on
+                # this path, so canonicalise now — otherwise the healing /
+                # EV-item / item-evolution CAS checks (which compare a
+                # canonicalised snapshot against the raw stored row) reject
+                # unchanged legacy records. Safe wrapper: a locked DB here must
+                # not abort the switch after setup already succeeded.
+                self._normalize_captured_pokemon_hp_safely()
             except Exception:
                 self.db_path = old_path
                 self._connection = None
                 try:
                     self._setup_database()
+                    # Restoration must also canonicalise, for the same reason as
+                    # the forward path above.
+                    self._normalize_captured_pokemon_hp_safely()
                 except Exception as restore_error:
                     self._log(
                         "error",
@@ -1258,6 +1473,9 @@ class AnkimonDB:
                 )
                 if is_valid_base_stats(base_stats):
                     pokemon_data["base_stats"] = base_stats
+                    pokemon_data = self._canonicalize_pokemon_hp(
+                        pokemon_data, allow_legacy_hp=True
+                    )
                     new_obfuscated = self._obfuscate(pokemon_data)
                     updates.append((new_obfuscated, ind_id))
 
@@ -1274,6 +1492,36 @@ class AnkimonDB:
 
     # --- Captured Pokemon Operations ---
 
+    def _carry_rest_clock(self, cursor, pokemon_data):
+        """Keep the saved rest clock when a wounded record arrives without one.
+
+        Records built from ``PokemonObject.to_dict()`` never carry
+        ``hp_regen_at``, and both save paths replace the whole row, so without
+        this every such save would throw away the rest a Pokemon is owed. A
+        record at full HP or fainted has no clock, and one that brings its own
+        clock keeps it.
+        """
+        if "hp_regen_at" in pokemon_data:
+            return pokemon_data
+        hp = self._hp_integer(pokemon_data.get("current_hp"))
+        max_hp = self._derived_max_hp(pokemon_data)
+        if hp is None or hp <= 0 or (max_hp is not None and hp >= max_hp):
+            return pokemon_data
+        cursor.execute(
+            "SELECT data FROM captured_pokemon WHERE individual_id = ?",
+            (pokemon_data.get("individual_id"),),
+        )
+        row = cursor.fetchone()
+        existing = self._deobfuscate(row["data"]) if row else None
+        clock = existing.get("hp_regen_at") if isinstance(existing, dict) else None
+        if (
+            isinstance(clock, (int, float))
+            and not isinstance(clock, bool)
+            and math.isfinite(clock)
+        ):
+            pokemon_data = dict(pokemon_data, hp_regen_at=clock)
+        return pokemon_data
+
     def save_pokemon(
         self, pokemon_data: Dict[str, Any], *, accept_monthly_challenge=False
     ):
@@ -1282,16 +1530,18 @@ class AnkimonDB:
         Preserve an existing Pokemon's is_main flag. Cache invalidation and
         Pokedex updates happen only after the collection/state commit succeeds.
         """
+        pokemon_data = self._canonicalize_pokemon_hp(pokemon_data)
         individual_id = pokemon_data.get("individual_id")
         if not individual_id:
             self._log("error", "Cannot save pokemon without individual_id")
             return False
 
-        obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
 
         try:
+            pokemon_data = self._carry_rest_clock(cursor, pokemon_data)
+            obfuscated_data = self._obfuscate(pokemon_data)
             # Check if pokemon already exists to preserve is_main flag
             cursor.execute(
                 "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
@@ -1367,6 +1617,15 @@ class AnkimonDB:
                         (individual_id,),
                     ).fetchone()
                 pokemon = self._deobfuscate(row["data"]) if row else None
+                if isinstance(pokemon, dict):
+                    # Canonicalise the same way get_pokemon() /
+                    # get_main_pokemon() do, so the reward's snapshot matches
+                    # callers' expected snapshots even when the stored row is a
+                    # legacy record with ``hp`` but no ``current_hp``. Without
+                    # this, a subsequent CAS (healing / EV item / item
+                    # evolution) would see a non-canonical stored row and
+                    # reject an unchanged Pokémon.
+                    pokemon = self._canonicalize_pokemon_hp(pokemon)
                 if (
                     not isinstance(pokemon, dict)
                     or pokemon.get("individual_id") != individual_id
@@ -1449,7 +1708,13 @@ class AnkimonDB:
                         (individual_id,),
                     ).fetchone()
                     current = self._deobfuscate(row["data"]) if row else None
-                    if not isinstance(current, dict):
+                    if isinstance(current, dict):
+                        # Match the canonical form callers compare against (see
+                        # get_pokemon()). A legacy ``hp``-only row would otherwise
+                        # fail the species/moveset CAS below despite being
+                        # unchanged.
+                        current = self._canonicalize_pokemon_hp(current)
+                    else:
                         current = None
                     stored_attacks = current.get("attacks") if current else None
                     if isinstance(stored_attacks, str):
@@ -1502,7 +1767,8 @@ class AnkimonDB:
         )
         row = cursor.fetchone()
         if row:
-            return self._deobfuscate(row["data"])
+            data = self._deobfuscate(row["data"])
+            return self._canonicalize_pokemon_hp(data) if isinstance(data, dict) else None
         return None
 
     def get_all_pokemon(self) -> List[Dict[str, Any]]:
@@ -1511,8 +1777,8 @@ class AnkimonDB:
         results = []
         for row in cursor.fetchall():
             pokemon = self._deobfuscate(row["data"])
-            if pokemon:
-                results.append(pokemon)
+            if isinstance(pokemon, dict):
+                results.append(self._canonicalize_pokemon_hp(pokemon))
 
         return results
 
@@ -1561,6 +1827,7 @@ class AnkimonDB:
     ) -> bool:
         """Replaces a pokemon with the given individual_id with the given pokemon_data."""
 
+        pokemon_data = self._canonicalize_pokemon_hp(pokemon_data)
         obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -1682,24 +1949,44 @@ class AnkimonDB:
 
     def save_main_pokemon(self, pokemon_data: Dict[str, Any]):
         """Saves/updates the main pokemon. Sets is_main=1 on this pokemon, is_main=0 on all others."""
+        pokemon_data = self._canonicalize_pokemon_hp(pokemon_data)
         individual_id = pokemon_data.get("individual_id")
         if not individual_id:
             self._log("error", "Cannot save main pokemon without individual_id")
             return False
 
-        obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Clear the main flag from all pokemon first
-        cursor.execute("UPDATE captured_pokemon SET is_main = 0 WHERE is_main = 1")
-
-        # Save/update this pokemon and set as main
-        cursor.execute(
-            "INSERT OR REPLACE INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
-            (individual_id, obfuscated_data),
-        )
-        conn.commit()
+        savepoint = "ankimon_save_main_pokemon"
+        had_transaction = conn.in_transaction
+        savepoint_active = False
+        try:
+            cursor.execute(f"SAVEPOINT {savepoint}")
+            savepoint_active = True
+            pokemon_data = self._carry_rest_clock(cursor, pokemon_data)
+            obfuscated_data = self._obfuscate(pokemon_data)
+            cursor.execute("UPDATE captured_pokemon SET is_main = 0 WHERE is_main = 1")
+            cursor.execute(
+                "INSERT OR REPLACE INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
+                (individual_id, obfuscated_data),
+            )
+            cursor.execute(f"RELEASE SAVEPOINT {savepoint}")
+            savepoint_active = False
+            conn.commit()
+        except Exception:
+            if savepoint_active:
+                try:
+                    cursor.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    cursor.execute(f"RELEASE SAVEPOINT {savepoint}")
+                except Exception:
+                    if not had_transaction and not conn._disable_commit:
+                        conn.rollback()
+            elif conn.in_transaction and not conn._disable_commit:
+                conn.rollback()
+            raise
+        finally:
+            cursor.close()
         self._clear_reviewer_ownership_cache()
 
         # Automatically mark the pokemon as caught (see save_pokemon: logged as an
@@ -1719,8 +2006,162 @@ class AnkimonDB:
         cursor = self.execute("SELECT data FROM captured_pokemon WHERE is_main = 1")
         row = cursor.fetchone()
         if row:
-            return self._deobfuscate(row["data"])
+            data = self._deobfuscate(row["data"])
+            return self._canonicalize_pokemon_hp(data) if isinstance(data, dict) else None
         return None
+
+    def write_token(self):
+        """Opaque marker that changes whenever this thread's connection writes.
+
+        Lets a hot caller (the reviewer HUD) skip re-reading a row it has
+        already reconciled. Writes made on other connections do not show up.
+        """
+        raw = self._get_connection()._conn
+        return (id(raw), raw.total_changes)
+
+    def update_pokemon_current_hp(
+        self, individual_id: str, current_hp: int, *, wait_ms: int = 0
+    ) -> bool:
+        """Patch HP under write intent, refusing busy or caller-owned writes.
+
+        Reviewer repaints must not wait for a mobile reward transaction, so the
+        default ``wait_ms=0`` refuses at once. A player action passes
+        ``hp_recovery.USER_ACTION_WAIT_MS`` so a brief lock does not cancel it. A refused
+        save can be retried later without replacing newer reward data.
+        """
+        if not isinstance(individual_id, str) or not individual_id:
+            return False
+        hp = self._hp_integer(current_hp)
+        if hp is None:
+            raise ValueError("current_hp must be an integer")
+
+        with self.lease_connection() as conn:
+            raw = conn._conn
+            if raw.in_transaction or conn._disable_commit:
+                return False
+            timeout = raw.execute("PRAGMA busy_timeout").fetchone()[0]
+            started = False
+            try:
+                raw.execute(f"PRAGMA busy_timeout={max(0, int(wait_ms))}")
+                raw.execute("BEGIN IMMEDIATE")
+                started = True
+                with contextlib.closing(raw.cursor()) as cursor:
+                    row = cursor.execute(
+                        "SELECT data FROM captured_pokemon WHERE individual_id = ?",
+                        (individual_id,),
+                    ).fetchone()
+                    if row is None:
+                        return False
+                    data = self._deobfuscate(row["data"])
+                    if not isinstance(data, dict):
+                        raise ValueError(
+                            f"Invalid saved Pokémon data for {individual_id}"
+                        )
+                    data = self._canonicalize_pokemon_hp(data)
+                    max_hp = self._derived_max_hp(data)
+                    data["current_hp"] = max(
+                        0, hp if max_hp is None else min(hp, max_hp)
+                    )
+                    if max_hp is not None:
+                        # A Pokémon starts resting when it is first hurt;
+                        # regenerate_pokemon_hp() credits the time from here.
+                        from ..functions.hp_recovery import keep_rest_clock
+
+                        keep_rest_clock(data, max_hp)
+                    cursor.execute(
+                        "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
+                        (self._obfuscate(data), individual_id),
+                    )
+                raw.commit()
+                started = False
+                return True
+            except sqlite3.OperationalError as exc:
+                if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                    return False
+                raise
+            finally:
+                if started:
+                    raw.rollback()
+                raw.execute(f"PRAGMA busy_timeout={int(timeout)}")
+
+    def regenerate_pokemon_hp(self, individual_id=None, *, now=None) -> Dict[str, int]:
+        """Credit rest to saved Pokémon and return the HP each one gained.
+
+        Covers one Pokémon when given an ``individual_id``, otherwise all of
+        them. Only wounded rows are touched: a row whose rest clock is missing
+        gets one started (no gain yet), and healthy or fainted rows are left
+        alone. ``update_pokemon_current_hp`` starts the clock when a Pokémon is
+        first hurt.
+
+        Like ``update_pokemon_current_hp`` this never waits. A busy database or
+        a caller-owned transaction returns ``{}`` and the rest stays owed.
+        """
+        from ..functions.hp_recovery import current_timestamp, regenerate
+
+        if now is None:
+            now = current_timestamp()
+        gained: Dict[str, int] = {}
+        with self.lease_connection() as conn:
+            raw = conn._conn
+            if raw.in_transaction or conn._disable_commit:
+                return gained
+            timeout = raw.execute("PRAGMA busy_timeout").fetchone()[0]
+            started = False
+            try:
+                raw.execute("PRAGMA busy_timeout=0")
+                raw.execute("BEGIN IMMEDIATE")
+                started = True
+                with contextlib.closing(raw.cursor()) as cursor:
+                    if individual_id is None:
+                        cursor.execute(
+                            "SELECT individual_id, data FROM captured_pokemon"
+                        )
+                    else:
+                        cursor.execute(
+                            "SELECT individual_id, data FROM captured_pokemon "
+                            "WHERE individual_id = ?",
+                            (str(individual_id),),
+                        )
+                    updates = []
+                    for row_id, raw_data in cursor.fetchall():
+                        data = self._deobfuscate(raw_data)
+                        if not isinstance(data, dict):
+                            continue
+                        hp = self._hp_integer(data.get("current_hp"))
+                        max_hp = self._derived_max_hp(data)
+                        if hp is None or max_hp is None:
+                            continue
+                        if not 0 < hp < max_hp:
+                            continue
+                        stored_at = data.get("hp_regen_at")
+                        new_hp, regen_at = regenerate(hp, max_hp, stored_at, now)
+                        if new_hp == hp and regen_at == stored_at:
+                            continue
+                        data["current_hp"] = new_hp
+                        if new_hp >= max_hp:
+                            data.pop("hp_regen_at", None)
+                        else:
+                            data["hp_regen_at"] = regen_at
+                        updates.append((self._obfuscate(data), row_id))
+                        if new_hp != hp:
+                            gained[row_id] = new_hp - hp
+                    if updates:
+                        cursor.executemany(
+                            "UPDATE captured_pokemon SET data = ? "
+                            "WHERE individual_id = ?",
+                            updates,
+                        )
+                raw.commit()
+                started = False
+                return gained
+            except sqlite3.OperationalError as exc:
+                if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                    return {}
+                raise
+            finally:
+                if started:
+                    raw.rollback()
+                raw.execute(f"PRAGMA busy_timeout={int(timeout)}")
 
     def set_main_pokemon(self, individual_id: str) -> bool:
         """Sets a pokemon as the main pokemon by individual_id. Returns False if pokemon not found."""
@@ -2072,6 +2513,7 @@ class AnkimonDB:
             return False
         if not isinstance(pokemon_data, dict):
             return False
+        pokemon_data = self._canonicalize_pokemon_hp(pokemon_data)
         individual_id = pokemon_data.get("individual_id")
         if not isinstance(individual_id, str) or not individual_id:
             return False
@@ -2104,9 +2546,16 @@ class AnkimonDB:
                         (individual_id,),
                     )
                     current = cursor.fetchone()
+                    current_data = (
+                        self._canonicalize_pokemon_hp(
+                            self._deobfuscate(current[0])
+                        )
+                        if current is not None
+                        else None
+                    )
                     if current is None or (
                         expected_pokemon_data is not None
-                        and self._deobfuscate(current[0]) != expected_pokemon_data
+                        and current_data != expected_pokemon_data
                     ):
                         conn.rollback()
                         return False

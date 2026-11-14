@@ -731,9 +731,11 @@ class EvoWindow(QWidget):
             iv = pokemon["iv"]
             ev = pokemon["ev"]
             level = pokemon["level"]
-            hp = calculate_hp(hp_stat, level, ev, iv)
-            pokemon["hp"] = int(hp)
-            pokemon["current_hp"] = int(hp)
+            max_hp = calculate_hp(hp_stat, level, ev, iv)
+            pokemon.pop("hp", None)
+            # Evolving fully heals the Pokemon to its new max HP (Ankimon's
+            # long-standing behaviour, kept on purpose).
+            pokemon["current_hp"] = int(max_hp)
             pokemon["battle_status"] = "fighting"
             try:
                 pokemon["growth_rate"] = get_growth_rate(int(evo_id))

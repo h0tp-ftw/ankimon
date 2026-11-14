@@ -402,6 +402,7 @@ class SettingsWindow(QMainWindow):
                     "Cards per Round",
                     "Review Based Damage",
                     "Ignore Learning Cards",
+                    "Heal on Swap",
                     "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",
