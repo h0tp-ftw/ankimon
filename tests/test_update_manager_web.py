@@ -79,8 +79,11 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261114.4"' in html
-    assert 'src="update_manager.js?v=20261114.4"' in html
+    assert 'href="update_manager.css?v=20261114.5"' in html
+    assert 'src="update_manager.js?v=20261114.5"' in html
+    assert 'id="developer-warning-info"' in html
+    assert 'aria-label="Show Developer Warning"' in html
+    assert '<svg viewBox="0 0 20 20"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
@@ -296,6 +299,17 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "warning-modal" in css
     assert "Do not show this again" in javascript
     assert "'Developer Warning'" in javascript
+    assert "showDeveloperWarningIfNeeded(true)" in javascript
+    assert "checkbox.checked = Boolean(hidden);" in javascript
+    assert ".developer-warning-info:hover" in css
+    assert "color: var(--text-main);" in css[
+        css.index(".developer-warning-info {"):
+        css.index(".developer-warning-info:hover")
+    ]
+    assert "color: var(--accent-blue);" in css[
+        css.index(".developer-warning-info:hover"):
+        css.index(".developer-warning-info:focus-visible")
+    ]
     assert "the code might not do as their description says" in javascript
     assert "Pull requests and side branches may be experiments or work in progress." in javascript
     assert "row.className = 'check-row developer-warning-checkbox';" in javascript

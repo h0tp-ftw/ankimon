@@ -650,10 +650,10 @@
 		}
 	}
 
-	function showDeveloperWarningIfNeeded() {
+	function showDeveloperWarningIfNeeded(force = false) {
 		if (!bridge) return;
 		bridge.getDeveloperWarningHidden((hidden) => {
-			if (hidden) return;
+			if (hidden && !force) return;
 			const content = document.createElement('div');
 			const warning = document.createElement('p');
 			warning.className = 'warning-text modal-warning-text developer-warning-text';
@@ -678,6 +678,7 @@
 			const checkbox = document.createElement('input');
 			checkbox.className = 'custom-checkbox';
 			checkbox.type = 'checkbox';
+			checkbox.checked = Boolean(hidden);
 			const indicator = document.createElement('span');
 			indicator.className = 'checkbox-indicator';
 			indicator.setAttribute('aria-hidden', 'true');
@@ -1403,6 +1404,9 @@
 
 	document.querySelectorAll('.update-tab-link').forEach((button) => {
 		button.addEventListener('click', () => switchTab(button.dataset.tab));
+	});
+	byId('developer-warning-info').addEventListener('click', () => {
+		showDeveloperWarningIfNeeded(true);
 	});
 	const updateTabNames = ['releases', 'sprites', 'developer'];
 	document.querySelector('.sidebar-nav').addEventListener('wheel', (event) => {

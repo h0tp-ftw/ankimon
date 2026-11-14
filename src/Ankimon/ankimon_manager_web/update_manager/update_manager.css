@@ -652,6 +652,54 @@
 	line-height: 1.5;
 }
 
+.developer-tab-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-bottom: 2px;
+}
+
+.developer-tab-row .nav-item {
+	width: auto;
+	flex: 1;
+	margin-bottom: 0;
+}
+
+.developer-warning-info {
+	width: 32px;
+	height: 36px;
+	flex: 0 0 32px;
+	display: grid;
+	place-items: center;
+	padding: 6px;
+	color: var(--text-main);
+	background: transparent;
+	border: 0;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: color .15s ease;
+}
+
+.developer-warning-info:hover {
+	color: var(--accent-blue);
+}
+
+.developer-warning-info:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 1px;
+}
+
+.developer-warning-info svg {
+	display: block;
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.6;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
 #source-type-select,
 #source-target,
 #release-select {
