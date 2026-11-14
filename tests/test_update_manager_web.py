@@ -291,10 +291,22 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "'unknown'" in javascript
     assert "Switch to Latest Release" in javascript
     assert "You currently have " in javascript
-    assert "installed, which will be removed once you switch." in javascript
+    assert (
+        "` installed, which will be removed once you ${replacementVerb}.\\n\\n`"
+        in javascript
+    )
     assert "createSourceLink(replacingSource, installedLabel)" in javascript
     assert "sourceUrl(target.sourceType, target.sourceName)" in javascript
-    assert "installedSource.sourceName !== 'main'" in javascript
+    assert "function installedExternalSource()" in javascript
+    assert "source.sourceType === 'pr'" in javascript
+    assert "source.sourceName !== 'main'" in javascript
+    assert "sourceType !== 'installed'" in javascript
+    assert "sourceType !== 'current'" in javascript
+    assert "progressKey !== 'developer-current'" in javascript
+    assert "function installActionVerb(buttonLabel)" in javascript
+    assert "installActionVerb(byId('latest-release-btn').textContent)" in javascript
+    assert "installActionVerb(byId('release-install-btn').textContent)" in javascript
+    assert "installActionVerb(byId('developer-install-btn').textContent)" in javascript
     assert "Updates that will be lost" in javascript
     assert "lostReleaseCommits.slice(0, 100)" in javascript
     assert "...And more." in javascript

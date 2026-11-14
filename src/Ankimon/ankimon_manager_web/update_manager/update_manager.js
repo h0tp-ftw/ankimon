@@ -1019,13 +1019,28 @@
 		});
 	}
 
+	function installedExternalSource() {
+		if (!updateData) return null;
+		const source = sourceLinkTarget('installed');
+		return source.sourceType === 'pr' ||
+			(source.sourceType === 'branch' && source.sourceName !== 'main')
+			? source
+			: null;
+	}
+
+	function installActionVerb(buttonLabel) {
+		if (/^switch\b/i.test(buttonLabel)) return 'switch';
+		if (/^update\b/i.test(buttonLabel)) return 'update';
+		return 'install';
+	}
+
 	function install(
 		sourceType,
 		sourceName,
 		_label,
 		warning = '',
 		progressKey = 'developer-source',
-		replacingSource = null,
+		replacementVerb = 'install',
 	) {
 		const prompt = updateData && updateData.git_clone
 			? `Switch this Git checkout to `
@@ -1046,6 +1061,11 @@
 		const developerSourceInstall = progressKey === 'developer-source' &&
 			isPullRequestOrSideBranch;
 		const linkTarget = sourceLinkTarget(sourceType, sourceName);
+		const replacingSource = sourceType !== 'installed' &&
+			sourceType !== 'current' &&
+			progressKey !== 'developer-current'
+			? installedExternalSource()
+			: null;
 		const fragment = document.createDocumentFragment();
 		if (warning) {
 			const warningElement = document.createElement('p');
@@ -1108,7 +1128,7 @@
 				document.createTextNode('You currently have '),
 				createSourceLink(replacingSource, installedLabel),
 				document.createTextNode(
-					' installed, which will be removed once you switch.\n\n',
+					` installed, which will be removed once you ${replacementVerb}.\n\n`,
 				),
 			);
 		}
@@ -1246,7 +1266,14 @@
 				? 'developer-main'
 				: 'developer-current';
 		if (selectedBranchView === 'main') {
-			install('branch', 'main', 'latest main', '', progressKey);
+			install(
+				'branch',
+				'main',
+				'latest main',
+				'',
+				progressKey,
+				installActionVerb(byId('branch-update-btn').textContent),
+			);
 			return;
 		}
 		if (updateData.show_branch_views) {
@@ -1263,7 +1290,14 @@
 		if (updateData.git_clone) {
 			install('current', 'current', name, '', progressKey);
 		} else {
-			install('branch', updateData.source_name || 'main', `latest ${name}`, '', progressKey);
+			install(
+				'branch',
+				updateData.source_name || 'main',
+				`latest ${name}`,
+				'',
+				progressKey,
+				installActionVerb(byId('branch-update-btn').textContent),
+			);
 		}
 	}
 
@@ -1552,19 +1586,13 @@
 			if (isBleedingEdge) {
 				showReleaseSwitchConfirmation();
 			} else {
-				const installedSource = sourceLinkTarget('installed');
-				const replacingSource = installedSource.sourceType === 'pr' ||
-					(installedSource.sourceType === 'branch' &&
-						installedSource.sourceName !== 'main')
-					? installedSource
-					: null;
 				install(
 					'release',
 					latestRelease.name,
 					`latest release (${latestRelease.name})`,
 					'',
 					'release',
-					replacingSource,
+					installActionVerb(byId('latest-release-btn').textContent),
 				);
 			}
 		}
@@ -1573,7 +1601,16 @@
 		const release = updateData && (updateData.releases || []).find(
 			(item) => item.name === selectedRelease,
 		);
-		if (release) install('release', release.name, `release ${release.name}`, '', 'release');
+		if (release) {
+			install(
+				'release',
+				release.name,
+				`release ${release.name}`,
+				'',
+				'release',
+				installActionVerb(byId('release-install-btn').textContent),
+			);
+		}
 	});
 
 	byId('developer-install-btn').addEventListener('click', () => {
@@ -1592,6 +1629,7 @@
 			source === 'pr' ? `PR #${entry.number} (${entry.title})` : `${source} ${value}`,
 			'',
 			'developer-source',
+			installActionVerb(byId('developer-install-btn').textContent),
 		);
 	});
 
