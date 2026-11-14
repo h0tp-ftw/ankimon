@@ -695,9 +695,19 @@
 	height: 20px;
 	fill: none;
 	stroke: currentColor;
-	stroke-width: 1.6;
+	stroke-width: 1.35;
 	stroke-linecap: round;
 	stroke-linejoin: round;
+	overflow: visible;
+}
+
+.developer-warning-info svg circle:last-of-type {
+	fill: currentColor;
+	stroke: none;
+}
+
+.developer-warning-info svg circle:first-of-type {
+	stroke-width: 1.35;
 }
 
 #source-type-select,

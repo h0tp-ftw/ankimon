@@ -79,11 +79,16 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261114.5"' in html
-    assert 'src="update_manager.js?v=20261114.5"' in html
+    assert 'href="update_manager.css?v=20261114.6"' in html
+    assert 'src="update_manager.js?v=20261114.6"' in html
     assert 'id="developer-warning-info"' in html
     assert 'aria-label="Show Developer Warning"' in html
-    assert '<svg viewBox="0 0 20 20"' in html
+    info_icon_start = html.index('id="developer-warning-info"')
+    info_icon_end = html.index("</svg>", info_icon_start)
+    info_icon = html[info_icon_start:info_icon_end]
+    assert 'viewBox="0 0 24 24"' in info_icon
+    assert '<circle cx="12" cy="12" r="9.25"' in info_icon
+    assert 'stroke-linecap="round"' in info_icon
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
@@ -285,6 +290,11 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "unknown (not recorded)" not in javascript
     assert "'unknown'" in javascript
     assert "Switch to Latest Release" in javascript
+    assert "You currently have " in javascript
+    assert "installed, which will be removed once you switch." in javascript
+    assert "createSourceLink(replacingSource, installedLabel)" in javascript
+    assert "sourceUrl(target.sourceType, target.sourceName)" in javascript
+    assert "installedSource.sourceName !== 'main'" in javascript
     assert "Updates that will be lost" in javascript
     assert "lostReleaseCommits.slice(0, 100)" in javascript
     assert "...And more." in javascript
@@ -302,6 +312,10 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "showDeveloperWarningIfNeeded(true)" in javascript
     assert "checkbox.checked = Boolean(hidden);" in javascript
     assert ".developer-warning-info:hover" in css
+    assert "stroke-width: 1.35;" in css[
+        css.index(".developer-warning-info svg {"):
+        css.index("#source-type-select")
+    ]
     assert "color: var(--text-main);" in css[
         css.index(".developer-warning-info {"):
         css.index(".developer-warning-info:hover")

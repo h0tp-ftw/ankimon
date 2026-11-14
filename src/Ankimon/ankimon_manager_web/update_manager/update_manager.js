@@ -1019,7 +1019,14 @@
 		});
 	}
 
-	function install(sourceType, sourceName, _label, warning = '', progressKey = 'developer-source') {
+	function install(
+		sourceType,
+		sourceName,
+		_label,
+		warning = '',
+		progressKey = 'developer-source',
+		replacingSource = null,
+	) {
 		const prompt = updateData && updateData.git_clone
 			? `Switch this Git checkout to `
 			: `Update Ankimon to `;
@@ -1073,24 +1080,43 @@
 			);
 			fragment.append(userFilesWarning, document.createTextNode('\n'));
 		}
+		const createSourceLink = (target, label) => {
+			const source = document.createElement('a');
+			source.href = '#';
+			source.className = 'source-link';
+			source.textContent = label;
+			source.addEventListener('click', (event) => {
+				event.preventDefault();
+				if (bridge) {
+					bridge.openGitHubTarget(
+						sourceUrl(target.sourceType, target.sourceName),
+						(opened) => {
+							if (!opened) {
+								showToast('Could not open the selected source in your browser.', true);
+							}
+						},
+					);
+				}
+			});
+			return source;
+		};
+		if (replacingSource) {
+			const installedLabel = replacingSource.sourceType === 'pr'
+				? sourceLinkLabel(replacingSource.sourceType, replacingSource.sourceName)
+				: `Branch ${replacingSource.sourceName}`;
+			fragment.append(
+				document.createTextNode('You currently have '),
+				createSourceLink(replacingSource, installedLabel),
+				document.createTextNode(
+					' installed, which will be removed once you switch.\n\n',
+				),
+			);
+		}
 		fragment.appendChild(document.createTextNode(prompt));
-		const link = document.createElement('a');
-		link.href = '#';
-		link.className = 'source-link';
-		link.textContent = sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName);
-		link.addEventListener('click', (event) => {
-			event.preventDefault();
-			if (bridge) {
-				bridge.openGitHubTarget(
-					sourceUrl(linkTarget.sourceType, linkTarget.sourceName),
-					(opened) => {
-						if (!opened) {
-							showToast('Could not open the selected source in your browser.', true);
-						}
-					},
-				);
-			}
-		});
+		const link = createSourceLink(
+			linkTarget,
+			sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName),
+		);
 		fragment.appendChild(link);
 		if (updateData && updateData.git_clone) {
 			fragment.appendChild(document.createTextNode('?\n\nYour local branches and commits will not be reset. The checkout must be clean, and Anki must be restarted afterward.'));
@@ -1526,7 +1552,20 @@
 			if (isBleedingEdge) {
 				showReleaseSwitchConfirmation();
 			} else {
-				install('release', latestRelease.name, `latest release (${latestRelease.name})`, '', 'release');
+				const installedSource = sourceLinkTarget('installed');
+				const replacingSource = installedSource.sourceType === 'pr' ||
+					(installedSource.sourceType === 'branch' &&
+						installedSource.sourceName !== 'main')
+					? installedSource
+					: null;
+				install(
+					'release',
+					latestRelease.name,
+					`latest release (${latestRelease.name})`,
+					'',
+					'release',
+					replacingSource,
+				);
 			}
 		}
 	});
