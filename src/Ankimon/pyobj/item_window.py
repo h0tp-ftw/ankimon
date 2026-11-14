@@ -936,7 +936,7 @@ class ItemWindow(QWidget):
                 "error", "The active Pokémon has invalid saved HP; no item was used."
             )
             return False
-        max_hp = db._pokemon_max_hp(expected)
+        max_hp = db._derived_max_hp(expected)
         if max_hp is None:
             max_hp = getattr(self.main_pokemon, "max_hp", None)
         try:

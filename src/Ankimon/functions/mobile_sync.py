@@ -3237,6 +3237,10 @@ def _calculate_mobile_reward(
                 pkmndata["battle_status"] = "fighting"
         else:
             pkmndata["current_hp"] = min(saved_current_hp, max_hp)
+    elif saved_current_hp is not None:
+        # Unscaled stats give no maximum to clamp against. Keep the HP the
+        # record arrived with, which the dropped legacy key may have held.
+        pkmndata["current_hp"] = saved_current_hp
 
     friendship = int(pkmndata.get("friendship", 0))
     friendship_gain = random.randint(1, 2) if xp_share else random.randint(5, 9)

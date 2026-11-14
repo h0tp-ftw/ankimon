@@ -53,10 +53,20 @@ def _cancel_main_faint_deferral():
 
 
 def mark_swap_turn_lost():
-    """Make a mid-battle swap cost the incoming Pokemon its next attack."""
+    """Make a mid-battle swap cost the incoming Pokemon its next attack.
+
+    A battle is under way once a round has been fought against a wild Pokemon
+    that is still standing; new_pokemon() clears the engine state for each
+    fresh encounter. Choosing who leads an encounter that has not started
+    (after startup, or right after a catch or defeat) is free.
+    """
     enemy = enemy_pokemon
     try:
-        in_battle = enemy is not None and int(getattr(enemy, "hp", 0) or 0) > 0
+        in_battle = (
+            _state.new_state is not None
+            and enemy is not None
+            and int(getattr(enemy, "hp", 0) or 0) > 0
+        )
     except (TypeError, ValueError):
         in_battle = False
     if in_battle:

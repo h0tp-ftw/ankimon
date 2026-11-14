@@ -304,7 +304,7 @@ def test_card_object_guard_blocks_hook_calls():
 @pytest.mark.parametrize("live_hp", [7, 0])
 def test_hidden_hud_refresh_persists_live_hp_without_rendering(live_hp):
     db = FakeDB(pokemon={"individual_id": "main", "current_hp": 19})
-    db._pokemon_max_hp = lambda data: 20
+    db._derived_max_hp = lambda data: 20
 
     def save_hp(individual_id, hp):
         assert individual_id == "main"
@@ -333,6 +333,74 @@ def test_hidden_hud_refresh_persists_live_hp_without_rendering(live_hp):
     )
     assert mgr._last_state is None
     assert db.query_count == 0
+
+
+def _hp_sync_manager(saved_hp, live_hp):
+    """A hidden-HUD manager over a FakeDB that counts its own writes."""
+    db = FakeDB(pokemon={"individual_id": "main", "current_hp": saved_hp})
+    db._derived_max_hp = lambda data: 20
+    db.writes = 0
+    db.write_token = lambda: ("connection", db.writes)
+
+    def save_hp(individual_id, hp):
+        db._pokemon["current_hp"] = hp
+        db.writes += 1
+        return True
+
+    db.update_pokemon_current_hp = MagicMock(side_effect=save_hp)
+    fake_services = types.SimpleNamespace(
+        db=db, settings=None, reviewer=None, logger=MagicMock()
+    )
+    _, mgr = _new_manager(fake_services)
+    mgr.settings.values["gui.show_mainpkmn_in_reviewer"] = 3
+    mgr.main_pokemon.individual_id = "main"
+    mgr.main_pokemon.hp = mgr.main_pokemon.current_hp = live_hp
+    return db, mgr
+
+
+def test_repaint_skips_the_saved_row_until_hp_or_the_database_moves():
+    db, mgr = _hp_sync_manager(saved_hp=19, live_hp=12)
+
+    mgr.refresh_hud()
+    assert db.get_pokemon_args == ["main"]
+    db.update_pokemon_current_hp.assert_called_once_with("main", 12)
+
+    # Nothing moved on either side: the per-card repaint stays off the database.
+    mgr.refresh_hud()
+    mgr.refresh_hud()
+    assert db.get_pokemon_args == ["main"]
+    assert db.update_pokemon_current_hp.call_count == 1
+
+    # Battle damage is saved on the next repaint.
+    mgr.main_pokemon.hp = mgr.main_pokemon.current_hp = 9
+    mgr.refresh_hud()
+    assert db.get_pokemon_args == ["main", "main"]
+    assert db._pokemon["current_hp"] == 9
+
+    # Another write on this connection replaced the row: reconcile it again.
+    db._pokemon["current_hp"] = 20
+    db.writes += 1
+    mgr.refresh_hud()
+    assert len(db.get_pokemon_args) == 3
+    assert db._pokemon["current_hp"] == 9
+
+    # So does an explicit invalidation from a save made elsewhere.
+    db._pokemon["current_hp"] = 20
+    mgr.invalidate_hud_cache()
+    mgr.refresh_hud()
+    assert len(db.get_pokemon_args) == 4
+    assert db._pokemon["current_hp"] == 9
+
+
+def test_refused_hp_save_is_retried_on_the_next_repaint():
+    db, mgr = _hp_sync_manager(saved_hp=19, live_hp=12)
+    db.update_pokemon_current_hp = MagicMock(return_value=False)
+
+    mgr.refresh_hud()
+    mgr.refresh_hud()
+
+    assert db.get_pokemon_args == ["main", "main"]
+    assert db.update_pokemon_current_hp.call_count == 2
 
 
 # --------------------------------------------------------------------------- #

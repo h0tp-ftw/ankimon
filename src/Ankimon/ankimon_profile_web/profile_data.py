@@ -814,28 +814,35 @@ class ProfileData:
         companion_id = str(companion_id) if companion_id else None
 
         try:
+            active = services.main_pokemon
+            # Read before the switch: the main singleton is updated in place.
+            outgoing_id = getattr(active, "individual_id", None)
+            if companion_id:
+                from ..battle_loop import (
+                    _main_faint_pending_for,
+                    outgoing_hp_for_swap,
+                )
+
+                # Re-selecting the active companion while both Pokémon are
+                # fainted is not a switch (see MainPokemon): reloading it would
+                # heal it and strand the pending enemy choice.
+                if _main_faint_pending_for(active, companion_id):
+                    companion_id = None
+            if companion_id and outgoing_id and services.db.get_main_pokemon():
+                # Before anything is committed, so a refused save leaves the
+                # team and XP Share untouched as well.
+                if not services.db.update_pokemon_current_hp(
+                    str(outgoing_id), outgoing_hp_for_swap(active)
+                ):
+                    raise RuntimeError(
+                        "Could not save the active Pokémon before switching"
+                    )
             # NOTE: no legacy "trainer.team" config write — the DB team table
             # (services.db.save_team) is the sole source of truth every read path
             # uses; settings.py migrates/deletes the old config key on load.
             self.settings_obj.set("trainer.xp_share", xp_share_id)
             services.db.save_team(team_data)
             if companion_id:
-                active = services.main_pokemon
-                # Read before the switch: the main singleton is updated in place.
-                outgoing_id = getattr(active, "individual_id", None)
-                if (
-                    active is not None
-                    and getattr(active, "individual_id", None)
-                    and services.db.get_main_pokemon()
-                ):
-                    from ..battle_loop import outgoing_hp_for_swap
-
-                    if not services.db.update_pokemon_current_hp(
-                        str(active.individual_id), outgoing_hp_for_swap(active)
-                    ):
-                        raise RuntimeError(
-                            "Could not save the active Pokémon before switching"
-                        )
                 if not services.db.set_main_pokemon(companion_id):
                     raise RuntimeError("The selected companion was not found")
                 from ..functions.update_main_pokemon import update_main_pokemon

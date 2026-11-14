@@ -83,6 +83,10 @@ def main():
             reviewer_ui.cycle_team_pokemon()
         assert str(main_pokemon.individual_id) == electrode_id
         assert main_pokemon.hp == electrode_max
+        # Leading a fresh encounter costs no turn, so Electrode attacks at once.
+        # Keep it from exploding again: only a stale deferral may faint it here.
+        assert not battle_loop._state.swap_turn_pending
+        main_pokemon.attacks = ["Splash"]
         encounter_token = getattr(
             services.enemy_pokemon, "_ankimon_encounter_token", None
         )

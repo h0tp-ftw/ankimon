@@ -85,12 +85,11 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
             main_pokemon_data["base_stats"] = search_pokedex(pokemon_name, "baseStats")
             if "stats" in main_pokemon_data:
                 del main_pokemon_data["stats"]
-            had_legacy_hp = "hp" in main_pokemon_data
             original_current_hp = main_pokemon_data.get("current_hp")
             main_pokemon.update_stats(**main_pokemon_data)
 
             current_hp = _apply_loaded_hp(main_pokemon, main_pokemon_data)
-            if had_legacy_hp or original_current_hp != current_hp:
+            if original_current_hp != current_hp:
                 save_main_pokemon(main_pokemon)
             return main_pokemon, mainpokemon_empty
         else:
@@ -139,39 +138,3 @@ def save_main_pokemon(main_pokemon: PokemonObject):
         data = main_pokemon.__dict__
 
     db.save_main_pokemon(data)
-
-
-def sync_main_pokemon_hp_from_database(main_pokemon, battle_state=None):
-    """Make the persisted current HP authoritative before a wild attack."""
-    individual_id = getattr(main_pokemon, "individual_id", None)
-    if not individual_id:
-        raise RuntimeError("The active Pokémon has no individual_id")
-    data = services.db.get_pokemon(str(individual_id))
-    if not data:
-        raise RuntimeError(f"Active Pokémon {individual_id!r} is missing from the database")
-    value = data.get("current_hp")
-    if value is None or isinstance(value, bool):
-        raise RuntimeError(f"Active Pokémon {individual_id!r} has no valid current_hp")
-    try:
-        current_hp = int(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise RuntimeError(
-            f"Active Pokémon {individual_id!r} has invalid current_hp"
-        ) from exc
-
-    max_hp = int(services.db._pokemon_max_hp(data))
-    current_hp = max(0, min(current_hp, max_hp))
-    main_pokemon.max_hp = max_hp
-    main_pokemon.hp = current_hp
-    main_pokemon.current_hp = current_hp
-
-    state_id = getattr(battle_state, "_ankimon_main_individual_id", None)
-    if (
-        battle_state is not None
-        and state_id is not None
-        and str(state_id) == str(individual_id)
-    ):
-        active = battle_state.user.active
-        active.maxhp = max_hp
-        active.hp = min(current_hp, max_hp)
-    return current_hp

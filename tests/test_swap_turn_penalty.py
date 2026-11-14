@@ -29,6 +29,8 @@ main.attacks = ["tackle"]
 s.db.save_main_pokemon(main.to_dict())
 # A bulky foe that survives a few hits and never attacks back.
 driver.set_enemy(species="Blissey", level=100, moves=["Splash"])
+# One round in: the battle is under way, so a swap from here costs a turn.
+driver.answer("good")
 driver.drain_events()
 
 def battle_rounds(events):
@@ -74,6 +76,50 @@ def test_no_penalty_without_a_live_wild_pokemon():
         s.enemy_pokemon.hp = 0
         battle_loop.mark_swap_turn_lost()
         assert not battle_loop._state.swap_turn_pending
+    """)
+
+
+def test_choosing_the_lead_before_the_first_round_is_free():
+    _run("""
+        driver.encounter()
+        assert s.enemy_pokemon.hp > 0
+        battle_loop.mark_swap_turn_lost()
+        assert not battle_loop._state.swap_turn_pending
+
+        first = battle_rounds(driver.answer("good"))
+        assert [r["user_move"] for r in first] == ["tackle"], first
+    """)
+
+
+def test_resaving_the_active_companion_during_a_double_faint_is_not_a_switch():
+    _run("""
+        from Ankimon.ankimon_profile_web.profile_data import ProfileData
+
+        other = build_pokemon({"species": "Pikachu", "level": 20})
+        s.db.save_pokemon(other.to_dict())
+        main_id = str(main.individual_id)
+        conn = s.db._get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES ('migrated_phase2', 'true')"
+        )
+        conn.commit()
+        profile = ProfileData(None, None, s.settings, s.logger)
+
+        # Both fainted in manual mode: the main's faint waits on the enemy choice.
+        main.hp = main.current_hp = 0
+        battle_loop._main_faint_deferred = True
+        battle_loop._main_faint_context = (main, main.individual_id)
+
+        result = profile.handle_save_team(
+            [main_id, str(other.individual_id)], None, main_id
+        )
+        assert result["ok"], result
+        assert main.hp == main.current_hp == 0
+        assert battle_loop._main_faint_deferred
+        assert [row["individual_id"] for row in s.db.get_team()] == [
+            main_id,
+            str(other.individual_id),
+        ]
     """)
 
 

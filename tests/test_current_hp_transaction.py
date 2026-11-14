@@ -150,3 +150,33 @@ def test_hp_write_refuses_bulk_scope(hp_db):
     finally:
         conn._disable_commit = False
     assert hp_db.get_main_pokemon()["current_hp"] == 70
+
+
+def test_hp_write_clamps_to_the_base_stats_maximum(hp_db):
+    # Level 50, base HP 35, default IV 15: 10 + 50 + int(85 * 50 / 100) = 102.
+    assert hp_db.update_pokemon_current_hp("main", 999)
+    assert hp_db.get_main_pokemon()["current_hp"] == 102
+
+
+def test_hp_write_does_not_clamp_to_legacy_base_hp_in_stats(hp_db):
+    """Without base stats, stats.hp may be a legacy base stat, not a maximum."""
+    hp_db.save_pokemon(
+        {
+            "individual_id": "legacy",
+            "id": 99999,
+            "name": "notapokemon",
+            "level": 50,
+            "stats": {"hp": 45},
+            "current_hp": 120,
+        }
+    )
+    assert hp_db.update_pokemon_current_hp("legacy", 110)
+    assert hp_db.get_pokemon("legacy")["current_hp"] == 110
+
+
+def test_write_token_changes_only_when_this_connection_writes(hp_db):
+    token = hp_db.write_token()
+    assert hp_db.get_main_pokemon()["current_hp"] == 70
+    assert hp_db.write_token() == token
+    assert hp_db.update_pokemon_current_hp("main", 3)
+    assert hp_db.write_token() != token

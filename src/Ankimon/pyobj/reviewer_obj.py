@@ -37,6 +37,7 @@ class Reviewer_Manager:
         # === PERFORMANCE STATE ===
         self._ownership_cache = {}  # {pokemon_id: bool} — cache HUD ownership DB reads
         self._last_state = None  # skip redundant HUD repaints when nothing changed
+        self._hp_sync_key = None  # live HP already reconciled with the saved row
         self._listener_registered = (
             False  # JS keydown listener registered once per view
         )
@@ -74,6 +75,7 @@ class Reviewer_Manager:
         self.life_bar_injected = False
         self._ownership_cache.clear()
         self._last_state = None
+        self._hp_sync_key = None
 
         # The Ankimon Window popup keeps showing its last battle line (e.g.
         # "Oshawott used Tackle!") after the deck runs out and the review
@@ -103,6 +105,7 @@ class Reviewer_Manager:
         reaching into these private attributes directly.
         """
         self._last_state = None
+        self._hp_sync_key = None
         if isinstance(self._ownership_cache, dict):
             self._ownership_cache.clear()
 
@@ -219,21 +222,52 @@ class Reviewer_Manager:
         value actually differs, to avoid churn on every repaint. Any DB failure
         is non-fatal: the HUD still renders the live value, and the next turn
         retries the write.
+
+        Returns True when the saved row now holds the live HP.
         """
         try:
             previous = saved.get("current_hp") if saved else None
             if previous is not None and not isinstance(previous, bool):
                 try:
                     if int(previous) == int(hp):
-                        return
+                        return True
                 except (TypeError, ValueError, OverflowError):
                     pass
-            services.db.update_pokemon_current_hp(str(individual_id), int(hp))
+            return (
+                services.db.update_pokemon_current_hp(str(individual_id), int(hp))
+                is True
+            )
         except Exception as exc:
             if services.logger is not None:
                 services.logger.log(
                     "error", f"Could not persist reviewer HP to database: {exc}"
                 )
+            return False
+
+    def _live_hp_sync_key(self, individual_id):
+        """Identify the live HP together with this connection's last write.
+
+        While the key is unchanged since a repaint that reconciled the saved
+        row, nothing has moved on either side, so the per-card repaint can skip
+        the database. ``None`` (no id, or a database without ``write_token``)
+        never matches, which keeps the read.
+        """
+        if not individual_id:
+            return None
+        try:
+            token = services.db.write_token()
+        except Exception:
+            return None
+        if not isinstance(token, tuple):
+            return None
+        main = self.main_pokemon
+        return (
+            token,
+            str(individual_id),
+            getattr(main, "current_hp", None),
+            getattr(main, "hp", None),
+            getattr(main, "max_hp", None),
+        )
 
     def update_life_bar(self, reviewer, card, ease):
         # GUARD: only repaint on direct calls (refresh_hud / battle_loop pass
@@ -254,21 +288,26 @@ class Reviewer_Manager:
         )
 
         individual_id = getattr(self.main_pokemon, "individual_id", None)
-        try:
-            saved = (
-                services.db.get_pokemon(str(individual_id))
-                if individual_id
-                else None
-            )
-        except Exception as exc:
-            saved = None
-            if services.logger is not None:
-                services.logger.log(
-                    "error", f"Could not read reviewer HP from database: {exc}"
+        sync_key = self._live_hp_sync_key(individual_id)
+        hp_in_sync = sync_key is not None and sync_key == self._hp_sync_key
+        saved = None
+        if not hp_in_sync:
+            try:
+                saved = (
+                    services.db.get_pokemon(str(individual_id))
+                    if individual_id
+                    else None
                 )
+            except Exception as exc:
+                if services.logger is not None:
+                    services.logger.log(
+                        "error", f"Could not read reviewer HP from database: {exc}"
+                    )
 
         if saved:
-            max_hp = services.db._pokemon_max_hp(saved)
+            # Only a base-stats maximum outranks the live one: a row without
+            # base stats may hold legacy base HP in stats.hp.
+            max_hp = services.db._derived_max_hp(saved)
             if max_hp is None:
                 max_hp = getattr(self.main_pokemon, "max_hp", None)
         else:
@@ -318,7 +357,13 @@ class Reviewer_Manager:
         self.main_pokemon.current_hp = main_hp
 
         if saved and individual_id:
-            self._persist_live_hp(individual_id, saved, main_hp, main_max)
+            persisted = self._persist_live_hp(individual_id, saved, main_hp, main_max)
+            # Keyed after the write, so the write itself does not invalidate it.
+            self._hp_sync_key = (
+                self._live_hp_sync_key(individual_id) if persisted else None
+            )
+        elif not hp_in_sync:
+            self._hp_sync_key = None
 
         # Hidden HUDs still need to save damage before another UI reloads HP.
         if int(self.settings.get("gui.show_mainpkmn_in_reviewer")) == 3:

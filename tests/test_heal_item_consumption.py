@@ -119,7 +119,7 @@ class _FakeItemDB:
         self.main_pokemon["current_hp"] = hp
         return True
 
-    def _pokemon_max_hp(self, data):
+    def _derived_max_hp(self, data):
         return data["stats"]["hp"]
 
     def consume_item_and_save_main_pokemon(

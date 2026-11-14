@@ -624,6 +624,23 @@ class AnkimonDB:
         return stats_hp if stats_hp is not None else None
 
     @classmethod
+    def _derived_max_hp(cls, data):
+        """Max HP that is safe to clamp a saved ``current_hp`` against.
+
+        Only a positive ``base_stats.hp`` qualifies. ``_pokemon_max_hp`` also
+        falls back to ``stats.hp``, which legacy saves used for *base* HP, so
+        clamping against that fallback would cut a healthy Pokemon down to its
+        base stat. ``None`` means "do not clamp".
+        """
+        base_stats = data.get("base_stats")
+        base_hp = cls._hp_integer(
+            base_stats.get("hp") if isinstance(base_stats, dict) else None
+        )
+        if base_hp is None or base_hp <= 0:
+            return None
+        return cls._pokemon_max_hp(data)
+
+    @classmethod
     def _canonicalize_pokemon_hp(cls, data, *, allow_legacy_hp=False):
         """Return a captured-Pokemon record with only authoritative current HP.
 
@@ -663,18 +680,10 @@ class AnkimonDB:
         result.pop("hp", None)
         if current_hp is None:
             return result
-        base_stats = result.get("base_stats")
-        base_hp = cls._hp_integer(
-            base_stats.get("hp") if isinstance(base_stats, dict) else None
-        )
         # Startup preserves rows whose species stats cannot be resolved. A
         # later getter or metadata edit must not clamp those rows against
         # legacy stats.hp (base HP), or against an invalid base HP.
-        max_hp = (
-            cls._pokemon_max_hp(result)
-            if base_hp is not None and base_hp > 0
-            else None
-        )
+        max_hp = cls._derived_max_hp(result)
         if max_hp is None:
             result["current_hp"] = max(0, current_hp)
         else:
@@ -1964,6 +1973,15 @@ class AnkimonDB:
             return self._canonicalize_pokemon_hp(data) if isinstance(data, dict) else None
         return None
 
+    def write_token(self):
+        """Opaque marker that changes whenever this thread's connection writes.
+
+        Lets a hot caller (the reviewer HUD) skip re-reading a row it has
+        already reconciled. Writes made on other connections do not show up.
+        """
+        raw = self._get_connection()._conn
+        return (id(raw), raw.total_changes)
+
     def update_pokemon_current_hp(self, individual_id: str, current_hp: int) -> bool:
         """Patch HP under write intent, refusing busy or caller-owned writes.
 
@@ -1999,7 +2017,7 @@ class AnkimonDB:
                             f"Invalid saved Pokémon data for {individual_id}"
                         )
                     data = self._canonicalize_pokemon_hp(data)
-                    max_hp = self._pokemon_max_hp(data)
+                    max_hp = self._derived_max_hp(data)
                     data["current_hp"] = max(
                         0, hp if max_hp is None else min(hp, max_hp)
                     )
@@ -3090,7 +3108,8 @@ class AnkimonDB:
         """Import legacy saves through the same verified path as the upgrade dialog.
 
         Optional callbacks report ``progress(percent, message)`` and cancellation.
-        The result contains counts plus ``errors``/``cancelled`` on an incomplete        import. Only a verified import sets the migration completion markers.
+        The result contains counts plus ``errors``/``cancelled`` on an incomplete
+        import. Only a verified import sets the migration completion markers.
         """
         from .legacy_migration import LegacyMigration
 
