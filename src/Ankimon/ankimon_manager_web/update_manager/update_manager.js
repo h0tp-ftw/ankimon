@@ -176,33 +176,42 @@
 		dropdown.classList.remove('open');
 		dropdown.querySelector('.custom-select-menu').classList.add('hidden');
 		dropdown.querySelector('.custom-select-trigger').setAttribute('aria-expanded', 'false');
+		const panel = dropdown.id === 'release-select'
+			? byId('panel-releases')
+			: dropdown.id === 'source-target'
+				? byId('panel-developer')
+				: null;
+		if (panel) {
+			panel.classList.remove('has-open-dropdown');
+			panel.style.removeProperty('--dropdown-scroll-extra');
+		}
 		syncDropdownScrollSpace();
 	}
 
 	function syncDropdownScrollSpace() {
 		const openDropdown = document.querySelector('.custom-select.open');
 		const contentScroll = document.querySelector('.content-scroll');
-		contentScroll.classList.toggle(
-			'has-open-release-dropdown',
-			Boolean(openDropdown && openDropdown.id === 'release-select'),
-		);
-		contentScroll.classList.toggle(
-			'has-open-source-dropdown',
-			Boolean(openDropdown && openDropdown.id === 'source-target'),
-		);
 		if (!openDropdown || !['release-select', 'source-target'].includes(openDropdown.id)) {
-			contentScroll.style.removeProperty('--dropdown-scroll-space');
 			return;
 		}
+		const panel = openDropdown.id === 'release-select'
+			? byId('panel-releases')
+			: byId('panel-developer');
+		panel.classList.add('has-open-dropdown');
 		const menu = openDropdown.querySelector('.custom-select-menu');
-		const overflow = Math.max(
+		const scrollBy = Math.max(
 			0,
-			menu.getBoundingClientRect().bottom - contentScroll.getBoundingClientRect().bottom,
+			menu.getBoundingClientRect().bottom -
+				contentScroll.getBoundingClientRect().bottom + 24,
 		);
-		contentScroll.style.setProperty(
-			'--dropdown-scroll-space',
-			`${Math.ceil(overflow + 24)}px`,
-		);
+		const currentExtra = Number.parseFloat(
+			panel.style.getPropertyValue('--dropdown-scroll-extra'),
+		) || 0;
+		const requiredExtra = scrollBy;
+		const extra = Math.max(currentExtra, Math.ceil(requiredExtra));
+		panel.style.setProperty('--dropdown-scroll-extra', `${extra}px`);
+		const maxScroll = contentScroll.scrollHeight - contentScroll.clientHeight;
+		contentScroll.scrollTop = Math.min(contentScroll.scrollTop + scrollBy, maxScroll);
 	}
 
 	function closeDropdowns(except = null) {

@@ -463,6 +463,10 @@
 	font-weight: 700;
 }
 
+.release-highlight.success {
+	color: var(--update-success);
+}
+
 .commit-list {
 	list-style: none;
 	display: grid;
@@ -753,9 +757,12 @@ progress::-moz-progress-bar {
 	flex: 0 1 auto;
 }
 
-.content-scroll.has-open-release-dropdown,
-.content-scroll.has-open-source-dropdown {
-	padding-bottom: max(24px, var(--dropdown-scroll-space, 24px));
+#panel-releases.has-open-dropdown {
+	padding-bottom: calc(90px + var(--dropdown-scroll-extra, 0px));
+}
+
+#panel-developer.has-open-dropdown {
+	padding-bottom: calc(90px + var(--dropdown-scroll-extra, 0px));
 }
 
 .code-error {

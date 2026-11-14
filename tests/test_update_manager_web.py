@@ -79,8 +79,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261114.1"' in html
-    assert 'src="update_manager.js?v=20261114.1"' in html
+    assert 'href="update_manager.css?v=20261114.4"' in html
+    assert 'src="update_manager.js?v=20261114.4"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
@@ -211,8 +211,9 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "event.stopPropagation()" in javascript
     assert 'id="update-tabs"' not in html
     assert "event.target.closest('.update-tab')" not in javascript
-    assert "'--dropdown-scroll-space'" in javascript
+    assert "'--dropdown-scroll-extra'" in javascript
     assert "getBoundingClientRect().bottom" in javascript
+    assert "contentScroll.scrollTop = Math.min(contentScroll.scrollTop + scrollBy, maxScroll);" in javascript
     assert 'class="github-link-text" aria-hidden="true">Star Ankimon (-E) on GitHub</span>' in html
     assert 'title="Star Ankimon' not in html
     assert "width: 260px;" in css
@@ -249,11 +250,14 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "progress-message-rate-limit" in css
     assert "status-text.rate-limit" in css
     assert "release-highlight.error" in css
+    assert ".release-highlight.success" in css
     assert ".content-scroll {" in css
     assert "overflow-x: hidden;" in css
     assert "max-width: 100%;" in css[css.index(".custom-select-menu {"):css.index(".custom-select-menu .custom-select-search")]
     assert "padding-bottom: 90px;" in css
     assert ".update-content.has-open-dropdown" not in css
+    assert "#panel-releases.has-open-dropdown" in css
+    assert "#panel-developer.has-open-dropdown" in css
     assert "padding-bottom: 360px;" not in css
     assert "fetch_source_sha" in (
         ADDON / "pyobj" / "update_manager_web.py"
@@ -353,14 +357,11 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "branchCanUpdate = true;" in javascript
     assert ", which stores your Ankimon data." in javascript
     assert "userFilesLead.textContent = 'Please check if the source modifies user_files/';" in javascript
-    assert "has-open-release-dropdown" in javascript
-    assert "Boolean(openDropdown && openDropdown.id === 'source-target')" in javascript
-    release_dropdown_padding = css[
-        css.index(".content-scroll.has-open-release-dropdown"):
-        css.index(".code-error")
-    ]
-    assert "padding-bottom: max(24px, var(--dropdown-scroll-space, 24px));" in release_dropdown_padding
-    assert ".content-scroll.has-open-source-dropdown" in release_dropdown_padding
+    assert "dropdown.id === 'release-select'" in javascript
+    assert "dropdown.id === 'source-target'" in javascript
+    assert "byId('panel-releases')" in javascript
+    assert "byId('panel-developer')" in javascript
+    assert "calc(90px + var(--dropdown-scroll-extra, 0px))" in css
     assert javascript.count("Please check if the source modifies user_files/") == 1
     assert "const developerSourceInstall = progressKey === 'developer-source' &&" in javascript
     assert "isPullRequestOrSideBranch" in javascript
