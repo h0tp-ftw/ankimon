@@ -43,7 +43,7 @@ from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_pat
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
 from ..functions.ev_items import VITAMINS, WINGS, MOCHI, CANDIES, apply_ev_item
-from ..functions.hp_recovery import HEAL_ITEMS, heal_item_amount
+from ..functions.hp_recovery import HEAL_ITEMS, USER_ACTION_WAIT_MS, heal_item_amount
 from ..services import services
 from ..utils import get_item_sprite_path, play_effect_sound, is_alive
 from .error_handler import show_warning_with_traceback
@@ -903,7 +903,9 @@ class ItemWindow(QWidget):
         # since the last successful repaint would become an extra free heal.
         try:
             if not db.update_pokemon_current_hp(
-                str(individual_id), self.main_pokemon.current_hp
+                str(individual_id),
+                self.main_pokemon.current_hp,
+                wait_ms=USER_ACTION_WAIT_MS,
             ):
                 raise RuntimeError("Current battle HP could not be saved")
             expected = db.get_main_pokemon()

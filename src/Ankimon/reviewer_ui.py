@@ -81,7 +81,12 @@ def cycle_team_pokemon():
         from .functions.update_main_pokemon import (
             _apply_loaded_hp,
         )
-        from .functions.hp_recovery import credit_rest, keep_rest_clock, swap_heals
+        from .functions.hp_recovery import (
+            USER_ACTION_WAIT_MS,
+            credit_rest,
+            keep_rest_clock,
+            swap_heals,
+        )
 
         cycle_count = _team_cycle_count()
         if cycle_count <= 1:
@@ -150,7 +155,9 @@ def cycle_team_pokemon():
             outgoing_id = getattr(main_pokemon, "individual_id", None)
             if outgoing_id and services.db.get_main_pokemon():
                 if not services.db.update_pokemon_current_hp(
-                    str(outgoing_id), outgoing_hp_for_swap(main_pokemon)
+                    str(outgoing_id),
+                    outgoing_hp_for_swap(main_pokemon),
+                    wait_ms=USER_ACTION_WAIT_MS,
                 ):
                     tooltip("Could not save the active Pokémon; switch cancelled.")
                     return

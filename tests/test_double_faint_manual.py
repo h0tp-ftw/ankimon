@@ -171,7 +171,7 @@ def test_cycling_companion_cancels_pending_faint(game, monkeypatch):
         translator=types.SimpleNamespace(translate=lambda *args, **kwargs: "Switched"),
         db=types.SimpleNamespace(
             get_main_pokemon=lambda: {"individual_id": "main-1"},
-            update_pokemon_current_hp=lambda individual_id, hp: True,
+            update_pokemon_current_hp=lambda individual_id, hp, wait_ms=0: True,
             save_main_pokemon=lambda pokemon: True,
         ),
     )

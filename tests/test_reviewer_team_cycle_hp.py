@@ -68,7 +68,7 @@ class _FakeDB:
             "custom_metadata": {"retained": True},
         }
 
-    def update_pokemon_current_hp(self, individual_id, hp):
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
         assert individual_id == self.outgoing["individual_id"]
         self.outgoing["current_hp"] = hp
         return True

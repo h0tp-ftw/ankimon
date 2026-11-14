@@ -72,7 +72,7 @@ class FakeDB:
     def get_main_pokemon(self):
         return self._pokemon
 
-    def update_pokemon_current_hp(self, individual_id, hp):
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
         return True
 
     def save_pokemon(self, data):
@@ -774,3 +774,18 @@ def test_new_pokemon_without_update_hud_still_clears_cache_but_no_repaint():
 
     assert reviewer._ownership_cache == {}
     reviewer.refresh_hud.assert_not_called()
+
+
+def test_repaint_keeps_live_max_when_saved_row_trails_a_level_up():
+    """A row saved before a level-up must not shrink the fresh full heal."""
+    db, mgr = _hp_sync_manager(saved_hp=20, live_hp=30)
+    db._pokemon["level"] = 10
+    db._derived_max_hp = lambda data: 20  # the old level's max
+    mgr.main_pokemon.level = 11
+    mgr.main_pokemon.max_hp = 30
+
+    mgr.refresh_hud()
+
+    assert mgr.main_pokemon.max_hp == 30
+    assert mgr.main_pokemon.hp == mgr.main_pokemon.current_hp == 30
+    assert db._pokemon["current_hp"] == 30

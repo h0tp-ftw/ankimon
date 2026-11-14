@@ -506,7 +506,9 @@ def _grant_xp_to_pokemon(logger, settings_obj, evo_window, individual_id, exp):
             pokemon["xp"] = 0 if exp < 0 else exp
             if levels_gained > 0:
                 # Levelling up fully heals the Pokemon to its new max HP.
-                new_max_hp = db._pokemon_max_hp(pokemon)
+                # _derived_max_hp, not _pokemon_max_hp: the latter falls back
+                # to stats.hp, which legacy saves used for *base* HP.
+                new_max_hp = db._derived_max_hp(pokemon)
                 if new_max_hp is not None:
                     pokemon["current_hp"] = int(new_max_hp)
                     pokemon.pop("hp", None)

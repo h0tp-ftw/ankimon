@@ -6,6 +6,7 @@ replacing multiple JSON files with a single, obfuscated database file.
 """
 
 import json
+import math
 import sqlite3
 import threading
 import uuid
@@ -1491,6 +1492,36 @@ class AnkimonDB:
 
     # --- Captured Pokemon Operations ---
 
+    def _carry_rest_clock(self, cursor, pokemon_data):
+        """Keep the saved rest clock when a wounded record arrives without one.
+
+        Records built from ``PokemonObject.to_dict()`` never carry
+        ``hp_regen_at``, and both save paths replace the whole row, so without
+        this every such save would throw away the rest a Pokemon is owed. A
+        record at full HP or fainted has no clock, and one that brings its own
+        clock keeps it.
+        """
+        if "hp_regen_at" in pokemon_data:
+            return pokemon_data
+        hp = self._hp_integer(pokemon_data.get("current_hp"))
+        max_hp = self._derived_max_hp(pokemon_data)
+        if hp is None or hp <= 0 or (max_hp is not None and hp >= max_hp):
+            return pokemon_data
+        cursor.execute(
+            "SELECT data FROM captured_pokemon WHERE individual_id = ?",
+            (pokemon_data.get("individual_id"),),
+        )
+        row = cursor.fetchone()
+        existing = self._deobfuscate(row["data"]) if row else None
+        clock = existing.get("hp_regen_at") if isinstance(existing, dict) else None
+        if (
+            isinstance(clock, (int, float))
+            and not isinstance(clock, bool)
+            and math.isfinite(clock)
+        ):
+            pokemon_data = dict(pokemon_data, hp_regen_at=clock)
+        return pokemon_data
+
     def save_pokemon(
         self, pokemon_data: Dict[str, Any], *, accept_monthly_challenge=False
     ):
@@ -1505,11 +1536,12 @@ class AnkimonDB:
             self._log("error", "Cannot save pokemon without individual_id")
             return False
 
-        obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
 
         try:
+            pokemon_data = self._carry_rest_clock(cursor, pokemon_data)
+            obfuscated_data = self._obfuscate(pokemon_data)
             # Check if pokemon already exists to preserve is_main flag
             cursor.execute(
                 "SELECT is_main FROM captured_pokemon WHERE individual_id = ?",
@@ -1923,7 +1955,6 @@ class AnkimonDB:
             self._log("error", "Cannot save main pokemon without individual_id")
             return False
 
-        obfuscated_data = self._obfuscate(pokemon_data)
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -1933,6 +1964,8 @@ class AnkimonDB:
         try:
             cursor.execute(f"SAVEPOINT {savepoint}")
             savepoint_active = True
+            pokemon_data = self._carry_rest_clock(cursor, pokemon_data)
+            obfuscated_data = self._obfuscate(pokemon_data)
             cursor.execute("UPDATE captured_pokemon SET is_main = 0 WHERE is_main = 1")
             cursor.execute(
                 "INSERT OR REPLACE INTO captured_pokemon (individual_id, is_main, data) VALUES (?, 1, ?)",
@@ -1986,11 +2019,15 @@ class AnkimonDB:
         raw = self._get_connection()._conn
         return (id(raw), raw.total_changes)
 
-    def update_pokemon_current_hp(self, individual_id: str, current_hp: int) -> bool:
+    def update_pokemon_current_hp(
+        self, individual_id: str, current_hp: int, *, wait_ms: int = 0
+    ) -> bool:
         """Patch HP under write intent, refusing busy or caller-owned writes.
 
-        Reviewer repaints must not wait for a mobile reward transaction. A
-        refused save can be retried later without replacing newer reward data.
+        Reviewer repaints must not wait for a mobile reward transaction, so the
+        default ``wait_ms=0`` refuses at once. A player action passes
+        ``hp_recovery.USER_ACTION_WAIT_MS`` so a brief lock does not cancel it. A refused
+        save can be retried later without replacing newer reward data.
         """
         if not isinstance(individual_id, str) or not individual_id:
             return False
@@ -2005,7 +2042,7 @@ class AnkimonDB:
             timeout = raw.execute("PRAGMA busy_timeout").fetchone()[0]
             started = False
             try:
-                raw.execute("PRAGMA busy_timeout=0")
+                raw.execute(f"PRAGMA busy_timeout={max(0, int(wait_ms))}")
                 raw.execute("BEGIN IMMEDIATE")
                 started = True
                 with contextlib.closing(raw.cursor()) as cursor:

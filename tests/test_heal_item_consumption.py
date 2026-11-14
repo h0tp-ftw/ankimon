@@ -113,7 +113,7 @@ class _FakeItemDB:
     def get_main_pokemon(self):
         return dict(self.main_pokemon) if self.main_pokemon else None
 
-    def update_pokemon_current_hp(self, individual_id, hp):
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
         if not self.main_pokemon or self.main_pokemon["individual_id"] != individual_id:
             return False
         self.main_pokemon["current_hp"] = hp

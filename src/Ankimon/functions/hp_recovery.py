@@ -29,6 +29,9 @@ HEAL_ITEMS = {
 REGEN_FULL_HEAL_SECONDS = 8 * 60 * 60
 # How often the battle loop credits regeneration to the active Pokemon.
 REGEN_TICK_SECONDS = 60
+# How long a player action (switch, potion) waits for a busy database before
+# giving up. Short, so the GUI never visibly hangs; repaints never wait.
+USER_ACTION_WAIT_MS = 2000
 
 
 def heal_item_amount(item_name, max_hp, flat=None):

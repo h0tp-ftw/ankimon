@@ -17,7 +17,12 @@ from ..pyobj.translator import Translator
 from ..pyobj.test_window import TestWindow
 from ..pyobj.reviewer_obj import Reviewer_Manager
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
-from ..functions.hp_recovery import credit_rest, keep_rest_clock, swap_heals
+from ..functions.hp_recovery import (
+    USER_ACTION_WAIT_MS,
+    credit_rest,
+    keep_rest_clock,
+    swap_heals,
+)
 from ..pyobj.database_manager import canonicalize_pokemon_record
 from ..services import services
 
@@ -84,7 +89,9 @@ def MainPokemon(
             and db.get_main_pokemon()
         ):
             if not db.update_pokemon_current_hp(
-                str(main_pokemon.individual_id), outgoing_hp_for_swap(main_pokemon)
+                str(main_pokemon.individual_id),
+                outgoing_hp_for_swap(main_pokemon),
+                wait_ms=USER_ACTION_WAIT_MS,
             ):
                 raise RuntimeError("The outgoing Pokémon was not saved")
     except Exception as exc:

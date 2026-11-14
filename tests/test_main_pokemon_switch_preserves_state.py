@@ -59,7 +59,7 @@ class _FakeDB:
         self.saved_party.append(data)
         return True
 
-    def update_pokemon_current_hp(self, individual_id, hp):
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
         assert self._main["individual_id"] == individual_id
         self._main = {**self._main, "current_hp": hp}
         self.saved_party.append(dict(self._main))
@@ -370,7 +370,7 @@ def test_outgoing_save_failure_is_shown_to_the_player(collection_dialog):
     cannot know to go and re-check their old main.
     """
     class _BoomDB(_FakeDB):
-        def update_pokemon_current_hp(self, individual_id, hp):
+        def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
             raise RuntimeError("disk on fire")
 
     PokemonObject = collection_dialog._PokemonObject

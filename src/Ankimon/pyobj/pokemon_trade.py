@@ -173,18 +173,18 @@ def create_monthly_challenge_pokemon(pokemon_data, make_shiny=False):
     if not isinstance(iv, dict):
         iv = {"hp": 15, "atk": 15, "def": 15, "spa": 15, "spd": 15, "spe": 15}
     level = max(1, int(pokemon_data.get("level", 1)))
-    hp = max(
-        1,
-        10
-        + level
-        + (
-            (2 * int(base_stats.get("hp", 1)))
-            + int(iv.get("hp", 15))
-            + int(int(ev.get("hp", 0)) / 4)
-        )
-        * level
-        // 100
-    )
+    # The same formula the database clamps saved HP against, so a fresh
+    # award's "full" HP can never disagree with its stored max.
+    from .database_manager import AnkimonDB
+
+    hp = AnkimonDB._pokemon_max_hp(
+        {
+            "level": level,
+            "base_stats": {"hp": base_stats.get("hp", 1)},
+            "ev": ev,
+            "iv": iv,
+        }
+    ) or 1
     return {
         "name": pokemon_data["name"],
         "nickname": pokemon_data.get("nickname", ""),

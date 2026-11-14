@@ -180,3 +180,51 @@ def test_write_token_changes_only_when_this_connection_writes(hp_db):
     assert hp_db.write_token() == token
     assert hp_db.update_pokemon_current_hp("main", 3)
     assert hp_db.write_token() != token
+
+
+def _hold_write_lock(path, seconds, held):
+    conn = sqlite3.connect(str(path))
+    conn.execute("BEGIN IMMEDIATE")
+    held.set()
+    threading.Event().wait(seconds)
+    conn.commit()
+    conn.close()
+
+
+def test_player_action_waits_out_a_brief_lock_but_repaint_does_not(hp_db):
+    for wait_ms, expected in ((0, False), (2000, True)):
+        held = threading.Event()
+        worker = threading.Thread(
+            target=_hold_write_lock, args=(hp_db.db_path, 0.2, held)
+        )
+        worker.start()
+        assert held.wait(5)
+        try:
+            assert (
+                hp_db.update_pokemon_current_hp("main", 3, wait_ms=wait_ms)
+                is expected
+            )
+        finally:
+            worker.join(5)
+    raw = hp_db._get_connection()._conn
+    assert raw.execute("PRAGMA busy_timeout").fetchone()[0] == hp_db._BUSY_TIMEOUT_MS
+
+
+def test_whole_record_saves_keep_the_rest_clock(hp_db):
+    assert hp_db.update_pokemon_current_hp("main", 30)
+    clock = hp_db.get_main_pokemon()["hp_regen_at"]
+
+    # PokemonObject.to_dict() records never carry the clock.
+    record = dict(hp_db.get_main_pokemon())
+    record.pop("hp_regen_at")
+    hp_db.save_main_pokemon(record)
+    assert hp_db.get_main_pokemon()["hp_regen_at"] == clock
+    hp_db.save_pokemon(dict(record, xp=5))
+    assert hp_db.get_main_pokemon()["hp_regen_at"] == clock
+
+    # Full HP or fainted: nothing is owed, so no clock is carried over.
+    hp_db.save_main_pokemon(dict(record, current_hp=1000))
+    assert "hp_regen_at" not in hp_db.get_main_pokemon()
+    assert hp_db.update_pokemon_current_hp("main", 30)
+    hp_db.save_main_pokemon(dict(record, current_hp=0))
+    assert "hp_regen_at" not in hp_db.get_main_pokemon()

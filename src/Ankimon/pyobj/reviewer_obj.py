@@ -306,8 +306,15 @@ class Reviewer_Manager:
 
         if saved:
             # Only a base-stats maximum outranks the live one: a row without
-            # base stats may hold legacy base HP in stats.hp.
+            # base stats may hold legacy base HP in stats.hp. A row behind the
+            # live level (a level-up not yet saved) would shrink max HP and cut
+            # the fresh full heal, so the live max wins then too.
             max_hp = services.db._derived_max_hp(saved)
+            try:
+                if int(saved.get("level")) < int(self.main_pokemon.level):
+                    max_hp = None
+            except (AttributeError, TypeError, ValueError, OverflowError):
+                pass
             if max_hp is None:
                 max_hp = getattr(self.main_pokemon, "max_hp", None)
         else:

@@ -817,6 +817,8 @@ class ProfileData:
             active = services.main_pokemon
             # Read before the switch: the main singleton is updated in place.
             outgoing_id = getattr(active, "individual_id", None)
+            from ..functions.hp_recovery import USER_ACTION_WAIT_MS
+
             if companion_id:
                 from ..battle_loop import (
                     _main_faint_pending_for,
@@ -837,7 +839,9 @@ class ProfileData:
                     outgoing_hp_for_swap(active) if switching else active.current_hp
                 )
                 if not services.db.update_pokemon_current_hp(
-                    str(outgoing_id), outgoing_hp
+                    str(outgoing_id),
+                    outgoing_hp,
+                    wait_ms=USER_ACTION_WAIT_MS,
                 ):
                     raise RuntimeError(
                         "Could not save the active Pokémon before switching"
@@ -874,7 +878,9 @@ class ProfileData:
                         incoming = services.main_pokemon
                         incoming.hp = incoming.current_hp = incoming.max_hp
                         services.db.update_pokemon_current_hp(
-                            str(companion_id), incoming.max_hp
+                            str(companion_id),
+                            incoming.max_hp,
+                            wait_ms=USER_ACTION_WAIT_MS,
                         )
                 if services.reviewer is not None:
                     services.reviewer.refresh_hud()
