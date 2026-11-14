@@ -1,6 +1,6 @@
 /* Shared dropdown nav-switcher styles for the unified Ankimon shell.
  *
- * One stylesheet for all five screens (Items, Ankidex, Profile, Team,
+ * One stylesheet for all shell screens (Items, Ankidex, Profile, Team,
  * Settings) — paired with ankimon_items_web/nav-switcher.js. Each page also
  * loads its own stylesheet, which defines the theme custom properties
  * (--accent-blue, --bg-card, --text-main, …) these rules consume. */

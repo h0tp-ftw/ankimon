@@ -214,7 +214,13 @@ def test_sprite_diff_logic(tmp_path, monkeypatch):
 
     monkeypatch.setattr(requests, "get", mock_get)
 
-    result = su.calculate_sprite_diff(dest_dir)
+    progress_events = []
+    result = su.calculate_sprite_diff(
+        dest_dir,
+        progress_callback=lambda percent, message: progress_events.append(
+            (percent, message)
+        ),
+    )
 
     assert result["status"] == "update_available"
     assert result["remote_sha"] == "new_remote_sha"
@@ -226,6 +232,29 @@ def test_sprite_diff_logic(tmp_path, monkeypatch):
     assert "README.md" not in result["added"]
     assert "LICENSE" not in result["added"]
     assert "download_complete.flag" not in su.get_local_sprites_manifest(dest_dir)
+    assert progress_events[0][0] == 5
+    assert progress_events[-1] == (100, "Sprite update check complete.")
+    assert [percent for percent, _message in progress_events] == sorted(
+        percent for percent, _message in progress_events
+    )
+
+
+def test_sprite_rate_limit_is_reported_as_a_distinct_error(tmp_path, monkeypatch):
+    dest_dir = tmp_path / "sprites"
+    response = mock.Mock(
+        status_code=403,
+        headers={"X-RateLimit-Remaining": "0"},
+        text='{"message":"API rate limit exceeded"}',
+    )
+    response.raise_for_status.side_effect = requests.HTTPError(
+        "403 Client Error", response=response
+    )
+    monkeypatch.setattr(requests, "get", mock.Mock(return_value=response))
+
+    result = su.calculate_sprite_diff(dest_dir)
+
+    assert result["status"] == "error"
+    assert result["rate_limited"] is True
 
 
 def test_sprite_updater_snooze(tmp_path, monkeypatch):

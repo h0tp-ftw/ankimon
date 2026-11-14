@@ -118,7 +118,8 @@ class SpriteUpdateDiffThread(QThread):
 
     def run(self):
         total_files = len(self.added) + len(self.modified)
-        downloaded_count = 0
+        total_operations = total_files + len(self.deleted)
+        completed_operations = 0
 
         # Ensure destination directory exists
         self.dest_dir.mkdir(parents=True, exist_ok=True)
@@ -137,6 +138,9 @@ class SpriteUpdateDiffThread(QThread):
                     return
 
                 self.status_signal.emit(f"Downloading ({i + 1}/{total_files}): {path}")
+                self.progress_signal.emit(
+                    int((completed_operations / total_operations) * 95)
+                )
                 url = f"https://raw.githubusercontent.com/h0tp-ftw/ankimon-sprites/{self.remote_sha}/{path}"
 
                 success = False
@@ -160,8 +164,10 @@ class SpriteUpdateDiffThread(QThread):
                     )
                     return
 
-                downloaded_count += 1
-                self.progress_signal.emit(int((downloaded_count / total_files) * 100))
+                completed_operations += 1
+                self.progress_signal.emit(
+                    int((completed_operations / total_operations) * 95)
+                )
 
         # 2. Clean up files confirmed obsolete by the previous remote revision.
         for path in self.deleted:
@@ -180,11 +186,16 @@ class SpriteUpdateDiffThread(QThread):
                         False, f"Failed to remove obsolete sprite {path}: {exc}"
                     )
                     return
+            completed_operations += 1
+            self.progress_signal.emit(
+                int((completed_operations / total_operations) * 95)
+            )
 
         # 3. Record success only after every file operation completed.
         if self._is_cancelled:
             self.finished_signal.emit(False, "Update cancelled.")
             return
+        self.status_signal.emit("Saving sprite update state...")
         try:
             _write_update_state(
                 self.dest_dir.parent / "sprites_update_state.json", self.remote_sha
@@ -194,6 +205,7 @@ class SpriteUpdateDiffThread(QThread):
                 False, f"Failed to save sprite update state: {exc}"
             )
             return
+        self.progress_signal.emit(100)
         self.finished_signal.emit(True, f"Successfully updated {total_files} sprites!")
 
 
@@ -453,9 +465,38 @@ def get_local_sprites_manifest(dest_dir: Path) -> dict:
 
 
 def calculate_sprite_diff(
-    dest_dir: Path, silent: bool = False, ignore_snooze: bool = False
+    dest_dir: Path,
+    silent: bool = False,
+    ignore_snooze: bool = False,
+    progress_callback=None,
 ) -> dict:
     """Calculates local file Git SHA-1 hashes and diffs them against the remote repository tree."""
+
+    def report_progress(percent, message):
+        if progress_callback:
+            progress_callback(percent, message)
+
+    def is_rate_limited(error):
+        response = getattr(error, "response", None)
+        if response is None:
+            return False
+        status = getattr(response, "status_code", None)
+        headers = getattr(response, "headers", {})
+        body = ""
+        try:
+            body = response.text.lower()
+        except Exception:
+            pass
+        return (
+            status == 429
+            or (
+                status == 403
+                and headers.get("X-RateLimit-Remaining") == "0"
+            )
+            or "rate limit" in body
+            or "secondary rate" in body
+        )
+
     try:
         # Read local state first to check for active snooze.
         local_sha = None
@@ -477,9 +518,11 @@ def calculate_sprite_diff(
             and isinstance(snooze_until, (int, float))
             and time.time() < snooze_until
         ):
+            report_progress(100, "Sprite update check is snoozed.")
             return {"status": "snoozed", "remote_sha": local_sha}
 
         # 1. Fetch latest remote commit SHA
+        report_progress(5, "Checking the latest sprite revision...")
         res = requests.get(
             "https://api.github.com/repos/h0tp-ftw/ankimon-sprites/commits/main",
             timeout=10,
@@ -488,20 +531,25 @@ def calculate_sprite_diff(
         commit_data = res.json()
         remote_sha = commit_data.get("sha") if isinstance(commit_data, dict) else None
         if not isinstance(remote_sha, str) or not remote_sha:
+            report_progress(100, "Sprite revision check failed.")
             return {
                 "status": "error",
                 "error": "Invalid API response for latest commit.",
             }
+        report_progress(20, "Latest sprite revision found.")
 
         # If SHA matches and sprites exist, we are up to date.
         # Bypass this shortcut on manual checks (where ignore_snooze=True) to allow verification/repair.
         if not ignore_snooze and local_sha == remote_sha:
+            report_progress(100, "Sprites are already up to date.")
             return {"status": "up_to_date", "remote_sha": remote_sha}
 
         # 2. Fetch the current managed sprite set.
+        report_progress(30, "Fetching the remote sprite manifest...")
         remote_files = _fetch_remote_files(remote_sha)
 
         # Fetch local file SHA mappings using cache.
+        report_progress(65, "Comparing installed sprites...")
         local_files = get_local_sprites_manifest(dest_dir)
 
         added = sorted(path for path in remote_files if path not in local_files)
@@ -519,6 +567,7 @@ def calculate_sprite_diff(
                 previous_remote_files = remote_files
             else:
                 try:
+                    report_progress(85, "Checking for obsolete sprites...")
                     previous_remote_files = _fetch_remote_files(local_sha)
                 except Exception:
                     previous_remote_files = {}
@@ -529,8 +578,10 @@ def calculate_sprite_diff(
         )
 
         if not added and not modified and not deleted:
+            report_progress(100, "Sprites are already up to date.")
             return {"status": "up_to_date", "remote_sha": remote_sha}
 
+        report_progress(100, "Sprite update check complete.")
         return {
             "status": "update_available",
             "added": added,
@@ -539,7 +590,12 @@ def calculate_sprite_diff(
             "remote_sha": remote_sha,
         }
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        report_progress(100, "Sprite update check failed.")
+        return {
+            "status": "error",
+            "error": str(e),
+            "rate_limited": is_rate_limited(e),
+        }
 
 
 def trigger_sprites_update_check(parent=None, silent=False):
