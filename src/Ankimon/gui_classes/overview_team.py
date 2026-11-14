@@ -140,8 +140,8 @@ _GRID_CSS = """\
     background-blend-mode: soft-light;
 }
 .poke-sprite {
-    width: 120px;
-    height: 120px;
+    width: 90px;
+    height: 90px;
     opacity: 1;
     object-fit: contain;
     display: block;
