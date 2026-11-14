@@ -149,3 +149,42 @@ def test_team_select_companion_change_costs_a_turn_but_resave_does_not():
         assert str(s.main_pokemon.individual_id) == other_id
         assert battle_loop._state.swap_turn_pending
     """)
+
+
+def test_heal_on_swap_heals_both_pokemon_and_costs_no_turn():
+    """Classic rule (battle.heal_on_swap): the old swap behaviour, opted into."""
+    _run("""
+        from Ankimon.ankimon_profile_web.profile_data import ProfileData
+
+        driver.set_setting("battle.heal_on_swap", True)
+        other = build_pokemon({"species": "Pikachu", "level": 20})
+        other_row = other.to_dict()
+        other_row["current_hp"] = 3
+        s.db.save_pokemon(other_row)
+        main_id = str(main.individual_id)
+        other_id = str(other.individual_id)
+        conn = s.db._get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES ('migrated_phase2', 'true')"
+        )
+        conn.commit()
+        profile = ProfileData(None, None, s.settings, s.logger)
+        main_max = main.max_hp
+        main.hp = main.current_hp = 5
+
+        # Re-saving the team with the same companion is not a swap.
+        assert profile.handle_save_team([main_id, other_id], None, main_id)["ok"]
+        assert main.hp == 5
+
+        assert profile.handle_save_team([main_id, other_id], None, other_id)["ok"]
+        assert str(s.main_pokemon.individual_id) == other_id
+        assert s.main_pokemon.hp == s.main_pokemon.current_hp == s.main_pokemon.max_hp
+        assert s.db.get_pokemon(other_id)["current_hp"] == s.main_pokemon.max_hp
+        assert s.db.get_pokemon(main_id)["current_hp"] == main_max
+        assert not battle_loop._state.swap_turn_pending
+
+        # The Pokemon attacks on the very next round.
+        s.main_pokemon.attacks = ["tackle"]
+        first = battle_rounds(driver.answer("good"))
+        assert [r["user_move"] for r in first] == ["tackle"], first
+    """)

@@ -287,3 +287,20 @@ def test_cycle_costs_the_incoming_pokemon_its_next_attack(team_cycle):
     """A successful team-cycle swap arms the lost-turn penalty once (#975)."""
     _cycle(team_cycle, current_hp=7)
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
+
+
+def test_heal_on_swap_restores_the_cycled_in_pokemon(team_cycle, monkeypatch):
+    """Classic rule (battle.heal_on_swap): cycling fully heals the newcomer."""
+    monkeypatch.setattr(
+        _FakeSettings,
+        "get",
+        lambda self, key, default=None: {
+            "controls.team_cycle_count": 3,
+            "battle.heal_on_swap": True,
+        }.get(key, default),
+    )
+
+    main, saved = _cycle(team_cycle, current_hp=7)
+
+    assert main.hp == main.current_hp == main.max_hp == _INCOMING_MAX_HP
+    assert saved["current_hp"] == _INCOMING_MAX_HP

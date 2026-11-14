@@ -13,6 +13,7 @@
     "battle.card_max_time": "Goal of maximum amount of time needed to answer a card in seconds",
     "battle.review_based_damage": "If enabled, your Pokémon's damage will be modified depending on how you graded your last few cards.",
     "battle.ignore_learning_cards": "If enabled, new and learning cards count as Good for the battle damage multiplier, so Again or Hard on them does not lower your damage. Easy on those cards counts as Good too. Relearning cards still use their real grade.",
+    "battle.heal_on_swap": "If enabled, switching your active Pokémon fully heals both the one leaving and the one arriving, and switching in the middle of a battle costs no turn, as in older versions. If disabled, Pokémon keep their damage when switched and a mid-battle switch costs the next attack.",
     "evolution.friendship_time_enabled": "Let Pokémon evolve when they reach their friendship requirement at the right time of day (day/night).",
     "evolution.timezone_auto": "Use this device's local time zone to decide day vs night for evolutions. Turn off to set a fixed UTC offset below.",
     "evolution.timezone_offset": "UTC offset in hours used for the day/night cycle when Auto-detect Time Zone is off (e.g. -5 = New York, 1 = Berlin, 5.5 = India, 0 = UTC). Ignored while auto-detect is on.",

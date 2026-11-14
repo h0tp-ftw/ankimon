@@ -112,6 +112,7 @@ from ..functions.pokedex_functions import (
     return_id_for_item_name,
 )
 from ..business import calculate_cp_from_dict
+from ..functions.hp_recovery import heal_item_summary
 from ..ankimon_profile_web.profile_data import ProfileData
 from ..services import services
 from ..events import events
@@ -2596,6 +2597,11 @@ class AnkimonItemsWeb(QDialog):
             entry["description"] = _item_desc(
                 name, self._lookup_description(name) or f"A useful item: {ui_name}"
             )
+            # The flavor text quotes the classic flat amount; healing items
+            # scale with max HP here.
+            heal_summary = heal_item_summary(name)
+            if heal_summary:
+                entry["description"] = f"{entry['description']} {heal_summary}".strip()
 
         return entry
 

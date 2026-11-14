@@ -159,6 +159,13 @@ def run_startup_background_checks(backup_manager=None):
     except Exception as e:
         logger.log("error", f"Error in count_items_and_rewrite: {e}")
 
+    # 8. Credit the time away to every wounded Pokémon (DB write), so the PC
+    #    and team views show rested HP without waiting for a switch-in.
+    try:
+        ankimon_db.regenerate_pokemon_hp()
+    except Exception as e:
+        logger.log("error", f"Error regenerating Pokémon HP: {e}")
+
     return {
         "backup_error": backup_error,
         "backup_manager": backup_manager,

@@ -688,6 +688,10 @@ class AnkimonDB:
             result["current_hp"] = max(0, current_hp)
         else:
             result["current_hp"] = max(0, min(current_hp, max_hp))
+            if result["current_hp"] >= max_hp:
+                # Only a wounded Pokémon is resting. A clock left on a healthy
+                # one would credit its next wound with time spent at full HP.
+                result.pop("hp_regen_at", None)
         return result
 
     def _normalize_captured_pokemon_hp_safely(self):
@@ -2021,6 +2025,12 @@ class AnkimonDB:
                     data["current_hp"] = max(
                         0, hp if max_hp is None else min(hp, max_hp)
                     )
+                    if max_hp is not None:
+                        # A Pokémon starts resting when it is first hurt;
+                        # regenerate_pokemon_hp() credits the time from here.
+                        from ..functions.hp_recovery import keep_rest_clock
+
+                        keep_rest_clock(data, max_hp)
                     cursor.execute(
                         "UPDATE captured_pokemon SET data = ? WHERE individual_id = ?",
                         (self._obfuscate(data), individual_id),
@@ -2031,6 +2041,85 @@ class AnkimonDB:
             except sqlite3.OperationalError as exc:
                 if "locked" in str(exc).lower() or "busy" in str(exc).lower():
                     return False
+                raise
+            finally:
+                if started:
+                    raw.rollback()
+                raw.execute(f"PRAGMA busy_timeout={int(timeout)}")
+
+    def regenerate_pokemon_hp(self, individual_id=None, *, now=None) -> Dict[str, int]:
+        """Credit rest to saved Pokémon and return the HP each one gained.
+
+        Covers one Pokémon when given an ``individual_id``, otherwise all of
+        them. Only wounded rows are touched: a row whose rest clock is missing
+        gets one started (no gain yet), and healthy or fainted rows are left
+        alone. ``update_pokemon_current_hp`` starts the clock when a Pokémon is
+        first hurt.
+
+        Like ``update_pokemon_current_hp`` this never waits. A busy database or
+        a caller-owned transaction returns ``{}`` and the rest stays owed.
+        """
+        from ..functions.hp_recovery import current_timestamp, regenerate
+
+        if now is None:
+            now = current_timestamp()
+        gained: Dict[str, int] = {}
+        with self.lease_connection() as conn:
+            raw = conn._conn
+            if raw.in_transaction or conn._disable_commit:
+                return gained
+            timeout = raw.execute("PRAGMA busy_timeout").fetchone()[0]
+            started = False
+            try:
+                raw.execute("PRAGMA busy_timeout=0")
+                raw.execute("BEGIN IMMEDIATE")
+                started = True
+                with contextlib.closing(raw.cursor()) as cursor:
+                    if individual_id is None:
+                        cursor.execute(
+                            "SELECT individual_id, data FROM captured_pokemon"
+                        )
+                    else:
+                        cursor.execute(
+                            "SELECT individual_id, data FROM captured_pokemon "
+                            "WHERE individual_id = ?",
+                            (str(individual_id),),
+                        )
+                    updates = []
+                    for row_id, raw_data in cursor.fetchall():
+                        data = self._deobfuscate(raw_data)
+                        if not isinstance(data, dict):
+                            continue
+                        hp = self._hp_integer(data.get("current_hp"))
+                        max_hp = self._derived_max_hp(data)
+                        if hp is None or max_hp is None:
+                            continue
+                        if not 0 < hp < max_hp:
+                            continue
+                        stored_at = data.get("hp_regen_at")
+                        new_hp, regen_at = regenerate(hp, max_hp, stored_at, now)
+                        if new_hp == hp and regen_at == stored_at:
+                            continue
+                        data["current_hp"] = new_hp
+                        if new_hp >= max_hp:
+                            data.pop("hp_regen_at", None)
+                        else:
+                            data["hp_regen_at"] = regen_at
+                        updates.append((self._obfuscate(data), row_id))
+                        if new_hp != hp:
+                            gained[row_id] = new_hp - hp
+                    if updates:
+                        cursor.executemany(
+                            "UPDATE captured_pokemon SET data = ? "
+                            "WHERE individual_id = ?",
+                            updates,
+                        )
+                raw.commit()
+                started = False
+                return gained
+            except sqlite3.OperationalError as exc:
+                if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+                    return {}
                 raise
             finally:
                 if started:

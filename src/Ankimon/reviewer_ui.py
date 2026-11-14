@@ -81,6 +81,7 @@ def cycle_team_pokemon():
         from .functions.update_main_pokemon import (
             _apply_loaded_hp,
         )
+        from .functions.hp_recovery import credit_rest, keep_rest_clock, swap_heals
 
         cycle_count = _team_cycle_count()
         if cycle_count <= 1:
@@ -112,6 +113,10 @@ def cycle_team_pokemon():
             return
         if str(active_id) == str(next_id):
             return
+        # The incoming Pokémon has been resting on the bench.
+        pokemon_data = credit_rest(
+            services.db, pokemon_data, getattr(services, "logger", None)
+        )
 
         try:
             from .functions.pokedex_functions import (
@@ -154,9 +159,15 @@ def cycle_team_pokemon():
             incoming.update_stats(**pokemon_data)
             # Apply the incoming row's saved HP to the runtime battle object.
             _apply_loaded_hp(incoming, pokemon_data)
+            if swap_heals(getattr(services, "settings", None)):
+                # Classic swap rule: the incoming Pokémon arrives fully healed.
+                incoming.hp = incoming.current_hp = incoming.max_hp
             incoming.reset_bonuses()
 
-            if not services.db.save_main_pokemon(incoming.to_dict()):
+            incoming_record = incoming.to_dict()
+            # to_dict() does not carry the rest clock credit_rest just settled.
+            keep_rest_clock(incoming_record, incoming.max_hp)
+            if not services.db.save_main_pokemon(incoming_record):
                 tooltip("Could not save the selected Pokémon; switch cancelled.")
                 return
             _cancel_main_faint_deferral()

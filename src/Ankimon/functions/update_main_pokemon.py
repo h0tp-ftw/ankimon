@@ -6,6 +6,7 @@ from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..resources import mainpokemon_path
 from ..pyobj.pokemon_obj import PokemonObject
 from ..pyobj.database_manager import canonicalize_pokemon_record
+from .hp_recovery import credit_rest
 from ..services import services
 
 # default values to fall back in case of load error
@@ -75,6 +76,7 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
         main_pokemon_data = db.get_main_pokemon()
         if main_pokemon_data:
             mainpokemon_empty = False
+            main_pokemon_data = credit_rest(db, main_pokemon_data, services.logger)
             # Prefer the stored species name; only fall back to a pokedex-id
             # lookup (and backfill it) when the record predates name storage.
             pokemon_name = main_pokemon_data.get("name")

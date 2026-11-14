@@ -24,7 +24,15 @@ from .utils import (
     is_alive,
     random_item,
 )
-from .functions.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
+from .functions.ankimon_hooks_to_poke_engine import (
+    simulate_battle_with_poke_engine,
+    sync_active_pokemon_hp,
+)
+from .functions.hp_recovery import (
+    REGEN_TICK_SECONDS,
+    current_timestamp,
+    swap_heals,
+)
 from .pyobj.error_handler import show_warning_with_traceback
 
 # Shared game state used as bare module globals below. core.bind_runtime_globals()
@@ -58,8 +66,11 @@ def mark_swap_turn_lost():
     A battle is under way once a round has been fought against a wild Pokemon
     that is still standing; new_pokemon() clears the engine state for each
     fresh encounter. Choosing who leads an encounter that has not started
-    (after startup, or right after a catch or defeat) is free.
+    (after startup, or right after a catch or defeat) is free, and so is every
+    swap under the classic rule (battle.heal_on_swap).
     """
+    if swap_heals(settings_obj):
+        return
     enemy = enemy_pokemon
     try:
         in_battle = (
@@ -78,13 +89,51 @@ def outgoing_hp_for_swap(main_pokemon):
 
     A swap cancels a pending manual-mode double faint, and with it the only
     heal the fainted Pokemon would get. If the outgoing Pokemon owns that
-    deferral, save it at full HP, as the faint handler would have.
+    deferral, save it at full HP, as the faint handler would have. Under the
+    classic rule (battle.heal_on_swap) every swap heals it.
     """
-    if _main_faint_pending_for(
+    if swap_heals(settings_obj) or _main_faint_pending_for(
         main_pokemon, getattr(main_pokemon, "individual_id", None)
     ):
         return main_pokemon.max_hp
     return main_pokemon.current_hp
+
+
+# (individual_id, timestamp) of the last regeneration credited to the active
+# Pokemon, so the per-card loop touches the database once a tick, not per card.
+_last_rest_credit = None
+
+
+def _credit_rest_to_active(main_pokemon, state):
+    """Regenerate the active Pokemon's HP for the time since its last credit.
+
+    Runs before a battle round so the engine fights with the regenerated HP.
+    A fainted Pokemon does not rest.
+    """
+    global _last_rest_credit
+    individual_id = getattr(main_pokemon, "individual_id", None)
+    db = services.db
+    if not individual_id or db is None:
+        return
+    now = current_timestamp()
+    if _last_rest_credit is not None:
+        last_id, last_at = _last_rest_credit
+        if last_id == str(individual_id) and 0 <= now - last_at < REGEN_TICK_SECONDS:
+            return
+    try:
+        if int(main_pokemon.current_hp) <= 0:
+            return
+        _last_rest_credit = (str(individual_id), now)
+        gained = db.regenerate_pokemon_hp(str(individual_id), now=now).get(
+            str(individual_id), 0
+        )
+        if isinstance(gained, int) and gained > 0:
+            healed = min(int(main_pokemon.max_hp), int(main_pokemon.current_hp) + gained)
+            main_pokemon.hp = main_pokemon.current_hp = healed
+            sync_active_pokemon_hp(state, main_pokemon)
+            events.emit("regen", pokemon=main_pokemon.name, gained=gained, hp=healed)
+    except Exception as error:
+        logger.log("warning", f"Could not regenerate the active Pokemon's HP: {error}")
 
 
 def _main_faint_pending_for(main_pokemon, individual_id):
@@ -337,6 +386,7 @@ def on_review_card(*args):
             ankimon_tracker_obj.attack_counter = 0
             ankimon_tracker_obj.pokemon_encounter += 1
             multiplier = ankimon_tracker_obj.multiplier
+            _credit_rest_to_active(main_pokemon, s.new_state)
 
             if (
                 ankimon_tracker_obj.pokemon_encounter > 0

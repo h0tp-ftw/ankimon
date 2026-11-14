@@ -559,6 +559,43 @@ def test_pc_switch_costs_the_incoming_pokemon_its_next_attack(collection_dialog)
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
 
 
+def _enable_heal_on_swap(module, monkeypatch):
+    settings = MagicMock()
+    settings.get.side_effect = lambda key, default=None: (
+        True if key == "battle.heal_on_swap" else default
+    )
+    monkeypatch.setattr(module, "services", types.SimpleNamespace(settings=settings))
+
+
+def test_heal_on_swap_restores_the_incoming_pokemon(collection_dialog, monkeypatch):
+    """Classic rule (battle.heal_on_swap): a PC switch fully heals the newcomer."""
+    _enable_heal_on_swap(collection_dialog, monkeypatch)
+
+    main, db = _call(collection_dialog, _stored_pokemon())
+
+    assert main.hp == main.current_hp == main.max_hp
+    assert db.saved_main[-1]["current_hp"] == main.max_hp
+
+
+def test_heal_on_swap_does_not_heal_a_reselected_main(collection_dialog, monkeypatch):
+    """Picking the Pokemon that is already active is not a swap."""
+    _enable_heal_on_swap(collection_dialog, monkeypatch)
+    stored = _stored_pokemon()
+    main = collection_dialog._PokemonObject(**stored, base_stats=dict(_BASE_STATS))
+    assert main.hp == 7
+    db = _FakeDB(existing_main=dict(stored))
+    collection_dialog.mw.ankimon_db = db
+    test_window = MagicMock()
+    test_window.isVisible.return_value = False
+
+    collection_dialog.MainPokemon(
+        stored, main, MagicMock(), MagicMock(), MagicMock(), test_window
+    )
+
+    assert main.hp == main.current_hp == 7
+    assert db.saved_main[-1]["current_hp"] == 7
+
+
 def test_reselecting_the_current_main_does_not_cost_a_turn(collection_dialog):
     stored = _stored_pokemon(current_hp=100, hp=100)
     main = collection_dialog._PokemonObject(**stored, base_stats=dict(_BASE_STATS))

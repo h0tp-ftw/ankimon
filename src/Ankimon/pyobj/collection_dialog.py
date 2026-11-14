@@ -17,7 +17,9 @@ from ..pyobj.translator import Translator
 from ..pyobj.test_window import TestWindow
 from ..pyobj.reviewer_obj import Reviewer_Manager
 from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
+from ..functions.hp_recovery import credit_rest, keep_rest_clock, swap_heals
 from ..pyobj.database_manager import canonicalize_pokemon_record
+from ..services import services
 
 
 def _resolve_persisted_hp(pokemon_data):
@@ -103,10 +105,14 @@ def MainPokemon(
     # The PC read this snapshot before the outgoing save above. Re-selecting
     # the same individual must retain its live HP when a busy HUD save had
     # left the snapshot behind, while still refreshing its stored moves.
-    if pokemon_data.get("individual_id") and str(pokemon_data["individual_id"]) == str(
-        getattr(main_pokemon, "individual_id", None)
-    ):
+    same_individual = bool(pokemon_data.get("individual_id")) and str(
+        pokemon_data["individual_id"]
+    ) == str(getattr(main_pokemon, "individual_id", None))
+    if same_individual:
         pokemon_data = {**pokemon_data, "current_hp": main_pokemon.current_hp}
+    else:
+        # The incoming Pokémon has been resting in the PC.
+        pokemon_data = credit_rest(db, pokemon_data, logger)
 
     # --- Now proceed to set the new mainpokemon as before ---
     pokemon_id = pokemon_data.get("id")
@@ -119,6 +125,10 @@ def MainPokemon(
     #
     # Legacy rows are normalized by AnkimonDB before reaching this switch path.
     persisted_hp = _resolve_persisted_hp(pokemon_data)
+    if not same_individual and swap_heals(services.settings):
+        # Classic swap rule: with no persisted value the constructor restores
+        # full HP, and the save below records it.
+        persisted_hp = None
 
     # Create NEW PokemonObject instance using class constructor
     new_main_pokemon = PokemonObject(
@@ -170,7 +180,10 @@ def MainPokemon(
 
     # Commit the incoming persisted record before mutating the shared singleton.
     try:
-        if not db.save_main_pokemon(new_main_pokemon.to_dict()):
+        incoming_record = new_main_pokemon.to_dict()
+        # to_dict() does not carry the rest clock; a wounded main needs one.
+        keep_rest_clock(incoming_record, new_main_pokemon.max_hp)
+        if not db.save_main_pokemon(incoming_record):
             raise RuntimeError("The incoming Pokémon was not saved as main")
     except Exception as exc:
         logger.log("error", f"Could not switch the main Pokémon: {exc}")

@@ -828,11 +828,16 @@ class ProfileData:
                 # heal it and strand the pending enemy choice.
                 if _main_faint_pending_for(active, companion_id):
                     companion_id = None
+            switching = bool(companion_id) and str(outgoing_id) != str(companion_id)
             if companion_id and outgoing_id and services.db.get_main_pokemon():
                 # Before anything is committed, so a refused save leaves the
-                # team and XP Share untouched as well.
+                # team and XP Share untouched as well. Re-saving the team with
+                # the same companion is not a swap and keeps its live HP.
+                outgoing_hp = (
+                    outgoing_hp_for_swap(active) if switching else active.current_hp
+                )
                 if not services.db.update_pokemon_current_hp(
-                    str(outgoing_id), outgoing_hp_for_swap(active)
+                    str(outgoing_id), outgoing_hp
                 ):
                     raise RuntimeError(
                         "Could not save the active Pokémon before switching"
@@ -853,15 +858,24 @@ class ProfileData:
                     services.main_pokemon.update_stats(**new_main.to_dict())
                 if mainpokemon_empty:
                     raise RuntimeError("The selected companion could not be loaded")
-                if outgoing_id is not None and str(outgoing_id) != str(companion_id):
+                if outgoing_id is not None and switching:
                     from ..battle_loop import (
                         _cancel_main_faint_deferral,
                         mark_swap_turn_lost,
                     )
+                    from ..functions.hp_recovery import swap_heals
 
                     # The outgoing Pokemon's deferred faint was settled above.
                     _cancel_main_faint_deferral()
                     mark_swap_turn_lost()
+                    if swap_heals(self.settings_obj):
+                        # Classic swap rule: the incoming Pokémon arrives
+                        # fully healed.
+                        incoming = services.main_pokemon
+                        incoming.hp = incoming.current_hp = incoming.max_hp
+                        services.db.update_pokemon_current_hp(
+                            str(companion_id), incoming.max_hp
+                        )
                 if services.reviewer is not None:
                     services.reviewer.refresh_hud()
         except Exception as e:

@@ -310,7 +310,11 @@ def test_failed_escape_refunds_item_and_reports_failure(item_window_mod, monkeyp
 
 
 def test_heal_consumes_exactly_one_item(item_window_mod):
-    """The happy path still heals, and spends one potion doing it."""
+    """The happy path still heals, and spends one potion doing it.
+
+    A Potion restores 25% of max HP (at least its classic 20), so the 100 HP
+    fake used throughout this file gains 25 per Potion.
+    """
     db = _FakeItemDB({"potion": 2})
     pokemon = _FakePokemon(hp=10, max_hp=100)
     win = _make_window(item_window_mod, db, pokemon)
@@ -318,8 +322,8 @@ def test_heal_consumes_exactly_one_item(item_window_mod):
     result = win.Check_Heal_Item("mewtwo", 20, "potion", {})
 
     assert result is True
-    assert pokemon.hp == 30
-    assert pokemon.current_hp == 30, "the persisted mirror must follow the heal"
+    assert pokemon.hp == 35
+    assert pokemon.current_hp == 35, "the persisted mirror must follow the heal"
     assert db.quantity_calls == [("potion", -1)]
     assert db.inventory["potion"] == 1
 
@@ -368,7 +372,7 @@ def test_second_use_of_the_last_potion_heals_nothing(item_window_mod):
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is False
-    assert pokemon.hp == 30, "the second click healed for free"
+    assert pokemon.hp == 35, "the second click healed for free"
     assert db.quantity_calls == [("potion", -1), ("potion", -1)]
     assert db.inventory == {}
 
@@ -480,8 +484,8 @@ def test_a_failing_bag_redraw_cannot_swallow_the_heal(item_window_mod):
     win.renewWidgets = MagicMock(side_effect=RuntimeError("wrapped C/C++ object deleted"))
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
-    assert pokemon.hp == 30, "the potion was spent and the heal never landed"
-    assert pokemon.current_hp == 30
+    assert pokemon.hp == 35, "the potion was spent and the heal never landed"
+    assert pokemon.current_hp == 35
     assert db.quantity_calls == [("potion", -1)]
 
 
@@ -494,7 +498,7 @@ def test_the_bag_is_redrawn_only_after_the_heal_lands(item_window_mod):
     win.renewWidgets = lambda: hp_at_redraw.append(pokemon.hp)
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
-    assert hp_at_redraw == [30], "the bag was redrawn before the HP was granted"
+    assert hp_at_redraw == [35], "the bag was redrawn before the HP was granted"
 
 
 def test_a_row_that_vanishes_after_the_check_heals_nothing(item_window_mod):
@@ -544,7 +548,7 @@ def test_the_heal_button_handler_heals_the_current_main(item_window_mod):
     win = _make_window(item_window_mod, db, pokemon)
 
     assert win._heal_main_pokemon("potion", 20) is True
-    assert pokemon.hp == 30
+    assert pokemon.hp == 35
     assert db.quantity_calls == [("potion", -1)]
 
 
@@ -579,15 +583,15 @@ def test_the_heal_path_spends_one_real_row_per_heal(item_window_mod, real_db):
     win = _make_window(item_window_mod, real_db, pokemon)
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
-    assert pokemon.hp == 30
+    assert pokemon.hp == 35
     assert real_db.get_item("potion")["quantity"] == 1
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is True
-    assert pokemon.hp == 50
+    assert pokemon.hp == 60
     assert real_db.get_item("potion") is None, "the emptied row must not linger"
 
     assert win.Check_Heal_Item("mewtwo", 20, "potion", {}) is False
-    assert pokemon.hp == 50, "the third click healed out of an empty bag"
+    assert pokemon.hp == 60, "the third click healed out of an empty bag"
 
 
 def test_potion_retries_unsaved_battle_hp_without_spending_while_busy(
@@ -606,8 +610,8 @@ def test_potion_retries_unsaved_battle_hp_without_spending_while_busy(
         assert real_db.get_item("potion")["quantity"] == 1
         blocker.rollback()
         assert win.Check_Heal_Item("mewtwo", 20, "potion", {})
-        assert pokemon.hp == pokemon.current_hp == 60
-        assert real_db.get_main_pokemon()["current_hp"] == 60
+        assert pokemon.hp == pokemon.current_hp == 65
+        assert real_db.get_main_pokemon()["current_hp"] == 65
         assert real_db.get_item("potion") is None
     finally:
         blocker.close()

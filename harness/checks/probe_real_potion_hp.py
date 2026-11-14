@@ -28,6 +28,7 @@ def main():
             )
 
         from Ankimon import battle_loop
+        from Ankimon.functions.hp_recovery import heal_item_amount
         from Ankimon.singletons import get_item_window
         from harness.fixtures import build_pokemon
 
@@ -96,7 +97,10 @@ def main():
         with quiet():
             result = bag.dispatch_use("potion")
         assert result["ok"], result
-        healed_hp = before_hp + 20
+        # A Potion scales with max HP: a quarter of Mewtwo's 181, not a flat 20.
+        potion_heal = heal_item_amount("potion", main_pokemon.max_hp)
+        assert potion_heal == 46
+        healed_hp = before_hp + potion_heal
         assert main_pokemon.hp == main_pokemon.current_hp == healed_hp
         assert db.get_main_pokemon()["current_hp"] == healed_hp
         assert battle_loop._state.new_state.user.active.hp == healed_hp

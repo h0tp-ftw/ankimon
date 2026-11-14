@@ -43,6 +43,7 @@ from ..resources import icon_path, items_path, csv_file_items_cost, poke_evo_pat
 from ..functions.badges_functions import check_for_badge, receive_badge
 from ..functions.pokemon_functions import save_fossil_pokemon
 from ..functions.ev_items import VITAMINS, WINGS, MOCHI, CANDIES, apply_ev_item
+from ..functions.hp_recovery import HEAL_ITEMS, heal_item_amount
 from ..services import services
 from ..utils import get_item_sprite_path, play_effect_sound, is_alive
 from .error_handler import show_warning_with_traceback
@@ -75,21 +76,8 @@ class ItemWindow(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.hp_heal_items = {
-            "potion": 20,
-            "sweet-heart": 20,
-            "berry-juice": 20,
-            "fresh-water": 30,
-            "soda-pop": 50,
-            "super-potion": 60,
-            "energy-powder": 60,
-            "lemonade": 70,
-            "moomoo-milk": 100,
-            "hyper-potion": 120,
-            "energy-root": 120,
-            "full-restore": 1000,
-            "max-potion": 1000,
-        }
+        # Flat amounts only; Check_Heal_Item scales them to the Pokémon's max HP.
+        self.hp_heal_items = {name: flat for name, (flat, _) in HEAL_ITEMS.items()}
 
         self.fossil_pokemon = {
             "helix-fossil": 138,
@@ -956,9 +944,7 @@ class ItemWindow(QWidget):
             self.logger.log_and_showinfo("info", f"{prevo_name} is already at full HP.")
             return False
 
-        heal_points = max(0, int(heal_points))
-        if item_name in ("full-restore", "max-potion"):
-            heal_points = max_hp
+        heal_points = heal_item_amount(item_name, max_hp, flat=heal_points)
         healed_hp = min(current_hp + heal_points, max_hp)
         actual_heal = healed_hp - current_hp
         if actual_heal <= 0:

@@ -56,6 +56,7 @@ from ..utils import (
 )
 from ..business import calc_experience, calculate_cp_from_dict
 from ..const import gen_ids
+from .hp_recovery import keep_rest_clock
 from . import encounter_data
 
 if TYPE_CHECKING:
@@ -1714,6 +1715,8 @@ def save_main_pokemon_progress(
         mainpkmndata["stats"] = main_pokemon.stats
         mainpkmndata["current_hp"] = int(main_pokemon.hp)
         mainpkmndata.pop("hp", None)
+        # This save can be the first to record a wound from the final round.
+        keep_rest_clock(mainpkmndata, getattr(main_pokemon, "max_hp", None))
         # Friendship is uncapped — it keeps climbing past MAX_FRIENDSHIP (400) so
         # players can flex a super-bonded Pokémon. The progress bar still fills at
         # MAX_FRIENDSHIP; the raw number above it is what keeps growing.
