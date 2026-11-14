@@ -7,7 +7,7 @@
 	<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="../../ankimon_items_web/shop.css?v=20260634">
 	<link rel="stylesheet" href="../../ankimon_items_web/nav-switcher.css?v=20260634">
-	<link rel="stylesheet" href="update_manager.css?v=20261113.8">
+	<link rel="stylesheet" href="update_manager.css?v=20261114.1">
 	<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
 </head>
 <body class="dark-mode">
@@ -86,6 +86,18 @@
 									<div class="custom-select-menu hidden" role="dialog" aria-label="Choose a release">
 										<input class="custom-select-search" type="search" placeholder="Search releases" aria-label="Search releases">
 										<div class="custom-select-options" role="listbox"></div>
+										<div id="release-pagination" class="dropdown-pagination hidden" aria-label="Release pages">
+											<span id="release-page-summary">Showing release 1 to 50</span>
+											<div class="dropdown-page-controls">
+												<button id="release-page-prev" type="button" aria-label="Previous release page" disabled>
+													<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.5 4.5 2 12l8.5 7.5v-4.75H22v-5.5H10.5V4.5Z"/></svg>
+												</button>
+												<button id="release-page-next" type="button" aria-label="Next release page" disabled>
+													<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M13.5 4.5 22 12l-8.5 7.5v-4.75H2v-5.5h11.5V4.5Z"/></svg>
+												</button>
+											</div>
+											<span id="release-page-limit">Max 100 releases shown</span>
+										</div>
 									</div>
 								</div>
 								<button id="release-install-btn" class="btn btn-primary" type="button" disabled>Install Selected Release</button>
@@ -148,9 +160,9 @@
 									<div class="custom-select-menu hidden" role="dialog" aria-label="Choose an update source">
 										<input id="pr-search" class="custom-select-search" type="search" placeholder="Search pull requests by number or title" aria-label="Search update sources">
 										<div class="custom-select-options" role="listbox"></div>
-										<div id="pr-pagination" class="pr-pagination hidden" aria-label="Pull request pages">
+										<div id="pr-pagination" class="dropdown-pagination hidden" aria-label="Pull request pages">
 											<span id="pr-page-summary">Showing PR #— to #—</span>
-											<div class="pr-page-controls">
+											<div class="dropdown-page-controls">
 												<button id="pr-page-prev" type="button" aria-label="Previous pull request page" disabled>
 													<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.5 4.5 2 12l8.5 7.5v-4.75H22v-5.5H10.5V4.5Z"/></svg>
 												</button>
@@ -164,10 +176,10 @@
 								</div>
 							</div>
 							<button id="developer-install-btn" class="btn btn-primary" type="button" disabled>Install</button>
+							</div>
 							<div id="developer-source-progress" class="operation-progress hidden" aria-live="polite">
 								<div class="progress-label"><span></span><output>0%</output></div>
 								<progress max="100" value="0"></progress>
-							</div>
 							</div>
 						</div>
 						<div id="developer-view-main" class="subtab-panel">
@@ -222,6 +234,6 @@
 	</div>
 	<div id="toast" class="shop-toast"></div>
 	<script src="../../ankimon_items_web/nav-switcher.js?v=20260634"></script>
-	<script src="update_manager.js?v=20261113.8"></script>
+	<script src="update_manager.js?v=20261114.1"></script>
 </body>
 </html>

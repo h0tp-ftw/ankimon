@@ -79,20 +79,28 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261113.8"' in html
-    assert 'src="update_manager.js?v=20261113.8"' in html
+    assert 'href="update_manager.css?v=20261114.1"' in html
+    assert 'src="update_manager.js?v=20261114.1"' in html
     assert 'id="pr-pagination"' in html
     assert 'id="pr-page-summary"' in html
     assert 'id="pr-page-limit"' in html
     assert 'id="pr-page-prev"' in html and "<svg" in html
     assert 'id="pr-page-next"' in html and 'viewBox="0 0 24 24"' in html
     assert "Max 100 PRs shown" in html
+    assert 'id="release-pagination"' in html
+    assert "Max 100 releases shown" in html
+    assert 'id="developer-source-progress"' in html
     assert "Showing PR #" in javascript
-    assert "const PR_PAGE_SIZE = 50;" in javascript
+    assert "const DROPDOWN_PAGE_SIZE = 50;" in javascript
     assert (
-        "entries.slice(prPage * PR_PAGE_SIZE, (prPage + 1) * PR_PAGE_SIZE)"
+        "entries.slice(sourcePage * DROPDOWN_PAGE_SIZE, (sourcePage + 1) * DROPDOWN_PAGE_SIZE)"
         in javascript
     )
+    assert "entries.slice(\n\t\t\treleasePage * DROPDOWN_PAGE_SIZE" in javascript
+    assert "options[type].entries.length > DROPDOWN_PAGE_SIZE" in javascript
+    assert "list.length <= DROPDOWN_PAGE_SIZE" in javascript
+    assert "Showing tag ${start} to ${end}" in javascript
+    assert "Showing release ${first} to ${last}" in javascript
     assert "querySelector('.custom-select-options').scrollTop = 0;" in javascript
     assert "status-text.neutral" in css
     assert "Switch to Latest Main" in javascript
@@ -203,7 +211,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "event.stopPropagation()" in javascript
     assert 'id="update-tabs"' not in html
     assert "event.target.closest('.update-tab')" not in javascript
-    assert "has-open-dropdown" in javascript
+    assert "'--dropdown-scroll-space'" in javascript
+    assert "getBoundingClientRect().bottom" in javascript
     assert 'class="github-link-text" aria-hidden="true">Star Ankimon (-E) on GitHub</span>' in html
     assert 'title="Star Ankimon' not in html
     assert "width: 260px;" in css
@@ -244,7 +253,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "overflow-x: hidden;" in css
     assert "max-width: 100%;" in css[css.index(".custom-select-menu {"):css.index(".custom-select-menu .custom-select-search")]
     assert "padding-bottom: 90px;" in css
-    assert "padding-bottom: 90px;" in css[css.index(".update-content.has-open-dropdown"):css.index(".code-error")]
+    assert ".update-content.has-open-dropdown" not in css
     assert "padding-bottom: 360px;" not in css
     assert "fetch_source_sha" in (
         ADDON / "pyobj" / "update_manager_web.py"
@@ -350,7 +359,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
         css.index(".content-scroll.has-open-release-dropdown"):
         css.index(".code-error")
     ]
-    assert "padding-bottom: 80px;" in release_dropdown_padding
+    assert "padding-bottom: max(24px, var(--dropdown-scroll-space, 24px));" in release_dropdown_padding
     assert ".content-scroll.has-open-source-dropdown" in release_dropdown_padding
     assert javascript.count("Please check if the source modifies user_files/") == 1
     assert "const developerSourceInstall = progressKey === 'developer-source' &&" in javascript

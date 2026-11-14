@@ -218,7 +218,7 @@
 	overscroll-behavior-y: contain;
 }
 
-.pr-pagination {
+.dropdown-pagination {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	align-items: center;
@@ -230,22 +230,22 @@
 	line-height: 1.3;
 }
 
-.pr-pagination > span {
+.dropdown-pagination > span {
 	min-width: 0;
 	overflow-wrap: anywhere;
 }
 
-.pr-pagination > span:last-child {
+.dropdown-pagination > span:last-child {
 	text-align: right;
 }
 
-.pr-page-controls {
+.dropdown-page-controls {
 	display: flex;
 	justify-content: center;
 	gap: 6px;
 }
 
-.pr-page-controls button {
+.dropdown-page-controls button {
 	width: 30px;
 	height: 28px;
 	padding: 0;
@@ -259,21 +259,21 @@
 	cursor: pointer;
 }
 
-.pr-page-controls svg {
+.dropdown-page-controls svg {
 	display: block;
 	width: 16px;
 	height: 16px;
 	fill: currentColor;
 }
 
-.pr-page-controls button:disabled {
+.dropdown-page-controls button:disabled {
 	color: var(--text-muted);
 	background: var(--bg-darker);
 	cursor: default;
 	opacity: .55;
 }
 
-.pr-page-controls button:focus-visible {
+.dropdown-page-controls button:focus-visible {
 	outline: 2px solid var(--accent-blue);
 	outline-offset: 2px;
 }
@@ -753,16 +753,9 @@ progress::-moz-progress-bar {
 	flex: 0 1 auto;
 }
 
-.update-content.has-open-dropdown {
-	padding-bottom: 90px;
-}
-
-.content-scroll.has-open-release-dropdown {
-	padding-bottom: 80px;
-}
-
+.content-scroll.has-open-release-dropdown,
 .content-scroll.has-open-source-dropdown {
-	padding-bottom: 80px;
+	padding-bottom: max(24px, var(--dropdown-scroll-space, 24px));
 }
 
 .code-error {
@@ -895,7 +888,7 @@ progress::-moz-progress-bar {
 		padding: 18px 16px 36px;
 	}
 
-	.pr-pagination {
+	.dropdown-pagination {
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-areas:
 			"summary"
@@ -903,7 +896,8 @@ progress::-moz-progress-bar {
 			"limit";
 	}
 
-	#source-target .custom-select-menu.pr-menu {
+	#source-target .custom-select-menu.paged-menu,
+	#release-select .custom-select-menu {
 		grid-template-rows: auto minmax(0, 1fr) auto;
 	}
 
@@ -915,7 +909,7 @@ progress::-moz-progress-bar {
 		grid-area: limit;
 	}
 
-	.pr-page-controls {
+	.dropdown-page-controls {
 		grid-area: controls;
 	}
 

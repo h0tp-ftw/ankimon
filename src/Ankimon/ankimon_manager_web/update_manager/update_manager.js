@@ -9,7 +9,8 @@
 	let developerLoadFailed = false;
 	let selectedSourceType = 'pr';
 	let selectedTarget = '';
-	let prPage = 0;
+	let sourcePage = 0;
+	let releasePage = 0;
 	let selectedRelease = '';
 	let latestRelease = null;
 	let lostReleaseCommits = [];
@@ -25,7 +26,7 @@
 	const busyOperations = new Set();
 	let toastTimer = null;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
-	const PR_PAGE_SIZE = 50;
+	const DROPDOWN_PAGE_SIZE = 50;
 
 	const byId = (id) => document.getElementById(id);
 	const setText = (id, value) => { byId(id).textContent = value; };
@@ -180,9 +181,7 @@
 
 	function syncDropdownScrollSpace() {
 		const openDropdown = document.querySelector('.custom-select.open');
-		const content = document.querySelector('.update-content');
 		const contentScroll = document.querySelector('.content-scroll');
-		content.classList.toggle('has-open-dropdown', Boolean(openDropdown));
 		contentScroll.classList.toggle(
 			'has-open-release-dropdown',
 			Boolean(openDropdown && openDropdown.id === 'release-select'),
@@ -190,6 +189,19 @@
 		contentScroll.classList.toggle(
 			'has-open-source-dropdown',
 			Boolean(openDropdown && openDropdown.id === 'source-target'),
+		);
+		if (!openDropdown || !['release-select', 'source-target'].includes(openDropdown.id)) {
+			contentScroll.style.removeProperty('--dropdown-scroll-space');
+			return;
+		}
+		const menu = openDropdown.querySelector('.custom-select-menu');
+		const overflow = Math.max(
+			0,
+			menu.getBoundingClientRect().bottom - contentScroll.getBoundingClientRect().bottom,
+		);
+		contentScroll.style.setProperty(
+			'--dropdown-scroll-space',
+			`${Math.ceil(overflow + 24)}px`,
 		);
 	}
 
@@ -322,7 +334,9 @@
 		const relation = data.relation || state.git_relation || null;
 		const developerSubtabs = byId('developer-subtabs');
 		developerSubtabs.querySelectorAll('[data-developer-view="main"], [data-developer-view="current"]')
-			.forEach((button) => setVisible(button, hasBranchViews));
+			.forEach((button) => {
+				setVisible(button, button.dataset.developerView === 'main' || hasBranchViews);
+			});
 		if (!hasBranchViews && selectedDeveloperView !== 'source') {
 			switchDeveloperView('source');
 		}
@@ -727,14 +741,35 @@
 			.filter((release) => normalizeTagSearch(release.name).includes(normalizedQuery))
 			.map((release) => ({ value: release.name, label: release.name }));
 		const selected = list.find((release) => release.name === selectedRelease);
-		setDropdownLabel('release-select', selected ? selected.name : 'No releases found');
+		const releaseError = updateData && updateData.releases_error;
+		const noReleasesLabel = releaseError === 'rate_limited'
+			? '-'
+			: releaseError ? 'Could not load releases' : 'No releases found';
+		setDropdownLabel(
+			'release-select',
+			selected ? selected.name : list.length ? '' : noReleasesLabel,
+		);
+		const pagination = byId('release-pagination');
+		const pageCount = Math.max(1, Math.ceil(entries.length / DROPDOWN_PAGE_SIZE));
+		releasePage = Math.min(releasePage, pageCount - 1);
+		const visibleEntries = entries.slice(
+			releasePage * DROPDOWN_PAGE_SIZE,
+			(releasePage + 1) * DROPDOWN_PAGE_SIZE,
+		);
+		pagination.classList.toggle('hidden', list.length <= DROPDOWN_PAGE_SIZE);
+		const first = releasePage * DROPDOWN_PAGE_SIZE + 1;
+		const last = releasePage * DROPDOWN_PAGE_SIZE + visibleEntries.length;
+		setText(
+			'release-page-summary',
+			visibleEntries.length ? `Showing release ${first} to ${last}` : 'No matching releases',
+		);
+		byId('release-page-prev').disabled = releasePage === 0;
+		byId('release-page-next').disabled = releasePage >= pageCount - 1;
 		renderOptions(
 			'release-select',
-			entries,
+			visibleEntries,
 			selectedRelease,
-			updateData && updateData.releases_error === 'rate_limited'
-				? RATE_LIMIT_MESSAGE
-				: 'No matching releases',
+			list.length ? 'No matching releases' : noReleasesLabel,
 			(entry) => {
 				selectedRelease = entry.value;
 				setDropdownLabel('release-select', entry.label);
@@ -742,6 +777,7 @@
 				updateButtonStates();
 			},
 		);
+		syncDropdownScrollSpace();
 	}
 
 	function renderVersion(data) {
@@ -786,7 +822,7 @@
 			(entry) => {
 				selectedSourceType = entry.value;
 				selectedTarget = '';
-				prPage = 0;
+				sourcePage = 0;
 				byId('pr-search').value = '';
 				setDropdownLabel('source-type-select', entry.label);
 				closeDropdown(byId('source-type-select'));
@@ -815,8 +851,7 @@
 			},
 			tag: { label: 'Tag:', entries: developerData.tags || [] },
 		};
-		pagination.classList.toggle('hidden', type !== 'pr');
-		targetMenu.classList.toggle('pr-menu', type === 'pr');
+		targetMenu.classList.remove('paged-menu');
 		fields.classList.remove('hidden');
 		label.textContent = options[type].label;
 		search.placeholder = type === 'pr'
@@ -838,22 +873,45 @@
 			}
 			return String(entry.name).toLocaleLowerCase().includes(query);
 		});
-		const pageCount = Math.max(1, Math.ceil(entries.length / PR_PAGE_SIZE));
-		prPage = Math.min(prPage, pageCount - 1);
-		const visibleEntries = type === 'pr'
-			? entries.slice(prPage * PR_PAGE_SIZE, (prPage + 1) * PR_PAGE_SIZE)
+		const pageCount = Math.max(1, Math.ceil(entries.length / DROPDOWN_PAGE_SIZE));
+		sourcePage = Math.min(sourcePage, pageCount - 1);
+		const visibleEntries = type === 'pr' || type === 'tag'
+			? entries.slice(sourcePage * DROPDOWN_PAGE_SIZE, (sourcePage + 1) * DROPDOWN_PAGE_SIZE)
 			: entries;
-		if (type === 'pr') {
+		const showPagination = type === 'pr' ||
+			(type === 'tag' && options[type].entries.length > DROPDOWN_PAGE_SIZE);
+		pagination.classList.toggle('hidden', !showPagination);
+		pagination.setAttribute(
+			'aria-label',
+			type === 'tag' ? 'Tag pages' : 'Pull request pages',
+		);
+		targetMenu.classList.toggle('paged-menu', showPagination);
+		if (showPagination) {
 			const first = visibleEntries[0];
 			const last = visibleEntries[visibleEntries.length - 1];
-			setText(
-				'pr-page-summary',
-				first && last
+			const start = sourcePage * DROPDOWN_PAGE_SIZE + 1;
+			const end = sourcePage * DROPDOWN_PAGE_SIZE + visibleEntries.length;
+			setText('pr-page-summary', type === 'pr'
+				? first && last
 					? `Showing PR #${first.number} to #${last.number}`
-					: 'Showing PR #— to #—',
+					: 'Showing PR #— to #—'
+				: visibleEntries.length
+					? `Showing tag ${start} to ${end}`
+					: 'No matching tags');
+			setText(
+				'pr-page-limit',
+				type === 'tag' ? 'Max 100 tags shown' : 'Max 100 PRs shown',
 			);
-			byId('pr-page-prev').disabled = prPage === 0;
-			byId('pr-page-next').disabled = prPage >= pageCount - 1;
+			byId('pr-page-prev').setAttribute(
+				'aria-label',
+				type === 'tag' ? 'Previous tag page' : 'Previous pull request page',
+			);
+			byId('pr-page-next').setAttribute(
+				'aria-label',
+				type === 'tag' ? 'Next tag page' : 'Next pull request page',
+			);
+			byId('pr-page-prev').disabled = sourcePage === 0;
+			byId('pr-page-next').disabled = sourcePage >= pageCount - 1;
 		}
 		const valueFor = (entry) => type === 'pr' ? String(entry.number) : entry.name;
 		const labelFor = (entry) => type === 'pr'
@@ -907,10 +965,11 @@
 				updateButtonStates();
 			},
 		);
-		if (type === 'pr') {
+		if (type === 'pr' || type === 'tag') {
 			byId('source-target').querySelector('.custom-select-options').scrollTop = 0;
 		}
 		updateButtonStates();
+		syncDropdownScrollSpace();
 	}
 
 	function switchTab(tab) {
@@ -1387,23 +1446,39 @@
 	});
 	renderSourceTypes();
 	byId('release-select').querySelector('.custom-select-search')
-		.addEventListener('input', renderReleaseOptions);
+		.addEventListener('input', () => {
+			releasePage = 0;
+			renderReleaseOptions();
+		});
 	byId('pr-search').addEventListener('input', () => {
-		prPage = 0;
+		sourcePage = 0;
 		renderDeveloperTargets(false);
 	});
 	byId('pr-page-prev').addEventListener('click', () => {
-		if (prPage > 0) {
-			prPage -= 1;
+		if (sourcePage > 0) {
+			sourcePage -= 1;
 			renderDeveloperTargets(false);
 		}
 	});
 	byId('pr-page-next').addEventListener('click', () => {
 		if (!byId('pr-page-next').disabled) {
-			prPage += 1;
+			sourcePage += 1;
 			renderDeveloperTargets(false);
 		}
 	});
+	byId('release-page-prev').addEventListener('click', () => {
+		if (releasePage > 0) {
+			releasePage -= 1;
+			renderReleaseOptions();
+		}
+	});
+	byId('release-page-next').addEventListener('click', () => {
+		if (!byId('release-page-next').disabled) {
+			releasePage += 1;
+			renderReleaseOptions();
+		}
+	});
+	window.addEventListener('resize', syncDropdownScrollSpace);
 	byId('github-link').addEventListener('click', () => {
 		if (bridge) {
 			bridge.openGitHub((opened) => {

@@ -9,7 +9,7 @@ from aqt.operations import QueryOp
 from PyQt6.QtCore import QObject, QUrl, Qt, pyqtSlot
 from PyQt6.QtGui import QDesktopServices
 
-from ..resources import IS_EXPERIMENTAL_BUILD, addon_ver, user_path_sprites
+from ..resources import manifest_path, user_path_sprites
 from ..services import services
 from . import update_manager as updater
 
@@ -144,7 +144,7 @@ class UpdateManagerBridge(QObject):
     def loadData(self):
         def worker(_col):
             try:
-                releases = updater.fetch_releases()
+                releases = updater.fetch_releases(per_page=100)
             except Exception:
                 releases = []
                 releases_error = "api_error"
@@ -383,6 +383,14 @@ class UpdateManagerBridge(QObject):
             }
 
         def done(data):
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                version = manifest.get("version") if isinstance(manifest, dict) else None
+                if not isinstance(version, str) or not version:
+                    raise ValueError("manifest.json has no valid version")
+            except (OSError, ValueError) as error:
+                self._log_error(f"Could not read the installed Ankimon version: {error}")
+                version = "unknown"
             self._releases = data["releases"]
             self._git_clone = data["git_clone"]
             self._active_branch = data["active_branch"]
@@ -391,8 +399,8 @@ class UpdateManagerBridge(QObject):
                 "onUpdateData",
                 {
                     **data,
-                    "version": addon_ver,
-                    "experimental_build": IS_EXPERIMENTAL_BUILD,
+                    "version": version,
+                    "experimental_build": version.endswith("-E"),
                     "channel": updater.get_update_channel(),
                     "skip_until": (data["state"] or {}).get("skip_until"),
                     "sprite_check_up_to_date": self._sprite_check_up_to_date,
@@ -410,12 +418,12 @@ class UpdateManagerBridge(QObject):
         release_order = list(self._releases)
 
         def worker(_col):
-            tags = updater.fetch_tags()
+            tags = updater.fetch_tags(per_page=100)
             tag_error = updater.consume_api_error()
             ordered_releases = release_order
             if not ordered_releases:
                 try:
-                    ordered_releases = updater.fetch_releases()
+                    ordered_releases = updater.fetch_releases(per_page=100)
                     updater.consume_api_error()
                 except Exception as error:
                     self._log_error(

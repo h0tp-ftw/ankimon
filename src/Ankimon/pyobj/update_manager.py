@@ -560,8 +560,16 @@ def _should_preserve(rel_path: str, gitignore_patterns: list[str]) -> bool:
     return False
 
 
-def fetch_tags() -> list[dict]:
-    data = _api_get("tags")
+def _paged_endpoint(endpoint: str, per_page: Optional[int]) -> str:
+    if per_page is None:
+        return endpoint
+    if isinstance(per_page, bool) or not 1 <= per_page <= 100:
+        raise ValueError("per_page must be between 1 and 100")
+    return f"{endpoint}?per_page={per_page}"
+
+
+def fetch_tags(per_page: Optional[int] = None) -> list[dict]:
+    data = _api_get(_paged_endpoint("tags", per_page))
     if not data:
         return []
     return [
@@ -571,8 +579,8 @@ def fetch_tags() -> list[dict]:
     ]
 
 
-def fetch_releases() -> list[dict]:
-    data = _api_get("releases")
+def fetch_releases(per_page: Optional[int] = None) -> list[dict]:
+    data = _api_get(_paged_endpoint("releases", per_page))
     if not data:
         return []
     return [

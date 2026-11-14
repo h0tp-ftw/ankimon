@@ -486,6 +486,18 @@ def test_fetch_tags_filters_pre_2_0(monkeypatch):
     assert [t["name"] for t in um.fetch_tags()] == ["2.0-E"]
 
 
+def test_fetch_releases_and_tags_can_request_the_latest_100(monkeypatch):
+    endpoints = []
+    monkeypatch.setattr(um, "_api_get", lambda endpoint: (
+        endpoints.append(endpoint) or []
+    ))
+
+    um.fetch_releases(per_page=100)
+    um.fetch_tags(per_page=100)
+
+    assert endpoints == ["releases?per_page=100", "tags?per_page=100"]
+
+
 def test_fetch_open_prs_requests_100_and_maps_entries(monkeypatch):
     endpoints = []
     monkeypatch.setattr(um, "_api_get", lambda endpoint: (
