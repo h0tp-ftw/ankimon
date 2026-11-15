@@ -18,6 +18,7 @@
     "controls.team_cycle_key": "9",
     "controls.key_for_opening_closing_ankimon": "Ctrl+N",
     "controls.allow_to_choose_moves": false,
+    "controls.move_selection_mode": 0,
 
     "gui.animate_time": true,
     "gui.gif_in_collection": true,

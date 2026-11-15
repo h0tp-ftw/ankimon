@@ -1324,12 +1324,39 @@ def new_pokemon(
     _cancel_main_faint_deferral()
     pokemon._ankimon_encounter_token = object()
 
+    # Smart Auto Battle (Move Selection = 2): once per new enemy, send out the
+    # best team member for this matchup. The player can still cycle freely
+    # afterwards; nothing switches again until the next encounter.
+    smart_switch_msg = None
+    if not _in_bulk_resolve():
+        from .smart_team_switch import smart_switch_for_new_enemy
+
+        smart_switch_msg = smart_switch_for_new_enemy(
+            main_pokemon, pokemon, settings_obj
+        )
+
     ankimon_tracker.randomize_battle_scene()
     if test_window is not None:
         try:
             test_window.display_first_encounter()
         except RuntimeError:
             pass
+
+    if smart_switch_msg:
+        shown = False
+        try:
+            from .drawing_utils import show_in_ankimon_window
+
+            shown = show_in_ankimon_window(smart_switch_msg)
+        except Exception:
+            pass
+        if not shown:
+            try:
+                from aqt.utils import tooltip
+
+                tooltip(smart_switch_msg)
+            except Exception:
+                pass
 
     # Track as seen in Pokedex. mark_as_seen ships with the Ankidex leaf;
     # until it lands, fall back to a user_data-backed seen list so no

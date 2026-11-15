@@ -1,5 +1,6 @@
 {
     "battle.automatic_battle": "Set automatic battle mode for wild Pokémon interactions when enemy HP is 0. \n[0: Disabled, 1: Auto-catch, 2: Auto-defeat (to gain XP), 3: Catch if NEW Pokémon (not in collection), otherwise defeat].",
+    "controls.move_selection_mode": "How your active Pokémon picks its move each round. \n[0: Random move, 1: Choose the move yourself (50% XP penalty), 2: Smart Auto Battle - always the strongest of its 4 moves against the current enemy, and the best team member is sent out when each new wild Pokémon appears (you can still cycle by hand), no XP penalty]. Does not change catching/defeating.",
     "battle.auto_catch_wishlist": "List of Pokémon IDs that are always caught when encountered, regardless of other auto-catch settings.",
     "battle.auto_catch_legendary": "Always catch Legendary Pokémon when encountered.",
     "battle.auto_catch_mythical": "Always catch Mythical Pokémon when encountered.",

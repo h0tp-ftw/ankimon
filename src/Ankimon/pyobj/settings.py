@@ -31,7 +31,11 @@ DEFAULT_CONFIG = {
     "controls.team_cycle_key": "9",
     "controls.team_cycle_count": 3,
     "controls.key_for_opening_closing_ankimon": "Ctrl+Shift+P",
+    # Derived from controls.move_selection_mode (True only for mode 1); kept
+    # because the XP penalty and mobile sync still read it.
     "controls.allow_to_choose_moves": False,
+    # 0 = random move, 1 = choose the move yourself, 2 = Smart Auto Battle.
+    "controls.move_selection_mode": 0,
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
     "gui.gif_mode_override": False,
@@ -129,6 +133,44 @@ GIF_TOGGLE_AUTO_SYNC_KEYS = (
 )
 
 
+def _truthy(value):
+    return value is True or str(value).strip().lower() in ("true", "1")
+
+
+def sync_move_selection(config):
+    """Keep ``controls.move_selection_mode`` (0/1/2) and the legacy
+    ``controls.allow_to_choose_moves`` flag consistent. Returns True if config
+    was changed.
+
+    First run: derive the mode from the old settings (the short-lived
+    ``battle.smart_move_selection`` = 1 -> 2, Allow Choosing Moves on -> 1,
+    else 0).
+    """
+    changed = False
+    key = "controls.move_selection_mode"
+    if key not in config or config[key] is None:
+        if str(config.get("battle.smart_move_selection", 0)).strip() == "1":
+            config[key] = 2
+        elif _truthy(config.get("controls.allow_to_choose_moves", False)):
+            config[key] = 1
+        else:
+            config[key] = 0
+        changed = True
+    try:
+        mode = int(config[key])
+    except (TypeError, ValueError):
+        mode = 0
+    mode = mode if mode in (0, 1, 2) else 0
+    if config[key] != mode:
+        config[key] = mode
+        changed = True
+    allow = mode == 1
+    if config.get("controls.allow_to_choose_moves") is not allow:
+        config["controls.allow_to_choose_moves"] = allow
+        changed = True
+    return changed
+
+
 class Settings:
     def __init__(self):
         self.config = self.load_config()
@@ -220,6 +262,8 @@ class Settings:
         # except for keys whose schema default is itself None: reseeding those
         # would flag the config as modified (and rewrite it to the DB) on
         # every single load.
+        move_mode_migrated = sync_move_selection(config)
+
         legacy_sprite_mode_migrated = (
             "ankidex.spriteMode" not in config
             and "pokedex_v2.spriteMode" in config
@@ -238,6 +282,7 @@ class Settings:
             styling_migrated
             or legacy_sprite_mode_migrated
             or gif_mode_override_migrated
+            or move_mode_migrated
         )
         # A profile that stored the collection GIF choice but never a reviewer
         # one must not pick up the (now True) reviewer default against it.
@@ -292,6 +337,7 @@ class Settings:
         """Apply type coercion to config values that need to be integers."""
         keys_to_coerce_to_int = [
             "battle.automatic_battle",
+            "controls.move_selection_mode",
             "battle.daily_average",
             "gui.reviewer_text_message_box_time",
             "gui.xp_bar_location",
@@ -396,6 +442,7 @@ class Settings:
             self._apply_gif_toggle_autosync(
                 config, previous_gif_value, explicit_overrides
             )
+        sync_move_selection(config)
 
         # 1. Always save to database if available
         if services.db is not None:

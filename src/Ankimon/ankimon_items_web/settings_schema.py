@@ -41,6 +41,27 @@ GROUPS = [
                 "label": "Auto-Battle Rules",
                 "settings": [
                     "Automatic Battle",
+                    {
+                        "key": "controls.move_selection_mode",
+                        "label": "Move Selection",
+                        "description": (
+                            "How your active Pokémon picks its move each round:<br>"
+                            "• <strong>0 – Random</strong>: a random move from its 4 moves.<br>"
+                            "• <strong>1 – Choose myself</strong>: a pop-up lets you pick (Keys 1-4). "
+                            "Applies a 50% penalty to Pokémon XP and Trainer XP.<br>"
+                            "• <strong>2 – Smart Auto Battle</strong>: always uses the strongest of its 4 moves "
+                            "against the current enemy (type effectiveness, STAB, power, stats, accuracy). "
+                            "Also, each time a new wild Pokémon appears, sends out the best team member "
+                            "(from your Cycle Team rotation) for that matchup — you can still cycle by hand "
+                            "afterwards. No XP penalty. Catching/defeating is not affected."
+                        ),
+                        "type": "select",
+                        "options": [
+                            {"value": 0, "label": "0 – Random"},
+                            {"value": 1, "label": "1 – Choose myself (50% XP)"},
+                            {"value": 2, "label": "2 – Smart Auto Battle"},
+                        ],
+                    },
                     "Always Catch Wishlist",
                 ],
                 "chip_group": {
@@ -96,7 +117,8 @@ GROUPS = [
                     "Key for Catching",
                     "Key for Team Cycling",
                     "Key for Opening/Closing Ankimon",
-                    "Allow Choosing Moves",
+                    # "Allow Choosing Moves" is now option 1 of Move Selection
+                    # (Battle > Auto-Battle Rules).
                 ],
             },
             {
@@ -287,6 +309,13 @@ def validate_and_clamp(config, original=None):
     window (pyobj/settings_window.py::on_save) instead of silently resetting."""
     adjustments = []
     original = original or {}
+
+    if "controls.move_selection_mode" in config:
+        # One 0/1/2 setting drives both move modes; keep the legacy
+        # Allow Choosing Moves flag (XP penalty, mobile sync) in step.
+        from ..pyobj.settings import sync_move_selection
+
+        sync_move_selection(config)
 
     if "battle.cards_per_round" in config:
         config["battle.cards_per_round"] = _coerce_cards_per_round(
