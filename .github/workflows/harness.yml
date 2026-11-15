@@ -74,6 +74,7 @@ jobs:
           xvfb-run -a python3 -m harness.checks.probe_real_save_import
           xvfb-run -a python3 -m harness.checks.probe_real_tm_learnsets
           xvfb-run -a python3 -m harness.checks.probe_real_evolution_sprites
+          xvfb-run -a python3 -m harness.checks.probe_real_evolution_requirements
 
   tier2_webengine:
     name: Tier 2 WebEngine — Settings, backups + reviewer HUD

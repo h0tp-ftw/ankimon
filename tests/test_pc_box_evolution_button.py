@@ -157,6 +157,9 @@ def pc_box(qapp):
             "format_lore_name": lambda s: s,
             "get_pretty_name_for_name": lambda s: str(s).title(),
             "search_pokedex_by_id": lambda i: "pikachu",
+            "search_pokedex": lambda *a, **k: None,
+            "items_cost_index_for": lambda *a, **k: {},
+            "normalize_item_identifier": lambda value: str(value).lower(),
         },
         "Ankimon.functions.gui_functions": {
             "type_icon_path": lambda *a, **k: Path("/nonexistent"),
