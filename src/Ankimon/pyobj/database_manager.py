@@ -1967,7 +1967,7 @@ class AnkimonDB:
         cursor.execute("SELECT quantity FROM items WHERE item_name = ?", (item_name,))
         row = cursor.fetchone()
         current_qty = row["quantity"] if row else 0
-        if current_qty == 0:
+        if current_qty == 0 and delta < 0:
             self._log("warning", f"Item '{item_name}' not found in inventory.")
             return 0
         new_qty = current_qty + delta
