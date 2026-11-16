@@ -53,6 +53,16 @@ def _hit_count(move_dict):
     return 1.0
 
 
+def _same_individual(live_state, main_pokemon):
+    """True only if the live battle state belongs to this exact Pokémon, not
+    just the same species (same guard the battle simulator uses)."""
+    state_id = getattr(live_state, "_ankimon_main_individual_id", None)
+    my_id = getattr(main_pokemon, "individual_id", None)
+    if state_id is None or my_id is None:
+        return False
+    return str(state_id) == str(my_id)
+
+
 def _build_state(main_pokemon, enemy_pokemon, live_state, mutator_full_reset):
     """Reuse the ongoing battle state when it belongs to this exact matchup
     (so stat boosts etc. count), otherwise build a fresh one."""
@@ -61,6 +71,7 @@ def _build_state(main_pokemon, enemy_pokemon, live_state, mutator_full_reset):
     if (
         live_state is not None
         and mutator_full_reset == 0
+        and _same_individual(live_state, main_pokemon)
         and live_state.user.active.id == normalize_name(main_pokemon.name)
         and live_state.opponent.active.id == normalize_name(enemy_pokemon.name)
     ):
@@ -151,5 +162,10 @@ def choose_best_move(main_pokemon, enemy_pokemon, enemy_move="splash",
     damaging = [m for m in scored if not m[2] and m[1] > 0]
     if damaging:
         return max(damaging, key=lambda m: m[1])[0]
-    # Nothing does damage: keep the original (random) pick.
+    # Nothing does damage: keep the original (random) pick, unless that pick
+    # is a self-KO move and something safer is available.
+    if fallback is not None and normalize_name(fallback) in SELF_KO_MOVES:
+        for move_name, _score, _status in scored:
+            if normalize_name(move_name) not in SELF_KO_MOVES:
+                return move_name
     return fallback

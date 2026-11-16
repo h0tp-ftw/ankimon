@@ -36,6 +36,9 @@ DEFAULT_CONFIG = {
     "controls.allow_to_choose_moves": False,
     # 0 = random move, 1 = choose the move yourself, 2 = Smart Auto Battle.
     "controls.move_selection_mode": 0,
+    # Smart Auto Battle level balancing: only send out team members within
+    # this many levels of the lowest one. 0 = off.
+    "battle.team_level_gap": 5,
     "gui.animate_time": True,
     "gui.gif_in_collection": True,
     "gui.gif_mode_override": False,
@@ -137,7 +140,7 @@ def _truthy(value):
     return value is True or str(value).strip().lower() in ("true", "1")
 
 
-def sync_move_selection(config):
+def sync_move_selection(config, previous=None):
     """Keep ``controls.move_selection_mode`` (0/1/2) and the legacy
     ``controls.allow_to_choose_moves`` flag consistent. Returns True if config
     was changed.
@@ -145,9 +148,25 @@ def sync_move_selection(config):
     First run: derive the mode from the old settings (the short-lived
     ``battle.smart_move_selection`` = 1 -> 2, Allow Choosing Moves on -> 1,
     else 0).
+
+    ``previous`` is the config before this save. When only the legacy flag
+    was changed (e.g. from the older settings window), the mode follows it:
+    on -> 1, off -> back to 0 if the mode was 1.
     """
     changed = False
     key = "controls.move_selection_mode"
+    legacy = "controls.allow_to_choose_moves"
+    if previous is not None and key in config and previous is not config:
+        flag_changed = _truthy(config.get(legacy, False)) != _truthy(
+            previous.get(legacy, False)
+        )
+        mode_changed = str(config.get(key)) != str(previous.get(key))
+        if flag_changed and not mode_changed:
+            if _truthy(config.get(legacy, False)):
+                config[key] = 1
+            elif str(config.get(key)) == "1":
+                config[key] = 0
+            changed = True
     if key not in config or config[key] is None:
         if str(config.get("battle.smart_move_selection", 0)).strip() == "1":
             config[key] = 2
@@ -338,6 +357,7 @@ class Settings:
         keys_to_coerce_to_int = [
             "battle.automatic_battle",
             "controls.move_selection_mode",
+            "battle.team_level_gap",
             "battle.daily_average",
             "gui.reviewer_text_message_box_time",
             "gui.xp_bar_location",
@@ -442,7 +462,7 @@ class Settings:
             self._apply_gif_toggle_autosync(
                 config, previous_gif_value, explicit_overrides
             )
-        sync_move_selection(config)
+        sync_move_selection(config, previous=getattr(self, "config", None))
 
         # 1. Always save to database if available
         if services.db is not None:

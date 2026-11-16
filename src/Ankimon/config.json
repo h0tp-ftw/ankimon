@@ -19,6 +19,7 @@
     "controls.key_for_opening_closing_ankimon": "Ctrl+N",
     "controls.allow_to_choose_moves": false,
     "controls.move_selection_mode": 0,
+    "battle.team_level_gap": 5,
 
     "gui.animate_time": true,
     "gui.gif_in_collection": true,

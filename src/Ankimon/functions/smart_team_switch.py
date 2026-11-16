@@ -13,6 +13,12 @@ Each healthy team member is scored on this matchup:
     score   = offense / danger
 The current Pokémon is kept unless another one scores clearly better, so
 close calls don't cause pointless swaps.
+
+Level balancing (``battle.team_level_gap``, default 5, 0 = off): only team
+members within that many levels of the lowest-level healthy member are sent
+out. A member that has pulled too far ahead sits on the bench until the rest
+catch up, so the whole rotation levels together. The player can still cycle
+to anyone by hand.
 """
 
 import copy
@@ -22,6 +28,9 @@ from .smart_move_selection import score_moves
 
 # Another member must beat the current one by this factor to be sent out.
 _SWITCH_MARGIN = 1.15
+
+_DEFAULT_LEVEL_GAP = 5
+_MAX_LEVEL_GAP = 100
 
 
 def _move_selection_mode(settings):
@@ -53,9 +62,38 @@ def matchup_score(candidate, enemy):
     return offense / danger
 
 
+def level_gap(settings):
+    """``battle.team_level_gap`` as an int in [0, 100]; 0 turns balancing off."""
+    try:
+        gap = int(settings.get("battle.team_level_gap", _DEFAULT_LEVEL_GAP))
+    except (TypeError, ValueError, AttributeError):
+        gap = _DEFAULT_LEVEL_GAP
+    return max(0, min(gap, _MAX_LEVEL_GAP))
+
+
+def _level(pkmn):
+    try:
+        return int(getattr(pkmn, "level", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def balance_by_level(candidates, gap):
+    """Keep only healthy candidates within ``gap`` levels of the lowest-level
+    healthy one. gap <= 0, or fewer than two healthy members, changes nothing."""
+    healthy = [(i, p) for i, p in candidates if (getattr(p, "hp", 0) or 0) > 0]
+    if gap <= 0 or len(healthy) < 2:
+        return candidates
+    floor = min(_level(p) for _, p in healthy)
+    return [(i, p) for i, p in healthy if _level(p) <= floor + gap]
+
+
 def pick_best(candidates, enemy, current_id=None, margin=_SWITCH_MARGIN):
     """candidates: [(individual_id, pokemon_like)]. Returns the id to use, or
-    None to keep the current Pokémon."""
+    None to keep the current Pokémon.
+
+    If the current Pokémon is not among the candidates (e.g. level balancing
+    benched it), the best candidate is returned with no margin check."""
     scored = []
     current_score = None
     for ind_id, pkmn in candidates:
@@ -122,6 +160,12 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
             return None
         if services.db is None or main_pokemon is None or enemy_pokemon is None:
             return None
+        # The active Pokémon fainted this turn (e.g. a double faint) and its
+        # faint handling hasn't run yet. Switching now would hide that faint
+        # behind a healthy teammate, so wait: the faint handler starts the
+        # next encounter itself, and the switch happens then.
+        if (getattr(main_pokemon, "hp", 0) or 0) < 1:
+            return None
 
         ids = _team_ids(settings)
         if len(ids) < 2:
@@ -139,7 +183,9 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
                 candidates.append((ind_id, pkmn))
                 loaded[ind_id] = data
 
-        best_id = pick_best(candidates, enemy_pokemon, current_id)
+        balanced = balance_by_level(candidates, level_gap(settings))
+        benched = len(balanced) < len(candidates)
+        best_id = pick_best(balanced, enemy_pokemon, current_id)
         if best_id is None or best_id not in loaded:
             return None
 
@@ -150,6 +196,9 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
         data = loaded[best_id]
         _cancel_main_faint_deferral()
         main_pokemon.update_stats(**data)
+        # update_stats skips keys the team record lacks, so set the held item
+        # explicitly: the switched-in Pokémon must not keep the previous one's.
+        main_pokemon.held_item = data.get("held_item")
         _apply_loaded_hp(main_pokemon, data)
         main_pokemon.reset_bonuses()
         main_pokemon.volatile_status = set()
@@ -157,6 +206,8 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
 
         name = getattr(main_pokemon, "display_name", None) or data.get("name", "?")
         level = data.get("level", "?")
+        if benched:
+            return f"Smart Battle: Go, {name}! (Lv. {level}, levelling up the team)"
         return f"Smart Battle: Go, {name}! (Lv. {level})"
     except Exception as e:
         print(f"[Ankimon] Smart team switch skipped: {e}")

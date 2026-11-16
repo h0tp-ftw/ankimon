@@ -1,6 +1,7 @@
 {
     "battle.automatic_battle": "Automatic Battle",
     "controls.move_selection_mode": "Move Selection",
+    "battle.team_level_gap": "Team Level Gap",
     "battle.auto_catch_wishlist": "Always Catch Wishlist",
     "battle.auto_catch_legendary": "Always Catch: Legendary",
     "battle.auto_catch_mythical": "Always Catch: Mythical",

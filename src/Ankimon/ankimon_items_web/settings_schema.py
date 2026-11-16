@@ -62,6 +62,7 @@ GROUPS = [
                             {"value": 2, "label": "2 – Smart Auto Battle"},
                         ],
                     },
+                    "Team Level Gap",
                     "Always Catch Wishlist",
                 ],
                 "chip_group": {
