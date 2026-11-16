@@ -119,7 +119,7 @@ def MainPokemon(
         pokemon_data = {**pokemon_data, "current_hp": main_pokemon.current_hp}
     else:
         # The incoming Pokémon has been resting in the PC.
-        pokemon_data = credit_rest(db, pokemon_data, logger)
+        pokemon_data = credit_rest(db, pokemon_data, logger, services.settings)
 
     # --- Now proceed to set the new mainpokemon as before ---
     pokemon_id = pokemon_data.get("id")

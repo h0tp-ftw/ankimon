@@ -2084,14 +2084,18 @@ class AnkimonDB:
                     raw.rollback()
                 raw.execute(f"PRAGMA busy_timeout={int(timeout)}")
 
-    def regenerate_pokemon_hp(self, individual_id=None, *, now=None) -> Dict[str, int]:
+    def regenerate_pokemon_hp(
+        self, individual_id=None, *, now=None, heal=True
+    ) -> Dict[str, int]:
         """Credit rest to saved Pokémon and return the HP each one gained.
 
         Covers one Pokémon when given an ``individual_id``, otherwise all of
         them. Only wounded rows are touched: a row whose rest clock is missing
         gets one started (no gain yet), and healthy or fainted rows are left
         alone. ``update_pokemon_current_hp`` starts the clock when a Pokémon is
-        first hurt.
+        first hurt. With ``heal=False`` (regeneration turned off) the rest is
+        settled without a gain: each clock moves to ``now``, so the time is
+        never credited later.
 
         Like ``update_pokemon_current_hp`` this never waits. A busy database or
         a caller-owned transaction returns ``{}`` and the rest stays owed.
@@ -2134,7 +2138,10 @@ class AnkimonDB:
                         if not 0 < hp < max_hp:
                             continue
                         stored_at = data.get("hp_regen_at")
-                        new_hp, regen_at = regenerate(hp, max_hp, stored_at, now)
+                        if heal:
+                            new_hp, regen_at = regenerate(hp, max_hp, stored_at, now)
+                        else:
+                            new_hp, regen_at = hp, now
                         if new_hp == hp and regen_at == stored_at:
                             continue
                         data["current_hp"] = new_hp

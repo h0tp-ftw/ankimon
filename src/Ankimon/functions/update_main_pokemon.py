@@ -76,7 +76,9 @@ def update_main_pokemon(main_pokemon: Optional[PokemonObject] = None):
         main_pokemon_data = db.get_main_pokemon()
         if main_pokemon_data:
             mainpokemon_empty = False
-            main_pokemon_data = credit_rest(db, main_pokemon_data, services.logger)
+            main_pokemon_data = credit_rest(
+                db, main_pokemon_data, services.logger, services.settings
+            )
             # Prefer the stored species name; only fall back to a pokedex-id
             # lookup (and backfill it) when the record predates name storage.
             pokemon_name = main_pokemon_data.get("name")

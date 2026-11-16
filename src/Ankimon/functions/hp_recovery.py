@@ -67,6 +67,19 @@ def swap_heals(settings):
         return False
 
 
+def regenerates(settings):
+    """Whether wounded Pokemon regain HP while resting (``battle.hp_regeneration``).
+
+    On unless explicitly turned off. While it is off, every place that would
+    credit rest still settles the rest clock, without a gain, so switching it
+    back on never credits the time it was off.
+    """
+    try:
+        return settings.get("battle.hp_regeneration", True) is not False
+    except Exception:
+        return True
+
+
 def current_timestamp():
     """Wall-clock seconds; goes through ``datetime`` so the harness clock applies."""
     return datetime.now().timestamp()
@@ -119,17 +132,20 @@ def regenerate(current_hp, max_hp, regen_at, now):
     return current_hp + gained, regen_at + gained * REGEN_FULL_HEAL_SECONDS / max_hp
 
 
-def credit_rest(db, pokemon_data, logger=None):
+def credit_rest(db, pokemon_data, logger=None, settings=None):
     """Regenerate a saved Pokemon that is about to become active.
 
     Returns the record to load: the re-read row when rest was credited,
     otherwise ``pokemon_data`` unchanged. A failure never blocks the load.
+    With regeneration off (see ``regenerates``) the rest is settled unhealed.
     """
     individual_id = pokemon_data.get("individual_id")
     if not individual_id:
         return pokemon_data
     try:
-        gained = db.regenerate_pokemon_hp(str(individual_id))
+        gained = db.regenerate_pokemon_hp(
+            str(individual_id), heal=regenerates(settings)
+        )
         if isinstance(gained, dict) and gained:
             rested = db.get_pokemon(str(individual_id))
             if isinstance(rested, dict):

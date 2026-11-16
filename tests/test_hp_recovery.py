@@ -65,9 +65,10 @@ def test_heal_item_summary_states_the_rule():
 
 
 # --------------------------------------------------------------------------- #
-# Heal on Swap setting
+# Heal on Swap and HP Regeneration settings
 # --------------------------------------------------------------------------- #
-def test_heal_on_swap_is_off_by_default_and_shown_in_the_settings_screen():
+def _settings_screen():
+    """The settings defaults source, names, descriptions and Battle listing."""
     import importlib.util
     import json
 
@@ -86,13 +87,36 @@ def test_heal_on_swap_is_off_by_default_and_shown_in_the_settings_screen():
     descriptions = json.loads(
         (addon / "lang" / "setting_description.json").read_text(encoding="utf-8")
     )
+    battle = next(group for group in schema.GROUPS if group["label"] == "Battle")
+    listed = [name for sub in battle["subgroups"] for name in sub["settings"]]
+    return defaults, names, descriptions, listed
+
+
+def test_heal_on_swap_is_off_by_default_and_shown_in_the_settings_screen():
+    defaults, names, descriptions, listed = _settings_screen()
 
     assert '"battle.heal_on_swap": False,' in defaults
     assert names["battle.heal_on_swap"] == "Heal on Swap"
     assert "fully heals" in descriptions["battle.heal_on_swap"]
-    battle = next(group for group in schema.GROUPS if group["label"] == "Battle")
-    listed = [name for sub in battle["subgroups"] for name in sub["settings"]]
     assert "Heal on Swap" in listed
+
+
+def test_hp_regeneration_is_on_by_default_and_shown_in_the_settings_screen():
+    defaults, names, descriptions, listed = _settings_screen()
+
+    assert '"battle.hp_regeneration": True,' in defaults
+    assert names["battle.hp_regeneration"] == "HP Regeneration"
+    assert "eight hours" in descriptions["battle.hp_regeneration"]
+    assert "HP Regeneration" in listed
+
+
+def test_regeneration_stops_only_for_an_explicit_false():
+    from Ankimon.functions.hp_recovery import regenerates
+
+    assert regenerates({"battle.hp_regeneration": False}) is False
+    assert regenerates({"battle.hp_regeneration": True}) is True
+    assert regenerates({}) is True
+    assert regenerates(None) is True
 
 
 def test_swap_heals_only_for_an_explicit_true():
@@ -277,6 +301,16 @@ def test_a_wounded_row_without_a_clock_starts_resting_without_a_gain(rest_db):
     assert rest_db.regenerate_pokemon_hp(now=5000.0 + 8 * HOUR) == {"benched": 82}
 
 
+def test_rest_with_regeneration_off_is_settled_without_a_gain(rest_db):
+    _wound(rest_db, "benched", 20, 1000.0)
+
+    assert rest_db.regenerate_pokemon_hp(now=1000.0 + 4 * HOUR, heal=False) == {}
+    saved = rest_db.get_pokemon("benched")
+    assert (saved["current_hp"], saved["hp_regen_at"]) == (20, 1000.0 + 4 * HOUR)
+    # Back on, only the rest since then counts: a quarter of 102.
+    assert rest_db.regenerate_pokemon_hp(now=1000.0 + 6 * HOUR) == {"benched": 25}
+
+
 def test_a_fainted_row_is_left_alone(rest_db):
     _wound(rest_db, "benched", 0, 1000.0)
     before = rest_db.get_pokemon("benched")
@@ -375,6 +409,56 @@ def test_a_night_away_fully_heals_and_a_few_cards_do_not():
         driver.answer("good")
         assert main.hp == main.max_hp
     """)
+
+
+def test_the_active_pokemon_does_not_regenerate_with_regeneration_off():
+    _run("""
+        driver.set_setting("battle.hp_regeneration", False)
+        hurt(10)
+        driver.advance_time(hours=9)
+        events = driver.answer("good")
+
+        assert main.hp == main.current_hp == 10
+        assert not [e for e in events if e["type"] == "regen"]
+        # Turned back on, only the rest from then on counts.
+        driver.set_setting("battle.hp_regeneration", True)
+        driver.advance_time(hours=2)
+        driver.answer("good")
+        assert abs(main.hp - (10 + main.max_hp // 4)) <= 1, main.hp
+    """)
+
+
+# The web settings screen saves key by key; the settings window saves an
+# edited copy of the whole config.
+_REGENERATION_TOGGLES = {
+    "key": 's.settings.set("battle.hp_regeneration", on)',
+    "config": (
+        "s.settings.save_config("
+        'dict(s.settings.config, **{"battle.hp_regeneration": on}))'
+    ),
+}
+
+
+@pytest.mark.parametrize("saved_by", sorted(_REGENERATION_TOGGLES))
+def test_turning_regeneration_back_on_does_not_credit_the_time_it_was_off(saved_by):
+    """A benched Pokemon's rest clock only settles at startup or a switch-in."""
+    _run(
+        f"def toggle(on):\n    {_REGENERATION_TOGGLES[saved_by]}\n"
+        + textwrap.dedent("""
+            benched = build_pokemon({"species": "Snorlax", "level": 50})
+            s.db.save_pokemon(benched.to_dict())
+            benched_id = str(benched.individual_id)
+            assert s.db.update_pokemon_current_hp(benched_id, 10)
+
+            toggle(False)
+            driver.advance_time(hours=9)
+            toggle(True)
+            driver.advance_time(hours=2)
+
+            gained = s.db.regenerate_pokemon_hp()
+            assert gained == {benched_id: benched.max_hp // 4}, gained
+        """)
+    )
 
 
 def test_a_fainted_active_pokemon_does_not_regenerate():

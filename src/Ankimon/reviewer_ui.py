@@ -120,7 +120,10 @@ def cycle_team_pokemon():
             return
         # The incoming Pokémon has been resting on the bench.
         pokemon_data = credit_rest(
-            services.db, pokemon_data, getattr(services, "logger", None)
+            services.db,
+            pokemon_data,
+            getattr(services, "logger", None),
+            getattr(services, "settings", None),
         )
 
         try:

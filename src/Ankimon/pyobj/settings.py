@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from ..resources import user_path
 from ..services import services
+from ..functions.hp_recovery import regenerates
 
 DEFAULT_CONFIG = {
     "battle.automatic_battle": 0,
@@ -21,6 +22,7 @@ DEFAULT_CONFIG = {
     "battle.review_based_damage": True,
     "battle.ignore_learning_cards": False,
     "battle.heal_on_swap": False,
+    "battle.hp_regeneration": True,
     "evolution.friendship_time_enabled": True,
     "evolution.day_start_hour": 6,
     "evolution.night_start_hour": 18,
@@ -317,12 +319,28 @@ class Settings:
 
         return changed_keys
 
+    def _restart_rest_clocks_if_toggled(self, was_regenerating):
+        """Restart every rest clock when HP regeneration is turned on or off.
+
+        A benched Pokémon's clock only settles at startup or when it becomes
+        active, so without this, turning regeneration back on would credit it
+        with the time regeneration was off.
+        """
+        if was_regenerating == regenerates(self.config) or services.db is None:
+            return
+        try:
+            services.db.regenerate_pokemon_hp(heal=False)
+        except Exception as e:
+            print(f"Ankimon: Failed to restart HP regeneration clocks: {e}")
+
     def save_config(
         self, config, explicit_overrides=None, apply_hud_autosync=True
     ):
         previous_value = None
+        was_regenerating = None
         if hasattr(self, "config") and self.config is not None:
             previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
+            was_regenerating = regenerates(self.config)
 
         if apply_hud_autosync:
             self._apply_hud_toggle_autosync(
@@ -346,6 +364,8 @@ class Settings:
             self.config.update(config)
         self._save_legacy_obf_if_present()
         self.compute_gui_config()
+        if was_regenerating is not None:
+            self._restart_rest_clocks_if_toggled(was_regenerating)
 
     def _save_legacy_obf_if_present(self):
         """Mirror self.config into a legacy config.obf, only if one still exists
@@ -380,6 +400,7 @@ class Settings:
 
     def set(self, key, value, explicit_overrides=None):
         previous_value = self.config.get("gui.show_sprites_across_ankimon", True)
+        was_regenerating = regenerates(self.config)
         self.config[key] = value
         changed_keys = self._apply_hud_toggle_autosync(
             self.config, previous_value, explicit_overrides
@@ -401,6 +422,7 @@ class Settings:
             return
         self._save_legacy_obf_if_present()
         self.compute_gui_config()
+        self._restart_rest_clocks_if_toggled(was_regenerating)
 
     def compute_gui_config(self):
         # Manage conditional GUI settings

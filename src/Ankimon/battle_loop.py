@@ -31,6 +31,7 @@ from .functions.ankimon_hooks_to_poke_engine import (
 from .functions.hp_recovery import (
     REGEN_TICK_SECONDS,
     current_timestamp,
+    regenerates,
     swap_heals,
 )
 from .pyobj.error_handler import show_warning_with_traceback
@@ -108,7 +109,8 @@ def _credit_rest_to_active(main_pokemon, state):
     """Regenerate the active Pokemon's HP for the time since its last credit.
 
     Runs before a battle round so the engine fights with the regenerated HP.
-    A fainted Pokemon does not rest.
+    A fainted Pokemon does not rest. With regeneration off
+    (battle.hp_regeneration) the rest is settled without a gain.
     """
     global _last_rest_credit
     individual_id = getattr(main_pokemon, "individual_id", None)
@@ -124,9 +126,9 @@ def _credit_rest_to_active(main_pokemon, state):
         if int(main_pokemon.current_hp) <= 0:
             return
         _last_rest_credit = (str(individual_id), now)
-        gained = db.regenerate_pokemon_hp(str(individual_id), now=now).get(
-            str(individual_id), 0
-        )
+        gained = db.regenerate_pokemon_hp(
+            str(individual_id), now=now, heal=regenerates(settings_obj)
+        ).get(str(individual_id), 0)
         if isinstance(gained, int) and gained > 0:
             healed = min(int(main_pokemon.max_hp), int(main_pokemon.current_hp) + gained)
             main_pokemon.hp = main_pokemon.current_hp = healed
