@@ -19,8 +19,8 @@ rate math (:meth:`SimulatorBridge.get_initial_state` /
 tests.
 
 This ships as a stand-alone dialog owning its own ``QWebEngineView`` +
-``QWebChannel``. When the shared web-shell host (Wave 4) lands, this screen can
-be re-hosted via ``WebShellHost.mount(...)``; see MERGE_ARCH_MAP.md §4.
+``QWebChannel``. It can also be hosted in the shared web shell via
+``WebShellHost.mount(...)`` (see ``webshell/host.py``).
 """
 
 import json

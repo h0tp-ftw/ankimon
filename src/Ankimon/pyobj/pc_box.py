@@ -1405,12 +1405,14 @@ class PokemonPC(QDialog):
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Main Prompt
-        prompt_label = QLabel("Choose a Pokémon to view its stats")
-        prompt_label.setWordWrap(True)
-        prompt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        prompt_label.setStyleSheet(
-            f"color: {text_color}; font-size: 20px; font-weight: 800; margin-top: 25px;"
-        )
+        prompt_label = None
+        if show_sprites:
+            prompt_label = QLabel("Choose a Pokémon to view its stats")
+            prompt_label.setWordWrap(True)
+            prompt_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            prompt_label.setStyleSheet(
+                f"color: {text_color}; font-size: 20px; font-weight: 800; margin-top: 25px;"
+            )
 
         # Subtext
         count = getattr(self, "_total_pokemon_count", 0)
@@ -1422,7 +1424,8 @@ class PokemonPC(QDialog):
 
         layout.addStretch(1)
         layout.addWidget(icon_label)
-        layout.addWidget(prompt_label)
+        if prompt_label is not None:
+            layout.addWidget(prompt_label)
         layout.addWidget(summary_label)
         layout.addStretch(1)
         return widget

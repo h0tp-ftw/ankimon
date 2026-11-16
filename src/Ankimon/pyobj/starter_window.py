@@ -311,12 +311,11 @@ class StarterWindow(QWidget):
         #merged_pixmap.fill(Qt.transparent)
         # merge both images together
         painter = QPainter(merged_pixmap)
-        # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
-
-        painter.drawPixmap(57,-5,water_pixmap)
-        painter.drawPixmap(182,-5,fire_pixmap)
-        painter.drawPixmap(311,-3,grass_pixmap)
+        if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+            painter.drawPixmap(0, 0, pixmap_bckg)
+            painter.drawPixmap(57,-5,water_pixmap)
+            painter.drawPixmap(182,-5,fire_pixmap)
+            painter.drawPixmap(311,-3,grass_pixmap)
 
         # custom font
         custom_font = load_custom_font(28, int(self.settings_obj.get("misc.language")))
@@ -356,9 +355,9 @@ class StarterWindow(QWidget):
         merged_pixmap.fill(QColor(0, 0, 0, 0))  # RGBA where A (alpha) is 0 for full transparency
         # merge both images together
         painter = QPainter(merged_pixmap)
-        # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(125,10,image_pixmap)
+        if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+            painter.drawPixmap(0, 0, pixmap_bckg)
+            painter.drawPixmap(125,10,image_pixmap)
 
         # custom font
         custom_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))
@@ -394,9 +393,12 @@ class StarterWindow(QWidget):
         merged_pixmap.fill(QColor(0, 0, 0, 0))  # RGBA where A (alpha) is 0 for full transparency
         # merge both images together
         painter = QPainter(merged_pixmap)
-        # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
-        painter.drawPixmap(125,10,image_pixmap)
+        show_sprites = self.settings_obj.get(
+            "gui.show_sprites_across_ankimon", True
+        )
+        if show_sprites:
+            painter.drawPixmap(0, 0, pixmap_bckg)
+            painter.drawPixmap(125, 10, image_pixmap)
 
         # custom font
         custom_font = load_custom_font(32, int(self.settings_obj.get("misc.language")))

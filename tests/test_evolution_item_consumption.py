@@ -127,6 +127,90 @@ def _make_evo_window(evo_mod):
     return win
 
 
+def test_stop_evolution_movies_releases_movie_and_buffer():
+    evo_mod, _ = _load_evo_window()
+    win = _make_evo_window(evo_mod)
+    buffer = MagicMock()
+    movie = MagicMock()
+    win._evolution_movies = [(buffer, movie, 10, 20)]
+    win._evolution_canvas = MagicMock()
+    win._evolution_base_pixmap = MagicMock()
+    win._evolution_instruction = (95, 430, "Choose to evolve")
+
+    win._stop_evolution_movies()
+
+    movie.stop.assert_called_once_with()
+    movie.setDevice.assert_called_once_with(None)
+    movie.deleteLater.assert_called_once_with()
+    buffer.close.assert_called_once_with()
+    buffer.deleteLater.assert_called_once_with()
+    assert win._evolution_movies == []
+    assert win._evolution_canvas is None
+    assert win._evolution_base_pixmap is None
+    assert win._evolution_instruction is None
+
+
+def test_evolution_refresh_paints_instruction_after_movie_frames():
+    evo_mod, _ = _load_evo_window()
+    win = _make_evo_window(evo_mod)
+    canvas = MagicMock()
+    base_pixmap = MagicMock()
+    pixmap = MagicMock()
+    frame = MagicMock()
+    frame.isNull.return_value = False
+    base_pixmap.copy.return_value = pixmap
+    movie = MagicMock()
+    movie.currentPixmap.return_value = frame
+    painter = MagicMock()
+    win._evolution_canvas = canvas
+    win._evolution_base_pixmap = base_pixmap
+    win._evolution_movies = [(MagicMock(), movie, 255, 285)]
+    win._evolution_instruction = (
+        95,
+        430,
+        "Choose to evolve your Pokémon, or cancel to keep it as is",
+    )
+
+    with patch.object(evo_mod, "QPainter", return_value=painter):
+        win._refresh_evolution_canvas()
+
+    assert painter.method_calls.index(
+        next(call for call in painter.method_calls if call[0] == "drawPixmap")
+    ) < painter.method_calls.index(
+        next(call for call in painter.method_calls if call[0] == "drawText")
+    )
+    painter.drawText.assert_called_once_with(
+        95, 430, "Choose to evolve your Pokémon, or cancel to keep it as is"
+    )
+    canvas.setPixmap.assert_called_once_with(pixmap)
+
+
+def test_static_evolution_sprite_paints_instruction_after_sprite():
+    evo_mod, _ = _load_evo_window()
+    win = _make_evo_window(evo_mod)
+    base_pixmap = MagicMock()
+    sprite_pixmap = MagicMock()
+    sprite_pixmap.loadFromData.return_value = True
+    sprite_pixmap.width.return_value = 100
+    sprite_pixmap.height.return_value = 100
+    sprite_pixmap.scaled.return_value = sprite_pixmap
+    painter = MagicMock()
+    parent = MagicMock()
+    win._evolution_base_pixmap = base_pixmap
+    win._evolution_instruction = (95, 430, "Choose to evolve")
+
+    with (
+        patch.object(evo_mod, "QPixmap", return_value=sprite_pixmap),
+        patch.object(evo_mod, "QPainter", return_value=painter),
+    ):
+        win._add_evolution_sprite(parent, (b"sprite", False), 255, 285, 200, 200)
+
+    methods = [call[0] for call in painter.method_calls]
+    assert methods.index("drawPixmap") < methods.index("drawText")
+    painter.drawText.assert_called_once_with(95, 430, "Choose to evolve")
+    parent.setPixmap.assert_called_once_with(base_pixmap)
+
+
 def _apply_common_patches():
     """Start patches for the pure helpers evolve_pokemon calls; return handles."""
     p = "Ankimon.pyobj.evolution_window."

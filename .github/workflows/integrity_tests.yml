@@ -11,8 +11,9 @@ permissions:
 jobs:
   fixture_compatibility:
     name: Fixture compatibility — Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         python: ['3.9', '3.12']
     steps:

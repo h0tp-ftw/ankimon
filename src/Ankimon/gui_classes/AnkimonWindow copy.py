@@ -368,7 +368,8 @@ class TestWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
         # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
+        if settings_obj.get("gui.show_sprites_across_ankimon", True):
+            painter.drawPixmap(0, 0, pixmap_bckg)
         #item = str(item)
         if item.endswith("-up") or item.endswith("-max") or item.endswith("protein") or item.endswith("zinc") or item.endswith("carbos") or item.endswith("calcium") or item.endswith("repel") or item.endswith("statue"):
             painter.drawPixmap(200,50,item_pixmap)
@@ -435,7 +436,8 @@ class TestWindow(QWidget):
             # merge both images together
             painter = QPainter(merged_pixmap)
             # draw background to a specific pixel
-            painter.drawPixmap(0, 0, pixmap_bckg)
+            if settings_obj.get("gui.show_sprites_across_ankimon", True):
+                painter.drawPixmap(0, 0, pixmap_bckg)
             #item = str(item)
             painter.drawPixmap(200,90,item_pixmap)
 

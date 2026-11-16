@@ -126,6 +126,9 @@ def pc_box():
             "evolution_readiness": lambda *a, **k: {"ready": False, "method": None},
         },
         "Ankimon.functions.sprite_functions": {"get_sprite_path": lambda *a, **k: ""},
+        "Ankimon.functions.tm_learnset": {
+            "get_tm_learnset": lambda *a, **k: []
+        },
         "Ankimon.utils": {
             "load_custom_font": lambda *a, **k: mock.MagicMock(),
             "get_tier_by_id": lambda *a, **k: "Normal",
@@ -267,3 +270,31 @@ def test_malformed_row_does_not_raise(pc_box):
     bad = _complete_row(stats="not-a-dict", iv=None, level="???")
 
     _run_integrity(pc_box, [bad])  # must not raise
+
+
+def test_placeholder_prompt_is_hidden_when_sprites_are_disabled(pc_box):
+    from PyQt6.QtWidgets import QApplication, QDialog, QLabel
+
+    app = QApplication.instance() or QApplication([])
+    window = pc_box.PokemonPC.__new__(pc_box.PokemonPC)
+    QDialog.__init__(window)
+    window.theme_vars = {}
+    window.settings = types.SimpleNamespace(
+        get=lambda key, default=None: False
+        if key == "gui.show_sprites_across_ankimon"
+        else default
+    )
+    window._total_pokemon_count = 0
+
+    placeholder = window._create_placeholder_widget()
+
+    assert "Choose a Pokémon to view its stats" not in [
+        label.text() for label in placeholder.findChildren(QLabel)
+    ]
+    assert "PC Inventory: 0 Pokémon" in [
+        label.text() for label in placeholder.findChildren(QLabel)
+    ]
+
+    placeholder.deleteLater()
+    window.deleteLater()
+    app.processEvents()

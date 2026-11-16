@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
 )
 
-from ..utils import random_item, load_custom_font
+from ..utils import get_item_sprite_path, random_item, load_custom_font
 
 from ..functions.drawing_utils import draw_gender_symbols, draw_stat_boosts
 
@@ -62,7 +62,6 @@ from ..resources import (
     icon_path,
     battlescene_path,
     battle_ui_path,
-    user_path_sprites,
     frontdefault,
     badges_list_path,
     pokedex_image_path,
@@ -912,7 +911,7 @@ class TestWindow(QWidget):
 
     def pokemon_display_item(self, item):
         bckgimage_path = addon_dir / "addon_sprites" / "starter_screen" / "bg.png"
-        item_path = user_path_sprites / "items" / f"{item}.png"
+        item_path = get_item_sprite_path(item)
 
         # Load the background image
         pixmap_bckg = QPixmap()
@@ -935,8 +934,11 @@ class TestWindow(QWidget):
         # merge both images together
         painter = QPainter(merged_pixmap)
 
-        # draw background to a specific pixel
-        painter.drawPixmap(0, 0, pixmap_bckg)
+        if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+            painter.drawPixmap(0, 0, pixmap_bckg)
+        else:
+            # Text-only mode: a null pixmap makes the item draws below no-ops.
+            item_pixmap = QPixmap()
 
         # item = str(item)
         if (
@@ -1017,11 +1019,9 @@ class TestWindow(QWidget):
             # merge both images together
             painter = QPainter(merged_pixmap)
 
-            # draw background to a specific pixel
-            painter.drawPixmap(0, 0, pixmap_bckg)
-
-            # item = str(item)
-            painter.drawPixmap(200, 90, item_pixmap)
+            if self.settings_obj.get("gui.show_sprites_across_ankimon", True):
+                painter.drawPixmap(0, 0, pixmap_bckg)
+                painter.drawPixmap(200, 90, item_pixmap)
 
             # custom font
             custom_font = load_custom_font(

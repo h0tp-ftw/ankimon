@@ -1027,6 +1027,26 @@ def test_static_scene_assets_are_decoded_once_per_window(make_window, tw_module)
         assert win._pixmap_cache[key] is pixmap  # same decoded instance reused
 
 
+def test_starter_screen_background_is_hidden_with_sprites_disabled(
+    make_window, tw_module, tmp_path, monkeypatch
+):
+    import json
+
+    win = make_window()
+    win.settings_obj.values["gui.show_sprites_across_ankimon"] = False
+    badges_path = tmp_path / "badges.json"
+    badges_path.write_text(json.dumps({"1": "Badge"}), encoding="utf-8")
+    monkeypatch.setattr(tw_module, "badges_list_path", str(badges_path))
+
+    item_view = win.pokemon_display_item("potion")
+    badge_view = win.pokemon_display_badge(1)
+
+    assert item_view.pixmap().toImage().pixelColor(10, 10).alpha() == 0
+    assert badge_view.pixmap().toImage().pixelColor(10, 10).alpha() == 0
+    item_view.deleteLater()
+    badge_view.deleteLater()
+
+
 # --- shake invalidation (row F51 follow-up) --------------------------------
 #
 # _shake_sprites() queues five QTimer.singleShot steps. Nothing holds a handle

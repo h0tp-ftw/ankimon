@@ -93,9 +93,11 @@ def test_download_completion_refreshes_sprite_fallbacks(
 ):
     """Even failed downloads may install files that supersede cached misses."""
     from Ankimon.functions import sprite_functions as sf
+    from Ankimon import utils
 
     updater, downloader = sprite_download_modules
     monkeypatch.setattr(sf.services, "logger", mock.Mock())
+    utils._random_item_cache = ["stale-item"]
     root = tmp_path / "sprites"
     (root / "front_default").mkdir(parents=True)
     (root / "front_default" / "25.png").touch()
@@ -127,7 +129,8 @@ def test_download_completion_refreshes_sprite_fallbacks(
         )
         dialog_type.on_download_finished(dialog, success, "Download finished")
 
-        assert sf.get_sprite_path("front", "png", 25, False, "F") == str(preferred)
+        assert utils._random_item_cache is None
+        assert Path(sf.get_sprite_path("front", "png", 25, False, "F")) == preferred
     finally:
         sf._clear_sprite_cache()
 
