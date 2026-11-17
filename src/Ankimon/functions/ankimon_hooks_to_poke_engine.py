@@ -330,6 +330,28 @@ def _install_form_tolerant_pokedex():
     damage_calculator.pokedex = view
 
 
+
+def _install_ivycudgel_compat():
+    """Inject missing type change for Ivy Cudgel into the engine's modify_move."""
+    from ..poke_engine.special_effects.moves import modify_move
+    from ..poke_engine import constants
+
+    def ivycudgel(attacking_side, attacking_move, defending_move, attacking_pokemon, defending_pokemon, first_move, weather, terrain):
+        if attacking_pokemon.id in ("ogerponwellspring", "ogerponwellspringtera"):
+            attacking_move = attacking_move.copy()
+            attacking_move[constants.TYPE] = "water"
+        elif attacking_pokemon.id in ("ogerponhearthflame", "ogerponhearthflametera"):
+            attacking_move = attacking_move.copy()
+            attacking_move[constants.TYPE] = "fire"
+        elif attacking_pokemon.id in ("ogerponcornerstone", "ogerponcornerstonetera"):
+            attacking_move = attacking_move.copy()
+            attacking_move[constants.TYPE] = "rock"
+
+        return attacking_move
+
+    if 'ivycudgel' not in modify_move.move_lookup:
+        modify_move.move_lookup['ivycudgel'] = ivycudgel
+
 def _install_stancechange_compat():
     """Support Shield's explicit id and reversible stats for all Aegislash forms.
 
@@ -623,6 +645,7 @@ def _apply_engine_patch(patch):
 
 _apply_engine_patch(_patch_engine_constants)
 _apply_engine_patch(_install_form_tolerant_pokedex)
+_apply_engine_patch(_install_ivycudgel_compat)
 _apply_engine_patch(_install_stancechange_compat)
 _apply_engine_patch(_install_on_hit_boost_items)
 
