@@ -283,7 +283,7 @@ class ItemWindow(QWidget):
                     for item in filtered_items
                     if isinstance(item, dict)
                     and "item" in item
-                    and item["item"] in self.evolution_items
+                    and str(item["item"]).lower() in self.evolution_items
                 ]
             elif category_index == 5:  # Pokeballs
                 filtered_items = [
