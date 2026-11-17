@@ -271,6 +271,17 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "MrQuack64",
+      "name": "MrQuack64",
+      "avatar_url": "https://github.com/MrQuack64.png",
+      "profile": "https://github.com/MrQuack64",
+      "contributions": [
+        "code"
+      ],
+      "nickname": "picklefart88",
+      "discord_id": "927985774014636043"
     }
   ],
   "contributorsPerLine": 5
