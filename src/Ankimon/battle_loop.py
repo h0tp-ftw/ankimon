@@ -25,6 +25,7 @@ from .utils import (
     random_item,
 )
 from .functions.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
+from .functions.smart_battle import smart_battle_enabled
 from .functions.smart_move_selection import choose_best_move
 from .pyobj.error_handler import show_warning_with_traceback
 
@@ -44,16 +45,6 @@ _main_faint_deferred = False
 # Both Pokémon objects are mutable singletons, so retaining their references is
 # insufficient to identify the battle that produced the double faint.
 _main_faint_context = None
-
-
-def _move_selection_mode():
-    """``controls.move_selection_mode``: 0 = random (default), 1 = choose
-    yourself (pop-up), 2 = Smart Auto Battle (strongest move)."""
-    try:
-        mode = int(settings_obj.get("controls.move_selection_mode", 0) or 0)
-    except (TypeError, ValueError):
-        mode = 0
-    return mode if mode in (0, 1, 2) else 0
 
 
 def _cancel_main_faint_deferral():
@@ -331,15 +322,10 @@ def on_review_card(*args):
                 and main_pokemon.hp > 0
                 and enemy_pokemon.hp > 0
             ):
-                move_mode = _move_selection_mode()
-                if move_mode == 1:
-                    # Real dialog under Anki (QtPresenter); scripted/None headless.
-                    chosen = services.ui.choose_move(main_pokemon.attacks)
-                    if chosen:
-                        user_attack = chosen
-                elif move_mode == 2:
-                    # Smart Auto Battle: use the strongest move of the active
-                    # Pokémon's own moveset instead of a random one.
+                if smart_battle_enabled(settings_obj):
+                    # Smart Battle: use the strongest move of the active
+                    # Pokémon's own moveset instead of a random one. Takes
+                    # priority over Allow Choosing Moves.
                     user_attack = choose_best_move(
                         main_pokemon,
                         enemy_pokemon,
@@ -348,6 +334,11 @@ def on_review_card(*args):
                         mutator_full_reset=s.mutator_full_reset,
                         fallback=user_attack,
                     )
+                elif settings_obj.get("controls.allow_to_choose_moves") == True:
+                    # Real dialog under Anki (QtPresenter); scripted/None headless.
+                    chosen = services.ui.choose_move(main_pokemon.attacks)
+                    if chosen:
+                        user_attack = chosen
 
                 # Colour the battle message by the move actually used.
                 move = safe_get_random_move([user_attack], logger=logger)

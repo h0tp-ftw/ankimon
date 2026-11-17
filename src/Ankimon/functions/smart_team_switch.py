@@ -1,7 +1,7 @@
-"""Smart Auto Battle, part 2: send out the best team member for each new enemy.
+"""Smart Battle, part 2: send out the best team member for each new enemy.
 
-Runs once per encounter, from new_pokemon(), only when
-``controls.move_selection_mode`` is 2. It picks from the same team slots the
+Runs once per encounter, from new_pokemon(), only when ``battle.smart_battle``
+is on. It picks from the same team slots the
 Cycle Team hotkey rotates through (the first ``controls.team_cycle_count``
 members). After that the player is free to cycle by hand; nothing re-switches
 until the next wild Pokémon appears.
@@ -24,6 +24,7 @@ to anyone by hand.
 import copy
 
 from ..services import services
+from .smart_battle import smart_battle_enabled
 from .smart_move_selection import score_moves
 
 # Another member must beat the current one by this factor to be sent out.
@@ -31,14 +32,6 @@ _SWITCH_MARGIN = 1.15
 
 _DEFAULT_LEVEL_GAP = 5
 _MAX_LEVEL_GAP = 100
-
-
-def _move_selection_mode(settings):
-    try:
-        mode = int(settings.get("controls.move_selection_mode", 0) or 0)
-    except (TypeError, ValueError):
-        return 0
-    return mode if mode in (0, 1, 2) else 0
 
 
 def matchup_score(candidate, enemy):
@@ -156,7 +149,7 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
     Never raises: any problem just leaves the current Pokémon out.
     """
     try:
-        if settings is None or _move_selection_mode(settings) != 2:
+        if settings is None or not smart_battle_enabled(settings):
             return None
         if services.db is None or main_pokemon is None or enemy_pokemon is None:
             return None

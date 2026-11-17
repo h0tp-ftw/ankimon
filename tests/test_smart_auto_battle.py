@@ -1,5 +1,5 @@
-"""Smart Auto Battle (Move Selection = 2): move choice, team switch and level
-balancing. Pure-logic tests: matchup/move scoring is stubbed so each case pins
+"""Smart Battle (battle.smart_battle): move choice, team switch, level
+balancing and the XP penalty. Pure-logic tests: matchup/move scoring is stubbed so each case pins
 one decision rule."""
 
 import sys
@@ -29,6 +29,7 @@ for _name in [n for n in list(sys.modules) if n.startswith("Ankimon.poke_engine"
     if not isinstance(_m, types.ModuleType) or getattr(_m, "__file__", None) is None:
         del sys.modules[_name]
 
+from Ankimon.functions import smart_battle as sb  # noqa: E402
 from Ankimon.functions import smart_move_selection as sms  # noqa: E402
 from Ankimon.functions import smart_team_switch as sts  # noqa: E402
 
@@ -154,14 +155,14 @@ def test_level_gap_setting_is_clamped(raw, expected):
 def test_no_switch_while_the_active_pokemon_is_fainted(monkeypatch):
     # Double faint: the faint handler must see the fainted Pokémon first.
     monkeypatch.setattr(sts.services, "db", object(), raising=False)
-    settings = _Settings({"controls.move_selection_mode": 2})
+    settings = _Settings({"battle.smart_battle": True})
     fainted = _mon("a", 50, hp=0)
     assert sts.smart_switch_for_new_enemy(fainted, _mon("e", 50), settings) is None
 
 
-def test_no_switch_outside_smart_mode(monkeypatch):
+def test_no_switch_when_smart_battle_is_off(monkeypatch):
     monkeypatch.setattr(sts.services, "db", object(), raising=False)
-    settings = _Settings({"controls.move_selection_mode": 0})
+    settings = _Settings({"battle.smart_battle": False})
     assert sts.smart_switch_for_new_enemy(_mon("a", 50), _mon("e", 50), settings) is None
 
 
@@ -202,7 +203,7 @@ def test_switch_applies_the_new_members_held_item(monkeypatch):
     monkeypatch.setitem(sys.modules, "Ankimon.functions.update_main_pokemon", fake_update)
     monkeypatch.setitem(sys.modules, "Ankimon.battle_loop", fake_battle)
 
-    settings = _Settings({"controls.move_selection_mode": 2, "battle.team_level_gap": 0})
+    settings = _Settings({"battle.smart_battle": True, "battle.team_level_gap": 0})
     msg = sts.smart_switch_for_new_enemy(main, _mon("e", 50), settings)
 
     assert msg and "Lv. 48" in msg
@@ -211,49 +212,30 @@ def test_switch_applies_the_new_members_held_item(monkeypatch):
     assert calls["saved"] is None
 
 
-# ---------------------------------------------------------------- settings sync
+# ---------------------------------------------------------------- toggle + XP
 
 
-def _sync():
-    from Ankimon.pyobj.settings import sync_move_selection
-    return sync_move_selection
-
-
-@pytest.mark.parametrize("old, expected_mode", [
-    ({"battle.smart_move_selection": 1}, 2),
-    ({"controls.allow_to_choose_moves": True}, 1),
-    ({"controls.allow_to_choose_moves": False}, 0),
+@pytest.mark.parametrize("raw, on", [
+    (True, True), ("true", True), (1, True), ("1", True),
+    (False, False), ("false", False), (0, False), (None, False),
 ])
-def test_first_run_migrates_old_settings(old, expected_mode):
-    cfg = dict(old)
-    assert _sync()(cfg) is True
-    assert cfg["controls.move_selection_mode"] == expected_mode
-    assert cfg["controls.allow_to_choose_moves"] is (expected_mode == 1)
+def test_smart_battle_toggle_reads_stored_values(raw, on):
+    assert sb.smart_battle_enabled(_Settings({"battle.smart_battle": raw})) is on
 
 
-def test_mode_drives_the_legacy_flag():
-    cfg = {"controls.move_selection_mode": 2, "controls.allow_to_choose_moves": True}
-    _sync()(cfg)
-    assert cfg["controls.allow_to_choose_moves"] is False
+def test_smart_battle_is_off_by_default():
+    assert sb.smart_battle_enabled(_Settings()) is False
 
 
-@pytest.mark.parametrize("bad", ["junk", 7, None])
-def test_invalid_mode_falls_back_to_random(bad):
-    cfg = {"controls.move_selection_mode": bad}
-    _sync()(cfg)
-    assert cfg["controls.move_selection_mode"] in (0, 1)
-
-
-def test_ticking_the_legacy_toggle_switches_mode_to_choose_myself():
-    prev = {"controls.move_selection_mode": 2, "controls.allow_to_choose_moves": False}
-    cfg = dict(prev, **{"controls.allow_to_choose_moves": True})
-    _sync()(cfg, previous=prev)
-    assert cfg["controls.move_selection_mode"] == 1
-    assert cfg["controls.allow_to_choose_moves"] is True
-
-
-def test_unticking_the_legacy_toggle_returns_to_random():
-    prev = {"controls.move_selection_mode": 1, "controls.allow_to_choose_moves": True}
-    cfg = dict(prev, **{"controls.allow_to_choose_moves": False})
-    _sync()(cfg, previous=prev)
-    assert cfg["controls.move_selection_mode"] == 0
+@pytest.mark.parametrize("choose, smart, half", [
+    (False, False, False),
+    (True, False, True),
+    (False, True, True),
+    (True, True, True),  # not stacked: still just 50%
+])
+def test_xp_penalty_matches_allow_choosing_moves(choose, smart, half):
+    settings = _Settings({
+        "controls.allow_to_choose_moves": choose,
+        "battle.smart_battle": smart,
+    })
+    assert sb.reduced_xp(settings) is half

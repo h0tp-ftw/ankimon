@@ -1324,7 +1324,7 @@ def new_pokemon(
     _cancel_main_faint_deferral()
     pokemon._ankimon_encounter_token = object()
 
-    # Smart Auto Battle (Move Selection = 2): once per new enemy, send out the
+    # Smart Battle: once per new enemy, send out the
     # best team member for this matchup. The player can still cycle freely
     # afterwards; nothing switches again until the next encounter.
     smart_switch_msg = None
@@ -1864,16 +1864,18 @@ def kill_pokemon(
         level=enemy_pokemon.level,
         tier=enemy_pokemon.tier,
     )
+    # Choosing moves by hand and Smart Battle both halve XP (not stacked).
+    from .smart_battle import reduced_xp
+
+    half_xp = reduced_xp(settings_obj)
     if trainer_card is not None:
-        trainer_card.gain_xp(
-            enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves")
-        )
+        trainer_card.gain_xp(enemy_pokemon.tier, half_xp)
         if not same_battle_context():
             return
 
     # Calculate experience based on whether moves are chosen manually
     exp = calc_experience(enemy_pokemon.base_experience, enemy_pokemon.level)
-    if settings_obj.get("controls.allow_to_choose_moves"):
+    if half_xp:
         exp *= 0.5
 
     # Ensure exp is at least 1 and round up if it's a decimal

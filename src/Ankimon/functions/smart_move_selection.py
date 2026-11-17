@@ -1,6 +1,6 @@
-"""Smart Auto Battle: pick the strongest move out of the active Pokémon's moveset.
+"""Smart Battle: pick the strongest move out of the active Pokémon's moveset.
 
-Used by battle_loop.on_review_card when ``controls.move_selection_mode`` is 2.
+Used by battle_loop.on_review_card when ``battle.smart_battle`` is on.
 Every move the active Pokémon knows is scored by its expected damage against the
 current enemy, using poke_engine's own damage calculator. That covers type
 effectiveness, STAB, power, physical/special vs the right stats, abilities,
