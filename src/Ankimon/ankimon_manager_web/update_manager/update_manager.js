@@ -25,8 +25,12 @@
 	let activeProgressKey = '';
 	const busyOperations = new Set();
 	let toastTimer = null;
+	let modalArmTimer = null;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
 	const DROPDOWN_PAGE_SIZE = 50;
+	const HIGH_RISK_UPDATE_MESSAGE = 'Update available (High Risk)';
+	const HIGH_RISK_ARM_DELAY_MS = 800;
+	const STATUS_TONES = ['success', 'warning', 'error', 'rate-limit', 'neutral', 'high-risk'];
 
 	const byId = (id) => document.getElementById(id);
 	const setText = (id, value) => { byId(id).textContent = value; };
@@ -41,7 +45,10 @@
 		toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000);
 	}
 
-	function showModal(title, message, confirmLabel, onConfirm, showCancel = true, warningStyle = false, escapeCloses = true) {
+	// warningStyle: false (plain), true (warning) or 'danger'. armDelayMs keeps the
+	// confirm button disabled briefly, so a double-click on the previous modal's
+	// confirm button cannot fall through and confirm this one too.
+	function showModal(title, message, confirmLabel, onConfirm, showCancel = true, warningStyle = false, escapeCloses = true, armDelayMs = 0) {
 		setText('modal-title', title);
 		const messageElement = byId('modal-message');
 		messageElement.replaceChildren();
@@ -52,16 +59,30 @@
 		const modal = byId('update-modal');
 		modal.classList.remove('hidden');
 		const modalCard = modal.querySelector('.update-modal-card');
-		modalCard.classList.toggle('warning-modal', warningStyle);
+		const tone = warningStyle === 'danger' ? 'danger' : warningStyle ? 'warning' : '';
+		modalCard.classList.toggle('warning-modal', tone === 'warning');
+		modalCard.classList.toggle('danger-modal', tone === 'danger');
+		setVisible(byId('modal-icon'), Boolean(tone));
 		const confirm = byId('modal-confirm');
 		const cancel = byId('modal-cancel');
+		confirm.classList.toggle('btn-danger', tone === 'danger');
+		confirm.classList.toggle('btn-primary', tone !== 'danger');
+		clearTimeout(modalArmTimer);
+		confirm.disabled = armDelayMs > 0;
+		if (armDelayMs > 0) {
+			modalArmTimer = setTimeout(() => { confirm.disabled = false; }, armDelayMs);
+		}
 		const previous = document.activeElement;
 		const onKey = (event) => {
 			if (event.key === 'Escape' && escapeCloses) close();
 		};
 		const close = () => {
 			modal.classList.add('hidden');
-			modalCard.classList.remove('warning-modal');
+			modalCard.classList.remove('warning-modal', 'danger-modal');
+			clearTimeout(modalArmTimer);
+			confirm.disabled = false;
+			confirm.classList.remove('btn-danger');
+			confirm.classList.add('btn-primary');
 			confirm.onclick = null;
 			cancel.onclick = null;
 			document.removeEventListener('keydown', onKey);
@@ -87,6 +108,8 @@
 	}
 
 	function setProgressMessage(element, message, result = '') {
+		const progressContainer = element.closest('.operation-progress, .sprite-progress');
+		if (progressContainer) progressContainer.dataset.result = result;
 		element.replaceChildren();
 		element.classList.remove(
 			'progress-message-complete',
@@ -423,8 +446,12 @@
 		);
 
 		const status = byId('branch-status');
-		status.classList.remove('success', 'warning', 'error', 'rate-limit');
+		status.classList.remove(...STATUS_TONES);
 		branchCanUpdate = false;
+		let mainUpdateAvailable = false;
+		// Everything except a stable release is unreleased code.
+		const highRiskView = branchView === 'main' ||
+			isHighRiskTarget({ type: data.source_type, name: data.source_name });
 		if (branchView === 'main' && hasBranchViews && !mainCommitSha) {
 			if (remoteSha) {
 				status.textContent = '';
@@ -486,8 +513,10 @@
 			status.classList.add('warning');
 			setText('branch-update-btn', 'Cannot Fast-forward');
 		} else if (compareSha !== remoteSha) {
-			status.textContent = `New update available! (Latest: ${remoteSha.slice(0, 7)})`;
-			status.classList.add('warning');
+			status.textContent = highRiskView
+				? `${HIGH_RISK_UPDATE_MESSAGE} · Latest: ${remoteSha.slice(0, 7)}`
+				: `New update available! (Latest: ${remoteSha.slice(0, 7)})`;
+			status.classList.add(highRiskView ? 'high-risk' : 'warning');
 			setText('branch-update-btn', branchView === 'main'
 				? 'Update to Main Now'
 				: 'Update Installed Source');
@@ -510,7 +539,7 @@
 		}
 
 		if (branchView === 'main') {
-			status.classList.remove('success', 'warning', 'error', 'rate-limit', 'neutral');
+			status.classList.remove(...STATUS_TONES);
 			const requestError = data.main_error === 'rate_limited'
 				? data.main_error
 				: data.main_commits_error;
@@ -534,8 +563,9 @@
 					: 'GitHub could not load Main updates. Please try again later.';
 				status.classList.add(data.main_commits_error === 'connection' ? 'error' : 'warning');
 			} else if (viewData.commits.length) {
-				status.textContent = 'Update available!';
-				status.classList.add('warning');
+				status.textContent = HIGH_RISK_UPDATE_MESSAGE;
+				status.classList.add('high-risk');
+				mainUpdateAvailable = true;
 			} else {
 				status.textContent = 'Up to date!';
 				status.classList.add('success');
@@ -548,14 +578,14 @@
 		if (branchView === 'main' && externalPrOrBranch && remoteSha) {
 			if (compareSha === remoteSha) {
 				status.textContent = 'Up to date!';
-				status.classList.remove('warning', 'error', 'rate-limit', 'neutral');
+				status.classList.remove(...STATUS_TONES);
 				status.classList.add('success');
+				mainUpdateAvailable = false;
 				setText('branch-update-btn', 'Switch to Latest Main');
 			}
 			branchCanUpdate = true;
 		}
-		if (inPreRelease && branchView === 'main' && branchCanUpdate &&
-			status.textContent === 'Update available!') {
+		if (inPreRelease && branchView === 'main' && branchCanUpdate && mainUpdateAvailable) {
 			setText('branch-update-btn', 'Update Now');
 		}
 
@@ -587,6 +617,7 @@
 			});
 		} else {
 			const item = document.createElement('li');
+			item.className = 'commit-list-empty';
 			item.textContent = 'No new commit messages fetched.';
 			commits.appendChild(item);
 		}
@@ -794,24 +825,24 @@
 		const state = data.state || {};
 		let version = '';
 		if (state.source_type === 'branch' && state.source_name === 'main') {
-			version = '| Pre-Release';
+			version = 'Pre-Release';
 		} else if (state.source_type === 'branch') {
-			version = `| Branch ${state.source_name}`;
+			version = `Branch ${state.source_name}`;
 		} else if (state.source_type === 'pr') {
-			version = `| PR #${state.source_name}`;
+			version = `PR #${state.source_name}`;
 		} else if (state.source_type === 'tag') {
-			version = `(Tag: ${state.source_name})`;
+			version = `Tag ${state.source_name}`;
 		} else if (state.source_type === 'release') {
 			version = '';
 		} else if (data.experimental_build) {
-			version = '(Experimental Build)';
+			version = 'Experimental Build';
 		}
 		const installed = byId('installed-version');
 		installed.replaceChildren(document.createTextNode(`Installed: ${data.version}`));
 		if (version) {
 			const source = document.createElement('span');
 			source.className = 'installed-source-detail';
-			source.textContent = ` ${version}`;
+			source.textContent = version;
 			installed.appendChild(source);
 		}
 	}
@@ -1006,6 +1037,7 @@
 
 	function startInstall(sourceType, sourceName, progressKey) {
 		activeProgressKey = progressKey;
+		setActiveProgressMessage('Preparing update...');
 		setOperationProgress(0, true, true);
 		setOperationStatus('', false);
 		bridge.installUpdate(sourceType, sourceName, (result) => {
@@ -1149,13 +1181,72 @@
 				),
 			);
 		}
+		const proceed = () => startInstall(sourceType, sourceName, progressKey);
 		showModal(
 			'Confirm Update',
 			fragment,
 			'Install',
-			() => startInstall(sourceType, sourceName, progressKey),
+			isHighRiskTarget(resolvedTarget)
+				? () => showHighRiskConfirmation(resolvedTarget, linkTarget, replacementVerb, proceed)
+				: proceed,
 			true,
 			Boolean(warning),
+		);
+	}
+
+	// The Developer tag list also contains the tags of published releases.
+	function isPublishedReleaseTag(name) {
+		return Boolean(
+			updateData && Array.isArray(updateData.releases) &&
+			updateData.releases.some((release) => release.name === name),
+		);
+	}
+
+	// Only a stable release has been through the release process. main, side
+	// branches, pull requests and unpublished tags all get the second
+	// confirmation.
+	function isHighRiskTarget(target) {
+		if (!target) return true;
+		if (target.type === 'release') return false;
+		return !(target.type === 'tag' && isPublishedReleaseTag(target.name));
+	}
+
+	function showHighRiskConfirmation(target, linkTarget, verb, onConfirm) {
+		const label = sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName);
+		const isMain = target.type === 'branch' && (target.name || 'main') === 'main';
+		const unreleased = ' It has not been through a stable release and can break the add-on.';
+		const unlisted = ' It may be untested and can break the add-on.';
+		const description = target.type === 'pr'
+			? `${label} is an unreviewed pull request.${unreleased}`
+			: isMain
+				? `The ${label} branch is pre-release code.${unreleased}`
+				: target.type === 'branch'
+					? `Branch ${label} is an unreleased side branch.${unreleased}`
+					: target.type === 'tag'
+						? `Tag ${label} is not in the list of published releases.${unlisted}`
+						: `${label} is not a published release.${unlisted}`;
+		const content = document.createElement('div');
+		const banner = document.createElement('p');
+		banner.className = 'warning-text danger-text modal-warning-text';
+		const lead = document.createElement('strong');
+		lead.textContent = 'High risk: ';
+		banner.append(lead, document.createTextNode(description));
+		const advice = document.createElement('p');
+		advice.className = 'high-risk-advice';
+		advice.textContent = 'This cannot be undone automatically. If you are unsure, cancel and create a backup first in Ankimon > Game > Backup Manager.';
+		content.append(banner, advice);
+		const confirmLabel = verb === 'switch'
+			? 'Switch Anyway'
+			: verb === 'update' ? 'Update Anyway' : 'Install Anyway';
+		showModal(
+			'High-Risk Update',
+			content,
+			confirmLabel,
+			onConfirm,
+			true,
+			'danger',
+			true,
+			HIGH_RISK_ARM_DELAY_MS,
 		);
 	}
 
@@ -1307,7 +1398,15 @@
 		renderVersion(data);
 		renderBranch(data);
 		renderReleases(data.releases, data.releases_error);
-		switchDeveloperView(selectedDeveloperView);
+		const activeTab = document.querySelector('.update-tab-link.active');
+		if (activeTab && activeTab.dataset.tab === 'releases' &&
+			selectedReleaseView === 'pre-release') {
+			// The branch view is shared; a reload must not move it (or retitle it)
+			// out from under the Pre-Release tab the user is looking at.
+			switchReleaseView('pre-release');
+		} else {
+			switchDeveloperView(selectedDeveloperView);
+		}
 		byId('branch-snooze').checked = Number(data.skip_until) > Date.now() / 1000;
 		byId('sprites-snooze').checked = Boolean(data.sprite_snoozed);
 		updateButtonStates();

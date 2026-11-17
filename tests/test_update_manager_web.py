@@ -79,8 +79,8 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'src="../../user_files/sprites/items/up-grade.png"' in html
     assert 'src="../../user_files/sprites/items/exp-share.png"' not in html
     assert 'id="pr-search"' in html
-    assert 'href="update_manager.css?v=20261114.6"' in html
-    assert 'src="update_manager.js?v=20261114.6"' in html
+    assert 'href="update_manager.css?v=20261117.1"' in html
+    assert 'src="update_manager.js?v=20261117.1"' in html
     assert 'id="developer-warning-info"' in html
     assert 'aria-label="Show Developer Warning"' in html
     info_icon_start = html.index('id="developer-warning-info"')
@@ -131,7 +131,7 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert 'id="developer-status" class="muted hidden"' in html
     assert "normalizeTagSearch" in javascript
     assert ".custom-checkbox:checked + .checkbox-indicator" in css
-    assert "height: 24px;" in css
+    assert "height: 10px;" in css
     assert "font-style: italic;" not in css[css.index(".lost-commits-more"):css.index(".btn:disabled")]
     assert 'id="pre-release-progress"' in html
     assert 'id="developer-subtabs"' in html
@@ -384,15 +384,15 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "entries: (developerData.branches || []).filter((entry) => entry.name !== 'main')" in javascript
     assert "{ value: 'main', label: 'Latest Main Branch' }" not in javascript
     assert "{ value: 'branch', label: 'Side Branch' }" in javascript
-    assert "status.textContent = 'Update available!';" in javascript
+    assert "status.textContent = HIGH_RISK_UPDATE_MESSAGE;" in javascript
     assert "status.textContent = 'Up to date!';" in javascript
     assert "One click to enjoy the latest bleeding edge updates, pre-release." in html
     assert 'id="source-rate-limit-status"' in html
     assert "developer-subtabs').addEventListener('wheel'" in javascript
     assert "event.deltaY > 0 ? 1 : -1" in javascript
     assert "gap: 14px;" in css[css.index("#branch-update-view"):css.index(".status-text")]
-    assert "version = `| PR #${state.source_name}`;" in javascript
-    assert "version = `| Branch ${state.source_name}`;" in javascript
+    assert "version = `PR #${state.source_name}`;" in javascript
+    assert "version = `Branch ${state.source_name}`;" in javascript
     assert "const externalPrOrBranch = hasBranchViews" in javascript
     assert "branchCanUpdate = true;" in javascript
     assert ", which stores your Ankimon data." in javascript
@@ -416,6 +416,100 @@ def test_update_manager_markup_exposes_required_panels_and_statuses():
     assert "user-files-warning" in javascript
     assert ".update-modal-card .user-files-warning" in css
     assert "--update-deep-warning: #b26a00;" in css
+
+
+def test_update_manager_treats_unreleased_sources_as_high_risk():
+    html = (UPDATE_PAGE / "update_manager.html").read_text(encoding="utf-8")
+    css = (UPDATE_PAGE / "update_manager.css").read_text(encoding="utf-8")
+    javascript = (UPDATE_PAGE / "update_manager.js").read_text(encoding="utf-8")
+
+    # The pending-update status says so in red.
+    assert (
+        "const HIGH_RISK_UPDATE_MESSAGE = 'Update available (High Risk)';"
+        in javascript
+    )
+    assert "status.classList.add('high-risk');" in javascript
+    assert ".status-text.high-risk" in css
+    assert "'Update available!'" not in javascript
+    # Every re-render clears the red tone, or it would stick to "Up to date!".
+    assert "'neutral', 'high-risk'];" in javascript
+    assert javascript.count("status.classList.remove(...STATUS_TONES);") == 3
+    # The label text is display only, never the thing logic branches on.
+    assert "status.textContent ===" not in javascript
+    assert "branchCanUpdate && mainUpdateAvailable" in javascript
+
+    # Anything that is not a stable release needs a second confirmation.
+    assert "if (target.type === 'release') return false;" in javascript
+    # ...and a tag that is itself a published release counts as one.
+    assert (
+        "return !(target.type === 'tag' && isPublishedReleaseTag(target.name));"
+        in javascript
+    )
+    assert "updateData.releases.some((release) => release.name === name)" in javascript
+    assert "is not a stable release" not in javascript
+    install = javascript[
+        javascript.index("\tfunction install("):
+        javascript.index("\tfunction isHighRiskTarget")
+    ]
+    assert "isHighRiskTarget(resolvedTarget)" in install
+    assert (
+        "showHighRiskConfirmation(resolvedTarget, linkTarget, replacementVerb, proceed)"
+        in install
+    )
+    assert install.count("startInstall(sourceType, sourceName, progressKey)") == 1
+    confirmation = javascript[
+        javascript.index("\tfunction showHighRiskConfirmation"):
+        javascript.index("\tfunction showReleaseSwitchConfirmation")
+    ]
+    assert "'High-Risk Update'" in confirmation
+    assert "'danger'," in confirmation
+    assert "'Install Anyway'" in confirmation
+    # A double-click on the first modal's Install must not confirm the second.
+    assert "HIGH_RISK_ARM_DELAY_MS," in confirmation
+    assert "confirm.disabled = armDelayMs > 0;" in javascript
+    assert "clearTimeout(modalArmTimer);" in javascript
+    assert ".btn-danger {" in css
+    assert ".update-modal-card.danger-modal" in css
+    assert ".warning-text.danger-text" in css
+    assert 'id="modal-icon"' in html
+
+
+def test_update_manager_visual_consistency():
+    css = (UPDATE_PAGE / "update_manager.css").read_text(encoding="utf-8")
+    javascript = (UPDATE_PAGE / "update_manager.js").read_text(encoding="utf-8")
+
+    # Installed-source badge: same typeface as the header, no "|" or "(...)".
+    badge = css[
+        css.index(".installed-source-detail"):css.index(".top-bar-titles h2")
+    ]
+    assert "JetBrains Mono" not in badge
+    assert "border-radius: 999px;" in badge
+    assert "version = 'Pre-Release';" in javascript
+    assert "version = `Tag ${state.source_name}`;" in javascript
+    assert "source.textContent = version;" in javascript
+    # Progress blocks and action rows share the cards' 20px content column.
+    assert "padding: 14px 20px 16px;" in css[
+        css.index("\n.operation-progress {"):css.index(".update-card .operation-progress")
+    ]
+    assert "padding: 0 20px;" in css[
+        css.index(".branch-actions,\n.sprites-actions {"):css.index(".channel-row {")
+    ]
+    sprite_progress = css[
+        css.index("\n.sprite-progress {"):css.index(".sprite-progress.hidden")
+    ]
+    assert "padding-top: 14px;" in sprite_progress
+    assert "calc(100% - 8px)" not in css
+    # The bar takes the colour of its message.
+    assert "progressContainer.dataset.result = result;" in javascript
+    assert '[data-result="complete"] progress::-webkit-progress-value' in css
+    # A reload keeps the shared branch view under the tab being looked at.
+    reload = javascript[
+        javascript.index("window.onUpdateData"):javascript.index("window.onDeveloperData")
+    ]
+    assert "selectedReleaseView === 'pre-release'" in reload
+    assert "switchReleaseView('pre-release');" in reload
+    # AGENTS.md: blur causes Windows DWM flicker under QWebEngine.
+    assert "backdrop-filter" not in css
 
 
 def test_shell_routes_update_manager_from_help_menu():

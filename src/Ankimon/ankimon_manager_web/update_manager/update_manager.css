@@ -3,6 +3,8 @@
 	--update-warning: #d29922;
 	--update-deep-warning: #b26a00;
 	--update-error: #f85149;
+	--update-caution: #f0883e;
+	--update-danger-fill: #da3633;
 }
 
 .update-content {
@@ -25,6 +27,12 @@
 	display: flex;
 	align-items: center;
 	gap: 12px;
+}
+
+.branch-actions,
+.sprites-actions {
+	justify-content: space-between;
+	padding: 0 20px;
 }
 
 .channel-row {
@@ -99,8 +107,15 @@
 }
 
 .installed-source-detail {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 9px;
 	color: var(--text-main);
-	font: .82rem 'JetBrains Mono', monospace;
+	background: var(--bg-card-hover);
+	border: 1px solid var(--border-main);
+	border-radius: 999px;
+	font: 600 .74rem/1.5 'Outfit', sans-serif;
+	vertical-align: 1px;
 }
 
 .top-bar-titles h2 {
@@ -433,38 +448,76 @@
 	line-height: 1.5;
 }
 
-.status-text.success {
-	color: var(--update-success);
+/* Status chips: one look for every "where do I stand" message. */
+.status-text.success,
+.status-text.neutral,
+.status-text.warning,
+.status-text.error,
+.status-text.rate-limit,
+.status-text.high-risk,
+.release-highlight.success,
+.release-highlight.warning,
+.release-highlight.error {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	justify-self: start;
+	width: fit-content;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 6px 12px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	font-size: .9rem;
 	font-weight: 700;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+
+.status-text.success::before,
+.status-text.neutral::before,
+.status-text.warning::before,
+.status-text.error::before,
+.status-text.rate-limit::before,
+.status-text.high-risk::before,
+.release-highlight.success::before,
+.release-highlight.warning::before,
+.release-highlight.error::before {
+	content: "";
+	width: 8px;
+	height: 8px;
+	flex: 0 0 8px;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.status-text.success,
+.release-highlight.success {
+	color: var(--update-success);
+	background: rgba(63, 185, 80, .12);
+	border-color: rgba(63, 185, 80, .35);
 }
 
 .status-text.neutral {
 	color: var(--text-muted);
-	font-weight: 700;
+	background: rgba(139, 148, 158, .12);
+	border-color: rgba(139, 148, 158, .3);
 }
 
-.status-text.warning {
+.status-text.warning,
+.release-highlight.warning {
 	color: var(--update-warning);
-	font-weight: 700;
+	background: rgba(210, 153, 34, .12);
+	border-color: rgba(210, 153, 34, .35);
 }
 
-.status-text.error {
-	color: var(--update-error);
-	font-weight: 700;
-}
-
-.status-text.rate-limit {
-	color: var(--update-error);
-	font-weight: 700;
-}
-
+.status-text.error,
+.status-text.rate-limit,
+.status-text.high-risk,
 .release-highlight.error {
 	color: var(--update-error);
-	font-weight: 700;
-}
-
-.release-highlight.success {
-	color: var(--update-success);
+	background: rgba(248, 81, 73, .12);
+	border-color: rgba(248, 81, 73, .4);
 }
 
 .commit-list {
@@ -483,6 +536,12 @@
 	font-size: .84rem;
 	line-height: 1.45;
 	overflow-wrap: anywhere;
+}
+
+.commit-list li.commit-list-empty {
+	padding: 0;
+	color: var(--text-muted);
+	background: transparent;
 }
 
 .commit-list code {
@@ -508,15 +567,28 @@
 	padding-bottom: 90px;
 }
 
-.branch-actions {
-	justify-content: space-between;
-}
-
 .operation-progress,
 .sprite-progress {
 	display: grid;
-	gap: 5px;
+	gap: 8px;
 	width: 100%;
+	box-sizing: border-box;
+}
+
+/* A progress block outside a card gets the card's frame and padding, so its
+   label and bar line up with the cards above it. */
+.operation-progress {
+	padding: 14px 20px 16px;
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 12px;
+}
+
+.update-card .operation-progress {
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-radius: 0;
 }
 
 .progress-label {
@@ -525,7 +597,7 @@
 	justify-content: space-between;
 	gap: 12px;
 	color: var(--text-muted);
-	font-size: .78rem;
+	font-size: .82rem;
 	font-weight: 400;
 	line-height: 1.35;
 }
@@ -628,21 +700,39 @@
 }
 
 .release-highlight {
-	color: var(--update-warning);
+	color: var(--text-muted);
 	font-size: 1rem;
 	font-weight: 700;
 }
 
+/* Banners: body copy stays in the normal text colour so it is readable; the
+   tone lives in the frame and the emphasised words. */
 .warning-text {
 	margin: 0;
 	padding: 12px 16px;
-	color: var(--update-warning);
-	background: rgba(210, 153, 34, .09);
+	color: var(--text-main);
+	background: rgba(210, 153, 34, .1);
+	border: 1px solid rgba(210, 153, 34, .32);
 	border-left: 4px solid var(--update-warning);
-	border-radius: 0 8px 8px 0;
-	font-weight: 500;
+	border-radius: 8px;
+	font-weight: 400;
 	line-height: 1.55;
 	font-size: .9rem;
+}
+
+.warning-text strong {
+	color: var(--update-warning);
+	font-weight: 700;
+}
+
+.warning-text.danger-text {
+	background: rgba(248, 81, 73, .1);
+	border-color: rgba(248, 81, 73, .4);
+	border-left-color: var(--update-error);
+}
+
+.warning-text.danger-text strong {
+	color: var(--update-error);
 }
 
 .developer-intro {
@@ -731,29 +821,58 @@
 progress {
 	display: block;
 	width: 100%;
-	height: 24px;
+	height: 10px;
 	overflow: hidden;
 	border: 1px solid var(--border-main);
-	border-radius: 6px;
+	border-radius: 999px;
 	background: var(--bg-darker);
 	accent-color: var(--accent-blue);
 }
 
 progress::-webkit-progress-bar {
-	border-radius: 5px;
+	border-radius: 999px;
 	background: var(--bg-darker);
 }
 
 progress::-webkit-progress-value {
-	border-radius: 5px;
+	border-radius: 999px;
 	background: var(--accent-blue);
 	transition: width .18s ease;
 }
 
 progress::-moz-progress-bar {
-	border-radius: 5px;
+	border-radius: 999px;
 	background: var(--accent-blue);
 	transition: width .18s ease;
+}
+
+/* The bar follows the colour of the message above it. */
+[data-result="complete"] progress::-webkit-progress-value,
+[data-result="sprite-success"] progress::-webkit-progress-value {
+	background: var(--update-success);
+}
+
+[data-result="failure"] progress::-webkit-progress-value,
+[data-result="sprite-warning"] progress::-webkit-progress-value {
+	background: var(--update-warning);
+}
+
+[data-result="rate-limit"] progress::-webkit-progress-value {
+	background: var(--update-error);
+}
+
+[data-result="complete"] progress::-moz-progress-bar,
+[data-result="sprite-success"] progress::-moz-progress-bar {
+	background: var(--update-success);
+}
+
+[data-result="failure"] progress::-moz-progress-bar,
+[data-result="sprite-warning"] progress::-moz-progress-bar {
+	background: var(--update-warning);
+}
+
+[data-result="rate-limit"] progress::-moz-progress-bar {
+	background: var(--update-error);
 }
 
 .btn-primary {
@@ -768,31 +887,35 @@ progress::-moz-progress-bar {
 	border-color: #4a9cf0;
 }
 
+/* A disabled primary button reads as "nothing to do", not as a dimmed call
+   to action. */
 .btn-primary:disabled {
-	color: rgba(255, 255, 255, .72);
-	background: #2367a8;
-	border-color: #2367a8;
-	opacity: .68;
+	color: var(--text-muted);
+	background: var(--bg-card-hover);
+	border-color: var(--border-main);
 }
 
-.sprites-snooze-row {
-	padding: 0 2px;
+.btn-danger {
+	color: #fff;
+	background: var(--update-danger-fill);
+	border: 1px solid var(--update-danger-fill);
 }
 
+.btn-danger:hover:not(:disabled) {
+	color: #fff;
+	background: var(--update-error);
+	border-color: var(--update-error);
+}
+
+.btn-danger:disabled {
+	opacity: .5;
+}
+
+/* Sits inside the card and shares the card's content column. */
 .sprite-progress {
-	box-sizing: border-box;
-	margin-top: 12px;
-	padding: 12px 12px 0;
+	margin-top: 4px;
+	padding-top: 14px;
 	border-top: 1px dashed var(--border-main);
-}
-
-.sprite-progress .progress-label {
-	padding: 0 4px;
-}
-
-.sprite-progress progress {
-	width: calc(100% - 8px);
-	margin: 0 4px;
 }
 
 .sprite-progress.hidden {
@@ -802,7 +925,6 @@ progress::-moz-progress-bar {
 .sprites-actions {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: 12px;
 }
 
@@ -856,27 +978,61 @@ progress::-moz-progress-bar {
 	display: grid;
 	place-items: center;
 	padding: 24px;
-	background: rgba(0, 0, 0, .68);
+	background: rgba(3, 5, 8, .82);
 }
 
 .update-modal-card {
 	width: min(100%, 520px);
-	padding: 22px;
+	max-height: calc(100vh - 48px);
+	box-sizing: border-box;
+	overflow: auto;
+	padding: 24px;
 	background: var(--bg-card);
 	border: 1px solid var(--border-main);
 	border-radius: 14px;
-	box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+	box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
 }
 
+/* Tone is a strip along the top edge plus the header icon, not a glow. */
 .update-modal-card.warning-modal {
-	border-color: var(--update-warning);
-	box-shadow: 0 0 0 1px rgba(210, 153, 34, .55),
-		0 0 24px rgba(210, 153, 34, .24), 0 18px 50px rgba(0, 0, 0, .5);
+	border-color: rgba(210, 153, 34, .5);
+	box-shadow: inset 0 4px 0 var(--update-warning), 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.update-modal-card.danger-modal {
+	border-color: rgba(248, 81, 73, .55);
+	box-shadow: inset 0 4px 0 var(--update-error), 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.modal-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 14px;
 }
 
 .update-modal-card h2 {
 	color: var(--text-bright);
-	margin-bottom: 12px;
+	margin: 0;
+}
+
+.modal-icon {
+	width: 28px;
+	height: 28px;
+	flex: 0 0 28px;
+	display: grid;
+	place-items: center;
+	color: var(--update-warning);
+	background: rgba(210, 153, 34, .15);
+	border: 1px solid rgba(210, 153, 34, .5);
+	border-radius: 50%;
+	font: 800 1rem/1 'Outfit', sans-serif;
+}
+
+.danger-modal .modal-icon {
+	color: var(--update-error);
+	background: rgba(248, 81, 73, .15);
+	border-color: rgba(248, 81, 73, .55);
 }
 
 .update-modal-card p {
@@ -898,8 +1054,21 @@ progress::-moz-progress-bar {
 .modal-actions {
 	display: flex;
 	justify-content: flex-end;
-	gap: 9px;
+	gap: 10px;
 	margin-top: 20px;
+	padding-top: 16px;
+	border-top: 1px solid var(--border-main);
+}
+
+.modal-actions .btn:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
+}
+
+.update-modal-card .high-risk-advice {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: .9rem;
 }
 
 .modal-warning-text {
@@ -911,13 +1080,17 @@ progress::-moz-progress-bar {
 }
 
 .update-modal-card .modal-warning-text {
-	color: var(--update-warning);
+	color: var(--text-main);
 }
 
 .update-modal-card .user-files-warning {
-	color: var(--update-deep-warning);
-	background: rgba(178, 106, 0, .09);
+	background: rgba(178, 106, 0, .12);
+	border-color: rgba(178, 106, 0, .45);
 	border-left-color: var(--update-deep-warning);
+}
+
+.update-modal-card .user-files-warning strong {
+	color: var(--update-caution);
 }
 
 .developer-warning-checkbox {
@@ -944,7 +1117,10 @@ progress::-moz-progress-bar {
 }
 
 .btn:disabled {
-	cursor: wait;
+	cursor: not-allowed;
+}
+
+.btn-secondary:disabled {
 	opacity: .55;
 }
 
@@ -984,9 +1160,15 @@ progress::-moz-progress-bar {
 	}
 
 	.git-notice,
-	.branch-actions {
+	.branch-actions,
+	.sprites-actions {
 		align-items: stretch;
 		flex-direction: column;
+	}
+
+	.branch-actions,
+	.sprites-actions {
+		padding: 0 4px;
 	}
 
 	.custom-select-menu {
