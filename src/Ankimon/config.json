@@ -7,6 +7,7 @@
     "battle.auto_catch_mega": true,
     "battle.auto_catch_gmax": true,
     "battle.auto_catch_regional": true,
+    "battle.auto_catch_cosmetic": true,
     "battle.auto_catch_wishlist": [25, 133],
     "battle.cards_per_round": 2,
     "battle.daily_average": 100,
