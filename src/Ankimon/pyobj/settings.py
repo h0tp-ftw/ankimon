@@ -105,6 +105,8 @@ DEFAULT_CONFIG = {
     "trainer.mobile_reviews_resolved_since_payout": 0,
     "trainer.level": 0,
     "trainer.xp": 0,
+    "trainer.total_encounters": 0,
+    "trainer.total_pokemon_defeated": 0,
     "mobile.enabled": True,
     "mobile.resolution_mode": "manual",
     "mobile.inactive_companions": [],

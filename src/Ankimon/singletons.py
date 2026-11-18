@@ -574,7 +574,7 @@ _LAZY_WINDOWS = {
     "test_window": get_test_window,
     "achievement_bag": get_achievement_bag,
     "ankimon_tracker_window": get_ankimon_tracker_window,
-    "pokedex_window": get_pokedex_window,
+    "ankidex_window": get_ankidex_window,
     "eff_chart": get_eff_chart,
     "pokedex": get_pokedex_widget,
     "gen_id_chart": get_gen_id_chart,
@@ -608,3 +608,5 @@ if not isinstance(services.ui, QtPresenter):
 # factory re-runs bind_runtime_globals() after registering its window, so the
 # bindings are live before any gameplay code can run.
 bind_runtime_globals()
+
+__all__ = ["ankidex_window"]

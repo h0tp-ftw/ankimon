@@ -410,7 +410,8 @@
       const caughtTotal = getCaughtTotalFromURL(); // Total instances (for "Seen" calculation)
       // Seen = Obtained instances (current) + Released instances (were obtained before) + Defeated (Pokémon defeated by our Pokémon)
       // Use caughtTotal (instances) instead of caughtCount (unique IDs) to handle multiple instances of same Pokémon
-      const seenTotal = caughtTotal + releasedCount + defeatedCount;
+      const totalEncounters = getTotalEncountersFromURL();
+      const seenTotal = totalEncounters > 0 ? totalEncounters : caughtTotal + releasedCount + defeatedCount;
       
       const shinyCount = shinyNumbers.length;
 

@@ -2507,6 +2507,22 @@ class AnkimonDB:
         if added.get("pokedex_caught"):
             self._clear_reviewer_ownership_cache()
 
+    def mark_as_seen(self, pokemon_id: int):
+        """Marks a pokemon as seen in the pokedex history.
+
+        Raises if the write fails.
+        """
+        try:
+            pokemon_id = int(pokemon_id)
+        except (TypeError, ValueError):
+            self._log("warning", f"Ignoring non-numeric pokedex id: {pokemon_id!r}")
+            return
+
+        with self._pokedex_lock:
+            self._append_pokedex_ids(
+                {"pokedex_seen": (pokemon_id,)}
+            )
+
     def _reconcile_pokedex_history_safely(self):
         """``_reconcile_pokedex_history`` that can never stop the DB from opening."""
         try:

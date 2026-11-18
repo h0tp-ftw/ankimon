@@ -85,6 +85,7 @@ class Pokedex(QDialog):
         query.addQueryItem("released", str(released_count))
         # Pass total caught count (instances, not unique IDs) for accurate "Seen" calculation
         query.addQueryItem("caught_total", str(total_caught_count))
+        query.addQueryItem("total_encounters", str(self.settings.get("trainer.total_encounters", 0)))
         # Add shiny Pokémon IDs
         str_shiny_pokemon_ids = ",".join(map(str, shiny_pokemon_ids)) if shiny_pokemon_ids else ""
         query.addQueryItem("shinies", str_shiny_pokemon_ids)

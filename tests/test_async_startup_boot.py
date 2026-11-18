@@ -864,7 +864,7 @@ def boot_env(monkeypatch):
         test_window=object(),
         achievement_bag=object(),
         ankimon_tracker_window=object(),
-        pokedex_window=object(),
+        get_ankidex_window=object(),
         eff_chart=object(),
         gen_id_chart=object(),
         license=object(),
