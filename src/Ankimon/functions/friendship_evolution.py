@@ -507,7 +507,7 @@ def get_level_evolutions_for_species(
                 # Move-based (levelMove) and defeat-based (minimumDefeated)
                 # evolutions have no fixed evoLevel; treat them as eligible from
                 # Lv1 so the readiness path can gate them on the move / count.
-                is_eligible = min_level > 0
+                is_eligible = min_level > 0 and evo_type != "levelHold"
                 if evo_type == "levelMove" or condition == "minimumdefeated":
                     is_eligible = True
                     if min_level <= 0:
@@ -858,15 +858,15 @@ def evolution_readiness(pokemon: Any, now: Optional[datetime] = None) -> dict:
             not_evolvable=not_evolvable,
             pokemon=pokemon,
         )
-        if level_readiness["ready"]:
+        if level_readiness.get("ready"):
             if item_readiness["evolvable"]:
                 level_readiness["item_status_text"] = item_readiness["status_text"]
             return level_readiness
         if item_readiness["evolvable"]:
-            level_status = level_readiness["status_text"]
+            level_status = level_readiness.get("status_text")
             if (
-                level_readiness["evolvable"]
-                and level_status
+                level_readiness.get("evolvable")
+                and level_status is not None
                 and level_status != item_readiness["status_text"]
             ):
                 item_readiness["status_text"] = (
