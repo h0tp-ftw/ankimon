@@ -656,6 +656,100 @@ def search_pokedex_by_id(species_id):
     return id_index.get(safe_int(species_id), "Pokémon not found")
 
 
+# === GENERATION LOOKUPS ===
+# National Pokédex id ranges: (last species id, generation introduced). Base
+# species only — alternate forms are not ordered by their debut generation there.
+_GEN_ID_RANGES = (
+    (151, 1),
+    (251, 2),
+    (386, 3),
+    (493, 4),
+    (649, 5),
+    (721, 6),
+    (809, 7),
+    (905, 8),
+    (1025, 9),
+)
+
+_generation_index = None
+
+
+def generation_from_species_id(species_id) -> int:
+    """Generation implied by a National Pokédex *species* id (base species)."""
+    sid = safe_int(species_id, default=None)
+    if sid is None:
+        return 1
+    for max_id, gen in _GEN_ID_RANGES:
+        if sid <= max_id:
+            return gen
+    return _GEN_ID_RANGES[-1][1]
+
+
+def generation_for_id(pokemon_id) -> int:
+    """Canonical generation in which the Pokémon/form ``pokemon_id`` debuted.
+
+    The single source of truth for "which generation is this Mon?": pokedex.json
+    carries a curated ``gen`` on every alternate form (regional, Mega, Gmax,
+    Totem, ...) so a form reports the generation it was actually introduced in
+    (e.g. Mega Venusaur -> 6, Alolan Raichu -> 7, Gigantamax Charizard -> 8)
+    instead of its base species'. Base species fall back to their National
+    Pokédex id range. Ids absent from the dex (or garbage) also fall back to
+    the id range, so callers always get a usable generation.
+    """
+    actual_id = safe_int(pokemon_id, default=None)
+    if actual_id is None:
+        return 1
+
+    name = search_pokedex_by_id(actual_id)
+    if name and name != "Pokémon not found":
+        entry = _load_pokedex_cache().get(name)
+        if isinstance(entry, dict):
+            explicit = safe_int(entry.get("gen"), default=None)
+            if explicit:
+                return explicit
+            species_id = safe_int(entry.get("species_id"), default=None)
+            if species_id:
+                return generation_from_species_id(species_id)
+    return generation_from_species_id(actual_id)
+
+
+def _load_generation_index():
+    """Build ``{generation: (actual_id, ...)}`` once for the whole Pokédex."""
+    global _generation_index
+    if _generation_index is None:
+        index = {}
+        try:
+            for entry in _load_pokedex_cache().values():
+                if not isinstance(entry, dict):
+                    continue
+                actual_id = safe_int(entry.get("actual_id"), default=None)
+                if actual_id is None:
+                    continue
+                explicit = safe_int(entry.get("gen"), default=None)
+                if explicit:
+                    gen = explicit
+                else:
+                    gen = generation_from_species_id(
+                        entry.get("species_id") or actual_id
+                    )
+                ids = index.setdefault(gen, [])
+                if actual_id not in ids:
+                    ids.append(actual_id)
+        except Exception as e:
+            print(f"Error building generation index: {e}")
+            index = {}
+        _generation_index = {gen: tuple(ids) for gen, ids in index.items()}
+    return _generation_index
+
+
+def get_ids_in_generation(generation) -> list:
+    """Every Pokédex id (base species and forms) introduced in ``generation``."""
+    gen = safe_int(generation, default=None)
+    if gen is None:
+        return []
+    return list(_load_generation_index().get(gen, ()))
+
+
 def format_lore_name(name: str) -> str:
     """Transform internal hyphenated names into lore-accurate ones (e.g. Venusaur-Mega -> Mega Venusaur)."""
     if not name or not isinstance(name, str):

@@ -236,48 +236,16 @@ class PokemonObject:
 
     @property
     def generation(self) -> int:
-        """Return the generation in which this Pokémon (or form) was introduced."""
+        """Return the generation in which this Pokémon (or form) was introduced.
+
+        Delegates to the single canonical lookup in ``pokedex_functions`` so a
+        form reports its own debut generation (Mega -> 6, Alolan -> 7,
+        Gigantamax -> 8, ...) rather than its base species'.
+        """
         try:
-            from ..functions.pokedex_functions import (
-                search_pokedex_by_id,
-                search_pokedex,
-            )
-            from ..const import gen_ids
-            from ..functions import encounter_data
+            from ..functions.pokedex_functions import generation_for_id
 
-            actual_id = int(self.id)
-
-            # 1. Check for a regional-form intro gen first. REGIONAL_FORME_GEN is
-            # owned by the encounter-overhaul leaf (functions/encounter_data.py);
-            # until that lands this getattr yields {} and regional forms fall
-            # through to their base-species generation below.
-            if actual_id >= 10000:
-                internal_name = search_pokedex_by_id(actual_id)
-                if internal_name and internal_name != "Pokémon not found":
-                    forme = search_pokedex(internal_name, "forme") or ""
-                    intro_gen = getattr(encounter_data, "REGIONAL_FORME_GEN", {}).get(
-                        forme
-                    )
-                    if intro_gen:
-                        return intro_gen
-
-            # 2. Fallback to base-species generation.
-            species_id = self.pokedex_id
-
-            # Sort by max_id to match the lowest possible gen.
-            sorted_gens = sorted(gen_ids.items(), key=lambda x: x[1])
-            for gen_key, max_val in sorted_gens:
-                if species_id <= max_val:
-                    # Parse "gen_1" -> 1
-                    try:
-                        return int(gen_key.split("_")[1])
-                    except Exception:
-                        continue
-
-            # If the ID is beyond known gens, return the last gen.
-            if sorted_gens:
-                return int(sorted_gens[-1][0].split("_")[1])
-            return 1
+            return generation_for_id(self.id)
         except Exception:
             # Emergency fallback based on common ID ranges if imports fail.
             # int-cast defensively: a str id would crash the fallback itself.

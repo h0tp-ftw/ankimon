@@ -58,6 +58,19 @@ const GEN_RANGES = [
   { id: 9, name: "Gen IX", start: 906, end: 1025 },
 ];
 
+// Canonical introduction generation of a Pokédex entry. pokedex.json carries a
+// curated `gen` on every alternate form (regional, Mega, Gmax, Totem, ...), so
+// those report their own debut generation instead of their base species'. Base
+// species fall back to their National Pokédex id range.
+function generationOf(p) {
+  if (!p) return null;
+  if (Number.isInteger(p.gen)) return p.gen;
+  const range = GEN_RANGES.find(
+    (g) => p.species_id >= g.start && p.species_id <= g.end,
+  );
+  return range ? range.id : null;
+}
+
 const TYPES = [
   "Normal",
   "Fire",
@@ -657,16 +670,16 @@ function renderSidebarFilters() {
     const btn = document.createElement("button");
     btn.className = "nav-item";
     btn.dataset.scope = gen.id;
-    const genPokemon = state.allPokemon.filter(
-      (p) => p.species_id >= gen.start && p.species_id <= gen.end,
+    const uniqueInGen = new Set(
+      state.allPokemon
+        .filter((p) => generationOf(p) === gen.id)
+        .map((p) => p.species_id),
     );
-    const uniqueInGen = new Set(genPokemon.map((p) => p.species_id));
     const totalInGen = uniqueInGen.size;
     const caughtInGen = new Set();
     state.collection.owned.forEach((id) => {
       const p = state.speciesMap[id];
-      if (p && p.species_id >= gen.start && p.species_id <= gen.end)
-        caughtInGen.add(p.species_id);
+      if (p && generationOf(p) === gen.id) caughtInGen.add(p.species_id);
     });
     const caughtCount = caughtInGen.size;
     const progressPercent =
@@ -760,8 +773,7 @@ function applyFiltersAndRender(forceAll = false) {
   const seenSpecies = new Set();
   let filtered = state.allPokemon.filter((p) => {
     if (state.ui.currentScope !== "national") {
-      const gen = GEN_RANGES.find((g) => g.id === state.ui.currentScope);
-      if (p.species_id < gen.start || p.species_id > gen.end) return false;
+      if (generationOf(p) !== state.ui.currentScope) return false;
     }
     if (seenSpecies.has(p.species_id)) return false;
     const visState = getVisibilityState(p.actual_id);
@@ -957,7 +969,7 @@ function renderGrid() {
     GEN_RANGES.forEach((gen) => {
       const ids = state.visibleIds.filter((id) => {
         const p = state.speciesMap[id];
-        return p && p.species_id >= gen.start && p.species_id <= gen.end;
+        return p && generationOf(p) === gen.id;
       });
       if (ids.length > 0) groups.push({ name: gen.name, ids });
     });
@@ -1111,9 +1123,7 @@ function selectPokemon(id, cardElement = null) {
     visState === 2 ? `${p.heightm}m` : "???";
   document.getElementById("det-weight").textContent =
     visState === 2 ? `${p.weightkg}kg` : "???";
-  const genInfo = GEN_RANGES.find(
-    (g) => p.species_id >= g.start && p.species_id <= g.end,
-  );
+  const genInfo = GEN_RANGES.find((g) => g.id === generationOf(p));
   document.getElementById("det-gen").textContent = genInfo
     ? genInfo.name
     : "Unknown";
@@ -1395,11 +1405,8 @@ function renderBriefing(p, id, visState, displayId) {
   if (reqsMet && isEncounterable) {
     const boostedRegions = [];
 
-    // Find generation
-    const genInfo = GEN_RANGES.find(
-      (g) => p.species_id >= g.start && p.species_id <= g.end,
-    );
-    const genId = genInfo ? genInfo.id : null;
+    // Find generation (the form's own debut generation, not its base species')
+    const genId = generationOf(p);
 
     // Check regional form boost
     const formRegion = state.regionalData.forms[id];

@@ -150,7 +150,8 @@
     ],
     "requiredItem": "Venusaurite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "venusaurgmax": {
     "species_id": 3,
@@ -187,7 +188,8 @@
     ],
     "changesFrom": "Venusaur",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "charmander": {
     "species_id": 4,
@@ -340,7 +342,8 @@
     ],
     "requiredItem": "Charizardite X",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "charizardmegay": {
     "species_id": 6,
@@ -376,7 +379,8 @@
     ],
     "requiredItem": "Charizardite Y",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "charizardgmax": {
     "species_id": 6,
@@ -413,7 +417,8 @@
     ],
     "changesFrom": "Charizard",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "squirtle": {
     "species_id": 7,
@@ -562,7 +567,8 @@
     ],
     "requiredItem": "Blastoisinite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "blastoisegmax": {
     "species_id": 9,
@@ -598,7 +604,8 @@
     ],
     "changesFrom": "Blastoise",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "caterpie": {
     "species_id": 10,
@@ -725,7 +732,8 @@
     ],
     "changesFrom": "Butterfree",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "weedle": {
     "species_id": 13,
@@ -859,7 +867,8 @@
     ],
     "requiredItem": "Beedrillite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "pidgey": {
     "species_id": 16,
@@ -997,7 +1006,8 @@
     ],
     "requiredItem": "Pidgeotite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "rattata": {
     "species_id": 19,
@@ -1071,7 +1081,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "raticate": {
     "species_id": 20,
@@ -1146,7 +1157,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "raticatealolatotem": {
     "species_id": 20,
@@ -1176,7 +1188,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "spearow": {
     "species_id": 21,
@@ -1810,7 +1823,8 @@
       "Undiscovered"
     ],
     "tier": "Illegal",
-    "isNonstandard": "LGPE"
+    "isNonstandard": "LGPE",
+    "gen": 7
   },
   "pikachuworld": {
     "species_id": 25,
@@ -1873,7 +1887,8 @@
     ],
     "changesFrom": "Pikachu",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "raichu": {
     "species_id": 26,
@@ -1945,7 +1960,8 @@
       "Field",
       "Fairy"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "raichumegax": {
     "species_id": 26,
@@ -2079,7 +2095,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 7
   },
   "sandslash": {
     "species_id": 28,
@@ -2148,7 +2165,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 7
   },
   "nidoranf": {
     "species_id": 29,
@@ -2551,7 +2569,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "NFE"
+    "tier": "NFE",
+    "gen": 7
   },
   "ninetales": {
     "species_id": 38,
@@ -2629,7 +2648,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 7
   },
   "jigglypuff": {
     "species_id": 39,
@@ -3067,7 +3087,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 7
   },
   "dugtrio": {
     "species_id": 51,
@@ -3137,7 +3158,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "meowth": {
     "species_id": 52,
@@ -3211,7 +3233,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 7
   },
   "meowthgalar": {
     "species_id": 52,
@@ -3244,7 +3267,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 8
   },
   "meowthgmax": {
     "species_id": 52,
@@ -3276,7 +3300,8 @@
     ],
     "changesFrom": "Meowth",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "persian": {
     "species_id": 53,
@@ -3345,7 +3370,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "psyduck": {
     "species_id": 54,
@@ -3552,7 +3578,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 8
   },
   "arcanine": {
     "species_id": 59,
@@ -3632,7 +3659,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "UU"
+    "tier": "UU",
+    "gen": 8
   },
   "poliwag": {
     "species_id": 60,
@@ -3880,7 +3908,8 @@
     ],
     "requiredItem": "Alakazite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "machop": {
     "species_id": 66,
@@ -4027,7 +4056,8 @@
     ],
     "changesFrom": "Machamp",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "bellsprout": {
     "species_id": 69,
@@ -4298,7 +4328,8 @@
     "eggGroups": [
       "Mineral"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 7
   },
   "graveler": {
     "species_id": 75,
@@ -4375,7 +4406,8 @@
     "eggGroups": [
       "Mineral"
     ],
-    "tier": "NFE"
+    "tier": "NFE",
+    "gen": 7
   },
   "golem": {
     "species_id": 76,
@@ -4448,7 +4480,8 @@
       "Mineral"
     ],
     "tier": "ZU",
-    "evoItem": "Linking Cord"
+    "evoItem": "Linking Cord",
+    "gen": 7
   },
   "ponyta": {
     "species_id": 77,
@@ -4521,7 +4554,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "rapidash": {
     "species_id": 78,
@@ -4593,7 +4627,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "slowpoke": {
     "species_id": 79,
@@ -4669,7 +4704,8 @@
       "Monster",
       "Water 1"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 8
   },
   "slowbro": {
     "species_id": 80,
@@ -4742,7 +4778,8 @@
     ],
     "requiredItem": "Slowbronite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "slowbrogalar": {
     "species_id": 80,
@@ -4777,7 +4814,8 @@
       "Monster",
       "Water 1"
     ],
-    "tier": "NU"
+    "tier": "NU",
+    "gen": 8
   },
   "magnemite": {
     "species_id": 81,
@@ -4917,7 +4955,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "doduo": {
     "species_id": 84,
@@ -5116,7 +5155,8 @@
     "eggGroups": [
       "Amorphous"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 7
   },
   "muk": {
     "species_id": 89,
@@ -5186,7 +5226,8 @@
     "eggGroups": [
       "Amorphous"
     ],
-    "tier": "RU"
+    "tier": "RU",
+    "gen": 7
   },
   "shellder": {
     "species_id": 90,
@@ -5380,7 +5421,8 @@
     ],
     "requiredItem": "Gengarite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "gengargmax": {
     "species_id": 94,
@@ -5411,7 +5453,8 @@
     ],
     "changesFrom": "Gengar",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "onix": {
     "species_id": 95,
@@ -5601,7 +5644,8 @@
     ],
     "changesFrom": "Kingler",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "voltorb": {
     "species_id": 100,
@@ -5675,7 +5719,8 @@
     "eggGroups": [
       "Mineral"
     ],
-    "tier": "NFE"
+    "tier": "NFE",
+    "gen": 8
   },
   "electrode": {
     "species_id": 101,
@@ -5748,7 +5793,8 @@
     "eggGroups": [
       "Mineral"
     ],
-    "tier": "ZUBL"
+    "tier": "ZUBL",
+    "gen": 8
   },
   "exeggcute": {
     "species_id": 102,
@@ -5852,7 +5898,8 @@
     "eggGroups": [
       "Grass"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "cubone": {
     "species_id": 104,
@@ -5961,7 +6008,8 @@
       "Monster"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "marowakalolatotem": {
     "species_id": 105,
@@ -5991,7 +6039,8 @@
       "Monster"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "hitmonlee": {
     "species_id": 106,
@@ -6190,7 +6239,8 @@
     "eggGroups": [
       "Amorphous"
     ],
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 8
   },
   "rhyhorn": {
     "species_id": 111,
@@ -6395,7 +6445,8 @@
     ],
     "requiredItem": "Kangaskhanite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "horsea": {
     "species_id": 116,
@@ -6714,7 +6765,8 @@
     ],
     "canHatch": true,
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "scyther": {
     "species_id": 123,
@@ -6919,7 +6971,8 @@
     ],
     "requiredItem": "Pinsirite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "tauros": {
     "species_id": 128,
@@ -6990,7 +7043,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 9
   },
   "taurospaldeablaze": {
     "species_id": 128,
@@ -7022,7 +7076,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 9
   },
   "taurospaldeaaqua": {
     "species_id": 128,
@@ -7054,7 +7109,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "NU"
+    "tier": "NU",
+    "gen": 9
   },
   "magikarp": {
     "species_id": 129,
@@ -7155,7 +7211,8 @@
     ],
     "requiredItem": "Gyaradosite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "lapras": {
     "species_id": 131,
@@ -7220,7 +7277,8 @@
     ],
     "changesFrom": "Lapras",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "ditto": {
     "species_id": 132,
@@ -7333,7 +7391,8 @@
       "Undiscovered"
     ],
     "tier": "Illegal",
-    "isNonstandard": "LGPE"
+    "isNonstandard": "LGPE",
+    "gen": 7
   },
   "eeveegmax": {
     "species_id": 133,
@@ -7369,7 +7428,8 @@
     ],
     "changesFrom": "Eevee",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "vaporeon": {
     "species_id": 134,
@@ -7729,7 +7789,8 @@
     ],
     "requiredItem": "Aerodactylite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "snorlax": {
     "species_id": 143,
@@ -7801,7 +7862,8 @@
     ],
     "changesFrom": "Snorlax",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "articuno": {
     "species_id": 144,
@@ -7870,7 +7932,8 @@
     "eggGroups": [
       "Undiscovered"
     ],
-    "tier": "NU"
+    "tier": "NU",
+    "gen": 8
   },
   "zapdos": {
     "species_id": 145,
@@ -7939,7 +8002,8 @@
     "eggGroups": [
       "Undiscovered"
     ],
-    "tier": "UU"
+    "tier": "UU",
+    "gen": 8
   },
   "moltres": {
     "species_id": 146,
@@ -8008,7 +8072,8 @@
     "eggGroups": [
       "Undiscovered"
     ],
-    "tier": "UUBL"
+    "tier": "UUBL",
+    "gen": 8
   },
   "dratini": {
     "species_id": 147,
@@ -8216,7 +8281,8 @@
     ],
     "requiredItem": "Mewtwonite X",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "mewtwomegay": {
     "species_id": 150,
@@ -8247,7 +8313,8 @@
     ],
     "requiredItem": "Mewtwonite Y",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "mew": {
     "species_id": 151,
@@ -8576,7 +8643,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 8
   },
   "totodile": {
     "species_id": 158,
@@ -9489,7 +9557,8 @@
     ],
     "requiredItem": "Ampharosite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "bellossom": {
     "species_id": 182,
@@ -9950,7 +10019,8 @@
       "Water 1",
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 9
   },
   "quagsire": {
     "species_id": 195,
@@ -10157,7 +10227,8 @@
       "Monster",
       "Water 1"
     ],
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 8
   },
   "misdreavus": {
     "species_id": 200,
@@ -10532,7 +10603,8 @@
     ],
     "requiredItem": "Steelixite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "snubbull": {
     "species_id": 209,
@@ -10673,7 +10745,8 @@
     "eggGroups": [
       "Water 2"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 8
   },
   "scizor": {
     "species_id": 212,
@@ -10743,7 +10816,8 @@
     ],
     "requiredItem": "Scizorite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "shuckle": {
     "species_id": 213,
@@ -10840,7 +10914,8 @@
     ],
     "requiredItem": "Heracronite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "sneasel": {
     "species_id": 215,
@@ -10913,7 +10988,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 8
   },
   "teddiursa": {
     "species_id": 216,
@@ -11185,7 +11261,8 @@
       "Water 3"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "remoraid": {
     "species_id": 223,
@@ -11485,7 +11562,8 @@
     ],
     "requiredItem": "Houndoominite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "kingdra": {
     "species_id": 230,
@@ -12128,7 +12206,8 @@
     ],
     "requiredItem": "Tyranitarite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "lugia": {
     "species_id": 249,
@@ -12373,7 +12452,8 @@
     ],
     "requiredItem": "Sceptilite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "torchic": {
     "species_id": 255,
@@ -12520,7 +12600,8 @@
     ],
     "requiredItem": "Blazikenite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "mudkip": {
     "species_id": 258,
@@ -12671,7 +12752,8 @@
     ],
     "requiredItem": "Swampertite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "poochyena": {
     "species_id": 261,
@@ -12806,7 +12888,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "linoone": {
     "species_id": 264,
@@ -12881,7 +12964,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "wurmple": {
     "species_id": 265,
@@ -13507,7 +13591,8 @@
     ],
     "requiredItem": "Gardevoirite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "surskit": {
     "species_id": 283,
@@ -14193,7 +14278,8 @@
     ],
     "requiredItem": "Sablenite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "mawile": {
     "species_id": 303,
@@ -14263,7 +14349,8 @@
     ],
     "requiredItem": "Mawilite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "aron": {
     "species_id": 304,
@@ -14400,7 +14487,8 @@
     ],
     "requiredItem": "Aggronite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "meditite": {
     "species_id": 307,
@@ -14499,7 +14587,8 @@
     ],
     "requiredItem": "Medichamite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "electrike": {
     "species_id": 309,
@@ -14599,7 +14688,8 @@
     ],
     "requiredItem": "Manectite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "plusle": {
     "species_id": 311,
@@ -14914,7 +15004,8 @@
     ],
     "requiredItem": "Sharpedonite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "wailmer": {
     "species_id": 320,
@@ -15080,7 +15171,8 @@
     ],
     "requiredItem": "Cameruptite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "torkoal": {
     "species_id": 324,
@@ -15458,7 +15550,8 @@
     ],
     "requiredItem": "Altarianite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "zangoose": {
     "species_id": 335,
@@ -16037,7 +16130,8 @@
     ],
     "requiredAbility": "Forecast",
     "battleOnly": "Castform",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 3
   },
   "castformrainy": {
     "species_id": 351,
@@ -16068,7 +16162,8 @@
     ],
     "requiredAbility": "Forecast",
     "battleOnly": "Castform",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 3
   },
   "castformsnowy": {
     "species_id": 351,
@@ -16099,7 +16194,8 @@
     ],
     "requiredAbility": "Forecast",
     "battleOnly": "Castform",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 3
   },
   "kecleon": {
     "species_id": 352,
@@ -16225,7 +16321,8 @@
     ],
     "requiredItem": "Banettite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "duskull": {
     "species_id": 355,
@@ -16445,7 +16542,8 @@
     ],
     "requiredItem": "Absolite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "absolmegaz": {
     "species_id": 359,
@@ -16611,7 +16709,8 @@
     ],
     "requiredItem": "Glalitite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "spheal": {
     "species_id": 363,
@@ -17004,7 +17103,8 @@
     ],
     "requiredItem": "Salamencite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "beldum": {
     "species_id": 374,
@@ -17140,7 +17240,8 @@
     ],
     "requiredItem": "Metagrossite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "regirock": {
     "species_id": 377,
@@ -17303,7 +17404,8 @@
     ],
     "requiredItem": "Latiasite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "latios": {
     "species_id": 381,
@@ -17373,7 +17475,8 @@
     ],
     "requiredItem": "Latiosite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "kyogre": {
     "species_id": 382,
@@ -17441,7 +17544,8 @@
     ],
     "requiredItem": "Blue Orb",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "groudon": {
     "species_id": 383,
@@ -17510,7 +17614,8 @@
     ],
     "requiredItem": "Red Orb",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "rayquaza": {
     "species_id": 384,
@@ -17580,7 +17685,8 @@
     ],
     "requiredMove": "Dragon Ascent",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "jirachi": {
     "species_id": 385,
@@ -17683,7 +17789,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Deoxys",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 3
   },
   "deoxysdefense": {
     "species_id": 386,
@@ -17713,7 +17820,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Deoxys",
-    "tier": "NUBL"
+    "tier": "NUBL",
+    "gen": 3
   },
   "deoxysspeed": {
     "species_id": 386,
@@ -17743,7 +17851,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Deoxys",
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 3
   },
   "turtwig": {
     "species_id": 387,
@@ -18735,7 +18844,8 @@
       "Bug"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 4
   },
   "wormadamtrash": {
     "species_id": 413,
@@ -18769,7 +18879,8 @@
       "Bug"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 4
   },
   "mothim": {
     "species_id": 414,
@@ -19057,7 +19168,8 @@
     ],
     "requiredAbility": "Flower Gift",
     "battleOnly": "Cherrim",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 4
   },
   "shellos": {
     "species_id": 422,
@@ -19335,7 +19447,8 @@
     ],
     "requiredItem": "Lopunnite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "mismagius": {
     "species_id": 429,
@@ -19919,7 +20032,8 @@
     ],
     "requiredItem": "Garchompite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "garchompmegaz": {
     "species_id": 445,
@@ -20103,7 +20217,8 @@
     ],
     "requiredItem": "Lucarionite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "lucariomegaz": {
     "species_id": 448,
@@ -20553,7 +20668,8 @@
     ],
     "requiredItem": "Abomasite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "weavile": {
     "species_id": 461,
@@ -21091,7 +21207,8 @@
     ],
     "requiredItem": "Galladite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "probopass": {
     "species_id": 476,
@@ -21302,7 +21419,8 @@
       "Amorphous"
     ],
     "changesFrom": "Rotom",
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 4
   },
   "rotomwash": {
     "species_id": 479,
@@ -21333,7 +21451,8 @@
       "Amorphous"
     ],
     "changesFrom": "Rotom",
-    "tier": "UU"
+    "tier": "UU",
+    "gen": 4
   },
   "rotomfrost": {
     "species_id": 479,
@@ -21364,7 +21483,8 @@
       "Amorphous"
     ],
     "changesFrom": "Rotom",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 4
   },
   "rotomfan": {
     "species_id": 479,
@@ -21395,7 +21515,8 @@
       "Amorphous"
     ],
     "changesFrom": "Rotom",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 4
   },
   "rotommow": {
     "species_id": 479,
@@ -21426,7 +21547,8 @@
       "Amorphous"
     ],
     "changesFrom": "Rotom",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 4
   },
   "uxie": {
     "species_id": 480,
@@ -21831,7 +21953,8 @@
     ],
     "requiredItem": "Griseous Core",
     "changesFrom": "Giratina",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 4
   },
   "cresselia": {
     "species_id": 488,
@@ -22057,7 +22180,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Shaymin",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 4
   },
   "arceus": {
     "species_id": 493,
@@ -22160,7 +22284,8 @@
       "Insect Plate",
       "Buginium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusdark": {
     "species_id": 493,
@@ -22193,7 +22318,8 @@
       "Dread Plate",
       "Darkinium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusdragon": {
     "species_id": 493,
@@ -22226,7 +22352,8 @@
       "Draco Plate",
       "Dragonium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceuselectric": {
     "species_id": 493,
@@ -22259,7 +22386,8 @@
       "Zap Plate",
       "Electrium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusfairy": {
     "species_id": 493,
@@ -22326,7 +22454,8 @@
       "Fist Plate",
       "Fightinium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusfire": {
     "species_id": 493,
@@ -22359,7 +22488,8 @@
       "Flame Plate",
       "Firium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusflying": {
     "species_id": 493,
@@ -22392,7 +22522,8 @@
       "Sky Plate",
       "Flyinium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusghost": {
     "species_id": 493,
@@ -22425,7 +22556,8 @@
       "Spooky Plate",
       "Ghostium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusgrass": {
     "species_id": 493,
@@ -22458,7 +22590,8 @@
       "Meadow Plate",
       "Grassium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusground": {
     "species_id": 493,
@@ -22491,7 +22624,8 @@
       "Earth Plate",
       "Groundium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusice": {
     "species_id": 493,
@@ -22524,7 +22658,8 @@
       "Icicle Plate",
       "Icium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceuspoison": {
     "species_id": 493,
@@ -22557,7 +22692,8 @@
       "Toxic Plate",
       "Poisonium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceuspsychic": {
     "species_id": 493,
@@ -22590,7 +22726,8 @@
       "Mind Plate",
       "Psychium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceusrock": {
     "species_id": 493,
@@ -22623,7 +22760,8 @@
       "Stone Plate",
       "Rockium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceussteel": {
     "species_id": 493,
@@ -22656,7 +22794,8 @@
       "Iron Plate",
       "Steelium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "arceuswater": {
     "species_id": 493,
@@ -22689,7 +22828,8 @@
       "Splash Plate",
       "Waterium Z"
     ],
-    "changesFrom": "Arceus"
+    "changesFrom": "Arceus",
+    "gen": 4
   },
   "victini": {
     "species_id": 494,
@@ -23124,7 +23264,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 8
   },
   "patrat": {
     "species_id": 504,
@@ -24117,7 +24258,8 @@
     ],
     "requiredItem": "Audinite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "timburr": {
     "species_id": 532,
@@ -24795,7 +24937,8 @@
     "eggGroups": [
       "Grass"
     ],
-    "tier": "RU"
+    "tier": "RU",
+    "gen": 8
   },
   "basculin": {
     "species_id": 550,
@@ -24862,7 +25005,8 @@
     "color": "Green",
     "eggGroups": [
       "Water 2"
-    ]
+    ],
+    "gen": 5
   },
   "basculinwhitestriped": {
     "species_id": 550,
@@ -25064,7 +25208,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "darmanitan": {
     "species_id": 555,
@@ -25137,7 +25282,8 @@
     ],
     "requiredAbility": "Zen Mode",
     "battleOnly": "Darmanitan",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 5
   },
   "darmanitangalar": {
     "species_id": 555,
@@ -25170,7 +25316,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "darmanitangalarzen": {
     "species_id": 555,
@@ -25201,7 +25348,8 @@
     ],
     "requiredAbility": "Zen Mode",
     "battleOnly": "Darmanitan-Galar",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "maractus": {
     "species_id": 556,
@@ -25506,7 +25654,8 @@
       "Amorphous"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "cofagrigus": {
     "species_id": 563,
@@ -25778,7 +25927,8 @@
     ],
     "changesFrom": "Garbodor",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "zorua": {
     "species_id": 570,
@@ -25854,7 +26004,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 8
   },
   "zoroark": {
     "species_id": 571,
@@ -25928,7 +26079,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "RUBL"
+    "tier": "RUBL",
+    "gen": 8
   },
   "minccino": {
     "species_id": 572,
@@ -27570,7 +27722,8 @@
       "Amorphous"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "mienfoo": {
     "species_id": 619,
@@ -27964,7 +28117,8 @@
     "eggGroups": [
       "Flying"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 8
   },
   "vullaby": {
     "species_id": 629,
@@ -28402,7 +28556,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Tornadus",
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 5
   },
   "thundurus": {
     "species_id": 642,
@@ -28473,7 +28628,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Thundurus",
-    "tier": "UU"
+    "tier": "UU",
+    "gen": 5
   },
   "reshiram": {
     "species_id": 643,
@@ -28606,7 +28762,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Landorus",
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 5
   },
   "kyurem": {
     "species_id": 646,
@@ -28677,7 +28834,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Kyurem",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 5
   },
   "kyuremwhite": {
     "species_id": 646,
@@ -28708,7 +28866,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Kyurem",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 5
   },
   "keldeo": {
     "species_id": 647,
@@ -28778,7 +28937,8 @@
       "Undiscovered"
     ],
     "requiredMove": "Secret Sword",
-    "changesFrom": "Keldeo"
+    "changesFrom": "Keldeo",
+    "gen": 5
   },
   "meloetta": {
     "species_id": 648,
@@ -28848,7 +29008,8 @@
       "Undiscovered"
     ],
     "requiredMove": "Relic Song",
-    "battleOnly": "Meloetta"
+    "battleOnly": "Meloetta",
+    "gen": 5
   },
   "genesect": {
     "species_id": 649,
@@ -28926,7 +29087,8 @@
     "requiredItem": "Douse Drive",
     "changesFrom": "Genesect",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 5
   },
   "genesectshock": {
     "species_id": 649,
@@ -28959,7 +29121,8 @@
     "requiredItem": "Shock Drive",
     "changesFrom": "Genesect",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 5
   },
   "genesectburn": {
     "species_id": 649,
@@ -28992,7 +29155,8 @@
     "requiredItem": "Burn Drive",
     "changesFrom": "Genesect",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 5
   },
   "genesectchill": {
     "species_id": 649,
@@ -29025,7 +29189,8 @@
     "requiredItem": "Chill Drive",
     "changesFrom": "Genesect",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 5
   },
   "chespin": {
     "species_id": 650,
@@ -29869,7 +30034,8 @@
     "evoLevel": 12,
     "eggGroups": [
       "Bug"
-    ]
+    ],
+    "gen": 6
   },
   "vivillonpokeball": {
     "species_id": 666,
@@ -29899,7 +30065,8 @@
     "color": "Red",
     "eggGroups": [
       "Bug"
-    ]
+    ],
+    "gen": 6
   },
   "litleo": {
     "species_id": 667,
@@ -30144,7 +30311,8 @@
       "Undiscovered"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "floettemega": {
     "species_id": 670,
@@ -30503,7 +30671,8 @@
     "evoLevel": 25,
     "eggGroups": [
       "Field"
-    ]
+    ],
+    "gen": 6
   },
   "honedge": {
     "species_id": 679,
@@ -30637,7 +30806,8 @@
     ],
     "requiredAbility": "Stance Change",
     "battleOnly": "Aegislash",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "spritzee": {
     "species_id": 682,
@@ -31630,7 +31800,8 @@
     "eggGroups": [
       "Dragon"
     ],
-    "tier": "NFE"
+    "tier": "NFE",
+    "gen": 8
   },
   "goodra": {
     "species_id": 706,
@@ -31702,7 +31873,8 @@
     "eggGroups": [
       "Dragon"
     ],
-    "tier": "RU"
+    "tier": "RU",
+    "gen": 8
   },
   "klefki": {
     "species_id": 707,
@@ -31875,7 +32047,8 @@
     "eggGroups": [
       "Amorphous"
     ],
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "pumpkaboolarge": {
     "species_id": 710,
@@ -31909,7 +32082,8 @@
     "eggGroups": [
       "Amorphous"
     ],
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "pumpkaboosuper": {
     "species_id": 710,
@@ -31943,7 +32117,8 @@
     "eggGroups": [
       "Amorphous"
     ],
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "gourgeist": {
     "species_id": 711,
@@ -32022,7 +32197,8 @@
       "Amorphous"
     ],
     "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "evoItem": "Linking Cord",
+    "gen": 6
   },
   "gourgeistlarge": {
     "species_id": 711,
@@ -32056,7 +32232,8 @@
       "Amorphous"
     ],
     "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "evoItem": "Linking Cord",
+    "gen": 6
   },
   "gourgeistsuper": {
     "species_id": 711,
@@ -32090,7 +32267,8 @@
       "Amorphous"
     ],
     "isNonstandard": "Past",
-    "evoItem": "Linking Cord"
+    "evoItem": "Linking Cord",
+    "gen": 6
   },
   "bergmite": {
     "species_id": 712,
@@ -32196,7 +32374,8 @@
       "Monster",
       "Mineral"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 8
   },
   "noibat": {
     "species_id": 714,
@@ -32330,7 +32509,8 @@
       "Undiscovered"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Custom"
+    "isNonstandard": "Custom",
+    "gen": 6
   },
   "yveltal": {
     "species_id": 717,
@@ -32587,7 +32767,8 @@
     ],
     "requiredItem": "Diancite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 6
   },
   "hoopa": {
     "species_id": 720,
@@ -32657,7 +32838,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Hoopa",
-    "tier": "UUBL"
+    "tier": "UUBL",
+    "gen": 6
   },
   "volcanion": {
     "species_id": 721,
@@ -32839,7 +33021,8 @@
     "eggGroups": [
       "Flying"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 8
   },
   "litten": {
     "species_id": 725,
@@ -33245,7 +33428,8 @@
       "Field"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "grubbin": {
     "species_id": 736,
@@ -33373,7 +33557,8 @@
       "Bug"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "crabrawler": {
     "species_id": 739,
@@ -33545,7 +33730,8 @@
       "Flying"
     ],
     "changesFrom": "Oricorio",
-    "tier": "RUBL"
+    "tier": "RUBL",
+    "gen": 7
   },
   "oricoriopau": {
     "species_id": 741,
@@ -33579,7 +33765,8 @@
       "Flying"
     ],
     "changesFrom": "Oricorio",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "oricoriosensu": {
     "species_id": 741,
@@ -33613,7 +33800,8 @@
       "Flying"
     ],
     "changesFrom": "Oricorio",
-    "tier": "NUBL"
+    "tier": "NUBL",
+    "gen": 7
   },
   "cutiefly": {
     "species_id": 742,
@@ -33716,7 +33904,8 @@
       "Fairy"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "rockruff": {
     "species_id": 744,
@@ -33788,7 +33977,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 7
   },
   "lycanroc": {
     "species_id": 745,
@@ -33862,7 +34052,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "lycanrocdusk": {
     "species_id": 745,
@@ -33893,7 +34084,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "RU"
+    "tier": "RU",
+    "gen": 7
   },
   "wishiwashi": {
     "species_id": 746,
@@ -33958,7 +34150,8 @@
     ],
     "requiredAbility": "Schooling",
     "battleOnly": "Wishiwashi",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "mareanie": {
     "species_id": 747,
@@ -34183,7 +34376,8 @@
       "Bug"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "fomantis": {
     "species_id": 753,
@@ -34279,7 +34473,8 @@
       "Grass"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "morelull": {
     "species_id": 755,
@@ -34451,7 +34646,8 @@
       "Dragon"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "stufful": {
     "species_id": 759,
@@ -35026,7 +35222,8 @@
     "requiredItem": "Bug Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallydark": {
     "species_id": 773,
@@ -35058,7 +35255,8 @@
     "requiredItem": "Dark Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallydragon": {
     "species_id": 773,
@@ -35090,7 +35288,8 @@
     "requiredItem": "Dragon Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyelectric": {
     "species_id": 773,
@@ -35122,7 +35321,8 @@
     "requiredItem": "Electric Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyfairy": {
     "species_id": 773,
@@ -35154,7 +35354,8 @@
     "requiredItem": "Fairy Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyfighting": {
     "species_id": 773,
@@ -35186,7 +35387,8 @@
     "requiredItem": "Fighting Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyfire": {
     "species_id": 773,
@@ -35218,7 +35420,8 @@
     "requiredItem": "Fire Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyflying": {
     "species_id": 773,
@@ -35250,7 +35453,8 @@
     "requiredItem": "Flying Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyghost": {
     "species_id": 773,
@@ -35282,7 +35486,8 @@
     "requiredItem": "Ghost Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallygrass": {
     "species_id": 773,
@@ -35314,7 +35519,8 @@
     "requiredItem": "Grass Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyground": {
     "species_id": 773,
@@ -35346,7 +35552,8 @@
     "requiredItem": "Ground Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyice": {
     "species_id": 773,
@@ -35378,7 +35585,8 @@
     "requiredItem": "Ice Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallypoison": {
     "species_id": 773,
@@ -35410,7 +35618,8 @@
     "requiredItem": "Poison Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallypsychic": {
     "species_id": 773,
@@ -35442,7 +35651,8 @@
     "requiredItem": "Psychic Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallyrock": {
     "species_id": 773,
@@ -35474,7 +35684,8 @@
     "requiredItem": "Rock Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallysteel": {
     "species_id": 773,
@@ -35506,7 +35717,8 @@
     "requiredItem": "Steel Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "silvallywater": {
     "species_id": 773,
@@ -35538,7 +35750,8 @@
     "requiredItem": "Water Memory",
     "changesFrom": "Silvally",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "miniormeteor": {
     "species_id": 774,
@@ -35569,7 +35782,8 @@
       "Mineral"
     ],
     "requiredAbility": "Shields Down",
-    "battleOnly": "Minior"
+    "battleOnly": "Minior",
+    "gen": 7
   },
   "minior": {
     "species_id": 774,
@@ -35655,7 +35869,8 @@
       "Mineral"
     ],
     "color": "Red",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "minioryellow": {
     "species_id": 774,
@@ -35685,7 +35900,8 @@
       "Mineral"
     ],
     "color": "Yellow",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "miniorgreen": {
     "species_id": 774,
@@ -35715,7 +35931,8 @@
       "Mineral"
     ],
     "color": "Green",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "miniorblue": {
     "species_id": 774,
@@ -35745,7 +35962,8 @@
       "Mineral"
     ],
     "color": "Blue",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "miniorindigo": {
     "species_id": 774,
@@ -35775,7 +35993,8 @@
       "Mineral"
     ],
     "color": "Blue",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "miniorviolet": {
     "species_id": 774,
@@ -35805,7 +36024,8 @@
       "Mineral"
     ],
     "color": "Purple",
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 7
   },
   "komala": {
     "species_id": 775,
@@ -35929,7 +36149,8 @@
       "Fairy"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "mimikyu": {
     "species_id": 778,
@@ -35998,7 +36219,8 @@
       "Amorphous"
     ],
     "requiredAbility": "Disguise",
-    "battleOnly": "Mimikyu"
+    "battleOnly": "Mimikyu",
+    "gen": 7
   },
   "mimikyutotem": {
     "species_id": 778,
@@ -36028,7 +36250,8 @@
       "Amorphous"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "mimikyubustedtotem": {
     "species_id": 778,
@@ -36060,7 +36283,8 @@
     "requiredAbility": "Disguise",
     "battleOnly": "Mimikyu-Totem",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "bruxish": {
     "species_id": 779,
@@ -36324,7 +36548,8 @@
       "Dragon"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "tapukoko": {
     "species_id": 785,
@@ -36888,7 +37113,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Necrozma",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 7
   },
   "necrozmadawnwings": {
     "species_id": 800,
@@ -36919,7 +37145,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Necrozma",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 7
   },
   "necrozmaultra": {
     "species_id": 800,
@@ -36955,7 +37182,8 @@
       "Necrozma-Dusk-Mane"
     ],
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 7
   },
   "magearna": {
     "species_id": 801,
@@ -37022,7 +37250,8 @@
     "color": "Red",
     "eggGroups": [
       "Undiscovered"
-    ]
+    ],
+    "gen": 7
   },
   "magearnamega": {
     "species_id": 801,
@@ -37414,7 +37643,8 @@
     ],
     "changesFrom": "Melmetal",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "grookey": {
     "species_id": 810,
@@ -37557,7 +37787,8 @@
     ],
     "changesFrom": "Rillaboom",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "scorbunny": {
     "species_id": 813,
@@ -37700,7 +37931,8 @@
     ],
     "changesFrom": "Cinderace",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "sobble": {
     "species_id": 816,
@@ -37843,7 +38075,8 @@
     ],
     "changesFrom": "Inteleon",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "skwovet": {
     "species_id": 819,
@@ -38031,7 +38264,8 @@
     ],
     "changesFrom": "Corviknight",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "blipbug": {
     "species_id": 824,
@@ -38164,7 +38398,8 @@
     ],
     "changesFrom": "Orbeetle",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "nickit": {
     "species_id": 827,
@@ -38452,7 +38687,8 @@
     ],
     "changesFrom": "Drednaw",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "yamper": {
     "species_id": 835,
@@ -38643,7 +38879,8 @@
     ],
     "changesFrom": "Coalossal",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "applin": {
     "species_id": 840,
@@ -38746,7 +38983,8 @@
     ],
     "changesFrom": "Flapple",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "appletun": {
     "species_id": 842,
@@ -38814,7 +39052,8 @@
     ],
     "changesFrom": "Appletun",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "silicobra": {
     "species_id": 843,
@@ -38911,7 +39150,8 @@
     ],
     "changesFrom": "Sandaconda",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "cramorant": {
     "species_id": 845,
@@ -38979,7 +39219,8 @@
       "Flying"
     ],
     "requiredAbility": "Gulp Missile",
-    "battleOnly": "Cramorant"
+    "battleOnly": "Cramorant",
+    "gen": 8
   },
   "cramorantgorging": {
     "species_id": 845,
@@ -39010,7 +39251,8 @@
       "Flying"
     ],
     "requiredAbility": "Gulp Missile",
-    "battleOnly": "Cramorant"
+    "battleOnly": "Cramorant",
+    "gen": 8
   },
   "arrokuda": {
     "species_id": 846,
@@ -39176,7 +39418,8 @@
     "eggGroups": [
       "Human-Like"
     ],
-    "canGigantamax": "G-Max Stun Shock"
+    "canGigantamax": "G-Max Stun Shock",
+    "gen": 8
   },
   "toxtricitygmax": {
     "species_id": 849,
@@ -39209,7 +39452,8 @@
     ],
     "changesFrom": "Toxtricity",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "toxtricitylowkeygmax": {
     "species_id": 849,
@@ -39243,7 +39487,8 @@
     "battleOnly": "Toxtricity-Low-Key",
     "changesFrom": "Toxtricity-Low-Key",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "sizzlipede": {
     "species_id": 850,
@@ -39342,7 +39587,8 @@
     ],
     "changesFrom": "Centiskorch",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "clobbopus": {
     "species_id": 852,
@@ -39478,7 +39724,8 @@
     ],
     "eggGroups": [
       "Undiscovered"
-    ]
+    ],
+    "gen": 8
   },
   "polteageist": {
     "species_id": 855,
@@ -39550,7 +39797,8 @@
     "evoItem": "Chipped Pot",
     "eggGroups": [
       "Undiscovered"
-    ]
+    ],
+    "gen": 8
   },
   "hatenna": {
     "species_id": 856,
@@ -39683,7 +39931,8 @@
     ],
     "changesFrom": "Hatterene",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "impidimp": {
     "species_id": 859,
@@ -39822,7 +40071,8 @@
     ],
     "changesFrom": "Grimmsnarl",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "obstagoon": {
     "species_id": 862,
@@ -40136,7 +40386,8 @@
     ],
     "changesFrom": "Alcremie",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "falinks": {
     "species_id": 870,
@@ -40387,7 +40638,8 @@
       "Field"
     ],
     "requiredAbility": "Ice Face",
-    "battleOnly": "Eiscue"
+    "battleOnly": "Eiscue",
+    "gen": 8
   },
   "indeedee": {
     "species_id": 876,
@@ -40458,7 +40710,8 @@
     "eggGroups": [
       "Fairy"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 8
   },
   "morpeko": {
     "species_id": 877,
@@ -40525,7 +40778,8 @@
       "Fairy"
     ],
     "requiredAbility": "Hunger Switch",
-    "battleOnly": "Morpeko"
+    "battleOnly": "Morpeko",
+    "gen": 8
   },
   "cufant": {
     "species_id": 878,
@@ -40619,7 +40873,8 @@
     ],
     "changesFrom": "Copperajah",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "dracozolt": {
     "species_id": 880,
@@ -40811,7 +41066,8 @@
     ],
     "changesFrom": "Duraludon",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "dreepy": {
     "species_id": 885,
@@ -40983,7 +41239,8 @@
     "requiredItem": "Rusted Sword",
     "battleOnly": "Zacian",
     "cannotDynamax": true,
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 8
   },
   "zamazenta": {
     "species_id": 889,
@@ -41055,7 +41312,8 @@
     "requiredItem": "Rusted Shield",
     "battleOnly": "Zamazenta",
     "cannotDynamax": true,
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 8
   },
   "eternatus": {
     "species_id": 890,
@@ -41126,7 +41384,8 @@
     ],
     "cannotDynamax": true,
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "kubfu": {
     "species_id": 891,
@@ -41246,7 +41505,8 @@
       "Undiscovered"
     ],
     "canGigantamax": "G-Max Rapid Flow",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 8
   },
   "urshifugmax": {
     "species_id": 892,
@@ -41281,7 +41541,8 @@
     ],
     "changesFrom": "Urshifu",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "urshifurapidstrikegmax": {
     "species_id": 892,
@@ -41317,7 +41578,8 @@
     "battleOnly": "Urshifu-Rapid-Strike",
     "changesFrom": "Urshifu-Rapid-Strike",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 8
   },
   "zarude": {
     "species_id": 893,
@@ -41384,7 +41646,8 @@
     "color": "Black",
     "eggGroups": [
       "Undiscovered"
-    ]
+    ],
+    "gen": 8
   },
   "regieleki": {
     "species_id": 894,
@@ -41575,7 +41838,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Calyrex",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 8
   },
   "calyrexshadow": {
     "species_id": 898,
@@ -41606,7 +41870,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Calyrex",
-    "tier": "AG"
+    "tier": "AG",
+    "gen": 8
   },
   "wyrdeer": {
     "species_id": 899,
@@ -41816,7 +42081,8 @@
     "eggGroups": [
       "Water 2"
     ],
-    "tier": "RU"
+    "tier": "RU",
+    "gen": 8
   },
   "sneasler": {
     "species_id": 903,
@@ -41952,7 +42218,8 @@
       "Undiscovered"
     ],
     "changesFrom": "Enamorus",
-    "tier": "RUBL"
+    "tier": "RUBL",
+    "gen": 8
   },
   "sprigatito": {
     "species_id": 906,
@@ -42374,7 +42641,8 @@
     "eggGroups": [
       "Field"
     ],
-    "tier": "ZU"
+    "tier": "ZU",
+    "gen": 9
   },
   "tarountula": {
     "species_id": 917,
@@ -42658,7 +42926,8 @@
     "eggGroups": [
       "Field",
       "Fairy"
-    ]
+    ],
+    "gen": 9
   },
   "maushold": {
     "species_id": 925,
@@ -42924,7 +43193,8 @@
     "color": "Blue",
     "eggGroups": [
       "Flying"
-    ]
+    ],
+    "gen": 9
   },
   "squawkabillyyellow": {
     "species_id": 931,
@@ -42954,7 +43224,8 @@
     "color": "Yellow",
     "eggGroups": [
       "Flying"
-    ]
+    ],
+    "gen": 9
   },
   "squawkabillywhite": {
     "species_id": 931,
@@ -42984,7 +43255,8 @@
     "color": "White",
     "eggGroups": [
       "Flying"
-    ]
+    ],
+    "gen": 9
   },
   "nacli": {
     "species_id": 932,
@@ -43665,7 +43937,8 @@
     ],
     "requiredItem": "Scovillainite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 9
   },
   "rellor": {
     "species_id": 953,
@@ -44075,7 +44348,8 @@
       "Water 2"
     ],
     "requiredAbility": "Zero to Hero",
-    "battleOnly": "Palafin"
+    "battleOnly": "Palafin",
+    "gen": 9
   },
   "varoom": {
     "species_id": 965,
@@ -44283,7 +44557,8 @@
     ],
     "requiredItem": "Glimmoranite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 9
   },
   "greavard": {
     "species_id": 971,
@@ -44558,7 +44833,8 @@
     "eggGroups": [
       "Water 2"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 9
   },
   "tatsugiristretchy": {
     "species_id": 978,
@@ -44588,7 +44864,8 @@
     "eggGroups": [
       "Water 2"
     ],
-    "tier": "PU"
+    "tier": "PU",
+    "gen": 9
   },
   "tatsugiricurlymega": {
     "species_id": 978,
@@ -44621,7 +44898,8 @@
     "requiredItem": "Tatsugirinite",
     "battleOnly": "Tatsugiri",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 9
   },
   "tatsugiridroopymega": {
     "species_id": 978,
@@ -44654,7 +44932,8 @@
     "requiredItem": "Tatsugirinite",
     "battleOnly": "Tatsugiri-Droopy",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 9
   },
   "tatsugiristretchymega": {
     "species_id": 978,
@@ -44687,7 +44966,8 @@
     "requiredItem": "Tatsugirinite",
     "battleOnly": "Tatsugiri-Stretchy",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 9
   },
   "annihilape": {
     "species_id": 979,
@@ -44854,7 +45134,8 @@
     "evoMove": "Hyper Drill",
     "eggGroups": [
       "Field"
-    ]
+    ],
+    "gen": 9
   },
   "kingambit": {
     "species_id": 983,
@@ -45389,7 +45670,8 @@
     ],
     "requiredItem": "Baxcalibrite",
     "tier": "Illegal",
-    "isNonstandard": "Past"
+    "isNonstandard": "Past",
+    "gen": 9
   },
   "gimmighoul": {
     "species_id": 999,
@@ -45459,7 +45741,8 @@
     "eggGroups": [
       "Undiscovered"
     ],
-    "tier": "LC"
+    "tier": "LC",
+    "gen": 9
   },
   "gholdengo": {
     "species_id": 1000,
@@ -45910,7 +46193,8 @@
     ],
     "eggGroups": [
       "Undiscovered"
-    ]
+    ],
+    "gen": 9
   },
   "sinistcha": {
     "species_id": 1013,
@@ -45984,7 +46268,8 @@
     "evoItem": "Masterpiece Teacup",
     "eggGroups": [
       "Undiscovered"
-    ]
+    ],
+    "gen": 9
   },
   "okidogi": {
     "species_id": 1014,
@@ -46161,7 +46446,8 @@
       "Undiscovered"
     ],
     "battleOnly": "Ogerpon",
-    "requiredTeraType": "Grass"
+    "requiredTeraType": "Grass",
+    "gen": 9
   },
   "ogerponwellspring": {
     "species_id": 1017,
@@ -46194,7 +46480,8 @@
     "requiredItem": "Wellspring Mask",
     "changesFrom": "Ogerpon",
     "requiredTeraType": "Water",
-    "tier": "OU"
+    "tier": "OU",
+    "gen": 9
   },
   "ogerponwellspringtera": {
     "species_id": 1017,
@@ -46226,7 +46513,8 @@
     ],
     "requiredItem": "Wellspring Mask",
     "battleOnly": "Ogerpon-Wellspring",
-    "requiredTeraType": "Water"
+    "requiredTeraType": "Water",
+    "gen": 9
   },
   "ogerponhearthflame": {
     "species_id": 1017,
@@ -46259,7 +46547,8 @@
     "requiredItem": "Hearthflame Mask",
     "changesFrom": "Ogerpon",
     "requiredTeraType": "Fire",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 9
   },
   "ogerponhearthflametera": {
     "species_id": 1017,
@@ -46291,7 +46580,8 @@
     ],
     "requiredItem": "Hearthflame Mask",
     "battleOnly": "Ogerpon-Hearthflame",
-    "requiredTeraType": "Fire"
+    "requiredTeraType": "Fire",
+    "gen": 9
   },
   "ogerponcornerstone": {
     "species_id": 1017,
@@ -46324,7 +46614,8 @@
     "requiredItem": "Cornerstone Mask",
     "changesFrom": "Ogerpon",
     "requiredTeraType": "Rock",
-    "tier": "UUBL"
+    "tier": "UUBL",
+    "gen": 9
   },
   "ogerponcornerstonetera": {
     "species_id": 1017,
@@ -46356,7 +46647,8 @@
     ],
     "requiredItem": "Cornerstone Mask",
     "battleOnly": "Ogerpon-Cornerstone",
-    "requiredTeraType": "Rock"
+    "requiredTeraType": "Rock",
+    "gen": 9
   },
   "archaludon": {
     "species_id": 1018,
@@ -46602,7 +46894,8 @@
       "Undiscovered"
     ],
     "battleOnly": "Terapagos",
-    "requiredTeraType": "Stellar"
+    "requiredTeraType": "Stellar",
+    "gen": 9
   },
   "terapagosstellar": {
     "species_id": 1024,
@@ -46632,7 +46925,8 @@
     ],
     "battleOnly": "Terapagos",
     "requiredTeraType": "Stellar",
-    "tier": "Uber"
+    "tier": "Uber",
+    "gen": 9
   },
   "pecharunt": {
     "species_id": 1025,

@@ -281,20 +281,6 @@ def _install_pokedex_stub(**funcs):
     setattr(sys.modules["Ankimon.functions"], "pokedex_functions", mod)
 
 
-def _install_const_stub(gen_ids):
-    mod = types.ModuleType("Ankimon.const")
-    mod.gen_ids = gen_ids
-    sys.modules["Ankimon.const"] = mod
-
-
-def _install_encounter_data_stub(regional=None):
-    mod = types.ModuleType("Ankimon.functions.encounter_data")
-    if regional is not None:
-        mod.REGIONAL_FORME_GEN = regional
-    sys.modules["Ankimon.functions.encounter_data"] = mod
-    setattr(sys.modules["Ankimon.functions"], "encounter_data", mod)
-
-
 def test_display_name_prefers_distinct_nickname():
     services, _AnkimonDB, PokemonObject = _load_seam_and_pokemon_obj()
     services.reset()
@@ -347,37 +333,62 @@ def test_pokedex_id_resolves_form_to_species():
     assert normal.pokedex_id == 25
 
 
-def test_generation_maps_species_via_gen_ids():
+def test_generation_delegates_to_canonical_lookup():
     services, _AnkimonDB, PokemonObject = _load_seam_and_pokemon_obj()
     services.reset()
-    _install_pokedex_stub(
-        search_pokedex_by_id=lambda i: "Pokémon not found",
-        search_pokedex=lambda name, var: None,
-        safe_int=lambda v, default=0: int(v) if str(v).isdigit() else default,
-    )
-    _install_const_stub({"gen_1": 151, "gen_2": 251, "gen_9": 1025})
-    _install_encounter_data_stub(
-        regional=None
-    )  # REGIONAL_FORME_GEN absent (base state)
+    # `generation` must defer to pokedex_functions.generation_for_id — the single
+    # canonical source — rather than re-deriving a range from the id.
+    gens = {25: 1, 200: 2, 900: 9, 10033: 6}
+    _install_pokedex_stub(generation_for_id=lambda pid: gens[int(pid)])
 
     assert _make_pokemon(PokemonObject, id=25).generation == 1
     assert _make_pokemon(PokemonObject, id=200).generation == 2
     assert _make_pokemon(PokemonObject, id=900).generation == 9
+    assert _make_pokemon(PokemonObject, id=10033).generation == 6
 
 
-def test_generation_regional_forme_when_available():
+def test_generation_uses_form_introduction_generation():
     services, _AnkimonDB, PokemonObject = _load_seam_and_pokemon_obj()
     services.reset()
-    _install_pokedex_stub(
-        search_pokedex_by_id=lambda i: "meowthalola",
-        search_pokedex=lambda name, var: "Alola" if var == "forme" else 52,
-        safe_int=lambda v, default=0: int(v) if str(v).isdigit() else default,
-    )
-    _install_const_stub({"gen_1": 151, "gen_7": 809})
-    # When the encounter-overhaul leaf lands REGIONAL_FORME_GEN, forms use it.
-    _install_encounter_data_stub(regional={"Alola": 7})
+    _install_pokedex_stub(generation_for_id=lambda pid: 7)
 
+    # Alolan Marowak (10052) is Gen 7, not Marowak's Gen 1.
     assert _make_pokemon(PokemonObject, id=10052).generation == 7
+
+
+def test_pokedex_carries_canonical_generation_for_forms():
+    """The fix's data contract: every alternate form has its own debut gen."""
+    pokedex = json.loads(
+        (_src / "Ankimon" / "data_files" / "pokedex.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    by_actual_id = {
+        entry.get("actual_id"): entry
+        for entry in pokedex.values()
+        if entry.get("actual_id") is not None
+    }
+    expected = {
+        10033: 6,  # Venusaur-Mega -> Gen 6, not Gen 1
+        10034: 6,  # Charizard-Mega-X
+        10077: 6,  # Kyogre-Primal
+        10100: 7,  # Raichu-Alola
+        10161: 8,  # Meowth-Galar
+        10196: 8,  # Charizard-Gmax
+        10229: 8,  # Growlithe-Hisui
+        10250: 9,  # Tauros-Paldea-Combat
+        10245: 8,  # Dialga-Origin (Legends: Arceus)
+        10007: 4,  # Giratina-Origin (Platinum)
+        10159: 7,  # Eevee-Starter (Let's Go)
+        10158: 7,  # Pikachu-Starter (Let's Go)
+    }
+    for actual_id, gen in expected.items():
+        assert by_actual_id[actual_id]["gen"] == gen, actual_id
+
+    # Every form carries a sane generation so no form silently falls back to 0.
+    for name, entry in pokedex.items():
+        if entry.get("forme"):
+            assert 1 <= int(entry["gen"]) <= 9, name
 
 
 # --------------------------------------------------------------------------- #

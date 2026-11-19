@@ -2088,25 +2088,24 @@ class PokemonPC(QDialog):
         if self.filter_shiny is not None and self.filter_shiny.isChecked():
             query_parts.append("AND shiny = 1")
 
-        # Generation filtering
+        # Generation filtering. Matches the generation each Pokémon/form was
+        # introduced in, so a captured Mega/Alolan/Hisuian form is filed under
+        # its own generation instead of its base species' id range.
         if self.generation_combo is not None:
             gen_idx = self.generation_combo.currentIndex()
             if gen_idx != 0:
-                gen_ranges = {
-                    1: (1, 151),
-                    2: (152, 251),
-                    3: (252, 386),
-                    4: (387, 493),
-                    5: (494, 649),
-                    6: (650, 721),
-                    7: (722, 809),
-                    8: (810, 905),
-                    9: (906, 1025),
-                }
-                if gen_idx in gen_ranges:
-                    start_id, end_id = gen_ranges[gen_idx]
-                    query_parts.append("AND pokedex_id BETWEEN ? AND ?")
-                    params.extend([start_id, end_id])
+                from ..functions.pokedex_functions import get_ids_in_generation
+
+                gen_ids_in_gen = get_ids_in_generation(gen_idx)
+                if gen_ids_in_gen:
+                    placeholders = ",".join("?" * len(gen_ids_in_gen))
+                    query_parts.append(
+                        "AND COALESCE(CAST(json_extract(data, '$.id') AS INTEGER), "
+                        f"pokedex_id) IN ({placeholders})"
+                    )
+                    params.extend(gen_ids_in_gen)
+                else:
+                    query_parts.append("AND 0")
 
         # Sorting
         sort_key_raw = (

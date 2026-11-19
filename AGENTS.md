@@ -118,9 +118,11 @@ Several screens now render as QWebEngine web views hosted by a shared shell:
   across devices via Anki's media sync and replays mobile-recorded battles on desktop.
 - **Encounter overhaul** (`functions/encounter_functions.py`) — the EP / Mastery-Index
   encounter economy: 8 tiers, regional forms, Mega/Gmax, and 6 independent pity trackers.
-  Design reference: `docs/encounter_overhaul_spec.md`. Mega/Gmax/alternate-form IDs
-  ≥ 10000 must be resolved to their base species via `check_id_ok()` before gen-toggle or
-  dex checks.
+  Design reference: `docs/encounter_overhaul_spec.md`. Each Pokémon and alternate form
+  reports the generation it was actually introduced in via
+  `pokedex_functions.generation_for_id()` (pokedex.json carries a curated `gen` per form);
+  `check_id_ok()` gates on that generation, so Megas are Gen 6, Gmax Gen 8, regionals
+  their region's debut — never their base species'.
 - **Branch self-updater** (`changelog.py` `schedule_branch_update_check`) — polls for new
   commits on the tracked branch once the profile is open, gated on boot-time connectivity.
   Porting reference: `docs/updater_porting_guide.md`.
@@ -269,7 +271,7 @@ python -m harness.scenarios.screenshots     # PNGs of the real battle window + P
 - The `user_files/` directory is for runtime data. Never commit files there.
 - No synchronous disk I/O in the review path. Static data (pokedex/learnsets/sprites) is parsed once at startup — use the cached lookups (`search_pokedex_by_id`, `_get_learnset_moves`), never `json.load(open(...))` mid-review.
 - Background `QueryOp` workers must never touch Qt widgets — return plain data and do all UI work in the main-thread success callback.
-- Mega/Gmax/alternate-form IDs ≥ 10000 must be resolved to a base species via `check_id_ok()` for gen-toggle and dex checks.
+- Generation is canonical per Pokémon *and* form: use `generation_for_id()` / `.generation` / pokedex.json's `gen` — never derive a form's gen from its species id range (Mega = Gen 6, Gmax = Gen 8, regional = its debut gen). `check_id_ok()` already gates on that gen.
 - Encounter prerequisite chains must form a strict DAG — a cycle recurses infinitely and hangs Anki.
 - Lowercase name keys (and strip hyphens where applicable) before DB saves / cache lookups — capitalized-name JSON lookups fail silently.
 - Web views: avoid `backdrop-filter: blur()` — it causes Windows DWM compositor flicker under QWebEngine.

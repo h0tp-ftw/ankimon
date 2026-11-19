@@ -27,6 +27,7 @@ from ..functions.pokemon_functions import (
 )
 from ..functions.pokedex_functions import (
     check_evolution_for_pokemon,
+    generation_for_id,
     get_all_pokemon_moves,
     get_base_experience,
     get_effort_values,
@@ -55,7 +56,6 @@ from ..utils import (
     scale_ev_spread_to_level,
 )
 from ..business import calc_experience, calculate_cp_from_dict
-from ..const import gen_ids
 from . import encounter_data
 
 if TYPE_CHECKING:
@@ -775,6 +775,13 @@ def check_min_generate_level(name):
 
 
 def check_id_ok(id_num: Union[int, list[int]]):
+    """Return whether ``id_num``'s generation is enabled in the settings.
+
+    Gated on the generation the Pokémon/form actually debuted in (see
+    ``pokedex_functions.generation_for_id``), so Megas (Gen 6), Gigantamax
+    (Gen 8), regional (Gen 7/8/9) and Hisuian (Gen 8) forms are controlled by
+    their own generation toggle instead of their base species'.
+    """
     if isinstance(id_num, list):
         if len(id_num) > 0:
             id_num = id_num[0]
@@ -784,50 +791,19 @@ def check_id_ok(id_num: Union[int, list[int]]):
     if not isinstance(id_num, int):
         return False
 
-    # Mega/Gmax forms have actual_ids >= 10000, which fall outside
-    # the normal gen ranges. Resolve to base species for generation check.
-    if id_num >= 10000:
-        name = search_pokedex_by_id(id_num)
-        if not name or name == "Pokémon not found":
-            return True  # fallback
+    generation = generation_for_id(id_num)
+    if generation < 1:
+        return True  # fallback: unknown id, never block it on the gen gate
 
-        species_id = safe_int(search_pokedex(name, "species_id"))
-        gen_config = [settings_obj.get(f"misc.gen{i}") for i in range(1, 10)]
+    try:
+        return bool(settings_obj.get(f"misc.gen{generation}"))
+    except Exception:
+        return True  # fallback when settings are unavailable
 
-        # Check base species generation
-        base_gen = 0
-        for gen, max_id in gen_ids.items():
-            if species_id <= max_id:
-                base_gen = int(gen.split("_")[1])
-                break
-        if base_gen == 0:
-            return True  # fallback
-        if not gen_config[base_gen - 1]:
-            return False  # base gen disabled
 
-        # For regional forms, also require the form's intro gen to be enabled
-        if id_num in encounter_data.REGIONAL_FORM_REGION:
-            forme = search_pokedex(name, "forme") or ""
-            intro_gen = None
-            for f_name, g in encounter_data.REGIONAL_FORME_GEN.items():
-                if f_name in forme:
-                    intro_gen = g
-                    break
-
-            if intro_gen and not gen_config[intro_gen - 1]:
-                return False  # regional form's intro gen disabled
-
-        return True
-
-    generation = 0
-    for gen, max_id in gen_ids.items():
-        if id_num <= max_id:
-            generation = int(gen.split("_")[1])
-
-            gen_config = [settings_obj.get(f"misc.gen{i}") for i in range(1, 10)]
-            return gen_config[generation - 1]
-
-    return False
+def get_pokemon_generation(id_num: int) -> int:
+    """Generation ``id_num`` was introduced in (forms included)."""
+    return generation_for_id(id_num)
 
 
 def get_boosted_gens_for_region(region: str) -> list[int]:
@@ -851,16 +827,12 @@ def get_boosted_pool_chance(region: str) -> float:
 
 
 def get_base_species_gen(actual_id: int) -> int:
-    species_id = actual_id
-    if actual_id >= 10000:
-        name = search_pokedex_by_id(actual_id)
-        if name and name != "Pokémon not found":
-            species_id = safe_int(search_pokedex(name, "species_id")) or actual_id
+    """Generation ``actual_id`` was introduced in (forms included).
 
-    for gen, max_id in gen_ids.items():
-        if species_id <= max_id:
-            return int(gen.split("_")[1])
-    return 0
+    Name kept for back-compat; the value is now the canonical introduction
+    generation, so e.g. an Alolan form reports Gen 7 and a Mega reports Gen 6.
+    """
+    return generation_for_id(actual_id)
 
 
 def get_all_pokemon_in_tier(tier: str) -> list[int]:
