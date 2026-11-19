@@ -480,6 +480,7 @@ class MobileBridge(QObject):
                     or settings_obj.get("battle.auto_catch_starter", True)
                     or settings_obj.get("battle.auto_catch_mega", True)
                     or settings_obj.get("battle.auto_catch_gmax", True)
+                    or settings_obj.get("battle.auto_catch_paradox", True)
                     or settings_obj.get("battle.auto_catch_regional", True)
                     or bool(settings_obj.get("battle.auto_catch_wishlist", []))
                 )

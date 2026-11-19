@@ -398,6 +398,7 @@ class SettingsWindow(QMainWindow):
                     "Always Catch: Starter",
                     "Always Catch: Mega Evolution",
                     "Always Catch: Gigantamax",
+                    "Always Catch: Paradox",
                     "Always Catch: Regional Form",
                     "Cards per Round",
                     "Review Based Damage",

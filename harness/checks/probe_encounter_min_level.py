@@ -12,14 +12,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from harness.bootstrap import bootstrap
 
-# Generated in an isolated process by executing check_min_generate_level from
-# PR #928's base fb7708be77f68c0440ddad70282cb2a8c707ca9a on its unchanged cache.
+# Originally generated in an isolated process by executing check_min_generate_level
+# from PR #928's base fb7708be77f68c0440ddad70282cb2a8c707ca9a on its unchanged cache.
+# Re-generated for the Paradox tier: its 14 species moved out of NORMAL into
+# PARADOX, which raises their encounter floor from 1 to 55 (Paradox Legendaries
+# stay in LEGENDARY at 50). That is the only expected deviation.
 # SHA256 covers JSON [[canonical_name, minimum], ...], sorted by name, with
 # separators=(",", ":") and ensure_ascii=True. CI requires neither Git nor a
 # second copy of the algorithm; any species/form minimum change needs review.
 BASELINE_SPECIES_COUNT = 1384
 BASELINE_MINIMUMS_SHA256 = (
-    "75a96b00b937d83534b58b4463d0dfba52370d348a533ce8db629793fb807c10"
+    "18a28802299053de4fe32b90c241101173e4b69a0d9621120655b73a3caac1a7"
 )
 
 
@@ -95,6 +98,8 @@ def _cached_species(encounters, driver):
         "Buzzwole": 30,
         "Articuno": 50,
         "Venusaur-Mega": 60,
+        "Great-Tusk": 55,  # Paradox tier floor.
+        "Walking-Wake": 50,  # Paradox Legendary: stays in the Legendary tier.
         "Charizard-Gmax": 65,
         # Preserve existing alias fallback too: the hyphenated name can read
         # Pikachu's evoType; canonical final-id selection reads the form's data.
@@ -220,6 +225,8 @@ def _encounters(encounters, driver):
         ("Buzzwole", 30, "Ultra"),
         ("Articuno", 50, "Legendary"),
         ("Venusaur-Mega", 60, "Mega"),
+        ("Great-Tusk", 55, "Paradox"),
+        ("Walking-Wake", 50, "Legendary"),
         ("Charizard-Gmax", 65, "Gmax"),
         ("Mew", 75, "Mythical"),
     ):
@@ -296,6 +303,14 @@ def run_proof(section="all"):
                 print(f"  {name}: {check(encounters, driver)} cases OK")
             if driver:
                 assert not [e for e in driver.drain_events() if e["type"] == "error"]
+                # Windows locks the SQLite file while the handle is open, which
+                # makes TemporaryDirectory.cleanup() raise PermissionError and
+                # fail an otherwise green run. Closing the connection first is a
+                # no-op on Linux/macOS (CI) and fixes the gate on Windows.
+                try:
+                    driver.services.db.close()
+                except Exception:
+                    pass
     finally:
         sys.meta_path.remove(blocker)
     print(f"probe_encounter_min_level: {section} OK")

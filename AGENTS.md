@@ -117,7 +117,8 @@ Several screens now render as QWebEngine web views hosted by a shared shell:
 - **Mobile sync** (`ankimon_mobile_web/` + `pyobj/ankimon_sync.py`) — syncs Pokemon data
   across devices via Anki's media sync and replays mobile-recorded battles on desktop.
 - **Encounter overhaul** (`functions/encounter_functions.py`) — the EP / Mastery-Index
-  encounter economy: 8 tiers, regional forms, Mega/Gmax, and 6 independent pity trackers.
+  encounter economy: 9 tiers (incl. Paradox), regional forms, Mega/Gmax, and 7 independent
+  pity trackers.
   Design reference: `docs/encounter_overhaul_spec.md`. Mega/Gmax/alternate-form IDs
   ≥ 10000 must be resolved to their base species via `check_id_ok()` before gen-toggle or
   dex checks.

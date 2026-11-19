@@ -5,6 +5,7 @@
         "Baby": { name: "Baby", color: "#ff7597", key: "Baby" },
         "Ultra": { name: "Ultra", color: "#00e5ff", key: "Ultra" },
         "Gmax": { name: "Gmax", color: "#bd00ff", key: "Gmax" },
+        "Paradox": { name: "Paradox", color: "#e0ff00", key: "Paradox" },
         "Starter": { name: "Starter", color: "#00ff88", key: "Starter" },
         "Mega": { name: "Mega", color: "#ff0055", key: "Mega" },
         "Legendary": { name: "Legendary", color: "#ffaa00", key: "Legendary" },
@@ -13,9 +14,10 @@
 
     // Exponential curve parameters (loaded dynamically from python OVERHAUL_TIER_PARAMS)
     let TIER_PARAMS = {
-        "Normal": { base: 96.98, max_val: 84.70 },
+        "Normal": { base: 96.78, max_val: 82.70 },
         "Baby": { base: 2.30, max_val: 3.0 },
         "Ultra": { base: 0.35, max_val: 4.50 },
+        "Paradox": { base: 0.20, max_val: 2.00 },
         "Gmax": { base: 0.15, max_val: 2.50 },
         "Starter": { base: 0.10, max_val: 1.80 },
         "Mega": { base: 0.05, max_val: 1.50 },
@@ -27,6 +29,7 @@
         "Starter": 80,
         "Ultra": 30,
         "Legendary": 50,
+        "Paradox": 55,
         "Mega": 60,
         "Gmax": 65,
         "Mythical": 75
@@ -50,6 +53,7 @@
         "Ultra": 100,
         "Gmax": 150,
         "Starter": 175,
+        "Paradox": 180,
         "Mega": 200,
         "Legendary": 200,
         "Mythical": 400
@@ -167,7 +171,7 @@
         }
 
         // Define the tiers we want to focus on and scale on the graph
-        const rareTiers = ["Baby", "Ultra", "Gmax", "Starter", "Mega", "Legendary", "Mythical"];
+        const rareTiers = ["Baby", "Ultra", "Gmax", "Paradox", "Starter", "Mega", "Legendary", "Mythical"];
 
         // Get simulated levels for threshold checks
         const simulatedMainLevel = parseInt(sliders.mainLevel.value);
@@ -360,10 +364,10 @@
             updateUIElements({
                 ep: currentEP,
                 locks: localLocks,
-                live_overhaul: { "Normal": 90, "Baby": 10, "Ultra": 0, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Mythical": 0 },
-                live_legacy: { "Normal": 91, "Baby": 9, "Ultra": 0, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Mythical": 0 },
-                overhaul: { "Normal": 85, "Baby": 12, "Ultra": 3, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Mythical": 0 },
-                legacy: { "Normal": 88, "Baby": 10, "Ultra": 2, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Mythical": 0 }
+                live_overhaul: { "Normal": 90, "Baby": 10, "Ultra": 0, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Paradox": 0, "Mythical": 0 },
+                live_legacy: { "Normal": 91, "Baby": 9, "Ultra": 0, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Paradox": 0, "Mythical": 0 },
+                overhaul: { "Normal": 85, "Baby": 12, "Ultra": 3, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Paradox": 0, "Mythical": 0 },
+                legacy: { "Normal": 88, "Baby": 10, "Ultra": 2, "Gmax": 0, "Starter": 0, "Mega": 0, "Legendary": 0, "Paradox": 0, "Mythical": 0 }
             });
         }
     }

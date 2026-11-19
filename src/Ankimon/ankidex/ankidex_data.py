@@ -90,6 +90,7 @@ _ENCOUNTER_TIERS = (
     "Mythical",
     "Mega",
     "Gmax",
+    "Paradox",
     "Starter",
 )
 

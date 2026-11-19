@@ -383,13 +383,9 @@ POKEMON_TIERS = {
     975, 976, 977,	# cetitan, veluza, dondozo
     978, 979, 980,	# tatsugiri, annihilape, clodsire
     981, 982, 983,	# farigiraf, dudunsparce, kingambit
-    984, 985, 986,	# great-tusk, scream-tail, brute-bonnet
-    987, 988, 989,	# flutter-mane, slither-wing, sandy-shocks
-    990, 991, 992,	# iron-treads, iron-bundle, iron-hands
-    993, 994, 995,	# iron-jugulis, iron-moth, iron-thorns
     996, 997, 998,	# frigibax, arctibax, baxcalibur
-    999, 1000, 1005,	# gimmighoul, gholdengo, roaring-moon
-    1006, 1011, 1012,	# iron-valiant, dipplin, poltchageist
+    999, 1000,	# gimmighoul, gholdengo
+    1011, 1012,	# dipplin, poltchageist
     1013, 1018, 1019,	# sinistcha, archaludon, hydrapple
 ],
   "Legendary": [
@@ -483,6 +479,26 @@ POKEMON_TIERS = {
   804,  # Naganadel
   805,  # Stakataka
   806   # Blacephalon
+]
+,
+  "Paradox": [
+  # Gen 9 Paradox Pokémon. Paradox Legendaries (Walking Wake, Iron Leaves,
+  # Gouging Fire, Raging Bolt, Iron Boulder, Iron Crown) are classified under
+  # "Legendary" instead, and are intentionally absent here.
+  984,   # great-tusk
+  985,   # scream-tail
+  986,   # brute-bonnet
+  987,   # flutter-mane
+  988,   # slither-wing
+  989,   # sandy-shocks
+  990,   # iron-treads
+  991,   # iron-bundle
+  992,   # iron-hands
+  993,   # iron-jugulis
+  994,   # iron-moth
+  995,   # iron-thorns
+  1005,  # roaring-moon
+  1006   # iron-valiant
 ]
 ,
   "Fossil": [

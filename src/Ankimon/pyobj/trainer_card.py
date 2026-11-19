@@ -17,6 +17,7 @@ POKEMON_TIERS = {
     "normal": 10,
     "baby": 16,
     "ultra": 30,
+    "paradox": 60,
     "legendary": 120,
     "mythical": 160,
 }

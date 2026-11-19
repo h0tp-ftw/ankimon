@@ -63,9 +63,10 @@ $$Rate_i(EP) = Base_i \times \left( \frac{Max_i}{Base_i} \right)^{\frac{EP}{100}
 
 | Tier | Base Rate ($EP = 0$) | Max Rate ($EP = 100$) | Scaling Description |
 | --- | --- | --- | --- |
-| **Normal** | 96.98% | 84.70% | Compresses smoothly to make room for rare categories. |
+| **Normal** | 96.78% | 82.70% | Compresses smoothly to make room for rare categories. |
 | **Baby** | 2.30% | 3.00% | Slightly expands, maintaining a steady early/late-game presence. |
 | **Ultra Beast** | 0.35% | 4.50% | The most accessible high-tier rare group. |
+| **Paradox** | 0.20% | 2.00% | Ancient/future Paradox Pokémon; Paradox Legendaries stay in the Legendary tier. |
 | **Gmax** | 0.15% | 2.50% | Highly coveted boss forms. |
 | **Starter** | 0.10% | 1.80% | Locked to 0% in active code (activated via comment toggle). |
 | **Mega** | 0.05% | 1.50% | Endgame standard legendary tier scaling. |
@@ -76,6 +77,7 @@ $$Rate_i(EP) = Base_i \times \left( \frac{Max_i}{Base_i} \right)^{\frac{EP}{100}
 Regardless of a player's $EP$, a tier's weight is immediately set to `0.0` before normalization if the player's **Main Pokémon Level** is below the lock threshold:
 *   **Ultra / Starter:** Level 30+ (Starter has an updated threshold of Level 80+ in this configuration)
 *   **Legendary:** Level 50+
+*   **Paradox:** Level 55+
 *   **Mega:** Level 60+
 *   **Gmax:** Level 65+
 *   **Mythical:** Level 75+
@@ -111,7 +113,7 @@ eligibility rule must be proposed as a separate, explicit balance change.
 
 ## 4. The Independent Pity System
 
-In the legacy system, a single rare roll reset the global counter, "stealing" bad-luck protection from other tiers. The Overhaul introduces **6 Independent Pity Trackers ($P_i$)** stored in SQLite under the `"ankimon_pity_trackers"` JSON key.
+In the legacy system, a single rare roll reset the global counter, "stealing" bad-luck protection from other tiers. The Overhaul introduces **7 Independent Pity Trackers ($P_i$)** stored in SQLite under the `"ankimon_pity_trackers"` JSON key.
 
 For each Rare Tier $i$, the pity multiplier is calculated quadratically:
 
@@ -121,6 +123,7 @@ $$M_{pity\_i} = 1 + \left( \max\left(0, \frac{P_i - T_i}{OVERHAUL\_PITY\_DIVISOR
 *   **Ultra Beast ($T_{ultra}$):** 100 reviews
 *   **Gmax ($T_{gmax}$):** 150 reviews
 *   **Starter ($T_{starter}$):** 200 reviews
+*   **Paradox ($T_{paradox}$):** 180 reviews
 *   **Mega ($T_{mega}$):** 250 reviews
 *   **Legendary ($T_{leg}$):** 250 reviews
 *   **Mythical ($T_{myth}$):** 600 reviews

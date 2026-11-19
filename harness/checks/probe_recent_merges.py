@@ -40,6 +40,7 @@ def run_probe():
         ("Starter", False, True),
         ("Ultra", False, True),
         ("Gmax", False, True),
+        ("Paradox", False, True),
         ("Legendary", False, True),
         ("Mega", False, True),
         ("Mythical", False, True),

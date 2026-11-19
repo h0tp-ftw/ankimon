@@ -52,7 +52,7 @@ from .singletons import (
 # callback returns.
 _file_check_dialog = None
 
-# The seven per-tier toggles F28 introduced; the legacy single toggle folds
+# The per-tier toggles F28 introduced; the legacy single toggle folds
 # into all of them on first boot after an upgrade (see
 # _migrate_auto_catch_settings below).
 _AUTO_CATCH_KEYS = (
@@ -62,6 +62,7 @@ _AUTO_CATCH_KEYS = (
     "battle.auto_catch_starter",
     "battle.auto_catch_mega",
     "battle.auto_catch_gmax",
+    "battle.auto_catch_paradox",
     "battle.auto_catch_regional",
 )
 
@@ -248,7 +249,7 @@ def run_startup_ui_callbacks(results):
 
 def _migrate_auto_catch_settings():
     """Fold the legacy ``battle.automatic_catch_special`` toggle into F28's
-    seven per-tier ``battle.auto_catch_*`` keys, then tombstone the old key.
+    per-tier ``battle.auto_catch_*`` keys, then tombstone the old key.
 
     Only profiles that ran the experimental branch ever stored the legacy
     key, so this is a no-op everywhere else. The tombstone (``None``, which

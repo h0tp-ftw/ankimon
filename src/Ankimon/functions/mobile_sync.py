@@ -1477,6 +1477,7 @@ def _run_mobile_battles_impl(
     auto_catch_starter = True
     auto_catch_mega = True
     auto_catch_gmax = True
+    auto_catch_paradox = True
     auto_catch_regional = True
     xp_multiplier = 1.0
     choose_moves_penalty = 1.0
@@ -1489,6 +1490,7 @@ def _run_mobile_battles_impl(
         auto_catch_starter = settings_obj.get("battle.auto_catch_starter", True)
         auto_catch_mega = settings_obj.get("battle.auto_catch_mega", True)
         auto_catch_gmax = settings_obj.get("battle.auto_catch_gmax", True)
+        auto_catch_paradox = settings_obj.get("battle.auto_catch_paradox", True)
         auto_catch_regional = settings_obj.get("battle.auto_catch_regional", True)
         xp_multiplier = settings_obj.get("battle.xp_multiplier", 1.0)
         if settings_obj.get("controls.allow_to_choose_moves", False):
@@ -1822,6 +1824,10 @@ def _run_mobile_battles_impl(
                         )
                         or (is_mega and auto_catch_mega)
                         or (is_gmax and auto_catch_gmax)
+                        or (
+                            current_enemy_pokemon.tier == "Paradox"
+                            and auto_catch_paradox
+                        )
                         or (is_regional and auto_catch_regional)
                         or (current_enemy_pokemon.id in wishlist)
                     )

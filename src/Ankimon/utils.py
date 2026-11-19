@@ -1092,7 +1092,7 @@ def get_tier_by_id(pokemon_id: int) -> Optional[str]:
     Determines the tier category of a Pokémon based on its ID.
 
     Searches through lists in resources.py representing different Pokémon tiers
-    (Normal, Legendary, Mythical, Baby, Ultra, Fossil, Hisuian, Starter) to find the tier corresponding
+    (Normal, Legendary, Mythical, Ultra, Paradox, Fossil, Hisuian, Starter, Baby) to find the tier corresponding
     to the given Pokémon ID.
 
     Args:
