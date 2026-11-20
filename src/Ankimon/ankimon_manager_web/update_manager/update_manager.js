@@ -26,15 +26,80 @@
 	const busyOperations = new Set();
 	let toastTimer = null;
 	let modalArmTimer = null;
+	// The open modal's opener and key handler, so a modal shown over another
+	// one can take them over instead of stacking a second handler.
+	let modalSession = null;
+	// A pull request searched for by number that the loaded list lacks is
+	// looked up on GitHub. For the rest of the session: the open ones found
+	// (by number, oldest first), every other answer GitHub gave ('closed',
+	// 'merged', 'not_found'), and the numbers still waiting for a reply. A
+	// failed lookup (rate limit, offline) is kept for its search only, so
+	// typing it again retries.
+	const lookedUpPrs = new Map();
+	const prLookupOutcomes = new Map();
+	const prLookupsInFlight = new Set();
+	let prLookupFailure = null;
+	let prLookupTimer = null;
+	const PR_LOOKUP_DELAY_MS = 350;
 	const RATE_LIMIT_MESSAGE = 'Connection rate limited, pika try again soon!';
 	const DROPDOWN_PAGE_SIZE = 50;
-	const HIGH_RISK_UPDATE_MESSAGE = 'Update available (High Risk)';
+	const HIGH_RISK_UPDATE_MESSAGE = 'Update available (high risk)';
 	const HIGH_RISK_ARM_DELAY_MS = 800;
-	const STATUS_TONES = ['success', 'warning', 'error', 'rate-limit', 'neutral', 'high-risk'];
+	// 'checking' is the spinner shown until the first result; listing it here
+	// means every re-render that clears the tones also clears it.
+	const STATUS_TONES = ['checking', 'success', 'warning', 'error', 'rate-limit', 'neutral', 'high-risk'];
+	// en-GB pins the "17 Nov 2026, 10:58" shape; the time zone is the viewer's.
+	const SOURCE_DATE_FORMAT = new Intl.DateTimeFormat('en-GB', {
+		day: 'numeric',
+		month: 'short',
+		year: 'numeric',
+		hour: '2-digit',
+		minute: '2-digit',
+		hour12: false,
+	});
 
 	const byId = (id) => document.getElementById(id);
 	const setText = (id, value) => { byId(id).textContent = value; };
 	const setVisible = (element, visible) => element.classList.toggle('hidden', !visible);
+	// Rendered at all: false for display:none on the element or any ancestor.
+	const isShown = (element) => element.getClientRects().length > 0;
+
+	// The selected sidebar tab is the current page; sub-tabs are toggle buttons.
+	function markSidebarTab(button, active) {
+		button.classList.toggle('active', active);
+		if (active) button.setAttribute('aria-current', 'page');
+		else button.removeAttribute('aria-current');
+	}
+
+	function markSubtab(button, active) {
+		button.classList.toggle('active', active);
+		button.setAttribute('aria-pressed', String(active));
+	}
+
+	// The wheel always scrolls the page; the keyboard moves between tabs.
+	// Arrow keys step through one row (wrapping at the ends), Home/End jump to
+	// its first/last tab, and hidden tabs are skipped. The tab is focused
+	// before it is activated, so a modal it opens hands focus back to it.
+	function wireTabKeys(container, selector, previousKey, nextKey) {
+		container.addEventListener('keydown', (event) => {
+			const current = event.target.closest(selector);
+			if (!current || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+			const tabs = [...container.querySelectorAll(selector)]
+				.filter((tab) => !tab.disabled && isShown(tab));
+			const index = tabs.indexOf(current);
+			if (index < 0) return;
+			const target = {
+				[previousKey]: tabs[(index - 1 + tabs.length) % tabs.length],
+				[nextKey]: tabs[(index + 1) % tabs.length],
+				Home: tabs[0],
+				End: tabs[tabs.length - 1],
+			}[event.key];
+			if (!target) return;
+			event.preventDefault();
+			target.focus();
+			if (target !== current || !target.classList.contains('active')) target.click();
+		});
+	}
 
 	function showToast(message, isError = false) {
 		const toast = byId('toast');
@@ -45,10 +110,47 @@
 		toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000);
 	}
 
+	// The controls in the modal card a Tab can land on right now; the delayed
+	// confirm button joins once it is armed.
+	function modalControls(card) {
+		return [...card.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
+			.filter((element) => element.tabIndex >= 0 && !element.disabled && isShown(element));
+	}
+
+	// Back to the control that opened the modal; if it has since been
+	// disabled, hidden or removed, to the open panel's active sub-tab, then
+	// the active sidebar tab.
+	function restoreFocusAfterModal(opener) {
+		const canFocus = (element) => Boolean(element) &&
+			element !== document.body &&
+			element.isConnected &&
+			!element.disabled &&
+			typeof element.focus === 'function' &&
+			isShown(element) &&
+			!element.closest('[inert]');
+		const panel = document.querySelector('.tab-panel.active');
+		const target = [
+			opener,
+			panel && panel.querySelector('.branch-subtab.active'),
+			document.querySelector('.update-tab-link.active'),
+		].find(canFocus);
+		if (target) target.focus();
+	}
+
 	// warningStyle: false (plain), true (warning) or 'danger'. armDelayMs keeps the
 	// confirm button disabled briefly, so a double-click on the previous modal's
 	// confirm button cannot fall through and confirm this one too.
 	function showModal(title, message, confirmLabel, onConfirm, showCancel = true, warningStyle = false, escapeCloses = true, armDelayMs = 0) {
+		const modal = byId('update-modal');
+		// A modal shown while another is open replaces it: drop the old key
+		// handler and keep the first opener, so focus still goes back there.
+		let opener = document.activeElement;
+		if (modalSession) {
+			opener = modalSession.opener;
+			modalSession.detach();
+			modalSession = null;
+		}
+		if (opener && modal.contains(opener)) opener = null;
 		setText('modal-title', title);
 		const messageElement = byId('modal-message');
 		messageElement.replaceChildren();
@@ -56,7 +158,6 @@
 		else messageElement.textContent = message;
 		setText('modal-confirm', confirmLabel);
 		setVisible(byId('modal-cancel'), showCancel);
-		const modal = byId('update-modal');
 		modal.classList.remove('hidden');
 		const modalCard = modal.querySelector('.update-modal-card');
 		const tone = warningStyle === 'danger' ? 'danger' : warningStyle ? 'warning' : '';
@@ -72,9 +173,26 @@
 		if (armDelayMs > 0) {
 			modalArmTimer = setTimeout(() => { confirm.disabled = false; }, armDelayMs);
 		}
-		const previous = document.activeElement;
+		// The page behind the modal is inert while it is open: no focus, no
+		// clicks, hidden from assistive tech.
+		const appContainer = document.querySelector('.app-container');
 		const onKey = (event) => {
-			if (event.key === 'Escape' && escapeCloses) close();
+			if (event.key === 'Escape' && escapeCloses) {
+				close();
+				return;
+			}
+			if (event.key !== 'Tab') return;
+			// Tab and Shift+Tab cycle through the card's controls only; a focus
+			// that strayed outside the card (a click on the backdrop) comes back.
+			event.preventDefault();
+			const controls = modalControls(modalCard);
+			if (!controls.length) return;
+			const index = controls.indexOf(document.activeElement);
+			const step = event.shiftKey ? -1 : 1;
+			const next = index < 0
+				? controls[event.shiftKey ? controls.length - 1 : 0]
+				: controls[(index + step + controls.length) % controls.length];
+			next.focus();
 		};
 		const close = () => {
 			modal.classList.add('hidden');
@@ -86,7 +204,10 @@
 			confirm.onclick = null;
 			cancel.onclick = null;
 			document.removeEventListener('keydown', onKey);
-			if (previous && previous.focus) previous.focus();
+			modalSession = null;
+			// Leave inert first: nothing inside an inert page can take focus.
+			if (appContainer) appContainer.removeAttribute('inert');
+			restoreFocusAfterModal(opener);
 		};
 		confirm.onclick = () => {
 			close();
@@ -94,6 +215,11 @@
 		};
 		cancel.onclick = close;
 		document.addEventListener('keydown', onKey);
+		modalSession = {
+			opener,
+			detach: () => document.removeEventListener('keydown', onKey),
+		};
+		if (appContainer) appContainer.setAttribute('inert', '');
 		(showCancel ? cancel : confirm).focus();
 	}
 
@@ -110,6 +236,8 @@
 	function setProgressMessage(element, message, result = '') {
 		const progressContainer = element.closest('.operation-progress, .sprite-progress');
 		if (progressContainer) progressContainer.dataset.result = result;
+		// Python sends some progress text with trailing dots; none are shown.
+		message = String(message || '').replace(/\s*(?:\.{3}|\u2026)$/, '');
 		element.replaceChildren();
 		element.classList.remove(
 			'progress-message-complete',
@@ -130,7 +258,7 @@
 		}
 		if (result === 'complete') {
 			element.classList.add('progress-message-complete');
-			const match = message.match(/^(Update complete!)(.*)$/);
+			const match = message.match(/^(Update complete\.)(.*)$/);
 			if (match) {
 				const heading = document.createElement('strong');
 				heading.textContent = match[1];
@@ -190,9 +318,46 @@
 		}
 	}
 
+	// The outcome of a sprite check: one status line and, when the update
+	// changes anything, the New / Changed / Removed counts under it. The
+	// progress block is for work in flight only, so it steps aside. An empty
+	// message clears the outcome (a new check or an install has started).
+	function setSpriteResult(message, tone = '', counts = null) {
+		const statusLine = byId('sprites-result-status');
+		statusLine.classList.remove(...STATUS_TONES);
+		if (tone) statusLine.classList.add(tone);
+		statusLine.textContent = message || '';
+		const countList = byId('sprites-counts');
+		let total = 0;
+		countList.querySelectorAll('.sprite-count').forEach((item) => {
+			const value = counts ? Number(counts[item.dataset.count]) || 0 : 0;
+			total += value;
+			item.querySelector('.sprite-count-value').textContent = String(value);
+			item.classList.toggle('is-zero', value === 0);
+		});
+		setVisible(countList, total > 0);
+		setVisible(byId('sprites-result'), Boolean(message));
+		if (message) setVisible(byId('sprites-progress'), false);
+	}
+
 	function setDeveloperStatus(message) {
 		setText('developer-status', message || '');
 		setVisible(byId('developer-status'), Boolean(message));
+	}
+
+	// One format for every installed-source date, in the viewer's local time:
+	// "17 Nov 2026, 10:58". Returns '' for a missing or unparseable value.
+	function formatSourceDate(value) {
+		if (value === null || value === undefined || value === '') return '';
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? '' : SOURCE_DATE_FORMAT.format(date);
+	}
+
+	// A missing value shows a plain muted placeholder instead.
+	function setSourceDetail(id, value, placeholder) {
+		const element = byId(id);
+		element.textContent = value || placeholder;
+		element.classList.toggle('source-detail-placeholder', !value);
 	}
 
 	function closeDropdown(dropdown) {
@@ -243,15 +408,32 @@
 		});
 	}
 
+	function dropdownOptions(dropdown) {
+		return [...dropdown.querySelectorAll('.custom-select-option')];
+	}
+
+	// The keyboard highlight (is-active) is remembered by value, so it
+	// survives the list re-rendering on a search, a page change or a reload.
+	function highlightOption(dropdown, option, scroll = true) {
+		dropdownOptions(dropdown).forEach((item) => {
+			item.classList.toggle('is-active', item === option);
+		});
+		dropdown.dataset.activeValue = option ? option.dataset.value : '';
+		if (option && scroll) option.scrollIntoView({ block: 'nearest' });
+	}
+
+	function restoreHighlight(dropdown) {
+		if (!dropdown.classList.contains('open')) return;
+		const options = dropdownOptions(dropdown);
+		const kept = options.find((option) => option.dataset.value === dropdown.dataset.activeValue);
+		highlightOption(dropdown, kept || options[0] || null, false);
+	}
+
 	function wireDropdown(dropdown, onOpen = null) {
 		const trigger = dropdown.querySelector('.custom-select-trigger');
 		const menu = dropdown.querySelector('.custom-select-menu');
-		trigger.addEventListener('click', (event) => {
-			event.stopPropagation();
-			if (dropdown.classList.contains('open')) {
-				closeDropdown(dropdown);
-				return;
-			}
+		const search = menu.querySelector('input[type="search"]');
+		const openDropdown = () => {
 			closeDropdowns(dropdown);
 			dropdown.classList.add('open');
 			menu.classList.remove('hidden');
@@ -260,10 +442,89 @@
 			if (options) options.scrollTop = 0;
 			syncDropdownScrollSpace();
 			if (onOpen) onOpen();
-			const search = menu.querySelector('input[type="search"]');
+			const choices = dropdownOptions(dropdown);
+			highlightOption(
+				dropdown,
+				choices.find((option) => option.getAttribute('aria-selected') === 'true') ||
+					choices[0] || null,
+			);
 			if (search && !search.classList.contains('hidden')) search.focus();
+		};
+		trigger.addEventListener('click', (event) => {
+			event.stopPropagation();
+			if (dropdown.classList.contains('open')) {
+				closeDropdown(dropdown);
+				return;
+			}
+			openDropdown();
 		});
-		menu.addEventListener('click', (event) => event.stopPropagation());
+		// Closed: ArrowDown, Enter or Space on the trigger opens the menu.
+		// Open: ArrowUp/ArrowDown move the highlight, Home/End jump to the ends,
+		// Enter picks the highlighted option and Escape closes; both return
+		// focus to the trigger. Typing (Space included) still goes to the search
+		// box, and options and page buttons keep their own Enter.
+		dropdown.addEventListener('keydown', (event) => {
+			if (event.altKey || event.ctrlKey || event.metaKey) return;
+			const onTrigger = event.target === trigger;
+			if (!dropdown.classList.contains('open')) {
+				if (onTrigger && ['ArrowDown', 'Enter', ' '].includes(event.key)) {
+					event.preventDefault();
+					openDropdown();
+				}
+				return;
+			}
+			const options = dropdownOptions(dropdown);
+			const current = options.findIndex((option) => option.classList.contains('is-active'));
+			let next = null;
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				closeDropdown(dropdown);
+				trigger.focus();
+				return;
+			} else if (event.key === 'Enter' || event.key === ' ') {
+				const picks = onTrigger || (event.key === 'Enter' && event.target === search);
+				if (!picks) return;
+				event.preventDefault();
+				if (current >= 0) {
+					options[current].click();
+				} else if (onTrigger) {
+					closeDropdown(dropdown);
+				}
+				return;
+			} else if (event.key === 'ArrowDown') {
+				next = options[Math.min(options.length - 1, current + 1)];
+			} else if (event.key === 'ArrowUp') {
+				next = options[Math.max(0, current - 1)];
+			} else if ((event.key === 'Home' || event.key === 'End') && !event.shiftKey) {
+				next = event.key === 'Home' ? options[0] : options[options.length - 1];
+			} else {
+				return;
+			}
+			event.preventDefault();
+			if (!next) return;
+			highlightOption(dropdown, next);
+			// An option reached with Tab keeps the focus moving with the highlight.
+			if (options.includes(event.target)) next.focus();
+		});
+		menu.addEventListener('focusin', (event) => {
+			const option = event.target.closest('.custom-select-option');
+			if (option) highlightOption(dropdown, option, false);
+		});
+		// Tabbing away closes the menu. A click on the menu's empty space moves
+		// focus nowhere (no relatedTarget) and leaves it open.
+		dropdown.addEventListener('focusout', (event) => {
+			if (dropdown.classList.contains('open') && event.relatedTarget &&
+				!dropdown.contains(event.relatedTarget)) {
+				closeDropdown(dropdown);
+			}
+		});
+		menu.addEventListener('click', (event) => {
+			event.stopPropagation();
+			// A page button that just became disabled has dropped focus; keep it
+			// in the menu so the keyboard still works there.
+			const pageButton = event.target.closest('.dropdown-page-controls button');
+			if (pageButton && pageButton.disabled && search) search.focus();
+		});
 		menu.addEventListener('wheel', (event) => {
 			event.stopPropagation();
 			const options = menu.querySelector('.custom-select-options');
@@ -287,7 +548,8 @@
 	}
 
 	function renderOptions(dropdownId, entries, selectedValue, emptyMessage, onSelect) {
-		const options = byId(dropdownId).querySelector('.custom-select-options');
+		const dropdown = byId(dropdownId);
+		const options = dropdown.querySelector('.custom-select-options');
 		options.replaceChildren();
 		if (!entries.length) {
 			const empty = document.createElement('div');
@@ -302,10 +564,21 @@
 			option.className = 'custom-select-option';
 			option.setAttribute('role', 'option');
 			option.setAttribute('aria-selected', String(entry.value === selectedValue));
+			option.dataset.value = entry.value;
 			option.textContent = entry.label;
-			option.addEventListener('click', () => onSelect(entry));
+			option.addEventListener('click', () => {
+				// The list is not re-rendered on a pick; mark the new choice now
+				// so the menu reopens on it.
+				options.querySelectorAll('.custom-select-option').forEach((item) => {
+					item.setAttribute('aria-selected', String(item === option));
+				});
+				onSelect(entry);
+				// A pick hands focus back to the dropdown it was made in.
+				dropdown.querySelector('.custom-select-trigger').focus();
+			});
 			options.appendChild(option);
 		});
+		restoreHighlight(dropdown);
 	}
 
 	function currentBusy() {
@@ -373,20 +646,25 @@
 			switchDeveloperView('source');
 		}
 		developerSubtabs.querySelectorAll('.branch-subtab').forEach((button) => {
-			button.classList.toggle('active', button.dataset.developerView === selectedDeveloperView);
+			markSubtab(button, button.dataset.developerView === selectedDeveloperView);
 		});
 		const activeBranchTitle = byId('active-branch-title');
 		activeBranchTitle.replaceChildren();
-		activeBranchTitle.appendChild(document.createTextNode(
-			data.source_type === 'branch'
-				? 'Active Branch: '
-				: 'Installed Source: ',
-		));
-		if (data.source_type && data.source_name) {
+		activeBranchTitle.appendChild(document.createTextNode('Installed source: '));
+		// Users know the main branch as "the pre-release"; the link still opens
+		// the real branch. A Git checkout keeps the actual branch name.
+		// Only a recorded install counts: with no update state (an AnkiWeb
+		// release install) Python fills in branch/main as a default.
+		const recordedSource = data.state || {};
+		const preReleaseSource = !data.git_clone && recordedSource.source_type === 'branch' &&
+			(recordedSource.source_name || 'main') === 'main';
+		if (preReleaseSource || (data.source_type && data.source_name)) {
 			const sourceLink = document.createElement('a');
 			sourceLink.href = '#';
 			sourceLink.className = 'source-link';
-			sourceLink.textContent = sourceLinkLabel(data.source_type, data.source_name);
+			sourceLink.textContent = preReleaseSource
+				? 'Pre-release'
+				: sourceLinkLabel(data.source_type, data.source_name);
 			sourceLink.addEventListener('click', (event) => {
 				event.preventDefault();
 				openGitHubTarget(
@@ -408,47 +686,53 @@
 			branchUpdateParent.id === 'developer-view-main',
 		);
 		setText('branch-updates-title', inDeveloperMain
-			? 'Recent Main Updates'
-			: inPreRelease ? 'Recent Updates' : 'Recent Branch Updates');
+			? 'Recent pre-release changes'
+			: inPreRelease ? 'Recent changes' : 'Recent branch changes');
 		setVisible(
 			byId('branch-update-description'),
 			inPreRelease,
 		);
-		setText(
-			'installed-commit',
-			[
-				localSha ? `${localSha.slice(0, 7)} (Current)` : 'unknown',
-				...(hasBranchViews
-					? [mainCommitSha
-						? `${mainCommitSha.slice(0, 7)} (Last Main)`
-						: 'unknown (Next update will fetch this)']
-					: []),
-			].join('\n'),
-		);
-		setText(
+		// Installed row, plus a Pre-release row whenever the branch views are on.
+		setSourceDetail('installed-commit', localSha.slice(0, 7), 'Unknown');
+		setSourceDetail(
 			'commit-date',
-			[
-				typeof data.commit_date === 'string' && data.commit_date
-				? `${data.commit_date.replace('T', ' ').replace('Z', '')} UTC`
-				: 'unknown (Next update will fetch this)',
-				...(hasBranchViews
-					? [typeof data.main_commit_date === 'string' && data.main_commit_date
-						? `${data.main_commit_date.replace('T', ' ').replace('Z', '')} UTC`
-						: 'unknown (Next update will fetch this)']
-					: []),
-			].join('\n'),
+			typeof data.commit_date === 'string' ? formatSourceDate(data.commit_date) : '',
+			'Unknown',
 		);
-		setText(
+		setVisible(byId('pre-release-source-row'), hasBranchViews);
+		setSourceDetail(
+			'pre-release-commit',
+			hasBranchViews ? mainCommitSha.slice(0, 7) : '',
+			'Unknown',
+		);
+		setSourceDetail(
+			'pre-release-commit-date',
+			hasBranchViews && typeof data.main_commit_date === 'string'
+				? formatSourceDate(data.main_commit_date)
+				: '',
+			'Unknown',
+		);
+		setSourceDetail(
 			'last-update-installed',
-			data.installed_at
-				? new Date(data.installed_at * 1000).toLocaleString()
-				: 'Never (Perform update to record)',
+			Number(data.installed_at) > 0
+				? formatSourceDate(Number(data.installed_at) * 1000)
+				: '',
+			'Never',
 		);
 
 		const status = byId('branch-status');
 		status.classList.remove(...STATUS_TONES);
 		branchCanUpdate = false;
 		let mainUpdateAvailable = false;
+		// The action the button offers; empty hides the button. A state the
+		// user cannot act on is explained by the status line, never by a
+		// disabled button relabelled to describe it.
+		const updateAction = branchView === 'main'
+			? 'Update to pre-release'
+			: 'Update installed source';
+		let branchAction = '';
+		// Why this Git checkout cannot be updated in place, as a full sentence.
+		let checkoutBlocked = '';
 		// Everything except a stable release is unreleased code.
 		const highRiskView = branchView === 'main' ||
 			isHighRiskTarget({ type: data.source_type, name: data.source_name });
@@ -462,29 +746,29 @@
 				status.textContent = 'Could not reach GitHub. Check your connection and try again.';
 				status.classList.add('error');
 			} else if (data.main_error === 'not_found') {
-				status.textContent = "Could not find branch 'main' on GitHub.";
+				status.textContent = 'Could not find the pre-release on GitHub.';
 				status.classList.add('warning');
 			} else {
-				status.textContent = 'GitHub could not verify the Main branch. Please try again later.';
+				status.textContent = 'GitHub could not verify the pre-release. Please try again later.';
 				status.classList.add('warning');
 			}
-			setText('branch-update-btn', 'Update to Main Now');
+			branchAction = updateAction;
 			branchCanUpdate = Boolean(remoteSha);
 		} else if (data.git_clone && active === 'detached') {
-			status.textContent = 'Detached checkout. Pick a branch, release, tag, or PR from the other tabs.';
+			checkoutBlocked = 'Your checkout is detached, so there is no branch to update. Pick a branch, release, tag, or PR from the other tabs.';
+			status.textContent = checkoutBlocked;
 			status.classList.add('warning');
-			setText('branch-update-btn', 'No Branch Checked Out');
 		} else if (data.git_clone && gitInfo.dirty) {
-			status.textContent = 'Local changes present. Commit, stash, or discard them before updating.';
+			checkoutBlocked = 'Your checkout has local changes. Commit, stash, or discard them before updating.';
+			status.textContent = checkoutBlocked;
 			status.classList.add('warning');
-			setText('branch-update-btn', 'Checkout Has Local Changes');
 		} else if (!remoteSha) {
 			if (viewData.error === 'rate_limited') {
 				status.textContent = RATE_LIMIT_MESSAGE;
 				status.classList.add('rate-limit');
 			} else if (viewData.error === 'not_found') {
 				if (branchView === 'main') {
-					status.textContent = `Could not find branch '${viewData.targetName}' on GitHub.`;
+					status.textContent = 'Could not find the pre-release on GitHub.';
 				} else if (data.source_type === 'pr') {
 					status.textContent = `Could not find pull request #${data.source_name} on GitHub.`;
 				} else if (data.source_type === 'tag' || data.source_type === 'release') {
@@ -503,23 +787,21 @@
 				status.textContent = 'Could not check connection.';
 				status.classList.add('error');
 			}
-			setText('branch-update-btn', data.git_clone
-				? 'Branch Not on Ankimon Repository'
-				: branchView === 'main' ? 'Update to Main Now' : 'Update Installed Source');
+			// A Git checkout with no copy on the Ankimon repository has nothing
+			// to follow; the status line above already says why.
+			branchAction = data.git_clone ? '' : updateAction;
 		} else if (data.git_clone && compareSha !== remoteSha && ['behind', 'diverged'].includes(relation)) {
-			status.textContent = relation === 'behind'
-				? `Your checkout is ahead of '${active}' on the Ankimon repository.`
-				: `Your checkout has diverged from '${active}' on the Ankimon repository.`;
+			checkoutBlocked = relation === 'behind'
+				? `Your checkout is ahead of '${active}' on the Ankimon repository, so it cannot be fast-forwarded.`
+				: `Your checkout has diverged from '${active}' on the Ankimon repository, so it cannot be fast-forwarded.`;
+			status.textContent = checkoutBlocked;
 			status.classList.add('warning');
-			setText('branch-update-btn', 'Cannot Fast-forward');
 		} else if (compareSha !== remoteSha) {
 			status.textContent = highRiskView
 				? `${HIGH_RISK_UPDATE_MESSAGE} · Latest: ${remoteSha.slice(0, 7)}`
-				: `New update available! (Latest: ${remoteSha.slice(0, 7)})`;
+				: `Update available (${remoteSha.slice(0, 7)})`;
 			status.classList.add(highRiskView ? 'high-risk' : 'warning');
-			setText('branch-update-btn', branchView === 'main'
-				? 'Update to Main Now'
-				: 'Update Installed Source');
+			branchAction = updateAction;
 			branchCanUpdate = true;
 		} else {
 			const noMainUpdatesForExternalSource = branchView === 'main' &&
@@ -527,14 +809,14 @@
 				!(data.source_type === 'branch' && data.source_name === 'main') &&
 				viewData.commits.length === 0;
 			if (noMainUpdatesForExternalSource) {
-				status.textContent = 'Up to date!';
+				status.textContent = 'Up to date';
 				status.classList.add('success');
-				setText('branch-update-btn', 'Switch to Latest Main');
+				branchAction = 'Switch to pre-release';
 				branchCanUpdate = Boolean(remoteSha);
 			} else {
-				status.textContent = 'Up to date!';
+				// Nothing to install: "Up to date" is the reason the button is hidden.
+				status.textContent = 'Up to date';
 				status.classList.add('success');
-				setText('branch-update-btn', 'Already Up to Date');
 			}
 		}
 
@@ -551,23 +833,28 @@
 					status.textContent = 'Could not reach GitHub. Check your connection and try again.';
 					status.classList.add('error');
 				} else if (data.main_error === 'not_found') {
-					status.textContent = "Could not find branch 'main' on GitHub.";
+					status.textContent = 'Could not find the pre-release on GitHub.';
 					status.classList.add('warning');
 				} else {
-					status.textContent = 'GitHub could not verify the Main branch. Please try again later.';
+					status.textContent = 'GitHub could not verify the pre-release. Please try again later.';
 					status.classList.add('warning');
 				}
 			} else if (data.main_commits_error) {
 				status.textContent = data.main_commits_error === 'connection'
 					? 'Could not reach GitHub. Check your connection and try again.'
-					: 'GitHub could not load Main updates. Please try again later.';
+					: 'GitHub could not load pre-release changes. Please try again later.';
 				status.classList.add(data.main_commits_error === 'connection' ? 'error' : 'warning');
+			} else if (checkoutBlocked && (viewData.commits.length || compareSha !== remoteSha)) {
+				// An update is waiting but this checkout cannot take it. The
+				// button is hidden, so the status line must keep the reason.
+				status.textContent = checkoutBlocked;
+				status.classList.add('warning');
 			} else if (viewData.commits.length) {
 				status.textContent = HIGH_RISK_UPDATE_MESSAGE;
 				status.classList.add('high-risk');
 				mainUpdateAvailable = true;
 			} else {
-				status.textContent = 'Up to date!';
+				status.textContent = 'Up to date';
 				status.classList.add('success');
 			}
 		}
@@ -577,17 +864,22 @@
 		);
 		if (branchView === 'main' && externalPrOrBranch && remoteSha) {
 			if (compareSha === remoteSha) {
-				status.textContent = 'Up to date!';
+				status.textContent = 'Up to date';
 				status.classList.remove(...STATUS_TONES);
 				status.classList.add('success');
 				mainUpdateAvailable = false;
-				setText('branch-update-btn', 'Switch to Latest Main');
+				branchAction = 'Switch to pre-release';
 			}
 			branchCanUpdate = true;
 		}
 		if (inPreRelease && branchView === 'main' && branchCanUpdate && mainUpdateAvailable) {
-			setText('branch-update-btn', 'Update Now');
+			branchAction = 'Update now';
 		}
+		// An action that can run always has a visible, named button.
+		if (branchCanUpdate && !branchAction) branchAction = updateAction;
+		const branchButton = byId('branch-update-btn');
+		if (branchAction) branchButton.textContent = branchAction;
+		setVisible(branchButton, Boolean(branchAction));
 
 		const commits = byId('recent-commits');
 		commits.replaceChildren();
@@ -638,14 +930,14 @@
 	function switchDeveloperView(view) {
 		selectedDeveloperView = ['main', 'current'].includes(view) ? view : 'source';
 		byId('developer-subtabs').querySelectorAll('.branch-subtab').forEach((button) => {
-			button.classList.toggle('active', button.dataset.developerView === selectedDeveloperView);
+			markSubtab(button, button.dataset.developerView === selectedDeveloperView);
 		});
 		document.querySelectorAll('#panel-developer .subtab-panel').forEach((panel) => {
 			panel.classList.toggle('active', panel.id === `developer-view-${selectedDeveloperView}`);
 		});
 		setText('branch-updates-title', selectedDeveloperView === 'main'
-			? 'Recent Main Updates'
-			: 'Recent Branch Updates');
+			? 'Recent pre-release changes'
+			: 'Recent branch changes');
 		setVisible(byId('branch-update-description'), false);
 		if (selectedDeveloperView !== 'source') {
 			const viewPanel = byId(`developer-view-${selectedDeveloperView}`);
@@ -665,7 +957,7 @@
 	function switchReleaseView(view) {
 		selectedReleaseView = view === 'pre-release' ? 'pre-release' : 'releases';
 		byId('release-subtabs').querySelectorAll('.branch-subtab').forEach((button) => {
-			button.classList.toggle('active', button.dataset.releaseView === selectedReleaseView);
+			markSubtab(button, button.dataset.releaseView === selectedReleaseView);
 		});
 		document.querySelectorAll('#panel-releases .subtab-panel').forEach((panel) => {
 			panel.classList.toggle('active', panel.id === `release-view-${selectedReleaseView}`);
@@ -675,10 +967,13 @@
 			preReleasePanel.appendChild(byId('branch-update-view'));
 			preReleasePanel.appendChild(byId('pre-release-progress'));
 			selectedBranchView = 'main';
-			setText('branch-updates-title', 'Recent Updates');
+			setText('branch-updates-title', 'Recent changes');
 			setVisible(byId('branch-update-description'), true);
 			if (updateData) renderBranch(updateData);
 		}
+		// The branch button is shared; its enabled state follows the view
+		// just rendered, not the one it was last shown in.
+		updateButtonStates();
 	}
 
 	function showDeveloperWarningIfNeeded(force = false) {
@@ -702,7 +997,7 @@
 				),
 			);
 			const trustSources = document.createElement('strong');
-			trustSources.textContent = 'Please proceed with sources you trust.';
+			trustSources.textContent = 'Install only from trusted sources.';
 			warning.appendChild(trustSources);
 			const row = document.createElement('label');
 			row.className = 'check-row developer-warning-checkbox';
@@ -718,9 +1013,9 @@
 			row.append(checkbox, indicator, label);
 			content.append(warning, row);
 			showModal(
-				'Developer Warning',
+				'Developer warning',
 				content,
-				'Got it',
+				'Close',
 				() => bridge.setDeveloperWarningHidden(checkbox.checked, (saved) => {
 					if (!saved) showToast('Could not save the developer warning setting.', true);
 				}),
@@ -735,35 +1030,37 @@
 		const list = Array.isArray(releases) ? releases : [];
 		latestRelease = list[0] || null;
 		const latestLabel = byId('latest-release-label');
-		latestLabel.classList.remove('success', 'warning', 'error');
+		latestLabel.classList.remove(...STATUS_TONES);
 		isBleedingEdge = Boolean(updateData && updateData.bleeding_edge_release);
 		lostReleaseCommits = updateData && Array.isArray(updateData.release_lost_commits)
 			? updateData.release_lost_commits
 			: [];
 		if (error === 'rate_limited') {
 			latestLabel.textContent = RATE_LIMIT_MESSAGE;
-			latestLabel.classList.add('error');
+			latestLabel.classList.add('rate-limit');
 		} else if (!latestRelease) {
 			latestLabel.textContent = 'Could not check for updates.';
 			latestLabel.classList.add('warning');
 		} else if (isBleedingEdge) {
-			latestLabel.textContent = `Switch back to ${latestRelease.name} from the pre-release`;
+			latestLabel.textContent = `Switch back to ${latestRelease.name} from the pre-\u2060release`;
 			latestLabel.classList.add('warning');
 		} else if (latestRelease.name === updateData.version) {
-			latestLabel.textContent = `You're up to date (${latestRelease.name})`;
+			latestLabel.textContent = `Up to date (${latestRelease.name})`;
 			latestLabel.classList.add('success');
 		} else {
-			latestLabel.textContent = `New version available: ${latestRelease.name}`;
+			latestLabel.textContent = `Update available: ${latestRelease.name}`;
 			latestLabel.classList.add('warning');
 		}
-		setText(
-			'latest-release-btn',
-			latestRelease && shouldSwitchToLatestRelease()
-				? 'Switch to Latest Release'
-				: latestRelease && latestRelease.name === updateData.version
-					? 'Already Up to Date'
-					: 'Update to Latest Release',
-		);
+		// Already on the latest release: the label above says so and the
+		// button is hidden rather than relabelled to describe that state.
+		const latestAction = latestRelease && shouldSwitchToLatestRelease()
+			? 'Switch to latest release'
+			: latestRelease && latestRelease.name === updateData.version
+				? ''
+				: 'Update to latest release';
+		const latestButton = byId('latest-release-btn');
+		if (latestAction) latestButton.textContent = latestAction;
+		setVisible(latestButton, Boolean(latestAction));
 
 		if (!list.some((release) => release.name === selectedRelease)) {
 			selectedRelease = list[0] ? list[0].name : '';
@@ -825,7 +1122,7 @@
 		const state = data.state || {};
 		let version = '';
 		if (state.source_type === 'branch' && state.source_name === 'main') {
-			version = 'Pre-Release';
+			version = 'Pre-release';
 		} else if (state.source_type === 'branch') {
 			version = `Branch ${state.source_name}`;
 		} else if (state.source_type === 'pr') {
@@ -835,7 +1132,7 @@
 		} else if (state.source_type === 'release') {
 			version = '';
 		} else if (data.experimental_build) {
-			version = 'Experimental Build';
+			version = 'Experimental build';
 		}
 		const installed = byId('installed-version');
 		installed.replaceChildren(document.createTextNode(`Installed: ${data.version}`));
@@ -849,8 +1146,8 @@
 
 	function renderSourceTypes() {
 		const types = [
-			{ value: 'pr', label: 'Pull Request' },
-			{ value: 'branch', label: 'Side Branch' },
+			{ value: 'pr', label: 'Pull request' },
+			{ value: 'branch', label: 'Side branch' },
 			{ value: 'tag', label: 'Tag' },
 		];
 		const selected = types.find((entry) => entry.value === selectedSourceType) || types[0];
@@ -864,6 +1161,8 @@
 				selectedSourceType = entry.value;
 				selectedTarget = '';
 				sourcePage = 0;
+				clearTimeout(prLookupTimer);
+				prLookupFailure = null;
 				byId('pr-search').value = '';
 				setDropdownLabel('source-type-select', entry.label);
 				closeDropdown(byId('source-type-select'));
@@ -876,6 +1175,95 @@
 		return value.toLocaleLowerCase().replace(/[.-]/g, '');
 	}
 
+	// The pull request number the search names ("1055" or "#1055"), else ''.
+	function searchedPullRequestNumber() {
+		const match = byId('pr-search').value.trim().match(/^#?(\d{1,12})$/);
+		const number = match ? Number(match[1]) : 0;
+		return number >= 1 ? String(number) : '';
+	}
+
+	// The loaded pull requests and the ones found by number, one entry per
+	// number. Found ones come first (newest lookup on top); a loaded entry
+	// wins over a found one, since it was fetched more recently.
+	function pullRequestEntries() {
+		const loaded = developerData && Array.isArray(developerData.prs)
+			? developerData.prs
+			: [];
+		const loadedNumbers = new Set(loaded.map((entry) => String(entry.number)));
+		const found = [...lookedUpPrs.values()]
+			.filter((entry) => !loadedNumbers.has(String(entry.number)))
+			.reverse();
+		return [...found, ...loaded];
+	}
+
+	function isListedPullRequest(number) {
+		return pullRequestEntries().some((entry) => String(entry.number) === number);
+	}
+
+	// The number the current search should look up: a pull request number
+	// that no listed entry has and GitHub has not already answered for.
+	function pullRequestNumberToLookUp() {
+		if (!developerData || selectedSourceType !== 'pr') return '';
+		const number = searchedPullRequestNumber();
+		if (!number || prLookupOutcomes.has(number) || isListedPullRequest(number)) return '';
+		return number;
+	}
+
+	// Called on every keystroke in the search; the lookup starts once typing
+	// pauses, and a number already on its way is not asked for twice.
+	function schedulePullRequestLookup() {
+		clearTimeout(prLookupTimer);
+		if (!pullRequestNumberToLookUp()) return;
+		prLookupTimer = setTimeout(() => {
+			const number = pullRequestNumberToLookUp();
+			if (!number || prLookupsInFlight.has(number)) return;
+			prLookupsInFlight.add(number);
+			renderDeveloperTargets(false);
+			if (bridge) bridge.lookupPullRequest(number);
+		}, PR_LOOKUP_DELAY_MS);
+	}
+
+	// The status line the search's lookup puts above the options, or null.
+	function pullRequestLookupNotice() {
+		const number = selectedSourceType === 'pr' ? searchedPullRequestNumber() : '';
+		if (!number || isListedPullRequest(number)) return null;
+		const outcome = prLookupOutcomes.get(number);
+		if (outcome === 'merged') return { text: `#${number} was merged`, tone: 'neutral' };
+		if (outcome === 'closed') return { text: `#${number} is closed`, tone: 'neutral' };
+		if (outcome === 'not_found') return { text: `No pull request #${number}`, tone: 'neutral' };
+		if (prLookupFailure && prLookupFailure.number === number) {
+			if (prLookupFailure.status === 'rate_limited') {
+				return { text: RATE_LIMIT_MESSAGE, tone: 'rate-limit' };
+			}
+			if (prLookupFailure.status === 'connection') {
+				return {
+					text: 'Could not reach GitHub. Check your connection and try again.',
+					tone: 'error',
+				};
+			}
+			return {
+				text: `GitHub could not look up #${number}. Please try again later.`,
+				tone: 'warning',
+			};
+		}
+		if (prLookupsInFlight.has(number)) {
+			return { text: `Looking up #${number}`, tone: 'checking' };
+		}
+		return null;
+	}
+
+	// A status line at the top of a dropdown's list, in place of its "no
+	// matches" line. It is not an option, so the keyboard skips it.
+	function showOptionsNotice(dropdown, notice) {
+		const options = dropdown.querySelector('.custom-select-options');
+		const empty = options.querySelector('.custom-select-empty');
+		if (empty) empty.remove();
+		const line = document.createElement('div');
+		line.className = `custom-select-notice status-text ${notice.tone}`;
+		line.textContent = notice.text;
+		options.prepend(line);
+	}
+
 	function renderDeveloperTargets(resetSelection = false) {
 		if (!developerData) return;
 		const type = selectedSourceType;
@@ -885,7 +1273,7 @@
 		const pagination = byId('pr-pagination');
 		const targetMenu = byId('source-target').querySelector('.custom-select-menu');
 		const options = {
-			pr: { label: 'Pull request:', entries: developerData.prs || [] },
+			pr: { label: 'Pull request:', entries: pullRequestEntries() },
 			branch: {
 				label: 'Side branch:',
 				entries: (developerData.branches || []).filter((entry) => entry.name !== 'main'),
@@ -927,22 +1315,9 @@
 			type === 'tag' ? 'Tag pages' : 'Pull request pages',
 		);
 		targetMenu.classList.toggle('paged-menu', showPagination);
+		// The footer is the two page arrows only; their disabled states are
+		// the page indicator.
 		if (showPagination) {
-			const first = visibleEntries[0];
-			const last = visibleEntries[visibleEntries.length - 1];
-			const start = sourcePage * DROPDOWN_PAGE_SIZE + 1;
-			const end = sourcePage * DROPDOWN_PAGE_SIZE + visibleEntries.length;
-			setText('pr-page-summary', type === 'pr'
-				? first && last
-					? `Showing PR #${first.number} to #${last.number}`
-					: 'Showing PR #— to #—'
-				: visibleEntries.length
-					? `Showing tag ${start} to ${end}`
-					: 'No matching tags');
-			setText(
-				'pr-page-limit',
-				type === 'tag' ? 'Max 100 tags shown' : 'Max 100 PRs shown',
-			);
 			byId('pr-page-prev').setAttribute(
 				'aria-label',
 				type === 'tag' ? 'Previous tag page' : 'Previous pull request page',
@@ -958,11 +1333,15 @@
 		const labelFor = (entry) => type === 'pr'
 			? `#${entry.number} — ${entry.title}`
 			: entry.name;
+		// A pull request found by number is listed first but never becomes
+		// the default pick; the first loaded one stays that.
+		const defaultEntry = (type === 'pr' && (developerData.prs || [])[0]) ||
+			options[type].entries[0];
 		if (resetSelection || !options[type].entries.some((entry) => valueFor(entry) === selectedTarget)) {
 			selectedTarget = type === 'branch' &&
 				options[type].entries.some((entry) => entry.name === 'main')
 				? 'main'
-				: (options[type].entries[0] ? valueFor(options[type].entries[0]) : '');
+				: (defaultEntry ? valueFor(defaultEntry) : '');
 		}
 		const selectedEntry = options[type].entries.find((entry) => valueFor(entry) === selectedTarget);
 		const error = developerData.errors && developerData.errors[type];
@@ -1006,6 +1385,22 @@
 				updateButtonStates();
 			},
 		);
+		// A search for a pull request number the list lacks: "Looking up",
+		// then why it cannot be listed. An open one is listed as an option.
+		let lookupNotice = type === 'pr' ? pullRequestLookupNotice() : null;
+		// "No pull request #10" would contradict loaded matches such as #1055.
+		if (lookupNotice && lookupNotice.tone === 'neutral' &&
+			!targetDropdown.querySelector('.custom-select-empty')) lookupNotice = null;
+		if (lookupNotice) showOptionsNotice(targetDropdown, lookupNotice);
+		// Screen readers hear the same line, or the option a lookup found;
+		// the list itself is rebuilt on every keystroke and is not a live region.
+		const searchedNumber = type === 'pr' ? searchedPullRequestNumber() : '';
+		const foundEntry = searchedNumber ? lookedUpPrs.get(searchedNumber) : null;
+		const lookupMessage = lookupNotice
+			? lookupNotice.text
+			: foundEntry ? labelFor(foundEntry) : '';
+		const lookupStatus = byId('pr-lookup-status');
+		if (lookupStatus.textContent !== lookupMessage) lookupStatus.textContent = lookupMessage;
 		if (type === 'pr' || type === 'tag') {
 			byId('source-target').querySelector('.custom-select-options').scrollTop = 0;
 		}
@@ -1015,7 +1410,7 @@
 
 	function switchTab(tab) {
 		document.querySelectorAll('.update-tab-link').forEach((button) => {
-			button.classList.toggle('active', button.dataset.tab === tab);
+			markSidebarTab(button, button.dataset.tab === tab);
 		});
 		document.querySelectorAll('.tab-panel').forEach((panel) => {
 			panel.classList.toggle('active', panel.id === `panel-${tab}`);
@@ -1024,7 +1419,7 @@
 		if (tab === 'developer' && !developerData && !developerLoading && bridge) {
 			developerLoading = true;
 			developerLoadFailed = false;
-			setDeveloperStatus('Loading developer options...');
+			setDeveloperStatus('Loading developer options');
 			bridge.loadDeveloperData();
 		}
 		if (tab === 'developer') {
@@ -1037,7 +1432,7 @@
 
 	function startInstall(sourceType, sourceName, progressKey) {
 		activeProgressKey = progressKey;
-		setActiveProgressMessage('Preparing update...');
+		setActiveProgressMessage('Preparing update');
 		setOperationProgress(0, true, true);
 		setOperationStatus('', false);
 		bridge.installUpdate(sourceType, sourceName, (result) => {
@@ -1062,7 +1457,7 @@
 
 	function installActionVerb(buttonLabel) {
 		if (/^switch\b/i.test(buttonLabel)) return 'switch';
-		if (/^update\b/i.test(buttonLabel)) return 'update';
+		if (/^(update|fast-forward)\b/i.test(buttonLabel)) return 'update';
 		return 'install';
 	}
 
@@ -1086,7 +1481,7 @@
 			warning = 'Anyone can open a pull request; this code is unreviewed and unreleased. Installing it runs unverified code on your device. It may or may not behave as expected, and can even break the add-on. Please proceed if you trust this PR. Use at your own risk.';
 		} else if (!warning && resolvedTarget.type === 'branch' &&
 			resolvedTarget.name && resolvedTarget.name !== 'main') {
-			warning = 'Unlike main, these are collaborator branches and can be unreleased. The branch may be a work in progress, and may or may not behave as expected. Please proceed if you trust this branch. Use at your own risk.';
+			warning = 'These are collaborator branches, separate from the pre-release. The branch may be a work in progress, and may or may not behave as expected. Please proceed if you trust this branch. Use at your own risk.';
 		}
 		const isPullRequestOrSideBranch = resolvedTarget.type === 'pr' ||
 			(resolvedTarget.type === 'branch' && resolvedTarget.name !== 'main');
@@ -1165,9 +1560,17 @@
 			);
 		}
 		fragment.appendChild(document.createTextNode(prompt));
+		// Users know the main branch as "the pre-release"; the link still opens
+		// the real branch. A Git checkout keeps the actual branch name.
+		const preReleaseTarget = !(updateData && updateData.git_clone) &&
+			linkTarget.sourceType === 'branch' &&
+			(linkTarget.sourceName || 'main') === 'main';
+		if (preReleaseTarget) fragment.appendChild(document.createTextNode('the '));
 		const link = createSourceLink(
 			linkTarget,
-			sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName),
+			preReleaseTarget
+				? 'pre-release'
+				: sourceLinkLabel(linkTarget.sourceType, linkTarget.sourceName),
 		);
 		fragment.appendChild(link);
 		if (updateData && updateData.git_clone) {
@@ -1182,10 +1585,12 @@
 			);
 		}
 		const proceed = () => startInstall(sourceType, sourceName, progressKey);
+		// Title and confirm button repeat the verb of the button that opened this.
+		const verb = ['update', 'switch'].includes(replacementVerb) ? replacementVerb : 'install';
 		showModal(
-			'Confirm Update',
+			`Confirm ${verb}`,
 			fragment,
-			'Install',
+			verb.charAt(0).toUpperCase() + verb.slice(1),
 			isHighRiskTarget(resolvedTarget)
 				? () => showHighRiskConfirmation(resolvedTarget, linkTarget, replacementVerb, proceed)
 				: proceed,
@@ -1219,7 +1624,7 @@
 		const description = target.type === 'pr'
 			? `${label} is an unreviewed pull request.${unreleased}`
 			: isMain
-				? `The ${label} branch is pre-release code.${unreleased}`
+				? `The pre-release is the newest unreleased code.${unreleased}`
 				: target.type === 'branch'
 					? `Branch ${label} is an unreleased side branch.${unreleased}`
 					: target.type === 'tag'
@@ -1236,10 +1641,10 @@
 		advice.textContent = 'This cannot be undone automatically. If you are unsure, cancel and create a backup first in Ankimon > Game > Backup Manager.';
 		content.append(banner, advice);
 		const confirmLabel = verb === 'switch'
-			? 'Switch Anyway'
-			: verb === 'update' ? 'Update Anyway' : 'Install Anyway';
+			? 'Switch anyway'
+			: verb === 'update' ? 'Update anyway' : 'Install anyway';
 		showModal(
-			'High-Risk Update',
+			'High-risk update',
 			content,
 			confirmLabel,
 			onConfirm,
@@ -1303,7 +1708,7 @@
 		showModal(
 			'Updates that will be lost',
 			content,
-			'Switch to Latest Release',
+			'Switch',
 			() => startInstall('release', releaseName, 'release'),
 			true,
 			true,
@@ -1374,12 +1779,20 @@
 				`latest installed source (${updateData.active_branch})`,
 				'',
 				progressKey,
+				installActionVerb(byId('branch-update-btn').textContent),
 			);
 			return;
 		}
 		const name = updateData.active_branch || 'main';
 		if (updateData.git_clone) {
-			install('current', 'current', name, '', progressKey);
+			install(
+				'current',
+				'current',
+				name,
+				'',
+				progressKey,
+				installActionVerb(byId('branch-update-btn').textContent),
+			);
 		} else {
 			install(
 				'branch',
@@ -1402,7 +1815,7 @@
 		if (activeTab && activeTab.dataset.tab === 'releases' &&
 			selectedReleaseView === 'pre-release') {
 			// The branch view is shared; a reload must not move it (or retitle it)
-			// out from under the Pre-Release tab the user is looking at.
+			// out from under the Pre-release tab the user is looking at.
 			switchReleaseView('pre-release');
 		} else {
 			switchDeveloperView(selectedDeveloperView);
@@ -1421,6 +1834,29 @@
 		renderDeveloperTargets();
 	};
 
+	// The reply to bridge.lookupPullRequest. An answer is kept for the session
+	// even when the search has moved on (an open pull request is installable
+	// from now on), but only a reply for the current search is shown.
+	window.onPullRequestLookup = (data) => {
+		const number = String((data && data.number) || '');
+		const status = data && data.status;
+		prLookupsInFlight.delete(number);
+		if (status === 'open' && data.pr) {
+			lookedUpPrs.delete(number);
+			lookedUpPrs.set(number, data.pr);
+		} else if (['closed', 'merged', 'not_found'].includes(status)) {
+			prLookupOutcomes.set(number, status);
+		}
+		if (selectedSourceType !== 'pr' || searchedPullRequestNumber() !== number) return;
+		if (!['open', 'closed', 'merged', 'not_found'].includes(status)) {
+			prLookupFailure = { number, status };
+		}
+		// Enter should pick the pull request that was typed, not a partial
+		// match that held the highlight while the lookup ran.
+		if (status === 'open' && data.pr) byId('source-target').dataset.activeValue = number;
+		renderDeveloperTargets(false);
+	};
+
 	window.onDeveloperLoadFailed = (data) => {
 		developerLoading = false;
 		developerLoadFailed = true;
@@ -1429,6 +1865,14 @@
 
 	window.onUpdateLoadFailed = (data) => {
 		setOperationStatus(`Could not check for updates: ${data.message}`);
+		// Nothing else will resolve a line still showing the spinner.
+		['latest-release-label', 'branch-status'].forEach((id) => {
+			const line = byId(id);
+			if (!line.classList.contains('checking')) return;
+			line.classList.remove(...STATUS_TONES);
+			line.classList.add('error');
+			line.textContent = 'Could not check for updates';
+		});
 	};
 
 	window.onUpdateCodeError = (data) => {
@@ -1438,23 +1882,25 @@
 	window.onUpdateOperation = (data) => {
 		if (data.busy) busyOperations.add(data.kind);
 		else busyOperations.delete(data.kind);
-		if (data.busy && data.kind === 'load') setOperationStatus('Checking for updates...');
+		if (data.busy && data.kind === 'load') setOperationStatus('Checking for updates');
 		if (data.busy && data.kind === 'developer') {
 			developerLoading = true;
 			developerLoadFailed = false;
-			setDeveloperStatus('Loading developer options...');
+			setDeveloperStatus('Loading developer options');
 		}
 		if (!data.busy && data.kind === 'developer' && !developerData && !developerLoadFailed) {
 			developerLoading = false;
 			setDeveloperStatus('');
 		}
 		if (data.busy && data.kind === 'sprites-check') {
-			setSpriteProgress(0, 'Checking for sprite updates...');
+			setSpriteResult('');
+			setSpriteProgress(0, 'Checking for sprite updates');
 			byId('sprites-progress').classList.remove('hidden');
 		}
 		if (data.busy && data.kind === 'sprites-install') {
+			setSpriteResult('');
 			byId('sprites-progress').classList.remove('hidden');
-			setSpriteProgress(0, 'Updating sprites...');
+			setSpriteProgress(0, 'Updating sprites');
 		}
 		if (!data.busy && data.kind === 'load' && !currentBusy()) setOperationStatus('', false);
 		updateButtonStates();
@@ -1463,7 +1909,7 @@
 	window.onUpdateInstallStarted = (data) => {
 		setOperationStatus('', false);
 		setActiveProgressMessage(
-			data.label ? `Downloading ${data.label}...` : 'Preparing update...',
+			data.label ? `Downloading ${data.label}` : 'Preparing update',
 		);
 		setOperationProgress(0, true, !updateData || !updateData.git_clone);
 	};
@@ -1474,13 +1920,13 @@
 		setActiveProgressMessage(data.message);
 	};
 	window.onSpritesCheckProgress = (data) => {
-		setSpriteProgress(data.percent, data.message || 'Checking for sprite updates...');
+		setSpriteProgress(data.percent, data.message || 'Checking for sprite updates');
 	};
 
 	window.onUpdateFinished = (data) => {
 		const progressMessage = data.success
-			? `Update complete! ${(data.status || data.message || '')
-				.replace(/^Update complete!?\s*/i, '')}`.trim()
+			? `Update complete. ${(data.status || data.message || '')
+				.replace(/^Update complete[.!]?\s*/i, '')}`.trim()
 			: (data.message || 'Update failed.');
 		setActiveProgressMessage(
 			progressMessage,
@@ -1491,47 +1937,50 @@
 		if (data.success) {
 			if (bridge) bridge.loadData();
 			showModal(
-				'Update Complete',
+				'Update complete',
 				'Update applied successfully. Please restart Anki for changes to take effect.',
-				'OK',
+				'Close',
 				null,
 				false,
 			);
 		} else {
-			showModal('Update Failed', data.message || 'The update failed.', 'Close', null, false);
+			showModal('Update failed', data.message || 'The update failed.', 'Close', null, false);
 		}
 	};
 
 	window.onSpritesChecked = (result) => {
-		let message = '';
-		let outcome = '';
 		byId('sprites-install-btn').classList.add('hidden');
 		spriteUpdateAvailable = result.status === 'update_available';
 		spriteCheckUpToDate = result.status === 'up_to_date';
+		const count = (paths) => (Array.isArray(paths) ? paths.length : 0);
 		if (result.status === 'up_to_date') {
-			message = 'Sprites are already up to date!';
-			outcome = 'sprite-success';
+			setSpriteResult('Sprites are up to date', 'success');
 		} else if (result.status === 'error') {
-			message = result.rate_limited
-				? RATE_LIMIT_MESSAGE
-				: `Error checking updates: ${result.error}`;
-			outcome = result.rate_limited ? 'rate-limit' : 'failure';
+			setSpriteResult(
+				result.rate_limited
+					? RATE_LIMIT_MESSAGE
+					: `Error checking updates: ${result.error}`,
+				result.rate_limited ? 'rate-limit' : 'error',
+			);
 		} else if (spriteUpdateAvailable) {
-			message = `A sprites update is available!\n\n  • New sprites: ${(result.added || []).length}\n  • Modified sprites: ${(result.modified || []).length}`;
-			if ((result.deleted || []).length) message += `\n  • Obsolete to remove: ${result.deleted.length}`;
-			outcome = 'sprite-warning';
+			setSpriteResult('Sprite update available', 'warning', {
+				added: count(result.added),
+				modified: count(result.modified),
+				deleted: count(result.deleted),
+			});
 			byId('sprites-install-btn').classList.remove('hidden');
 		}
-		setSpriteProgress(100, message, outcome);
 		updateButtonStates();
 	};
 
 	window.onSpritesCheckFailed = (data) => {
 		const rateLimited = data.rate_limited;
-		setSpriteProgress(100, rateLimited
-			? RATE_LIMIT_MESSAGE
-			: `Error checking sprite updates: ${data.message}`,
-		rateLimited ? 'rate-limit' : 'failure');
+		setSpriteResult(
+			rateLimited
+				? RATE_LIMIT_MESSAGE
+				: `Error checking sprite updates: ${data.message}`,
+			rateLimited ? 'rate-limit' : 'error',
+		);
 		spriteCheckUpToDate = false;
 	};
 
@@ -1550,7 +1999,7 @@
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
 		const message = data.success
-			? `Update complete! ${data.message}`
+			? `Update complete. ${data.message}`
 			: `Update failed: ${data.message}`;
 		setSpriteProgress(data.success ? 100 : Number(
 			byId('sprites-progress').querySelector('progress').value,
@@ -1567,49 +2016,22 @@
 	byId('developer-warning-info').addEventListener('click', () => {
 		showDeveloperWarningIfNeeded(true);
 	});
-	const updateTabNames = ['releases', 'sprites', 'developer'];
-	document.querySelector('.sidebar-nav').addEventListener('wheel', (event) => {
-		const tab = event.target.closest('.update-tab-link');
-		if (!tab || !event.deltaY) return;
-		const activeTab = document.querySelector('.update-tab-link.active');
-		const tabIndex = updateTabNames.indexOf(activeTab && activeTab.dataset.tab);
-		if (tabIndex < 0) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const nextIndex = Math.max(
-			0,
-			Math.min(updateTabNames.length - 1, tabIndex + (event.deltaY > 0 ? 1 : -1)),
-		);
-		if (nextIndex !== tabIndex) switchTab(updateTabNames[nextIndex]);
-	}, { passive: false });
-
 	byId('developer-subtabs').querySelectorAll('[data-developer-view]').forEach((button) => {
 		button.addEventListener('click', () => switchDeveloperView(button.dataset.developerView));
 	});
-	byId('developer-subtabs').addEventListener('wheel', (event) => {
-		if (!event.deltaY) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const views = updateData && updateData.show_branch_views
-			? ['source', 'main', 'current']
-			: ['source'];
-		const currentIndex = views.indexOf(selectedDeveloperView);
-		const nextIndex = Math.max(
-			0,
-			Math.min(views.length - 1, currentIndex + (event.deltaY > 0 ? 1 : -1)),
-		);
-		if (nextIndex !== currentIndex) switchDeveloperView(views[nextIndex]);
-	}, { passive: false });
 	byId('release-subtabs').querySelectorAll('[data-release-view]').forEach((button) => {
 		button.addEventListener('click', () => switchReleaseView(button.dataset.releaseView));
 	});
-	byId('release-subtabs').addEventListener('wheel', (event) => {
-		if (!event.deltaY) return;
-		event.preventDefault();
-		event.stopPropagation();
-		const nextView = event.deltaY > 0 ? 'pre-release' : 'releases';
-		switchReleaseView(nextView);
-	}, { passive: false });
+	wireTabKeys(document.querySelector('.sidebar-nav'), '.update-tab-link', 'ArrowUp', 'ArrowDown');
+	wireTabKeys(byId('release-subtabs'), '.branch-subtab', 'ArrowLeft', 'ArrowRight');
+	wireTabKeys(byId('developer-subtabs'), '.branch-subtab', 'ArrowLeft', 'ArrowRight');
+	// Initial state, before any switch function has run.
+	document.querySelectorAll('.update-tab-link').forEach((button) => {
+		markSidebarTab(button, button.classList.contains('active'));
+	});
+	document.querySelectorAll('.branch-subtab').forEach((button) => {
+		markSubtab(button, button.classList.contains('active'));
+	});
 
 	document.querySelectorAll('.custom-select').forEach((dropdown) => wireDropdown(dropdown));
 	document.addEventListener('click', () => closeDropdowns());
@@ -1617,14 +2039,21 @@
 		if (event.key === 'Escape') closeDropdowns();
 	});
 	renderSourceTypes();
+	// Typing starts a new search, so its first match is highlighted rather
+	// than the option kept from before; paging and reloads still keep it.
 	byId('release-select').querySelector('.custom-select-search')
 		.addEventListener('input', () => {
 			releasePage = 0;
+			byId('release-select').dataset.activeValue = '';
 			renderReleaseOptions();
 		});
 	byId('pr-search').addEventListener('input', () => {
 		sourcePage = 0;
+		byId('source-target').dataset.activeValue = '';
+		// A new search retries a lookup that failed (rate limit, offline).
+		prLookupFailure = null;
 		renderDeveloperTargets(false);
+		schedulePullRequestLookup();
 	});
 	byId('pr-page-prev').addEventListener('click', () => {
 		if (sourcePage > 0) {
@@ -1678,7 +2107,14 @@
 	byId('branch-update-btn').addEventListener('click', installActiveBranch);
 	byId('git-pull-btn').addEventListener('click', () => {
 		const branch = updateData && updateData.git_info && updateData.git_info.branch;
-		install('current', 'current', branch || 'current Git branch', '', 'git');
+		install(
+			'current',
+			'current',
+			branch || 'current Git branch',
+			'',
+			'git',
+			installActionVerb(byId('git-pull-btn').textContent),
+		);
 	});
 	byId('latest-release-btn').addEventListener('click', () => {
 		if (latestRelease) {
@@ -1717,7 +2153,7 @@
 		const value = selectedTarget;
 		if (!value || !developerData) return;
 		const entry = source === 'pr'
-			? (developerData.prs || []).find((pr) => String(pr.number) === value)
+			? pullRequestEntries().find((pr) => String(pr.number) === value)
 			: source === 'branch'
 				? (developerData.branches || []).find((branch) => branch.name === value)
 				: (developerData.tags || []).find((tag) => tag.name === value);
@@ -1736,7 +2172,8 @@
 		if (!bridge || spriteCheckUpToDate) return;
 		spriteUpdateAvailable = false;
 		byId('sprites-install-btn').classList.add('hidden');
-		setSpriteProgress(0, 'Checking for sprite updates...');
+		setSpriteResult('');
+		setSpriteProgress(0, 'Checking for sprite updates');
 		byId('sprites-progress').classList.remove('hidden');
 		bridge.checkSprites();
 	});

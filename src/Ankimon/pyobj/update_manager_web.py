@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import traceback
 from pathlib import Path
@@ -15,6 +16,24 @@ from . import update_manager as updater
 
 
 _sprite_check_up_to_date = False
+# A pull request number as typed: an optional "#", then 1 to 12 digits.
+_PR_NUMBER_RE = re.compile(r"#?(\d{1,12})")
+# fetch_pull_request's lookup errors that the page words on its own.
+_PR_LOOKUP_ERRORS = {"rate_limited", "not_found", "connection"}
+
+
+def _pull_request_entry(number, request):
+    """The fields of a fetch_open_prs entry, and nothing else.
+
+    A pull request found by number goes into the same list as the loaded
+    ones, so the install path cannot tell where it came from.
+    """
+    return {
+        "number": int(number),
+        "title": request.get("title") or "",
+        "head_ref": request.get("head_ref") or "",
+        "head_sha": request["head_sha"],
+    }
 
 
 class UpdateManagerBridge(QObject):
@@ -29,6 +48,9 @@ class UpdateManagerBridge(QObject):
         self._tags = []
         self._branches = []
         self._prs = []
+        # Open pull requests found by number (lookupPullRequest), keyed by
+        # number. Kept apart from the loaded list so a reload keeps them.
+        self._looked_up_prs = {}
         self._installed_pr = None
         self._active_branch = "main"
         self._git_clone = False
@@ -104,15 +126,19 @@ class UpdateManagerBridge(QObject):
             self._log_error(f"Could not open GitHub source URL: {target}")
         return opened
 
-    def _start_query(self, operation, worker, success, failure=None):
+    def _start_query(self, operation, worker, success, failure=None, announce=True):
+        # announce=False keeps the page's busy state out of it: an operation
+        # that changes nothing (a lookup) must not disable the install buttons.
         if operation in self._active_operations:
             return False
         self._active_operations.add(operation)
-        self._send("onUpdateOperation", {"kind": operation, "busy": True})
+        if announce:
+            self._send("onUpdateOperation", {"kind": operation, "busy": True})
 
         def finish():
             self._active_operations.discard(operation)
-            self._send("onUpdateOperation", {"kind": operation, "busy": False})
+            if announce:
+                self._send("onUpdateOperation", {"kind": operation, "busy": False})
 
         def on_success(result):
             finish()
@@ -449,13 +475,75 @@ class UpdateManagerBridge(QObject):
         def done(data):
             self._tags = data["tags"]
             self._branches = data["branches"]
-            self._prs = data["prs"]
+            # A pull request found by number stays installable after a reload;
+            # when the reload lists it too, the reloaded (fresher) entry wins.
+            loaded = {str(entry.get("number")) for entry in data["prs"]}
+            self._prs = [
+                *data["prs"],
+                *(
+                    entry for number, entry in self._looked_up_prs.items()
+                    if number not in loaded
+                ),
+            ]
             self._send("onDeveloperData", data)
 
         def failed(error):
             self._send("onDeveloperLoadFailed", {"message": str(error)})
 
         self._start_query("developer", worker, done, failed)
+        return {"pending": True}
+
+    def _remember_pull_request(self, entry):
+        number = str(entry["number"])
+        self._looked_up_prs[number] = entry
+        prs = [item for item in self._prs if str(item.get("number")) != number]
+        self._prs = [*prs, entry]
+
+    @pyqtSlot(str, result="QVariant")
+    def lookupPullRequest(self, number):
+        """Find one pull request by number, for a search the loaded list misses.
+
+        Replies through window.onPullRequestLookup({number, status, pr?}). The
+        status is "open" (pr holds the entry, now installable), "closed",
+        "merged", "not_found", "rate_limited", "connection" or "api_error".
+        """
+        match = _PR_NUMBER_RE.fullmatch(number.strip()) if isinstance(number, str) else None
+        if not match or int(match.group(1)) < 1:
+            self._send("onPullRequestLookup", {"number": number, "status": "invalid"})
+            return {"success": False, "message": "Enter a pull request number."}
+        number = str(int(match.group(1)))
+
+        def worker(_col):
+            request = updater.fetch_pull_request(number)
+            return request, updater.consume_api_error()
+
+        def done(result):
+            request, error = result
+            reply = {"number": int(number)}
+            if not request:
+                reply["status"] = error if error in _PR_LOOKUP_ERRORS else (
+                    "not_found" if error is None else "api_error"
+                )
+            elif request.get("state") == "open":
+                entry = _pull_request_entry(number, request)
+                self._remember_pull_request(entry)
+                reply.update(status="open", pr=entry)
+            else:
+                reply["status"] = "merged" if request.get("merged") else "closed"
+            self._send("onPullRequestLookup", reply)
+
+        def failed(_error):
+            self._send(
+                "onPullRequestLookup",
+                {"number": int(number), "status": "api_error"},
+            )
+
+        # One operation per number: a second number is looked up alongside
+        # the first, and the same number again waits for the reply already
+        # on its way.
+        self._start_query(
+            f"pr-lookup:{number}", worker, done, failed, announce=False
+        )
         return {"pending": True}
 
     @pyqtSlot(result=bool)
@@ -585,14 +673,22 @@ class UpdateManagerBridge(QObject):
                 self._active_branch,
             }:
                 raise ValueError("Select a branch from the loaded list.")
+            # The label is display only ("Downloading <label>..."). Users know
+            # main as "the pre-release"; a Git checkout keeps the branch name.
+            if source_name == "main" and not self._git_clone:
+                label = (
+                    "the latest pre-release"
+                    if source_name == self._active_branch
+                    else "the pre-release"
+                )
+            elif source_name == self._active_branch:
+                label = f"latest {source_name}"
+            else:
+                label = f"branch {source_name}"
             return {
                 "source_type": "branch",
                 "source_name": source_name,
-                "label": (
-                    f"latest {source_name}"
-                    if source_name == self._active_branch
-                    else f"branch {source_name}"
-                ),
+                "label": label,
             }
         if source_type in ("release", "tag"):
             choices = self._releases if source_type == "release" else self._tags

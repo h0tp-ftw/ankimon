@@ -206,7 +206,7 @@ class SpriteUpdateDiffThread(QThread):
             )
             return
         self.progress_signal.emit(100)
-        self.finished_signal.emit(True, f"Successfully updated {total_files} sprites!")
+        self.finished_signal.emit(True, f"Successfully updated {total_files} sprites.")
 
 
 class SpriteUpdateDialog(QDialog):

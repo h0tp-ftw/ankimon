@@ -669,6 +669,8 @@ def fetch_pull_request(number: str) -> Optional[dict]:
         "head_ref": head.get("ref", ""),
         "head_sha": head["sha"],
         "state": data.get("state", ""),
+        # A merged pull request is also "closed"; this tells the two apart.
+        "merged": bool(data.get("merged") or data.get("merged_at")),
     }
 
 
@@ -1512,7 +1514,7 @@ def apply_update(
                 print(f"Ankimon Updater: Could not date the install: {e}")
 
             # Signal successful completion at 100%
-            send_progress(100, 100, "Update complete!")
+            send_progress(100, 100, "Update complete.")
 
             return (
                 True,

@@ -53,57 +53,40 @@
 	margin: 0;
 }
 
+/* A quiet text link: always readable, brightens on hover/focus, no pill. */
 .github-link {
-	width: 36px;
-	height: 36px;
 	margin-left: auto;
-	flex: 0 0 36px;
-	display: flex;
+	flex: 0 0 auto;
+	display: inline-flex;
 	align-items: center;
-	justify-content: flex-start;
-	gap: 8px;
-	padding: 6px;
-	color: #fff;
-	background: transparent;
+	gap: 6px;
+	padding: 4px 2px;
+	color: var(--text-muted);
+	background: none;
 	border: 0;
-	border-radius: 999px;
-	cursor: pointer;
-	overflow: hidden;
+	border-radius: 6px;
+	font: 500 .84rem 'Outfit', sans-serif;
 	white-space: nowrap;
-	transition: width .24s ease, flex-basis .24s ease, padding .24s ease,
-		background-color .2s ease, box-shadow .2s ease;
+	cursor: pointer;
+	transition: color .15s ease;
 }
 
 .github-link:hover,
 .github-link:focus-visible {
-	width: 260px;
-	flex-basis: 260px;
-	padding: 6px 12px;
-	background: #1f6feb;
-	box-shadow: 0 4px 16px rgba(31, 111, 235, .28);
+	color: var(--text-bright);
+}
+
+.github-link:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
 }
 
 .github-link svg {
 	display: block;
-	width: 24px;
-	height: 24px;
-	flex: 0 0 24px;
-	transition: transform .24s ease;
-}
-
-.github-link-text {
-	max-width: 0;
-	overflow: hidden;
-	opacity: 0;
-	font-size: .86rem;
-	font-weight: 700;
-	transition: max-width .24s ease, opacity .16s ease;
-}
-
-.github-link:hover .github-link-text,
-.github-link:focus-visible .github-link-text {
-	max-width: 205px;
-	opacity: 1;
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	fill: currentColor;
 }
 
 .installed-source-detail {
@@ -114,7 +97,7 @@
 	background: var(--bg-card-hover);
 	border: 1px solid var(--border-main);
 	border-radius: 999px;
-	font: 600 .74rem/1.5 'Outfit', sans-serif;
+	font: 600 .76rem/1.5 'Outfit', sans-serif;
 	vertical-align: 1px;
 }
 
@@ -132,14 +115,16 @@
 	color: var(--text-main);
 	background: var(--bg-card);
 	border: 1px solid var(--border-main);
-	border-radius: 7px;
+	border-radius: 8px;
 	font: inherit;
 }
 
-.update-content input[type="search"]:focus {
+/* Keyboard focus on a dropdown's trigger and its search box: the accent
+   border plus a soft ring. A search box shows it whenever it has focus. */
+.update-content input[type="search"]:focus-visible {
 	outline: none;
-	border-color: var(--border-main);
-	box-shadow: none;
+	border-color: var(--accent-blue);
+	box-shadow: 0 0 0 3px rgba(88, 166, 255, .22);
 }
 
 .custom-select {
@@ -159,7 +144,7 @@
 	color: var(--text-main);
 	background: var(--bg-card);
 	border: 1px solid var(--border-main);
-	border-radius: 9px;
+	border-radius: 8px;
 	font: 500 .9rem 'Outfit', sans-serif;
 	text-align: left;
 	cursor: pointer;
@@ -170,10 +155,10 @@
 	background: var(--bg-card-hover);
 }
 
-.custom-select-trigger:focus,
 .custom-select-trigger:focus-visible {
 	outline: none;
-	box-shadow: none;
+	border-color: var(--accent-blue);
+	box-shadow: 0 0 0 3px rgba(88, 166, 255, .22);
 }
 
 .custom-select-trigger:disabled {
@@ -189,12 +174,24 @@
 }
 
 .custom-select-chevron {
-	width: 8px;
-	height: 8px;
-	flex: 0 0 auto;
-	border-right: 2px solid var(--text-muted);
-	border-bottom: 2px solid var(--text-muted);
-	transform: rotate(45deg) translateY(-2px);
+	width: 14px;
+	height: 14px;
+	flex: 0 0 14px;
+	border: 0;
+	background: var(--text-muted);
+	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M3.5 6l4.5 4.5L12.5 6'/%3E%3C/svg%3E") center / contain no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M3.5 6l4.5 4.5L12.5 6'/%3E%3C/svg%3E") center / contain no-repeat;
+	transition: transform .15s ease;
+}
+
+.custom-select.open .custom-select-chevron {
+	transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.custom-select-chevron {
+		transition: none;
+	}
 }
 
 .custom-select-menu {
@@ -241,7 +238,7 @@
 	padding-top: 7px;
 	border-top: 1px solid var(--border-main);
 	color: var(--text-muted);
-	font-size: .68rem;
+	font-size: .76rem;
 	line-height: 1.3;
 }
 
@@ -252,6 +249,12 @@
 
 .dropdown-pagination > span:last-child {
 	text-align: right;
+}
+
+/* The source dropdown's footer is the two page arrows alone, centred. */
+#pr-pagination {
+	grid-template-columns: auto;
+	justify-content: center;
 }
 
 .dropdown-page-controls {
@@ -270,7 +273,7 @@
 	background: var(--bg-card-hover);
 	border: 1px solid var(--border-main);
 	border-radius: 6px;
-	font: 600 .95rem 'Outfit', sans-serif;
+	font: 600 .76rem 'Outfit', sans-serif;
 	cursor: pointer;
 }
 
@@ -301,8 +304,8 @@
 	color: var(--text-main);
 	background: transparent;
 	border: 0;
-	border-radius: 7px;
-	font: 500 .88rem 'Outfit', sans-serif;
+	border-radius: 6px;
+	font: 500 .9rem 'Outfit', sans-serif;
 	text-align: left;
 	overflow-wrap: anywhere;
 	white-space: normal;
@@ -316,15 +319,29 @@
 }
 
 .custom-select-option:hover,
+.custom-select-option.is-active,
 .custom-select-option[aria-selected="true"] {
 	color: var(--text-bright);
 	background: rgba(88, 166, 255, .16);
 }
 
+/* The keyboard highlight also gets a thin ring, so it stays distinct from
+   the selected option it moves away from. */
+.custom-select-option.is-active {
+	box-shadow: inset 0 0 0 1px rgba(88, 166, 255, .55);
+}
+
 .custom-select-empty {
 	padding: 10px;
 	color: var(--text-muted);
-	font-size: .85rem;
+	font-size: .84rem;
+}
+
+/* A status line at the top of a list ("Looking up #1234", "#1234 was
+   merged"): the status-text look, inset like the options' text. It is
+   not an option and never takes the highlight. */
+.custom-select-options .custom-select-notice {
+	padding: 7.2px 10px;
 }
 
 .git-notice {
@@ -364,7 +381,7 @@
 
 .update-card h3 {
 	color: var(--text-bright);
-	font-size: 1.03rem;
+	font-size: 1rem;
 }
 
 .update-card .muted,
@@ -373,29 +390,101 @@
 	line-height: 1.5;
 }
 
-.branch-details {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 14px;
+/* An action that belongs to a card sits at the card's right edge, sized to
+   its label, like the .branch-actions row under the pre-release card. */
+.update-card > .btn {
+	justify-self: end;
 }
 
-.branch-details div {
+/* One row: what the card says on the left, its action on the right. The
+   action wraps under (still right-aligned) when the card gets narrow. */
+.card-action-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
 	min-width: 0;
 }
 
-.branch-details dt {
-	color: var(--text-muted);
-	font-size: .76rem;
-	margin-bottom: 5px;
+.card-action-row > :first-child {
+	flex: 1 1 220px;
+	min-width: 0;
 }
 
-.branch-details dd {
+.card-action-row > .btn {
+	flex: 0 0 auto;
+	margin-left: auto;
+}
+
+/* A dropdown keeps its button beside it down to a much narrower card; the
+   button matches the trigger's height. */
+.card-action-row > .custom-select {
+	flex-basis: 140px;
+}
+
+.card-action-row > .custom-select + .btn {
+	align-self: stretch;
+}
+
+/* Installed source: a small labelled grid, Installed / Pre-release rows
+   against Commit / Date columns. */
+.source-details {
+	justify-self: start;
+	max-width: 100%;
+	border-collapse: collapse;
+}
+
+.source-details th {
+	padding: 0 24px 6px 0;
+	color: var(--text-muted);
+	font-size: .76rem;
+	font-weight: 500;
+	text-align: left;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+.source-details tbody th {
+	padding: 3px 24px 3px 0;
+}
+
+.source-details td {
+	padding: 3px 24px 3px 0;
 	color: var(--text-main);
-	font-family: 'JetBrains Mono', monospace;
-	font-size: .82rem;
-	overflow-wrap: anywhere;
-	white-space: pre-line;
-	line-height: 1.65;
+	font: 500 .84rem/1.5 'JetBrains Mono', monospace;
+	/* A commit SHA never breaks. */
+	overflow-wrap: normal;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+/* A date stays on one line where it fits; in a card too narrow for it, it
+   wraps between words ("17 Nov 2026," / "21:58") instead of overflowing. */
+#commit-date,
+#pre-release-commit-date {
+	white-space: normal;
+}
+
+.source-details th:last-child,
+.source-details td:last-child {
+	padding-right: 0;
+}
+
+.source-details td.source-detail-placeholder,
+.source-installed-at .source-detail-placeholder {
+	color: var(--text-muted);
+	font-family: 'Outfit', sans-serif;
+}
+
+.source-installed-at {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: .84rem;
+	line-height: 1.5;
+}
+
+.source-installed-at span {
+	color: var(--text-main);
 }
 
 .branch-subtabs {
@@ -426,6 +515,19 @@
 	border-bottom-color: var(--accent-blue);
 }
 
+/* Arrow keys move between tabs, so the focused one must show. Inset in the
+   sidebar, whose scroll box would clip a ring drawn outside. */
+.branch-subtab:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: -2px;
+	border-radius: 6px 6px 0 0;
+}
+
+.update-tab-link:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: -2px;
+}
+
 .subtab-panel {
 	display: none;
 	gap: 14px;
@@ -448,76 +550,116 @@
 	line-height: 1.5;
 }
 
-/* Status chips: one look for every "where do I stand" message. */
+/* Status lines: one look for every "where do I stand" message. The words stay
+   in the normal text colour; only the leading icon carries the tone. */
+.status-text.checking,
 .status-text.success,
 .status-text.neutral,
 .status-text.warning,
 .status-text.error,
 .status-text.rate-limit,
 .status-text.high-risk,
+.release-highlight.checking,
 .release-highlight.success,
 .release-highlight.warning,
-.release-highlight.error {
+.release-highlight.error,
+.release-highlight.rate-limit {
 	display: flex;
-	align-items: baseline;
-	gap: 8px;
+	align-items: flex-start;
+	gap: 7px;
 	justify-self: start;
-	width: fit-content;
 	max-width: 100%;
-	box-sizing: border-box;
-	padding: 6px 12px;
-	border: 1px solid transparent;
-	border-radius: 8px;
+	color: var(--text-main);
 	font-size: .9rem;
-	font-weight: 700;
-	line-height: 1.4;
+	font-weight: 400;
+	line-height: 1.5;
 	overflow-wrap: anywhere;
+	--status-tone: var(--text-muted);
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3v6M8 12.5v.2'/%3E%3C/svg%3E");
 }
 
+.status-text.checking::before,
 .status-text.success::before,
 .status-text.neutral::before,
 .status-text.warning::before,
 .status-text.error::before,
 .status-text.rate-limit::before,
 .status-text.high-risk::before,
+.release-highlight.checking::before,
 .release-highlight.success::before,
 .release-highlight.warning::before,
-.release-highlight.error::before {
+.release-highlight.error::before,
+.release-highlight.rate-limit::before {
 	content: "";
-	width: 8px;
-	height: 8px;
-	flex: 0 0 8px;
-	border-radius: 50%;
-	background: currentColor;
+	width: 15px;
+	height: 15px;
+	flex: 0 0 15px;
+	/* Centre the icon on the first line, whatever the text wraps to. */
+	margin-top: calc((1.5em - 15px) / 2);
+	background: var(--status-tone);
+	-webkit-mask: var(--status-icon) center / contain no-repeat;
+	mask: var(--status-icon) center / contain no-repeat;
 }
 
 .status-text.success,
 .release-highlight.success {
-	color: var(--update-success);
-	background: rgba(63, 185, 80, .12);
-	border-color: rgba(63, 185, 80, .35);
+	--status-tone: var(--update-success);
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.8'/%3E%3C/svg%3E");
 }
 
 .status-text.neutral {
-	color: var(--text-muted);
-	background: rgba(139, 148, 158, .12);
-	border-color: rgba(139, 148, 158, .3);
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
 }
 
 .status-text.warning,
 .release-highlight.warning {
-	color: var(--update-warning);
-	background: rgba(210, 153, 34, .12);
-	border-color: rgba(210, 153, 34, .35);
+	--status-tone: var(--update-warning);
 }
 
 .status-text.error,
-.status-text.rate-limit,
 .status-text.high-risk,
 .release-highlight.error {
-	color: var(--update-error);
-	background: rgba(248, 81, 73, .12);
-	border-color: rgba(248, 81, 73, .4);
+	--status-tone: var(--update-error);
+}
+
+/* Still checking: the same line, words and icon slot as the result that
+   replaces it, so nothing moves when it arrives. The slot holds a ring
+   with one muted arc that turns; under reduced motion it stays still. */
+.status-text.checking,
+.release-highlight.checking {
+	color: var(--text-muted);
+}
+
+.status-text.checking::before,
+.release-highlight.checking::before {
+	box-sizing: border-box;
+	background: none;
+	border: 2px solid var(--border-main);
+	border-top-color: var(--text-muted);
+	border-radius: 50%;
+	-webkit-mask: none;
+	mask: none;
+	animation: status-checking-spin .8s linear infinite;
+}
+
+@keyframes status-checking-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.status-text.checking::before,
+	.release-highlight.checking::before {
+		animation: none;
+	}
+}
+
+/* Rate limiting is a wait, not a failure: yellow lightning bolt. */
+.status-text.rate-limit,
+.release-highlight.rate-limit {
+	--status-tone: #f5c518;
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M9.6 1 3 9.2h3.9L6 15l6.8-8.4H8.7z'/%3E%3C/svg%3E");
 }
 
 .commit-list {
@@ -597,7 +739,7 @@
 	justify-content: space-between;
 	gap: 12px;
 	color: var(--text-muted);
-	font-size: .82rem;
+	font-size: .84rem;
 	font-weight: 400;
 	line-height: 1.35;
 }
@@ -639,7 +781,7 @@
 .progress-label output {
 	flex: 0 0 auto;
 	color: var(--text-main);
-	font: 600 .78rem 'JetBrains Mono', monospace;
+	font: 600 .76rem 'JetBrains Mono', monospace;
 }
 
 .check-row {
@@ -648,7 +790,7 @@
 	align-items: center;
 	gap: 10px;
 	color: var(--text-muted);
-	font-size: .88rem;
+	font-size: .9rem;
 	cursor: pointer;
 }
 
@@ -671,7 +813,7 @@
 	place-items: center;
 	background: var(--bg-darker);
 	border: 1.5px solid var(--border-main);
-	border-radius: 5px;
+	border-radius: 6px;
 	transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
@@ -705,15 +847,14 @@
 	font-weight: 700;
 }
 
-/* Banners: body copy stays in the normal text colour so it is readable; the
-   tone lives in the frame and the emphasised words. */
+/* Notes: a plain outlined box; body copy stays in the normal text colour and
+   the tone lives only in the emphasised words. */
 .warning-text {
 	margin: 0;
 	padding: 12px 16px;
 	color: var(--text-main);
-	background: rgba(210, 153, 34, .1);
-	border: 1px solid rgba(210, 153, 34, .32);
-	border-left: 4px solid var(--update-warning);
+	background: transparent;
+	border: 1px solid var(--border-main);
 	border-radius: 8px;
 	font-weight: 400;
 	line-height: 1.55;
@@ -725,21 +866,15 @@
 	font-weight: 700;
 }
 
+/* The high-risk banner keeps its red fill and bar. */
 .warning-text.danger-text {
 	background: rgba(248, 81, 73, .1);
 	border-color: rgba(248, 81, 73, .4);
-	border-left-color: var(--update-error);
+	border-left: 4px solid var(--update-error);
 }
 
 .warning-text.danger-text strong {
 	color: var(--update-error);
-}
-
-.developer-intro {
-	margin: 0;
-	color: var(--text-muted);
-	font-size: .9rem;
-	line-height: 1.5;
 }
 
 .developer-tab-row {
@@ -875,16 +1010,17 @@ progress::-moz-progress-bar {
 	background: var(--update-error);
 }
 
+/* White on #1f6feb clears 4.5:1; hover goes darker, never lighter. */
 .btn-primary {
 	color: #fff;
-	background: #2383e2;
-	border: 1px solid #2383e2;
+	background: #1f6feb;
+	border: 1px solid #1f6feb;
 }
 
 .btn-primary:hover:not(:disabled) {
 	color: #fff;
-	background: #4a9cf0;
-	border-color: #4a9cf0;
+	background: #1a63d6;
+	border-color: #1a63d6;
 }
 
 /* A disabled primary button reads as "nothing to do", not as a dimmed call
@@ -903,8 +1039,8 @@ progress::-moz-progress-bar {
 
 .btn-danger:hover:not(:disabled) {
 	color: #fff;
-	background: var(--update-error);
-	border-color: var(--update-error);
+	background: #c93028;
+	border-color: #c93028;
 }
 
 .btn-danger:disabled {
@@ -920,6 +1056,67 @@ progress::-moz-progress-bar {
 
 .sprite-progress.hidden {
 	display: none;
+}
+
+/* A finished sprite check takes the progress block's place: a status line,
+   then what the update would change. */
+.sprites-result {
+	display: grid;
+	gap: 8px;
+	margin-top: 4px;
+	padding-top: 14px;
+	border-top: 1px dashed var(--border-main);
+}
+
+/* New / Changed / Removed: the number over a small label, lined up under
+   the status words (past the 15px icon and its 7px gap). */
+.sprite-counts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 28px;
+	margin: 0;
+	padding: 0 0 0 22px;
+	list-style: none;
+}
+
+.sprite-count {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.sprite-count-value {
+	color: var(--text-bright);
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.3;
+	font-variant-numeric: tabular-nums;
+}
+
+.sprite-count-label {
+	color: var(--text-muted);
+	font-size: .76rem;
+	line-height: 1.3;
+}
+
+/* Nothing in that column: the count steps back. */
+.sprite-count.is-zero .sprite-count-value {
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+/* Read by screen readers ("12 New sprites"), not shown. */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
 .sprites-actions {
@@ -949,7 +1146,7 @@ progress::-moz-progress-bar {
 	padding: 16px 18px;
 	background: rgba(248, 81, 73, .08);
 	border: 1px solid rgba(248, 81, 73, .6);
-	border-radius: 10px;
+	border-radius: 8px;
 	color: var(--update-error);
 }
 
@@ -989,7 +1186,7 @@ progress::-moz-progress-bar {
 	padding: 24px;
 	background: var(--bg-card);
 	border: 1px solid var(--border-main);
-	border-radius: 14px;
+	border-radius: 12px;
 	box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
 }
 
@@ -1051,6 +1248,12 @@ progress::-moz-progress-bar {
 	color: #8bc4ff;
 }
 
+.source-link:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
 .modal-actions {
 	display: flex;
 	justify-content: flex-end;
@@ -1083,12 +1286,7 @@ progress::-moz-progress-bar {
 	color: var(--text-main);
 }
 
-.update-modal-card .user-files-warning {
-	background: rgba(178, 106, 0, .12);
-	border-color: rgba(178, 106, 0, .45);
-	border-left-color: var(--update-deep-warning);
-}
-
+/* Same outlined note as the warning above it; only the lead words differ. */
 .update-modal-card .user-files-warning strong {
 	color: var(--update-caution);
 }
@@ -1129,7 +1327,9 @@ progress::-moz-progress-bar {
 		padding: 18px 16px 36px;
 	}
 
-	.dropdown-pagination {
+	/* The release footer stacks its summary, arrows and limit; the source
+	   footer is the arrows alone and needs no stacking. */
+	#release-pagination {
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-areas:
 			"summary"
@@ -1142,21 +1342,22 @@ progress::-moz-progress-bar {
 		grid-template-rows: auto minmax(0, 1fr) auto;
 	}
 
-	#pr-page-summary {
+	#release-page-summary {
 		grid-area: summary;
 	}
 
-	#pr-page-limit {
+	#release-page-limit {
 		grid-area: limit;
 	}
 
-	.dropdown-page-controls {
+	#release-pagination .dropdown-page-controls {
 		grid-area: controls;
 	}
 
-	.branch-details {
-		grid-template-columns: 1fr;
-		gap: 10px;
+	.source-details th,
+	.source-details td,
+	.source-details tbody th {
+		padding-right: 14px;
 	}
 
 	.git-notice,

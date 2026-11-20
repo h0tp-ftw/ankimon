@@ -616,6 +616,33 @@ def test_fetch_source_sha_resolves_a_pull_request_head(monkeypatch):
     assert seen == ["pulls/42"]
 
 
+@pytest.mark.parametrize(
+    ("fields", "state", "merged"),
+    (
+        ({"state": "open", "merged": False, "merged_at": None}, "open", False),
+        ({"state": "closed", "merged": False, "merged_at": None}, "closed", False),
+        ({"state": "closed", "merged": True, "merged_at": "2026-11-01T10:00:00Z"}, "closed", True),
+        # Only merged_at: still merged.
+        ({"state": "closed", "merged_at": "2026-11-01T10:00:00Z"}, "closed", True),
+    ),
+)
+def test_fetch_pull_request_tells_merged_from_closed(monkeypatch, fields, state, merged):
+    monkeypatch.setattr(um, "_api_get", lambda _endpoint: {
+        "number": 42,
+        "title": "test PR",
+        "head": {"ref": "feature/test", "sha": "abc123456789"},
+        **fields,
+    })
+    assert um.fetch_pull_request("42") == {
+        "number": 42,
+        "title": "test PR",
+        "head_ref": "feature/test",
+        "head_sha": "abc123456789",
+        "state": state,
+        "merged": merged,
+    }
+
+
 def test_fetch_source_sha_resolves_tag_and_quotes_branch_name(monkeypatch):
     seen = []
 
