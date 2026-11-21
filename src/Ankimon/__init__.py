@@ -228,6 +228,8 @@ def start_asynchronous_startup():
         #    downloader, first-enemy stat application, starter window, rate
         #    prompt).
         database_complete = run_startup_ui_callbacks(results)
+        if database_complete is None:
+            return False
 
         # 2. Fill the shared collected-ID set in place (identity preserved
         #    for the module-level consumers registered above).
@@ -339,6 +341,8 @@ def start_asynchronous_startup():
             except Exception:
                 pass
 
+        return True
+
     def on_startup_complete(results):
         # QueryOp does not route an exception raised by its *success* callback
         # to .failure() — it propagates to Anki's top-level handler instead. So
@@ -349,7 +353,8 @@ def start_asynchronous_startup():
 
         def finish_startup():
             try:
-                run_startup_ui_sequence(results)
+                if not run_startup_ui_sequence(results):
+                    return
                 # Profile-open normally owns this maintenance. Also cover a
                 # late add-on load into an already open profile; the manager
                 # deduplicates submissions for the same profile context.

@@ -358,6 +358,8 @@ def startup_env(monkeypatch, tmp_path):
     mod = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, "Ankimon.startup", mod)
     spec.loader.exec_module(mod)
+    env.main_window_deleted = False
+    monkeypatch.setattr(mod, "_main_window_deleted", lambda: env.main_window_deleted)
     env.mod = mod
     return env
 
@@ -540,6 +542,19 @@ def test_ui_callbacks_show_downloader_and_keep_checker_alive(startup_env):
     assert env.mod._file_check_dialog is FakeCheckFiles.instances[0]
     # No enemy was applied on the incomplete path.
     assert env.enemy.update_kwargs is None
+
+
+def test_closing_anki_during_agreement_stops_startup(startup_env, monkeypatch):
+    env = startup_env
+    env.folders_exist = False
+
+    def close_anki(**kwargs):
+        env.main_window_deleted = True
+
+    monkeypatch.setattr(env.mod, "show_agreement_and_download_dialog", close_anki)
+    results = env.mod.run_startup_background_checks()
+    assert env.mod.run_startup_ui_callbacks(results) is None
+    assert FakeCheckFiles.instances == []
 
 
 def test_backup_error_is_reported_on_the_ui_side(startup_env):
