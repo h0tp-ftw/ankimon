@@ -65,9 +65,9 @@ jobs:
               existing = set(zf.namelist())
               added = 0
               for root, dirs, files in os.walk(submodule_src):
-                  dirs[:] = [d for d in dirs if d != "__pycache__"]
+                  dirs[:] = [d for d in dirs if d not in {".git", "__pycache__"}]
                   for fname in files:
-                      if fname.endswith((".pyc", ".pyo")):
+                      if fname == ".git" or fname.endswith((".pyc", ".pyo")):
                           continue
                       abs_path = os.path.join(root, fname)
                       arc_path = os.path.relpath(abs_path, "src/Ankimon")

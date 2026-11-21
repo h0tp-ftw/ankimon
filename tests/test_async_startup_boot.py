@@ -542,6 +542,22 @@ def test_ui_callbacks_show_downloader_and_keep_checker_alive(startup_env):
     assert env.enemy.update_kwargs is None
 
 
+def test_closing_anki_during_agreement_stops_startup(startup_env, monkeypatch):
+    from PyQt6 import sip
+    from PyQt6.QtCore import QObject
+
+    env = startup_env
+    env.folders_exist = False
+    window = QObject()
+    monkeypatch.setattr(env.mod, "mw", window)
+    monkeypatch.setattr(
+        env.mod, "show_agreement_and_download_dialog", lambda **kw: sip.delete(window)
+    )
+    results = env.mod.run_startup_background_checks()
+    assert env.mod.run_startup_ui_callbacks(results) is None
+    assert FakeCheckFiles.instances == []
+
+
 def test_backup_error_is_reported_on_the_ui_side(startup_env):
     env = startup_env
     boom = RuntimeError("backup boom")
