@@ -59,6 +59,22 @@ class _FakeDB:
     def __init__(self, incoming_row):
         self._row = incoming_row
         self.saved_main = []
+        self.saved_party = []
+        self.outgoing = {
+            "individual_id": "outgoing-uuid",
+            "current_hp": 99,
+            "attacks": ["tackle", "thunderbolt"],
+            "xp": 123,
+            "custom_metadata": {"retained": True},
+        }
+
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
+        assert individual_id == self.outgoing["individual_id"]
+        self.outgoing["current_hp"] = hp
+        return True
+
+    def get_main_pokemon(self):
+        return dict(self.outgoing)
 
     def get_team(self):
         return [{"individual_id": "outgoing-uuid"}, {"individual_id": "incoming-uuid"}]
@@ -69,6 +85,12 @@ class _FakeDB:
 
     def save_main_pokemon(self, data):
         self.saved_main.append(data)
+        return True
+
+    def save_pokemon(self, data):
+        self.outgoing = dict(data)
+        self.saved_party.append(data)
+        return True
 
 
 def _make_module(name, **attrs):
@@ -130,6 +152,13 @@ def team_cycle():
             "Ankimon.business": business,
             "Ankimon.resources": _MockResources(),
             "Ankimon.singletons": singletons,
+            "Ankimon.battle_loop": _make_module(
+                "Ankimon.battle_loop",
+                _cancel_main_faint_deferral=MagicMock(),
+                mark_swap_turn_lost=MagicMock(),
+                outgoing_hp_for_swap=lambda pokemon: pokemon.current_hp,
+                _main_faint_pending_for=MagicMock(return_value=False),
+            ),
             "Ankimon.functions.pokedex_functions": _make_module(
                 "Ankimon.functions.pokedex_functions",
                 search_pokedex_by_id=lambda pkmn_id: "mewtwo",
@@ -241,4 +270,37 @@ def test_cycle_resolves_incoming_hp_like_the_loader(team_cycle, hp_fields, expec
     assert main.individual_id == "incoming-uuid"
     assert main.max_hp == _INCOMING_MAX_HP
     assert main.hp == main.current_hp == expected_hp
-    assert saved["hp"] == saved["current_hp"] == expected_hp
+    assert saved["current_hp"] == expected_hp
+    assert "hp" not in saved
+
+
+def test_cycle_saves_hp_without_erasing_newer_stored_progress(team_cycle):
+    _cycle(team_cycle, current_hp=7)
+    outgoing = team_cycle[1].db.outgoing
+    assert outgoing["current_hp"] == _OUTGOING_HP
+    assert outgoing["attacks"] == ["tackle", "thunderbolt"]
+    assert outgoing["xp"] == 123
+    assert outgoing["custom_metadata"] == {"retained": True}
+
+
+def test_cycle_costs_the_incoming_pokemon_its_next_attack(team_cycle):
+    """A successful team-cycle swap arms the lost-turn penalty once (#975)."""
+    _cycle(team_cycle, current_hp=7)
+    sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
+
+
+def test_heal_on_swap_restores_the_cycled_in_pokemon(team_cycle, monkeypatch):
+    """Classic rule (battle.heal_on_swap): cycling fully heals the newcomer."""
+    monkeypatch.setattr(
+        _FakeSettings,
+        "get",
+        lambda self, key, default=None: {
+            "controls.team_cycle_count": 3,
+            "battle.heal_on_swap": True,
+        }.get(key, default),
+    )
+
+    main, saved = _cycle(team_cycle, current_hp=7)
+
+    assert main.hp == main.current_hp == main.max_hp == _INCOMING_MAX_HP
+    assert saved["current_hp"] == _INCOMING_MAX_HP

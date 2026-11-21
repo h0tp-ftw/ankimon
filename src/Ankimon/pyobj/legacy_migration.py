@@ -10,6 +10,7 @@ from pathlib import Path
 from .database_manager import (
     aggregate_legacy_items,
     canonical_pokemon_name,
+    canonicalize_pokemon_record,
     find_matching_captured,
     is_valid_individual_id,
     legacy_species_id,
@@ -182,6 +183,52 @@ class LegacyMigration:
             "id": legacy_species_id(original),
             "iv": original.get("iv"),
         }
+
+    def prepare_legacy_pokemon(self, pokemon):
+        """Resolve legacy HP before saving, using species stats for its maximum.
+
+        Older JSON used ``stats`` for base stats, so ``stats.hp`` is not a
+        safe maximum. Only enrich records that carry HP; unrelated legacy
+        metadata and the original source used for identity stay unchanged.
+        """
+        prepared = dict(pokemon)
+        has_hp = any(
+            self.db._hp_integer(prepared.get(key)) is not None
+            for key in ("current_hp", "hp")
+        )
+        base_stats = prepared.get("base_stats")
+        base_hp = self.db._hp_integer(
+            base_stats.get("hp") if isinstance(base_stats, dict) else None
+        )
+        if has_hp and (base_hp is None or base_hp <= 0):
+            from ..functions.pokedex_functions import (
+                is_valid_base_stats,
+                search_pokedex,
+                search_pokedex_by_id,
+            )
+
+            base_stats = search_pokedex(prepared.get("name", ""), "baseStats")
+            if not is_valid_base_stats(base_stats):
+                base_stats = search_pokedex(
+                    search_pokedex_by_id(legacy_species_id(prepared)), "baseStats"
+                )
+            if is_valid_base_stats(base_stats):
+                prepared["base_stats"] = dict(base_stats)
+            elif isinstance(prepared.get("stats"), dict) and "hp" in prepared["stats"]:
+                raise ValueError("Cannot resolve base stats for legacy Pokemon HP")
+        return canonicalize_pokemon_record(prepared, allow_legacy_hp=True)
+
+    def canonical_expected_pokemon(self, pokemon):
+        """Build the canonical record expected from an already prepared save."""
+        if not isinstance(pokemon, dict):
+            return pokemon
+        return canonicalize_pokemon_record(pokemon, allow_legacy_hp=True)
+
+    def read_back_matches(self, individual_id, expected):
+        saved = self.db.get_pokemon(individual_id)
+        if not isinstance(saved, dict):
+            return False
+        return saved == self.canonical_expected_pokemon(expected)
 
     @contextmanager
     def atomic_batch(self):
@@ -364,14 +411,13 @@ class LegacyMigration:
                     # Old Phase-1 markers and main checkpoints prove prior
                     # ownership, not permission to restore or replace live rows.
                     pokemon = existing
+                else:
+                    pokemon = self.prepare_legacy_pokemon(pokemon)
                 with self.atomic_batch():
                     if not (preserve_existing or protected_main):
                         if not self.db.save_pokemon(pokemon):
                             raise ValueError("save_pokemon returned False")
-                    if (
-                        not isinstance(pokemon, dict)
-                        or self.db.get_pokemon(individual_id) != pokemon
-                    ):
+                    if not self.read_back_matches(individual_id, pokemon):
                         raise ValueError(
                             "saved Pokemon did not pass the read-back check"
                         )
@@ -490,11 +536,12 @@ class LegacyMigration:
                     "main Pokemon was removed; explicit recovery decision required"
                 )
             member = existing
+        else:
+            member = self.prepare_legacy_pokemon(member)
         with self.atomic_batch():
-            if (
-                not self.db.save_main_pokemon(member)
-                or self.db.get_main_pokemon() != member
-            ):
+            if not self.db.save_main_pokemon(member):
+                raise ValueError("main Pokemon failed the save/read-back check")
+            if not self.read_back_matches(individual_id, member):
                 raise ValueError("main Pokemon failed the save/read-back check")
             self.main_candidate = self.mapping_candidate(original, individual_id)
             self.save_main_checkpoint()
@@ -787,7 +834,7 @@ class LegacyMigration:
         missing = [
             individual_id
             for individual_id, expected in self.expected_pokemon.items()
-            if self.db.get_pokemon(individual_id) != expected
+            if not self.read_back_matches(individual_id, expected)
         ]
         if missing:
             message = (

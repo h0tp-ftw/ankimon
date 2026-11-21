@@ -69,6 +69,18 @@ class FakeDB:
         self.get_pokemon_args.append(individual_id)
         return self._pokemon
 
+    def get_main_pokemon(self):
+        return self._pokemon
+
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
+        return True
+
+    def save_pokemon(self, data):
+        return True
+
+    def save_main_pokemon(self, data):
+        return True
+
 
 from Ankimon.pyobj.settings import DEFAULT_CONFIG
 
@@ -289,6 +301,108 @@ def test_card_object_guard_blocks_hook_calls():
     assert db.query_count == 0
 
 
+@pytest.mark.parametrize("live_hp", [7, 0])
+def test_hidden_hud_refresh_persists_live_hp_without_rendering(live_hp):
+    db = FakeDB(pokemon={"individual_id": "main", "current_hp": 19})
+    db._derived_max_hp = lambda data: 20
+
+    def save_hp(individual_id, hp):
+        assert individual_id == "main"
+        db._pokemon["current_hp"] = hp
+        return True
+
+    db.update_pokemon_current_hp = MagicMock(side_effect=save_hp)
+    fake_services = types.SimpleNamespace(
+        db=db, settings=None, reviewer=None, logger=MagicMock()
+    )
+    mod, mgr = _new_manager(fake_services)
+    mgr.settings.values["gui.show_mainpkmn_in_reviewer"] = 3
+    mgr.main_pokemon.individual_id = "main"
+    mgr.main_pokemon.hp = mgr.main_pokemon.current_hp = live_hp
+    mgr._last_state = ("previously visible",)
+    reviewer = mod.mw.reviewer
+    reviewer.web.eval.reset_mock()
+
+    mgr.refresh_hud()
+
+    assert db.get_main_pokemon()["current_hp"] == live_hp
+    db.update_pokemon_current_hp.assert_called_once_with("main", live_hp)
+    assert mgr.main_pokemon.hp == mgr.main_pokemon.current_hp == live_hp
+    reviewer.web.eval.assert_called_once_with(
+        "if(window.__ankimonHud) window.__ankimonHud.clear();"
+    )
+    assert mgr._last_state is None
+    assert db.query_count == 0
+
+
+def _hp_sync_manager(saved_hp, live_hp):
+    """A hidden-HUD manager over a FakeDB that counts its own writes."""
+    db = FakeDB(pokemon={"individual_id": "main", "current_hp": saved_hp})
+    db._derived_max_hp = lambda data: 20
+    db.writes = 0
+    db.write_token = lambda: ("connection", db.writes)
+
+    def save_hp(individual_id, hp):
+        db._pokemon["current_hp"] = hp
+        db.writes += 1
+        return True
+
+    db.update_pokemon_current_hp = MagicMock(side_effect=save_hp)
+    fake_services = types.SimpleNamespace(
+        db=db, settings=None, reviewer=None, logger=MagicMock()
+    )
+    _, mgr = _new_manager(fake_services)
+    mgr.settings.values["gui.show_mainpkmn_in_reviewer"] = 3
+    mgr.main_pokemon.individual_id = "main"
+    mgr.main_pokemon.hp = mgr.main_pokemon.current_hp = live_hp
+    return db, mgr
+
+
+def test_repaint_skips_the_saved_row_until_hp_or_the_database_moves():
+    db, mgr = _hp_sync_manager(saved_hp=19, live_hp=12)
+
+    mgr.refresh_hud()
+    assert db.get_pokemon_args == ["main"]
+    db.update_pokemon_current_hp.assert_called_once_with("main", 12)
+
+    # Nothing moved on either side: the per-card repaint stays off the database.
+    mgr.refresh_hud()
+    mgr.refresh_hud()
+    assert db.get_pokemon_args == ["main"]
+    assert db.update_pokemon_current_hp.call_count == 1
+
+    # Battle damage is saved on the next repaint.
+    mgr.main_pokemon.hp = mgr.main_pokemon.current_hp = 9
+    mgr.refresh_hud()
+    assert db.get_pokemon_args == ["main", "main"]
+    assert db._pokemon["current_hp"] == 9
+
+    # Another write on this connection replaced the row: reconcile it again.
+    db._pokemon["current_hp"] = 20
+    db.writes += 1
+    mgr.refresh_hud()
+    assert len(db.get_pokemon_args) == 3
+    assert db._pokemon["current_hp"] == 9
+
+    # So does an explicit invalidation from a save made elsewhere.
+    db._pokemon["current_hp"] = 20
+    mgr.invalidate_hud_cache()
+    mgr.refresh_hud()
+    assert len(db.get_pokemon_args) == 4
+    assert db._pokemon["current_hp"] == 9
+
+
+def test_refused_hp_save_is_retried_on_the_next_repaint():
+    db, mgr = _hp_sync_manager(saved_hp=19, live_hp=12)
+    db.update_pokemon_current_hp = MagicMock(return_value=False)
+
+    mgr.refresh_hud()
+    mgr.refresh_hud()
+
+    assert db.get_pokemon_args == ["main", "main"]
+    assert db.update_pokemon_current_hp.call_count == 2
+
+
 # --------------------------------------------------------------------------- #
 # reviewer_ui: team-cycle + hotkeys + idempotent wrapping
 # --------------------------------------------------------------------------- #
@@ -350,6 +464,7 @@ def _load_reviewer_ui(fake_services, dummy_reviewer=None, wrap_counter=None):
         "Ankimon.functions.encounter_functions",
         "Ankimon.functions.update_main_pokemon",
         "Ankimon.functions.pokedex_functions",
+        "Ankimon.battle_loop",
         "Ankimon.texts",
         "Ankimon.utils",
     ]:
@@ -574,6 +689,7 @@ def _load_encounter_functions():
         "Ankimon.functions.trainer_functions",
         "Ankimon.functions.badges_functions",
         "Ankimon.functions.drawing_utils",
+        "Ankimon.battle_loop",
         "Ankimon.functions.friendship_evolution",
         "Ankimon.functions.encounter_data",
         "Ankimon.utils",
@@ -658,3 +774,18 @@ def test_new_pokemon_without_update_hud_still_clears_cache_but_no_repaint():
 
     assert reviewer._ownership_cache == {}
     reviewer.refresh_hud.assert_not_called()
+
+
+def test_repaint_keeps_live_max_when_saved_row_trails_a_level_up():
+    """A row saved before a level-up must not shrink the fresh full heal."""
+    db, mgr = _hp_sync_manager(saved_hp=20, live_hp=30)
+    db._pokemon["level"] = 10
+    db._derived_max_hp = lambda data: 20  # the old level's max
+    mgr.main_pokemon.level = 11
+    mgr.main_pokemon.max_hp = 30
+
+    mgr.refresh_hud()
+
+    assert mgr.main_pokemon.max_hp == 30
+    assert mgr.main_pokemon.hp == mgr.main_pokemon.current_hp == 30
+    assert db._pokemon["current_hp"] == 30

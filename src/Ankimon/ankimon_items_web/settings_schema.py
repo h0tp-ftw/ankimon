@@ -67,6 +67,8 @@ GROUPS = [
                     "Cards per Round",
                     "Review Based Damage",
                     "Ignore Learning Cards",
+                    "Heal on Swap",
+                    "HP Regeneration",
                     "Friendship & Time Evolution",
                     "Auto-detect Time Zone",
                     "Time Zone UTC Offset",

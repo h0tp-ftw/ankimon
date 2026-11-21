@@ -28,6 +28,7 @@ from .utils import (
     count_items_and_rewrite,
 )
 from .functions.encounter_functions import generate_random_pokemon
+from .functions.hp_recovery import regenerates
 from .functions.pokedex_functions import warm_evolution_caches
 from .functions.tm_learnset import warm_tm_learnset_cache
 from .functions.badges_functions import get_achieved_badges
@@ -158,6 +159,14 @@ def run_startup_background_checks(backup_manager=None):
         count_items_and_rewrite()
     except Exception as e:
         logger.log("error", f"Error in count_items_and_rewrite: {e}")
+
+    # 8. Credit the time away to every wounded Pokémon (DB write), so the PC
+    #    and team views show rested HP without waiting for a switch-in. With
+    #    regeneration off this only settles the rest clocks.
+    try:
+        ankimon_db.regenerate_pokemon_hp(heal=regenerates(settings_obj))
+    except Exception as e:
+        logger.log("error", f"Error regenerating Pokémon HP: {e}")
 
     return {
         "backup_error": backup_error,
