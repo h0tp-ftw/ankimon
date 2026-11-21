@@ -20,6 +20,7 @@ SCREEN_BRIDGE_NAMES = {
     "mobile": ("mobile", "nav"),
     "history": ("mobile", "nav"),
     "backup_manager": ("backup", "nav"),
+    "update_manager": ("update", "nav"),
 }
 
 
