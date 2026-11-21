@@ -25,6 +25,8 @@ from .utils import (
     random_item,
 )
 from .functions.ankimon_hooks_to_poke_engine import simulate_battle_with_poke_engine
+from .functions.smart_battle import smart_battle_enabled
+from .functions.smart_move_selection import choose_best_move
 from .pyobj.error_handler import show_warning_with_traceback
 
 # Shared game state used as bare module globals below. core.bind_runtime_globals()
@@ -315,20 +317,32 @@ def on_review_card(*args):
             else:
                 enemy_attack = "splash"
 
-            move = safe_get_random_move(main_pokemon.attacks, logger=logger)
-            category = move.get("category")
-
             if (
                 ankimon_tracker_obj.pokemon_encounter > 0
                 and main_pokemon.hp > 0
                 and enemy_pokemon.hp > 0
             ):
-                if settings_obj.get("controls.allow_to_choose_moves") == True:
+                if smart_battle_enabled(settings_obj):
+                    # Smart Battle: use the strongest move of the active
+                    # Pokémon's own moveset instead of a random one. Takes
+                    # priority over Allow Choosing Moves.
+                    user_attack = choose_best_move(
+                        main_pokemon,
+                        enemy_pokemon,
+                        enemy_attack,
+                        live_state=s.new_state,
+                        mutator_full_reset=s.mutator_full_reset,
+                        fallback=user_attack,
+                    )
+                elif settings_obj.get("controls.allow_to_choose_moves") == True:
                     # Real dialog under Anki (QtPresenter); scripted/None headless.
                     chosen = services.ui.choose_move(main_pokemon.attacks)
                     if chosen:
                         user_attack = chosen
 
+                # Colour the battle message by the move actually used.
+                move = safe_get_random_move([user_attack], logger=logger)
+                category = move.get("category")
                 if category == "Status":
                     color = "#F7DC6F"
                 elif category == "Special":

@@ -391,6 +391,8 @@ class SettingsWindow(QMainWindow):
             "Battle": {
                 "settings": [
                     "Automatic Battle",
+                    "Smart Battle",
+                    "Team Level Gap",
                     "Always Catch Wishlist",
                     "Always Catch: Legendary",
                     "Always Catch: Mythical",

@@ -1324,12 +1324,39 @@ def new_pokemon(
     _cancel_main_faint_deferral()
     pokemon._ankimon_encounter_token = object()
 
+    # Smart Battle: once per new enemy, send out the
+    # best team member for this matchup. The player can still cycle freely
+    # afterwards; nothing switches again until the next encounter.
+    smart_switch_msg = None
+    if not _in_bulk_resolve():
+        from .smart_team_switch import smart_switch_for_new_enemy
+
+        smart_switch_msg = smart_switch_for_new_enemy(
+            main_pokemon, pokemon, settings_obj
+        )
+
     ankimon_tracker.randomize_battle_scene()
     if test_window is not None:
         try:
             test_window.display_first_encounter()
         except RuntimeError:
             pass
+
+    if smart_switch_msg:
+        shown = False
+        try:
+            from .drawing_utils import show_in_ankimon_window
+
+            shown = show_in_ankimon_window(smart_switch_msg)
+        except Exception:
+            pass
+        if not shown:
+            try:
+                from aqt.utils import tooltip
+
+                tooltip(smart_switch_msg)
+            except Exception:
+                pass
 
     # Track as seen in Pokedex. mark_as_seen ships with the Ankidex leaf;
     # until it lands, fall back to a user_data-backed seen list so no
@@ -1837,16 +1864,18 @@ def kill_pokemon(
         level=enemy_pokemon.level,
         tier=enemy_pokemon.tier,
     )
+    # Choosing moves by hand and Smart Battle both halve XP (not stacked).
+    from .smart_battle import reduced_xp
+
+    half_xp = reduced_xp(settings_obj)
     if trainer_card is not None:
-        trainer_card.gain_xp(
-            enemy_pokemon.tier, settings_obj.get("controls.allow_to_choose_moves")
-        )
+        trainer_card.gain_xp(enemy_pokemon.tier, half_xp)
         if not same_battle_context():
             return
 
     # Calculate experience based on whether moves are chosen manually
     exp = calc_experience(enemy_pokemon.base_experience, enemy_pokemon.level)
-    if settings_obj.get("controls.allow_to_choose_moves"):
+    if half_xp:
         exp *= 0.5
 
     # Ensure exp is at least 1 and round up if it's a decimal
