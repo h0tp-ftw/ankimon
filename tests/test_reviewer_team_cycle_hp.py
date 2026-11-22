@@ -289,6 +289,12 @@ def test_cycle_costs_the_incoming_pokemon_its_next_attack(team_cycle):
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
 
 
+def test_cycle_leaves_the_rest_clock_to_the_save(team_cycle):
+    """A clock started here would replace the stored one and drop rest owed (#975)."""
+    _, saved = _cycle(team_cycle, current_hp=7, hp_regen_at=1000.0)
+    assert "hp_regen_at" not in saved
+
+
 def test_heal_on_swap_restores_the_cycled_in_pokemon(team_cycle, monkeypatch):
     """Classic rule (battle.heal_on_swap): cycling fully heals the newcomer."""
     monkeypatch.setattr(

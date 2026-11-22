@@ -84,7 +84,6 @@ def cycle_team_pokemon():
         from .functions.hp_recovery import (
             USER_ACTION_WAIT_MS,
             credit_rest,
-            keep_rest_clock,
             swap_heals,
         )
 
@@ -174,10 +173,10 @@ def cycle_team_pokemon():
                 incoming.hp = incoming.current_hp = incoming.max_hp
             incoming.reset_bonuses()
 
-            incoming_record = incoming.to_dict()
-            # to_dict() does not carry the rest clock credit_rest just settled.
-            keep_rest_clock(incoming_record, incoming.max_hp)
-            if not services.db.save_main_pokemon(incoming_record):
+            # to_dict() carries no rest clock, so the save keeps the stored one.
+            # Starting a new clock here would drop the part of an HP this
+            # Pokémon has already rested for.
+            if not services.db.save_main_pokemon(incoming.to_dict()):
                 tooltip("Could not save the selected Pokémon; switch cancelled.")
                 return
             _cancel_main_faint_deferral()

@@ -559,6 +559,12 @@ def test_pc_switch_costs_the_incoming_pokemon_its_next_attack(collection_dialog)
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
 
 
+def test_pc_switch_leaves_the_rest_clock_to_the_save(collection_dialog):
+    """A clock started here would replace the stored one and drop rest owed (#975)."""
+    _, db = _call(collection_dialog, _stored_pokemon(hp_regen_at=1000.0))
+    assert "hp_regen_at" not in db.saved_main[-1]
+
+
 def _enable_heal_on_swap(module, monkeypatch):
     settings = MagicMock()
     settings.get.side_effect = lambda key, default=None: (

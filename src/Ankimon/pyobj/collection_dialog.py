@@ -20,7 +20,6 @@ from ..functions.pokedex_functions import search_pokedex, search_pokedex_by_id
 from ..functions.hp_recovery import (
     USER_ACTION_WAIT_MS,
     credit_rest,
-    keep_rest_clock,
     swap_heals,
 )
 from ..pyobj.database_manager import canonicalize_pokemon_record
@@ -187,10 +186,10 @@ def MainPokemon(
 
     # Commit the incoming persisted record before mutating the shared singleton.
     try:
-        incoming_record = new_main_pokemon.to_dict()
-        # to_dict() does not carry the rest clock; a wounded main needs one.
-        keep_rest_clock(incoming_record, new_main_pokemon.max_hp)
-        if not db.save_main_pokemon(incoming_record):
+        # to_dict() carries no rest clock, so the save keeps the stored one.
+        # Starting a new clock here would drop the part of an HP this Pokémon
+        # has already rested for.
+        if not db.save_main_pokemon(new_main_pokemon.to_dict()):
             raise RuntimeError("The incoming Pokémon was not saved as main")
     except Exception as exc:
         logger.log("error", f"Could not switch the main Pokémon: {exc}")
