@@ -64,6 +64,7 @@ _AUTO_CATCH_KEYS = (
     "battle.auto_catch_mega",
     "battle.auto_catch_gmax",
     "battle.auto_catch_regional",
+    "battle.auto_catch_paradox",
 )
 
 

@@ -1217,6 +1217,7 @@ class PokemonPC(QDialog):
                 "Starter",
                 "Mega",
                 "Gmax",
+                "Paradox",
             ]
         )
         self.tier_combo.setCurrentIndex(prev_idx)
