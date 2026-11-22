@@ -110,3 +110,4 @@ jobs:
           xvfb-run -a python3 -m harness.checks.probe_real_hud_css
           xvfb-run -a python3 -m harness.checks.probe_real_caught_history
           xvfb-run -a python3 -m harness.checks.probe_real_backup_manager
+          xvfb-run -a python3 -m harness.checks.probe_real_team_sync

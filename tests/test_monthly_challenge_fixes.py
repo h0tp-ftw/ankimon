@@ -1018,3 +1018,40 @@ def test_cancelling_deferred_monthly_prompt_releases_request(monthly_case, monke
     idle[0]()
     case.add.assert_not_called()
     assert pokemon_trade_module.services._monthly_challenge_request is None
+
+
+def _trade_host():
+    """A PokemonTrade-shaped mock with the attributes replace_pokemon reads."""
+    host = MagicMock()
+    host.individual_id = "old"
+    return host
+
+
+def test_trade_reports_failure_when_the_db_rolls_back():
+    """A False from db.replace_pokemon is never announced as a successful trade."""
+    host = _trade_host()
+    db = MagicMock()
+    db.replace_pokemon.return_value = False
+    with patch("Ankimon.pyobj.pokemon_trade.services.db", db), \
+         patch("Ankimon.pyobj.pokemon_trade.services.settings", None):
+        pokemon_trade_module.PokemonTrade.replace_pokemon(
+            host, {"name": "eevee", "individual_id": "new"}
+        )
+    host.refresh_callback.assert_not_called()
+    level, message = host.logger.log_and_showinfo.call_args.args
+    assert level == "error" and "unchanged" in message
+
+
+def test_trade_announces_success_after_a_committed_replace():
+    """A True from db.replace_pokemon shows the success message and refreshes."""
+    host = _trade_host()
+    db = MagicMock()
+    db.replace_pokemon.return_value = True
+    with patch("Ankimon.pyobj.pokemon_trade.services.db", db), \
+         patch("Ankimon.pyobj.pokemon_trade.services.settings", None):
+        pokemon_trade_module.PokemonTrade.replace_pokemon(
+            host, {"name": "eevee", "individual_id": "new"}
+        )
+    host.refresh_callback.assert_called_once()
+    level, message = host.logger.log_and_showinfo.call_args.args
+    assert "Successfully traded" in message
