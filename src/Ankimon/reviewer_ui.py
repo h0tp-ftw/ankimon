@@ -152,6 +152,7 @@ def cycle_team_pokemon():
                 _cancel_main_faint_deferral,
                 mark_swap_turn_lost,
                 outgoing_hp_for_swap,
+                publish_active_hp,
             )
 
             outgoing_id = getattr(main_pokemon, "individual_id", None)
@@ -181,6 +182,8 @@ def cycle_team_pokemon():
                 return
             _cancel_main_faint_deferral()
             main_pokemon.__dict__.update(incoming.__dict__)
+            # Swapping straight back returns to a battle that kept the old HP.
+            publish_active_hp(main_pokemon)
             mark_swap_turn_lost()
         except Exception as e:
             print(f"Error updating pokemon: {e}")

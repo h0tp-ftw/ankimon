@@ -100,6 +100,25 @@ def outgoing_hp_for_swap(main_pokemon):
     return main_pokemon.current_hp
 
 
+def publish_active_hp(main_pokemon):
+    """Give the battle under way the HP a swapped-in Pokemon arrives with.
+
+    The engine keeps the active Pokemon's HP between rounds and writes it back
+    after each one. Swapping away and straight back, with no round in between,
+    returns to an engine state still bound to this Pokemon, so the HP it comes
+    back with (rest credited on the bench, or the classic heal-on-swap) must
+    reach that state, or the next round restores the old HP and saves it. Any
+    other swap needs nothing: the state belongs to another individual and the
+    next round rebuilds it. Never raises: the switch is already saved.
+    """
+    try:
+        return sync_active_pokemon_hp(_state.new_state, main_pokemon)
+    except Exception as error:
+        if logger is not None:
+            logger.log("warning", f"Could not publish the active Pokemon's HP: {error}")
+        return False
+
+
 # (individual_id, timestamp) of the last regeneration credited to the active
 # Pokemon, so the per-card loop touches the database once a tick, not per card.
 _last_rest_credit = None

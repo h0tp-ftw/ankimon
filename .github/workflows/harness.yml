@@ -70,6 +70,7 @@ jobs:
           xvfb-run -a python3 -m harness.checks.probe_real_battle_healing
           xvfb-run -a python3 -m harness.checks.probe_real_active_levelup_engine_hp
           xvfb-run -a python3 -m harness.checks.probe_real_swap_deferred_faint
+          xvfb-run -a python3 -m harness.checks.probe_real_swap_back_hp
           xvfb-run -a python3 -m harness.checks.probe_real_ev_item_sync
           xvfb-run -a python3 -m harness.scenarios.monthly_challenge
           xvfb-run -a python3 -m harness.checks.probe_real_recent_merges

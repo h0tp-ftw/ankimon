@@ -68,6 +68,7 @@ def MainPokemon(
         _main_faint_pending_for,
         mark_swap_turn_lost,
         outgoing_hp_for_swap,
+        publish_active_hp,
     )
 
     # Re-selecting the active companion while both Pokémon are fainted is not
@@ -201,6 +202,8 @@ def MainPokemon(
     _cancel_main_faint_deferral()
     main_pokemon.__dict__.update(new_main_pokemon.__dict__)
     if str(outgoing_id) != str(pokemon_data.get("individual_id")):
+        # Swapping straight back returns to a battle that kept the old HP.
+        publish_active_hp(main_pokemon)
         mark_swap_turn_lost()
 
     logger.log_and_showinfo(

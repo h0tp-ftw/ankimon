@@ -157,6 +157,7 @@ def team_cycle():
                 _cancel_main_faint_deferral=MagicMock(),
                 mark_swap_turn_lost=MagicMock(),
                 outgoing_hp_for_swap=lambda pokemon: pokemon.current_hp,
+                publish_active_hp=MagicMock(),
                 _main_faint_pending_for=MagicMock(return_value=False),
             ),
             "Ankimon.functions.pokedex_functions": _make_module(
@@ -287,6 +288,12 @@ def test_cycle_costs_the_incoming_pokemon_its_next_attack(team_cycle):
     """A successful team-cycle swap arms the lost-turn penalty once (#975)."""
     _cycle(team_cycle, current_hp=7)
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
+
+
+def test_cycle_gives_the_battle_the_hp_the_pokemon_arrives_with(team_cycle):
+    """Cycling straight back returns to a battle that kept the old HP (#975)."""
+    main, _ = _cycle(team_cycle, current_hp=7)
+    sys.modules["Ankimon.battle_loop"].publish_active_hp.assert_called_once_with(main)
 
 
 def test_cycle_leaves_the_rest_clock_to_the_save(team_cycle):

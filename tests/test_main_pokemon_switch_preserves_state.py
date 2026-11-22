@@ -140,6 +140,7 @@ def collection_dialog():
             _cancel_main_faint_deferral=MagicMock(),
             mark_swap_turn_lost=MagicMock(),
             outgoing_hp_for_swap=lambda pokemon: pokemon.current_hp,
+            publish_active_hp=MagicMock(),
         ),
         # Imported at the very END of MainPokemon's body.
         "Ankimon.singletons": singletons,
@@ -559,6 +560,12 @@ def test_pc_switch_costs_the_incoming_pokemon_its_next_attack(collection_dialog)
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_called_once_with()
 
 
+def test_pc_switch_gives_the_battle_the_hp_the_pokemon_arrives_with(collection_dialog):
+    """Picking the old main straight back returns to a battle that kept its old HP (#975)."""
+    main, _ = _call(collection_dialog, _stored_pokemon())
+    sys.modules["Ankimon.battle_loop"].publish_active_hp.assert_called_once_with(main)
+
+
 def test_pc_switch_leaves_the_rest_clock_to_the_save(collection_dialog):
     """A clock started here would replace the stored one and drop rest owed (#975)."""
     _, db = _call(collection_dialog, _stored_pokemon(hp_regen_at=1000.0))
@@ -614,3 +621,5 @@ def test_reselecting_the_current_main_does_not_cost_a_turn(collection_dialog):
     )
 
     sys.modules["Ankimon.battle_loop"].mark_swap_turn_lost.assert_not_called()
+    # Its HP did not change either, so the battle has nothing new to learn.
+    sys.modules["Ankimon.battle_loop"].publish_active_hp.assert_not_called()
