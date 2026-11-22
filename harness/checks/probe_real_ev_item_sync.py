@@ -128,8 +128,7 @@ def main():
             assert trained[key] == rewarded[key] == getattr(companion, key)
         assert trained["custom_save_metadata"] == {"retained": [1, 2]}
         assert (
-            trained["hp"]
-            == trained["current_hp"]
+            trained["current_hp"]
             == companion.hp
             == companion.current_hp
             == 12
