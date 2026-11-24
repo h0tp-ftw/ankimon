@@ -235,6 +235,15 @@ def test_update_item_quantity_preserves_metadata(temp_env):
     assert item["id"] == 100
     assert item["cost"] == 500
 
+def test_update_item_quantity_correctly_increments_zero_quantity(temp_env):
+    db, _ = temp_env
+    db.save_item(100, "elixir", 0, category_id=10, cost=500)
+    db.update_item_quantity("elixir", 1)
+
+    item = db.get_item("elixir")
+    assert item["quantity"] == 1
+    assert item["id"] == 100
+
 def test_consume_item_decrements_and_preserves_metadata(temp_env):
     """Spending one unit must not cost the row its identity."""
     db, _ = temp_env
