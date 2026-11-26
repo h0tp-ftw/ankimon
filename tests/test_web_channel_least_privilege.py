@@ -19,6 +19,8 @@ EXPECTED_BRIDGES = {
     "team": ("team", "nav"),
     "mobile": ("mobile", "nav"),
     "history": ("mobile", "nav"),
+    "backup_manager": ("backup", "nav"),
+    "update_manager": ("update", "nav"),
 }
 
 
@@ -34,7 +36,16 @@ class RecordingChannel:
 def test_each_screen_receives_only_its_required_bridges(screen_id, expected_names):
     all_bridges = {
         name: object()
-        for name in ("bridge", "nav", "settings", "trainer", "team", "mobile")
+        for name in (
+            "bridge",
+            "nav",
+            "settings",
+            "trainer",
+            "team",
+            "mobile",
+            "backup",
+            "update",
+        )
     }
     channel = RecordingChannel()
 

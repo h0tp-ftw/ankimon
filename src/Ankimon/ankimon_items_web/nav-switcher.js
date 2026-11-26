@@ -1,6 +1,6 @@
 // Shared dropdown nav switcher for the unified Ankimon shell.
 //
-// One implementation for all five screens (Items, Ankidex, Profile, Team,
+// One implementation for all shell screens (Items, Ankidex, Profile, Team,
 // Settings) — open/close, click-outside, Escape, and routing menu clicks to
 // the NavBridge via nav.open<Screen>().
 //
@@ -111,4 +111,3 @@
         });
     };
 })();
-

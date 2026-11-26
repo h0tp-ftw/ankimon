@@ -28,6 +28,7 @@ from .utils import (
     count_items_and_rewrite,
 )
 from .functions.encounter_functions import generate_random_pokemon
+from .functions.hp_recovery import regenerates
 from .functions.pokedex_functions import warm_evolution_caches
 from .functions.tm_learnset import warm_tm_learnset_cache
 from .functions.badges_functions import get_achieved_badges
@@ -159,6 +160,14 @@ def run_startup_background_checks(backup_manager=None):
     except Exception as e:
         logger.log("error", f"Error in count_items_and_rewrite: {e}")
 
+    # 8. Credit the time away to every wounded Pokémon (DB write), so the PC
+    #    and team views show rested HP without waiting for a switch-in. With
+    #    regeneration off this only settles the rest clocks.
+    try:
+        ankimon_db.regenerate_pokemon_hp(heal=regenerates(settings_obj))
+    except Exception as e:
+        logger.log("error", f"Error regenerating Pokémon HP: {e}")
+
     return {
         "backup_error": backup_error,
         "backup_manager": backup_manager,
@@ -171,6 +180,14 @@ def run_startup_background_checks(backup_manager=None):
     }
 
 
+def _main_window_deleted():
+    # Modal dialogs run a nested event loop. Anki may destroy their host
+    # before exec() returns to the startup sequence.
+    from PyQt6 import sip
+
+    return isinstance(mw, sip.wrapper) and sip.isdeleted(mw)
+
+
 def run_startup_ui_callbacks(results):
     """Main-thread half of the boot: every Qt interaction lives here."""
     global _file_check_dialog
@@ -180,6 +197,8 @@ def run_startup_ui_callbacks(results):
         show_warning_with_traceback(
             parent=mw, exception=results["backup_error"], message="Backup error:"
         )
+        if _main_window_deleted():
+            return None
 
     # Database migration dialog.
     if not results["is_migrated"]:
@@ -208,6 +227,9 @@ def run_startup_ui_callbacks(results):
             rate_path,
         )
 
+        if _main_window_deleted():
+            return None
+
         # The background half (run_startup_background_checks) computed
         # collected_pokemon_ids and needs_starter against the still-empty
         # pre-migration DB. Migration just imported the user's legacy collection
@@ -222,6 +244,9 @@ def run_startup_ui_callbacks(results):
     # Missing assets: sprite download agreement + file checker.
     if not results["database_complete"]:
         show_agreement_and_download_dialog(force_download=True)
+        if _main_window_deleted():
+            return None
+
         _file_check_dialog = CheckFiles()
         _file_check_dialog.show()
 
@@ -235,10 +260,14 @@ def run_startup_ui_callbacks(results):
         from .singletons import get_starter_window
 
         get_starter_window().display_starter_pokemon()
+        if _main_window_deleted():
+            return None
 
     # Rate-this-addon prompt.
     if results["database_complete"] and results["needs_rating"]:
         rate_this_addon()
+        if _main_window_deleted():
+            return None
 
     # Reset the encounter counter for the new session.
     ankimon_tracker_obj.pokemon_encounter = 0

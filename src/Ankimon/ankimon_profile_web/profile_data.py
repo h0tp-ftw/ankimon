@@ -819,15 +819,76 @@ class ProfileData:
         companion_id = str(companion_id) if companion_id else None
 
         try:
+            active = services.main_pokemon
+            # Read before the switch: the main singleton is updated in place.
+            outgoing_id = getattr(active, "individual_id", None)
+            from ..functions.hp_recovery import USER_ACTION_WAIT_MS
+
+            if companion_id:
+                from ..battle_loop import (
+                    _main_faint_pending_for,
+                    outgoing_hp_for_swap,
+                )
+
+                # Re-selecting the active companion while both Pokémon are
+                # fainted is not a switch (see MainPokemon): reloading it would
+                # heal it and strand the pending enemy choice.
+                if _main_faint_pending_for(active, companion_id):
+                    companion_id = None
+            switching = bool(companion_id) and str(outgoing_id) != str(companion_id)
+            if companion_id and outgoing_id and services.db.get_main_pokemon():
+                # Before anything is committed, so a refused save leaves the
+                # team and XP Share untouched as well. Re-saving the team with
+                # the same companion is not a swap and keeps its live HP.
+                outgoing_hp = (
+                    outgoing_hp_for_swap(active) if switching else active.current_hp
+                )
+                if not services.db.update_pokemon_current_hp(
+                    str(outgoing_id),
+                    outgoing_hp,
+                    wait_ms=USER_ACTION_WAIT_MS,
+                ):
+                    raise RuntimeError(
+                        "Could not save the active Pokémon before switching"
+                    )
             # NOTE: no legacy "trainer.team" config write — the DB team table
             # (services.db.save_team) is the sole source of truth every read path
             # uses; settings.py migrates/deletes the old config key on load.
             self.settings_obj.set("trainer.xp_share", xp_share_id)
             services.db.save_team(team_data)
             if companion_id:
-                services.db.set_main_pokemon(companion_id)
+                if not services.db.set_main_pokemon(companion_id):
+                    raise RuntimeError("The selected companion was not found")
                 from ..functions.update_main_pokemon import update_main_pokemon
-                update_main_pokemon(services.main_pokemon)
+                new_main, mainpokemon_empty = update_main_pokemon(
+                    services.main_pokemon
+                )
+                if new_main is not None and new_main is not services.main_pokemon:
+                    services.main_pokemon.update_stats(**new_main.to_dict())
+                if mainpokemon_empty:
+                    raise RuntimeError("The selected companion could not be loaded")
+                if outgoing_id is not None and switching:
+                    from ..battle_loop import (
+                        _cancel_main_faint_deferral,
+                        mark_swap_turn_lost,
+                    )
+                    from ..functions.hp_recovery import swap_heals
+
+                    # The outgoing Pokemon's deferred faint was settled above.
+                    _cancel_main_faint_deferral()
+                    mark_swap_turn_lost()
+                    if swap_heals(self.settings_obj):
+                        # Classic swap rule: the incoming Pokémon arrives
+                        # fully healed.
+                        incoming = services.main_pokemon
+                        incoming.hp = incoming.current_hp = incoming.max_hp
+                        services.db.update_pokemon_current_hp(
+                            str(companion_id),
+                            incoming.max_hp,
+                            wait_ms=USER_ACTION_WAIT_MS,
+                        )
+                if services.reviewer is not None:
+                    services.reviewer.refresh_hud()
         except Exception as e:
             return {"ok": False, "message": f"Failed to save team: {e}"}
 

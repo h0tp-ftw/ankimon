@@ -142,6 +142,7 @@ def test_save_main_pokemon_progress_caps_at_10_levelups():
         stats={},
         ev={"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0},
         hp=100,
+        max_hp=100,
         held_item=None,
         pokemon_defeated=0,
         tier="Normal",

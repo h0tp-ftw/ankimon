@@ -1,0 +1,1378 @@
+:root {
+	--update-success: #3fb950;
+	--update-warning: #d29922;
+	--update-deep-warning: #b26a00;
+	--update-error: #f85149;
+	--update-caution: #f0883e;
+	--update-danger-fill: #da3633;
+}
+
+.update-content {
+	width: min(100%, 1050px);
+	min-width: 0;
+	margin: 0 auto;
+	padding: 24px 32px 48px;
+	display: grid;
+	gap: 16px;
+}
+
+.content-scroll {
+	min-width: 0;
+	overflow-x: hidden;
+}
+
+.channel-row,
+.branch-actions,
+.button-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.branch-actions,
+.sprites-actions {
+	justify-content: space-between;
+	padding: 0 20px;
+}
+
+.channel-row {
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	min-height: 42px;
+}
+
+.channel-label,
+.update-card label,
+.target-fields label {
+	color: var(--text-main);
+	font-weight: 600;
+}
+
+.channel-label {
+	margin: 0;
+}
+
+/* A quiet text link: always readable, brightens on hover/focus, no pill. */
+.github-link {
+	margin-left: auto;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 2px;
+	color: var(--text-muted);
+	background: none;
+	border: 0;
+	border-radius: 6px;
+	font: 500 .84rem 'Outfit', sans-serif;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: color .15s ease;
+}
+
+.github-link:hover,
+.github-link:focus-visible {
+	color: var(--text-bright);
+}
+
+.github-link:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
+}
+
+.github-link svg {
+	display: block;
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	fill: currentColor;
+}
+
+.installed-source-detail {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 1px 9px;
+	color: var(--text-main);
+	background: var(--bg-card-hover);
+	border: 1px solid var(--border-main);
+	border-radius: 999px;
+	font: 600 .76rem/1.5 'Outfit', sans-serif;
+	vertical-align: 1px;
+}
+
+.top-bar-titles h2 {
+	margin-bottom: 8px;
+}
+
+.top-bar-titles p {
+	margin: 0;
+}
+
+.update-content input[type="search"] {
+	min-height: 38px;
+	padding: 8px 10px;
+	color: var(--text-main);
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 8px;
+	font: inherit;
+}
+
+/* Keyboard focus on a dropdown's trigger and its search box: the accent
+   border plus a soft ring. A search box shows it whenever it has focus. */
+.update-content input[type="search"]:focus-visible {
+	outline: none;
+	border-color: var(--accent-blue);
+	box-shadow: 0 0 0 3px rgba(88, 166, 255, .22);
+}
+
+.custom-select {
+	position: relative;
+	width: 100%;
+	min-width: 0;
+}
+
+.custom-select-trigger {
+	width: 100%;
+	min-height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 9px 12px;
+	color: var(--text-main);
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 8px;
+	font: 500 .9rem 'Outfit', sans-serif;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color .15s ease, background .15s ease;
+}
+
+.custom-select-trigger:hover {
+	background: var(--bg-card-hover);
+}
+
+.custom-select-trigger:focus-visible {
+	outline: none;
+	border-color: var(--accent-blue);
+	box-shadow: 0 0 0 3px rgba(88, 166, 255, .22);
+}
+
+.custom-select-trigger:disabled {
+	cursor: not-allowed;
+	opacity: .65;
+}
+
+.custom-select-value {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.custom-select-chevron {
+	width: 14px;
+	height: 14px;
+	flex: 0 0 14px;
+	border: 0;
+	background: var(--text-muted);
+	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M3.5 6l4.5 4.5L12.5 6'/%3E%3C/svg%3E") center / contain no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' d='M3.5 6l4.5 4.5L12.5 6'/%3E%3C/svg%3E") center / contain no-repeat;
+	transition: transform .15s ease;
+}
+
+.custom-select.open .custom-select-chevron {
+	transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.custom-select-chevron {
+		transition: none;
+	}
+}
+
+.custom-select-menu {
+	position: absolute;
+	top: calc(100% + 7px);
+	left: 0;
+	right: 0;
+	z-index: 40;
+	display: grid;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+	gap: 8px;
+	padding: 9px;
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 12px;
+	box-shadow: 0 14px 36px rgba(0, 0, 0, .45);
+	overscroll-behavior: contain;
+}
+
+.custom-select-menu .custom-select-search {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	min-height: 36px;
+}
+
+.custom-select-options {
+	display: grid;
+	min-width: 0;
+	max-width: 100%;
+	gap: 3px;
+	max-height: 230px;
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+}
+
+.dropdown-pagination {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	gap: 8px;
+	padding-top: 7px;
+	border-top: 1px solid var(--border-main);
+	color: var(--text-muted);
+	font-size: .76rem;
+	line-height: 1.3;
+}
+
+.dropdown-pagination > span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.dropdown-pagination > span:last-child {
+	text-align: right;
+}
+
+/* The source dropdown's footer is the two page arrows alone, centred. */
+#pr-pagination {
+	grid-template-columns: auto;
+	justify-content: center;
+}
+
+.dropdown-page-controls {
+	display: flex;
+	justify-content: center;
+	gap: 6px;
+}
+
+.dropdown-page-controls button {
+	width: 30px;
+	height: 28px;
+	padding: 0;
+	display: grid;
+	place-items: center;
+	color: var(--text-main);
+	background: var(--bg-card-hover);
+	border: 1px solid var(--border-main);
+	border-radius: 6px;
+	font: 600 .76rem 'Outfit', sans-serif;
+	cursor: pointer;
+}
+
+.dropdown-page-controls svg {
+	display: block;
+	width: 16px;
+	height: 16px;
+	fill: currentColor;
+}
+
+.dropdown-page-controls button:disabled {
+	color: var(--text-muted);
+	background: var(--bg-darker);
+	cursor: default;
+	opacity: .55;
+}
+
+.dropdown-page-controls button:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
+}
+
+.custom-select-option {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	padding: 9px 10px;
+	color: var(--text-main);
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	font: 500 .9rem 'Outfit', sans-serif;
+	text-align: left;
+	overflow-wrap: anywhere;
+	white-space: normal;
+	cursor: pointer;
+}
+
+.custom-select-empty {
+	min-width: 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+}
+
+.custom-select-option:hover,
+.custom-select-option.is-active,
+.custom-select-option[aria-selected="true"] {
+	color: var(--text-bright);
+	background: rgba(88, 166, 255, .16);
+}
+
+/* The keyboard highlight also gets a thin ring, so it stays distinct from
+   the selected option it moves away from. */
+.custom-select-option.is-active {
+	box-shadow: inset 0 0 0 1px rgba(88, 166, 255, .55);
+}
+
+.custom-select-empty {
+	padding: 10px;
+	color: var(--text-muted);
+	font-size: .84rem;
+}
+
+/* A status line at the top of a list ("Looking up #1234", "#1234 was
+   merged"): the status-text look, inset like the options' text. It is
+   not an option and never takes the highlight. */
+.custom-select-options .custom-select-notice {
+	padding: 7.2px 10px;
+}
+
+.git-notice {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 20px;
+	border-color: var(--accent-blue) !important;
+}
+
+.git-notice h3 {
+	color: var(--accent-blue);
+}
+
+.git-notice p {
+	margin-top: 6px;
+}
+
+.tab-panel {
+	display: none;
+	gap: 14px;
+}
+
+.tab-panel.active {
+	display: grid;
+}
+
+.update-card {
+	padding: 18px 20px;
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 12px;
+	display: grid;
+	gap: 12px;
+	min-width: 0;
+}
+
+.update-card h3 {
+	color: var(--text-bright);
+	font-size: 1rem;
+}
+
+.update-card .muted,
+.muted {
+	color: var(--text-muted);
+	line-height: 1.5;
+}
+
+/* An action that belongs to a card sits at the card's right edge, sized to
+   its label, like the .branch-actions row under the pre-release card. */
+.update-card > .btn {
+	justify-self: end;
+}
+
+/* One row: what the card says on the left, its action on the right. The
+   action wraps under (still right-aligned) when the card gets narrow. */
+.card-action-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.card-action-row > :first-child {
+	flex: 1 1 220px;
+	min-width: 0;
+}
+
+.card-action-row > .btn {
+	flex: 0 0 auto;
+	margin-left: auto;
+}
+
+/* A dropdown keeps its button beside it down to a much narrower card; the
+   button matches the trigger's height. */
+.card-action-row > .custom-select {
+	flex-basis: 140px;
+}
+
+.card-action-row > .custom-select + .btn {
+	align-self: stretch;
+}
+
+/* Installed source: a small labelled grid, Installed / Pre-release rows
+   against Commit / Date columns. */
+.source-details {
+	justify-self: start;
+	max-width: 100%;
+	border-collapse: collapse;
+}
+
+.source-details th {
+	padding: 0 24px 6px 0;
+	color: var(--text-muted);
+	font-size: .76rem;
+	font-weight: 500;
+	text-align: left;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+.source-details tbody th {
+	padding: 3px 24px 3px 0;
+}
+
+.source-details td {
+	padding: 3px 24px 3px 0;
+	color: var(--text-main);
+	font: 500 .84rem/1.5 'JetBrains Mono', monospace;
+	/* A commit SHA never breaks. */
+	overflow-wrap: normal;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+/* A date stays on one line where it fits; in a card too narrow for it, it
+   wraps between words ("17 Nov 2026," / "21:58") instead of overflowing. */
+#commit-date,
+#pre-release-commit-date {
+	white-space: normal;
+}
+
+.source-details th:last-child,
+.source-details td:last-child {
+	padding-right: 0;
+}
+
+.source-details td.source-detail-placeholder,
+.source-installed-at .source-detail-placeholder {
+	color: var(--text-muted);
+	font-family: 'Outfit', sans-serif;
+}
+
+.source-installed-at {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: .84rem;
+	line-height: 1.5;
+}
+
+.source-installed-at span {
+	color: var(--text-main);
+}
+
+.branch-subtabs {
+	display: flex;
+	width: fit-content;
+	max-width: 100%;
+	gap: 6px;
+	padding: 0;
+	border-bottom: 1px solid var(--border-main);
+}
+
+.branch-subtab {
+	padding: 10px 16px;
+	color: var(--text-muted);
+	background: transparent;
+	border: 1px solid transparent;
+	border-bottom: 2px solid transparent;
+	font: 600 .9rem 'Outfit', sans-serif;
+	cursor: pointer;
+}
+
+.branch-subtab:hover,
+.branch-subtab.active {
+	color: var(--text-bright);
+}
+
+.branch-subtab.active {
+	border-bottom-color: var(--accent-blue);
+}
+
+/* Arrow keys move between tabs, so the focused one must show. Inset in the
+   sidebar, whose scroll box would clip a ring drawn outside. */
+.branch-subtab:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: -2px;
+	border-radius: 6px 6px 0 0;
+}
+
+.update-tab-link:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: -2px;
+}
+
+.subtab-panel {
+	display: none;
+	gap: 14px;
+}
+
+.subtab-panel.active {
+	display: grid;
+}
+
+#branch-update-view {
+	display: grid;
+	gap: 14px;
+	min-width: 0;
+}
+
+.status-text {
+	margin: 0;
+	color: var(--text-muted);
+	font-weight: 400;
+	line-height: 1.5;
+}
+
+/* Status lines: one look for every "where do I stand" message. The words stay
+   in the normal text colour; only the leading icon carries the tone. */
+.status-text.checking,
+.status-text.success,
+.status-text.neutral,
+.status-text.warning,
+.status-text.error,
+.status-text.rate-limit,
+.status-text.high-risk,
+.release-highlight.checking,
+.release-highlight.success,
+.release-highlight.warning,
+.release-highlight.error,
+.release-highlight.rate-limit {
+	display: flex;
+	align-items: flex-start;
+	gap: 7px;
+	justify-self: start;
+	max-width: 100%;
+	color: var(--text-main);
+	font-size: .9rem;
+	font-weight: 400;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+	--status-tone: var(--text-muted);
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 3v6M8 12.5v.2'/%3E%3C/svg%3E");
+}
+
+.status-text.checking::before,
+.status-text.success::before,
+.status-text.neutral::before,
+.status-text.warning::before,
+.status-text.error::before,
+.status-text.rate-limit::before,
+.status-text.high-risk::before,
+.release-highlight.checking::before,
+.release-highlight.success::before,
+.release-highlight.warning::before,
+.release-highlight.error::before,
+.release-highlight.rate-limit::before {
+	content: "";
+	width: 15px;
+	height: 15px;
+	flex: 0 0 15px;
+	/* Centre the icon on the first line, whatever the text wraps to. */
+	margin-top: calc((1.5em - 15px) / 2);
+	background: var(--status-tone);
+	-webkit-mask: var(--status-icon) center / contain no-repeat;
+	mask: var(--status-icon) center / contain no-repeat;
+}
+
+.status-text.success,
+.release-highlight.success {
+	--status-tone: var(--update-success);
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.8'/%3E%3C/svg%3E");
+}
+
+.status-text.neutral {
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8h8'/%3E%3C/svg%3E");
+}
+
+.status-text.warning,
+.release-highlight.warning {
+	--status-tone: var(--update-warning);
+}
+
+.status-text.error,
+.status-text.high-risk,
+.release-highlight.error {
+	--status-tone: var(--update-error);
+}
+
+/* Still checking: the same line, words and icon slot as the result that
+   replaces it, so nothing moves when it arrives. The slot holds a ring
+   with one muted arc that turns; under reduced motion it stays still. */
+.status-text.checking,
+.release-highlight.checking {
+	color: var(--text-muted);
+}
+
+.status-text.checking::before,
+.release-highlight.checking::before {
+	box-sizing: border-box;
+	background: none;
+	border: 2px solid var(--border-main);
+	border-top-color: var(--text-muted);
+	border-radius: 50%;
+	-webkit-mask: none;
+	mask: none;
+	animation: status-checking-spin .8s linear infinite;
+}
+
+@keyframes status-checking-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.status-text.checking::before,
+	.release-highlight.checking::before {
+		animation: none;
+	}
+}
+
+/* Rate limiting is a wait, not a failure: yellow lightning bolt. */
+.status-text.rate-limit,
+.release-highlight.rate-limit {
+	--status-tone: #f5c518;
+	--status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M9.6 1 3 9.2h3.9L6 15l6.8-8.4H8.7z'/%3E%3C/svg%3E");
+}
+
+.commit-list {
+	list-style: none;
+	display: grid;
+	gap: 8px;
+	max-height: 190px;
+	overflow: auto;
+}
+
+.commit-list li {
+	padding: 8px 10px;
+	background: rgba(8, 10, 12, .45);
+	border-radius: 6px;
+	color: var(--text-main);
+	font-size: .84rem;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.commit-list li.commit-list-empty {
+	padding: 0;
+	color: var(--text-muted);
+	background: transparent;
+}
+
+.commit-list code {
+	color: var(--accent-blue);
+	font-family: 'JetBrains Mono', monospace;
+	margin-right: 8px;
+}
+
+.commit-link {
+	color: var(--accent-blue);
+	font-family: 'JetBrains Mono', monospace;
+	margin-right: 8px;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.commit-link:hover {
+	color: #8bc4ff;
+}
+
+#panel-releases,
+#panel-developer {
+	padding-bottom: 90px;
+}
+
+.operation-progress,
+.sprite-progress {
+	display: grid;
+	gap: 8px;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+/* A progress block outside a card gets the card's frame and padding, so its
+   label and bar line up with the cards above it. */
+.operation-progress {
+	padding: 14px 20px 16px;
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 12px;
+}
+
+.update-card .operation-progress {
+	padding: 0;
+	background: transparent;
+	border: 0;
+	border-radius: 0;
+}
+
+.progress-label {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 12px;
+	color: var(--text-muted);
+	font-size: .84rem;
+	font-weight: 400;
+	line-height: 1.35;
+}
+
+.progress-label span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	font-weight: 400;
+}
+
+.progress-label .progress-message-complete {
+	color: var(--update-success);
+}
+
+.progress-label .progress-message-failure {
+	color: var(--update-warning);
+	font-weight: 700;
+}
+
+.progress-label .progress-message-rate-limit {
+	color: var(--update-error);
+	font-weight: 700;
+}
+
+.progress-label .progress-message-sprite-success {
+	color: var(--update-success);
+	font-weight: 700;
+}
+
+.progress-label .progress-message-sprite-warning {
+	color: var(--update-warning);
+	font-weight: 700;
+}
+
+.progress-message-complete strong {
+	font-weight: 700;
+}
+
+.progress-label output {
+	flex: 0 0 auto;
+	color: var(--text-main);
+	font: 600 .76rem 'JetBrains Mono', monospace;
+}
+
+.check-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	color: var(--text-muted);
+	font-size: .9rem;
+	cursor: pointer;
+}
+
+.custom-checkbox {
+	position: absolute;
+	top: 50%;
+	left: 0;
+	width: 1px;
+	height: 1px;
+	margin: 0;
+	opacity: 0;
+	transform: translateY(-50%);
+}
+
+.checkbox-indicator {
+	width: 18px;
+	height: 18px;
+	flex: 0 0 18px;
+	display: grid;
+	place-items: center;
+	background: var(--bg-darker);
+	border: 1.5px solid var(--border-main);
+	border-radius: 6px;
+	transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.checkbox-indicator::after {
+	content: "";
+	width: 8px;
+	height: 4px;
+	border-left: 2px solid #fff;
+	border-bottom: 2px solid #fff;
+	transform: rotate(-45deg) translate(1px, -1px) scale(0);
+	transition: transform .12s ease;
+}
+
+.custom-checkbox:checked + .checkbox-indicator {
+	background: var(--accent-blue);
+	border-color: var(--accent-blue);
+}
+
+.custom-checkbox:checked + .checkbox-indicator::after {
+	transform: rotate(-45deg) translate(1px, -1px) scale(1);
+}
+
+.custom-checkbox:focus-visible + .checkbox-indicator {
+	outline: 2px solid rgba(88, 166, 255, .7);
+	outline-offset: 2px;
+}
+
+.release-highlight {
+	color: var(--text-muted);
+	font-size: 1rem;
+	font-weight: 700;
+}
+
+/* Notes: a plain outlined box; body copy stays in the normal text colour and
+   the tone lives only in the emphasised words. */
+.warning-text {
+	margin: 0;
+	padding: 12px 16px;
+	color: var(--text-main);
+	background: transparent;
+	border: 1px solid var(--border-main);
+	border-radius: 8px;
+	font-weight: 400;
+	line-height: 1.55;
+	font-size: .9rem;
+}
+
+.warning-text strong {
+	color: var(--update-warning);
+	font-weight: 700;
+}
+
+/* The high-risk banner keeps its red fill and bar. */
+.warning-text.danger-text {
+	background: rgba(248, 81, 73, .1);
+	border-color: rgba(248, 81, 73, .4);
+	border-left: 4px solid var(--update-error);
+}
+
+.warning-text.danger-text strong {
+	color: var(--update-error);
+}
+
+.developer-tab-row {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-bottom: 2px;
+}
+
+.developer-tab-row .nav-item {
+	width: auto;
+	flex: 1;
+	margin-bottom: 0;
+}
+
+.developer-warning-info {
+	width: 32px;
+	height: 36px;
+	flex: 0 0 32px;
+	display: grid;
+	place-items: center;
+	padding: 6px;
+	color: var(--text-main);
+	background: transparent;
+	border: 0;
+	border-radius: 8px;
+	cursor: pointer;
+	transition: color .15s ease;
+}
+
+.developer-warning-info:hover {
+	color: var(--accent-blue);
+}
+
+.developer-warning-info:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 1px;
+}
+
+.developer-warning-info svg {
+	display: block;
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.35;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	overflow: visible;
+}
+
+.developer-warning-info svg circle:last-of-type {
+	fill: currentColor;
+	stroke: none;
+}
+
+.developer-warning-info svg circle:first-of-type {
+	stroke-width: 1.35;
+}
+
+#source-type-select,
+#source-target,
+#release-select {
+	width: 100%;
+}
+
+.target-fields {
+	display: grid;
+	gap: 8px;
+}
+
+.operation-status {
+	color: var(--text-main);
+	font-weight: 700;
+	padding: 4px 2px;
+	overflow-wrap: anywhere;
+}
+
+progress {
+	display: block;
+	width: 100%;
+	height: 10px;
+	overflow: hidden;
+	border: 1px solid var(--border-main);
+	border-radius: 999px;
+	background: var(--bg-darker);
+	accent-color: var(--accent-blue);
+}
+
+progress::-webkit-progress-bar {
+	border-radius: 999px;
+	background: var(--bg-darker);
+}
+
+progress::-webkit-progress-value {
+	border-radius: 999px;
+	background: var(--accent-blue);
+	transition: width .18s ease;
+}
+
+progress::-moz-progress-bar {
+	border-radius: 999px;
+	background: var(--accent-blue);
+	transition: width .18s ease;
+}
+
+/* The bar follows the colour of the message above it. */
+[data-result="complete"] progress::-webkit-progress-value,
+[data-result="sprite-success"] progress::-webkit-progress-value {
+	background: var(--update-success);
+}
+
+[data-result="failure"] progress::-webkit-progress-value,
+[data-result="sprite-warning"] progress::-webkit-progress-value {
+	background: var(--update-warning);
+}
+
+[data-result="rate-limit"] progress::-webkit-progress-value {
+	background: var(--update-error);
+}
+
+[data-result="complete"] progress::-moz-progress-bar,
+[data-result="sprite-success"] progress::-moz-progress-bar {
+	background: var(--update-success);
+}
+
+[data-result="failure"] progress::-moz-progress-bar,
+[data-result="sprite-warning"] progress::-moz-progress-bar {
+	background: var(--update-warning);
+}
+
+[data-result="rate-limit"] progress::-moz-progress-bar {
+	background: var(--update-error);
+}
+
+/* White on #1f6feb clears 4.5:1; hover goes darker, never lighter. */
+.btn-primary {
+	color: #fff;
+	background: #1f6feb;
+	border: 1px solid #1f6feb;
+}
+
+.btn-primary:hover:not(:disabled) {
+	color: #fff;
+	background: #1a63d6;
+	border-color: #1a63d6;
+}
+
+/* A disabled primary button reads as "nothing to do", not as a dimmed call
+   to action. */
+.btn-primary:disabled {
+	color: var(--text-muted);
+	background: var(--bg-card-hover);
+	border-color: var(--border-main);
+}
+
+.btn-danger {
+	color: #fff;
+	background: var(--update-danger-fill);
+	border: 1px solid var(--update-danger-fill);
+}
+
+.btn-danger:hover:not(:disabled) {
+	color: #fff;
+	background: #c93028;
+	border-color: #c93028;
+}
+
+.btn-danger:disabled {
+	opacity: .5;
+}
+
+/* Sits inside the card and shares the card's content column. */
+.sprite-progress {
+	margin-top: 4px;
+	padding-top: 14px;
+	border-top: 1px dashed var(--border-main);
+}
+
+.sprite-progress.hidden {
+	display: none;
+}
+
+/* A finished sprite check takes the progress block's place: a status line,
+   then what the update would change. */
+.sprites-result {
+	display: grid;
+	gap: 8px;
+	margin-top: 4px;
+	padding-top: 14px;
+	border-top: 1px dashed var(--border-main);
+}
+
+/* New / Changed / Removed: the number over a small label, lined up under
+   the status words (past the 15px icon and its 7px gap). */
+.sprite-counts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 28px;
+	margin: 0;
+	padding: 0 0 0 22px;
+	list-style: none;
+}
+
+.sprite-count {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.sprite-count-value {
+	color: var(--text-bright);
+	font-size: 1rem;
+	font-weight: 700;
+	line-height: 1.3;
+	font-variant-numeric: tabular-nums;
+}
+
+.sprite-count-label {
+	color: var(--text-muted);
+	font-size: .76rem;
+	line-height: 1.3;
+}
+
+/* Nothing in that column: the count steps back. */
+.sprite-count.is-zero .sprite-count-value {
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+/* Read by screen readers ("12 New sprites"), not shown. */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.sprites-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.sprites-actions .button-row {
+	justify-content: flex-end;
+	flex: 0 0 auto;
+}
+
+.sprites-actions .check-row {
+	flex: 0 1 auto;
+}
+
+#panel-releases.has-open-dropdown {
+	padding-bottom: calc(90px + var(--dropdown-scroll-extra, 0px));
+}
+
+#panel-developer.has-open-dropdown {
+	padding-bottom: calc(90px + var(--dropdown-scroll-extra, 0px));
+}
+
+.code-error {
+	padding: 16px 18px;
+	background: rgba(248, 81, 73, .08);
+	border: 1px solid rgba(248, 81, 73, .6);
+	border-radius: 8px;
+	color: var(--update-error);
+}
+
+.code-error h3 {
+	font-size: .98rem;
+}
+
+.code-error pre {
+	max-height: 260px;
+	overflow: auto;
+	padding: 10px;
+	background: rgba(8, 10, 12, .6);
+	border-radius: 6px;
+	color: var(--text-main);
+	font: .76rem/1.45 'JetBrains Mono', monospace;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.update-modal {
+	position: fixed;
+	inset: 0;
+	z-index: 500;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	background: rgba(3, 5, 8, .82);
+}
+
+.update-modal-card {
+	width: min(100%, 520px);
+	max-height: calc(100vh - 48px);
+	box-sizing: border-box;
+	overflow: auto;
+	padding: 24px;
+	background: var(--bg-card);
+	border: 1px solid var(--border-main);
+	border-radius: 12px;
+	box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+/* Tone is a strip along the top edge plus the header icon, not a glow. */
+.update-modal-card.warning-modal {
+	border-color: rgba(210, 153, 34, .5);
+	box-shadow: inset 0 4px 0 var(--update-warning), 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.update-modal-card.danger-modal {
+	border-color: rgba(248, 81, 73, .55);
+	box-shadow: inset 0 4px 0 var(--update-error), 0 24px 64px rgba(0, 0, 0, .6);
+}
+
+.modal-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 14px;
+}
+
+.update-modal-card h2 {
+	color: var(--text-bright);
+	margin: 0;
+}
+
+.modal-icon {
+	width: 28px;
+	height: 28px;
+	flex: 0 0 28px;
+	display: grid;
+	place-items: center;
+	color: var(--update-warning);
+	background: rgba(210, 153, 34, .15);
+	border: 1px solid rgba(210, 153, 34, .5);
+	border-radius: 50%;
+	font: 800 1rem/1 'Outfit', sans-serif;
+}
+
+.danger-modal .modal-icon {
+	color: var(--update-error);
+	background: rgba(248, 81, 73, .15);
+	border-color: rgba(248, 81, 73, .55);
+}
+
+.update-modal-card p {
+	color: var(--text-main);
+	line-height: 1.55;
+	white-space: pre-line;
+}
+
+.source-link {
+	color: var(--accent-blue);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.source-link:hover {
+	color: #8bc4ff;
+}
+
+.source-link:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
+	border-radius: 6px;
+}
+
+.modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	margin-top: 20px;
+	padding-top: 16px;
+	border-top: 1px solid var(--border-main);
+}
+
+.modal-actions .btn:focus-visible {
+	outline: 2px solid var(--accent-blue);
+	outline-offset: 2px;
+}
+
+.update-modal-card .high-risk-advice {
+	margin: 0;
+	color: var(--text-muted);
+	font-size: .9rem;
+}
+
+.modal-warning-text {
+	margin: 0 0 12px;
+}
+
+.confirm-update-warning {
+	margin-bottom: 3px;
+}
+
+.update-modal-card .modal-warning-text {
+	color: var(--text-main);
+}
+
+/* Same outlined note as the warning above it; only the lead words differ. */
+.update-modal-card .user-files-warning strong {
+	color: var(--update-caution);
+}
+
+.developer-warning-checkbox {
+	display: inline-flex;
+	align-items: center;
+	margin-top: 16px;
+	color: var(--text-main);
+	font-size: .9rem;
+	cursor: pointer;
+}
+
+.developer-warning-text {
+	margin-bottom: 0;
+}
+
+.lost-commit-list {
+	max-height: min(45vh, 360px);
+}
+
+.lost-commits-more {
+	color: var(--text-muted) !important;
+	font-size: .76rem !important;
+	text-align: center;
+}
+
+.btn:disabled {
+	cursor: not-allowed;
+}
+
+.btn-secondary:disabled {
+	opacity: .55;
+}
+
+@media (max-width: 760px) {
+	.update-content {
+		padding: 18px 16px 36px;
+	}
+
+	/* The release footer stacks its summary, arrows and limit; the source
+	   footer is the arrows alone and needs no stacking. */
+	#release-pagination {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"summary"
+			"controls"
+			"limit";
+	}
+
+	#source-target .custom-select-menu.paged-menu,
+	#release-select .custom-select-menu {
+		grid-template-rows: auto minmax(0, 1fr) auto;
+	}
+
+	#release-page-summary {
+		grid-area: summary;
+	}
+
+	#release-page-limit {
+		grid-area: limit;
+	}
+
+	#release-pagination .dropdown-page-controls {
+		grid-area: controls;
+	}
+
+	.source-details th,
+	.source-details td,
+	.source-details tbody th {
+		padding-right: 14px;
+	}
+
+	.git-notice,
+	.branch-actions,
+	.sprites-actions {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.branch-actions,
+	.sprites-actions {
+		padding: 0 4px;
+	}
+
+	.custom-select-menu {
+		max-height: min(55vh, 360px);
+	}
+}

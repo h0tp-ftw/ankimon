@@ -744,6 +744,22 @@ def test_attribute_xp_and_evs_defaults_missing_iv_to_15_and_ev_to_0(mobile_db, m
     assert updated["ev"] == {"hp": 0, "atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
 
 
+def test_mobile_reward_keeps_legacy_hp_when_base_stats_cannot_be_resolved(monkeypatch):
+    """Dropping the legacy ``hp`` key must not drop the HP it held (#975)."""
+    import Ankimon.functions.pokedex_functions as pokedex
+
+    monkeypatch.setattr(pokedex, "search_pokedex", lambda *args, **kwargs: None)
+    record = {
+        "individual_id": "LEGACY", "name": "notapokemon", "id": 99999,
+        "level": 5, "xp": 0, "growth_rate": "medium-fast", "hp": 7,
+    }
+
+    ms._calculate_mobile_reward(record, 0, {}, _Settings(), 1, xp_share=True)
+
+    assert "hp" not in record
+    assert record["current_hp"] == 7
+
+
 @pytest.fixture
 def friendship_companion(tmp_path, monkeypatch):
     """Real Pokemon objects and persisted records, without a running Anki UI."""

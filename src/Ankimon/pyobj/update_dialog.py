@@ -1729,9 +1729,9 @@ class UpdateDialog(QDialog):
                     source_name=str(data["number"]),
                     commit_sha=data["head_sha"],
                     extra_warning=(
-                        "⚠ WARNING: Anyone can open a pull request. This code is "
+                        "WARNING: Anyone can open a pull request. This code is "
                         "unreviewed and unreleased — installing it runs unverified "
-                        "code on your computer. Only proceed if you trust this PR. "
+                        "code on your device. Please proceed if you trust this PR. "
                         "Use at your own risk."
                     ),
                 )

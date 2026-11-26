@@ -327,7 +327,9 @@ def test_matching_snapshot_allows_preserving_live_battle_hp(training_db):
         is True
     )
 
-    assert db.get_main_pokemon() == after
+    expected_saved = dict(after)
+    expected_saved.pop("hp", None)
+    assert db.get_main_pokemon() == expected_saved
     assert db.get_item("protein") is None
     assert not db._get_connection().in_transaction
 
