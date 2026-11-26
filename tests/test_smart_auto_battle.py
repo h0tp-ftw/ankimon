@@ -166,28 +166,54 @@ def test_no_switch_when_smart_battle_is_off(monkeypatch):
     assert sts.smart_switch_for_new_enemy(_mon("a", 50), _mon("e", 50), settings) is None
 
 
-def test_switch_applies_the_new_members_held_item(monkeypatch):
-    calls = {}
+class _SwitchMain:
+    """Just enough of PokemonObject for the switch path."""
 
-    class _Main:
-        individual_id = "a"
-        level = 50
-        hp = 40
-        held_item = "leftovers"
-        display_name = "Pikachu"
+    def __init__(self):
+        self.individual_id = "a"
+        self.level = 50
+        self.hp = self.current_hp = 40
+        self.max_hp = 100
+        self.held_item = "leftovers"
+        self.display_name = "Pikachu"
 
-        def update_stats(self, **data):
-            # Mirrors the real method: keys the record lacks are left alone.
-            for k, v in data.items():
-                setattr(self, k, v)
+    def update_stats(self, **data):
+        # Mirrors the real method: keys the record lacks are left alone.
+        for k, v in data.items():
+            setattr(self, k, v)
 
-        def reset_bonuses(self):
-            pass
+    def reset_bonuses(self):
+        pass
 
-    main = _Main()
-    record = {"individual_id": "b", "name": "eevee", "level": 48, "hp": 30}
+    def to_dict(self):
+        return dict(self.__dict__)
 
-    monkeypatch.setattr(sts.services, "db", object(), raising=False)
+
+class _SwitchDB:
+    def __init__(self, outgoing_ok=True, incoming_ok=True):
+        self.outgoing_ok, self.incoming_ok = outgoing_ok, incoming_ok
+        self.calls = []
+
+    def get_main_pokemon(self):
+        return {"individual_id": "a"}
+
+    def regenerate_pokemon_hp(self, individual_id, heal=True):
+        return {}
+
+    def update_pokemon_current_hp(self, individual_id, hp, wait_ms=0):
+        self.calls.append(("outgoing", individual_id, hp, wait_ms))
+        return self.outgoing_ok
+
+    def save_main_pokemon(self, data):
+        self.calls.append(("incoming", dict(data)))
+        return self.incoming_ok
+
+
+def _run_switch(monkeypatch, db, settings_extra=None):
+    """Force a switch from "a" to "b" (Lv. 48, 30 HP, no held item)."""
+    record = {"individual_id": "b", "name": "eevee", "level": 48, "hp": 30,
+              "base_stats": {"hp": 55}}
+    monkeypatch.setattr(sts.services, "db", db, raising=False)
     monkeypatch.setattr(sts, "_team_ids", lambda s: ["a", "b"])
     monkeypatch.setattr(
         sts, "_load_candidate",
@@ -195,21 +221,70 @@ def test_switch_applies_the_new_members_held_item(monkeypatch):
     )
     monkeypatch.setattr(sts, "pick_best", lambda *a, **k: "b")
 
+    def _apply_loaded_hp(p, d):
+        p.hp = p.current_hp = d.pop("hp")
+        p.max_hp = 120
+
     fake_update = types.ModuleType("Ankimon.functions.update_main_pokemon")
-    fake_update._apply_loaded_hp = lambda p, d: None
-    fake_update.save_main_pokemon = lambda p: calls.setdefault("saved", p.held_item)
+    fake_update._apply_loaded_hp = _apply_loaded_hp
     fake_battle = types.ModuleType("Ankimon.battle_loop")
-    fake_battle._cancel_main_faint_deferral = lambda: None
+    fake_battle.events = []
+    fake_battle._cancel_main_faint_deferral = lambda: fake_battle.events.append("cancel")
+    fake_battle.mark_swap_turn_lost = lambda: fake_battle.events.append("swap_turn")
+    fake_battle.outgoing_hp_for_swap = lambda p: p.current_hp
+    fake_battle.publish_active_hp = lambda p: fake_battle.events.append("publish")
     monkeypatch.setitem(sys.modules, "Ankimon.functions.update_main_pokemon", fake_update)
     monkeypatch.setitem(sys.modules, "Ankimon.battle_loop", fake_battle)
 
-    settings = _Settings({"battle.smart_battle": True, "battle.team_level_gap": 0})
+    settings = _Settings({"battle.smart_battle": True, "battle.team_level_gap": 0,
+                          **(settings_extra or {})})
+    main = _SwitchMain()
     msg = sts.smart_switch_for_new_enemy(main, _mon("e", 50), settings)
+    return main, msg, fake_battle.events
+
+
+def test_switch_applies_the_new_members_held_item(monkeypatch):
+    db = _SwitchDB()
+    main, msg, _ = _run_switch(monkeypatch, db)
 
     assert msg and "Lv. 48" in msg
     # The team record had no held item, so the old Leftovers must not carry over.
     assert main.held_item is None
-    assert calls["saved"] is None
+    assert db.calls[-1][0] == "incoming" and db.calls[-1][1]["held_item"] is None
+
+
+def test_switch_saves_the_outgoing_hp_before_the_incoming_row(monkeypatch):
+    db = _SwitchDB()
+    main, msg, events = _run_switch(monkeypatch, db)
+
+    assert msg
+    # Outgoing first, with its live HP, and without waiting on a busy DB
+    # (this runs automatically on the review path).
+    assert db.calls[0] == ("outgoing", "a", 40, 0)
+    assert db.calls[1][0] == "incoming" and db.calls[1][1]["individual_id"] == "b"
+    assert (main.individual_id, main.current_hp) == ("b", 30)
+    assert events == ["cancel", "publish", "swap_turn"]
+
+
+@pytest.mark.parametrize("outgoing_ok, incoming_ok", [(False, True), (True, False)])
+def test_refused_save_leaves_the_active_pokemon_in_place(monkeypatch, outgoing_ok, incoming_ok):
+    db = _SwitchDB(outgoing_ok=outgoing_ok, incoming_ok=incoming_ok)
+    main, msg, events = _run_switch(monkeypatch, db)
+
+    assert msg is None
+    assert (main.individual_id, main.current_hp, main.held_item) == ("a", 40, "leftovers")
+    assert events == []
+    if not outgoing_ok:
+        assert [c[0] for c in db.calls] == ["outgoing"]
+
+
+def test_heal_on_swap_brings_the_incoming_pokemon_in_at_full_hp(monkeypatch):
+    db = _SwitchDB()
+    main, msg, _ = _run_switch(monkeypatch, db, {"battle.heal_on_swap": True})
+
+    assert msg
+    assert main.current_hp == main.hp == main.max_hp == 120
+    assert db.calls[-1][1]["current_hp"] == 120
 
 
 # ---------------------------------------------------------------- toggle + XP

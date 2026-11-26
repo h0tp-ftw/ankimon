@@ -142,6 +142,66 @@ def _team_ids(settings):
     return [e.get("individual_id") for e in team[:max(count, 1)] if e.get("individual_id")]
 
 
+def _switch_to(main_pokemon, incoming_id, data, settings):
+    """Make ``incoming_id`` the active Pokémon. Returns the record it was
+    loaded from, or None if the switch was refused (nothing changed).
+
+    Same contract as the Cycle Team hotkey (reviewer_ui.cycle_team_pokemon):
+    save the outgoing Pokémon's HP, credit the incoming one's bench rest,
+    honour the classic heal-on-swap rule, and only rebind the live
+    main_pokemon once both rows are saved. Unlike the hotkey it never waits
+    for a busy database: this runs automatically on the review path, so a
+    refused save just skips the switch for this encounter.
+    """
+    from .hp_recovery import credit_rest, swap_heals
+    from .update_main_pokemon import _apply_loaded_hp
+    from ..battle_loop import (
+        _cancel_main_faint_deferral,
+        mark_swap_turn_lost,
+        outgoing_hp_for_swap,
+        publish_active_hp,
+    )
+
+    db = services.db
+    # The incoming Pokémon has been resting on the bench.
+    rested = credit_rest(db, data, getattr(services, "logger", None), settings)
+    if rested is not data:
+        rested = dict(rested)
+        rested["base_stats"] = data["base_stats"]
+        rested.setdefault("name", data.get("name"))
+    data = rested
+
+    outgoing_id = getattr(main_pokemon, "individual_id", None)
+    if outgoing_id and db.get_main_pokemon():
+        if not db.update_pokemon_current_hp(
+            str(outgoing_id), outgoing_hp_for_swap(main_pokemon)
+        ):
+            return None
+
+    incoming = copy.copy(main_pokemon)
+    incoming.update_stats(**data)
+    # update_stats skips keys the team record lacks, so set the held item
+    # explicitly: the switched-in Pokémon must not keep the previous one's.
+    incoming.held_item = data.get("held_item")
+    _apply_loaded_hp(incoming, data)
+    if swap_heals(settings):
+        # Classic swap rule: the incoming Pokémon arrives fully healed.
+        incoming.hp = incoming.current_hp = incoming.max_hp
+    incoming.reset_bonuses()
+    incoming.volatile_status = set()
+
+    # to_dict() carries no rest clock, so the save keeps the stored one.
+    if not db.save_main_pokemon(incoming.to_dict()):
+        return None
+    _cancel_main_faint_deferral()
+    main_pokemon.__dict__.update(incoming.__dict__)
+    # Both are no-ops at the start of an encounter (new_pokemon() has just
+    # cleared the engine state); kept so this stays the hotkey's contract.
+    publish_active_hp(main_pokemon)
+    mark_swap_turn_lost()
+    return data
+
+
 def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
     """Swap main_pokemon to the best team member for this enemy.
 
@@ -182,20 +242,9 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
         if best_id is None or best_id not in loaded:
             return None
 
-        # Same steps as the Cycle Team hotkey (reviewer_ui.cycle_team_pokemon).
-        from .update_main_pokemon import _apply_loaded_hp, save_main_pokemon
-        from ..battle_loop import _cancel_main_faint_deferral
-
-        data = loaded[best_id]
-        _cancel_main_faint_deferral()
-        main_pokemon.update_stats(**data)
-        # update_stats skips keys the team record lacks, so set the held item
-        # explicitly: the switched-in Pokémon must not keep the previous one's.
-        main_pokemon.held_item = data.get("held_item")
-        _apply_loaded_hp(main_pokemon, data)
-        main_pokemon.reset_bonuses()
-        main_pokemon.volatile_status = set()
-        save_main_pokemon(main_pokemon)
+        data = _switch_to(main_pokemon, best_id, loaded[best_id], settings)
+        if data is None:
+            return None
 
         name = getattr(main_pokemon, "display_name", None) or data.get("name", "?")
         level = data.get("level", "?")
