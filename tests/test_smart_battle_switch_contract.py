@@ -148,3 +148,27 @@ def test_level_balancing_never_pins_the_team_on_a_member_that_cannot_attack():
         sts.smart_switch_for_new_enemy(main, s.enemy_pokemon, s.settings)
         assert main.individual_id != karp.individual_id, main.name
     """)
+
+
+def test_switch_does_not_copy_the_outgoing_nature_onto_a_sparse_row():
+    # Monthly-challenge, trade and fossil rows (and old migrated catches) can
+    # lack nature/evolution_rejected. The incoming Pokemon is built on a copy
+    # of the outgoing one, so those keys used to inherit Pikachu's values and
+    # be saved into Golem's row for good.
+    _run("""
+        main.nature = "adamant"
+        main.evolution_rejected = True
+        s.db.save_main_pokemon(main.to_dict())
+        sparse = {k: v for k, v in row(GOLEM).items()
+                  if k not in ("nature", "evolution_rejected")}
+        s.db.save_pokemon(sparse)
+        assert "nature" not in row(GOLEM) and "evolution_rejected" not in row(GOLEM)
+        force_switch_to(GOLEM)
+        driver.encounter()
+
+        assert main.individual_id == GOLEM
+        assert (main.nature, main.evolution_rejected) == ("serious", False)
+        assert row(GOLEM)["nature"] == "serious"
+        assert row(GOLEM)["evolution_rejected"] is False
+        assert (row(PIKA)["nature"], row(PIKA)["evolution_rejected"]) == ("adamant", True)
+    """)

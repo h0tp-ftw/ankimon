@@ -123,6 +123,23 @@ def pick_best(candidates, enemy, current_id=None, margin=_SWITCH_MARGIN, scores=
     return best_id
 
 
+def _with_row_defaults(data):
+    """The record with the defaults the PC box applies for keys it may lack.
+
+    Candidates and the incoming Pokémon are built on a copy of the live main,
+    and update_stats() skips keys the record lacks, so a missing key would
+    keep the OUTGOING Pokémon's value, and the switch would save it into the
+    incoming row for good. Monthly-challenge, trade and fossil rows, and old
+    migrated catches, can lack these two (same defaults as
+    collection_dialog.MainPokemon).
+    """
+    data = dict(data)
+    # ``or``: an explicit null nature would break the stat multipliers.
+    data["nature"] = data.get("nature") or "serious"
+    data.setdefault("evolution_rejected", False)
+    return data
+
+
 def _load_candidate(main_pokemon, individual_id):
     """A throwaway PokemonObject for a team member (main_pokemon untouched)."""
     from .pokedex_functions import search_pokedex, search_pokedex_by_id
@@ -137,6 +154,7 @@ def _load_candidate(main_pokemon, individual_id):
     if not isinstance(base_stats, dict) or "hp" not in base_stats:
         return None, None
     data["base_stats"] = base_stats
+    data = _with_row_defaults(data)
 
     pkmn = copy.copy(main_pokemon)
     pkmn.update_stats(**data)
@@ -183,7 +201,7 @@ def _switch_to(main_pokemon, incoming_id, data, settings):
         rested = dict(rested)
         rested["base_stats"] = data["base_stats"]
         rested.setdefault("name", data.get("name"))
-    data = rested
+    data = _with_row_defaults(rested)
 
     outgoing_id = getattr(main_pokemon, "individual_id", None)
     if outgoing_id and db.get_main_pokemon():
