@@ -21,6 +21,10 @@ from ..poke_engine.damage_calculator import (
     get_move,
     type_effectiveness_modifier,
 )
+from ..poke_engine.find_state_instructions import (
+    update_attacking_move,
+    user_moves_first,
+)
 
 
 # Moves that make the user faint (or are pure sacrifices). Never auto-picked:
@@ -35,6 +39,8 @@ def _accuracy_factor(move_dict):
     acc = move_dict.get(constants.ACCURACY, True)
     if acc is True or acc is None:
         return 1.0
+    if acc is False:
+        return 0.0
     try:
         return max(0.0, min(float(acc), 100.0)) / 100.0
     except (TypeError, ValueError):
@@ -86,6 +92,37 @@ def _build_state(main_pokemon, enemy_pokemon, live_state, mutator_full_reset):
     )
 
 
+def _resolved_move(state, move_id, enemy_move_id):
+    """The move as the engine will use it this turn.
+
+    calculate_damage() applies the engine's move, ability and item effects,
+    but returns only the damage, and some of those effects make the move fail
+    by rewriting its accuracy instead: Sucker Punch into a target that is not
+    attacking (the wild Pokémon uses Splash on every correct answer), sound
+    moves into Soundproof, priority moves into Armor Tail. Same steps as
+    calculate_damage(), so the two agree.
+    """
+    attacking = get_move(move_id)
+    defending = get_move(enemy_move_id)
+    first = user_moves_first(state, attacking, defending)
+    flags = attacking.get(constants.FLAGS) or {}
+    if constants.CHARGE in flags:
+        attacking = dict(attacking)
+        attacking[constants.FLAGS] = {
+            k: v for k, v in flags.items() if k != constants.CHARGE
+        }
+    return update_attacking_move(
+        state.user,
+        state.user.active,
+        state.opponent.active,
+        attacking,
+        defending,
+        first,
+        state.weather,
+        state.field,
+    )
+
+
 def _fallback_score(move_dict, attacker, defender):
     """Simple power x effectiveness x STAB score when the engine calc fails."""
     power = move_dict.get(constants.BASE_POWER, 0) or 0
@@ -126,18 +163,26 @@ def score_moves(main_pokemon, enemy_pokemon, enemy_move="splash",
             results.append((move_name, 0.0, True))
             continue
 
+        turn_state = copy.deepcopy(state)
         try:
             dmg = calculate_damage(
-                copy.deepcopy(state), constants.USER, move_id, enemy_move_id
+                turn_state, constants.USER, move_id, enemy_move_id
             )
             damage = float(dmg[0]) if dmg else 0.0
         except Exception:
             damage = _fallback_score(move_dict, state.user.active, state.opponent.active)
+        try:
+            # turn_state is a throwaway copy, so no second deepcopy is needed.
+            accuracy = _accuracy_factor(
+                _resolved_move(turn_state, move_id, enemy_move_id)
+            )
+        except Exception:
+            accuracy = _accuracy_factor(move_dict)
 
         # No multi-hit multiplier: Ankimon's engine resolves Rock Blast,
         # Bullet Seed, Population Bomb etc. as a single hit, so the damage
         # calculator's one-hit number is what actually lands.
-        score = damage * _accuracy_factor(move_dict)
+        score = damage * accuracy
         results.append((move_name, score, False))
     return results
 
