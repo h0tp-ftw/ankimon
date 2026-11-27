@@ -376,3 +376,47 @@ def test_credited_rest_keeps_the_backfilled_name(monkeypatch):
     assert main.name == "eevee"  # _load_candidate's pokedex backfill
     assert main.current_hp == 40  # the rested HP from the re-read row
     assert db.calls[-1][1]["name"] == "eevee"
+
+
+# ---------------------------------------------------------------- encounter level
+
+
+class _RowsDB:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def get_pokemon(self, individual_id):
+        return self.rows.get(individual_id)
+
+
+def _encounter_level(monkeypatch, main, rows, gap=5, smart=True):
+    monkeypatch.setattr(sts.services, "db", _RowsDB(rows), raising=False)
+    monkeypatch.setattr(sts, "_team_ids", lambda s: [main.individual_id] + list(rows))
+    settings = _Settings({"battle.smart_battle": smart, "battle.team_level_gap": gap})
+    return sts.encounter_level(main, settings)
+
+
+def _row(level, hp=50, attacks=("tackle",)):
+    return {"level": level, "current_hp": hp, "attacks": list(attacks)}
+
+
+def test_encounter_is_rolled_for_the_band_when_the_lead_will_be_benched(monkeypatch):
+    ace = _mon("ace", 80, attacks=["outrage"])
+    rows = {"p": _row(20), "b": _row(21)}
+    assert _encounter_level(monkeypatch, ace, rows) == 20
+
+
+def test_encounter_level_is_the_leads_when_nothing_is_benched(monkeypatch):
+    lead = _mon("lead", 22, attacks=["tackle"])
+    rows = {"p": _row(20), "b": _row(21)}
+    assert _encounter_level(monkeypatch, lead, rows) == 22
+    ace = _mon("ace", 80, attacks=["outrage"])
+    assert _encounter_level(monkeypatch, ace, rows, gap=0) == 80
+    assert _encounter_level(monkeypatch, ace, rows, smart=False) == 80
+
+
+def test_encounter_level_ignores_members_that_cannot_attack_or_have_fainted(monkeypatch):
+    ace = _mon("ace", 40, attacks=["outrage"])
+    # A Splash-only Magikarp and a fainted Pikachu must not drag the roll down.
+    rows = {"karp": _row(10, attacks=["splash"]), "p": _row(12, hp=0), "g": _row(38)}
+    assert _encounter_level(monkeypatch, ace, rows) == 40

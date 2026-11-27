@@ -25,7 +25,7 @@ import copy
 
 from ..services import services
 from .smart_battle import smart_battle_enabled
-from .smart_move_selection import score_moves
+from .smart_move_selection import has_damaging_move, score_moves
 
 # Another member must beat the current one by this factor to be sent out.
 _SWITCH_MARGIN = 1.15
@@ -241,6 +241,65 @@ def _switch_to(main_pokemon, incoming_id, data, settings):
     publish_active_hp(main_pokemon)
     mark_swap_turn_lost()
     return data
+
+
+def encounter_level(main_pokemon, settings):
+    """The level to roll the next wild Pokémon at.
+
+    new_pokemon() rolls the wild level (and tier) before the Smart switch.
+    Normally that is the active Pokémon's level. But when level balancing
+    will bench the active Pokémon, the encounter would be rolled for a
+    Pokémon that is not going to fight it, and an L20 teammate would be sent
+    against an L45 enemy meant for the benched ace. Roll at the lowest level
+    of the balanced band instead, so whoever leads can win.
+
+    Balancing here uses the same rules as the switch, except that "can damage
+    this enemy" is approximated by "has a damaging move" (the enemy does not
+    exist yet). Never raises: any problem keeps the active Pokémon's level.
+    """
+    level = _level(main_pokemon)
+    try:
+        if settings is None or not smart_battle_enabled(settings):
+            return level
+        gap = level_gap(settings)
+        if gap <= 0 or services.db is None or main_pokemon is None:
+            return level
+        if (getattr(main_pokemon, "hp", 0) or 0) < 1:
+            return level
+        ids = [str(i) for i in _team_ids(settings)]
+        if len(ids) < 2:
+            return level
+
+        current_id = getattr(main_pokemon, "individual_id", None)
+        current_id = str(current_id) if current_id is not None else None
+        members = []
+        for ind_id in ids:
+            if ind_id == current_id:
+                attacks, member = getattr(main_pokemon, "attacks", None), main_pokemon
+            else:
+                row = services.db.get_pokemon(ind_id) or {}
+                attacks = row.get("attacks")
+                hp = row.get("current_hp")
+                # A row without a stored HP loads at full HP (_apply_loaded_hp).
+                member = _Member(row.get("level"), 1 if hp is None else hp)
+            if has_damaging_move(attacks):
+                members.append((ind_id, member))
+
+        balanced = balance_by_level(members, gap)
+        if not balanced or any(i == current_id for i, _ in balanced):
+            return level
+        return min(_level(p) for _, p in balanced) or level
+    except Exception as e:
+        print(f"[Ankimon] Smart encounter level skipped: {e}")
+        return level
+
+
+class _Member:
+    """Level and HP of a team row, for balance_by_level."""
+
+    def __init__(self, level, hp):
+        self.level = level
+        self.hp = hp
 
 
 def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):

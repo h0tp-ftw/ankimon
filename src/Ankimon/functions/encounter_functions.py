@@ -1263,6 +1263,16 @@ def new_pokemon(
         invalidate = getattr(reviewer_obj, "invalidate_hud_cache", None)
         if callable(invalidate):
             invalidate()
+    # Smart Battle's level balancing may bench the active Pokémon below; roll
+    # the encounter for the band that will actually fight it. Unchanged (the
+    # active Pokémon's level, tier read from it) whenever that does not apply.
+    roll_level, roll_kwargs = main_pokemon.level, {}
+    if not _in_bulk_resolve():
+        from .smart_team_switch import encounter_level
+
+        band_level = encounter_level(main_pokemon, settings_obj)
+        if band_level != main_pokemon.level:
+            roll_level, roll_kwargs = band_level, {"main_level": band_level}
     (
         name,
         pkmn_id,
@@ -1282,7 +1292,7 @@ def new_pokemon(
         ev_yield,
         is_shiny,
         nature,
-    ) = generate_random_pokemon(main_pokemon.level, ankimon_tracker_obj)
+    ) = generate_random_pokemon(roll_level, ankimon_tracker_obj, **roll_kwargs)
     pokemon_data = {
         "name": name,
         "id": pkmn_id,

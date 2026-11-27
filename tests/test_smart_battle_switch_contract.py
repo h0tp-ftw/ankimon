@@ -224,3 +224,44 @@ def test_switch_does_not_pass_the_outgoing_status_to_the_incoming_pokemon():
         assert main.individual_id == GOLEM
         assert main.battle_status == "fighting", main.battle_status
     """)
+
+
+_LEVEL_ROLL = """
+from harness.driver import Driver
+SMART = {smart}
+driver = Driver(
+    seed={{
+        "main": {{"species": "Dragonite", "level": 80, "moves": ["outrage", "dragonclaw"]}},
+        "team": [{{"species": "Pikachu", "level": 20, "moves": ["thunderbolt", "quickattack"]}},
+                 {{"species": "Bulbasaur", "level": 21, "moves": ["vinewhip", "tackle"]}}],
+    }},
+    first_encounter=False,
+    settings_overrides={{"battle.smart_battle": SMART, "battle.team_level_gap": 5}},
+)
+s = driver.services
+driver.encounter()
+print("ENCOUNTER", s.enemy_pokemon.level, s.main_pokemon.name, s.main_pokemon.level)
+"""
+
+
+def _first_encounter(smart):
+    result = subprocess.run(
+        [sys.executable, "-c", _LEVEL_ROLL.format(smart=smart)],
+        cwd=_ROOT, capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    line = [l for l in result.stdout.splitlines() if l.startswith("ENCOUNTER")][-1]
+    _, enemy_level, lead, lead_level = line.split()
+    return int(enemy_level), lead, int(lead_level)
+
+
+def test_wild_level_is_rolled_for_the_pokemon_that_will_fight_it():
+    # Dragonite Lv80 is benched by level balancing (gap 5) in favour of the
+    # Lv20-21 members; the wild Pokemon used to be rolled at Lv77-83 anyway.
+    for _ in range(3):
+        enemy_level, lead, lead_level = _first_encounter(smart=True)
+        assert lead in ("Pikachu", "Bulbasaur"), lead
+        assert enemy_level <= lead_level + 5 + 3, (enemy_level, lead, lead_level)
+    # Smart Battle off: unchanged, rolled at the active Pokemon's level.
+    enemy_level, lead, _ = _first_encounter(smart=False)
+    assert lead == "Dragonite" and enemy_level >= 77 - 5, enemy_level

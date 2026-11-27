@@ -38,6 +38,25 @@ SELF_KO_MOVES = {
 }
 
 
+def has_damaging_move(attacks):
+    """Whether any of these moves can deal damage at all (enemy-independent).
+
+    Status moves, self-KO moves and moves the engine does not know never
+    count, matching what score_moves treats as damaging.
+    """
+    for move_name in attacks or ():
+        move_id = normalize_name(move_name)
+        if move_id in SELF_KO_MOVES:
+            continue
+        move_dict = get_move(move_id)
+        if move_dict and move_dict.get(constants.CATEGORY) in (
+            constants.PHYSICAL,
+            constants.SPECIAL,
+        ):
+            return True
+    return False
+
+
 def _accuracy_factor(move_dict):
     acc = move_dict.get(constants.ACCURACY, True)
     if acc is True or acc is None:
