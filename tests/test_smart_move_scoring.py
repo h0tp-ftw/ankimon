@@ -51,6 +51,20 @@ def test_sucker_punch_is_not_picked_against_a_target_that_is_not_attacking():
     """)
 
 
+def test_electric_moves_score_nothing_into_ground_types():
+    # The engine freezes Electric-into-Ground (0 damage); the calculator alone
+    # reports 1/8, enough to beat a resisted Quick Attack.
+    _run("""
+        pikachu = mon("Pikachu", ["thunderbolt", "quickattack", "thunderwave", "growl"])
+        golem = mon("Golem", ["tackle"])
+        assert scores(pikachu, golem)["thunderbolt"] == 0
+        assert choose_best_move(pikachu, golem, fallback="thunderbolt") == "quickattack"
+        # Non-Ground targets are unaffected.
+        gyarados = mon("Gyarados", ["tackle"])
+        assert choose_best_move(pikachu, gyarados, fallback="quickattack") == "thunderbolt"
+    """)
+
+
 def test_sound_moves_are_not_picked_against_soundproof():
     _run("""
         exploud = mon("Exploud", ["hypervoice", "bite"])

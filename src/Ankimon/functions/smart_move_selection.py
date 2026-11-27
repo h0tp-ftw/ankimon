@@ -173,11 +173,17 @@ def score_moves(main_pokemon, enemy_pokemon, enemy_move="splash",
             damage = _fallback_score(move_dict, state.user.active, state.opponent.active)
         try:
             # turn_state is a throwaway copy, so no second deepcopy is needed.
-            accuracy = _accuracy_factor(
-                _resolved_move(turn_state, move_id, enemy_move_id)
-            )
+            resolved = _resolved_move(turn_state, move_id, enemy_move_id)
         except Exception:
-            accuracy = _accuracy_factor(move_dict)
+            resolved = move_dict
+        accuracy = _accuracy_factor(resolved)
+        # The engine's type chart gives immunities 1/8, and the damage
+        # calculator returns that, but the battle engine deals nothing for an
+        # Electric move into a Ground type (instruction_generator freezes it).
+        if resolved.get(constants.TYPE) == "electric" and "ground" in (
+            getattr(turn_state.opponent.active, "types", None) or ()
+        ):
+            damage = 0.0
 
         # No multi-hit multiplier: Ankimon's engine resolves Rock Blast,
         # Bullet Seed, Population Bomb etc. as a single hit, so the damage
