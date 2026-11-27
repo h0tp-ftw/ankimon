@@ -160,6 +160,9 @@ def _load_candidate(main_pokemon, individual_id):
     pkmn.update_stats(**data)
     _apply_loaded_hp(pkmn, dict(data))
     pkmn.reset_bonuses()
+    # Status is not saved with a team row, so it would be the outgoing
+    # Pokémon's (see _switch_to).
+    pkmn.reset_stats()
     pkmn.volatile_status = set()
     pkmn.held_item = data.get("held_item")
     return pkmn, data
@@ -222,6 +225,10 @@ def _switch_to(main_pokemon, incoming_id, data, settings):
         # Classic swap rule: the incoming Pokémon arrives fully healed.
         incoming.hp = incoming.current_hp = incoming.max_hp
     incoming.reset_bonuses()
+    # A status condition is not saved with a team row, so the copy would keep
+    # the OUTGOING Pokémon's (paralysis, burn, even "fainted"). Arrive without
+    # one, as a Pokémon picked from the PC does.
+    incoming.reset_stats()
     incoming.volatile_status = set()
 
     # to_dict() carries no rest clock, so the save keeps the stored one.

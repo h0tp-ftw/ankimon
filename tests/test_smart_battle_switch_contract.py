@@ -212,3 +212,15 @@ def test_team_ids_are_compared_as_strings():
         assert current_id == PIKA, seen
         assert [is_live for i, is_live in cands if i == PIKA] == [True], seen
     """)
+
+
+def test_switch_does_not_pass_the_outgoing_status_to_the_incoming_pokemon():
+    # battle_status is not saved with a team row, so the copy used to keep
+    # the outgoing Pokemon's paralysis.
+    _run("""
+        main.battle_status = "par"
+        force_switch_to(GOLEM)
+        driver.encounter()
+        assert main.individual_id == GOLEM
+        assert main.battle_status == "fighting", main.battle_status
+    """)

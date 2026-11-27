@@ -185,6 +185,9 @@ class _SwitchMain:
     def reset_bonuses(self):
         pass
 
+    def reset_stats(self):
+        self.battle_status = "fighting"
+
     def to_dict(self):
         return dict(self.__dict__)
 
