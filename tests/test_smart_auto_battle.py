@@ -220,6 +220,7 @@ def _run_switch(monkeypatch, db, settings_extra=None):
         lambda m, i: (_mon("b", 48, hp=30), dict(record)),
     )
     monkeypatch.setattr(sts, "pick_best", lambda *a, **k: "b")
+    monkeypatch.setattr(sts, "matchup_score", lambda p, e: 1.0)
 
     def _apply_loaded_hp(p, d):
         p.hp = p.current_hp = d.pop("hp")
@@ -285,6 +286,44 @@ def test_heal_on_swap_brings_the_incoming_pokemon_in_at_full_hp(monkeypatch):
     assert msg
     assert main.current_hp == main.hp == main.max_hp == 120
     assert db.calls[-1][1]["current_hp"] == 120
+
+
+def _decide(monkeypatch, team, scores, current="g", gap=5):
+    """Which member smart_switch_for_new_enemy switches to (None = keep)."""
+    mons = {i: _mon(i, lvl) for i, lvl in team}
+    chosen = []
+    monkeypatch.setattr(sts.services, "db", object(), raising=False)
+    monkeypatch.setattr(sts, "_team_ids", lambda s: [i for i, _ in team])
+    monkeypatch.setattr(sts, "_load_candidate", lambda m, i: (mons[i], {"level": mons[i].level}))
+    monkeypatch.setattr(sts, "matchup_score", lambda p, e: scores[p.individual_id])
+    monkeypatch.setattr(sts, "_switch_to", lambda m, i, d, s: chosen.append(i) or d)
+    settings = _Settings({"battle.smart_battle": True, "battle.team_level_gap": gap})
+    sts.smart_switch_for_new_enemy(mons[current], _mon("e", 40), settings)
+    return chosen[0] if chosen else None
+
+
+def test_a_member_that_cannot_attack_never_sets_the_level_floor(monkeypatch):
+    # Splash-only Magikarp Lv10 under Gyarados Lv40 / Pikachu Lv38, gap 5:
+    # it must neither be sent out nor bench the members that can fight.
+    team = [("g", 40), ("m", 10), ("p", 38)]
+    assert _decide(monkeypatch, team, {"g": 1.0, "m": 0.0, "p": 1.1}) is None
+    assert _decide(monkeypatch, team, {"g": 1.0, "m": 0.0, "p": 2.0}) == "p"
+
+
+def test_an_active_member_that_cannot_attack_is_replaced(monkeypatch):
+    team = [("m", 10), ("p", 38)]
+    assert _decide(monkeypatch, team, {"m": 0.0, "p": 0.5}, current="m") == "p"
+
+
+def test_no_switch_when_nobody_can_attack(monkeypatch):
+    team = [("g", 40), ("m", 10), ("p", 38)]
+    assert _decide(monkeypatch, team, {"g": 0.0, "m": 0.0, "p": None}) is None
+
+
+def test_pick_best_never_returns_a_member_that_cannot_attack(monkeypatch):
+    monkeypatch.setattr(sts, "matchup_score", lambda p, e: 0.0)
+    cands = [("a", _mon("a", 50)), ("b", _mon("b", 50))]
+    assert sts.pick_best(cands, None, current_id="x") is None
 
 
 # ---------------------------------------------------------------- toggle + XP

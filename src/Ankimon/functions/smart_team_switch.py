@@ -81,20 +81,34 @@ def balance_by_level(candidates, gap):
     return [(i, p) for i, p in healthy if _level(p) <= floor + gap]
 
 
-def pick_best(candidates, enemy, current_id=None, margin=_SWITCH_MARGIN):
-    """candidates: [(individual_id, pokemon_like)]. Returns the id to use, or
-    None to keep the current Pokémon.
+def _safe_score(pkmn, enemy):
+    try:
+        return matchup_score(pkmn, enemy)
+    except Exception:
+        return None
 
-    If the current Pokémon is not among the candidates (e.g. level balancing
-    benched it), the best candidate is returned with no margin check."""
+
+def can_fight(score):
+    """A member is only worth sending out if it can damage this enemy."""
+    return score is not None and score > 0
+
+
+def pick_best(candidates, enemy, current_id=None, margin=_SWITCH_MARGIN, scores=None):
+    """candidates: [(individual_id, pokemon_like)]. Returns the id to use, or
+    None to keep the current Pokémon. ``scores`` maps ids to precomputed
+    matchup scores.
+
+    Members that cannot damage the enemy are never chosen. If the current
+    Pokémon is not among the candidates (e.g. level balancing benched it),
+    the best candidate is returned with no margin check."""
     scored = []
     current_score = None
     for ind_id, pkmn in candidates:
-        try:
-            score = matchup_score(pkmn, enemy)
-        except Exception:
-            score = None
-        if score is None:
+        if scores is not None and ind_id in scores:
+            score = scores[ind_id]
+        else:
+            score = _safe_score(pkmn, enemy)
+        if not can_fight(score):
             continue
         scored.append((score, ind_id))
         if ind_id == current_id:
@@ -236,9 +250,17 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
                 candidates.append((ind_id, pkmn))
                 loaded[ind_id] = data
 
-        balanced = balance_by_level(candidates, level_gap(settings))
-        benched = len(balanced) < len(candidates)
-        best_id = pick_best(balanced, enemy_pokemon, current_id)
+        # Score each member once. One that cannot damage this enemy (a
+        # Splash-only Magikarp, a Harden-only Metapod) must not set the level
+        # floor either, or balancing would send it out every encounter and
+        # the rotation could never win.
+        scores = {i: _safe_score(p, enemy_pokemon) for i, p in candidates}
+        able = [(i, p) for i, p in candidates if can_fight(scores[i])]
+        if not able:
+            return None
+        balanced = balance_by_level(able, level_gap(settings))
+        benched = len(balanced) < len(able)
+        best_id = pick_best(balanced, enemy_pokemon, current_id, scores=scores)
         if best_id is None or best_id not in loaded:
             return None
 

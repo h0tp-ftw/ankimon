@@ -50,7 +50,9 @@ def row(iid):
     return s.db.get_pokemon(iid)
 
 def force_switch_to(target):
-    sts.pick_best = lambda cands, enemy, current_id=None, margin=1.15: target
+    # Decide the switch without depending on the random wild Pokemon.
+    sts.matchup_score = lambda pkmn, enemy: 1.0
+    sts.pick_best = lambda cands, enemy, current_id=None, **kw: target
 """
 
 
@@ -130,4 +132,19 @@ def test_smart_battle_picks_the_super_effective_move():
         driver.set_enemy(species="Gyarados", level=40, moves=["splash"])
         rounds = [e for e in driver.answer("good") if e["type"] == "battle"]
         assert rounds and rounds[0]["user_move"] == "thunderbolt", rounds
+    """)
+
+
+def test_level_balancing_never_pins_the_team_on_a_member_that_cannot_attack():
+    # A Splash-only Magikarp far below the rest used to set the level floor,
+    # so it was sent out at every encounter and could never win.
+    _run("""
+        from harness.fixtures import build_pokemon
+        karp = build_pokemon({"species": "Magikarp", "level": 10, "moves": ["splash"]})
+        s.db.save_pokemon(karp.to_dict())
+        s.db.save_team([{"individual_id": i} for i in (PIKA, karp.individual_id, GOLEM)])
+        s.settings.set("battle.team_level_gap", 5)
+        driver.set_enemy(species="Rattata", level=40, moves=["tackle"])
+        sts.smart_switch_for_new_enemy(main, s.enemy_pokemon, s.settings)
+        assert main.individual_id != karp.individual_id, main.name
     """)
