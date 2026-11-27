@@ -353,3 +353,23 @@ def test_xp_penalty_matches_allow_choosing_moves(choose, smart, half):
         "battle.smart_battle": smart,
     })
     assert sb.reduced_xp(settings) is half
+
+
+class _RestedNamelessDB(_SwitchDB):
+    """Rest is credited, and the re-read row has no stored name."""
+
+    def regenerate_pokemon_hp(self, individual_id, heal=True):
+        return {individual_id: 10}
+
+    def get_pokemon(self, individual_id):
+        return {"individual_id": individual_id, "name": None, "level": 48, "hp": 40}
+
+
+def test_credited_rest_keeps_the_backfilled_name(monkeypatch):
+    db = _RestedNamelessDB()
+    main, msg, _ = _run_switch(monkeypatch, db)
+
+    assert msg
+    assert main.name == "eevee"  # _load_candidate's pokedex backfill
+    assert main.current_hp == 40  # the rested HP from the re-read row
+    assert db.calls[-1][1]["name"] == "eevee"

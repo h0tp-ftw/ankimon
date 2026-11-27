@@ -75,3 +75,14 @@ def test_sound_moves_are_not_picked_against_soundproof():
         plain = mon("Voltorb", ["tackle"], ability="static")
         assert choose_best_move(exploud, plain, fallback="bite") == "hypervoice"
     """)
+
+
+def test_half_hp_recoil_moves_are_never_picked():
+    # Like Mind Blown: 50% of max HP per use, so every-turn use faints the user.
+    _run("""
+        venusaur = mon("Venusaur", ["chloroblast", "tackle"])
+        aggron = mon("Aggron", ["steelbeam", "tackle"])
+        rattata = mon("Rattata", ["tackle"])
+        assert choose_best_move(venusaur, rattata, fallback="chloroblast") == "tackle"
+        assert choose_best_move(aggron, rattata, fallback="steelbeam") == "tackle"
+    """)

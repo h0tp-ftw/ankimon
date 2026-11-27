@@ -200,7 +200,9 @@ def _switch_to(main_pokemon, incoming_id, data, settings):
     if rested is not data:
         rested = dict(rested)
         rested["base_stats"] = data["base_stats"]
-        rested.setdefault("name", data.get("name"))
+        if not rested.get("name"):
+            # Keep the pokedex backfill _load_candidate made for a nameless row.
+            rested["name"] = data.get("name")
     data = _with_row_defaults(rested)
 
     outgoing_id = getattr(main_pokemon, "individual_id", None)
@@ -252,11 +254,13 @@ def smart_switch_for_new_enemy(main_pokemon, enemy_pokemon, settings):
         if (getattr(main_pokemon, "hp", 0) or 0) < 1:
             return None
 
-        ids = _team_ids(settings)
+        # Compare ids as strings, like the Cycle Team hotkey does.
+        ids = [str(i) for i in _team_ids(settings)]
         if len(ids) < 2:
             return None
 
         current_id = getattr(main_pokemon, "individual_id", None)
+        current_id = str(current_id) if current_id is not None else None
         candidates = []
         loaded = {}
         for ind_id in ids:

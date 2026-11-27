@@ -29,9 +29,12 @@ from ..poke_engine.find_state_instructions import (
 
 # Moves that make the user faint (or are pure sacrifices). Never auto-picked:
 # the engine scores Final Gambit as "damage = your HP", which looks huge.
+# Mind Blown, Chloroblast and Steel Beam cost half the user's max HP per use,
+# so picking them every turn faints the user on the second turn.
 SELF_KO_MOVES = {
     "finalgambit", "explosion", "selfdestruct", "mistyexplosion",
     "memento", "healingwish", "lunardance", "mindblown",
+    "chloroblast", "steelbeam",
 }
 
 

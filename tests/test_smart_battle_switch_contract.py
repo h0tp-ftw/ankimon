@@ -172,3 +172,43 @@ def test_switch_does_not_copy_the_outgoing_nature_onto_a_sparse_row():
         assert row(GOLEM)["evolution_rejected"] is False
         assert (row(PIKA)["nature"], row(PIKA)["evolution_rejected"]) == ("adamant", True)
     """)
+
+
+def test_a_lost_swap_turn_skips_the_smart_move_choice():
+    # A swap mid-battle costs the next attack; Smart must not pick a move for
+    # that round, and must pick again on the round after.
+    _run("""
+        force_switch_to(None)
+        driver.set_enemy(species="Blissey", level=100, moves=["splash"])
+        driver.answer("good")
+        picks = []
+        real_choose = battle_loop.choose_best_move
+        def counting_choose(*a, **k):
+            picks.append(1)
+            return real_choose(*a, **k)
+        battle_loop.choose_best_move = counting_choose
+
+        battle_loop.mark_swap_turn_lost()
+        assert battle_loop._state.swap_turn_pending
+        lost = [e for e in driver.answer("good") if e["type"] == "battle"]
+        assert [r["user_move"] for r in lost] == ["splash"] and picks == [], (lost, picks)
+        after = [e for e in driver.answer("good") if e["type"] == "battle"]
+        assert [r["user_move"] for r in after] == ["thunderbolt"] and picks == [1], after
+    """)
+
+
+def test_team_ids_are_compared_as_strings():
+    # A non-str individual id on the live main must still match its team slot,
+    # or the live main would be reloaded from its (stale) row and scored twice.
+    _run("""
+        import uuid
+        main.individual_id = uuid.UUID(PIKA)
+        seen = []
+        sts.pick_best = lambda cands, enemy, current_id=None, **kw: seen.append(
+            (current_id, [(i, p is main) for i, p in cands])) or None
+        sts.matchup_score = lambda pkmn, enemy: 1.0
+        driver.encounter()
+        current_id, cands = seen[0]
+        assert current_id == PIKA, seen
+        assert [is_live for i, is_live in cands if i == PIKA] == [True], seen
+    """)
