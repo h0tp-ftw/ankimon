@@ -31,7 +31,13 @@ Enable each generation you want to encounter:
 
 `misc.remove_level_cap` [true/false] (default: false): Allow Pokémon to level beyond 100.
 
-When disabled, your main Pokémon, Pokémon receiving shared XP, and wild encounters are capped at level 100. Below main level 100, wild levels roll from three below to three above your main Pokémon's level, then results above 100 are reduced to 100. For example, a level 98 main Pokémon gives a roll of 95–101 before the cap. At main level 100 or higher, all wild encounters are level 100.
+<!-- coderabbit-ai-generated:v1 -->
+
+<!-- coderabbit-ai-generated-section:v1:9f5a928ef6827f2235d1492f40c979269e1cc973e45c7cdc52021170cfe83dd0 -->
+
+When disabled, your main Pokémon, Pokémon receiving shared XP, and wild encounters are capped at level 100. The wild level roll usually uses your main Pokémon’s level as its starting point. If Smart Battle’s Team Level Gap would bench your main Pokémon, the roll uses the lowest level in the eligible team group. Below a starting level of 100, wild levels roll from three below to three above that level, then results above 100 are reduced to 100. For example, a starting level of 98 gives a roll of 95–101 before the cap. At a starting level of 100 or higher, wild encounters are level 100.
+
+<!-- /coderabbit-ai-generated:v1 -->
 
 When enabled, wild levels use the same ±3 range without the upper cap. Wild Pokémon are always at least level 1.
 
