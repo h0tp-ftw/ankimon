@@ -1,45 +1,53 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
-# Keep this repository fully configured even when organization/global settings are off.
+# Lean config: real code review on PRs (advisory, never blocks merges), short PR
+# output, and on issues only labels plus one short note (no auto coding plans).
+# Keys left out use CodeRabbit's defaults (see the schema). inheritance stays off,
+# so organisation settings cannot add noise back.
 language: en-AU
 tone_instructions: >-
-  Be direct, precise, constructive, and evidence-based. Prioritise correctness,
-  security, data integrity, Anki compatibility, and actionable fixes over style trivia.
+  Be brief and direct. Flag only real problems: correctness, security, user-data
+  safety, Anki/PyQt compatibility. No style nits, praise or restating the diff. One
+  short paragraph per finding with a concrete fix. Keep chat replies short.
 early_access: true
-enable_free_tier: true
 inheritance: false
 
 reviews:
-  profile: assertive
-  request_changes_workflow: true
+  profile: chill
+  # Advisory only: no "changes requested" / auto-approve reviews. Merges are
+  # gated by the required human approvals and CI, not by CodeRabbit.
+  auto_approvals:
+    enabled: false
+  # No skipped / paused / rate-limit status messages in the walkthrough.
+  review_status: false
 
-  high_level_summary: true
+  # Walkthrough: collapsed, short summary; extra walkthrough sections switched off.
+  collapse_walkthrough: true
   high_level_summary_in_walkthrough: true
-  high_level_summary_instructions: |
-    Start with the user-visible impact, then summarise implementation changes,
-    compatibility or migration concerns, test evidence, and residual risks.
-    Explicitly call out changes to saved user data, configuration defaults,
+  high_level_summary_instructions: >-
+    At most 5 short bullets, no headings and no per-file lists. Lead with the
+    user-visible impact. Call out any change to saved user data, setting defaults,
     Anki/PyQt compatibility, release packaging, or bundled Pokémon data.
   auto_title_instructions: >-
-    Use an imperative Conventional Commit-style title with a concise scope when
-    useful, for example: fix(battle): prevent duplicate experience awards.
+    Imperative Conventional Commit title with a concise scope, e.g.
+    fix(battle): prevent duplicate experience awards.
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  assess_linked_issues: false
+  related_issues: false
+  related_prs: false
+  poem: false
+  in_progress_fortune: false
+  review_details: false
+  review_info: false
+  enable_prompt_for_ai_agents: false
 
-  review_status: true
-  review_details: true
-  review_progress: true
-  commit_status: true
-  fail_commit_status: true
-  collapse_walkthrough: false
-  changed_files_summary: true
-  sequence_diagrams: true
-  estimate_code_review_effort: true
-  assess_linked_issues: true
-  related_issues: true
-  related_prs: true
-  enable_prompt_for_ai_agents: true
-  abort_on_close: true
+  suggested_reviewers: false
+  auto_assign_reviewers: false
 
-  suggested_labels: true
+  # suggested_labels stays at its default (on) because auto_apply_labels
+  # applies the suggested ones.
   auto_apply_labels: true
   mutually_exclusive_groups:
     priority:
@@ -51,44 +59,44 @@ reviews:
   labeling_instructions:
     - label: bug
       instructions: >-
-        Apply when the PR fixes incorrect behaviour, a crash, regression, data
-        corruption, compatibility failure, or other defect.
+        Fixes incorrect behaviour, a crash, regression, data corruption,
+        compatibility failure, or other defect.
     - label: enhancement
       instructions: >-
-        Apply when the PR adds a user-visible capability or materially improves
-        an existing feature, performance, accessibility, or user experience.
+        Adds a user-visible capability or materially improves a feature,
+        performance, accessibility, or user experience.
     - label: documentation
       instructions: >-
-        Apply when documentation, examples, help text, translations, or comments
-        are a primary part of the change. It may coexist with another type label.
+        Documentation, examples, help text, translations, or comments are a
+        primary part of the change. May coexist with another type label.
     - label: refactoring
       instructions: >-
-        Apply when the primary purpose is internal restructuring or maintainability
-        without an intended user-visible behaviour change.
+        Main purpose is internal restructuring or maintainability with no
+        intended user-visible behaviour change.
     - label: release
       instructions: >-
-        Apply to version bumps, release notes, packaging, tagging, or release
-        workflow changes intended to publish an Ankimon build.
+        Version bumps, release notes, packaging, tagging, or release-workflow
+        changes intended to publish an Ankimon build.
     - label: automated
       instructions: >-
-        Apply when the PR was generated by a bot or automated maintenance process,
-        such as dependency, generated-data, formatting, or release automation.
+        Generated by a bot or automated maintenance process (dependencies,
+        generated data, formatting, release automation).
     - label: major
       instructions: >-
-        Apply only when the PR introduces a breaking change, significant migration,
-        major feature, or release-level change requiring prominent communication.
+        Only for a breaking change, significant migration, major feature, or
+        release-level change needing prominent communication.
     - label: 00 priority
       instructions: >-
-        Apply exactly this priority only for an emergency: an actively exploitable
-        vulnerability, likely irreversible user-data loss/corruption, a broken
-        release, or a widespread failure that makes Ankimon unusable. Do not use
-        when a lower priority can reasonably apply.
+        Emergency only: an actively exploitable vulnerability, likely
+        irreversible user-data loss/corruption, a broken release, or a widespread
+        failure that makes Ankimon unusable. Not when a lower priority can
+        reasonably apply.
     - label: 01 priority
       instructions: >-
-        Apply exactly this priority for urgent, high-impact work such as a release
-        blocker, common crash, serious regression in core review or battle flows,
-        supported Anki/PyQt incompatibility, or important security/privacy weakness
-        that is not a 00 emergency.
+        Urgent, high-impact work that is not a 00 emergency, such as a release
+        blocker, common crash, serious regression in core review or battle
+        flows, supported Anki/PyQt incompatibility, or important security/privacy
+        weakness.
     - label: 02 priority
       instructions: >-
         Apply exactly this priority only when evidence establishes significant
@@ -105,221 +113,88 @@ reviews:
         when their criteria apply.
     - label: 03 priority
       instructions: >-
-        Apply exactly this priority as the default for actionable ordinary work:
-        routine fixes, features, refactors, tests, and documentation, including
-        contained Pokémon/move/item defects. Use 04 when its low-impact criteria
-        apply; use 00 or 01 when their severe/urgent criteria apply. Elevate to 02
-        only with the significant-impact evidence required above; uncertainty
-        between 02 and 03 defaults to 03. New correctness, security, or test defects
-        introduced by the PR remain merge blockers to resolve, but do not by
-        themselves elevate the whole PR's priority; classify the underlying work
-        by its demonstrated impact.
+        Default for ordinary actionable work: routine fixes, features, refactors,
+        tests, and documentation, including contained Pokémon/move/item defects.
+        Use 04, 01 or 00 when their criteria apply, and 02 only with its required
+        evidence (if unsure between 02 and 03, use 03). Correctness, security,
+        or test defects introduced by the PR remain merge blockers but do not by
+        themselves raise the PR's priority; classify the underlying work by its
+        demonstrated impact.
     - label: 04 priority
       instructions: >-
-        Apply exactly this priority only to low-impact, non-urgent polish, optional
-        cleanup, cosmetic tweaks, or rare edge cases that can safely wait.
+        Low-impact, non-urgent polish, optional cleanup, cosmetic tweaks, or rare
+        edge cases that can safely wait.
 
-  suggested_reviewers: true
-  auto_assign_reviewers: true
-
-  slop_detection:
-    enabled: true
-
+  # Drafts are reviewed too (most work here starts as a draft). Automatic
+  # re-reviews pause after the default 5 commits; "@coderabbitai review" resumes.
   auto_review:
     enabled: true
-    auto_incremental_review: true
-    auto_pause_after_reviewed_commits: 0
+    drafts: true
     ignore_title_keywords:
       - "DO NOT REVIEW"
-    labels: []
-    drafts: true
     base_branches:
       - ".*"
-    ignore_usernames: []
 
+  # Generators off (unit tests, Fix comments, Fix CI, merge-conflict resolver;
+  # custom recipes removed), which also drops their checkboxes from PRs.
   finishing_touches:
-    docstrings:
-      enabled: true
     unit_tests:
-      enabled: true
-    simplify:
-      enabled: true
+      enabled: false
     autofix:
-      enabled: true
+      enabled: false
     fix_ci:
-      enabled: true
+      enabled: false
     resolve_merge_conflict:
-      enabled: true
-    custom:
-      - name: audit Anki runtime compatibility
-        enabled: true
-        instructions: |
-          Audit the changed code for supported Anki and PyQt6 compatibility.
-          Check hook registration, imports, Qt API usage, object lifetime, signal
-          connections, thread affinity, webview interactions, and add-on startup
-          side effects. Make only focused fixes supported by repository evidence.
-      - name: audit user data safety
-        enabled: true
-        instructions: |
-          Trace every changed read, write, migration, backup, and reset path for
-          user-owned JSON data. Prevent silent data loss, partial writes, schema
-          drift, unsafe defaults, path traversal, and corruption after interruption.
-          Preserve backward compatibility unless the PR explicitly documents a
-          migration and recovery path.
-      - name: audit game logic invariants
-        enabled: true
-        instructions: |
-          Review changed encounter, battle, move, experience, evolution, inventory,
-          and catch logic for invariant violations, off-by-one errors, invalid state,
-          nondeterministic tests, and divergence from the bundled data model. Apply
-          focused corrections and add regression tests where practical.
-      - name: prepare release readiness fixes
-        enabled: true
-        instructions: |
-          Check version metadata, release notes, addon packaging, workflow safety,
-          artifact contents, and compatibility statements for consistency. Fix
-          deterministic release blockers without changing the intended version.
-      - name: harden external input handling
-        enabled: true
-        instructions: |
-          Audit changed network responses, URLs, downloaded assets, issue-provided
-          files, translations, HTML, and JSON before they reach storage, game logic,
-          or a webview. Add validation, safe failure behaviour, and clear logging.
+      enabled: false
 
+  # Advisory: two warning-only checks; the rest are off. A warning never blocks.
   pre_merge_checks:
-    # Preserve a human escape hatch: only requested reviewers, never the PR
-    # author alone, may override a judgement-based pre-merge finding.
-    override_requested_reviewers_only: true
-    docstrings:
-      mode: warning
-      threshold: 80
     title:
-      mode: error
-      requirements: >-
-        Use a concise imperative title, preferably type(scope): summary, that
-        describes the actual change and does not end with a period.
+      mode: "off"
     description:
-      mode: error
+      mode: "off"
     issue_assessment:
-      mode: warning
+      mode: "off"
     custom_checks:
       - name: Security and privacy
-        mode: error
+        mode: warning
         instructions: >-
           Pass only when changed code introduces no exposed secret, unsafe dynamic
           execution, injection path, untrusted download risk, path traversal, or
           unnecessary collection/disclosure of user data. Documentation-only PRs
           pass unless they expose sensitive information or recommend unsafe steps.
+          When the check passes, explain it in one sentence.
       - name: User data safety
-        mode: error
+        mode: warning
         instructions: >-
           Pass only when changes cannot silently lose or corrupt user collections,
           configuration, saves, backups, inventory, or Pokémon state. Any schema
           change must preserve old data or include a documented, recoverable
           migration. PRs that cannot affect persisted data pass.
-      - name: Anki and PyQt compatibility
-        mode: error
-        instructions: >-
-          Pass only when changed runtime code remains compatible with the supported
-          Anki/PyQt6 environment and does not block add-on import, startup, review
-          hooks, profile switching, or shutdown. Non-runtime changes pass.
-      - name: Tests and validation
-        mode: warning
-        instructions: >-
-          Pass when behaviour changes include proportionate automated tests or a
-          credible manual validation record. Pure documentation, metadata, or
-          generated-data changes may pass with an explicit validation explanation.
-      - name: Release consistency
-        mode: error
-        instructions: >-
-          For release or versioning changes, pass only when version metadata, notes,
-          tags, build inputs, artifact paths, and release/prerelease intent agree.
-          PRs unrelated to releases pass.
+          When the check passes, explain it in one sentence.
 
-  # Post-merge actions default to doing nothing. Each one acts only on a clear,
-  # specific trigger and stays silent otherwise (no "nothing to report" output).
-  post_merge_actions:
-    - name: Synchronise user documentation
-      enabled: true
-      prompt: |
-        Default to taking no action. Act only when the merged PR adds, removes, or
-        renames a setting, changes a setting's default or accepted values, or changes
-        installation/update steps or supported Anki/PyQt versions, AND the current
-        README.md or src/Ankimon/config.md (as of the merge commit)
-        states something that is now false. Do not act for bug fixes that restore
-        intended behaviour, visual/styling tweaks, refactors, tests, generated data,
-        CI, or release chores. Do not act when the merged PR already updated the docs.
-        When acting, edit the current file in place: change only the sentences that
-        became false, keep every other line byte-for-byte, keep existing setting key
-        names, headings, and structure, and never reintroduce text removed by an
-        earlier documentation commit. If the fix needs more than about 15 changed
-        lines in total, do not open a PR; post a short text report instead. Never
-        regenerate or restructure a whole file.
-    - name: Recheck release metadata
-      enabled: true
-      prompt: |
-        Default to taking no action. Act only on PRs labelled release, or PRs that
-        change version metadata (addon.json, manifest/meta files), release workflows,
-        or tags. Compare those values; if a deterministic mismatch remains, open a
-        minimal follow-up PR correcting only that mismatch. If everything agrees,
-        produce no output. Never choose or increment a version.
-    - name: Report residual risks and follow-ups
-      enabled: true
-      prompt: |
-        Default to taking no action. Act only when the merged PR's description or
-        review threads explicitly record unresolved work (a TODO, deferred fix, or
-        known user-data migration risk) that was not addressed before merge. List
-        only those items with paths and evidence. Do not infer or speculate about
-        risks, do not modify files or create tickets, and produce no output when
-        nothing explicit remains.
-    - name: Audit upstream divergence
-      enabled: true
-      prompt: |
-        Default to taking no action. Act only when the merged PR explicitly says it
-        ports, cherry-picks, or reverts work from Unlucky-Life/ankimon. Report
-        accidental omissions relative to that upstream change only; do not audit
-        general fork divergence and do not modify files.
-    - name: Check translation coverage
-      enabled: true
-      prompt: |
-        Default to taking no action. Act only when files under src/Ankimon/lang
-        change or the PR adds/renames translation keys. Report only missing keys
-        and mismatched placeholders by locale. Produce no output when coverage is
-        unchanged. Do not auto-translate text or modify licence/attribution material.
-
+  # Security/correctness tools (ruff, semgrep, gitleaks, trufflehog, osvScanner,
+  # actionlint, zizmor, shellcheck, ast-grep, presidio, ...) keep their defaults
+  # (enabled). Prose/style linters and duplicate Python/semgrep linters are off.
   tools:
-    "github-checks":
-      enabled: true
-      timeout_ms: 900000
-    "ast-grep":
-      essential_rules: true
-    ruff:
-      enabled: true
-    semgrep:
-      enabled: true
-    gitleaks:
-      enabled: true
-    presidio:
-      enabled: true
-    osvScanner:
-      enabled: true
-    actionlint:
-      enabled: true
-    zizmor:
-      enabled: true
-    yamllint:
-      enabled: true
-    markdownlint:
-      enabled: true
-    htmlhint:
-      enabled: true
-    shellcheck:
-      enabled: true
-    dotenvLint:
-      enabled: true
+    flake8:
+      enabled: false
+    pylint:
+      enabled: false
+    opengrep:
+      enabled: false
     languagetool:
-      enabled: true
-      level: picky
+      enabled: false
+    markdownlint:
+      enabled: false
+    yamllint:
+      enabled: false
+    htmlhint:
+      enabled: false
+    stylelint:
+      enabled: false
+    dotenvLint:
+      enabled: false
 
   # Ignore non-reviewable or generated bulk while retaining source, metadata,
   # translations, small configuration data, and workflow files for deep review.
@@ -411,119 +286,70 @@ reviews:
 chat:
   art: false
   allow_non_org_members: false
-  auto_reply: true
+  auto_reply: false
 
 knowledge_base:
-  opt_out: false
-  web_search:
-    enabled: true
-  code_guidelines:
-    enabled: true
-    filePatterns:
-      - "**/AGENTS.md"
-      - "**/REVIEW.md"
   learnings:
-    scope: local
     approval_delay: 3
-  issues:
-    scope: local
-  pull_requests:
-    scope: local
-  automatic_repository_linking: true
-  linked_repositories:
-    - repository: Unlucky-Life/ankimon
-      instructions: >-
-        Upstream Ankimon repository. Use it to recognise upstream fixes, behavioural
-        conventions, compatibility decisions, and divergence introduced by this fork.
 
-code_generation:
-  docstrings:
-    language: en-AU
-    path_instructions:
-      - path: "**/*.py"
-        instructions: |
-          Use concise PEP 257 docstrings that explain contract, side effects, state
-          mutation, units/ranges, notable exceptions, and Anki/Qt lifecycle demands.
-          Do not restate obvious code or invent guarantees absent from implementation.
-  unit_tests:
-    path_instructions:
-      - path: "**/*.py"
-        instructions: |
-          Prefer pytest regression tests around pure behaviour. Isolate randomness,
-          time, network, filesystem, Anki, and PyQt dependencies with fixtures or
-          focused fakes. Test boundaries, corrupt/legacy data, rollback behaviour,
-          and avoid requiring a user's live Anki profile or display server.
-
+# Issues: labels plus one short enrichment note (possible duplicates). Automatic
+# coding plans are off; a plan is posted only on "@coderabbitai plan".
 issue_enrichment:
   auto_enrich:
     enabled: true
   planning:
     enabled: true
     auto_planning:
-      enabled: true
-      labels:
-        - bug
-        - enhancement
-        - refactoring
-        - documentation
-        - 00 priority
-        - 01 priority
-        - 02 priority
-        - 03 priority
-        - 04 priority
-        - "!duplicate"
-        - "!invalid"
-        - "!wontfix"
+      enabled: false
   labeling:
     auto_apply_labels: true
     labeling_instructions:
       - label: bug
         instructions: >-
-          Apply when the issue reports reproducible incorrect behaviour, a crash,
-          regression, data corruption, compatibility problem, or documented feature
-          behaving contrary to expectations.
+          Reports reproducible incorrect behaviour, a crash, regression, data
+          corruption, compatibility problem, or documented feature behaving
+          contrary to expectations.
       - label: enhancement
         instructions: >-
-          Apply when the issue requests a new capability or a material improvement
-          to behaviour, performance, accessibility, or user experience.
+          Requests a new capability or a material improvement to behaviour,
+          performance, accessibility, or user experience.
       - label: documentation
         instructions: >-
-          Apply when the requested outcome primarily changes documentation, setup
-          guidance, help text, examples, translations, or explanatory content.
+          The requested outcome mainly changes documentation, setup guidance, help
+          text, examples, translations, or explanatory content.
       - label: refactoring
         instructions: >-
-          Apply when the issue proposes internal restructuring, cleanup, or technical
-          debt work without an intended user-visible behaviour change.
+          Proposes internal restructuring, cleanup, or technical-debt work with no
+          intended user-visible behaviour change.
       - label: question
         instructions: >-
-          Apply when the issue primarily asks for support, clarification, expected
-          behaviour, or usage guidance and does not yet establish a defect.
+          Mainly asks for support, clarification, expected behaviour, or usage
+          guidance and does not yet establish a defect.
       - label: duplicate
         instructions: >-
-          Apply only when repository context identifies an existing issue describing
-          substantially the same problem or request. Include the related issue in the
-          enrichment; similarity in a few keywords is insufficient.
+          Only when an existing issue describes substantially the same problem or
+          request; similarity in a few keywords is not enough.
       - label: good first issue
         instructions: >-
-          Apply when the work is well-scoped, low-risk, locally understandable, and
-          can be completed without deep knowledge of Anki hooks, persistence, release
-          infrastructure, or coupled battle systems.
+          Well-scoped, low-risk, locally understandable work that needs no deep
+          knowledge of Anki hooks, persistence, release infrastructure, or coupled
+          battle systems.
       - label: help wanted
         instructions: >-
-          Apply when the issue explicitly seeks community help or needs specialised
-          testing/domain knowledge that maintainers are unlikely to supply alone.
+          Explicitly seeks community help, or needs specialised testing/domain
+          knowledge that maintainers are unlikely to supply alone.
       - label: 00 priority
         instructions: >-
-          Apply only this priority for an emergency: actively exploitable security,
-          likely irreversible user-data loss/corruption, a broken release, or a
-          widespread failure making Ankimon unusable. Never infer 00 from urgency
-          wording alone, and do not apply another priority label with it.
+          Emergency only: actively exploitable security, likely irreversible
+          user-data loss/corruption, a broken release, or a widespread failure
+          making Ankimon unusable. Never infer 00 from urgency wording alone. Do
+          not apply another priority label with it.
       - label: 01 priority
         instructions: >-
-          Apply only this priority for a release blocker, common core-flow crash,
-          serious regression, supported Anki/PyQt incompatibility, or high-impact
-          security/privacy weakness that is not a 00 emergency. Do not apply another
-          priority label with it.
+          Urgent work that is not a 00 emergency, such as a release blocker,
+          common core-flow crash, serious regression, supported Anki/PyQt
+          incompatibility, or high-impact security/privacy weakness. Do not apply
+          another priority label with it.
       - label: 02 priority
         instructions: >-
           Apply only this priority when evidence establishes significant impact
@@ -540,17 +366,15 @@ issue_enrichment:
           when their criteria apply. Do not apply another priority label with it.
       - label: 03 priority
         instructions: >-
-          Apply only this priority as the default for actionable ordinary work:
-          routine fixes, features, refactors, tests, and documentation, including
-          contained Pokémon/move/item defects. Use 04 when its low-impact criteria
-          apply; use 00 or 01 when their severe/urgent criteria apply. Elevate to 02
-          only with the significant-impact evidence required above; uncertainty
-          between 02 and 03 defaults to 03. Defects introduced while implementing
-          the work remain merge blockers to resolve, but do not by themselves
-          elevate the underlying issue's priority; classify it by its demonstrated
-          impact. Do not apply another priority label with it.
+          Default for ordinary actionable work: routine fixes, features, refactors,
+          tests, and documentation, including contained Pokémon/move/item defects.
+          Use 04, 01 or 00 when their criteria apply, and 02 only with its required
+          evidence (if unsure between 02 and 03, use 03). Defects introduced while
+          implementing the work remain merge blockers but do not by themselves
+          raise the issue's priority; classify it by its demonstrated impact. Do
+          not apply another priority label with it.
       - label: 04 priority
         instructions: >-
-          Apply only this priority to non-urgent polish, optional cleanup, cosmetic
-          tweaks, or rare low-impact edge cases that can safely wait. Do not apply
-          another priority label with it.
+          Non-urgent polish, optional cleanup, cosmetic tweaks, or rare low-impact
+          edge cases that can safely wait. Do not apply another priority label
+          with it.
