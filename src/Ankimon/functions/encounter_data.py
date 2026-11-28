@@ -1440,11 +1440,21 @@ REGIONAL_FORMS: dict[str, list[int]] = {
 }
 
 # Maps forme string (as it appears in pokedex.json) -> required intro gen number
-REGIONAL_FORME_GEN: dict[str, int] = {
+SPECIAL_FORME_GEN: dict[str, int] = {
+    "Mega": 6,
+    "Primal": 6,
     "Alola": 7,
+    "Totem": 7,
+    "Ash": 7,
     "Galar": 8,
     "Hisui": 8,
+    "Gmax": 8,
+    "Eternamax": 8,
     "Paldea": 9,
+    "Bloodmoon": 9,
+    "Tera": 9,
+    "Terastal": 9,
+    "Stellar": 9,
 }
 
 # Flat reverse map: actual_id -> region string
