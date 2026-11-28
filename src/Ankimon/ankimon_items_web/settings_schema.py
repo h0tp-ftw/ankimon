@@ -41,6 +41,8 @@ GROUPS = [
                 "label": "Auto-Battle Rules",
                 "settings": [
                     "Automatic Battle",
+                    "Smart Battle",
+                    "Team Level Gap",
                     "Always Catch Wishlist",
                 ],
                 "chip_group": {

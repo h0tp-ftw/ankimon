@@ -1,5 +1,7 @@
 {
     "battle.automatic_battle": "Automatic Battle",
+    "battle.smart_battle": "Smart Battle",
+    "battle.team_level_gap": "Team Level Gap",
     "battle.auto_catch_wishlist": "Always Catch Wishlist",
     "battle.auto_catch_legendary": "Always Catch: Legendary",
     "battle.auto_catch_mythical": "Always Catch: Mythical",

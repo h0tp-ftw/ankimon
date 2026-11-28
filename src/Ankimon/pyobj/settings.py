@@ -8,6 +8,12 @@ from ..functions.hp_recovery import regenerates
 
 DEFAULT_CONFIG = {
     "battle.automatic_battle": 0,
+    # Smart Battle: strongest move + best team member per new wild Pokémon.
+    # Applies the same 50% XP penalty as Allow Choosing Moves.
+    "battle.smart_battle": False,
+    # Smart Battle level balancing: only send out team members within this
+    # many levels of the lowest one. 0 = off.
+    "battle.team_level_gap": 5,
     "battle.auto_catch_legendary": True,
     "battle.auto_catch_mythical": True,
     "battle.auto_catch_ultra": True,
@@ -295,6 +301,7 @@ class Settings:
         """Apply type coercion to config values that need to be integers."""
         keys_to_coerce_to_int = [
             "battle.automatic_battle",
+            "battle.team_level_gap",
             "battle.daily_average",
             "gui.reviewer_text_message_box_time",
             "gui.xp_bar_location",

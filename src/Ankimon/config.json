@@ -1,5 +1,7 @@
 {
     "battle.automatic_battle": 0,
+    "battle.smart_battle": false,
+    "battle.team_level_gap": 5,
     "battle.auto_catch_legendary": true,
     "battle.auto_catch_mythical": true,
     "battle.auto_catch_ultra": true,
